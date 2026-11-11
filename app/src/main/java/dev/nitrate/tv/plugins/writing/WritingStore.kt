@@ -122,6 +122,17 @@ class WritingStore(context: Context, private val repository: JellyfinRepository)
         return restored
     }
 
+    /** Lets the transfer page list, download and add scripts. */
+    fun asTransferDocs(): TransferDocs = object : TransferDocs {
+        override fun list(): List<WritingDoc> = docs.value
+
+        // Only ids of existing scripts: the id comes from a URL, so it must never reach other files.
+        override suspend fun read(id: String): String? =
+            if (docs.value.any { it.id == id }) this@WritingStore.read(id) else null
+
+        override suspend fun create(text: String): String = this@WritingStore.create(text)
+    }
+
     companion object {
         const val PREFS_ID = "nitrate-writing"
 

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
+import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import dev.nitrate.tv.plugins.core.PlaybackControls
 import kotlinx.coroutines.delay
@@ -196,6 +198,11 @@ fun WritingEditor(
         value = TextFieldValue(text.replaceRange(start, end, converted), TextRange(start + converted.length))
     }
 
+    // Computer transfer: off unless switched on here, and always off once the editor closes.
+    val transfer = remember(store) { TransferServer(store.asTransferDocs()) }
+    DisposableEffect(transfer) { onDispose { transfer.stop() } }
+    val transferState by transfer.state.collectAsState()
+
     val colors = MaterialTheme.colorScheme
     val highlight = remember(colors) { FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant) }
 
@@ -254,6 +261,8 @@ fun WritingEditor(
                 },
                 onExport = ::exportNow,
                 onImport = ::importNow,
+                transfer = transferState,
+                onTransfer = { on -> if (on) transfer.start(lanAddress(context)) else transfer.stop() },
                 modifier = Modifier.weight(1f),
             )
             Mode.HELP -> Help(playback != null, Modifier.weight(1f))
@@ -270,6 +279,8 @@ private fun Documents(
     onDelete: (String) -> Unit,
     onExport: (ExportFormat) -> Unit,
     onImport: () -> Unit,
+    transfer: TransferServer.State,
+    onTransfer: (Boolean) -> Unit,
     modifier: Modifier,
 ) {
     var confirmDelete by remember { mutableStateOf<String?>(null) }
@@ -281,6 +292,23 @@ private fun Documents(
             OutlinedButton(onClick = { onExport(ExportFormat.FOUNTAIN) }) { Text("Export .fountain") }
             OutlinedButton(onClick = onImport) { Text("Import") }
         }
+        ListItem(
+            selected = false,
+            onClick = { onTransfer(!transfer.running) },
+            headlineContent = { Text("Transfer to and from a computer") },
+            supportingContent = {
+                Text(
+                    when {
+                        transfer.running && transfer.address != null ->
+                            "Open ${transfer.address} in a browser on the same network and enter PIN ${transfer.pin}. Turns off after 15 minutes unused."
+                        transfer.running -> "On, but this TV's network address couldn't be found. PIN ${transfer.pin}."
+                        transfer.note != null -> transfer.note
+                        else -> "Off. Switch on to download or upload scripts from a browser on your network."
+                    },
+                )
+            },
+            trailingContent = { Switch(checked = transfer.running, onCheckedChange = null) },
+        )
         Text("Long-press a document to delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.fillMaxSize()) {
             items(docs, key = { it.id }) { doc ->
@@ -397,3 +425,11 @@ private fun exportToDownloads(context: android.content.Context, name: String, mi
         "Exported to ${dir.absolutePath}/$name"
     }
 }.getOrElse { "Export failed: ${it.message}" }
+
+/** This TV's IPv4 address on the active network (Wi-Fi or Ethernet), for the transfer page link. */
+private fun lanAddress(context: android.content.Context): String? {
+    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return null
+    val props = cm.getLinkProperties(cm.activeNetwork) ?: return null
+    return props.linkAddresses.map { it.address }
+        .firstOrNull { it is java.net.Inet4Address && !it.isLoopbackAddress }?.hostAddress
+}
