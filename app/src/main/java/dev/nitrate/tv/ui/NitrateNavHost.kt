@@ -19,6 +19,10 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.nitrate.tv.data.AppContainer
 import dev.nitrate.tv.ui.connect.ConnectScreen
+import dev.nitrate.tv.ui.details.DetailsScreen
+import androidx.navigation.NavController
+import org.jellyfin.sdk.model.api.BaseItemDto
+import org.jellyfin.sdk.model.api.BaseItemKind
 import dev.nitrate.tv.ui.home.HomeScreen
 import dev.nitrate.tv.ui.login.LoginScreen
 import dev.nitrate.tv.ui.player.PlayerScreen
@@ -27,6 +31,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ConnectRoute
 @Serializable data class LoginRoute(val serverUrl: String, val serverName: String)
 @Serializable object HomeRoute
+@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
 @Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false)
 
 @Composable
@@ -70,10 +75,21 @@ fun NitrateNavHost(container: AppContainer) {
         composable<HomeRoute> {
             HomeScreen(
                 repository = container.repository,
+                onOpen = nav::openItem,
                 onPlay = { item -> nav.navigate(PlayerRoute(item.id.toString())) },
                 onSignOut = {
                     nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } }
                 },
+            )
+        }
+        composable<DetailsRoute> { entry ->
+            val route = entry.toRoute<DetailsRoute>()
+            DetailsScreen(
+                repository = container.repository,
+                itemId = route.itemId,
+                seasonId = route.seasonId,
+                onPlay = { item, fromStart -> nav.navigate(PlayerRoute(item.id.toString(), fromStart)) },
+                onOpen = nav::openItem,
             )
         }
         composable<PlayerRoute> { entry ->
@@ -85,5 +101,15 @@ fun NitrateNavHost(container: AppContainer) {
                 onExit = { nav.popBackStack() },
             )
         }
+    }
+}
+
+/** Where selecting an item goes. Seasons open their series with that season selected. */
+fun NavController.openItem(item: BaseItemDto) {
+    val seriesId = item.seriesId
+    when {
+        item.type == BaseItemKind.SEASON && seriesId != null ->
+            navigate(DetailsRoute(seriesId.toString(), seasonId = item.id.toString()))
+        else -> navigate(DetailsRoute(item.id.toString()))
     }
 }

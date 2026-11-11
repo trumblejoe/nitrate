@@ -44,6 +44,8 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.nitrate.tv.data.HomeRow
 import dev.nitrate.tv.data.JellyfinRepository
+import dev.nitrate.tv.ui.components.MediaCard
+import dev.nitrate.tv.ui.components.displayTitle
 import kotlinx.coroutines.launch
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
@@ -52,6 +54,7 @@ import org.jellyfin.sdk.model.api.ImageType
 @Composable
 fun HomeScreen(
     repository: JellyfinRepository,
+    onOpen: (BaseItemDto) -> Unit,
     onPlay: (BaseItemDto) -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -101,9 +104,8 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(28.dp),
                 ) {
                     items(s.rows, key = { it.title }) { row ->
-                        MediaRow(row, repository, onFocus = { focused = it }, onClick = { item ->
-                            if (repository.isPlayable(item)) onPlay(item)
-                            // TODO: series / season / library detail screens
+                        MediaRow(row, repository, onFocus = { focused = it }, onClick = onOpen, onPlay = { item ->
+                            if (repository.isPlayable(item)) onPlay(item) else onOpen(item)
                         })
                     }
                     item {
@@ -149,6 +151,7 @@ private fun MediaRow(
     repository: JellyfinRepository,
     onFocus: (BaseItemDto) -> Unit,
     onClick: (BaseItemDto) -> Unit,
+    onPlay: (BaseItemDto) -> Unit,
 ) {
     // Landscape thumbs for in-progress rows, posters for library rows.
     val landscape = row.title == "Continue Watching" || row.title == "Next Up"
@@ -159,61 +162,24 @@ private fun MediaRow(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             items(row.items, key = { it.id }) { item ->
-                MediaCard(item, repository, landscape, onFocus, onClick)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MediaCard(
-    item: BaseItemDto,
-    repository: JellyfinRepository,
-    landscape: Boolean,
-    onFocus: (BaseItemDto) -> Unit,
-    onClick: (BaseItemDto) -> Unit,
-) {
-    val width = if (landscape) 260.dp else 140.dp
-    val ratio = if (landscape) 16f / 9f else 2f / 3f
-    val image = if (landscape) {
-        repository.imageUrl(item, ImageType.THUMB, 320)
-            ?: repository.backdropUrl(item)
-            ?: repository.imageUrl(item, ImageType.PRIMARY, 320)
-    } else {
-        repository.imageUrl(item, ImageType.PRIMARY, 360)
-    }
-    val progress = item.userData?.playedPercentage?.toFloat()?.div(100f)
-
-    Column(Modifier.width(width)) {
-        Card(
-            onClick = { onClick(item) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(ratio)
-                .onFocusChanged { if (it.isFocused) onFocus(item) },
-        ) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
-                if (image != null) {
-                    AsyncImage(model = image, contentDescription = item.name, contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize())
+                val image = if (landscape) {
+                    repository.imageUrl(item, ImageType.THUMB, 320)
+                        ?: repository.backdropUrl(item)
+                        ?: repository.imageUrl(item, ImageType.PRIMARY, 320)
                 } else {
-                    Text(item.name.orEmpty(), Modifier.align(Alignment.Center).padding(8.dp),
-                        style = MaterialTheme.typography.labelLarge)
+                    repository.imageUrl(item, ImageType.PRIMARY, 360)
                 }
-                if (progress != null && progress > 0f) {
-                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x99000000))) {
-                        Box(Modifier.fillMaxWidth(progress).height(4.dp).background(MaterialTheme.colorScheme.primary))
-                    }
-                }
+                MediaCard(
+                    item = item,
+                    imageUrl = image,
+                    width = if (landscape) 260.dp else 140.dp,
+                    aspectRatio = if (landscape) 16f / 9f else 2f / 3f,
+                    title = if (landscape) item.displayTitle() else null,
+                    onFocus = { onFocus(item) },
+                    onClick = { onClick(item) },
+                    onPlay = { onPlay(item) },
+                )
             }
-        }
-        if (landscape) {
-            Text(
-                text = if (item.type == BaseItemKind.EPISODE) item.seriesName.orEmpty() else item.name.orEmpty(),
-                style = MaterialTheme.typography.labelLarge,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 8.dp),
-            )
         }
     }
 }

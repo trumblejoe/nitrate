@@ -64,3 +64,10 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.serialization.json)
 }
+
+kotlin {
+    compilerOptions {
+        // tv-material keeps several stable-in-practice components (chips, tabs) marked experimental.
+        optIn.add("androidx.tv.material3.ExperimentalTvMaterial3Api")
+    }
+}
