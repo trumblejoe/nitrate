@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp"
+    android:viewportWidth="320" android:viewportHeight="180">
+    <path android:fillColor="#0B0D12" android:pathData="M0,0h320v180h-320z" />
+    <!-- film strip -->
+    <path android:fillColor="#E8A33D" android:pathData="M0,20h320v14h-320z M0,146h320v14h-320z" />
+    <path android:fillColor="#0B0D12"
+        android:pathData="M10,24h10v6h-10z M40,24h10v6h-10z M70,24h10v6h-10z M100,24h10v6h-10z M130,24h10v6h-10z M160,24h10v6h-10z M190,24h10v6h-10z M220,24h10v6h-10z M250,24h10v6h-10z M280,24h10v6h-10z M10,150h10v6h-10z M40,150h10v6h-10z M70,150h10v6h-10z M100,150h10v6h-10z M130,150h10v6h-10z M160,150h10v6h-10z M190,150h10v6h-10z M220,150h10v6h-10z M250,150h10v6h-10z M280,150h10v6h-10z" />
+    <!-- play triangle -->
+    <path android:fillColor="#E8A33D" android:pathData="M146,66 L180,90 L146,114 Z" />
+</vector>

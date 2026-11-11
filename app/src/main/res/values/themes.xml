@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.Nitrate" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/nitrate_background</item>
+    </style>
+</resources>
