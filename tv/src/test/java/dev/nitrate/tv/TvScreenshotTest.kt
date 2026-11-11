@@ -36,6 +36,8 @@ import dev.nitrate.tv.ui.rows.RowBuilder
 import dev.nitrate.tv.ui.theme.NitrateTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -146,6 +148,10 @@ class TvScreenshotTest {
     }
 
     @Test fun album() = shoot("tv-album") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "al1", null, onPlay = { _, _ -> }, onOpen = {}) }
+
+    @Test fun liveTv() = shoot("tv-live-tv") { c ->
+        dev.nitrate.tv.ui.livetv.LiveTvScreen(c.server, header = { androidx.tv.material3.Text("Live TV", style = androidx.tv.material3.MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 58.dp, top = 24.dp)) }, onPlay = {})
+    }
 
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 

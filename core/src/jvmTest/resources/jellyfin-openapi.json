@@ -1714,6 +1714,14 @@
     ],
     "type": "string"
    },
+   "DayPattern": {
+    "enum": [
+     "Daily",
+     "Weekdays",
+     "Weekends"
+    ],
+    "type": "string"
+   },
    "DeviceProfile": {
     "additionalProperties": false,
     "properties": {
@@ -1996,6 +2004,152 @@
     ],
     "type": "string"
    },
+   "GetProgramsDto": {
+    "additionalProperties": false,
+    "properties": {
+     "ChannelIds": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "EnableImageTypes": {
+      "items": {
+       "$ref": "#/components/schemas/ImageType"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "EnableImages": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "EnableTotalRecordCount": {
+      "default": true,
+      "type": "boolean"
+     },
+     "EnableUserData": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "Fields": {
+      "items": {
+       "$ref": "#/components/schemas/ItemFields"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "GenreIds": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "Genres": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "HasAired": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "ImageTypeLimit": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "IsAiring": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "IsKids": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "IsMovie": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "IsNews": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "IsSeries": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "IsSports": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "LibrarySeriesId": {
+      "format": "uuid",
+      "nullable": true,
+      "type": "string"
+     },
+     "Limit": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "MaxEndDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "MaxStartDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "MinEndDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "MinStartDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "SeriesTimerId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "SortBy": {
+      "items": {
+       "$ref": "#/components/schemas/ItemSortBy"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "SortOrder": {
+      "items": {
+       "$ref": "#/components/schemas/SortOrder"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "StartIndex": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "UserId": {
+      "format": "uuid",
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "GroupInfoDto": {
     "additionalProperties": false,
     "properties": {
@@ -2274,6 +2428,89 @@
      }
     },
     "type": "object"
+   },
+   "KeepUntil": {
+    "enum": [
+     "UntilDeleted",
+     "UntilSpaceNeeded",
+     "UntilWatched",
+     "UntilDate"
+    ],
+    "type": "string"
+   },
+   "LiveTvInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "EnabledUsers": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "IsEnabled": {
+      "type": "boolean"
+     },
+     "Services": {
+      "items": {
+       "$ref": "#/components/schemas/LiveTvServiceInfo"
+      },
+      "type": "array"
+     }
+    },
+    "type": "object"
+   },
+   "LiveTvServiceInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "HasUpdateAvailable": {
+      "type": "boolean"
+     },
+     "HomePageUrl": {
+      "nullable": true,
+      "type": "string"
+     },
+     "IsVisible": {
+      "type": "boolean"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Status": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/LiveTvServiceStatus"
+       }
+      ],
+      "enum": [
+       "Ok",
+       "Unavailable"
+      ]
+     },
+     "StatusMessage": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Tuners": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "Version": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "LiveTvServiceStatus": {
+    "enum": [
+     "Ok",
+     "Unavailable"
+    ],
+    "type": "string"
    },
    "LocationType": {
     "enum": [
@@ -4165,6 +4402,18 @@
     },
     "type": "object"
    },
+   "RecordingStatus": {
+    "enum": [
+     "New",
+     "InProgress",
+     "Completed",
+     "Cancelled",
+     "ConflictedOk",
+     "ConflictedNotOk",
+     "Error"
+    ],
+    "type": "string"
+   },
    "RemoteImageInfo": {
     "additionalProperties": false,
     "properties": {
@@ -4519,6 +4768,175 @@
      "Unreleased"
     ],
     "type": "string"
+   },
+   "SeriesTimerInfoDto": {
+    "additionalProperties": false,
+    "properties": {
+     "ChannelId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "ChannelName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ChannelPrimaryImageTag": {
+      "nullable": true,
+      "type": "string"
+     },
+     "DayPattern": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/DayPattern"
+       }
+      ],
+      "enum": [
+       "Daily",
+       "Weekdays",
+       "Weekends"
+      ],
+      "nullable": true
+     },
+     "Days": {
+      "items": {
+       "$ref": "#/components/schemas/DayOfWeek"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "EndDate": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "ExternalChannelId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ExternalId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ExternalProgramId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Id": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ImageTags": {
+      "additionalProperties": {
+       "nullable": true,
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "object"
+     },
+     "IsPostPaddingRequired": {
+      "type": "boolean"
+     },
+     "IsPrePaddingRequired": {
+      "type": "boolean"
+     },
+     "KeepUntil": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/KeepUntil"
+       }
+      ],
+      "enum": [
+       "UntilDeleted",
+       "UntilSpaceNeeded",
+       "UntilWatched",
+       "UntilDate"
+      ]
+     },
+     "KeepUpTo": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Overview": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentBackdropImageTags": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "ParentBackdropItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentPrimaryImageItemId": {
+      "format": "uuid",
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentPrimaryImageTag": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentThumbImageTag": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentThumbItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "PostPaddingSeconds": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "PrePaddingSeconds": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "Priority": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "ProgramId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "RecordAnyChannel": {
+      "type": "boolean"
+     },
+     "RecordAnyTime": {
+      "type": "boolean"
+     },
+     "RecordNewOnly": {
+      "type": "boolean"
+     },
+     "ServerId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ServiceName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "SkipEpisodesInLibrary": {
+      "type": "boolean"
+     },
+     "StartDate": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "Type": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
    },
    "SessionInfoDto": {
     "additionalProperties": false,
@@ -4934,6 +5352,171 @@
      "StartupTrigger"
     ],
     "type": "string"
+   },
+   "TimerInfoDto": {
+    "additionalProperties": false,
+    "properties": {
+     "ChannelId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "ChannelName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ChannelPrimaryImageTag": {
+      "nullable": true,
+      "type": "string"
+     },
+     "EndDate": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "ExternalChannelId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ExternalId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ExternalProgramId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ExternalSeriesTimerId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Id": {
+      "nullable": true,
+      "type": "string"
+     },
+     "IsPostPaddingRequired": {
+      "type": "boolean"
+     },
+     "IsPrePaddingRequired": {
+      "type": "boolean"
+     },
+     "KeepUntil": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/KeepUntil"
+       }
+      ],
+      "enum": [
+       "UntilDeleted",
+       "UntilSpaceNeeded",
+       "UntilWatched",
+       "UntilDate"
+      ]
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Overview": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentBackdropImageTags": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "ParentBackdropItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "PostPaddingSeconds": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "PrePaddingSeconds": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "Priority": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "ProgramId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ProgramInfo": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/BaseItemDto"
+       }
+      ],
+      "nullable": true
+     },
+     "RunTimeTicks": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "SeriesTimerId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ServerId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ServiceName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "StartDate": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "Status": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/RecordingStatus"
+       }
+      ],
+      "enum": [
+       "New",
+       "InProgress",
+       "Completed",
+       "Cancelled",
+       "ConflictedOk",
+       "ConflictedNotOk",
+       "Error"
+      ]
+     },
+     "Type": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "TimerInfoDtoQueryResult": {
+    "additionalProperties": false,
+    "properties": {
+     "Items": {
+      "items": {
+       "$ref": "#/components/schemas/TimerInfoDto"
+      },
+      "type": "array"
+     },
+     "StartIndex": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "TotalRecordCount": {
+      "format": "int32",
+      "type": "integer"
+     }
+    },
+    "type": "object"
    },
    "TranscodeReason": {
     "enum": [
@@ -12100,6 +12683,1329 @@
     ],
     "tags": [
      "Library"
+    ]
+   }
+  },
+  "/LiveTv/Channels": {
+   "get": {
+    "operationId": "GetLiveTvChannels",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "type",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/ChannelType"
+        }
+       ],
+       "enum": [
+        "TV",
+        "Radio"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isMovie",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isSeries",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isNews",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isKids",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isSports",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isFavorite",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isLiked",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isDisliked",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImages",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageTypeLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImageTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ImageType"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fields",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFields"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableUserData",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortBy",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemSortBy"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortOrder",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/SortOrder"
+        }
+       ],
+       "enum": [
+        "Ascending",
+        "Descending"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableFavoriteSorting",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "addCurrentProgram",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   }
+  },
+  "/LiveTv/Info": {
+   "get": {
+    "operationId": "GetLiveTvInfo",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveTvInfo"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveTvInfo"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/LiveTvInfo"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   }
+  },
+  "/LiveTv/Programs": {
+   "get": {
+    "operationId": "GetLiveTvPrograms",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "channelIds",
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "minStartDate",
+      "schema": {
+       "format": "date-time",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "hasAired",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isAiring",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxStartDate",
+      "schema": {
+       "format": "date-time",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "minEndDate",
+      "schema": {
+       "format": "date-time",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxEndDate",
+      "schema": {
+       "format": "date-time",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isMovie",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isSeries",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isNews",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isKids",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isSports",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortBy",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemSortBy"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortOrder",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/SortOrder"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "genres",
+      "schema": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "genreIds",
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImages",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageTypeLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImageTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ImageType"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableUserData",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "seriesTimerId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "librarySeriesId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fields",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFields"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableTotalRecordCount",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   },
+   "post": {
+    "operationId": "GetPrograms",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/GetProgramsDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/GetProgramsDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/GetProgramsDto"
+         }
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   }
+  },
+  "/LiveTv/Recordings": {
+   "get": {
+    "operationId": "GetRecordings",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "channelId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "status",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/RecordingStatus"
+        }
+       ],
+       "enum": [
+        "New",
+        "InProgress",
+        "Completed",
+        "Cancelled",
+        "ConflictedOk",
+        "ConflictedNotOk",
+        "Error"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "isInProgress",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "seriesTimerId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImages",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageTypeLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImageTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ImageType"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fields",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFields"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableUserData",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isMovie",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isSeries",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isKids",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isSports",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isNews",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isLibraryItem",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableTotalRecordCount",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   }
+  },
+  "/LiveTv/Timers": {
+   "get": {
+    "operationId": "GetTimers",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "channelId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "seriesTimerId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isActive",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isScheduled",
+      "schema": {
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TimerInfoDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/TimerInfoDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/TimerInfoDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   },
+   "post": {
+    "operationId": "CreateTimer",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/TimerInfoDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/TimerInfoDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/TimerInfoDto"
+         }
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   }
+  },
+  "/LiveTv/Timers/Defaults": {
+   "get": {
+    "operationId": "GetDefaultTimer",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "programId",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SeriesTimerInfoDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/SeriesTimerInfoDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/SeriesTimerInfoDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   }
+  },
+  "/LiveTv/Timers/{timerId}": {
+   "delete": {
+    "operationId": "CancelTimer",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "timerId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   },
+   "get": {
+    "operationId": "GetTimer",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "timerId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TimerInfoDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/TimerInfoDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/TimerInfoDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
+    ]
+   },
+   "post": {
+    "operationId": "UpdateTimer",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "timerId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/TimerInfoDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/TimerInfoDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/TimerInfoDto"
+         }
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LiveTvManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LiveTv"
     ]
    }
   },

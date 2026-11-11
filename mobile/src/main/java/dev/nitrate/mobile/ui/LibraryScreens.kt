@@ -106,6 +106,7 @@ fun LibraryScreen(actions: AppActions, libraryId: String) {
         when {
             library == null -> Loading(modifier)
             lib == null -> ErrorMessage(library?.exceptionOrNull()?.message ?: "Couldn't load library", modifier = modifier)
+            lib.collection == CollectionKind.LIVE_TV -> Box(modifier.fillMaxSize()) { LiveTvScreen(actions) }
             else -> {
                 val hasRecommended = lib.collection == CollectionKind.MOVIES || lib.collection == CollectionKind.TV_SHOWS
                 val music = lib.collection == CollectionKind.MUSIC

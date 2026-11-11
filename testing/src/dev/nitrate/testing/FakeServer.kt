@@ -78,6 +78,27 @@ class FakeServer : MediaServer {
         MediaItem("t$i", n, ItemKind.AUDIO, mediaKind = dev.nitrate.core.model.MediaKind.AUDIO, indexNumber = i + 1, runtimeMs = 180_000L + i * 17_000, album = album.name, albumId = album.id,
             artists = if (i == 3) listOf("The Projectionists", "Maya Ortiz") else listOf("The Projectionists"), albumArtist = "The Projectionists")
     }
+    private val channels = listOf("Reel One" to "1", "Cartoon Booth" to "2", "Night Matinee" to "3", "Newsreel" to "4").mapIndexed { i, (n, num) ->
+        MediaItem("ch$i", n, ItemKind.TV_CHANNEL, mediaKind = dev.nitrate.core.model.MediaKind.VIDEO)  to num
+    }
+    private val programmeTitles = listOf("Morning Matinee", "The Projectionist Hour", "Silent Classics", "Double Bill", "Behind the Screen", "Late Feature", "Credits Roll", "Overnight Reels")
+    private fun programmes(): List<dev.nitrate.core.livetv.TvProgram> {
+        val slot = 30 * 60_000L
+        val base = System.currentTimeMillis().let { it - it % slot } - slot
+        return channels.flatMapIndexed { c, (ch, _) ->
+            var t = base - c * 10 * 60_000L
+            (0 until 8).map { i ->
+                val length = slot * (1 + (i + c) % 3)
+                dev.nitrate.core.livetv.TvProgram("p$c-$i", ch.id, programmeTitles[(i + c * 3) % programmeTitles.size], t, t + length, overview = "Tonight on ${ch.name}.", timerId = if (c == 0 && i == 3) "timer" else null).also { t += length }
+            }
+        }
+    }
+    override suspend fun liveTvAvailable() = true
+    override suspend fun liveChannels() = programmes().let { all ->
+        channels.map { (ch, num) -> dev.nitrate.core.livetv.LiveChannel(ch, num, all.firstOrNull { it.channelId == ch.id && it.isAiring(System.currentTimeMillis()) }) }
+    }
+    override suspend fun guide(channelIds: List<String>, fromMs: Long, toMs: Long) = programmes().filter { it.channelId in channelIds && it.endMs > fromMs && it.startMs < toMs }
+    override suspend fun recordings() = listOf(films[1].copy(id = "rec1", name = "Silent Classics"))
     override suspend fun albumTracks(albumId: String) = tracks
     override suspend fun instantMix(itemId: String) = tracks.shuffled()
     override suspend fun getItem(id: String) = when (id) {

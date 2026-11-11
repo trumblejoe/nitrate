@@ -196,6 +196,19 @@ interface MediaServer {
     /** Live events from the server while signed in (remote control, library and watch changes). */
     fun events(): Flow<ServerEvent> = kotlinx.coroutines.flow.emptyFlow()
 
+    // ---- Live TV ----
+    /** Whether the server has Live TV set up for this user. */
+    suspend fun liveTvAvailable(): Boolean = false
+
+    /** Channels (playable items) with what's on now. */
+    suspend fun liveChannels(): List<dev.nitrate.core.livetv.LiveChannel> = unsupported()
+
+    /** Programmes on [channelIds] overlapping [fromMs, toMs). */
+    suspend fun guide(channelIds: List<String>, fromMs: Long, toMs: Long): List<dev.nitrate.core.livetv.TvProgram> = unsupported()
+    suspend fun recordings(): List<MediaItem> = unsupported()
+    suspend fun record(programId: String): Unit = unsupported()
+    suspend fun cancelRecording(timerId: String): Unit = unsupported()
+
     // ---- Music ----
     /** An album's tracks in disc and track order. */
     suspend fun albumTracks(albumId: String): List<MediaItem> = unsupported()

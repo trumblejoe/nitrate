@@ -510,4 +510,32 @@ class JellyfinLiveTest {
         val plan = client.resolvePlayback(tracks.first().id, isAudio = true, startMs = 0, forceTranscode = false, audioIndex = null, subtitleIndex = null)
         println("Plays as ${plan.method}: ${plan.url.substringBefore('?')}")
     }
+
+    @Test
+    fun `watches and records live TV`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-tv-guide", "Live TV"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        assumeTrue("Live TV isn't set up", client.liveTvAvailable())
+        val channels = client.liveChannels()
+        println("Channels: ${channels.map { "${it.number} ${it.name}: ${it.now?.title}" }}")
+        assertTrue(channels.isNotEmpty() && channels.all { it.item.kind == ItemKind.TV_CHANNEL && it.item.isPlayable })
+        val now = System.currentTimeMillis()
+        val guide = client.guide(channels.map { it.id }, now, now + 6 * 3_600_000)
+        println("Guide: ${guide.size} programmes, e.g. ${guide.take(3).map { "${it.title} ${it.channelId.take(8)} ${java.time.Instant.ofEpochMilli(it.startMs)}" }}")
+        assertTrue(guide.isNotEmpty() && guide.all { p -> channels.any { it.id == p.channelId } })
+        assertTrue(guide.any { it.isAiring(now) })
+
+        val plan = client.resolvePlayback(channels.first().id, isAudio = false, startMs = 0, forceTranscode = false, audioIndex = null, subtitleIndex = null)
+        println("Channel plays as ${plan.method}: ${plan.url.substringBefore('?')}")
+
+        val later = guide.first { it.startMs > now }
+        client.record(later.id)
+        val scheduled = client.guide(listOf(later.channelId), later.startMs, later.endMs).first { it.id == later.id }
+        println("Scheduled: ${scheduled.title} timer ${scheduled.timerId}")
+        assertNotNull(scheduled.timerId)
+        client.cancelRecording(scheduled.timerId!!)
+        assertEquals(null, client.guide(listOf(later.channelId), later.startMs, later.endMs).first { it.id == later.id }.timerId)
+        println("Recordings: ${client.recordings().size}")
+    }
 }

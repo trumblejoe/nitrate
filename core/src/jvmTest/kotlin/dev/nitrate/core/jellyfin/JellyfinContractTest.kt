@@ -62,6 +62,9 @@ class JellyfinContractTest {
             path.contains("/RemoteSearch/Subtitles/") -> """[{"Id":"os-1","Name":"Nitrate.2023.srt","ThreeLetterISOLanguageName":"eng","ProviderName":"Open Subtitles","Format":"srt","DownloadCount":900,"IsHashMatch":true}]"""
             path.contains("/Items/RemoteSearch/") && !path.contains("/Apply/") -> """[{"Name":"Nitrate","ProductionYear":2023,"ProviderIds":{"Tmdb":"1"},"SearchProviderName":"TheMovieDb","ImageUrl":"http://x/i.jpg"}]"""
             (path.endsWith("/Collections") || path.endsWith("/Playlists")) && request.method.value == "POST" -> """{"Id":"$HEX"}"""
+            path.endsWith("/LiveTv/Timers/Defaults") -> """{"ProgramId":"$HEX","ChannelId":"$HEX","PrePaddingSeconds":0}"""
+            path.endsWith("/LiveTv/Info") -> """{"IsEnabled":true}"""
+            path.endsWith("/LiveTv/Channels") || path.endsWith("/LiveTv/Programs") || path.endsWith("/LiveTv/Recordings") -> """{"Items":[],"TotalRecordCount":0}"""
             path.endsWith("/SyncPlay/List") -> """[{"GroupId":"$HEX","GroupName":"Movie night","State":"Paused","Participants":["joe","sam"],"LastUpdatedAt":"2026-01-01T00:00:00Z"}]"""
             path.endsWith("/GetUtcTime") -> """{"RequestReceptionTime":"2026-01-01T00:00:00.100Z","ResponseTransmissionTime":"2026-01-01T00:00:00.102Z"}"""
             path.endsWith("/Images") -> """[{"ImageType":"Primary","ImageTag":"t","Width":1000,"Height":1500},{"ImageType":"Backdrop","ImageIndex":1,"ImageTag":"b","Width":1920,"Height":1080}]"""
@@ -206,6 +209,12 @@ class JellyfinContractTest {
         for (g in dev.nitrate.core.admin.GeneralCommand.entries) client.sendGeneralCommand("s1", g)
         client.authorizeQuickConnect(" 123456 ")
         client.recentEpisodes()
+        client.liveTvAvailable()
+        client.liveChannels()
+        client.guide(listOf(DASHED), 0, 3_600_000)
+        client.recordings()
+        client.record(DASHED)
+        client.cancelRecording("timer-1")
         client.albumTracks(DASHED)
         client.artistAlbums(DASHED)
         client.albumArtists(DASHED, 0, 50)

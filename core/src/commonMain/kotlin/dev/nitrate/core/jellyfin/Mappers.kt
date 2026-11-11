@@ -101,6 +101,8 @@ internal fun itemKind(type: String?): ItemKind = when (type) {
     "Audio" -> ItemKind.AUDIO
     "MusicAlbum" -> ItemKind.MUSIC_ALBUM
     "MusicArtist" -> ItemKind.MUSIC_ARTIST
+    "TvChannel" -> ItemKind.TV_CHANNEL
+    "Recording" -> ItemKind.VIDEO
     "Playlist" -> ItemKind.PLAYLIST
     "BoxSet" -> ItemKind.BOX_SET
     "CollectionFolder", "UserView", "PlaylistsFolder", "ManualPlaylistsFolder" -> ItemKind.LIBRARY

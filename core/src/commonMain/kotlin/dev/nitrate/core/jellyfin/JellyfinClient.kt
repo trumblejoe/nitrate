@@ -283,6 +283,16 @@ class JellyfinClient(
     override suspend fun quickConnectApproved(secret: String): Boolean =
         get("QuickConnect", "Connect", query = mapOf("secret" to secret)).decode<QuickConnectResultDto>().authenticated
 
+    // ---- Live TV ----
+
+    private val liveTv = JellyfinLiveTv(this)
+    override suspend fun liveTvAvailable() = liveTv.available()
+    override suspend fun liveChannels() = liveTv.channels()
+    override suspend fun guide(channelIds: List<String>, fromMs: Long, toMs: Long) = liveTv.guide(channelIds, fromMs, toMs)
+    override suspend fun recordings() = liveTv.recordings()
+    override suspend fun record(programId: String) = liveTv.record(programId)
+    override suspend fun cancelRecording(timerId: String) = liveTv.cancelRecording(timerId)
+
     // ---- Music ----
 
     override suspend fun albumTracks(albumId: String): List<MediaItem> = items(

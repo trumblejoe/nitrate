@@ -218,6 +218,8 @@ class ScreenshotTest {
 
     @Test fun album() = shoot("phone-album") { DetailsScreen(it, "al1", null) }
 
+    @Test fun liveTv() = shoot("phone-live-tv") { dev.nitrate.mobile.ui.LiveTvScreen(it) }
+
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 
     @Test

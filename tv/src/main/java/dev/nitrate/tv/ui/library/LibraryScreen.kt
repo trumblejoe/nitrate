@@ -67,6 +67,13 @@ fun LibraryScreen(
         return
     }
 
+    if (lib.collection == CollectionKind.LIVE_TV) {
+        dev.nitrate.tv.ui.livetv.LiveTvScreen(repository, header = {
+            Text(lib.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = PagePadding, top = 24.dp, bottom = 8.dp))
+        }, onPlay = onPlay)
+        return
+    }
+
     if (lib.collection == CollectionKind.PLAYLISTS) {
         PlaylistsLibrary(repository, displaySettings, lib, onOpen, onPlay)
         return
