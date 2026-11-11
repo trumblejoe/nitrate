@@ -413,8 +413,23 @@ class JellyfinClient(
             val latest = latest(view.id)
             if (latest.isNotEmpty()) rows += MediaRow("home/latest/${view.id}", "Latest in ${view.name}", latest, RowDisplay())
         }
+        rows += runCatching { dev.nitrate.core.rows.BecauseYouWatched.rows(recentlyWatched(), ::similar) }.getOrDefault(emptyList())
         return rows
     }
+
+    /** Movies and episodes finished most recently. */
+    private suspend fun recentlyWatched(): List<MediaItem> = items(
+        "Items",
+        query = mapOf(
+            "userId" to userId,
+            "includeItemTypes" to "Movie,Episode",
+            "recursive" to true,
+            "filters" to "IsPlayed",
+            "sortBy" to "DatePlayed",
+            "sortOrder" to "Descending",
+            "limit" to 20,
+        ),
+    )
 
     private suspend fun latest(parentId: String): List<MediaItem> =
         get("Items", "Latest", query = mapOf("parentId" to parentId, "fields" to ROW_FIELDS, "limit" to ROW_LIMIT))
