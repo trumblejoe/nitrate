@@ -181,6 +181,9 @@ interface MediaServer {
     /** Live events from the server while signed in (remote control, library and watch changes). */
     fun events(): Flow<ServerEvent> = kotlinx.coroutines.flow.emptyFlow()
 
+    /** Signs in another device that shows a Quick Connect [code], as this user. */
+    suspend fun authorizeQuickConnect(code: String): Unit = unsupported()
+
     // ---- SyncPlay (watch together) ----
     /** Groups this user can join. */
     suspend fun syncPlayGroups(): List<dev.nitrate.core.syncplay.SyncPlayGroup> = unsupported()

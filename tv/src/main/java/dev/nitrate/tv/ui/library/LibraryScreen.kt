@@ -54,6 +54,7 @@ fun LibraryScreen(
     libraryId: String,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
+    changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
 ) {
     val library by produceState<Result<MediaItem>?>(null, libraryId) {
         value = runCatching { repository.getItem(libraryId) }
@@ -92,7 +93,7 @@ fun LibraryScreen(
     when (tab) {
         LibraryTab.RECOMMENDED -> {
             val vm = viewModel(key = "library-rows-$libraryId") {
-                RowsViewModel(PageKeys.library(lib.id), { repository.libraryRows(lib) }, displaySettings, repository)
+                RowsViewModel(PageKeys.library(lib.id), { repository.libraryRows(lib) }, displaySettings, repository, changes)
             }
             val state by vm.state.collectAsStateWithLifecycle()
             val overrides by vm.overrides.collectAsStateWithLifecycle()

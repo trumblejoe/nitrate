@@ -123,7 +123,7 @@ private fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, on
 fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, onOpen: (MediaItem) -> Unit, onPlay: (MediaItem) -> Unit, onDeleted: () -> Unit) {
     val pages = rememberCustomPages(container)
     val page = pages.firstOrNull { it.id == pageId }
-    val vm = viewModel(key = "custom-$pageId") { RowsViewModel(PageKeys.custom(pageId), { emptyList() }, container.displaySettings, container.server) }
+    val vm = viewModel(key = "custom-$pageId") { RowsViewModel(PageKeys.custom(pageId), { emptyList() }, container.displaySettings, container.server, container.serverChanges) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf(editNow) }

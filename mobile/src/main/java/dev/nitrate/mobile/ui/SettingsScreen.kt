@@ -87,6 +87,8 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             )
         }
 
+        item { QuickConnectRow(actions) }
+
         if (account?.isAdmin == true) {
             item {
                 ListItem(
@@ -284,6 +286,62 @@ private fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, upd
 }
 
 /** Other devices that can be remote-controlled. */
+/** Signs in a TV (or any device showing a Quick Connect code) as this account. */
+@Composable
+private fun QuickConnectRow(actions: AppActions) {
+    var open by remember { mutableStateOf(false) }
+    ListItem(
+        modifier = Modifier.clickable { open = true },
+        headlineContent = { Text("Sign in another device") },
+        supportingContent = { Text("Enter the Quick Connect code your TV shows") },
+        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+    )
+    if (open) QuickConnectDialog(actions) { open = false }
+}
+
+@Composable
+internal fun QuickConnectDialog(actions: AppActions, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sign in another device") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("On the TV, choose Quick Connect. Type the code it shows to sign it in as you.")
+                androidx.compose.material3.OutlinedTextField(
+                    code,
+                    { code = it.filter(Char::isLetterOrDigit).take(8); status = null },
+                    label = { Text("Code") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                )
+                status?.let { (ok, text) -> Text(text, color = if (ok) accentColor() else MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            if (status?.first == true) {
+                androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Done") }
+            } else {
+                androidx.compose.material3.TextButton(
+                    enabled = code.length >= 6 && !busy,
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            status = runCatching { actions.server.authorizeQuickConnect(code) }
+                                .fold({ true to "Approved. The other device is signing in." }, { false to (it.message ?: "Couldn't approve that code") })
+                            busy = false
+                        }
+                    },
+                ) { Text("Approve") }
+            }
+        },
+        dismissButton = { if (status?.first != true) androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
 @Composable
 private fun WatchTogetherRow(actions: AppActions) {
     var open by remember { mutableStateOf(false) }

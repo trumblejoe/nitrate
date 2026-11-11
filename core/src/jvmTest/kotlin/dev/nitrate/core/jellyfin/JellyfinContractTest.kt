@@ -72,7 +72,7 @@ class JellyfinContractTest {
             path.endsWith("/Users/Public") -> """[{"Id":"$HEX","Name":"joe","HasPassword":true,"PrimaryImageTag":"t"}]"""
             path.contains("/Users/AuthenticateBy") || path.contains("/Users/AuthenticateWith") ->
                 """{"User":{"Id":"$HEX","Name":"joe"},"AccessToken":"tok"}"""
-            path.endsWith("/QuickConnect/Enabled") -> "true"
+            path.endsWith("/QuickConnect/Enabled") || path.endsWith("/QuickConnect/Authorize") -> "true"
             path.contains("/QuickConnect/") -> """{"Secret":"s","Code":"123456","Authenticated":true}"""
             path.contains("/DisplayPreferences/") -> """{"Id":"x","CustomPrefs":{"a":"1"},"Client":"nitrate","SortBy":"SortName"}"""
             path.endsWith("/Items/Latest") -> "[$ITEM]"
@@ -203,6 +203,7 @@ class JellyfinContractTest {
         client.playOn("s1", listOf(DASHED), 60_000)
         client.seekSession("s1", 90_000)
         for (g in dev.nitrate.core.admin.GeneralCommand.entries) client.sendGeneralCommand("s1", g)
+        client.authorizeQuickConnect(" 123456 ")
         val group = client.syncPlayGroups().single()
         assertEquals(DASHED, group.id)
         assertEquals(dev.nitrate.core.syncplay.GroupState.PAUSED, group.state)

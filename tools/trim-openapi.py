@@ -18,6 +18,7 @@ PATHS = [
     "/QuickConnect/Enabled",
     "/QuickConnect/Initiate",
     "/QuickConnect/Connect",
+    "/QuickConnect/Authorize",
     "/Sessions/Logout",
     "/DisplayPreferences/{displayPreferencesId}",
     "/UserViews",

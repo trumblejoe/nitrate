@@ -13,7 +13,9 @@ import dev.nitrate.core.rows.RowDisplay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -40,6 +42,8 @@ class RowsViewModel(
     private val loadBuiltIn: suspend () -> List<MediaRow>,
     private val store: DisplaySettingsStore,
     private val server: MediaServer,
+    /** Fires when the server says something changed (new items, watch state); rows reload quietly. */
+    private val changes: Flow<Unit> = emptyFlow(),
 ) : ViewModel() {
     private val userId = server.userId
     private val builtIn = MutableStateFlow<Result<List<MediaRow>>?>(null)
@@ -67,8 +71,15 @@ class RowsViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, RowsState.Loading)
 
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    private fun watchChanges() = viewModelScope.launch {
+        // A library scan sends many changes in a row: reload once things settle.
+        changes.debounce(LIVE_REFRESH_DEBOUNCE_MS).collect { refresh() }
+    }
+
     init {
         refresh()
+        watchChanges()
         // Load custom rows whenever the page's custom entries change.
         viewModelScope.launch {
             layout.map { l -> l.entries.filter { it.isCustom } }.collect { loadCustom(it) }
@@ -144,3 +155,5 @@ class RowsViewModel(
     /** Current rows once loaded, for one-off use. */
     suspend fun loadedRows(): List<MediaRow> = (state.first { it !is RowsState.Loading } as? RowsState.Loaded)?.rows.orEmpty()
 }
+
+private const val LIVE_REFRESH_DEBOUNCE_MS = 2_000L

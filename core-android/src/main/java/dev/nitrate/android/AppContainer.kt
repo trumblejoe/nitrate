@@ -9,6 +9,9 @@ import dev.nitrate.android.storage.PlaybackSettingsStore
 import dev.nitrate.android.storage.PluginStore
 import dev.nitrate.android.storage.SearchHistoryStore
 import dev.nitrate.android.storage.SessionStore
+import dev.nitrate.core.events.ServerEvent
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import dev.nitrate.android.sync.SettingsSync
 import dev.nitrate.android.writing.WritingStore
 import dev.nitrate.core.MediaServer
@@ -80,6 +83,10 @@ class AppContainer(
 
     /** The server's live connection: remote control and live updates. */
     val remote by lazy { RemoteControlHub(server, syncPlay) }
+
+    /** Library or watch-state changes pushed by the server, for pages to reload. */
+    val serverChanges: kotlinx.coroutines.flow.Flow<Unit>
+        get() = remote.events.filter { it is ServerEvent.LibraryChanged || it is ServerEvent.UserDataChanged }.map { }
 
     /** Watch together: this device's SyncPlay group, if any. */
     val syncPlay by lazy {

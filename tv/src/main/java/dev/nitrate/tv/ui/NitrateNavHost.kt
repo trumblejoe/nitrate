@@ -146,6 +146,7 @@ fun NitrateNavHost(container: AppContainer) {
                 onPlay = { item -> gate.play(item) },
                 onSettings = { nav.navigate(SettingsRoute) },
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
+                changes = container.serverChanges,
                 pinnedPages = rememberCustomPages(container).filter { it.pinned }.map { p -> p.title to { nav.navigate(CustomPageRoute(p.id)) } },
                 extraActions = listOf("Watch together" to { nav.navigate(WatchTogetherRoute) }, "Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
                     (if (account?.isAdmin == true) listOf("Server" to { nav.navigate(ServerAdminRoute) }) else emptyList()) +
@@ -211,6 +212,7 @@ fun NitrateNavHost(container: AppContainer) {
                 repository = container.server,
                 displaySettings = container.displaySettings,
                 libraryId = entry.toRoute<LibraryRoute>().libraryId,
+                changes = container.serverChanges,
                 onOpen = nav::openItem,
                 onPlay = { item -> gate.play(item) },
             )

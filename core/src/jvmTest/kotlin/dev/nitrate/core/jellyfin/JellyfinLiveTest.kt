@@ -251,6 +251,13 @@ class JellyfinLiveTest {
         }
         println("Events: $received")
         assertTrue(received.any { it == dev.nitrate.core.events.ServerEvent.Playstate("Pause", null) })
+        // Watch state changed elsewhere reaches this device (pages reload on it).
+        val someItem = phone.views().flatMap { phone.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 5, false).first }.first { it.kind == ItemKind.MOVIE || it.kind == ItemKind.EPISODE }
+        phone.setFavorite(someItem.id, true)
+        phone.setFavorite(someItem.id, false)
+        kotlinx.coroutines.withTimeout(15_000) {
+            while (received.none { it is dev.nitrate.core.events.ServerEvent.UserDataChanged && someItem.id in it.itemIds }) kotlinx.coroutines.delay(100)
+        }
         println("Subtitles: ${runCatching { tv.searchSubtitles(phone.views().first().id, "eng").size }.getOrElse { "search failed (expected without providers): ${it.message}" }}")
         listening.cancel()
     }
@@ -333,5 +340,29 @@ class JellyfinLiveTest {
         println("A: ${pa.log}\nB: ${pb.log}")
         opened.cancel()
         scope.cancel()
+    }
+
+    @Test
+    fun `a phone approves a TV's Quick Connect code`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val user = System.getenv("JELLYFIN_USER") ?: "nitrate"
+        val pw = System.getenv("JELLYFIN_PASSWORD").orEmpty()
+        fun device(id: String) = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", id, id), object : SessionStorage {
+            override suspend fun load(): StoredSession? = null
+            override suspend fun save(session: StoredSession) {}
+            override suspend fun clear() {}
+        }, { caps() }, settings)
+        val tv = device("nitrate-qc-tv")
+        assumeTrue("Quick Connect is off on this server", tv.quickConnectEnabled(url!!))
+        val request = tv.startQuickConnect(url)
+        assertTrue(!tv.quickConnectApproved(request.secret))
+        val phone = device("nitrate-qc-phone").also { it.login(url, user, pw) }
+        phone.authorizeQuickConnect(request.code)
+        assertTrue(tv.quickConnectApproved(request.secret))
+        tv.finishQuickConnect(url, request.secret)
+        assertEquals(phone.userId, tv.userId)
+        val wrong = runCatching { phone.authorizeQuickConnect("000000") }
+        println("Wrong code: ${wrong.exceptionOrNull()?.message}")
+        assertTrue(wrong.isFailure)
     }
 }

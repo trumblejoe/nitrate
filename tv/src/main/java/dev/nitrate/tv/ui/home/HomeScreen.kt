@@ -48,8 +48,10 @@ fun HomeScreen(
     extraActions: List<Pair<String, () -> Unit>> = emptyList(),
     /** Pinned custom pages (shown above the rows) and opening one. */
     pinnedPages: List<Pair<String, () -> Unit>> = emptyList(),
+    /** Server pushes (new items, watch changes) that reload the rows. */
+    changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
 ) {
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()

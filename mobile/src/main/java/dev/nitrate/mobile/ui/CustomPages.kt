@@ -146,7 +146,7 @@ fun CustomPageScreen(actions: AppActions, pageId: String, editNow: Boolean) {
     val pages = rememberCustomPages(actions)
     val page = pages.firstOrNull { it.id == pageId }
     val c = actions.container
-    val vm = viewModel(key = "custom-$pageId") { RowsViewModel(PageKeys.custom(pageId), { emptyList() }, c.displaySettings, c.server) }
+    val vm = viewModel(key = "custom-$pageId") { RowsViewModel(PageKeys.custom(pageId), { emptyList() }, c.displaySettings, c.server, c.serverChanges) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf(editNow) }

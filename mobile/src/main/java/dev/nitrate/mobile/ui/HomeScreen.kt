@@ -88,7 +88,7 @@ fun featuredItems(rows: List<MediaRow>): List<MediaItem> {
 @Composable
 fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val container = actions.container
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     var refreshing by remember { mutableStateOf(false) }

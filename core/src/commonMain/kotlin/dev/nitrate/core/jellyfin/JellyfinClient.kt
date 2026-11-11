@@ -238,6 +238,19 @@ class JellyfinClient(
     override suspend fun quickConnectApproved(secret: String): Boolean =
         get("QuickConnect", "Connect", query = mapOf("secret" to secret)).decode<QuickConnectResultDto>().authenticated
 
+    override suspend fun authorizeQuickConnect(code: String) {
+        val ok = try {
+            post<Unit>("QuickConnect", "Authorize", query = mapOf("code" to code.trim())).bodyAsText().trim()
+        } catch (e: io.ktor.client.plugins.ClientRequestException) {
+            when (e.response.status.value) {
+                404 -> error("No device is waiting with that code. Check it, or start Quick Connect again on the TV.")
+                401, 403 -> error("Quick Connect is switched off on this server.")
+                else -> throw e
+            }
+        }
+        if (ok == "false") error("That code wasn't accepted. Check it and try again.")
+    }
+
     override suspend fun finishQuickConnect(serverUrl: String, secret: String) {
         finishLogin(post<QuickConnectDto>("Users", "AuthenticateWithQuickConnect", body = QuickConnectDto(secret)).decode())
     }
