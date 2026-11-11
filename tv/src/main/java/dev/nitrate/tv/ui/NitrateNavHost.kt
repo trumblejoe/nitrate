@@ -75,6 +75,7 @@ import kotlinx.serialization.Serializable
 @Serializable object DisplaySettingsRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
+@Serializable object WatchTogetherRoute
 
 /** [queue] is comma-separated item ids to play after [itemId]. */
 @Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1)
@@ -146,7 +147,7 @@ fun NitrateNavHost(container: AppContainer) {
                 onSettings = { nav.navigate(SettingsRoute) },
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 pinnedPages = rememberCustomPages(container).filter { it.pinned }.map { p -> p.title to { nav.navigate(CustomPageRoute(p.id)) } },
-                extraActions = listOf("Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
+                extraActions = listOf("Watch together" to { nav.navigate(WatchTogetherRoute) }, "Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
                     (if (account?.isAdmin == true) listOf("Server" to { nav.navigate(ServerAdminRoute) }) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.pluginId)) } },
                 onSignOut = {
@@ -193,6 +194,9 @@ fun NitrateNavHost(container: AppContainer) {
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) }
         composable<ManageItemRoute> { entry -> ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId) }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
+        composable<WatchTogetherRoute> {
+            dev.nitrate.tv.ui.together.WatchTogetherScreen(container.syncPlay, account?.name?.let { "$it's group" } ?: "Movie night")
+        }
         composable<PluginsRoute> { PluginsScreen(container.plugins, TV_PLUGIN_UI, pluginContext) }
         composable<PluginScreenRoute> { entry ->
             val id = entry.toRoute<PluginScreenRoute>().pluginId
@@ -233,6 +237,7 @@ fun NitrateNavHost(container: AppContainer) {
                 trackMemory = container.trackMemory,
                 remote = container.remote,
                 startMs = route.startMs.takeIf { it >= 0 },
+                syncPlay = container.syncPlay,
                 onEnded = {
                     val next = route.queue.split(',').filter(String::isNotBlank)
                     if (next.isEmpty()) {
@@ -249,6 +254,12 @@ fun NitrateNavHost(container: AppContainer) {
     // What other apps ask of this TV: play something, show a message, change volume.
     var message by remember { mutableStateOf<Pair<String, String>?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Watch together: the group started something while no player was open.
+    LaunchedEffect(Unit) {
+        container.syncPlay.openRequests.collect { q ->
+            q.currentItemId?.let { nav.navigate(PlayerRoute(it, fromStart = false, startMs = q.startMs)) }
+        }
+    }
     LaunchedEffect(Unit) {
         container.remote.events.collect { e ->
             when (e) {

@@ -62,7 +62,7 @@ data class Scrub(val positionMs: Long, val x: Float, val barTop: Float)
 @OptIn(UnstableApi::class)
 @Composable
 fun VideoSurface(
-    player: ExoPlayer,
+    player: androidx.media3.common.Player,
     onControlsVisible: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     gestures: PlayerGestures? = null,

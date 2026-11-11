@@ -63,6 +63,10 @@ import kotlinx.coroutines.Dispatchers
 import dev.nitrate.mobile.ui.LoginScreen
 import dev.nitrate.mobile.ui.MainScreen
 import dev.nitrate.mobile.ui.NitrateTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -122,6 +126,8 @@ class ScreenshotTest {
         compose.mainClock.advanceTimeBy(1_500)
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+        // Leaving any group stops its clock-sync loop, which would otherwise keep the next test busy.
+        compose.runOnUiThread { container.syncPlay.handle(dev.nitrate.core.events.ServerEvent.SyncPlayGroupUpdate("", dev.nitrate.core.syncplay.SyncPlayUpdate.Left)) }
     }
 
     @Test fun connect() = shoot("phone-connect") { ConnectScreen(it) { _, _ -> } }
@@ -183,6 +189,15 @@ class ScreenshotTest {
         }
         dev.nitrate.mobile.ui.PlayerMoreSheet(actions, session, sleepAt = null, sleepAtEnd = true, onSleep = { _, _ -> }, onPictureInPicture = {}, onPlayedElsewhere = {}, onDismiss = {})
     }
+
+    /** The panel without its dialog: a dialog focuses the name field, whose blinking cursor never lets the test settle. */
+    @Test fun watchTogether() = shoot("phone-watch-together") {
+        androidx.compose.foundation.layout.Box(Modifier.padding(24.dp)) { dev.nitrate.mobile.ui.WatchTogetherPanel(it.container.syncPlay, "Joe's group") }
+    }
+
+    @Test fun watchTogetherInGroup() = shoot("phone-watch-together-group", setup = { c ->
+        c.syncPlay.handle(dev.nitrate.core.events.ServerEvent.SyncPlayGroupUpdate("g1", dev.nitrate.core.syncplay.SyncPlayUpdate.Joined(dev.nitrate.core.syncplay.SyncPlayGroup("g1", "Friday movie night", dev.nitrate.core.syncplay.GroupState.PLAYING, listOf("Joe", "Sam", "Alex", "Alex")))))
+    }) { dev.nitrate.mobile.ui.WatchTogetherDialog(it) {} }
 
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 

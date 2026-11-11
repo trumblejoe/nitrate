@@ -107,6 +107,8 @@ fun PlayerScreen(
     trackMemory: dev.nitrate.core.playback.TrackMemoryStore? = null,
     remote: dev.nitrate.android.remote.RemoteControlHub? = null,
     startMs: Long? = null,
+    /** Watch together: follows this device's group when it's in one. */
+    syncPlay: dev.nitrate.core.syncplay.SyncPlayController? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
@@ -115,7 +117,10 @@ fun PlayerScreen(
     // Negotiation, track mapping, reporting and transcode fallback live in the shared session.
     val session = remember(itemId) {
         PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory)
-            .also { it.load(itemId, fromStart, startMs) }
+            .also {
+                syncPlay?.let(it::followGroup)
+                it.load(itemId, fromStart, startMs)
+            }
     }
     DisposableEffect(session) {
         remote?.active = session
@@ -284,7 +289,7 @@ fun PlayerScreen(
     val p = plan
     if (p != null && panel == Panel.MORE) {
         PlayerMoreDialog(repository, playbackSettings, session, sleepAt, sleepAtEndState.value,
-            onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDismiss = { panel = Panel.NONE })
+            onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDismiss = { panel = Panel.NONE }, syncPlay = syncPlay)
     }
     if (p != null && panel == Panel.AUDIO) {
         TrackDialog("Audio", p.audioChoices(), p.audioIndex, onSelect = { selectTrack(StreamKind.AUDIO, it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })

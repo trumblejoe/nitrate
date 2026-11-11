@@ -8,7 +8,12 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
+import dev.nitrate.core.syncplay.SyncPlayController
+import dev.nitrate.core.syncplay.SyncPlayer
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -52,7 +57,7 @@ import androidx.media3.common.MediaItem as ExoMediaItem
  * One item playing in Media3, shared by the TV and phone apps (each draws its own controls).
  *
  * Negotiates with the server, side-loads external subtitles, maps the server's audio/subtitle
- * streams onto the player's tracks, reports progress, and when direct play fails with a decoder
+ * streams onto the exo's tracks, reports progress, and when direct play fails with a decoder
  * error, remembers the format and retries as a transcode from the same spot.
  *
  * [loadLocal] plays a downloaded file instead: progress goes to a callback (saved on the device
@@ -124,7 +129,7 @@ class PlaybackSession(
     /** Set for a downloaded file: where progress goes instead of the server. */
     private var localProgress: (suspend (positionMs: Long, durationMs: Long, ended: Boolean) -> Unit)? = null
 
-    val player: ExoPlayer = run {
+    private val exo: ExoPlayer = run {
         // The auth header covers direct play, HLS playlists and segments, and subtitle files.
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
@@ -141,11 +146,91 @@ class PlaybackSession(
             .build()
     }
 
-    val controls = object : PlaybackControls {
-        override val isPlaying get() = player.isPlaying
-        override fun togglePlay() = if (player.isPlaying) player.pause() else player.play()
-        override fun seekBy(deltaMs: Long) = player.seekTo((player.currentPosition + deltaMs).coerceAtLeast(0))
+    /** The group this player follows, while watching together. */
+    private var group: SyncPlayController? = null
+    private val inGroup get() = group != null
+
+    /**
+     * The player for screens, notifications and media buttons. While watching together, play,
+     * pause and seek here ask the group instead, and the group's commands drive [exo].
+     */
+    val player: Player = object : ForwardingPlayer(exo) {
+        override fun play() = group?.requestPlay() ?: super.play()
+        override fun pause() = group?.requestPause() ?: super.pause()
+        override fun setPlayWhenReady(playWhenReady: Boolean) {
+            val g = group ?: return super.setPlayWhenReady(playWhenReady)
+            if (playWhenReady) g.requestPlay() else g.requestPause()
+        }
+        override fun seekTo(positionMs: Long) = group?.requestSeek(positionMs) ?: super.seekTo(positionMs)
+        override fun seekTo(mediaItemIndex: Int, positionMs: Long) = group?.requestSeek(positionMs) ?: super.seekTo(mediaItemIndex, positionMs)
+        override fun seekBack() = group?.requestSeek(exo.currentPosition - exo.seekBackIncrement) ?: super.seekBack()
+        override fun seekForward() = group?.requestSeek(exo.currentPosition + exo.seekForwardIncrement) ?: super.seekForward()
     }
+
+    val controls = object : PlaybackControls {
+        override val isPlaying get() = exo.isPlaying
+        override fun togglePlay() = if (exo.isPlaying) player.pause() else player.play()
+        override fun seekBy(deltaMs: Long) = player.seekTo((exo.currentPosition + deltaMs).coerceAtLeast(0))
+    }
+
+    /** What SyncPlay drives: loads start paused, and the group's commands act on [exo] directly. */
+    private val syncPlayer = object : SyncPlayer {
+        var loading: String? = null
+        override val itemId get() = loading ?: _item.value?.id
+        override val positionMs get() = exo.currentPosition
+        override val isPlaying get() = exo.isPlaying
+        override val isReady get() = loading == null && _plan.value != null && exo.playbackState == Player.STATE_READY
+        override fun load(itemId: String, startMs: Long) {
+            loading = itemId
+            scope.launch {
+                runCatching { server.getItem(itemId) }
+                    .onSuccess {
+                        _item.value = it
+                        _plan.value?.let { old -> server.reportStopped(old, exo.currentPosition) }
+                        _plan.value = null
+                        loading = null
+                        start(startMs, forceTranscode = false, useMemory = true)
+                        loadExtras(it.id)
+                    }
+                    .onFailure {
+                        loading = null
+                        _error.value = it.message ?: "Could not load item"
+                    }
+            }
+        }
+        override fun play() = exo.play()
+        override fun pause() = exo.pause()
+        override fun seek(positionMs: Long) = exo.seekTo(positionMs.coerceAtLeast(0))
+        override fun setRate(rate: Float) = exo.setPlaybackSpeed(rate)
+        override fun stop() = onEnded()
+    }
+
+    /**
+     * Follows [syncPlay]'s group whenever this device is in one: joining mid-play hands the
+     * current item to the group; leaving carries on alone.
+     */
+    fun followGroup(syncPlay: SyncPlayController) {
+        groupWatch?.cancel()
+        scope.launch { syncPlay.notices.collect { showNotice(it) } }
+        groupWatch = scope.launch {
+            syncPlay.group.map { it != null }.distinctUntilChanged().collect { joined ->
+                if (joined && group == null) {
+                    group = syncPlay
+                    _speed.value = 1f
+                    exo.setPlaybackSpeed(1f)
+                    val id = syncPlayer.itemId ?: pendingItem?.first
+                    if (id != null) syncPlay.attach(syncPlayer, id, if (_plan.value != null) exo.currentPosition else pendingItem?.second ?: 0)
+                } else if (!joined && group != null) {
+                    syncPlay.detach(syncPlayer)
+                    group = null
+                }
+            }
+        }
+    }
+    private var groupWatch: Job? = null
+
+    /** What [load] was asked for, in case a group is joined before it finished. */
+    private var pendingItem: Pair<String, Long>? = null
 
     private val listener = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
@@ -162,7 +247,7 @@ class PlaybackSession(
                 _error.value = "Playback failed: ${e.errorCodeName}"
                 return
             }
-            val at = player.currentPosition
+            val at = exo.currentPosition
             if (e.errorCode in DECODER_ERRORS && failed.method == PlayMethod.DIRECT_PLAY) {
                 val renderer = (e as? ExoPlaybackException)?.takeIf { it.type == ExoPlaybackException.TYPE_RENDERER }
                 val videoFailed = !MimeTypes.isAudio(renderer?.rendererFormat?.sampleMimeType)
@@ -179,10 +264,21 @@ class PlaybackSession(
             scope.launch { start(at, forceTranscode = true, audioIndex = failed.audioIndex, subtitleIndex = failed.subtitleIndex) }
         }
 
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            group?.onPlayerState()
+        }
+
         override fun onPlaybackStateChanged(state: Int) {
+            group?.onPlayerState()
             if (state != Player.STATE_ENDED) return
+            group?.let { g ->
+                // The group moves on to its next item, or everyone's done.
+                val q = g.queue.value
+                g.onEnded()
+                if (q != null && q.index < q.itemIds.lastIndex) return
+            }
             localProgress?.let { record ->
-                val duration = player.duration.coerceAtLeast(0)
+                val duration = exo.duration.coerceAtLeast(0)
                 localProgress = null // Recorded as watched here, not again on release.
                 appScope.launch { record(duration, duration, true) }
             }
@@ -194,12 +290,12 @@ class PlaybackSession(
         scope.launch { setNightMode(settings.current().nightMode) }
         scope.launch {
             while (isActive) {
-                _progress.value = Progress(player.currentPosition, player.duration.coerceAtLeast(0))
+                _progress.value = Progress(exo.currentPosition, exo.duration.coerceAtLeast(0))
                 delay(500)
             }
         }
-        player.addListener(listener)
-        player.addAnalyticsListener(object : AnalyticsListener {
+        exo.addListener(listener)
+        exo.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
                 _videoDecoder.value = name
             }
@@ -212,6 +308,12 @@ class PlaybackSession(
 
     /** Loads [itemId] and starts playing: at [startMs] if given, else resuming unless [fromStart]. */
     fun load(itemId: String, fromStart: Boolean, startMs: Long? = null) {
+        pendingItem = itemId to (startMs ?: 0)
+        group?.let { g ->
+            // Watching together: the group decides where everyone starts.
+            g.attach(syncPlayer, itemId, startMs ?: 0)
+            return
+        }
         scope.launch {
             runCatching { server.getItem(itemId) }
                 .onSuccess {
@@ -234,7 +336,7 @@ class PlaybackSession(
         progressJob = scope.launch {
             while (isActive) {
                 delay(PROGRESS_INTERVAL_MS)
-                localProgress?.invoke(player.currentPosition, player.duration.coerceAtLeast(0), false)
+                localProgress?.invoke(exo.currentPosition, exo.duration.coerceAtLeast(0), false)
             }
         }
     }
@@ -268,9 +370,10 @@ class PlaybackSession(
             .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
             .build()
         // Jellyfin's HLS playlists span the whole file, so every method seeks client-side.
-        player.setMediaItem(media, startMs)
-        player.prepare()
-        player.playWhenReady = true
+        exo.setMediaItem(media, startMs)
+        exo.prepare()
+        // In a group, the group says when to play once everyone is ready.
+        exo.playWhenReady = !inGroup
     }
 
     private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false) {
@@ -314,12 +417,12 @@ class PlaybackSession(
             while (isActive) {
                 delay(PROGRESS_INTERVAL_MS)
                 if (_plan.value != p) break
-                server.reportProgress(p, player.currentPosition, isPaused = !player.isPlaying)
+                server.reportProgress(p, exo.currentPosition, isPaused = !exo.isPlaying)
             }
         }
     }
 
-    /** Picks a new audio or subtitle stream: in the player when it has the track, else via the server. */
+    /** Picks a new audio or subtitle stream: in the exo when it has the track, else via the server. */
     fun selectTrack(kind: StreamKind, index: Int) {
         val p = _plan.value ?: return
         val stream = p.source.streams.firstOrNull { it.index == index }
@@ -337,7 +440,7 @@ class PlaybackSession(
             _plan.value = updated
             applySelection(updated)
         } else {
-            val at = player.currentPosition
+            val at = exo.currentPosition
             server.reportStopped(p, at)
             scope.launch { start(at, forceTranscode = p.method == PlayMethod.TRANSCODE, audioIndex = updated.audioIndex, subtitleIndex = updated.subtitleIndex) }
         }
@@ -352,8 +455,12 @@ class PlaybackSession(
     // ---- Speed, night mode, subtitle timing ----
 
     fun setSpeed(speed: Float) {
+        if (inGroup) {
+            showNotice("Speed stays at normal while watching together")
+            return
+        }
         _speed.value = speed
-        player.setPlaybackSpeed(speed)
+        exo.setPlaybackSpeed(speed)
     }
 
     fun setNightMode(on: Boolean) {
@@ -389,7 +496,7 @@ class PlaybackSession(
                     source = p.source.copy(streams = p.source.streams.map { if (it.index == index) it.copy(isExternal = true, delivery = SubtitleDelivery.EXTERNAL) else it }),
                 )
                 _subtitleOffsetMs.value = offsetMs
-                play(updated, player.currentPosition, _item.value?.name.orEmpty())
+                play(updated, exo.currentPosition, _item.value?.name.orEmpty())
             }.onFailure { showNotice("Couldn't retime subtitles: ${it.message}") }
         }
     }
@@ -404,7 +511,7 @@ class PlaybackSession(
     fun reloadWithNewSubtitle(language: String?) {
         val p = _plan.value ?: return
         val before = p.source.streams.filter { it.kind == StreamKind.SUBTITLE }.map { it.index }.toSet()
-        val at = player.currentPosition
+        val at = exo.currentPosition
         scope.launch {
             val source = runCatching { server.mediaSource(p.itemId) }.getOrNull()
             val added = source?.streams?.filter { it.kind == StreamKind.SUBTITLE && it.index !in before }
@@ -424,7 +531,7 @@ class PlaybackSession(
             "Rewind" -> controls.seekBy(-10_000)
             "FastForward" -> controls.seekBy(30_000)
             "Stop" -> onEnded()
-            "NextTrack" -> player.seekTo(player.duration.coerceAtLeast(0))
+            "NextTrack" -> player.seekTo(exo.duration.coerceAtLeast(0))
             "PreviousTrack" -> seekTo(0)
         }
     }
@@ -438,13 +545,13 @@ class PlaybackSession(
     }
 
     /**
-     * Points the player at the plan's audio and subtitle streams. Embedded tracks line up with the
+     * Points the exo at the plan's audio and subtitle streams. Embedded tracks line up with the
      * server's streams by order within their type; side-loaded subtitles carry a "jf-<index>" id.
      */
     private fun applySelection(plan: PlaybackPlan) {
         val streams = plan.source.streams
-        val groups = player.currentTracks.groups
-        val params = player.trackSelectionParameters.buildUpon()
+        val groups = exo.currentTracks.groups
+        val params = exo.trackSelectionParameters.buildUpon()
 
         // HLS carries only the audio the server picked, so there is nothing to choose client-side.
         if (plan.method == PlayMethod.DIRECT_PLAY) {
@@ -476,22 +583,24 @@ class PlaybackSession(
         } else {
             params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
         }
-        player.trackSelectionParameters = params.build()
+        exo.trackSelectionParameters = params.build()
     }
 
-    /** Reports the stop to the server and frees the player. Call once, when leaving playback. */
+    /** Reports the stop to the server and frees the exo. Call once, when leaving playback. */
     fun release() {
         val local = localProgress
         if (local != null) {
-            val position = player.currentPosition
-            val duration = player.duration.coerceAtLeast(0)
-            // Outlives this session, so leaving the player still saves where it stopped.
+            val position = exo.currentPosition
+            val duration = exo.duration.coerceAtLeast(0)
+            // Outlives this session, so leaving the exo still saves where it stopped.
             appScope.launch { local(position, duration, false) }
         } else {
-            _plan.value?.let { server.reportStopped(it, player.currentPosition) }
+            _plan.value?.let { server.reportStopped(it, exo.currentPosition) }
         }
-        player.removeListener(listener)
-        player.release()
+        group?.detach(syncPlayer)
+        group = null
+        exo.removeListener(listener)
+        exo.release()
         scope.cancel()
     }
 

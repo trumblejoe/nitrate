@@ -79,7 +79,12 @@ class AppContainer(
     val searchHistory by lazy { SearchHistoryStore(appContext) }
 
     /** The server's live connection: remote control and live updates. */
-    val remote by lazy { RemoteControlHub(server) }
+    val remote by lazy { RemoteControlHub(server, syncPlay) }
+
+    /** Watch together: this device's SyncPlay group, if any. */
+    val syncPlay by lazy {
+        dev.nitrate.core.syncplay.SyncPlayController(server, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate))
+    }
 
     /** Per-show audio and subtitle languages, for the signed-in user. */
     val trackMemory by lazy { displaySettings.trackMemory { server.userId } }

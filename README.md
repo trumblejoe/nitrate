@@ -31,6 +31,7 @@ Early, but usable end to end:
 - **Player (phone and tablet):** double-tap the sides to skip 10 s (taps add up), double-tap the middle to pause, swipe up/down on the left for brightness and on the right for volume, pinch to fill the screen, and thumbnail previews while scrubbing (when the server has trickplay images). **Skip intro / recap / credits** buttons when the server marks them (media segments, e.g. from an intro-detection plugin), and an **Up Next** card with a countdown that rolls into the next episode in viewing order, specials included, also from downloads when offline
 - **Playback extras (TV and phone):** speed (0.5–2×), a sleep timer (15–90 min or end of this), **night mode** (evens out loud and quiet parts; per device), subtitle timing (±0.25 s / 1 s steps), **subtitle search** through your server's subtitle plugin, and subtitle styling (size, colour, background, edge, position). Audio and subtitle languages you pick are **remembered per series** and follow you to other devices
 - **Remote control:** Nitrate shows up as a controllable device in Jellyfin. Other apps (or another Nitrate) can start, pause, seek, skip and stop playback, change volume and send messages. On a phone, *Settings → Control a device* is a remote for your TV, and *Play on another device* in the player hands what you're watching to it at the same spot
+- **Watch together (SyncPlay), TV and phone:** start or join a group (Home → *Watch together* on TV, *Settings* or the player's *More* on a phone) and whatever anyone plays, pauses or seeks happens for everyone, in step with the server's clock. If someone buffers, the others wait; small drift is fixed by nudging the speed, large drift by a jump. Works with Jellyfin's own apps in the same group. Needs SyncPlay access on your account (on by default)
 - **Phone extras:** picture-in-picture (also when you leave the app) and background audio with lock-screen controls
 - **Smart downloads:** per show, keep the next 1–10 unwatched episodes downloaded; episodes it added are deleted once watched (here or anywhere), topped up every few hours and after you watch
 - **Downloads (phone and tablet):** download a movie, episode or whole season as the original file or as a smaller copy your server converts (1080p, 720p, 480p or 360p, H.264 or HEVC, AAC stereo), with the size shown before you choose. Downloads run in the background with a progress notification, can wait for Wi-Fi, resume after an interruption (originals), and keep their subtitles and artwork. Downloaded items play from the device even when online, and what you watch offline is sent to the server when it's back (if you didn't watch it elsewhere since)
@@ -39,7 +40,6 @@ Early, but usable end to end:
 
 ## Roadmap
 
-- [ ] Watch together (SyncPlay)
 - [ ] Multiple servers and users
 
 ## Stack

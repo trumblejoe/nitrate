@@ -145,6 +145,10 @@ class FakeServer : MediaServer {
         dev.nitrate.core.admin.ServerSession("s1", "Joe", "Nitrate TV", "Living room TV", "d1", films[0], 2_100_000, false, "DirectPlay", "192.168.1.30", null, true, true),
         dev.nitrate.core.admin.ServerSession("s2", "Sam", "Jellyfin Web", "Firefox", "d2", null, null, false, null, "192.168.1.44", null, true, false),
     )
+    override suspend fun syncPlayGroups() = listOf(
+        dev.nitrate.core.syncplay.SyncPlayGroup("g1", "Friday movie night", dev.nitrate.core.syncplay.GroupState.PAUSED, listOf("Sam", "Alex")),
+        dev.nitrate.core.syncplay.SyncPlayGroup("g2", "Kids' cartoons", dev.nitrate.core.syncplay.GroupState.PLAYING, listOf("Kids")),
+    )
     override suspend fun users() = listOf(
         dev.nitrate.core.admin.UserAccount("user-1", "Joe", true, "2026-11-11T19:00:00Z", null, dev.nitrate.core.admin.UserPermissions(isAdministrator = true, enableContentDeletion = true)),
         dev.nitrate.core.admin.UserAccount("user-2", "Sam", true, "2026-11-11T19:02:00Z", null, dev.nitrate.core.admin.UserPermissions()),

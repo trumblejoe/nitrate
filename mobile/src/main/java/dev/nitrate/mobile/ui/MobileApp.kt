@@ -258,6 +258,12 @@ fun MobileApp(container: AppContainer) {
         // What other apps ask of this one: play something here, show a message, change volume.
         var message by remember { mutableStateOf<Pair<String, String>?>(null) }
         val context = androidx.compose.ui.platform.LocalContext.current
+        // Watch together: the group started something while no player was open.
+        LaunchedEffect(Unit) {
+            container.syncPlay.openRequests.collect { q ->
+                q.currentItemId?.let { nav.navigate(PlayerRoute(it, startMs = q.startMs)) }
+            }
+        }
         LaunchedEffect(Unit) {
             container.remote.events.collect { e ->
                 when (e) {

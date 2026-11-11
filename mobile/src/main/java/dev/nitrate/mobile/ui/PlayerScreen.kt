@@ -113,7 +113,12 @@ fun PlayerScreen(
     }
     val session = remember(itemId) {
         PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() }, trackMemory = actions.container.trackMemory)
-            .also { if (!local) it.load(itemId, fromStart, startMs) }
+            .also {
+                if (!local) {
+                    it.followGroup(actions.container.syncPlay)
+                    it.load(itemId, fromStart, startMs)
+                }
+            }
     }
     if (local) {
         LaunchedEffect(session) {

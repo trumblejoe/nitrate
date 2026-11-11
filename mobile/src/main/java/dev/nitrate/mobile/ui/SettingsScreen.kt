@@ -39,6 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.nitrate.core.episodes.EpisodeOrder.Scope
@@ -95,6 +98,8 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             }
         }
 
+        header("Watch together", "Play in step with people on other devices (SyncPlay).")
+        item { WatchTogetherRow(actions) }
         header("Control a device", "Play, pause, seek and change volume on your TV or another app.")
         item { RemoteTargets(actions) }
 
@@ -279,6 +284,19 @@ private fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, upd
 }
 
 /** Other devices that can be remote-controlled. */
+@Composable
+private fun WatchTogetherRow(actions: AppActions) {
+    var open by remember { mutableStateOf(false) }
+    val group by actions.container.syncPlay.group.collectAsState()
+    ListItem(
+        modifier = Modifier.clickable { open = true },
+        headlineContent = { Text(group?.name ?: "Start or join a group") },
+        supportingContent = { Text(group?.let { "${it.participants.size} watching · ${it.state.label()}" } ?: "Then play anything and it plays for everyone") },
+        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+    )
+    if (open) WatchTogetherDialog(actions) { open = false }
+}
+
 @Composable
 private fun RemoteTargets(actions: AppActions) {
     val targets by androidx.compose.runtime.produceState<List<dev.nitrate.core.admin.ServerSession>?>(null) {

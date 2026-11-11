@@ -4,6 +4,7 @@ import dev.nitrate.android.playback.PlaybackSession
 import dev.nitrate.core.MediaServer
 import dev.nitrate.core.events.ServerEvent
 import dev.nitrate.core.model.StreamKind
+import dev.nitrate.core.syncplay.SyncPlayController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,7 +20,7 @@ import kotlinx.coroutines.launch
  * to the [active] player; everything else (play this, messages, volume, library changes) is
  * passed on through [events] for the app to act on.
  */
-class RemoteControlHub(private val server: MediaServer) {
+class RemoteControlHub(private val server: MediaServer, private val syncPlay: SyncPlayController? = null) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
     private val _events = MutableSharedFlow<ServerEvent>(extraBufferCapacity = 64)
@@ -43,6 +44,7 @@ class RemoteControlHub(private val server: MediaServer) {
                     }
                     ServerEvent.Disconnected -> _connected.value = false
                     is ServerEvent.Playstate -> active?.handleRemote(e.command, e.seekMs)
+                    is ServerEvent.SyncPlayCommand, is ServerEvent.SyncPlayGroupUpdate -> syncPlay?.handle(e)
                     is ServerEvent.General -> when (e.name) {
                         "SetAudioStreamIndex" -> e.arguments["Index"]?.toIntOrNull()?.let { active?.selectTrack(StreamKind.AUDIO, it) }
                         "SetSubtitleStreamIndex" -> e.arguments["Index"]?.toIntOrNull()?.let { active?.selectTrack(StreamKind.SUBTITLE, it) }

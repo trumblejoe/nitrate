@@ -117,6 +117,8 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.player.PlayerMoreDialog(c.server, c.playbackSettings, session, sleepAt = null, sleepAtEnd = false, onSleep = { _, _ -> }, onDismiss = {})
     }
 
+    @Test fun watchTogether() = shoot("tv-watch-together") { c -> dev.nitrate.tv.ui.together.WatchTogetherScreen(c.syncPlay, "Joe's group") }
+
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 
     @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }

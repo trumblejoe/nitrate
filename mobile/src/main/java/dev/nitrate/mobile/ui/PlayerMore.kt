@@ -46,7 +46,7 @@ val SUBTITLE_LANGUAGES = listOf("eng" to "English", "spa" to "Spanish", "fre" to
     "dut" to "Dutch", "swe" to "Swedish", "nor" to "Norwegian", "dan" to "Danish", "fin" to "Finnish", "pol" to "Polish", "rus" to "Russian",
     "jpn" to "Japanese", "kor" to "Korean", "chi" to "Chinese", "ara" to "Arabic", "heb" to "Hebrew", "tur" to "Turkish", "hin" to "Hindi")
 
-private enum class MorePage { MAIN, SUBTITLES, PLAY_ON }
+private enum class MorePage { MAIN, SUBTITLES, PLAY_ON, TOGETHER }
 
 /** Speed, sleep timer, night mode, subtitle timing and search, play elsewhere, picture-in-picture. */
 @Composable
@@ -73,6 +73,7 @@ fun PlayerMoreSheet(
                     MorePage.MAIN -> "Playback"
                     MorePage.SUBTITLES -> "Find subtitles"
                     MorePage.PLAY_ON -> "Play on another device"
+                    MorePage.TOGETHER -> "Watch together"
                 },
             )
         },
@@ -100,6 +101,8 @@ fun PlayerMoreSheet(
                     }
                     HorizontalDivider()
                     MenuRow("Find subtitles…", "Search subtitle sites through your server") { page = MorePage.SUBTITLES }
+                    val group by actions.container.syncPlay.group.collectAsState()
+                    MenuRow("Watch together…", group?.let { "In ${it.name} · ${it.participants.size} watching" } ?: "Play in step with others, anywhere") { page = MorePage.TOGETHER }
                     MenuRow("Play on another device…", "Continue on your TV or another app") { page = MorePage.PLAY_ON }
                     MenuRow("Picture-in-picture", "Keep watching in a small window", onPictureInPicture)
                 }
@@ -108,6 +111,9 @@ fun PlayerMoreSheet(
                     onDismiss()
                 })
                 MorePage.PLAY_ON -> PlayOn(actions, session, onPlayed = onPlayedElsewhere)
+                MorePage.TOGETHER -> Column(Modifier.verticalScroll(rememberScrollState())) {
+                    WatchTogetherPanel(actions.container.syncPlay, defaultGroupName(actions))
+                }
             }
         },
         confirmButton = { TextButton(onClick = { if (page == MorePage.MAIN) onDismiss() else page = MorePage.MAIN }) { Text(if (page == MorePage.MAIN) "Close" else "Back") } },

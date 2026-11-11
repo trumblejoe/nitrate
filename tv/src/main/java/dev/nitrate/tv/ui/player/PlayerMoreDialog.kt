@@ -55,11 +55,13 @@ fun PlayerMoreDialog(
     sleepAtEnd: Boolean,
     onSleep: (Long?, Boolean) -> Unit,
     onDismiss: () -> Unit,
+    syncPlay: dev.nitrate.core.syncplay.SyncPlayController? = null,
 ) {
     val speed by session.speed.collectAsState()
     val night by session.nightModeOn.collectAsState()
     val offset by session.subtitleOffsetMs.collectAsState()
     var searching by remember { mutableStateOf(false) }
+    var together by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
@@ -67,6 +69,12 @@ fun PlayerMoreDialog(
             Modifier.width(760.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            if (together && syncPlay != null) {
+                Text("Watch together", style = MaterialTheme.typography.headlineSmall)
+                dev.nitrate.tv.ui.together.WatchTogetherPanel(syncPlay, "Movie night")
+                OutlinedButton(onClick = { together = false }) { Text("Back") }
+                return@Column
+            }
             if (searching) {
                 SubtitleSearch(repository, session, onDone = { lang -> session.reloadWithNewSubtitle(lang); onDismiss() }, onBack = { searching = false })
                 return@Column
@@ -103,6 +111,11 @@ fun PlayerMoreDialog(
             }
             ListItem(selected = false, onClick = { searching = true }, headlineContent = { Text("Find subtitles…") },
                 supportingContent = { Text("Search subtitle sites through your server") })
+            if (syncPlay != null) {
+                val group by syncPlay.group.collectAsState()
+                ListItem(selected = false, onClick = { together = true }, headlineContent = { Text("Watch together…") },
+                    supportingContent = { Text(group?.let { "In ${it.name} · ${it.participants.size} watching" } ?: "Play in step with others, anywhere") })
+            }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
