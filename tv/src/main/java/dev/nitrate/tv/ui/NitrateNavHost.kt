@@ -1,5 +1,9 @@
 package dev.nitrate.tv.ui
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Column
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import dev.nitrate.tv.ui.admin.ServerAdminScreen
@@ -73,14 +77,14 @@ import kotlinx.serialization.Serializable
 @Serializable object ServerAdminRoute
 
 /** [queue] is comma-separated item ids to play after [itemId]. */
-@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "")
+@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1)
 
 @Composable
 fun NitrateNavHost(container: AppContainer) {
     var start by remember { mutableStateOf<Any?>(null) }
     LaunchedEffect(Unit) {
         start = when (container.server.restoreSession()) {
-            SessionState.VALID -> { container.settingsSync.pull(); container.refreshAccount(); HomeRoute }
+            SessionState.VALID -> { container.settingsSync.pull(); container.refreshAccount(); container.remote.start(); HomeRoute }
             SessionState.UNREACHABLE -> OfflineRoute
             SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
         }
@@ -128,6 +132,7 @@ fun NitrateNavHost(container: AppContainer) {
                 onLoggedIn = {
                     container.settingsSync.pull()
                     scope.launch { container.refreshAccount() }
+                    container.remote.start()
                     nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
                 },
             )
@@ -225,6 +230,9 @@ fun NitrateNavHost(container: AppContainer) {
                 onExit = { nav.popBackStack() },
                 panels = enabledPlugins.filterIsInstance<PlayerPanel>(),
                 pluginContext = pluginContext,
+                trackMemory = container.trackMemory,
+                remote = container.remote,
+                startMs = route.startMs.takeIf { it >= 0 },
                 onEnded = {
                     val next = route.queue.split(',').filter(String::isNotBlank)
                     if (next.isEmpty()) {
@@ -238,6 +246,43 @@ fun NitrateNavHost(container: AppContainer) {
         }
     }
     PlaybackGateDialog(gate)
+    // What other apps ask of this TV: play something, show a message, change volume.
+    var message by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        container.remote.events.collect { e ->
+            when (e) {
+                is dev.nitrate.core.events.ServerEvent.Play -> e.itemIds.firstOrNull()?.let { first ->
+                    nav.navigate(PlayerRoute(first, fromStart = e.startMs == null, queue = e.itemIds.drop(1).joinToString(","), startMs = e.startMs ?: -1))
+                }
+                is dev.nitrate.core.events.ServerEvent.General -> when (e.name) {
+                    "DisplayMessage" -> message = (e.arguments["Header"] ?: "Message") to e.arguments["Text"].orEmpty()
+                    "VolumeUp", "VolumeDown", "ToggleMute", "Mute", "Unmute" -> {
+                        val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                        val dir = when (e.name) {
+                            "VolumeUp" -> android.media.AudioManager.ADJUST_RAISE
+                            "VolumeDown" -> android.media.AudioManager.ADJUST_LOWER
+                            "Mute" -> android.media.AudioManager.ADJUST_MUTE
+                            "Unmute" -> android.media.AudioManager.ADJUST_UNMUTE
+                            else -> android.media.AudioManager.ADJUST_TOGGLE_MUTE
+                        }
+                        audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, dir, android.media.AudioManager.FLAG_SHOW_UI)
+                    }
+                    else -> Unit
+                }
+                else -> Unit
+            }
+        }
+    }
+    message?.let { (header, text) ->
+        androidx.compose.ui.window.Dialog(onDismissRequest = { message = null }) {
+            Column(Modifier.width(560.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(28.dp)) {
+                Text(header, style = MaterialTheme.typography.headlineSmall)
+                Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 10.dp))
+            }
+        }
+        LaunchedEffect(header, text) { kotlinx.coroutines.delay(10_000); message = null }
+    }
     }
     }
 }

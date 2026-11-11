@@ -72,6 +72,10 @@ import dev.nitrate.core.playback.audioChoices
 import dev.nitrate.core.playback.infoRows
 import dev.nitrate.core.playback.subtitleChoices
 import dev.nitrate.mobile.platform.FullscreenPlayback
+import dev.nitrate.mobile.platform.BackgroundPlayback
+import dev.nitrate.mobile.platform.rememberPictureInPicture
+import dev.nitrate.mobile.platform.rememberPictureInPictureController
+import androidx.compose.material.icons.filled.MoreVert
 import dev.nitrate.mobile.platform.PlayerGestures
 import dev.nitrate.mobile.platform.Scrub
 import dev.nitrate.mobile.platform.VolumeControl
@@ -82,7 +86,7 @@ import dev.nitrate.core.playback.PlaybackMoments
 import kotlinx.coroutines.delay
 import dev.nitrate.mobile.platform.VideoSurface
 
-private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO }
+private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MORE }
 
 @Composable
 fun PlayerScreen(
@@ -92,6 +96,8 @@ fun PlayerScreen(
     onExit: () -> Unit,
     onEnded: () -> Unit,
     local: Boolean = false,
+    /** Start here instead of the resume point (e.g. handed over from another device). */
+    startMs: Long? = null,
     /** Plays the following episode; null turns Up Next off (e.g. playlists, which queue their own). */
     onPlayNext: ((MediaItem) -> Unit)? = null,
 ) {
@@ -100,13 +106,14 @@ fun PlayerScreen(
     var upNext by remember { mutableStateOf<MediaItem?>(null) }
     var upNextHidden by remember { mutableStateOf(false) }
     // At the end: roll into the next episode unless Up Next was dismissed.
+    var sleepAtEndRef by remember { mutableStateOf(false) }
     val ended by rememberUpdatedState {
-        val next = upNext
+        val next = upNext.takeIf { !sleepAtEndRef }
         if (next != null && onPlayNext != null && !upNextHidden) onPlayNext(next) else onEnded()
     }
     val session = remember(itemId) {
-        PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() })
-            .also { if (!local) it.load(itemId, fromStart) }
+        PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() }, trackMemory = actions.container.trackMemory)
+            .also { if (!local) it.load(itemId, fromStart, startMs) }
     }
     if (local) {
         LaunchedEffect(session) {
@@ -122,7 +129,47 @@ fun PlayerScreen(
             }
         }
     }
-    DisposableEffect(session) { onDispose { session.release() } }
+    // Commands from other apps (pause, seek...) reach this player while it's on screen.
+    DisposableEffect(session) {
+        actions.container.remote.active = session
+        onDispose {
+            if (actions.container.remote.active === session) actions.container.remote.active = null
+            BackgroundPlayback.stop()
+            session.release()
+        }
+    }
+    val playbackSettings by actions.container.playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+    val inPip by rememberPictureInPicture()
+    val pip = rememberPictureInPictureController()
+    var playingNow by remember { mutableStateOf(false) }
+    DisposableEffect(session) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { playingNow = isPlaying }
+        }
+        session.player.addListener(listener)
+        onDispose { session.player.removeListener(listener); pip.disable() }
+    }
+    val aspect = session.player.videoSize.let { v -> if (v.width > 0 && v.height > 0) android.util.Rational(v.width, v.height) else null }
+    LaunchedEffect(playbackSettings.pictureInPicture, playingNow, aspect) { pip.update(playbackSettings.pictureInPicture, playingNow, aspect) }
+    // Leaving the app: keep audio going if asked to (with a media notification), else pause, unless shrunk to a window.
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+        when {
+            inPip -> Unit
+            playbackSettings.backgroundAudio && session.player.isPlaying -> BackgroundPlayback.start(context, session.player)
+            else -> session.player.pause()
+        }
+    }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_START) { BackgroundPlayback.stop() }
+    // Sleep timer: pauses at a time or at the end of this episode.
+    var sleepAt by remember { mutableStateOf<Long?>(null) }
+    var sleepAtEnd by remember { mutableStateOf(false) }
+    LaunchedEffect(sleepAtEnd) { sleepAtEndRef = sleepAtEnd }
+    LaunchedEffect(sleepAt) {
+        val at = sleepAt ?: return@LaunchedEffect
+        kotlinx.coroutines.delay((at - System.currentTimeMillis()).coerceAtLeast(0))
+        session.player.pause()
+        sleepAt = null
+    }
     // The writing pane beside the video (Writing plugin): Write button or Ctrl+E.
     val enabledPlugins by actions.container.plugins.enabledIds.collectAsState(emptySet())
     val canWrite = WritingPlugin.id in enabledPlugins
@@ -202,11 +249,19 @@ fun PlayerScreen(
         },
         pane = { WritingScreen(actions, onBack = { writing = false }, pane = true, playback = session.controls) },
     ) {
-        VideoSurface(session.player, onControlsVisible = { controlsVisible = it }, modifier = Modifier.fillMaxSize(), gestures = gestures, fill = fill)
+        VideoSurface(
+            session.player,
+            onControlsVisible = { controlsVisible = it },
+            modifier = Modifier.fillMaxSize(),
+            gestures = gestures.takeIf { !inPip },
+            fill = fill,
+            subtitleStyle = playbackSettings.subtitleStyle,
+            hideControls = inPip,
+        )
         GestureFeedbackView(feedback)
 
         // Top bar that shows and hides with the player's own controls.
-        AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
+        AnimatedVisibility(controlsVisible && !inPip, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
             Row(
                 Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))).padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -221,12 +276,13 @@ fun PlayerScreen(
                 TextButton(onClick = { dialog = PlayerDialog.AUDIO }, enabled = plan != null) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.SUBTITLES }, enabled = plan != null) { Text("Subtitles", color = Color.White) }
                 IconButton(onClick = { dialog = PlayerDialog.INFO }, enabled = plan != null) { Icon(Icons.Default.Info, "Playback info", tint = Color.White) }
+                IconButton(onClick = { dialog = PlayerDialog.MORE }, enabled = plan != null) { Icon(Icons.Default.MoreVert, "More", tint = Color.White) }
             }
         }
 
         val upNextAt = PlaybackMoments.upNextAtMs(progress.durationMs, segments)
         val next = upNext
-        val showUpNext = next != null && onPlayNext != null && !upNextHidden && upNextAt != null && progress.positionMs >= upNextAt && scrub == null
+        val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && progress.positionMs >= upNextAt && scrub == null
         SkipButton(PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }) { session.seekTo(it.endMs) }
         if (showUpNext && next != null) {
             val remaining = ((progress.durationMs - progress.positionMs) / 1000).toInt()
@@ -250,6 +306,16 @@ fun PlayerScreen(
         p == null || dialog == PlayerDialog.NONE -> Unit
         dialog == PlayerDialog.AUDIO -> TrackPicker("Audio", p.audioChoices(), p.audioIndex, { session.selectTrack(StreamKind.AUDIO, it); dialog = PlayerDialog.NONE }) { dialog = PlayerDialog.NONE }
         dialog == PlayerDialog.SUBTITLES -> TrackPicker("Subtitles", p.subtitleChoices(), p.subtitleIndex, { session.selectTrack(StreamKind.SUBTITLE, it); dialog = PlayerDialog.NONE }) { dialog = PlayerDialog.NONE }
+        dialog == PlayerDialog.MORE -> PlayerMoreSheet(
+            actions = actions,
+            session = session,
+            sleepAt = sleepAt,
+            sleepAtEnd = sleepAtEnd,
+            onSleep = { at, end -> sleepAt = at; sleepAtEnd = end },
+            onPictureInPicture = { dialog = PlayerDialog.NONE; pip.enterNow(aspect) },
+            onPlayedElsewhere = { dialog = PlayerDialog.NONE; onExit() },
+            onDismiss = { dialog = PlayerDialog.NONE },
+        )
         dialog == PlayerDialog.INFO -> AlertDialog(
             onDismissRequest = { dialog = PlayerDialog.NONE },
             title = { Text("Playback info") },

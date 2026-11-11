@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.nitrate.core.pages.CustomPage
+import dev.nitrate.core.playback.LanguageChoice
+import dev.nitrate.core.playback.TrackMemoryStore
 import dev.nitrate.core.pages.DisplayPrefs
 import dev.nitrate.core.pages.PageKeys
 import dev.nitrate.core.pages.PageLayout
@@ -91,6 +93,18 @@ class DisplaySettingsStore(private val context: Context) {
 
     suspend fun savePrefs(userId: String, prefs: DisplayPrefs) = saveRaw(userId, PREFS, json.encodeToString(prefs))
 
+    /** Audio and subtitle languages remembered per show, as a [TrackMemoryStore] for [userId]. */
+    fun trackMemory(userId: () -> String?): TrackMemoryStore = object : TrackMemoryStore {
+        override suspend fun get(seriesId: String): LanguageChoice? =
+            userId()?.let { stored<Map<String, LanguageChoice>>(it, TRACKS, emptyMap()).first()[seriesId] }
+
+        override suspend fun set(seriesId: String, choice: LanguageChoice) {
+            val user = userId() ?: return
+            val all = stored<Map<String, LanguageChoice>>(user, TRACKS, emptyMap()).first()
+            if (all[seriesId] != choice) saveRaw(user, TRACKS, json.encodeToString(all + (seriesId to choice)))
+        }
+    }
+
     @PublishedApi
     internal suspend fun removeRaw(userId: String, name: String) {
         context.displayDataStore.edit { it.remove(prefKey(userId, name)) }
@@ -133,5 +147,6 @@ class DisplaySettingsStore(private val context: Context) {
         const val LAYOUT = "layout:"
         const val PAGES = "pages"
         const val PREFS = "prefs"
+        const val TRACKS = "tracks"
     }
 }

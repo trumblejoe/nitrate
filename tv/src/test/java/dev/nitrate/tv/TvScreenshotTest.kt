@@ -109,6 +109,14 @@ class TvScreenshotTest {
         DisplaySettingsScreen(c)
     }
 
+    @Test fun playerMore() = shoot("tv-player-more") { c ->
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val session = androidx.compose.runtime.remember {
+            dev.nitrate.android.playback.PlaybackSession(context, c.server, c.playbackSettings, deviceNoun = "This TV", onEnded = {}, trackMemory = c.trackMemory)
+        }
+        dev.nitrate.tv.ui.player.PlayerMoreDialog(c.server, c.playbackSettings, session, sleepAt = null, sleepAtEnd = false, onSleep = { _, _ -> }, onDismiss = {})
+    }
+
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 
     @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }

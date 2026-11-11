@@ -3,6 +3,7 @@ package dev.nitrate.android
 import android.content.Context
 import dev.nitrate.android.downloads.WorkManagerScheduler
 import dev.nitrate.android.playback.DeviceProbe
+import dev.nitrate.android.remote.RemoteControlHub
 import dev.nitrate.android.storage.DisplaySettingsStore
 import dev.nitrate.android.storage.PlaybackSettingsStore
 import dev.nitrate.android.storage.PluginStore
@@ -76,6 +77,12 @@ class AppContainer(
     }
 
     val searchHistory by lazy { SearchHistoryStore(appContext) }
+
+    /** The server's live connection: remote control and live updates. */
+    val remote by lazy { RemoteControlHub(server) }
+
+    /** Per-show audio and subtitle languages, for the signed-in user. */
+    val trackMemory by lazy { displaySettings.trackMemory { server.userId } }
 
     private val accountState = MutableStateFlow<AccountInfo?>(null)
 

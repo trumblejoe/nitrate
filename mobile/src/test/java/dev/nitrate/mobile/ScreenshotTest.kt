@@ -174,6 +174,18 @@ class ScreenshotTest {
         }
     }
 
+    /** The player's More sheet: speed, sleep timer, night mode, subtitle timing. */
+    @Test
+    fun playerMore() = shoot("phone-player-more") { actions ->
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val session = androidx.compose.runtime.remember {
+            dev.nitrate.android.playback.PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = {}, trackMemory = actions.container.trackMemory)
+        }
+        dev.nitrate.mobile.ui.PlayerMoreSheet(actions, session, sleepAt = null, sleepAtEnd = true, onSleep = { _, _ -> }, onPictureInPicture = {}, onPlayedElsewhere = {}, onDismiss = {})
+    }
+
+    @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
+
     @Test
     fun transfer() = shoot("phone-writing-transfer") {
         TransferDialog(dev.nitrate.core.writing.TransferServer.State(running = true, address = "http://192.168.1.42:8765", pin = "482913"), onToggle = {}, onDismiss = {})

@@ -10,6 +10,7 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import androidx.compose.runtime.remember
 import androidx.media3.ui.AspectRatioFrameLayout
+import dev.nitrate.android.playback.applySubtitleStyle
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
 import android.content.Context
@@ -60,7 +61,16 @@ data class Scrub(val positionMs: Long, val x: Float, val barTop: Float)
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun VideoSurface(player: ExoPlayer, onControlsVisible: (Boolean) -> Unit, modifier: Modifier = Modifier, gestures: PlayerGestures? = null, fill: Boolean = false) {
+fun VideoSurface(
+    player: ExoPlayer,
+    onControlsVisible: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    gestures: PlayerGestures? = null,
+    fill: Boolean = false,
+    subtitleStyle: dev.nitrate.core.playback.SubtitleStyle = dev.nitrate.core.playback.SubtitleStyle(),
+    /** Hide the player's own controls (e.g. in picture-in-picture). */
+    hideControls: Boolean = false,
+) {
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
@@ -74,6 +84,8 @@ fun VideoSurface(player: ExoPlayer, onControlsVisible: (Boolean) -> Unit, modifi
         },
         update = { view ->
             view.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            view.applySubtitleStyle(subtitleStyle)
+            view.useController = !hideControls
         },
         modifier = modifier,
     )

@@ -1,5 +1,8 @@
 package dev.nitrate.tv.ui.settings
 
+import dev.nitrate.core.playback.SubtitleEdge
+import dev.nitrate.core.playback.SubtitleBackground
+import dev.nitrate.core.playback.SubtitleStyle
 import dev.nitrate.core.playback.capabilityLabel
 import dev.nitrate.core.playback.formatBitrate
 
@@ -99,6 +102,48 @@ fun PlaybackSettingsScreen(
             }
         }
 
+        item { ToggleRow("Night mode", settings.nightMode, "Quieter loud parts and clearer dialogue when the TV decodes the audio (not with passthrough)") { v -> update { it.copy(nightMode = v) } } }
+
+        section("Subtitles", "How subtitles look on this TV.")
+        item {
+            val st = settings.subtitleStyle
+            ChoiceRow("Size", "${(st.scale * 100).toInt()}%", null) {
+                val list = SubtitleStyle.SCALES
+                update { it.copy(subtitleStyle = st.copy(scale = list[(list.indexOf(st.scale) + 1).mod(list.size)])) }
+            }
+        }
+        item {
+            val st = settings.subtitleStyle
+            ChoiceRow("Colour", SubtitleStyle.COLORS.firstOrNull { it.first == st.textColor }?.second ?: "Custom", null) {
+                val list = SubtitleStyle.COLORS.map { it.first }
+                update { it.copy(subtitleStyle = st.copy(textColor = list[(list.indexOf(st.textColor) + 1).mod(list.size)])) }
+            }
+        }
+        item {
+            val st = settings.subtitleStyle
+            ChoiceRow("Background", st.background.label, null) {
+                update { it.copy(subtitleStyle = st.copy(background = SubtitleBackground.entries[(st.background.ordinal + 1) % SubtitleBackground.entries.size])) }
+            }
+        }
+        item {
+            val st = settings.subtitleStyle
+            ChoiceRow("Edges", st.edge.label, null) {
+                update { it.copy(subtitleStyle = st.copy(edge = SubtitleEdge.entries[(st.edge.ordinal + 1) % SubtitleEdge.entries.size])) }
+            }
+        }
+        item {
+            val st = settings.subtitleStyle
+            val heights = listOf(0.02f, 0.05f, 0.08f, 0.12f, 0.18f)
+            ChoiceRow("Height from bottom", "${(st.bottomMargin * 100).toInt()}%", null) {
+                update { it.copy(subtitleStyle = st.copy(bottomMargin = heights.firstOrNull { h -> h > st.bottomMargin + 0.001f } ?: heights.first())) }
+            }
+        }
+        item {
+            ToggleRow("Use the file's own styles", settings.subtitleStyle.useFileStyles, "Colours and positions from ASS/SSA subtitles") { v ->
+                update { it.copy(subtitleStyle = it.subtitleStyle.copy(useFileStyles = v)) }
+            }
+        }
+
         section("Video codecs", "Select to cycle Auto → Always → Never. Long-press to clear limits and failures.")
         items(CapabilityRules.videoCodecs(capabilities, settings), key = { it.id }) { cap ->
             val c = capabilities.video[cap.id]
@@ -191,12 +236,12 @@ private fun CapabilityRow(
 }
 
 @Composable
-private fun ChoiceRow(label: String, value: String, subtitle: String, onClick: () -> Unit) {
+private fun ChoiceRow(label: String, value: String, subtitle: String?, onClick: () -> Unit) {
     ListItem(
         selected = false,
         onClick = onClick,
         headlineContent = { Text(label) },
-        supportingContent = { Text(subtitle) },
+        supportingContent = subtitle?.let { { Text(it) } },
         trailingContent = { Text("$value  ›", color = MaterialTheme.colorScheme.primary) },
     )
 }

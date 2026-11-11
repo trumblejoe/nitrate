@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.player
 
+import dev.nitrate.android.playback.applySubtitleStyle
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -88,7 +89,7 @@ private const val SEEK_BACK_MS = 10_000L
 private const val SEEK_FORWARD_MS = 30_000L
 
 
-private enum class Panel { NONE, AUDIO, SUBTITLES, INFO }
+private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE }
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -102,15 +103,35 @@ fun PlayerScreen(
     /** Plugin panels that can open beside the video (e.g. the writing pane). */
     panels: List<PlayerPanel> = emptyList(),
     pluginContext: PluginContext? = null,
+    /** Shared per-show language memory and the live-connection hub (remote commands). */
+    trackMemory: dev.nitrate.core.playback.TrackMemoryStore? = null,
+    remote: dev.nitrate.android.remote.RemoteControlHub? = null,
+    startMs: Long? = null,
 ) {
     val context = LocalContext.current
-    val ended by rememberUpdatedState(onEnded)
+    // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
+    val sleepAtEndState = remember { mutableStateOf(false) }
+    val ended by rememberUpdatedState(if (sleepAtEndState.value) onExit else onEnded)
     // Negotiation, track mapping, reporting and transcode fallback live in the shared session.
     val session = remember(itemId) {
-        PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() })
-            .also { it.load(itemId, fromStart) }
+        PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory)
+            .also { it.load(itemId, fromStart, startMs) }
     }
-    DisposableEffect(session) { onDispose { session.release() } }
+    DisposableEffect(session) {
+        remote?.active = session
+        onDispose {
+            if (remote?.active === session) remote.active = null
+            session.release()
+        }
+    }
+    val settingsNow by playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+    var sleepAt by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(sleepAt) {
+        val at = sleepAt ?: return@LaunchedEffect
+        kotlinx.coroutines.delay((at - System.currentTimeMillis()).coerceAtLeast(0))
+        session.player.pause()
+        sleepAt = null
+    }
     val player = session.player
     val item by session.item.collectAsState()
     val plan by session.plan.collectAsState()
@@ -214,6 +235,7 @@ fun PlayerScreen(
                     keepScreenOn = true
                 }
             },
+            update = { it.applySubtitleStyle(settingsNow.subtitleStyle) },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -260,6 +282,10 @@ fun PlayerScreen(
     }
 
     val p = plan
+    if (p != null && panel == Panel.MORE) {
+        PlayerMoreDialog(repository, playbackSettings, session, sleepAt, sleepAtEndState.value,
+            onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDismiss = { panel = Panel.NONE })
+    }
     if (p != null && panel == Panel.AUDIO) {
         TrackDialog("Audio", p.audioChoices(), p.audioIndex, onSelect = { selectTrack(StreamKind.AUDIO, it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })
     }
@@ -298,6 +324,7 @@ private fun Controls(
             OutlinedButton(onClick = { onOpen(Panel.AUDIO) }, enabled = plan != null) { Text("Audio") }
             OutlinedButton(onClick = { onOpen(Panel.SUBTITLES) }, enabled = plan != null) { Text("Subtitles") }
             OutlinedButton(onClick = { onOpen(Panel.INFO) }, enabled = plan != null) { Text("Info") }
+            OutlinedButton(onClick = { onOpen(Panel.MORE) }, enabled = plan != null) { Text("More") }
             for ((label, action) in extraButtons) OutlinedButton(onClick = action) { Text(label) }
             plan?.takeIf { it.method != PlayMethod.DIRECT_PLAY }?.let {
                 Text(

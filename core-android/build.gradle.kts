@@ -32,6 +32,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.datastore.preferences)
     api(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
     api(libs.androidx.lifecycle.viewmodel.compose)
     testImplementation(libs.junit)
 }

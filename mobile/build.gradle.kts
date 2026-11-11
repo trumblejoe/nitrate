@@ -88,6 +88,7 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.media3.ui)
+    implementation(libs.media3.session)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.serialization.json)

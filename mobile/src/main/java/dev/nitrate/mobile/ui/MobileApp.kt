@@ -70,7 +70,10 @@ import kotlinx.serialization.Serializable
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 
 /** [queue] is comma-separated item ids to play after [itemId]; [local] plays the downloaded file. */
-@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false)
+@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false, val startMs: Long = -1)
+
+/** A remote control for another device's playback. */
+@Serializable data class RemoteRoute(val sessionId: String)
 
 /** A destination that provides its animation scope, for shared artwork transitions. */
 inline fun <reified T : Any> NavGraphBuilder.screen(noinline content: @Composable (NavBackStackEntry) -> Unit) {
@@ -125,7 +128,7 @@ fun MobileApp(container: AppContainer) {
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         start = when (container.server.restoreSession()) {
-            SessionState.VALID -> { container.settingsSync.pull(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
+            SessionState.VALID -> { container.settingsSync.pull(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
             SessionState.UNREACHABLE -> OfflineRoute
             SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
         }
@@ -190,6 +193,7 @@ fun MobileApp(container: AppContainer) {
                 LoginScreen(actions, route.serverUrl, route.serverName) {
                     container.settingsSync.pull()
                     appScope.launch { container.refreshAccount() }
+                    container.remote.start()
                     nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                 }
             }
@@ -198,6 +202,7 @@ fun MobileApp(container: AppContainer) {
                     actions,
                     onOnline = {
                         container.settingsSync.pull()
+                        container.remote.start()
                         appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }
                         nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                     },
@@ -215,6 +220,7 @@ fun MobileApp(container: AppContainer) {
             screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
             screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
+            screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
             screen<CustomPageRoute> { entry ->
                 val route = entry.toRoute<CustomPageRoute>()
                 CustomPageScreen(actions, route.pageId, route.editNow)
@@ -230,6 +236,7 @@ fun MobileApp(container: AppContainer) {
                     itemId = route.itemId,
                     fromStart = route.fromStart,
                     local = route.local,
+                    startMs = route.startMs.takeIf { it >= 0 },
                     // Playlists queue their own next item; single episodes get Up Next.
                     onPlayNext = if (route.queue.isBlank()) { next -> nav.popBackStack(); actions.play(next, false) } else null,
                     onExit = { nav.popBackStack() },
@@ -246,6 +253,30 @@ fun MobileApp(container: AppContainer) {
         }
         }
         }
+        }
+
+        // What other apps ask of this one: play something here, show a message, change volume.
+        var message by remember { mutableStateOf<Pair<String, String>?>(null) }
+        val context = androidx.compose.ui.platform.LocalContext.current
+        LaunchedEffect(Unit) {
+            container.remote.events.collect { e ->
+                when (e) {
+                    is dev.nitrate.core.events.ServerEvent.Play -> e.itemIds.firstOrNull()?.let { first ->
+                        nav.navigate(PlayerRoute(first, fromStart = e.startMs == null, queue = e.itemIds.drop(1).joinToString(","), startMs = e.startMs ?: -1))
+                    }
+                    is dev.nitrate.core.events.ServerEvent.General -> when (e.name) {
+                        "DisplayMessage" -> message = (e.arguments["Header"] ?: "Message") to e.arguments["Text"].orEmpty()
+                        "VolumeUp", "VolumeDown", "ToggleMute", "Mute", "Unmute" -> adjustVolume(context, e.name)
+                        else -> Unit
+                    }
+                    else -> Unit
+                }
+            }
+        }
+        message?.let { (header, text) ->
+            AlertDialog(onDismissRequest = { message = null }, title = { Text(header) }, text = { Text(text) },
+                confirmButton = { TextButton(onClick = { message = null }) { Text("OK") } })
+            LaunchedEffect(header, text) { kotlinx.coroutines.delay(10_000); message = null }
         }
 
         pending?.let { (ask, answer) ->
@@ -265,3 +296,16 @@ fun MobileApp(container: AppContainer) {
     }
 }
 
+
+/** Volume commands from other apps (a phone remote, the Jellyfin dashboard). */
+internal fun adjustVolume(context: android.content.Context, command: String) {
+    val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+    val direction = when (command) {
+        "VolumeUp" -> android.media.AudioManager.ADJUST_RAISE
+        "VolumeDown" -> android.media.AudioManager.ADJUST_LOWER
+        "Mute" -> android.media.AudioManager.ADJUST_MUTE
+        "Unmute" -> android.media.AudioManager.ADJUST_UNMUTE
+        else -> android.media.AudioManager.ADJUST_TOGGLE_MUTE
+    }
+    audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, direction, android.media.AudioManager.FLAG_SHOW_UI)
+}

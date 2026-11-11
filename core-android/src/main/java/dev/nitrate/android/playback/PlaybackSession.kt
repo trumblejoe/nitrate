@@ -14,6 +14,12 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import dev.nitrate.core.model.ExternalSubtitle
+import dev.nitrate.core.playback.SubtitleShift
+import dev.nitrate.core.playback.TrackMemory
+import dev.nitrate.core.playback.TrackMemoryStore
+import kotlinx.coroutines.withContext
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -60,7 +66,25 @@ class PlaybackSession(
     /** "This TV" or "This device", for the message shown after a decoder failure. */
     private val deviceNoun: String,
     private val onEnded: () -> Unit,
+    /** Remembers audio and subtitle languages per show (null: don't). */
+    private val trackMemory: TrackMemoryStore? = null,
 ) {
+    private val appContext = context.applicationContext
+    private val nightMode = NightModeAudioProcessor()
+
+    private val _speed = MutableStateFlow(1f)
+
+    /** Playback speed, 0.5x to 2x. */
+    val speed: StateFlow<Float> = _speed
+    private val _subtitleOffsetMs = MutableStateFlow(0L)
+
+    /** How far subtitles are moved: positive shows them later. */
+    val subtitleOffsetMs: StateFlow<Long> = _subtitleOffsetMs
+    private val _nightModeOn = MutableStateFlow(false)
+    val nightModeOn: StateFlow<Boolean> = _nightModeOn
+
+    /** Original text of retimed subtitles, so repeated changes shift from the original. */
+    private val subtitleOriginals = mutableMapOf<Int, String>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -105,8 +129,14 @@ class PlaybackSession(
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setDefaultRequestProperties(mapOf("Authorization" to server.authorizationHeader()))
+        // Night mode sits in the audio path; it's off (passes audio through) until switched on.
+        val renderers = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean) =
+                DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(nightMode)).setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build()
+        }.setEnableDecoderFallback(true)
         ExoPlayer.Builder(context)
-            .setRenderersFactory(DefaultRenderersFactory(context).setEnableDecoderFallback(true))
+            .setRenderersFactory(renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http))
             .build()
     }
@@ -161,6 +191,7 @@ class PlaybackSession(
     }
 
     init {
+        scope.launch { setNightMode(settings.current().nightMode) }
         scope.launch {
             while (isActive) {
                 _progress.value = Progress(player.currentPosition, player.duration.coerceAtLeast(0))
@@ -179,13 +210,13 @@ class PlaybackSession(
         })
     }
 
-    /** Loads [itemId] and starts playing, resuming unless [fromStart]. */
-    fun load(itemId: String, fromStart: Boolean) {
+    /** Loads [itemId] and starts playing: at [startMs] if given, else resuming unless [fromStart]. */
+    fun load(itemId: String, fromStart: Boolean, startMs: Long? = null) {
         scope.launch {
             runCatching { server.getItem(itemId) }
                 .onSuccess {
                     _item.value = it
-                    start(if (fromStart) 0L else it.user.positionMs, forceTranscode = false)
+                    start(startMs ?: if (fromStart) 0L else it.user.positionMs, forceTranscode = false, useMemory = true)
                     loadExtras(it.id)
                 }
                 .onFailure { _error.value = it.message ?: "Could not load item" }
@@ -242,8 +273,23 @@ class PlaybackSession(
         player.playWhenReady = true
     }
 
-    private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null) {
+    private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false) {
         val current = _item.value ?: return
+        // A show's remembered languages, matched to this episode's streams.
+        var audio = audioIndex
+        var subtitle = subtitleIndex
+        val series = current.seriesId
+        if (useMemory && trackMemory != null && series != null && audio == null && subtitle == null) {
+            trackMemory.get(series)?.let { choice ->
+                runCatching { server.mediaSource(current.id) }.getOrNull()?.let { src ->
+                    val (a, sub) = TrackMemory.pick(src.streams, choice)
+                    audio = a
+                    subtitle = sub
+                }
+            }
+        }
+        val audioIndex = audio
+        val subtitleIndex = subtitle
         runCatching {
             server.resolvePlayback(
                 itemId = current.id,
@@ -285,6 +331,7 @@ class PlaybackSession(
             else -> false
         }
         val updated = if (kind == StreamKind.AUDIO) p.copy(audioIndex = index) else p.copy(subtitleIndex = index)
+        rememberLanguages(updated)
         // A downloaded file has only what's in it.
         if (clientSide || localProgress != null) {
             _plan.value = updated
@@ -293,6 +340,92 @@ class PlaybackSession(
             val at = player.currentPosition
             server.reportStopped(p, at)
             scope.launch { start(at, forceTranscode = p.method == PlayMethod.TRANSCODE, audioIndex = updated.audioIndex, subtitleIndex = updated.subtitleIndex) }
+        }
+    }
+
+    private fun rememberLanguages(p: PlaybackPlan) {
+        val series = _item.value?.seriesId ?: return
+        val memory = trackMemory ?: return
+        appScope.launch { memory.set(series, TrackMemory.remember(p.source.streams, p.audioIndex, p.subtitleIndex, memory.get(series))) }
+    }
+
+    // ---- Speed, night mode, subtitle timing ----
+
+    fun setSpeed(speed: Float) {
+        _speed.value = speed
+        player.setPlaybackSpeed(speed)
+    }
+
+    fun setNightMode(on: Boolean) {
+        _nightModeOn.value = on
+        nightMode.enabled = on
+    }
+
+    /**
+     * Moves the shown subtitles by [offsetMs]. The subtitle is fetched as a file, retimed and
+     * side-loaded in its place (text subtitles only), then playback continues where it was.
+     */
+    fun setSubtitleOffset(offsetMs: Long) {
+        val p = _plan.value ?: return
+        val index = p.subtitleIndex.takeIf { it >= 0 } ?: run { showNotice("Turn on a subtitle first"); return }
+        val stream = p.source.streams.firstOrNull { it.index == index } ?: return
+        val codec = stream.codec?.lowercase()
+        if (codec !in setOf("srt", "subrip", "vtt", "webvtt")) {
+            showNotice("Timing can be changed for SRT and WebVTT subtitles only")
+            return
+        }
+        val itemId = _item.value?.id ?: return
+        scope.launch {
+            runCatching {
+                val original = subtitleOriginals[index] ?: withContext(Dispatchers.IO) {
+                    val local = p.externalSubtitles.firstOrNull { it.streamIndex == index }?.url?.takeIf { it.startsWith("/") }
+                    if (local != null) File(local).readText() else fetchText(server.subtitleFileUrl(itemId, p.source, index, "srt"))
+                }.also { subtitleOriginals[index] = it }
+                val file = File(appContext.cacheDir, "subtitle-$index-shifted.srt")
+                withContext(Dispatchers.IO) { file.writeText(SubtitleShift.shift(original, offsetMs)) }
+                val shifted = ExternalSubtitle(index, file.absolutePath, "application/x-subrip", stream.language, stream.title ?: stream.language ?: "Subtitle")
+                val updated = p.copy(
+                    externalSubtitles = p.externalSubtitles.filterNot { it.streamIndex == index } + shifted,
+                    source = p.source.copy(streams = p.source.streams.map { if (it.index == index) it.copy(isExternal = true, delivery = SubtitleDelivery.EXTERNAL) else it }),
+                )
+                _subtitleOffsetMs.value = offsetMs
+                play(updated, player.currentPosition, _item.value?.name.orEmpty())
+            }.onFailure { showNotice("Couldn't retime subtitles: ${it.message}") }
+        }
+    }
+
+    private fun fetchText(url: String): String {
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        connection.setRequestProperty("Authorization", server.authorizationHeader())
+        return connection.inputStream.use { it.readBytes().decodeToString() }
+    }
+
+    /** After downloading a subtitle on the server: picks it up and switches to it. */
+    fun reloadWithNewSubtitle(language: String?) {
+        val p = _plan.value ?: return
+        val before = p.source.streams.filter { it.kind == StreamKind.SUBTITLE }.map { it.index }.toSet()
+        val at = player.currentPosition
+        scope.launch {
+            val source = runCatching { server.mediaSource(p.itemId) }.getOrNull()
+            val added = source?.streams?.filter { it.kind == StreamKind.SUBTITLE && it.index !in before }
+                ?.let { list -> list.firstOrNull { it.language.equals(language, ignoreCase = true) } ?: list.firstOrNull() }
+            server.reportStopped(p, at)
+            start(at, forceTranscode = p.method == PlayMethod.TRANSCODE, audioIndex = p.audioIndex, subtitleIndex = added?.index ?: p.subtitleIndex)
+        }
+    }
+
+    /** Carries out a playback command sent from another app (pause, seek, next...). */
+    fun handleRemote(command: String, seekMs: Long?) {
+        when (command) {
+            "Pause" -> player.pause()
+            "Unpause" -> player.play()
+            "PlayPause" -> controls.togglePlay()
+            "Seek" -> seekMs?.let(::seekTo)
+            "Rewind" -> controls.seekBy(-10_000)
+            "FastForward" -> controls.seekBy(30_000)
+            "Stop" -> onEnded()
+            "NextTrack" -> player.seekTo(player.duration.coerceAtLeast(0))
+            "PreviousTrack" -> seekTo(0)
         }
     }
 

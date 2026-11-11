@@ -1,5 +1,11 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import dev.nitrate.core.pages.DisplayPrefs
 import dev.nitrate.core.pages.CardTitles
 import dev.nitrate.core.pages.AccentMode
@@ -89,6 +95,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             }
         }
 
+        header("Control a device", "Play, pause, seek and change volume on your TV or another app.")
+        item { RemoteTargets(actions) }
+
         header("Display", "For your account; follows you to your other devices.")
         displaySettings(prefs) { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
 
@@ -116,6 +125,13 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                 )
             }
         }
+
+        item { Toggle("Keep playing in the background", "Audio continues with the screen off or in another app", playback.backgroundAudio) { v -> updatePlayback { it.copy(backgroundAudio = v) } } }
+        item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }
+        item { Toggle("Night mode", "Quieter loud parts and clearer dialogue (when this device decodes the audio)", playback.nightMode) { v -> updatePlayback { it.copy(nightMode = v) } } }
+
+        header("Subtitles", "How subtitles look on this device.")
+        item { SubtitleStyleEditor(playback.subtitleStyle) { st -> updatePlayback { it.copy(subtitleStyle = st) } } }
 
         header("Formats", "Tap to cycle Auto → Always → Never.")
         items(CapabilityRules.videoCodecs(caps, playback) + CapabilityRules.hdrFormats(caps, playback) + CapabilityRules.audioCodecs(caps, playback), key = { it.id }) { cap ->
@@ -260,4 +276,75 @@ private fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, upd
             )
         },
     )
+}
+
+/** Other devices that can be remote-controlled. */
+@Composable
+private fun RemoteTargets(actions: AppActions) {
+    val targets by androidx.compose.runtime.produceState<List<dev.nitrate.core.admin.ServerSession>?>(null) {
+        value = runCatching { actions.server.sessions().filter { it.supportsMediaControl && it.deviceId != actions.server.deviceId } }.getOrDefault(emptyList())
+    }
+    val list = targets
+    Column {
+        when {
+            list == null -> ListItem(headlineContent = { Text("Looking for devices…") })
+            list.isEmpty() -> ListItem(headlineContent = { Text("No devices to control") }, supportingContent = { Text("Open Nitrate or another Jellyfin app on your TV.") })
+            else -> list.forEach { t ->
+                ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(RemoteRoute(t.id)) },
+                    headlineContent = { Text(t.deviceName ?: t.client ?: "Device") },
+                    supportingContent = { Text(listOfNotNull(t.userName, t.nowPlaying?.let { "Playing ${it.episodeLabel ?: it.name}" } ?: t.client).joinToString(" · ")) },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+        }
+    }
+}
+
+/** Size, colour, background, edges and position of subtitles, with a preview. */
+@Composable
+private fun SubtitleStyleEditor(style: dev.nitrate.core.playback.SubtitleStyle, onChange: (dev.nitrate.core.playback.SubtitleStyle) -> Unit) {
+    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.fillMaxWidth().height(90.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(Color(0xFF2B3240)), Alignment.BottomCenter) {
+            val bg = when (style.background) {
+                dev.nitrate.core.playback.SubtitleBackground.NONE -> Color.Transparent
+                dev.nitrate.core.playback.SubtitleBackground.SHADED -> Color(0x99000000)
+                dev.nitrate.core.playback.SubtitleBackground.SOLID -> Color.Black
+            }
+            Text(
+                "This is how subtitles will look.",
+                color = Color(style.textColor),
+                fontSize = (16 * style.scale).sp,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    shadow = if (style.edge != dev.nitrate.core.playback.SubtitleEdge.NONE) androidx.compose.ui.graphics.Shadow(Color.Black, androidx.compose.ui.geometry.Offset(2f, 2f), if (style.edge == dev.nitrate.core.playback.SubtitleEdge.OUTLINE) 2f else 6f) else null,
+                ),
+                modifier = Modifier.padding(bottom = (style.bottomMargin * 90).dp).background(bg).padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+        Text("Size", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            dev.nitrate.core.playback.SubtitleStyle.SCALES.forEach { sc -> FilterChip(selected = style.scale == sc, onClick = { onChange(style.copy(scale = sc)) }, label = { Text("${(sc * 100).toInt()}%") }) }
+        }
+        Text("Colour", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            dev.nitrate.core.playback.SubtitleStyle.COLORS.forEach { (c, name) ->
+                FilterChip(selected = style.textColor == c, onClick = { onChange(style.copy(textColor = c)) }, label = { Text(name) },
+                    leadingIcon = { Box(Modifier.size(12.dp).clip(CircleShape).background(Color(c))) })
+            }
+        }
+        Text("Background", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            dev.nitrate.core.playback.SubtitleBackground.entries.forEach { b -> FilterChip(selected = style.background == b, onClick = { onChange(style.copy(background = b)) }, label = { Text(b.label) }) }
+        }
+        Text("Edges", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            dev.nitrate.core.playback.SubtitleEdge.entries.forEach { e -> FilterChip(selected = style.edge == e, onClick = { onChange(style.copy(edge = e)) }, label = { Text(e.label) }) }
+        }
+        Text("Height from bottom", style = MaterialTheme.typography.titleSmall)
+        androidx.compose.material3.Slider(value = style.bottomMargin, onValueChange = { onChange(style.copy(bottomMargin = it)) }, valueRange = 0f..0.3f)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Use the subtitle file's own styles (ASS/SSA)", modifier = Modifier.weight(1f))
+            Switch(checked = style.useFileStyles, onCheckedChange = { onChange(style.copy(useFileStyles = it)) })
+        }
+    }
 }
