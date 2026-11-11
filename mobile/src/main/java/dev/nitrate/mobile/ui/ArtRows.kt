@@ -211,21 +211,22 @@ private fun SingleBill(item: MediaItem, actions: AppActions, modifier: Modifier)
 
 /** Tall marked cards: half colour, half monochrome under ink, the title up the edge. */
 @Composable
-fun CressidaRow(row: MediaRow, actions: AppActions, ink: dev.nitrate.core.rows.CressidaInk = dev.nitrate.core.rows.CressidaInk.IVY) {
+fun CressidaRow(row: MediaRow, actions: AppActions, display: dev.nitrate.core.rows.RowDisplay = dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA)) {
     val state = rememberLazyListState()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val cardWidth = (maxWidth - ScreenPadding * 2).coerceAtMost(520.dp)
         LazyRow(state = state, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp), flingBehavior = rememberSnapFlingBehavior(state)) {
-            items(row.items, key = { it.id }) { item -> CressidaCard(item, actions, "${row.key}-${item.id}", ink, Modifier.width(cardWidth)) }
+            items(row.items, key = { it.id }) { item -> CressidaCard(item, actions, "${row.key}-${item.id}", display, Modifier.width(cardWidth)) }
         }
     }
 }
 
 @Composable
-fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String, ink: dev.nitrate.core.rows.CressidaInk, modifier: Modifier) {
+fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String, display: dev.nitrate.core.rows.RowDisplay, modifier: Modifier) {
     val prefs = LocalDisplayPrefs.current
     val accent = accentColor()
     val art = actions.artwork(item)
+    val inkColor = dev.nitrate.mobile.platform.rememberInkColor(art, display, accent)
     BoxWithConstraints(modifier.height(440.dp).clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = 0.06f)).pressable({ actions.open(item, sharedKey) })) {
         // Narrow cards (small phones, galleries) get a round play button instead of a pill.
         val compact = maxWidth < 300.dp
@@ -237,7 +238,7 @@ fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String, ink: d
         )
         Box(Modifier.fillMaxHeight().fillMaxWidth(RowArt.CRESSIDA_SPLIT).background(Brush.horizontalGradient(listOf(Color(0xCC000000), Color(0x22000000)))))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color(0xAA000000))))
-        Canvas(Modifier.fillMaxSize()) { drawCressidaInk(accent, ink) }
+        Canvas(Modifier.fillMaxSize()) { drawCressidaInk(inkColor, display.ink) }
         Text(
             item.displayTitle.uppercase(),
             color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black, letterSpacing = 5.sp, maxLines = 1, softWrap = false,

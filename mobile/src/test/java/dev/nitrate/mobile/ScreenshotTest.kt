@@ -262,12 +262,16 @@ class ScreenshotTest {
                     pair.forEachIndexed { i, ink ->
                         androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
                             Text(ink.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp))
-                            dev.nitrate.mobile.ui.CressidaCard(films[(r * 2 + i) % films.size], a, "ink-${ink.name}", ink, Modifier.fillMaxWidth().height(300.dp))
+                            dev.nitrate.mobile.ui.CressidaCard(films[(r * 2 + i) % films.size], a, "ink-${ink.name}", dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA, ink = ink), Modifier.fillMaxWidth().height(300.dp))
                         }
                     }
                 }
             }
         }
+    }
+
+    @Test fun inkColourDialog() = shoot("phone-ink-colour") {
+        dev.nitrate.mobile.ui.InkColourDialog(dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA, inkTint = dev.nitrate.core.rows.InkTint.CUSTOM, inkArgb = 0xFF3FC6A0L), onSave = {}, onDismiss = {})
     }
 
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }

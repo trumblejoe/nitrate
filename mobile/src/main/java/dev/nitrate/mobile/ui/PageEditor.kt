@@ -219,6 +219,9 @@ private fun EntryDialog(
     var name by remember { mutableStateOf(entry.title ?: "") }
     var style by remember { mutableStateOf(display.style) }
     var ink by remember { mutableStateOf(display.ink) }
+    var inkColours by remember { mutableStateOf(display) }
+    var colouring by remember { mutableStateOf(false) }
+    if (colouring) InkColourDialog(inkColours, onSave = { inkColours = it; colouring = false }, onDismiss = { colouring = false })
     var titles by remember { mutableStateOf(display.showTitles) }
     var source by remember { mutableStateOf(entry.source) }
     var changing by remember { mutableStateOf(false) }
@@ -238,6 +241,7 @@ private fun EntryDialog(
                     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         dev.nitrate.core.rows.CressidaInk.entries.forEach { i -> FilterChip(selected = ink == i, onClick = { ink = i }, label = { Text(i.label) }) }
                     }
+                    TextButton(onClick = { colouring = true }) { Text("Ink colour: ${inkColours.inkColourLabel()}") }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Titles under cards", modifier = Modifier.weight(1f))
@@ -263,7 +267,7 @@ private fun EntryDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val d = display.copy(style = style, showTitles = titles, ink = ink)
+                val d = display.copy(style = style, showTitles = titles, ink = ink, inkTint = inkColours.inkTint, inkArgb = inkColours.inkArgb)
                 onSave(entry.copy(title = name.ifBlank { null }, source = source, display = if (entry.isCustom) d else entry.display), d)
             }) { Text("Save") }
         },

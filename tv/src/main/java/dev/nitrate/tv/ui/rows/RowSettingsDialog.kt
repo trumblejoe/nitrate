@@ -98,6 +98,21 @@ fun RowSettingsDialog(
                             onChange(display.copy(ink = inks[(display.ink.ordinal + 1) % inks.size]))
                         }
                     }
+                    item {
+                        // Smart, then Accent, then each swatch in turn.
+                        val choices = listOf(dev.nitrate.core.rows.InkTint.SMART to 0L, dev.nitrate.core.rows.InkTint.ACCENT to 0L) +
+                            dev.nitrate.core.rows.InkPalette.SWATCHES.map { dev.nitrate.core.rows.InkTint.CUSTOM to it.second }
+                        val current = choices.indexOfFirst { (t, c) -> t == display.inkTint && (t != dev.nitrate.core.rows.InkTint.CUSTOM || c == display.inkArgb) }
+                        val label = when (display.inkTint) {
+                            dev.nitrate.core.rows.InkTint.SMART -> "Smart (from each picture)"
+                            dev.nitrate.core.rows.InkTint.ACCENT -> "Accent"
+                            dev.nitrate.core.rows.InkTint.CUSTOM -> dev.nitrate.core.rows.InkPalette.SWATCHES.firstOrNull { it.second == display.inkArgb }?.first ?: "Custom"
+                        }
+                        ChoiceItem("Ink colour", label) {
+                            val (t, c) = choices[(current + 1) % choices.size]
+                            onChange(display.copy(inkTint = t, inkArgb = if (t == dev.nitrate.core.rows.InkTint.CUSTOM) c else display.inkArgb))
+                        }
+                    }
                 }
                 if (display.style == RowStyle.SHOWCASE) {
                     item { ToggleItem("Show logo", display.showcase.showLogo) { showcase { copy(showLogo = it) } } }

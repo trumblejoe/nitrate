@@ -173,7 +173,7 @@ class TvScreenshotTest {
         val rows = androidx.compose.runtime.produceState<List<dev.nitrate.core.rows.MediaRow>>(emptyList()) { value = c.server.homeRows() }.value
         val row = rows.firstOrNull { it.key == "home/latest/lib-movies" } ?: return@shoot
         androidx.compose.foundation.layout.Box(Modifier.padding(top = 48.dp)) {
-            dev.nitrate.tv.ui.rows.CressidaRow(row, c.server, dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}), dev.nitrate.core.rows.CressidaInk.DRAGON)
+            dev.nitrate.tv.ui.rows.CressidaRow(row, c.server, dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}), dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA, ink = dev.nitrate.core.rows.CressidaInk.DRAGON))
         }
     }
 

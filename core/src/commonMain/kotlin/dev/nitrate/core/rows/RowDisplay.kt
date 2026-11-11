@@ -61,7 +61,19 @@ data class RowDisplay(
     val showcase: ShowcaseOptions = ShowcaseOptions(),
     /** The linework over a Cressida row's marked side. */
     val ink: CressidaInk = CressidaInk.IVY,
+    /** How the ink is coloured: picked per card from its artwork, the app accent, or [inkArgb]. */
+    val inkTint: InkTint = InkTint.SMART,
+    /** The ink colour when [inkTint] is CUSTOM (ARGB). */
+    val inkArgb: Long = InkPalette.GOLD,
 )
+
+@Serializable
+enum class InkTint(val label: String) {
+    /** Chosen from each card's artwork so it stands out without clashing. */
+    SMART("Smart"),
+    ACCENT("Accent"),
+    CUSTOM("Custom"),
+}
 
 /** Designs for the Cressida style's ink. */
 @Serializable

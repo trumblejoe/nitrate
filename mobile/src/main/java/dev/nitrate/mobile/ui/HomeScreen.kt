@@ -184,7 +184,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
             RowStyle.SHOWCASE -> ShowcaseRow(row, actions)
             RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
             RowStyle.LIGHTNING -> LightningRow(row, actions)
-            RowStyle.CRESSIDA -> CressidaRow(row, actions, display.ink)
+            RowStyle.CRESSIDA -> CressidaRow(row, actions, display)
             RowStyle.WIDE -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(row.items, key = { it.id }) { item ->
                     val key = "${row.key}-${item.id}"
@@ -223,6 +223,8 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
 @Composable
 private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    var colouring by remember { mutableStateOf(false) }
+    if (colouring) InkColourDialog(display, onSave = { onDisplay(it); colouring = false }, onDismiss = { colouring = false })
     Box {
         Text(
             display.style.label,
@@ -248,6 +250,11 @@ private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit)
                         onClick = { onDisplay(display.copy(ink = ink)); open = false },
                     )
                 }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Ink colour: ${display.inkColourLabel()}") },
+                    onClick = { colouring = true; open = false },
+                )
             }
             if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) {
                 HorizontalDivider()
