@@ -15,6 +15,7 @@ import dev.nitrate.tv.ui.pages.CustomPageScreen
 import dev.nitrate.tv.ui.theme.NitrateTheme
 import dev.nitrate.tv.ui.components.ProvideDisplayPrefs
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -77,12 +78,21 @@ import kotlinx.serialization.Serializable
 @Serializable object ServerAdminRoute
 @Serializable object WatchTogetherRoute
 @Serializable object ProfilesRoute
+@Serializable data class SearchRoute(val query: String = "", val voice: Boolean = false)
+@Serializable data class PersonRoute(val personId: String, val name: String)
+
+/** Asked of the app from outside: the home screen, voice search, the remote's search button. */
+sealed interface TvRequest {
+    data class Search(val query: String, val voice: Boolean) : TvRequest
+    data class Open(val itemId: String) : TvRequest
+    data class Play(val itemId: String) : TvRequest
+}
 
 /** [queue] is comma-separated item ids to play after [itemId]. */
 @Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1)
 
 @Composable
-fun NitrateNavHost(container: AppContainer) {
+fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.MutableStateFlow<TvRequest?> = kotlinx.coroutines.flow.MutableStateFlow(null)) {
     var start by remember { mutableStateOf<Any?>(null) }
     LaunchedEffect(Unit) {
         val state = container.server.restoreSession()
@@ -157,7 +167,7 @@ fun NitrateNavHost(container: AppContainer) {
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 changes = container.serverChanges,
                 pinnedPages = rememberCustomPages(container).filter { it.pinned }.map { p -> p.title to { nav.navigate(CustomPageRoute(p.id)) } },
-                extraActions = listOf("Switch user" to { nav.navigate(ProfilesRoute) }, "Watch together" to { nav.navigate(WatchTogetherRoute) }, "Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
+                extraActions = listOf("Search" to { nav.navigate(SearchRoute()) }, "Switch user" to { nav.navigate(ProfilesRoute) }, "Watch together" to { nav.navigate(WatchTogetherRoute) }, "Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
                     (if (account?.isAdmin == true) listOf("Server" to { nav.navigate(ServerAdminRoute) }) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.pluginId)) } },
                 onSignOut = {
@@ -209,6 +219,21 @@ fun NitrateNavHost(container: AppContainer) {
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) }
         composable<ManageItemRoute> { entry -> ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId) }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
+        composable<SearchRoute> { entry ->
+            val route = entry.toRoute<SearchRoute>()
+            dev.nitrate.tv.ui.search.SearchScreen(
+                repository = container.server,
+                history = container.searchHistory,
+                initialQuery = route.query,
+                startWithVoice = route.voice,
+                onOpen = nav::openItem,
+                onPerson = { p -> nav.navigate(PersonRoute(p.id, p.name)) },
+            )
+        }
+        composable<PersonRoute> { entry ->
+            val route = entry.toRoute<PersonRoute>()
+            dev.nitrate.tv.ui.search.PersonScreen(container.server, dev.nitrate.core.model.Person(route.personId, route.name), onOpen = nav::openItem)
+        }
         composable<WatchTogetherRoute> {
             dev.nitrate.tv.ui.together.WatchTogetherScreen(container.syncPlay, account?.name?.let { "$it's group" } ?: "Movie night")
         }
@@ -271,6 +296,28 @@ fun NitrateNavHost(container: AppContainer) {
     // What other apps ask of this TV: play something, show a message, change volume.
     var message by remember { mutableStateOf<Pair<String, String>?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    // The home screen and voice search: carried out once signed in (not over sign-in or the profile picker).
+    val pendingRequest by requests.collectAsState()
+    val currentEntry by nav.currentBackStackEntryAsState()
+    LaunchedEffect(pendingRequest, currentEntry) {
+        val request = pendingRequest ?: return@LaunchedEffect
+        val signedIn = nav.currentBackStack.value.any { it.destination.hasRoute(HomeRoute::class) }
+        if (!signedIn) return@LaunchedEffect
+        requests.value = null
+        when (request) {
+            is TvRequest.Search -> nav.navigate(SearchRoute(request.query, request.voice))
+            is TvRequest.Open -> nav.navigate(DetailsRoute(request.itemId))
+            is TvRequest.Play -> runCatching { container.server.getItem(request.itemId) }.getOrNull()?.let { gate.play(it) }
+        }
+    }
+    // The home screen channel and Play Next row follow what's watched.
+    val homeChannels = remember { dev.nitrate.tv.channels.HomeChannels(context, container.server) }
+    LaunchedEffect(account?.id) {
+        homeChannels.schedule()
+        homeChannels.refreshSoon()
+    }
+    val leftPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == false
+    LaunchedEffect(leftPlayer) { if (leftPlayer) homeChannels.refreshSoon() }
     // Watch together: the group started something while no player was open.
     LaunchedEffect(Unit) {
         container.syncPlay.openRequests.collect { q ->

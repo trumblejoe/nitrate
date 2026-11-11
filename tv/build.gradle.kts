@@ -88,6 +88,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
+    implementation(libs.androidx.tvprovider)
+    implementation(libs.androidx.work)
 
     implementation(project(":core-android"))
     implementation(libs.coil.compose)
