@@ -28,6 +28,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.delete
@@ -39,6 +40,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.URLBuilder
 import io.ktor.http.appendPathSegments
 import io.ktor.http.contentType
@@ -77,6 +79,8 @@ class JellyfinClient(
     private val http = HttpClient(engine) {
         expectSuccess = true
         install(ContentNegotiation) { json(JellyfinJson) }
+        // Pin the casing: a request with no Accept header gets camelCase from newer servers.
+        defaultRequest { header(HttpHeaders.Accept, "application/json; profile=PascalCase") }
         install(HttpTimeout) {
             connectTimeoutMillis = 8_000
             requestTimeoutMillis = 60_000
