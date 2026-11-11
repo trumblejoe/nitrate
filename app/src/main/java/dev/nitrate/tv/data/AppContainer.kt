@@ -2,6 +2,7 @@ package dev.nitrate.tv.data
 
 import android.content.Context
 import dev.nitrate.tv.BuildConfig
+import dev.nitrate.tv.data.playback.DeviceProfileFactory
 import org.jellyfin.sdk.createJellyfin
 import org.jellyfin.sdk.model.ClientInfo
 
@@ -14,5 +15,5 @@ class AppContainer(context: Context) {
 
     val sessionStore = SessionStore(context.applicationContext)
 
-    val repository = JellyfinRepository(jellyfin, sessionStore)
+    val repository = JellyfinRepository(jellyfin, sessionStore, DeviceProfileFactory(context.applicationContext))
 }

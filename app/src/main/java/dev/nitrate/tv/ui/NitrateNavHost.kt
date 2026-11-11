@@ -27,7 +27,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ConnectRoute
 @Serializable data class LoginRoute(val serverUrl: String, val serverName: String)
 @Serializable object HomeRoute
-@Serializable data class PlayerRoute(val itemId: String)
+@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false)
 
 @Composable
 fun NitrateNavHost(container: AppContainer) {
@@ -77,9 +77,11 @@ fun NitrateNavHost(container: AppContainer) {
             )
         }
         composable<PlayerRoute> { entry ->
+            val route = entry.toRoute<PlayerRoute>()
             PlayerScreen(
                 repository = container.repository,
-                itemId = entry.toRoute<PlayerRoute>().itemId,
+                itemId = route.itemId,
+                fromStart = route.fromStart,
                 onExit = { nav.popBackStack() },
             )
         }

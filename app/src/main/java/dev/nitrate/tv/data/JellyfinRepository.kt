@@ -6,12 +6,16 @@ import org.jellyfin.sdk.api.client.extensions.authenticateUserByName
 import org.jellyfin.sdk.api.client.extensions.authenticationApi
 import org.jellyfin.sdk.api.client.extensions.imageApi
 import org.jellyfin.sdk.api.client.extensions.libraryApi
+import org.jellyfin.sdk.api.client.extensions.mediaInfoApi
+import org.jellyfin.sdk.api.client.extensions.userDataApi
 import org.jellyfin.sdk.api.client.extensions.sessionApi
 import org.jellyfin.sdk.api.client.extensions.systemApi
 import org.jellyfin.sdk.api.client.extensions.showApi
 import org.jellyfin.sdk.api.client.extensions.userApi
 import org.jellyfin.sdk.api.client.extensions.userViewApi
 import org.jellyfin.sdk.api.client.extensions.videoApi
+import dev.nitrate.tv.data.playback.DeviceProfileFactory
+import org.jellyfin.sdk.api.client.util.AuthorizationHeaderBuilder
 import org.jellyfin.sdk.discovery.RecommendedServerInfo
 import org.jellyfin.sdk.discovery.RecommendedServerInfoScore
 import org.jellyfin.sdk.model.api.BaseItemDto
@@ -20,7 +24,9 @@ import org.jellyfin.sdk.model.api.CollectionType
 import org.jellyfin.sdk.model.api.ImageType
 import org.jellyfin.sdk.model.api.ItemFields
 import org.jellyfin.sdk.model.api.MediaType
+import org.jellyfin.sdk.model.api.MediaStreamProtocol
 import org.jellyfin.sdk.model.api.PlayMethod
+import org.jellyfin.sdk.model.api.PlaybackInfoDto
 import org.jellyfin.sdk.model.api.PlaybackOrder
 import org.jellyfin.sdk.model.api.PlaybackProgressInfo
 import org.jellyfin.sdk.model.api.PlaybackStartInfo
@@ -34,9 +40,21 @@ import java.util.UUID
 
 data class HomeRow(val title: String, val items: List<BaseItemDto>)
 
+/** How a given item will be played, as negotiated with the server. */
+data class PlaybackPlan(
+    val itemId: UUID,
+    val url: String,
+    val playMethod: PlayMethod,
+    val playSessionId: String?,
+    val mediaSourceId: String?,
+    /** True when the URL is an HLS playlist (remux or transcode). */
+    val isHls: Boolean,
+)
+
 class JellyfinRepository(
     private val jellyfin: Jellyfin,
     private val sessionStore: SessionStore,
+    private val profileFactory: DeviceProfileFactory,
 ) {
     private val api: ApiClient = jellyfin.createApi()
 
@@ -142,62 +160,166 @@ class JellyfinRepository(
         }
     }
 
-    /**
-     * Direct-play stream URL. ExoPlayer handles most containers; transcoding via
-     * PlaybackInfo + a DeviceProfile is the next step for unsupported codecs.
-     */
-    fun streamUrl(itemId: UUID, mediaSourceId: String? = null): String =
-        api.videoApi.getVideoStreamUrl(
-            itemId = itemId,
-            static = true,
-            mediaSourceId = mediaSourceId,
-        )
+    suspend fun seasons(seriesId: UUID): List<BaseItemDto> =
+        api.showApi.getSeasons(seriesId = seriesId, fields = listOf(ItemFields.OVERVIEW)).content.items
+
+    suspend fun episodes(seriesId: UUID, seasonId: UUID): List<BaseItemDto> =
+        api.showApi.getEpisodes(
+            seriesId = seriesId,
+            seasonId = seasonId,
+            fields = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO),
+        ).content.items
+
+    /** The episode to play when the user hits Play on a series. */
+    suspend fun nextUpFor(seriesId: UUID): BaseItemDto? =
+        api.showApi.getNextUp(seriesId = seriesId, limit = 1, enableResumable = true).content.items.firstOrNull()
+
+    suspend fun similar(itemId: UUID): List<BaseItemDto> =
+        api.libraryApi.getSimilarItems(itemId = itemId, limit = 16, fields = listOf(ItemFields.PRIMARY_IMAGE_ASPECT_RATIO))
+            .content.items
+
+    suspend fun setPlayed(itemId: UUID, played: Boolean) {
+        if (played) api.userDataApi.markPlayedItem(itemId = itemId) else api.userDataApi.markUnplayedItem(itemId = itemId)
+    }
+
+    suspend fun setFavorite(itemId: UUID, favorite: Boolean) {
+        if (favorite) api.userDataApi.markFavoriteItem(itemId = itemId) else api.userDataApi.unmarkFavoriteItem(itemId = itemId)
+    }
+
+    fun personImageUrl(personId: UUID, tag: String?): String? =
+        tag?.let { api.imageApi.getItemImageUrl(personId, ImageType.PRIMARY, maxHeight = 300, tag = it) }
+
+    fun logoUrl(item: BaseItemDto): String? {
+        item.imageTags?.get(ImageType.LOGO)?.let {
+            return api.imageApi.getItemImageUrl(item.id, ImageType.LOGO, maxWidth = 800, tag = it)
+        }
+        val parent = item.parentLogoItemId ?: return null
+        return item.parentLogoImageTag?.let { api.imageApi.getItemImageUrl(parent, ImageType.LOGO, maxWidth = 800, tag = it) }
+    }
 
     fun isPlayable(item: BaseItemDto) =
         item.type in setOf(BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO, BaseItemKind.MUSIC_VIDEO)
 
-    suspend fun reportStart(itemId: UUID, positionMs: Long) = runCatching {
+    /** Authorization header for requests made outside the SDK (ExoPlayer). */
+    fun authorizationHeader(): String = AuthorizationHeaderBuilder.buildHeader(
+        clientName = api.clientInfo.name,
+        clientVersion = api.clientInfo.version,
+        deviceId = api.deviceInfo.id,
+        deviceName = api.deviceInfo.name,
+        accessToken = api.accessToken,
+    )
+
+    /**
+     * Asks the server how to play [itemId] given this device's capabilities.
+     * With [forceTranscode] the server must re-encode, used after a local decoder failure.
+     */
+    suspend fun resolvePlayback(
+        itemId: UUID,
+        startMs: Long,
+        forceTranscode: Boolean = false,
+        maxBitrate: Int = DEFAULT_MAX_BITRATE,
+    ): PlaybackPlan {
+        val info = api.mediaInfoApi.getPostedPlaybackInfo(
+            itemId = itemId,
+            data = PlaybackInfoDto(
+                deviceProfile = profileFactory.create(maxBitrate),
+                maxStreamingBitrate = maxBitrate,
+                startTimeTicks = startMs.msToTicks(),
+                enableDirectPlay = !forceTranscode,
+                enableDirectStream = !forceTranscode,
+                enableTranscoding = true,
+                allowVideoStreamCopy = !forceTranscode,
+                allowAudioStreamCopy = !forceTranscode,
+                autoOpenLiveStream = true,
+            ),
+        ).content
+        info.errorCode?.let { error("Server can't play this item: $it") }
+        val source = info.mediaSources.firstOrNull() ?: error("Item has no playable media")
+
+        val transcodingUrl = source.transcodingUrl
+        return if (source.supportsDirectPlay && !forceTranscode) {
+            PlaybackPlan(
+                itemId = itemId,
+                url = api.videoApi.getVideoStreamUrl(
+                    itemId = itemId,
+                    static = true,
+                    mediaSourceId = source.id,
+                    playSessionId = info.playSessionId,
+                    tag = source.eTag,
+                ),
+                playMethod = PlayMethod.DIRECT_PLAY,
+                playSessionId = info.playSessionId,
+                mediaSourceId = source.id,
+                isHls = false,
+            )
+        } else if (transcodingUrl != null) {
+            PlaybackPlan(
+                itemId = itemId,
+                url = api.baseUrl!!.trimEnd('/') + transcodingUrl,
+                playMethod = if (source.supportsDirectStream && !forceTranscode) PlayMethod.DIRECT_STREAM else PlayMethod.TRANSCODE,
+                playSessionId = info.playSessionId,
+                mediaSourceId = source.id,
+                isHls = source.transcodingSubProtocol == MediaStreamProtocol.HLS,
+            )
+        } else {
+            error("Server offered no way to play this item")
+        }
+    }
+
+    suspend fun reportStart(plan: PlaybackPlan, positionMs: Long) = runCatching {
         api.sessionApi.reportPlaybackStart(
             PlaybackStartInfo(
-                itemId = itemId,
+                itemId = plan.itemId,
+                playSessionId = plan.playSessionId,
+                mediaSourceId = plan.mediaSourceId,
                 positionTicks = positionMs.msToTicks(),
                 canSeek = true,
                 isPaused = false,
                 isMuted = false,
-                playMethod = PlayMethod.DIRECT_PLAY,
+                playMethod = plan.playMethod,
                 repeatMode = RepeatMode.REPEAT_NONE,
                 playbackOrder = PlaybackOrder.DEFAULT,
             )
         )
     }
 
-    suspend fun reportProgress(itemId: UUID, positionMs: Long, isPaused: Boolean) = runCatching {
+    suspend fun reportProgress(plan: PlaybackPlan, positionMs: Long, isPaused: Boolean) = runCatching {
         api.sessionApi.reportPlaybackProgress(
             PlaybackProgressInfo(
-                itemId = itemId,
+                itemId = plan.itemId,
+                playSessionId = plan.playSessionId,
+                mediaSourceId = plan.mediaSourceId,
                 positionTicks = positionMs.msToTicks(),
                 canSeek = true,
                 isPaused = isPaused,
                 isMuted = false,
-                playMethod = PlayMethod.DIRECT_PLAY,
+                playMethod = plan.playMethod,
                 repeatMode = RepeatMode.REPEAT_NONE,
                 playbackOrder = PlaybackOrder.DEFAULT,
             )
         )
     }
 
-    fun reportStopped(itemId: UUID, positionMs: Long) {
+    /** Fire-and-forget: the server also stops any transcode tied to this play session. */
+    fun reportStopped(plan: PlaybackPlan, positionMs: Long) {
         appScope.launch {
             runCatching {
                 api.sessionApi.reportPlaybackStopped(
                     PlaybackStopInfo(
-                        itemId = itemId,
+                        itemId = plan.itemId,
+                        playSessionId = plan.playSessionId,
+                        mediaSourceId = plan.mediaSourceId,
                         positionTicks = positionMs.msToTicks(),
                         failed = false,
                     )
                 )
             }
         }
+    }
+
+    companion object {
+        /** 120 Mbps: enough for 4K remuxes on a LAN. Becomes a setting later. */
+        const val DEFAULT_MAX_BITRATE = 120_000_000
     }
 }
 
