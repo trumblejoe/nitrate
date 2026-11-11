@@ -31,6 +31,14 @@ class TransferServerTest {
     }
 
     @Test
+    fun `accepts an upload right at the limit`() {
+        val body = ByteArray(HttpRequest.MAX_BODY) { 'a'.code.toByte() }
+        val head = "POST /api/upload HTTP/1.1\r\nContent-Length: ${body.size}\r\n\r\n".toByteArray()
+        val req = HttpRequest.read(ByteArrayInputStream(head + body))!!
+        assertEquals(25 * 1024 * 1024, req.body.size)
+    }
+
+    @Test
     fun `rejects oversized, truncated and malformed requests`() {
         assertNull(request("POST / HTTP/1.1\r\nContent-Length: ${HttpRequest.MAX_BODY + 1}\r\n\r\n"))
         assertNull(request("POST / HTTP/1.1\r\nContent-Length: 10\r\n\r\nshort"))

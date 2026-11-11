@@ -28,7 +28,8 @@ interface TransferDocs {
 
 data class HttpRequest(val method: String, val path: String, val query: Map<String, String>, val headers: Map<String, String>, val body: ByteArray) {
     companion object {
-        const val MAX_BODY = 5 * 1024 * 1024
+        /** Upload limit. Screenplays are a few hundred KB; this leaves room for files with images. */
+        const val MAX_BODY = 25 * 1024 * 1024
         private const val MAX_HEADER_BYTES = 16 * 1024
 
         /** Reads one HTTP/1.1 request. Returns null for anything malformed or too large. */
