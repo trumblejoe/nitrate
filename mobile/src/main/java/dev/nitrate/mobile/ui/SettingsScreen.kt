@@ -108,6 +108,8 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             }
         }
 
+        header("Notifications")
+        item { NewEpisodesToggle(actions) }
         header("Watch together", "Play in step with people on other devices (SyncPlay).")
         item { WatchTogetherRow(actions) }
         header("Control a device", "Play, pause, seek and change volume on your TV or another app.")
@@ -294,6 +296,23 @@ private fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, upd
 }
 
 /** Other devices that can be remote-controlled. */
+/** New episodes of followed shows; asks for notification permission (Android 13+) when switched on. */
+@Composable
+private fun NewEpisodesToggle(actions: AppActions) {
+    val notifier = actions.container.newEpisodes
+    val scope = rememberCoroutineScope()
+    val on by notifier.enabled.collectAsState(false)
+    val permission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) scope.launch { notifier.setEnabled(true) }
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Toggle("New episodes", "When shows you follow (favourites, or ones you're watching) get new episodes", on) { want ->
+        val needsAsk = want && android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (needsAsk) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS) else scope.launch { notifier.setEnabled(want) }
+    }
+}
+
 /** Signs in a TV (or any device showing a Quick Connect code) as this account. */
 @Composable
 private fun QuickConnectRow(actions: AppActions) {

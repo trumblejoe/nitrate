@@ -20,7 +20,12 @@ import kotlinx.coroutines.launch
  * to the [active] player; everything else (play this, messages, volume, library changes) is
  * passed on through [events] for the app to act on.
  */
-class RemoteControlHub(private val server: MediaServer, private val syncPlay: SyncPlayController? = null) {
+class RemoteControlHub(
+    private val server: MediaServer,
+    private val syncPlay: SyncPlayController? = null,
+    /** The server added items to libraries (e.g. look for new episodes). */
+    private val onItemsAdded: () -> Unit = {},
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
     private val _events = MutableSharedFlow<ServerEvent>(extraBufferCapacity = 64)
@@ -45,6 +50,7 @@ class RemoteControlHub(private val server: MediaServer, private val syncPlay: Sy
                     ServerEvent.Disconnected -> _connected.value = false
                     is ServerEvent.Playstate -> active?.handleRemote(e.command, e.seekMs)
                     is ServerEvent.SyncPlayCommand, is ServerEvent.SyncPlayGroupUpdate -> syncPlay?.handle(e)
+                    is ServerEvent.LibraryChanged -> if (e.added.isNotEmpty()) onItemsAdded()
                     is ServerEvent.General -> when (e.name) {
                         "SetAudioStreamIndex" -> e.arguments["Index"]?.toIntOrNull()?.let { active?.selectTrack(StreamKind.AUDIO, it) }
                         "SetSubtitleStreamIndex" -> e.arguments["Index"]?.toIntOrNull()?.let { active?.selectTrack(StreamKind.SUBTITLE, it) }

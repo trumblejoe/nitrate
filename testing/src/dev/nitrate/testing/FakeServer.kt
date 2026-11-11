@@ -145,6 +145,10 @@ class FakeServer : MediaServer {
         dev.nitrate.core.admin.ServerSession("s1", "Joe", "Nitrate TV", "Living room TV", "d1", films[0], 2_100_000, false, "DirectPlay", "192.168.1.30", null, true, true),
         dev.nitrate.core.admin.ServerSession("s2", "Sam", "Jellyfin Web", "Firefox", "d2", null, null, false, null, "192.168.1.44", null, true, false),
     )
+    /** What [recentEpisodes] returns; tests add to it. */
+    var recent: List<MediaItem> = emptyList()
+    override suspend fun recentEpisodes(limit: Int) = recent
+    override suspend fun followedSeries() = setOf("series-1")
     override suspend fun savedAccounts() = listOf(
         dev.nitrate.core.model.SavedAccount("home|joe", "http://192.168.1.20:8096", "Home", "user-1", "Joe", null),
         dev.nitrate.core.model.SavedAccount("home|sam", "http://192.168.1.20:8096", "Home", "user-2", "Sam", null),

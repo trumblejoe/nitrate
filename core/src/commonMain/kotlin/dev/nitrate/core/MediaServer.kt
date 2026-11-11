@@ -196,6 +196,12 @@ interface MediaServer {
     /** Live events from the server while signed in (remote control, library and watch changes). */
     fun events(): Flow<ServerEvent> = kotlinx.coroutines.flow.emptyFlow()
 
+    /** Episodes most recently added to the server, newest first, with [MediaItem.dateAddedMs]. */
+    suspend fun recentEpisodes(limit: Int = 50): List<MediaItem> = unsupported()
+
+    /** Series this user follows: favourites, and shows they're partway through (Next Up). */
+    suspend fun followedSeries(): Set<String> = unsupported()
+
     /** Signs in another device that shows a Quick Connect [code], as this user. */
     suspend fun authorizeQuickConnect(code: String): Unit = unsupported()
 

@@ -396,4 +396,25 @@ class JellyfinLiveTest {
         assertEquals(listOf(admin), client.savedAccounts().map { it.key })
         client.deleteUser(second.id)
     }
+
+    @Test
+    fun `finds new episodes of followed shows`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-new", "New"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val recent = client.recentEpisodes()
+        println("Recent episodes: ${recent.map { "${it.seriesName} ${it.episodeLabel} added ${it.dateAddedMs}" }}")
+        assumeTrue("No episodes on this server", recent.isNotEmpty())
+        assertTrue(recent.all { it.dateAddedMs != null && it.isEpisode })
+        val series = recent.first().seriesId!!
+        client.setFavorite(series, true)
+        try {
+            assertTrue(series in client.followedSeries())
+            val alerts = dev.nitrate.core.notifications.NewEpisodes.alerts(recent, client.followedSeries(), sinceMs = 0)
+            println("Alerts: ${alerts.map { it.title + ": " + it.text }}")
+            assertTrue(alerts.any { it.seriesId == series })
+        } finally {
+            client.setFavorite(series, false)
+        }
+    }
 }

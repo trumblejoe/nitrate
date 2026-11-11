@@ -85,7 +85,7 @@ class AppContainer(
     val searchHistory by lazy { SearchHistoryStore(appContext) }
 
     /** The server's live connection: remote control and live updates. */
-    val remote by lazy { RemoteControlHub(server, syncPlay) }
+    val remote by lazy { RemoteControlHub(server, syncPlay, onItemsAdded = { newEpisodes.checkSoon() }) }
 
     /** Library or watch-state changes pushed by the server, for pages to reload. */
     val serverChanges: kotlinx.coroutines.flow.Flow<Unit>
@@ -108,6 +108,9 @@ class AppContainer(
     suspend fun refreshAccount() {
         accountState.value = runCatching { server.account() }.getOrNull()
     }
+
+    /** New-episode notifications (phone). */
+    val newEpisodes by lazy { dev.nitrate.android.notifications.NewEpisodeNotifier(appContext, server) }
 
     /** PIN locks and "who's watching" for the accounts saved here. */
     val profiles by lazy { ProfileStore(appContext) }

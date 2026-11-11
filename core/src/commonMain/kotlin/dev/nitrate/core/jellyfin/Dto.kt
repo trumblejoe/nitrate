@@ -42,6 +42,7 @@ internal data class PersonDto(val id: String, val name: String? = null, val role
 internal data class ItemDto(
     val id: String,
     val name: String? = null,
+    val dateCreated: String? = null,
     val type: String? = null,
     val mediaType: String? = null,
     val overview: String? = null,

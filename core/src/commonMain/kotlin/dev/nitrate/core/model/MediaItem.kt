@@ -42,6 +42,8 @@ data class MediaItem(
     val people: List<Person> = emptyList(),
     /** Picture and sound quality labels, e.g. 4K, Dolby Vision, Atmos (see QualityBadges). */
     val badges: List<String> = emptyList(),
+    /** When the server added it (epoch ms), where known. */
+    val dateAddedMs: Long? = null,
 ) {
     val isEpisode get() = kind == ItemKind.EPISODE
     val isPlayable get() = kind in PLAYABLE

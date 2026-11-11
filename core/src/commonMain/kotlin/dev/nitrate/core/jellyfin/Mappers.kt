@@ -33,6 +33,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
     return MediaItem(
         id = normalizeId(id),
         name = name.orEmpty(),
+        dateAddedMs = dateCreated?.let(::parseDateMs),
         kind = kind,
         mediaKind = when (mediaType) {
             "Video" -> MediaKind.VIDEO
@@ -160,3 +161,6 @@ internal fun ItemDto.badges(): List<String> {
     val audio = streams.filter { it.type == "Audio" }.map { QualityBadges.AudioInfo(it.codec, it.profile, it.displayTitle, it.channels) }
     return QualityBadges.of(video?.width ?: width, video?.height ?: height, video?.videoRangeType, audio)
 }
+
+@OptIn(kotlin.time.ExperimentalTime::class)
+internal fun parseDateMs(iso: String): Long? = runCatching { kotlin.time.Instant.parse(iso).toEpochMilliseconds() }.getOrNull()

@@ -283,6 +283,27 @@ class JellyfinClient(
     override suspend fun quickConnectApproved(secret: String): Boolean =
         get("QuickConnect", "Connect", query = mapOf("secret" to secret)).decode<QuickConnectResultDto>().authenticated
 
+    override suspend fun recentEpisodes(limit: Int): List<MediaItem> = items(
+        "Items",
+        query = mapOf(
+            "userId" to userId,
+            "includeItemTypes" to "Episode",
+            "recursive" to true,
+            "sortBy" to "DateCreated",
+            "sortOrder" to "Descending",
+            "limit" to limit,
+            "fields" to "DateCreated,$ROW_FIELDS",
+        ),
+    )
+
+    override suspend fun followedSeries(): Set<String> = coroutineScope {
+        val favourites = async {
+            items("Items", query = mapOf("userId" to userId, "includeItemTypes" to "Series", "recursive" to true, "isFavorite" to true)).map { it.id }
+        }
+        val watching = async { items("Shows", "NextUp", query = mapOf("userId" to userId, "limit" to 200)).mapNotNull { it.seriesId } }
+        (favourites.await() + watching.await()).toSet()
+    }
+
     override suspend fun authorizeQuickConnect(code: String) {
         val ok = try {
             post<Unit>("QuickConnect", "Authorize", query = mapOf("code" to code.trim())).bodyAsText().trim()

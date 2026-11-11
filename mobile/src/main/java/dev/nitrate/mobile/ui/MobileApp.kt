@@ -36,6 +36,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.toRoute
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.compose.runtime.collectAsState
 import dev.nitrate.android.AppContainer
 import dev.nitrate.core.downloads.DownloadState
 import dev.nitrate.core.model.ItemKind
@@ -125,7 +127,7 @@ class AppActions(
 }
 
 @Composable
-fun MobileApp(container: AppContainer) {
+fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null)) {
     var start by remember { mutableStateOf<Any?>(null) }
     // Outlives individual screens, for syncing watch state from downloads.
     val appScope = rememberCoroutineScope()
@@ -280,6 +282,16 @@ fun MobileApp(container: AppContainer) {
         // What other apps ask of this one: play something here, show a message, change volume.
         var message by remember { mutableStateOf<Pair<String, String>?>(null) }
         val context = androidx.compose.ui.platform.LocalContext.current
+        // A tapped notification: open its item once signed in (not over the profile picker or sign-in).
+        val pendingOpen by openItem.collectAsState()
+        val currentEntry by nav.currentBackStackEntryAsState()
+        LaunchedEffect(pendingOpen, currentEntry) {
+            val id = pendingOpen ?: return@LaunchedEffect
+            if (currentEntry?.destination?.hasRoute(MainRoute::class) == true) {
+                openItem.value = null
+                nav.navigate(DetailsRoute(id))
+            }
+        }
         // Watch together: the group started something while no player was open.
         LaunchedEffect(Unit) {
             container.syncPlay.openRequests.collect { q ->

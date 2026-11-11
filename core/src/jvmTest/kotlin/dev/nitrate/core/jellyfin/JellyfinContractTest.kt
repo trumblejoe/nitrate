@@ -204,6 +204,8 @@ class JellyfinContractTest {
         client.seekSession("s1", 90_000)
         for (g in dev.nitrate.core.admin.GeneralCommand.entries) client.sendGeneralCommand("s1", g)
         client.authorizeQuickConnect(" 123456 ")
+        client.recentEpisodes()
+        client.followedSeries()
         val group = client.syncPlayGroups().single()
         assertEquals(DASHED, group.id)
         assertEquals(dev.nitrate.core.syncplay.GroupState.PAUSED, group.state)
