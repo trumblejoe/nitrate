@@ -2,6 +2,7 @@ package dev.nitrate.core
 
 import dev.nitrate.core.model.DiscoveredServer
 import dev.nitrate.core.model.ImageKind
+import dev.nitrate.core.model.SavedAccount
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.MediaSegment
 import dev.nitrate.core.model.MediaSource
@@ -72,7 +73,21 @@ interface MediaServer {
     suspend fun startQuickConnect(serverUrl: String): QuickConnectRequest
     suspend fun quickConnectApproved(secret: String): Boolean
     suspend fun finishQuickConnect(serverUrl: String, secret: String)
+    /** Signs out of the current account and forgets it here (other saved accounts stay). */
     suspend fun logout()
+
+    // ---- Saved accounts ----
+    /** Every server and user signed in on this device. */
+    suspend fun savedAccounts(): List<SavedAccount> = emptyList()
+
+    /** The current account's [SavedAccount.key]. */
+    val currentAccountKey: String? get() = null
+
+    /** Makes a saved account current; EXPIRED means it needs signing in again. */
+    suspend fun switchAccount(key: String): SessionState = unsupported()
+
+    /** Forgets a saved account that isn't current (its token is revoked when the server answers). */
+    suspend fun forgetAccount(key: String): Unit = unsupported()
 
     // ---- Per-user storage on the server (display preferences) ----
     suspend fun loadCustomPrefs(prefsId: String = DEFAULT_PREFS): Map<String, String>

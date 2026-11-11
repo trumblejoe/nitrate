@@ -51,6 +51,9 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 @Serializable object ConnectRoute
+
+/** "Who's watching?": the accounts saved on this device. */
+@Serializable object ProfilesRoute
 @Serializable data class LoginRoute(val serverUrl: String, val serverName: String)
 @Serializable object OfflineRoute
 @Serializable object MainRoute
@@ -127,10 +130,12 @@ fun MobileApp(container: AppContainer) {
     // Outlives individual screens, for syncing watch state from downloads.
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
-        start = when (container.server.restoreSession()) {
-            SessionState.VALID -> { container.settingsSync.pull(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
-            SessionState.UNREACHABLE -> OfflineRoute
-            SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
+        val state = container.server.restoreSession()
+        start = when {
+            container.shouldPickProfile(state) -> ProfilesRoute
+            state == SessionState.VALID -> { container.settingsSync.pull(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
+            state == SessionState.UNREACHABLE -> OfflineRoute
+            else -> ConnectRoute
         }
     }
 
@@ -145,6 +150,14 @@ fun MobileApp(container: AppContainer) {
         val scope = rememberCoroutineScope()
         // A plugin's question before playing (e.g. an unwatched earlier episode).
         var pending by remember { mutableStateOf<Pair<GuardDecision.Ask, CompletableDeferred<GuardAction>>?>(null) }
+
+        // After signing out: the other saved accounts, or sign in afresh.
+        fun signedOut() {
+            scope.launch {
+                val next: Any = if (container.server.savedAccounts().isNotEmpty()) ProfilesRoute else ConnectRoute
+                nav.navigate(next) { popUpTo(0) { inclusive = true } }
+            }
+        }
 
         // A downloaded item plays from the device, online or not.
         fun playerRoute(itemId: String, fromStart: Boolean) =
@@ -187,13 +200,22 @@ fun MobileApp(container: AppContainer) {
             popEnterTransition = { fadeIn(tween(300)) },
             popExitTransition = { fadeOut(tween(250)) + scaleOut(tween(300), targetScale = 0.97f) },
         ) {
+            screen<ProfilesRoute> {
+                ProfilesScreen(
+                    actions,
+                    onOpened = {
+                        appScope.launch { container.downloads.syncWatchState(); container.downloads.refreshSmart() }
+                        nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
+                    },
+                    onSignInAgain = { a -> nav.navigate(LoginRoute(a.serverUrl, a.serverName)) },
+                    onAdd = { nav.navigate(ConnectRoute) },
+                )
+            }
             screen<ConnectRoute> { ConnectScreen(actions) { url, name -> nav.navigate(LoginRoute(url, name)) } }
             screen<LoginRoute> { entry ->
                 val route = entry.toRoute<LoginRoute>()
                 LoginScreen(actions, route.serverUrl, route.serverName) {
-                    container.settingsSync.pull()
-                    appScope.launch { container.refreshAccount() }
-                    container.remote.start()
+                    appScope.launch { container.onSignedIn() }
                     nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                 }
             }
@@ -206,11 +228,11 @@ fun MobileApp(container: AppContainer) {
                         appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }
                         nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                     },
-                    onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
+                    onSignedOut = { signedOut() },
                 )
             }
             screen<MainRoute> {
-                MainScreen(actions, onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } })
+                MainScreen(actions, onSignedOut = { signedOut() })
             }
             screen<LibraryRoute> { entry -> LibraryScreen(actions, entry.toRoute<LibraryRoute>().libraryId) }
             screen<DetailsRoute> { entry ->

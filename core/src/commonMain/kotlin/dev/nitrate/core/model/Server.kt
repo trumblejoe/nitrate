@@ -28,3 +28,13 @@ data class QuickConnectRequest(val code: String, val secret: String)
 
 /** The server rejected a username/password. */
 class InvalidCredentialsException : Exception("Wrong username or password")
+
+/** A saved sign-in on this device, for switching between servers and users. */
+data class SavedAccount(
+    val key: String,
+    val serverUrl: String,
+    val serverName: String,
+    val userId: String,
+    val userName: String,
+    val imageUrl: String?,
+)

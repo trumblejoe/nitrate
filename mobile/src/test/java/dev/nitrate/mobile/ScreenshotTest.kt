@@ -199,6 +199,10 @@ class ScreenshotTest {
         c.syncPlay.handle(dev.nitrate.core.events.ServerEvent.SyncPlayGroupUpdate("g1", dev.nitrate.core.syncplay.SyncPlayUpdate.Joined(dev.nitrate.core.syncplay.SyncPlayGroup("g1", "Friday movie night", dev.nitrate.core.syncplay.GroupState.PLAYING, listOf("Joe", "Sam", "Alex", "Alex")))))
     }) { dev.nitrate.mobile.ui.WatchTogetherDialog(it) {} }
 
+    @Test fun profiles() = shoot("phone-profiles", setup = { c -> c.profiles.setPin("home|kids", null); c.profiles.setPin("home|sam", "1234") }) {
+        dev.nitrate.mobile.ui.ProfilesScreen(it, onOpened = {}, onSignInAgain = {}, onAdd = {})
+    }
+
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 
     @Test

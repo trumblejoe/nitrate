@@ -119,6 +119,12 @@ class TvScreenshotTest {
 
     @Test fun watchTogether() = shoot("tv-watch-together") { c -> dev.nitrate.tv.ui.together.WatchTogetherScreen(c.syncPlay, "Joe's group") }
 
+    @Test fun profiles() = shoot("tv-profiles", { c -> c.profiles.setPin("home|sam", "1234") }) { c ->
+        dev.nitrate.tv.ui.profiles.ProfilesScreen(c, onOpened = {}, onSignInAgain = {}, onAdd = {})
+    }
+
+    @Test fun pinPad() = shoot("tv-pin-pad") { dev.nitrate.tv.ui.profiles.PinPad("Enter Sam's PIN", check = { false }, onDone = {}, onDismiss = {}) }
+
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 
     @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }

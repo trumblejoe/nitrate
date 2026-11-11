@@ -365,4 +365,35 @@ class JellyfinLiveTest {
         println("Wrong code: ${wrong.exceptionOrNull()?.message}")
         assertTrue(wrong.isFailure)
     }
+
+    @Test
+    fun `switches between saved accounts`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val user = System.getenv("JELLYFIN_USER") ?: "nitrate"
+        val pw = System.getenv("JELLYFIN_PASSWORD").orEmpty()
+        val sessions = MemorySessionStorage()
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-accounts", "Accounts"), sessions, { caps() }, settings)
+        client.login(url!!, user, pw)
+        val admin = client.currentAccountKey!!
+        // A second user to switch to.
+        val name = "nitrate-switch-${System.currentTimeMillis() % 100000}"
+        val second = client.createUser(name, "pw-2")
+        client.login(url, name, "pw-2")
+        val accounts = client.savedAccounts()
+        println("Accounts: $accounts")
+        assertEquals(2, accounts.size)
+        assertTrue(accounts.all { it.serverName.isNotBlank() })
+        assertEquals(second.id, client.userId)
+
+        assertEquals(SessionState.VALID, client.switchAccount(admin))
+        assertEquals(user, client.account().name)
+        val secondKey = accounts.first { it.userName == name }.key
+        assertEquals(SessionState.VALID, client.switchAccount(secondKey))
+        assertEquals(name, client.account().name)
+
+        assertEquals(SessionState.VALID, client.switchAccount(admin))
+        client.forgetAccount(secondKey)
+        assertEquals(listOf(admin), client.savedAccounts().map { it.key })
+        client.deleteUser(second.id)
+    }
 }

@@ -129,7 +129,12 @@ fun LoginScreen(
 @Composable
 private fun UserTile(user: ServerUser, imageUrl: String?, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Card(onClick = onClick, shape = CardDefaults.shape(CircleShape), modifier = Modifier.size(88.dp)) {
+        Card(
+            onClick = onClick,
+            shape = CardDefaults.shape(CircleShape),
+            border = CardDefaults.border(focusedBorder = androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.primary), shape = CircleShape)),
+            modifier = Modifier.size(88.dp),
+        ) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), Alignment.Center) {
                 if (imageUrl != null) {
                     AsyncImage(imageUrl, user.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

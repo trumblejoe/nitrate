@@ -9,6 +9,8 @@ A [Jellyfin](https://jellyfin.org) client for Android TV and Android phones/tabl
 Early, but usable end to end:
 
 - **Sign-in:** servers on your network are found automatically, or enter an address. Pick a user tile, type a password, or use **Quick Connect** to approve the TV from your phone
+- **Profiles and multiple servers:** stay signed in to several users and servers at once and switch from *Who's watching?* (TV: Home → *Switch user*; phone: Settings → *Switch account*). Lock a profile with a 4–8 digit PIN (kept on this device only), and optionally ask who's watching every time Nitrate opens. Approve another device's Quick Connect code from the phone (Settings → *Sign in another device*)
+- **Live updates:** pages refresh by themselves when the server adds items or watch state changes on another device
 - **Home:** My Media, Continue Watching, Next Up, and Latest per library
 - **Library pages:** a *Recommended* tab with rows per library type, and an *All* tab with a sortable, paged grid
 - **Row display settings:** every row on Home and on each library page can be Posters, Wide or **Showcase**, in three sizes, saved per user. Long-press a card (or use *Customize rows*) to change one
@@ -40,7 +42,6 @@ Early, but usable end to end:
 
 ## Roadmap
 
-- [ ] Multiple servers and users
 
 ## Stack
 

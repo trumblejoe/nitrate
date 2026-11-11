@@ -14,6 +14,7 @@ import dev.nitrate.core.model.Person
 import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.PlaybackPlan
 import dev.nitrate.core.model.QuickConnectRequest
+import dev.nitrate.core.model.SavedAccount
 import dev.nitrate.core.model.RemoteUserData
 import dev.nitrate.core.model.SearchResults
 import dev.nitrate.core.model.SegmentKind
@@ -162,10 +163,53 @@ class JellyfinClient(
 
     override suspend fun restoreSession(): SessionState {
         val session = sessionStorage.load() ?: return SessionState.NONE
+        use(session)
+        return checkSession()
+    }
+
+    private fun use(session: StoredSession) {
         baseUrl = session.serverUrl
         token = session.accessToken
         userId = session.userId
+        accountKey = session.key
+    }
+
+    private var accountKey: String? = null
+    override val currentAccountKey: String? get() = accountKey
+
+    override suspend fun savedAccounts(): List<SavedAccount> = sessionStorage.all().map { s ->
+        SavedAccount(
+            key = s.key,
+            serverUrl = s.serverUrl,
+            serverName = s.serverName.ifBlank { s.serverUrl.substringAfter("://") },
+            userId = s.userId,
+            userName = s.userName,
+            imageUrl = s.imageTag?.let { tag ->
+                URLBuilder(s.serverUrl).apply {
+                    appendPathSegments("UserImage")
+                    parameters.append("userId", s.userId.replace("-", ""))
+                    parameters.append("tag", tag)
+                }.buildString()
+            },
+        )
+    }
+
+    override suspend fun switchAccount(key: String): SessionState {
+        val session = sessionStorage.select(key) ?: return SessionState.NONE
+        use(session)
         return checkSession()
+    }
+
+    override suspend fun forgetAccount(key: String) {
+        require(key != accountKey) { "Sign out of the current account instead" }
+        val session = sessionStorage.all().firstOrNull { it.key == key } ?: return
+        sessionStorage.remove(key)
+        // Revoke its token so the server's device list stays tidy; fine if the server is away.
+        runCatching {
+            http.post("${session.serverUrl.trimEnd('/')}/Sessions/Logout") {
+                header("Authorization", authHeader(session.accessToken))
+            }
+        }
     }
 
     override suspend fun checkSession(): SessionState = try {
@@ -212,6 +256,7 @@ class JellyfinClient(
     private fun selectServer(serverUrl: String) {
         baseUrl = serverUrl.trimEnd('/')
         token = null
+        accountKey = null
     }
 
     override suspend fun login(serverUrl: String, username: String, password: String) {
@@ -258,15 +303,17 @@ class JellyfinClient(
     private suspend fun finishLogin(result: AuthenticationResultDto) {
         val accessToken = requireNotNull(result.accessToken) { "Server returned no access token" }
         val user = requireNotNull(result.user) { "Server returned no user" }
-        token = accessToken
-        userId = normalizeId(user.id)
-        sessionStorage.save(StoredSession(base(), accessToken, normalizeId(user.id), user.name.orEmpty()))
+        val serverName = runCatching { get("System", "Info", "Public").decode<PublicSystemInfoDto>().serverName }.getOrNull().orEmpty()
+        val session = StoredSession(base(), accessToken, normalizeId(user.id), user.name.orEmpty(), serverName, user.primaryImageTag)
+        use(session)
+        sessionStorage.save(session)
     }
 
     override suspend fun logout() {
         runCatching { post<Unit>("Sessions", "Logout") }
         sessionStorage.clear()
         token = null
+        accountKey = null
     }
 
     // ---- Per-user storage ----
@@ -479,7 +526,9 @@ class JellyfinClient(
 
     // ---- Playback ----
 
-    override fun authorizationHeader(): String = buildString {
+    override fun authorizationHeader(): String = authHeader(token)
+
+    private fun authHeader(token: String?): String = buildString {
         fun param(name: String, value: String) = append(name).append("=\"").append(value.encodeURLParameter()).append('"')
         append("MediaBrowser ")
         param("Client", identity.clientName); append(", ")

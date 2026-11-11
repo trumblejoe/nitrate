@@ -57,7 +57,7 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf(false) }
     if (editing) PageEditor("Home", vm, repository, libraryId = null, onDone = { editing = false })
-    val signOut: () -> Unit = { scope.launch { repository.logout(); onSignOut() } }
+    val signOut: () -> Unit = onSignOut
 
     // Refresh "Continue Watching" when returning from the player or details.
     var firstResume by remember { mutableStateOf(true) }

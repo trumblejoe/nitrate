@@ -9,6 +9,9 @@ import dev.nitrate.android.storage.PlaybackSettingsStore
 import dev.nitrate.android.storage.PluginStore
 import dev.nitrate.android.storage.SearchHistoryStore
 import dev.nitrate.android.storage.SessionStore
+import dev.nitrate.android.storage.ProfileStore
+import dev.nitrate.core.model.SessionState
+import kotlinx.coroutines.flow.first
 import dev.nitrate.core.events.ServerEvent
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
@@ -104,6 +107,57 @@ class AppContainer(
     /** Re-reads the account, after sign-in or when the server comes back. */
     suspend fun refreshAccount() {
         accountState.value = runCatching { server.account() }.getOrNull()
+    }
+
+    /** PIN locks and "who's watching" for the accounts saved here. */
+    val profiles by lazy { ProfileStore(appContext) }
+
+    /** After signing in or switching account: settings, account details and the live connection. */
+    suspend fun onSignedIn() {
+        settingsSync.pull()
+        remote.start()
+        refreshAccount()
+    }
+
+    /** Switches to a saved account; on VALID everything follows the new user. */
+    suspend fun switchAccount(key: String): SessionState {
+        leaveSession()
+        val state = server.switchAccount(key)
+        if (state == SessionState.VALID) onSignedIn()
+        return state
+    }
+
+    /** Signs out of the current account and forgets it here. */
+    suspend fun signOut() {
+        leaveSession()
+        server.currentAccountKey?.let { profiles.forget(it) }
+        server.logout()
+    }
+
+    /** Forgets a saved account that isn't current. */
+    suspend fun forgetAccount(key: String) {
+        profiles.forget(key)
+        server.forgetAccount(key)
+    }
+
+    /** Where to go at startup or after signing out: true when the "who's watching" picker should show. */
+    suspend fun shouldPickProfile(state: SessionState): Boolean {
+        val saved = server.savedAccounts()
+        return when (state) {
+            SessionState.NONE -> saved.isNotEmpty()
+            SessionState.VALID -> {
+                val current = server.currentAccountKey
+                // A locked profile can't be reopened without its PIN.
+                (current != null && profiles.hasPin(current)) || (saved.size > 1 && profiles.askAtStart.first())
+            }
+            else -> false
+        }
+    }
+
+    private suspend fun leaveSession() {
+        if (syncPlay.inGroup) syncPlay.leave()
+        remote.stop()
+        accountState.value = null
     }
 
     /** Free space where downloads are saved. */

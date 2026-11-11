@@ -116,7 +116,7 @@ class JellyfinContractTest {
         client.finishQuickConnect(server, "s")
         client.login(server, "joe", "pw")
         assertEquals("$DASHED", client.userId)
-        assertEquals(StoredSession(server, "tok", DASHED, "joe"), storage.session)
+        assertEquals(StoredSession(server, "tok", DASHED, "joe", serverName = "Home"), storage.session)
         client.checkSession()
 
         assertEquals(mapOf("a" to "1"), client.loadCustomPrefs())

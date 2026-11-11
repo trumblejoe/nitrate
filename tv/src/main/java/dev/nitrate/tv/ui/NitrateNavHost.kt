@@ -76,6 +76,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
 @Serializable object WatchTogetherRoute
+@Serializable object ProfilesRoute
 
 /** [queue] is comma-separated item ids to play after [itemId]. */
 @Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1)
@@ -84,10 +85,12 @@ import kotlinx.serialization.Serializable
 fun NitrateNavHost(container: AppContainer) {
     var start by remember { mutableStateOf<Any?>(null) }
     LaunchedEffect(Unit) {
-        start = when (container.server.restoreSession()) {
-            SessionState.VALID -> { container.settingsSync.pull(); container.refreshAccount(); container.remote.start(); HomeRoute }
-            SessionState.UNREACHABLE -> OfflineRoute
-            SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
+        val state = container.server.restoreSession()
+        start = when {
+            container.shouldPickProfile(state) -> ProfilesRoute
+            state == SessionState.VALID -> { container.onSignedIn(); HomeRoute }
+            state == SessionState.UNREACHABLE -> OfflineRoute
+            else -> ConnectRoute
         }
     }
 
@@ -118,6 +121,14 @@ fun NitrateNavHost(container: AppContainer) {
         startDestination = startRoute,
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
     ) {
+        composable<ProfilesRoute> {
+            dev.nitrate.tv.ui.profiles.ProfilesScreen(
+                container,
+                onOpened = { nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } } },
+                onSignInAgain = { a -> nav.navigate(LoginRoute(a.serverUrl, a.serverName)) },
+                onAdd = { nav.navigate(ConnectRoute) },
+            )
+        }
         composable<ConnectRoute> {
             ConnectScreen(
                 repository = container.server,
@@ -131,9 +142,7 @@ fun NitrateNavHost(container: AppContainer) {
                 serverUrl = route.serverUrl,
                 serverName = route.serverName,
                 onLoggedIn = {
-                    container.settingsSync.pull()
-                    scope.launch { container.refreshAccount() }
-                    container.remote.start()
+                    scope.launch { container.onSignedIn() }
                     nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
                 },
             )
@@ -148,11 +157,15 @@ fun NitrateNavHost(container: AppContainer) {
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 changes = container.serverChanges,
                 pinnedPages = rememberCustomPages(container).filter { it.pinned }.map { p -> p.title to { nav.navigate(CustomPageRoute(p.id)) } },
-                extraActions = listOf("Watch together" to { nav.navigate(WatchTogetherRoute) }, "Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
+                extraActions = listOf("Switch user" to { nav.navigate(ProfilesRoute) }, "Watch together" to { nav.navigate(WatchTogetherRoute) }, "Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
                     (if (account?.isAdmin == true) listOf("Server" to { nav.navigate(ServerAdminRoute) }) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.pluginId)) } },
                 onSignOut = {
-                    nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } }
+                    scope.launch {
+                        container.signOut()
+                        val next: Any = if (container.server.savedAccounts().isNotEmpty()) ProfilesRoute else ConnectRoute
+                        nav.navigate(next) { popUpTo(0) { inclusive = true } }
+                    }
                 },
             )
         }

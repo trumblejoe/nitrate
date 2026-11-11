@@ -82,8 +82,16 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                 headlineContent = { Text(actions.server.serverUrl ?: "Not signed in") },
                 supportingContent = { Text("Server") },
                 trailingContent = {
-                    OutlinedButton(onClick = { scope.launch { actions.server.logout(); onSignedOut() } }) { Text("Sign out") }
+                    OutlinedButton(onClick = { scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") }
                 },
+            )
+        }
+        item {
+            ListItem(
+                modifier = Modifier.clickable { actions.nav.navigate(ProfilesRoute) },
+                headlineContent = { Text("Switch account") },
+                supportingContent = { Text("Other users and servers, PINs for profiles") },
+                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
             )
         }
 
