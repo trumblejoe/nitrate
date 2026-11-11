@@ -100,18 +100,21 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
     // Album covers are square.
     val square = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
     val shape = if (square) CardShape.SQUARE else CardShape.POSTER
+    // Artwork view: wide pictures (backdrops and thumbs) instead of posters.
+    val artwork = options.view == BrowseView.ARTWORK && !square
+    val cardShape = if (artwork) CardShape.WIDE else shape
 
     // Load the next page near the end.
     LaunchedEffect(grid, list, options.view) {
         snapshotFlow {
-            if (options.view == BrowseView.GRID) grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            if (options.view != BrowseView.LIST) grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             else list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
         }.collect { last -> if (last >= state.items.size - 20) vm.loadMore() }
     }
     fun jump(letter: String) {
         scope.launch {
             val index = vm.positionOf(letter) ?: return@launch
-            if (options.view == BrowseView.GRID) grid.scrollToItem(index) else list.scrollToItem(index)
+            if (options.view != BrowseView.LIST) grid.scrollToItem(index) else list.scrollToItem(index)
         }
     }
 
@@ -123,8 +126,8 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                 state.error != null && state.items.isEmpty() -> ErrorMessage(state.error ?: "", vm::retry)
                 state.loading -> Loading()
                 state.items.isEmpty() -> EmptyResults(options) { vm.update { it.clearFilters() } }
-                options.view == BrowseView.GRID -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = if (square) 140.dp else 110.dp),
+                options.view != BrowseView.LIST -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = if (artwork) 240.dp else if (square) 140.dp else 110.dp),
                     state = grid,
                     contentPadding = padding,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -134,8 +137,8 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                     items(state.items, key = { it.id }) { item ->
                         MediaCard(
                             item = item,
-                            imageUrl = actions.server.cardImage(item, shape),
-                            shape = shape,
+                            imageUrl = actions.server.cardImage(item, cardShape),
+                            shape = cardShape,
                             title = item.name,
                             subtitle = if (square) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
                             onClick = { actions.open(item) },
@@ -187,13 +190,24 @@ private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOpti
         )
         Spacer(Modifier.weight(1f))
         if (total >= 0) Text("$total", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        val next = if (options.view == BrowseView.GRID) BrowseView.LIST else BrowseView.GRID
-        FilterChip(
-            selected = false,
-            onClick = { onChange { it.copy(view = next) } },
-            label = { Text(options.view.label) },
-            leadingIcon = { if (options.view == BrowseView.LIST) Icon(Icons.AutoMirrored.Filled.List, null) },
-        )
+        var viewMenu by remember { mutableStateOf(false) }
+        Box {
+            FilterChip(
+                selected = false,
+                onClick = { viewMenu = true },
+                label = { Text(options.view.label) },
+                leadingIcon = { if (options.view == BrowseView.LIST) Icon(Icons.AutoMirrored.Filled.List, null) },
+            )
+            DropdownMenu(viewMenu, onDismissRequest = { viewMenu = false }) {
+                BrowseView.entries.forEach { v ->
+                    DropdownMenuItem(
+                        text = { Text(v.label) },
+                        trailingIcon = { if (v == options.view) Icon(Icons.Default.Check, null) },
+                        onClick = { onChange { it.copy(view = v) }; viewMenu = false },
+                    )
+                }
+            }
+        }
     }
 }
 

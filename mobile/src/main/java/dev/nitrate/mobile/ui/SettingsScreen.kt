@@ -211,7 +211,6 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
         )
     }
     item(key = "black") { Toggle("True black", "Pure black backgrounds, for OLED screens", prefs.trueBlack) { v -> update { it.copy(trueBlack = v) } } }
-    item(key = "hero") { Toggle("Home hero", "The big rotating picture at the top of Home", prefs.homeHero) { v -> update { it.copy(homeHero = v) } } }
     item(key = "titles") {
         Choice("Titles under cards", prefs.cardTitles.label) { update { it.copy(cardTitles = CardTitles.entries[(it.cardTitles.ordinal + 1) % CardTitles.entries.size]) } }
     }

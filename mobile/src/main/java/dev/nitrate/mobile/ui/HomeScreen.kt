@@ -1,5 +1,15 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.layout.aspectRatio
+import dev.nitrate.core.model.ImageKind
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.lazy.LazyRow
+import dev.nitrate.core.rows.RowStyle
+import dev.nitrate.core.rows.RowDisplay
+import dev.nitrate.core.rows.ArtworkFirst
 import dev.nitrate.core.pages.facts
 import dev.nitrate.core.pages.isSpoiler
 import dev.nitrate.core.pages.PageKeys
@@ -76,24 +86,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
-/** Picks what the hero shows: the newest movies and shows, then anything else, up to six. */
-fun featuredItems(rows: List<MediaRow>): List<MediaItem> {
-    val latest = rows.filter { it.key.startsWith("home/latest/") }.map { r -> r.items.filter { it.kind == ItemKind.MOVIE || it.kind == ItemKind.SERIES } }
-    // Interleave libraries so one doesn't take every slot.
-    val interleaved = (0 until (latest.maxOfOrNull { it.size } ?: 0)).flatMap { i -> latest.mapNotNull { it.getOrNull(i) } }
-    val fallback = rows.flatMap { it.items }.filter { it.kind == ItemKind.MOVIE || it.kind == ItemKind.SERIES }
-    return (interleaved + fallback).distinctBy { it.id }.take(6)
-}
-
+/** Home: the user's rows, artwork first, each styled from its own header. */
 @Composable
 fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val container = actions.container
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges) }
+    // Artwork first: rows the user hasn't styled show as showcases or artwork, not posters.
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges, ArtworkFirst::display) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     var refreshing by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
-    val prefs = LocalDisplayPrefs.current
     if (editing) PageEditor("Home", vm, actions, libraryId = null, onDone = { editing = false })
 
     // Refresh "Continue Watching" when coming back from the player or details.
@@ -108,30 +110,25 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
         RowsState.Loading -> Loading(modifier)
         is RowsState.Error -> ErrorMessage(s.message, vm::refresh, modifier)
         is RowsState.Loaded -> {
-            val featured = remember(s.rows) { featuredItems(s.rows) }
-            val pager = rememberPagerState { featured.size }
-            val current = featured.getOrNull(pager.currentPage)
-            val tint by rememberArtworkColor(current?.let { actions.server.backdropUrl(it) ?: actions.server.imageUrl(it) })
+            // The page takes its colour from the first piece of artwork on it.
+            val lead = s.rows.firstOrNull { it.items.isNotEmpty() && !it.key.endsWith("my_media") }?.items?.firstOrNull()
+            val tint by rememberArtworkColor(lead?.let { actions.server.backdropUrl(it) ?: actions.server.imageUrl(it) })
             val list = rememberLazyListState()
 
             TintedBackdrop(tint, modifier) {
                 PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; vm.refresh(); refreshing = false }) {
                     LazyColumn(state = list, contentPadding = PaddingValues(bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(28.dp), modifier = Modifier.fillMaxSize()) {
-                        if (featured.isNotEmpty() && prefs.homeHero) {
-                            item(key = "hero") { HeroCarousel(featured, pager, actions) }
-                        } else {
-                            // Room for the wordmark bar when there's no hero under it.
-                            item(key = "top") { Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars).height(56.dp)) }
-                        }
+                        // Room for the wordmark bar.
+                        item(key = "top") { Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars).height(56.dp)) }
                         item(key = "pages") { PinnedPages(actions) }
-                        items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions) }
+                        items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) }
                         item(key = "edit") {
                             Box(Modifier.fillMaxWidth(), Alignment.Center) { PillButton("Edit Home", Icons.Default.Edit, primary = false, onClick = { editing = true }) }
                         }
                     }
                 }
-                // Wordmark and search over the hero; a scrim fades in once the hero scrolls away.
-                val scrolled = list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 200
+                // Wordmark and search; a scrim fades in once the page scrolls under them.
+                val scrolled = list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 40
                 val scrim by androidx.compose.animation.core.animateFloatAsState(if (scrolled) 0.92f else 0f, label = "scrim")
                 Row(
                     Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background.copy(alpha = scrim)).windowInsetsPadding(WindowInsets.statusBars)
@@ -156,82 +153,6 @@ fun Wordmark(modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun HeroCarousel(items: List<MediaItem>, pager: PagerState, actions: AppActions) {
-    val scope = rememberCoroutineScope()
-    // Moves on every 7 seconds, unless the user is swiping.
-    LaunchedEffect(pager.settledPage, items.size) {
-        if (items.size < 2) return@LaunchedEffect
-        delay(7_000)
-        if (!pager.isScrollInProgress) pager.animateScrollToPage((pager.settledPage + 1) % items.size)
-    }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val height = (maxWidth * 1.32f).coerceAtMost(640.dp).coerceAtLeast(420.dp)
-        Box(Modifier.fillMaxWidth().height(height)) {
-            HorizontalPager(pager, Modifier.fillMaxSize(), key = { items[it].id }) { page ->
-                val item = items[page]
-                val offset = (pager.currentPage - page) + pager.currentPageOffsetFraction
-                HeroPage(item, actions.server, offset, onPlay = { actions.playOrOpen(item) }, onOpen = { actions.open(item, "hero-${item.id}") })
-            }
-            // Page dots: the current one stretches into a bar.
-            Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items.indices.forEach { i ->
-                    val w by animateDpAsState(if (i == pager.currentPage) 22.dp else 6.dp, label = "dot")
-                    Box(
-                        Modifier.width(w).height(6.dp).clip(CircleShape)
-                            .background(if (i == pager.currentPage) accentColor() else Color.White.copy(alpha = 0.35f))
-                            .pressable({ scope.launch { pager.animateScrollToPage(i) } }),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HeroPage(item: MediaItem, server: MediaServer, offset: Float, onPlay: () -> Unit, onOpen: () -> Unit) {
-    val bg = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxSize()) {
-        // Parallax: the picture moves at half the page's speed.
-        AsyncImage(
-            server.backdropUrl(item) ?: server.imageUrl(item, maxHeight = 1080),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().sharedArtwork("hero-${item.id}").fadeBottom(0.6f).graphicsLayer {
-                translationX = offset * size.width * 0.5f
-                val s = 1.08f - 0.06f * (1f - offset.absoluteValue.coerceIn(0f, 1f))
-                scaleX = s; scaleY = s
-            },
-        )
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x99000000), 0.22f to Color.Transparent, 1f to Color.Transparent)))
-        Column(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = ScreenPadding, end = ScreenPadding, bottom = 26.dp)
-                .graphicsLayer { alpha = 1f - offset.absoluteValue.coerceIn(0f, 1f) * 1.4f; translationX = offset * 60f },
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            val logo = server.logoUrl(item)?.takeIf { LocalDisplayPrefs.current.logos }
-            if (logo != null) {
-                AsyncImage(logo, item.name, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart, modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 110.dp))
-            } else {
-                Text(item.name, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            val prefs = LocalDisplayPrefs.current
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                prefs.facts(item).forEach { GlassChip(it) }
-            }
-            if (item.genres.isNotEmpty() && prefs.genres) {
-                Text(item.genres.take(3).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            }
-            item.overview?.takeIf { prefs.overview }?.let { Text(it, color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
-                PillButton(if (item.kind == ItemKind.SERIES) "Watch" else if (item.user.positionMs > 0) "Resume" else "Play", Icons.Default.PlayArrow, primary = true, onClick = onPlay)
-                PillButton("Details", Icons.Default.Info, primary = false, onClick = onOpen)
-            }
-        }
-    }
-}
-
-
 /** A big rounded button: accent-filled when [primary], glass otherwise. */
 @Composable
 fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector?, primary: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -251,16 +172,19 @@ fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVec
     }
 }
 
-/** A row in the cinematic style, as wide cards or posters per the row's [display] setting. */
+/**
+ * A row as posters, artwork (wide pictures) or a showcase (big swipeable artwork cards), per the
+ * row's [display]. With [onDisplay], the header offers the choice.
+ */
 @Composable
-fun CinematicRow(row: MediaRow, display: dev.nitrate.core.rows.RowDisplay, actions: AppActions) {
-    val wide = display.style != dev.nitrate.core.rows.RowStyle.POSTER
+fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
     Column {
-        SectionHeader(row.title)
-        androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(row.items, key = { it.id }) { item ->
-                val key = "${row.key}-${item.id}"
-                if (wide) {
+        SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(display, onDisplay) }
+        when (display.style) {
+            RowStyle.SHOWCASE -> ShowcaseRow(row, actions)
+            RowStyle.WIDE -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                items(row.items, key = { it.id }) { item ->
+                    val key = "${row.key}-${item.id}"
                     MediaCard(
                         item = item,
                         imageUrl = actions.server.cardImage(item, CardShape.WIDE),
@@ -271,7 +195,11 @@ fun CinematicRow(row: MediaRow, display: dev.nitrate.core.rows.RowDisplay, actio
                         sharedKey = key,
                         onClick = { actions.open(item, key) },
                     )
-                } else {
+                }
+            }
+            RowStyle.POSTER -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                items(row.items, key = { it.id }) { item ->
+                    val key = "${row.key}-${item.id}"
                     MediaCard(
                         item = item,
                         imageUrl = actions.server.cardImage(item, CardShape.POSTER),
@@ -283,6 +211,86 @@ fun CinematicRow(row: MediaRow, display: dev.nitrate.core.rows.RowDisplay, actio
                         onClick = { actions.open(item, key) },
                     )
                 }
+            }
+        }
+    }
+}
+
+/** The row's look, changed in place: Posters, Artwork or Showcase, and titles. */
+@Composable
+private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Text(
+            display.style.label,
+            style = MaterialTheme.typography.labelLarge,
+            color = accentColor(),
+            modifier = Modifier.clip(RoundedCornerShape(14.dp)).pressable({ open = true }).padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+        DropdownMenu(open, onDismissRequest = { open = false }) {
+            RowStyle.entries.forEach { style ->
+                DropdownMenuItem(
+                    text = { Text(style.label) },
+                    trailingIcon = { if (style == display.style) Icon(Icons.Default.Check, null) },
+                    onClick = { onDisplay(display.copy(style = style)); open = false },
+                )
+            }
+            if (display.style != RowStyle.SHOWCASE) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Titles under pictures") },
+                    trailingIcon = { if (display.showTitles) Icon(Icons.Default.Check, null) },
+                    onClick = { onDisplay(display.copy(showTitles = !display.showTitles)); open = false },
+                )
+            }
+        }
+    }
+}
+
+/** Big artwork cards, one screen-width at a time: logo or title, facts and Play over the picture. */
+@Composable
+private fun ShowcaseRow(row: MediaRow, actions: AppActions) {
+    val state = rememberLazyListState()
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val cardWidth = (maxWidth - ScreenPadding * 2).coerceAtMost(560.dp)
+        LazyRow(
+            state = state,
+            contentPadding = PaddingValues(horizontal = ScreenPadding),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(state),
+        ) {
+            items(row.items, key = { it.id }) { item ->
+                val key = "${row.key}-${item.id}"
+                ShowcaseCard(item, actions, key, Modifier.width(cardWidth))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShowcaseCard(item: MediaItem, actions: AppActions, sharedKey: String, modifier: Modifier) {
+    val server = actions.server
+    val prefs = LocalDisplayPrefs.current
+    Box(modifier.aspectRatio(4f / 3f).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.06f)).pressable({ actions.open(item, sharedKey) })) {
+        AsyncImage(
+            server.backdropUrl(item) ?: server.imageUrl(item, ImageKind.THUMB, 720) ?: server.imageUrl(item, maxHeight = 720),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey),
+        )
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color(0xE6000000))))
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val logo = server.logoUrl(item)?.takeIf { prefs.logos }
+            if (logo != null) {
+                AsyncImage(logo, item.displayTitle, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart, modifier = Modifier.widthIn(max = 220.dp).heightIn(max = 72.dp))
+            } else {
+                Text(item.displayTitle, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            item.episodeLabel?.let { Text(it, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge) }
+            val facts = prefs.facts(item)
+            if (facts.isNotEmpty()) Text(facts.take(4).joinToString("  ·  "), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 2.dp)) {
+                PillButton(if (item.kind == ItemKind.SERIES) "Watch" else if (item.user.positionMs > 0) "Resume" else "Play", Icons.Default.PlayArrow, primary = true, onClick = { actions.playOrOpen(item) })
             }
         }
     }

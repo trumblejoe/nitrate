@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.filled.Search
@@ -69,10 +70,10 @@ val NavBarClearance = 96.dp
 
 /** Every tab full-bleed, with a floating glass navigation pill over it. */
 @Composable
-fun MainScreen(actions: AppActions, onSignedOut: () -> Unit) {
+fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut: () -> Unit) {
     val enabled by actions.container.plugins.enabledIds.collectAsState(emptySet())
     val tabs = Tab.entries.filter { it != Tab.WRITING || WritingPlugin.id in enabled }
-    var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
+    var tab by rememberSaveable { mutableStateOf(if (startOnLibrary) Tab.LIBRARIES else Tab.HOME) }
     if (tab !in tabs) tab = Tab.HOME
     // Back from another tab returns Home rather than leaving the app.
     BackHandler(enabled = tab != Tab.HOME) { tab = Tab.HOME }
@@ -113,13 +114,20 @@ private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Column {
                     Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-                    Text("Library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 12.dp, bottom = 16.dp))
-                    CustomPagesSection(actions)
-                    Text("Libraries", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+                    Text("Library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
                 }
             }
             items(result.getOrThrow(), key = { it.id }) { view ->
                 MediaCard(view, actions.server.cardImage(view, CardShape.WIDE), CardShape.WIDE, onClick = { actions.open(view) }, title = view.name, sharedKey = "lib-${view.id}")
+            }
+            // Your own pages come after the libraries, out of the way.
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.padding(top = 12.dp).layout { measurable, constraints ->
+                    // Run edge to edge like rows elsewhere (the grid adds its own side padding).
+                    val extra = (ScreenPadding * 2).roundToPx()
+                    val placeable = measurable.measure(constraints.copy(maxWidth = constraints.maxWidth + extra, minWidth = constraints.maxWidth + extra))
+                    layout(constraints.maxWidth, placeable.height) { placeable.place(-extra / 2, 0) }
+                }) { CustomPagesSection(actions) }
             }
         }
     }

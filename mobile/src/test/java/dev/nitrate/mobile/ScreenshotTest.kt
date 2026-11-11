@@ -220,6 +220,23 @@ class ScreenshotTest {
 
     @Test fun liveTv() = shoot("phone-live-tv") { dev.nitrate.mobile.ui.LiveTvScreen(it) }
 
+    @Test fun libraryTab() = shoot("phone-library-tab") { MainScreen(it, onSignedOut = {}, startOnLibrary = true) }
+
+    @Test fun libraryRecommended() = shoot("phone-library-movies") { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies") }
+
+    @Test fun browseArtwork() = shoot("phone-browse-artwork", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.ARTWORK))
+    }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
+    @Test fun showcaseRow() = shoot("phone-showcase-row") { a ->
+        val rows = androidx.compose.runtime.produceState<List<dev.nitrate.core.rows.MediaRow>>(emptyList()) { value = a.server.homeRows() }.value
+        rows.firstOrNull { it.key.startsWith("home/latest/") }?.let { row ->
+            androidx.compose.foundation.layout.Column(Modifier.padding(top = 24.dp)) {
+                dev.nitrate.mobile.ui.CinematicRow(row, dev.nitrate.core.rows.RowDisplay(style = dev.nitrate.core.rows.RowStyle.SHOWCASE), a, onDisplay = {})
+            }
+        }
+    }
+
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 
     @Test

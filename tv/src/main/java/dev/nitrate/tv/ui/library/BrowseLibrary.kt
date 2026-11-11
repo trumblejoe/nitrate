@@ -101,7 +101,11 @@ fun BrowseLibrary(
 
     // Album covers are square.
     val music = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
-    val columns = if (options.view == BrowseView.GRID) (if (music) 6 else 7) else 2
+    val columns = when (options.view) {
+        BrowseView.GRID -> if (music) 6 else 7
+        BrowseView.ARTWORK -> if (music) 6 else 4
+        BrowseView.LIST -> 2
+    }
     // The header, options bar and A–Z row are the grid's first items.
     val leading = if (options.alphabetical) 3 else 2
     LazyVerticalGrid(
@@ -117,8 +121,8 @@ fun BrowseLibrary(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { dialog = "sort" }) { Text("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}") }
                 OutlinedButton(onClick = { dialog = "filters" }) { Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") }
-                OutlinedButton(onClick = { vm.update { it.copy(view = if (it.view == BrowseView.GRID) BrowseView.LIST else BrowseView.GRID) } }) {
-                    Text(if (options.view == BrowseView.GRID) "Show as list" else "Show as grid")
+                OutlinedButton(onClick = { vm.update { it.copy(view = BrowseView.entries[(it.view.ordinal + 1) % BrowseView.entries.size]) } }) {
+                    Text("View: ${options.view.label}")
                 }
                 if (options.filterCount > 0) OutlinedButton(onClick = { vm.update { it.clearFilters() } }) { Text("Clear filters") }
                 if (state.total >= 0) Text("${state.total} items", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -156,12 +160,13 @@ fun BrowseLibrary(
             else -> items(state.items.size, key = { state.items[it].id }) { i ->
                 val item = state.items[i]
                 val focus = if (i == jumpedTo) Modifier.focusRequester(jumpFocus) else Modifier
-                if (options.view == BrowseView.GRID) {
+                if (options.view != BrowseView.LIST) {
+                    val artwork = options.view == BrowseView.ARTWORK && !music
                     MediaCard(
                         item = item,
-                        imageUrl = repository.imageUrl(item, ImageKind.PRIMARY, 360),
+                        imageUrl = if (artwork) repository.imageUrl(item, ImageKind.THUMB, 360) ?: repository.backdropUrl(item) else repository.imageUrl(item, ImageKind.PRIMARY, 360),
                         width = null,
-                        aspectRatio = if (music) 1f else 2f / 3f,
+                        aspectRatio = if (music) 1f else if (artwork) 16f / 9f else 2f / 3f,
                         title = item.name,
                         subtitle = if (music) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
                         onClick = { onOpen(item) },

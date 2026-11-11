@@ -10,9 +10,9 @@ enum class RowStyle(val label: String) {
     POSTER("Posters"),
 
     /** 16:9 Thumb images, falling back to backdrops. */
-    WIDE("Wide"),
+    WIDE("Artwork"),
 
-    /** One item at a time with full-screen artwork while the row is focused. */
+    /** Big artwork, one item at a time (TV: full screen while focused; phone: large swipeable cards). */
     SHOWCASE("Showcase"),
 }
 
@@ -43,6 +43,15 @@ data class ShowcaseOptions(
     /** Cycle through an item's backdrops while it is shown. */
     val rotateArtwork: Boolean = false,
 )
+
+/** Defaults that put artwork first: "Latest" rows as showcases, other poster rows as titled artwork. */
+object ArtworkFirst {
+    fun display(row: MediaRow): RowDisplay = when {
+        row.defaultDisplay.style != RowStyle.POSTER -> row.defaultDisplay
+        row.key.startsWith("home/latest/") -> row.defaultDisplay.copy(style = RowStyle.SHOWCASE)
+        else -> row.defaultDisplay.copy(style = RowStyle.WIDE, showTitles = true)
+    }
+}
 
 /**
  * A row on the home or a library page.

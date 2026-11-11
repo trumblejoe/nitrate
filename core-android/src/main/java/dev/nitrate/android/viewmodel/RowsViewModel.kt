@@ -44,6 +44,8 @@ class RowsViewModel(
     private val server: MediaServer,
     /** Fires when the server says something changed (new items, watch state); rows reload quietly. */
     private val changes: Flow<Unit> = emptyFlow(),
+    /** A row's look until the user picks one (e.g. artwork-first on the phone's Home). */
+    private val defaults: (MediaRow) -> RowDisplay = { it.defaultDisplay },
 ) : ViewModel() {
     private val userId = server.userId
     private val builtIn = MutableStateFlow<Result<List<MediaRow>>?>(null)
@@ -88,7 +90,7 @@ class RowsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            val result = runCatching { loadBuiltIn() }
+            val result = runCatching { loadBuiltIn().map { it.copy(defaultDisplay = defaults(it)) } }
             result.getOrNull()?.forEach { knownTitles[it.key] = it.title }
             // Keep showing old rows if a background refresh fails.
             if (result.isSuccess || builtIn.value?.isSuccess != true) builtIn.value = result

@@ -68,7 +68,7 @@ private fun rememberCustomPages(actions: AppActions): List<CustomPage> {
     return flow.collectAsState(emptyList()).value
 }
 
-/** Custom pages pinned to Home, as a row of chips under the hero. */
+/** Custom pages pinned to Home, as a row of chips at the top. */
 @Composable
 fun PinnedPages(actions: AppActions) {
     val pages = rememberCustomPages(actions).filter { it.pinned }
@@ -93,10 +93,20 @@ fun CustomPagesSection(actions: AppActions) {
     val pages = rememberCustomPages(actions)
     var creating by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Your pages", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(pages, key = { it.id }) { page -> PageTile(page.title, onClick = { actions.nav.navigate(CustomPageRoute(page.id)) }) }
-            item(key = "new") { PageTile("New page", onClick = { creating = true }, isNew = true) }
+        SectionHeader("Your pages", Modifier.padding(top = 8.dp)) {
+            TextButton(onClick = { creating = true }) { Text("+ New page", color = accentColor()) }
+        }
+        if (pages.isEmpty()) {
+            Text(
+                "Pages of your own: rows from any filter, collection or playlist. Pin one to Home.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = ScreenPadding),
+            )
+        } else {
+            LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(pages, key = { it.id }) { page -> PageTile(page.title, onClick = { actions.nav.navigate(CustomPageRoute(page.id)) }) }
+            }
         }
     }
     if (creating) {
@@ -197,7 +207,7 @@ fun CustomPageScreen(actions: AppActions, pageId: String, editNow: Boolean) {
                             PillButton("Add rows", Icons.Default.Add, primary = true, onClick = { editing = true })
                         }
                     }
-                    items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions) }
+                    items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) }
                 }
             }
         }

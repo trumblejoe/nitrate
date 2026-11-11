@@ -4,9 +4,9 @@ import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.ItemKind
 import kotlinx.serialization.Serializable
 
-/** How a library's full list is shown: grid of posters, or a list with details. */
+/** How a library's full list is shown: a grid of posters or of artwork, or a list with details. */
 @Serializable
-enum class BrowseView(val label: String) { GRID("Grid"), LIST("List") }
+enum class BrowseView(val label: String) { GRID("Posters"), ARTWORK("Artwork"), LIST("List") }
 
 /**
  * Sorting, filters and view for browsing one library, saved per library and user (synced like

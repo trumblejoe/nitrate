@@ -32,8 +32,6 @@ data class DisplayPrefs(
     val similar: Boolean = true,
     /** Blurs unwatched episode stills and hides their descriptions. */
     val hideSpoilers: Boolean = false,
-    /** The big rotating hero at the top of Home (phones). */
-    val homeHero: Boolean = true,
     val accent: AccentMode = AccentMode.ARTWORK,
     /** Pure black backgrounds (OLED). */
     val trueBlack: Boolean = false,
