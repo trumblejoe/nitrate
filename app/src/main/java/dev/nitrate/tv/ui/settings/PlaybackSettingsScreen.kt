@@ -42,6 +42,7 @@ fun PlaybackSettingsScreen(
     store: PlaybackSettingsStore,
     capabilities: DeviceCapabilities,
     onRunTest: () -> Unit,
+    onChannelTest: () -> Unit,
 ) {
     val settings by store.settings.collectAsState(PlaybackSettings())
     val scope = rememberCoroutineScope()
@@ -65,6 +66,7 @@ fun PlaybackSettingsScreen(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = onRunTest, modifier = Modifier.focusRequester(first)) { Text("Run playback test") }
+                    OutlinedButton(onClick = onChannelTest) { Text("Audio channel test") }
                     if (settings.learnedFailures.isNotEmpty()) {
                         OutlinedButton(onClick = { scope.launch { store.clearFailures() } }) {
                             Text("Forget ${settings.learnedFailures.size} learned failure(s)")

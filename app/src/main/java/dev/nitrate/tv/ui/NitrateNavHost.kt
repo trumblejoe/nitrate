@@ -24,6 +24,7 @@ import androidx.navigation.NavController
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
 import dev.nitrate.tv.ui.home.HomeScreen
+import dev.nitrate.tv.ui.settings.AudioChannelTestScreen
 import dev.nitrate.tv.ui.settings.PlaybackSettingsScreen
 import dev.nitrate.tv.ui.settings.PlaybackTestScreen
 import dev.nitrate.tv.ui.library.LibraryScreen
@@ -38,6 +39,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
 @Serializable object SettingsRoute
 @Serializable object PlaybackTestRoute
+@Serializable object AudioChannelTestRoute
 @Serializable data class LibraryRoute(val libraryId: String)
 @Serializable data class PlaylistRoute(val playlistId: String)
 
@@ -112,8 +114,10 @@ fun NitrateNavHost(container: AppContainer) {
                 store = container.playbackSettings,
                 capabilities = container.capabilities,
                 onRunTest = { nav.navigate(PlaybackTestRoute) },
+                onChannelTest = { nav.navigate(AudioChannelTestRoute) },
             )
         }
+        composable<AudioChannelTestRoute> { AudioChannelTestScreen() }
         composable<PlaybackTestRoute> {
             PlaybackTestScreen(store = container.playbackSettings, capabilities = container.capabilities)
         }
