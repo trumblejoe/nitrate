@@ -18,6 +18,8 @@ import androidx.navigation.toRoute
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.nitrate.tv.data.AppContainer
+import dev.nitrate.tv.data.SessionState
+import dev.nitrate.tv.ui.home.OfflineScreen
 import dev.nitrate.tv.ui.connect.ConnectScreen
 import dev.nitrate.tv.ui.details.DetailsScreen
 import androidx.navigation.NavController
@@ -42,6 +44,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ConnectRoute
 @Serializable data class LoginRoute(val serverUrl: String, val serverName: String)
 @Serializable object HomeRoute
+@Serializable object OfflineRoute
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
 @Serializable object SettingsRoute
 @Serializable object PlaybackTestRoute
@@ -58,9 +61,11 @@ import kotlinx.serialization.Serializable
 fun NitrateNavHost(container: AppContainer) {
     var start by remember { mutableStateOf<Any?>(null) }
     LaunchedEffect(Unit) {
-        val restored = container.repository.restoreSession()
-        if (restored) container.settingsSync.pull()
-        start = if (restored) HomeRoute else ConnectRoute
+        start = when (container.repository.restoreSession()) {
+            SessionState.VALID -> { container.settingsSync.pull(); HomeRoute }
+            SessionState.UNREACHABLE -> OfflineRoute
+            SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
+        }
     }
 
     val startRoute = start
@@ -105,6 +110,7 @@ fun NitrateNavHost(container: AppContainer) {
                 onOpen = nav::openItem,
                 onPlay = { item -> gate.play(item) },
                 onSettings = { nav.navigate(SettingsRoute) },
+                onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 extraActions = listOf("Plugins" to { nav.navigate(PluginsRoute) }) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.id)) } },
                 onSignOut = {
@@ -128,6 +134,18 @@ fun NitrateNavHost(container: AppContainer) {
                 capabilities = container.capabilities,
                 onRunTest = { nav.navigate(PlaybackTestRoute) },
                 onChannelTest = { nav.navigate(AudioChannelTestRoute) },
+            )
+        }
+        composable<OfflineRoute> {
+            OfflineScreen(
+                repository = container.repository,
+                screens = enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.id)) } },
+                onPlugins = { nav.navigate(PluginsRoute) },
+                onOnline = {
+                    container.settingsSync.pull()
+                    nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
+                },
+                onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
             )
         }
         composable<PluginsRoute> { PluginsScreen(container.plugins) }

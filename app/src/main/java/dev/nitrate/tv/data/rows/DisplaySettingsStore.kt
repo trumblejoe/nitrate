@@ -57,6 +57,14 @@ class DisplaySettingsStore(private val context: Context) {
         onChanged(userId)
     }
 
+    /** Whether this user has local changes the server hasn't received. Kept apart from [export]. */
+    suspend fun isDirty(userId: String): Boolean =
+        context.displayDataStore.data.first()[stringPreferencesKey("dirty_$userId")] == "1"
+
+    suspend fun setDirty(userId: String, dirty: Boolean) {
+        context.displayDataStore.edit { if (dirty) it[stringPreferencesKey("dirty_$userId")] = "1" else it.remove(stringPreferencesKey("dirty_$userId")) }
+    }
+
     /** All of a user's entries, name to JSON. */
     suspend fun export(userId: String): Map<String, String> {
         val prefix = prefix(userId)

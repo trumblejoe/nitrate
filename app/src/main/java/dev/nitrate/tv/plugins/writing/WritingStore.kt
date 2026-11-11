@@ -32,6 +32,19 @@ class WritingStore(context: Context, private val repository: JellyfinRepository)
 
     private fun file(id: String) = File(dir, "$id.fountain")
 
+    // Backups that haven't reached the server yet (offline, server down). Survive restarts.
+    private val pendingFile = File(dir, "pending-backup.json")
+
+    @Serializable
+    private data class Pending(val upload: Set<String> = emptySet(), val delete: Set<String> = emptySet())
+
+    private fun pending(): Pending = runCatching { json.decodeFromString<Pending>(pendingFile.readText()) }.getOrDefault(Pending())
+
+    private fun setPending(p: Pending) = pendingFile.writeText(json.encodeToString(p))
+
+    /** Number of scripts waiting to be backed up. */
+    val pendingCount: Int get() = pending().let { it.upload.size + it.delete.size }
+
     private fun scan(): List<WritingDoc> = dir.listFiles { f -> f.extension == "fountain" }.orEmpty()
         .map { WritingDoc(it.nameWithoutExtension, titleOf(it.readText()), it.lastModified()) }
         .sortedByDescending { it.modifiedMs }
@@ -53,23 +66,49 @@ class WritingStore(context: Context, private val repository: JellyfinRepository)
     suspend fun delete(id: String, backup: Boolean) {
         withContext(Dispatchers.IO) { file(id).delete() }
         _docs.value = scan()
-        if (backup) editBackup { it - id }
+        if (backup) {
+            backupLock.withLock { withContext(Dispatchers.IO) { pending().let { setPending(it.copy(upload = it.upload - id, delete = it.delete + id)) } } }
+            flushPending()
+        }
     }
 
-    /** Sends one document to the server copy. */
-    suspend fun backUp(id: String) {
-        val f = file(id)
-        if (!f.exists()) return
-        val entry = BackupEntry(withContext(Dispatchers.IO) { f.readText() }, f.lastModified())
-        editBackup { it + (id to json.encodeToString(entry)) }
+    /** Queues one document for the server copy and tries to send everything queued. */
+    suspend fun backUp(id: String): Boolean {
+        backupLock.withLock { withContext(Dispatchers.IO) { pending().let { setPending(it.copy(upload = it.upload + id)) } } }
+        return flushPending()
+    }
+
+    /**
+     * Sends queued uploads and deletions in one update. Returns true when nothing is left
+     * waiting; on failure (e.g. offline) everything stays queued for the next attempt.
+     */
+    suspend fun flushPending(): Boolean = backupLock.withLock {
+        val queued = withContext(Dispatchers.IO) { pending() }
+        if (queued.upload.isEmpty() && queued.delete.isEmpty()) return@withLock true
+        val ok = runCatching {
+            val current = repository.loadCustomPrefs(PREFS_ID)
+            val uploads = withContext(Dispatchers.IO) {
+                queued.upload.mapNotNull { id ->
+                    file(id).takeIf { it.exists() }?.let { f -> id to json.encodeToString(BackupEntry(f.readText(), f.lastModified())) }
+                }.toMap()
+            }
+            repository.saveCustomPrefs(current - queued.delete + uploads, PREFS_ID)
+        }.isSuccess
+        if (ok) {
+            // Only clear what was sent; edits made meanwhile stay queued.
+            withContext(Dispatchers.IO) { pending().let { setPending(Pending(it.upload - queued.upload, it.delete - queued.delete)) } }
+        }
+        ok && withContext(Dispatchers.IO) { pending().let { it.upload.isEmpty() && it.delete.isEmpty() } }
     }
 
     /** Brings in server copies that are newer than, or missing from, this TV. Returns how many. */
     suspend fun restore(): Int {
         val remote = runCatching { repository.loadCustomPrefs(PREFS_ID) }.getOrNull() ?: return 0
         var restored = 0
+        val deletedHere = withContext(Dispatchers.IO) { pending().delete }
         withContext(Dispatchers.IO) {
             for ((id, raw) in remote) {
+                if (id in deletedHere) continue
                 val entry = runCatching { json.decodeFromString<BackupEntry>(raw) }.getOrNull() ?: continue
                 val local = file(id)
                 if (!local.exists() || local.lastModified() < entry.modifiedMs) {
@@ -81,13 +120,6 @@ class WritingStore(context: Context, private val repository: JellyfinRepository)
         }
         _docs.value = scan()
         return restored
-    }
-
-    private suspend fun editBackup(change: (Map<String, String>) -> Map<String, String>) = backupLock.withLock {
-        runCatching {
-            val current = repository.loadCustomPrefs(PREFS_ID)
-            repository.saveCustomPrefs(change(current), PREFS_ID)
-        }
     }
 
     companion object {

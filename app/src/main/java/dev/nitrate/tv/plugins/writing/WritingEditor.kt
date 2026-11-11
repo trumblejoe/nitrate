@@ -76,6 +76,7 @@ private val ELEMENT_KEYS = mapOf(
 
 private const val AUTOSAVE_MS = 800L
 private const val BACKUP_MS = 5_000L
+private const val RETRY_MS = 60_000L
 
 /**
  * A keyboard-first Fountain editor. Used beside the video in the player ([playback] set) and
@@ -100,9 +101,13 @@ fun WritingEditor(
     val editorFocus = remember { FocusRequester() }
     val context = LocalContext.current
 
-    // Open the most recent document, after pulling in anything newer from the server.
+    // Open the most recent document, after sending anything written offline and pulling in
+    // anything newer from the server.
     LaunchedEffect(Unit) {
-        if (backup) store.restore().takeIf { it > 0 }?.let { status = "Restored $it from server" }
+        if (backup) {
+            store.flushPending()
+            store.restore().takeIf { it > 0 }?.let { status = "Restored $it from server" }
+        }
         val id = store.docs.value.firstOrNull()?.id ?: store.create()
         docId = id
         savedText = store.read(id)
@@ -131,8 +136,15 @@ fun WritingEditor(
         status = "Saved"
         if (backup) {
             delay(BACKUP_MS)
-            store.backUp(id)
-            status = "Saved · backed up"
+            status = if (store.backUp(id)) "Saved · backed up" else "Saved on this TV · backup waiting for server"
+        }
+    }
+
+    // Keep retrying queued backups while the editor is open, e.g. after working offline.
+    LaunchedEffect(backup) {
+        while (backup) {
+            delay(RETRY_MS)
+            if (store.pendingCount > 0 && store.flushPending()) status = "Saved · backed up"
         }
     }
 

@@ -2,6 +2,7 @@ package dev.nitrate.tv.data
 
 import org.jellyfin.sdk.Jellyfin
 import org.jellyfin.sdk.api.client.ApiClient
+import org.jellyfin.sdk.api.client.exception.InvalidStatusException
 import org.jellyfin.sdk.api.client.extensions.authenticateUserByName
 import org.jellyfin.sdk.api.client.extensions.authenticateWithQuickConnect
 import org.jellyfin.sdk.api.client.extensions.displayPreferenceApi
@@ -71,6 +72,20 @@ enum class LibrarySort(val label: String, val field: ItemSortBy, val order: Sort
     RANDOM("Random", ItemSortBy.RANDOM, SortOrder.ASCENDING),
 }
 
+enum class SessionState {
+    /** No saved sign-in. */
+    NONE,
+
+    /** Signed in and the server answered. */
+    VALID,
+
+    /** The server rejected the saved sign-in. */
+    EXPIRED,
+
+    /** Saved sign-in, but the server can't be reached right now (offline, server down). */
+    UNREACHABLE,
+}
+
 /** A subtitle file the server serves separately from the video, side-loaded into the player. */
 data class ExternalSubtitle(val streamIndex: Int, val url: String, val mimeType: String, val language: String?, val label: String)
 
@@ -109,12 +124,29 @@ class JellyfinRepository(
         private set
 
     /** Restores a saved session. Returns true if the token is still valid. */
-    suspend fun restoreSession(): Boolean {
-        val session = sessionStore.load() ?: return false
+    suspend fun restoreSession(): SessionState {
+        val session = sessionStore.load() ?: return SessionState.NONE
         api.update(baseUrl = session.serverUrl, accessToken = session.accessToken)
         userId = session.userId
-        return runCatching { api.userApi.getCurrentUser() }.isSuccess
+        serverUrl = session.serverUrl
+        return checkSession()
     }
+
+    /** Re-checks the restored session, e.g. from the offline screen's Retry. */
+    suspend fun checkSession(): SessionState = try {
+        api.userApi.getCurrentUser()
+        SessionState.VALID
+    } catch (e: InvalidStatusException) {
+        // The server answered: the token was revoked or the user removed.
+        if (e.status == 401 || e.status == 403) SessionState.EXPIRED else SessionState.UNREACHABLE
+    } catch (e: Exception) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
+        SessionState.UNREACHABLE
+    }
+
+    /** Address of the signed-in server, for messages. */
+    var serverUrl: String? = null
+        private set
 
     /**
      * Turns whatever the user typed ("192.168.1.5", "jelly.example.com") into a reachable
@@ -171,6 +203,7 @@ class JellyfinRepository(
         val user = requireNotNull(result.user) { "Server returned no user" }
         api.update(baseUrl = serverUrl, accessToken = token)
         userId = user.id.toString()
+        this.serverUrl = serverUrl
         sessionStore.save(
             Session(
                 serverUrl = serverUrl,

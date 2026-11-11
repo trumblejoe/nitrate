@@ -10,7 +10,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Keeps display settings in the user's Jellyfin display preferences, so rows and views follow
- * the user to other TVs. The server copy wins on sign-in; local changes are pushed shortly after.
+ * the user to other TVs. The server copy wins on sign-in, unless a local change made while the
+ * server was unreachable is still waiting; local changes are pushed shortly after.
  * Device-specific settings (playback overrides) deliberately stay local.
  */
 class SettingsSync(
@@ -19,6 +20,7 @@ class SettingsSync(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pushJob: Job? = null
+
 
     init {
         store.onChanged = ::schedulePush
@@ -29,7 +31,7 @@ class SettingsSync(
         val userId = repository.userId ?: return
         scope.launch {
             val remote = runCatching { repository.loadCustomPrefs() }.getOrNull() ?: return@launch
-            if (remote.isEmpty()) {
+            if (store.isDirty(userId) || remote.isEmpty()) {
                 push(userId)
             } else {
                 store.import(userId, remote)
@@ -47,8 +49,10 @@ class SettingsSync(
     }
 
     private suspend fun push(userId: String) {
+        // Marked first so a crash or power cut mid-push still counts as unsynced.
+        store.setDirty(userId, true)
         val local = store.export(userId)
-        if (local.isNotEmpty()) runCatching { repository.saveCustomPrefs(local) }
+        if (local.isEmpty() || runCatching { repository.saveCustomPrefs(local) }.isSuccess) store.setDirty(userId, false)
     }
 
     private companion object {

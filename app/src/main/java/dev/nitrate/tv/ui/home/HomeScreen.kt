@@ -40,6 +40,8 @@ fun HomeScreen(
     onPlay: (BaseItemDto) -> Unit,
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
+    /** Switches to the offline home when the server can't be reached. */
+    onOffline: () -> Unit = {},
     /** More footer buttons, e.g. plugin pages. */
     extraActions: List<Pair<String, () -> Unit>> = emptyList(),
 ) {
@@ -65,6 +67,7 @@ fun HomeScreen(
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = vm::refresh) { Text("Retry") }
+                    OutlinedButton(onClick = onOffline) { Text("Work offline") }
                     OutlinedButton(onClick = signOut) { Text("Sign out") }
                 }
             }
