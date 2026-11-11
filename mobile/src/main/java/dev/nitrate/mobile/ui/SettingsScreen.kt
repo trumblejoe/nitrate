@@ -155,6 +155,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             Capability(cap, playback, updatePlayback)
         }
 
+        header("Updates", "New versions from Nitrate's releases. Android asks before installing.")
+        item { UpdatesSection(c.updater) }
+
         header("Plugins", "Built in; switch them on or off for this device.")
         items(c.plugins.all, key = { it.id }) { plugin ->
             Toggle(plugin.name, plugin.description, plugin.id in enabled) { on -> scope.launch { c.plugins.setEnabled(plugin.id, on) } }
@@ -448,5 +451,36 @@ private fun SubtitleStyleEditor(style: dev.nitrate.core.playback.SubtitleStyle, 
             Text("Use the subtitle file's own styles (ASS/SSA)", modifier = Modifier.weight(1f))
             Switch(checked = style.useFileStyles, onCheckedChange = { onChange(style.copy(useFileStyles = it)) })
         }
+    }
+}
+
+@Composable
+private fun UpdatesSection(updater: dev.nitrate.android.update.AppUpdater) {
+    val state by updater.state.collectAsState()
+    val auto by updater.autoCheck.collectAsState()
+    Column {
+        ListItem(
+            headlineContent = { Text("Nitrate ${updater.versionName}") },
+            supportingContent = {
+                Text(
+                    when (val s = state) {
+                        dev.nitrate.android.update.UpdateState.Checking -> "Checking…"
+                        dev.nitrate.android.update.UpdateState.UpToDate -> "You're up to date"
+                        is dev.nitrate.android.update.UpdateState.Available -> "${s.release.title} is available"
+                        is dev.nitrate.android.update.UpdateState.Downloading -> "Downloading ${(s.progress * 100).toInt()}%"
+                        is dev.nitrate.android.update.UpdateState.Installing -> "Installing…"
+                        else -> when (updater.channel) {
+                            dev.nitrate.core.update.UpdateChannel.DEV -> "Dev builds"
+                            dev.nitrate.core.update.UpdateChannel.STABLE -> "Releases"
+                            dev.nitrate.core.update.UpdateChannel.NONE -> "Local build; doesn't update"
+                        }
+                    },
+                )
+            },
+            trailingContent = {
+                OutlinedButton(onClick = { updater.check() }, enabled = state !is dev.nitrate.android.update.UpdateState.Checking) { Text("Check now") }
+            },
+        )
+        Toggle("Check automatically", "Look for a new version when Nitrate opens", auto, updater::setAutoCheck)
     }
 }

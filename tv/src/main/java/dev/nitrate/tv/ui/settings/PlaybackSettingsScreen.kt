@@ -49,6 +49,7 @@ fun PlaybackSettingsScreen(
     capabilities: DeviceCapabilities,
     onRunTest: () -> Unit,
     onChannelTest: () -> Unit,
+    updater: dev.nitrate.android.update.AppUpdater? = null,
 ) {
     val settings by store.settings.collectAsState(PlaybackSettings())
     val scope = rememberCoroutineScope()
@@ -73,6 +74,7 @@ fun PlaybackSettingsScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = onRunTest, modifier = Modifier.focusRequester(first)) { Text("Run playback test") }
                     OutlinedButton(onClick = onChannelTest) { Text("Audio channel test") }
+                    if (updater != null) OutlinedButton(onClick = { updater.check() }) { Text("Check for updates") }
                     if (settings.learnedFailures.isNotEmpty()) {
                         OutlinedButton(onClick = { scope.launch { store.clearFailures() } }) {
                             Text("Forget ${settings.learnedFailures.size} learned failure(s)")
@@ -169,6 +171,31 @@ fun PlaybackSettingsScreen(
                 .joinToString(", ").ifEmpty { null }
             CapabilityRow(cap, reported, emptyList(), settings, update)
         }
+
+        if (updater != null) {
+            section("Updates", "New versions from Nitrate's releases. Android asks before installing.")
+            item(key = "updates") { UpdateRows(updater) }
+        }
+    }
+}
+
+@Composable
+private fun UpdateRows(updater: dev.nitrate.android.update.AppUpdater) {
+    val state by updater.state.collectAsState()
+    val auto by updater.autoCheck.collectAsState()
+    Column {
+        ChoiceRow(
+            "Check for updates",
+            "Nitrate ${updater.versionName}",
+            when (val s = state) {
+                dev.nitrate.android.update.UpdateState.Checking -> "Checking…"
+                dev.nitrate.android.update.UpdateState.UpToDate -> "You're up to date"
+                is dev.nitrate.android.update.UpdateState.Available -> "${s.release.title} is available"
+                is dev.nitrate.android.update.UpdateState.Downloading -> "Downloading ${(s.progress * 100).toInt()}%"
+                else -> null
+            },
+        ) { updater.check() }
+        ToggleRow("Check automatically", auto, "Look for a new version when Nitrate opens", updater::setAutoCheck)
     }
 }
 

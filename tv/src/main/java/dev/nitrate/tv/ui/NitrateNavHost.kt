@@ -198,6 +198,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 capabilities = container.capabilities,
                 onRunTest = { nav.navigate(PlaybackTestRoute) },
                 onChannelTest = { nav.navigate(AudioChannelTestRoute) },
+                updater = container.updater,
             )
         }
         composable<OfflineRoute> {
@@ -294,6 +295,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
     }
     PlaybackGateDialog(gate)
+    dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)
+    LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.
     var message by remember { mutableStateOf<Pair<String, String>?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current

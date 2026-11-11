@@ -112,6 +112,12 @@ class AppContainer(
     /** New-episode notifications (phone). */
     val newEpisodes by lazy { dev.nitrate.android.notifications.NewEpisodeNotifier(appContext, server) }
 
+    /** Updates from the project's releases, for whichever app this is (phone or TV). */
+    val updater by lazy {
+        dev.nitrate.android.update.AppUpdater(appContext, if (appContext.packageName.contains(".tv")) "tv" else "mobile")
+            .also { dev.nitrate.android.update.AppUpdater.current = it }
+    }
+
     /** PIN locks and "who's watching" for the accounts saved here. */
     val profiles by lazy { ProfileStore(appContext) }
 

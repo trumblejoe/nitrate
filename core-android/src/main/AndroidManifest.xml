@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Installing updates downloaded from the project's releases (Android asks the user each time). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Lets Android 12+ apply an update without asking again once Nitrate installed the version being replaced. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+
+    <application>
+        <receiver
+            android:name="dev.nitrate.android.update.InstallResultReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

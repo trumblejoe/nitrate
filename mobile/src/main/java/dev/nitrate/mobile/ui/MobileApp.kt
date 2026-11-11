@@ -319,6 +319,9 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             LaunchedEffect(header, text) { kotlinx.coroutines.delay(10_000); message = null }
         }
 
+        UpdatePrompt(container.updater)
+        LaunchedEffect(Unit) { container.updater.checkIfDue() }
+
         pending?.let { (ask, answer) ->
             AlertDialog(
                 onDismissRequest = { answer.complete(GuardAction.Cancel) },

@@ -26,6 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # History and tags, for the "What's new" list since the last build.
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -98,9 +101,18 @@ jobs:
           cp mobile/build/outputs/apk/release/mobile-release.apk "dist/nitrate-mobile-$NAME.apk"
           cp tv/build/outputs/apk/release/tv-release.apk "dist/nitrate-tv-$NAME.apk"
           (cd dist && sha256sum *.apk > SHA256SUMS)
+          # Commits since the previous build of the same kind; the apps show these when offering the update.
+          if [ "$PRERELEASE" = "true" ]; then match='dev-*'; else match='v*'; fi
+          previous=$(git describe --tags --abbrev=0 --match "$match" HEAD^ 2>/dev/null || true)
+          if [ -n "$previous" ]; then range="$previous..HEAD"; else range="-8"; fi
+          changes=$(git log $range --no-merges --format='- %s' | head -12)
           notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk
 
-          Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}."
+          What's new:
+          $changes
+
+          Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}.
+          <!-- nitrate-version-code: $NITRATE_VERSION_CODE -->"
           title="Nitrate $NAME"
           if [ "$DEV_KEY" = "true" ]; then
             title="Nitrate Dev $NAME"

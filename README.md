@@ -102,6 +102,8 @@ Debug builds use the application IDs `dev.nitrate.tv.debug` and `dev.nitrate.app
 
 Every build has a higher version code, so it installs over the previous one. On a phone, open the release on GitHub and tap the `nitrate-mobile-….apk` (allow installs from your browser when asked). On a TV, use an app such as Downloader, or `adb install -r nitrate-tv-….apk`.
 
+**Updates in the app.** After the first install, Nitrate updates itself: when it opens (at most every six hours) it checks this repository's releases for a newer build of the same kind (dev builds follow dev pre-releases, release builds follow releases), shows what's new, downloads the APK, checks it against the release's `SHA256SUMS`, and hands it to Android's installer. Android asks once to let Nitrate install apps, and may ask to confirm each update. *Check for updates* and the automatic check are in Settings (phone) and Playback settings (TV). Debug builds don't update.
+
 ### Dev builds (no setup)
 
 Until a release key is set up, every build is signed with the public dev key in `signing/` and published as a **Nitrate Dev** pre-release. Dev builds install as their own apps (`dev.nitrate.app.dev`, `dev.nitrate.tv.dev`), update from one dev build to the next, and never clash with real releases. The key isn't secret, so only install dev builds from this repository's Releases page.
