@@ -220,6 +220,9 @@ interface MediaServer {
     /** Items matching a saved search, for custom rows. */
     suspend fun queryItems(query: ItemQuery): List<MediaItem> = unsupported()
 
+    /** One page of a query ([ItemQuery.limit] is ignored), with how many match in all. */
+    suspend fun queryPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> = unsupported()
+
     /** A collection's (box set's) items. */
     suspend fun collectionItems(collectionId: String): List<MediaItem> = unsupported()
 

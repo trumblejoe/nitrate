@@ -203,6 +203,14 @@ class ScreenshotTest {
         dev.nitrate.mobile.ui.ProfilesScreen(it, onOpened = {}, onSignInAgain = {}, onAdd = {})
     }
 
+    private val moviesLibrary = dev.nitrate.core.model.MediaItem("lib-movies", "Movies", dev.nitrate.core.model.ItemKind.LIBRARY, collection = dev.nitrate.core.model.CollectionKind.MOVIES)
+
+    @Test fun browseGrid() = shoot("phone-browse-grid") { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
+    @Test fun browseList() = shoot("phone-browse-list", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.LIST, watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, genres = listOf("Drama")))
+    }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 
     @Test

@@ -102,7 +102,12 @@ fun LibraryScreen(actions: AppActions, libraryId: String) {
                             Tab(tab == 1, onClick = { tab = 1 }, text = { Text("All") })
                         }
                     }
-                    if (hasRecommended && tab == 0) LibraryRows(actions, lib) else LibraryGrid(actions, lib)
+                    when {
+                        hasRecommended && tab == 0 -> LibraryRows(actions, lib)
+                        // Playlists keep their own tile grid; every other library gets sort, filters and A–Z.
+                        lib.collection == CollectionKind.PLAYLISTS -> LibraryGrid(actions, lib)
+                        else -> BrowseLibrary(actions, lib)
+                    }
                 }
             }
         }

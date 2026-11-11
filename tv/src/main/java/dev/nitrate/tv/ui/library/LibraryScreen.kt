@@ -114,62 +114,6 @@ fun LibraryScreen(
                 RowsState.Loading -> Column { tabs(); Text("Loading…", Modifier.padding(PagePadding)) }
             }
         }
-        LibraryTab.ALL -> LibraryGrid(repository, lib, tabs, onOpen, onPlay)
-    }
-}
-
-@Composable
-private fun LibraryGrid(
-    repository: MediaServer,
-    library: MediaItem,
-    header: @Composable () -> Unit,
-    onOpen: (MediaItem) -> Unit,
-    onPlay: (MediaItem) -> Unit,
-) {
-    val vm = viewModel(key = "library-grid-${library.id}") { LibraryGridViewModel(repository, library, LibrarySort.NAME) }
-    val state by vm.state.collectAsStateWithLifecycle()
-    val gridState = rememberLazyGridState()
-
-    // Load the next page when the user gets near the end.
-    LaunchedEffect(gridState) {
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
-            .collect { last -> if (last >= state.items.size - 30) vm.loadMore() }
-    }
-
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(7),
-        state = gridState,
-        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
-            Column {
-                header()
-                Row(Modifier.padding(top = 4.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Sort", style = MaterialTheme.typography.labelLarge, modifier = Modifier.align(Alignment.CenterVertically))
-                    for (sort in LibrarySort.entries) {
-                        FilterChip(selected = state.sort == sort, onClick = { vm.setSort(sort) }) { Text(sort.label) }
-                    }
-                    if (state.total >= 0) {
-                        Text("${state.total} items", style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterVertically).padding(start = 12.dp))
-                    }
-                }
-            }
-        }
-        items(state.items, key = { it.id }) { item ->
-            MediaCard(
-                item = item,
-                imageUrl = repository.imageUrl(item, ImageKind.PRIMARY, 360),
-                width = null,
-                aspectRatio = 2f / 3f,
-                title = item.name,
-                subtitle = item.productionYear?.toString(),
-                onClick = { onOpen(item) },
-                onPlay = { if (item.isPlayable) onPlay(item) else onOpen(item) },
-            )
-        }
+        LibraryTab.ALL -> BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay)
     }
 }

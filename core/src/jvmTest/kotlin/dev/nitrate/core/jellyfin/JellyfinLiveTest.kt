@@ -417,4 +417,32 @@ class JellyfinLiveTest {
             client.setFavorite(series, false)
         }
     }
+
+    @Test
+    fun `browses a library with filters and A to Z`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-browse", "Browse"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val library = client.views().first { it.collection == dev.nitrate.core.model.CollectionKind.MOVIES }
+        val options = dev.nitrate.core.pages.BrowseOptions()
+        val query = options.query(library.id, library.collection)
+        val (all, total) = client.queryPage(query, 0, 100)
+        println("Movies: $total ${all.map { it.name }}")
+        assertEquals(all.size, total)
+        // Sorted by name without leading articles ("The Brave..." under B), as the A–Z bar shows it.
+        val letters = all.map { dev.nitrate.core.pages.Browse.letterOf(it.name) }
+        assertEquals(letters, letters.sortedBy { if (it == "#") "" else it })
+        val (page2, total2) = client.queryPage(query, 1, 1)
+        assertEquals(total, total2)
+        if (total > 1) assertEquals(all[1].id, page2.single().id)
+        // Where each letter starts matches the full list.
+        for (letter in all.map { dev.nitrate.core.pages.Browse.letterOf(it.name) }.distinct().filter { it != "#" }) {
+            val start = client.queryPage(dev.nitrate.core.pages.Browse.before(query, letter)!!, 0, 0).second
+            println("$letter starts at $start")
+            assertEquals(dev.nitrate.core.pages.Browse.letterOf(all[start].name), letter)
+        }
+        val unwatched = client.queryPage(options.copy(watched = dev.nitrate.core.pages.WatchFilter.WATCHED).query(library.id, library.collection), 0, 100).second
+        println("Watched: $unwatched of $total")
+        assertTrue(unwatched <= total)
+    }
 }

@@ -27,6 +27,10 @@ data class ItemQuery(
     val sort: QuerySort = QuerySort.DATE_ADDED,
     val descending: Boolean = true,
     val limit: Int = 24,
+    /** Names from this one on (sorting by name), for A–Z. */
+    val nameFrom: String? = null,
+    /** Names before this one, for counting where a letter starts. */
+    val nameBefore: String? = null,
 ) {
     /** A short description for editors, e.g. "Unwatched · Horror · 1980–1989 · Random". */
     fun describe(): String = buildList {

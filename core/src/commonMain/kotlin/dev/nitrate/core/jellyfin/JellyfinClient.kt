@@ -769,6 +769,12 @@ class JellyfinClient(
 
     override suspend fun queryItems(query: ItemQuery): List<MediaItem> = items("Items", query = itemQueryParams(query))
 
+    override suspend fun queryPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> {
+        val params = itemQueryParams(query) + mapOf("startIndex" to startIndex, "limit" to limit, "enableTotalRecordCount" to true, "userId" to userId)
+        val result = get("Items", query = params).decode<QueryResultDto<ItemDto>>()
+        return result.items.map { it.toMediaItem() } to result.totalRecordCount
+    }
+
     override suspend fun collectionItems(collectionId: String): List<MediaItem> = items(
         "Items",
         query = mapOf("parentId" to collectionId, "sortBy" to "ProductionYear,SortName", "sortOrder" to "Ascending,Ascending", "fields" to ROW_FIELDS, "limit" to 100),
@@ -956,6 +962,7 @@ internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
             ItemKind.BOX_SET -> "BoxSet"
             ItemKind.VIDEO -> "Video"
             ItemKind.MUSIC_VIDEO -> "MusicVideo"
+            ItemKind.MUSIC_ALBUM -> "MusicAlbum"
             else -> null
         }
     }.ifEmpty { if (q.libraryId == null) listOf("Movie", "Series") else emptyList() }
@@ -988,6 +995,8 @@ internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
         "tags" to q.tags.joinToString("|").ifEmpty { null },
         "studios" to q.studios.joinToString("|").ifEmpty { null },
         "personIds" to q.personId,
+        "nameStartsWithOrGreater" to q.nameFrom,
+        "nameLessThan" to q.nameBefore,
         "years" to years,
         "minPremiereDate" to (if (years == null) q.yearFrom?.let { "$it-01-01T00:00:00Z" } else null),
         "maxPremiereDate" to (if (years == null) q.yearTo?.let { "$it-12-31T23:59:59Z" } else null),

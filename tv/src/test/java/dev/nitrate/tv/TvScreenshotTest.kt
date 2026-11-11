@@ -125,6 +125,18 @@ class TvScreenshotTest {
 
     @Test fun pinPad() = shoot("tv-pin-pad") { dev.nitrate.tv.ui.profiles.PinPad("Enter Sam's PIN", check = { false }, onDone = {}, onDismiss = {}) }
 
+    private val moviesLibrary = dev.nitrate.core.model.MediaItem("lib-movies", "Movies", dev.nitrate.core.model.ItemKind.LIBRARY, collection = dev.nitrate.core.model.CollectionKind.MOVIES)
+
+    @Test fun browse() = shoot("tv-browse") { c ->
+        dev.nitrate.tv.ui.library.BrowseLibrary(c.server, c.displaySettings, moviesLibrary, header = { androidx.tv.material3.Text("Movies", style = androidx.tv.material3.MaterialTheme.typography.headlineMedium) }, onOpen = {}, onPlay = {})
+    }
+
+    @Test fun browseList() = shoot("tv-browse-list", { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.LIST, sort = dev.nitrate.core.pages.QuerySort.DATE_ADDED, descending = true, decade = 1990))
+    }) { c ->
+        dev.nitrate.tv.ui.library.BrowseLibrary(c.server, c.displaySettings, moviesLibrary, header = { androidx.tv.material3.Text("Movies", style = androidx.tv.material3.MaterialTheme.typography.headlineMedium) }, onOpen = {}, onPlay = {})
+    }
+
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 
     @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }

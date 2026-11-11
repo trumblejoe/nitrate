@@ -13,7 +13,7 @@ Early, but usable end to end:
 - **Live updates:** pages refresh by themselves when the server adds items or watch state changes on another device
 - **New-episode notifications (phone):** switch on in Settings to hear about new episodes of shows you follow (favourites, or ones you're partway through), one notification per show; tap to open it. Checked every few hours and right after the server adds items
 - **Home:** My Media, Continue Watching, Next Up, and Latest per library
-- **Library pages:** a *Recommended* tab with rows per library type, and an *All* tab with a sortable, paged grid
+- **Library pages:** a *Recommended* tab with rows per library type, and an *All* tab to browse everything: sort (name, date added, release date, ratings, runtime, last watched; either direction), filter (watched, favourites, genres, decade, rating, 4K/HD), grid or list with details, and an A–Z bar to jump through when sorted by name. Each library remembers its choices, on every device
 - **Row display settings:** every row on Home and on each library page can be Posters, Wide or **Showcase**, in three sizes, saved per user. Long-press a card (or use *Customize rows*) to change one
 - **Showcase rows:** focused, the row fills the screen with the item's artwork, logo, details and overview, and Left/Right step through it. Optional wrap-around and backdrop rotation
 - **Detail pages:** movies, episodes and series (season chips and episode row), with resume/from start, watched, favourite, cast and similar items
