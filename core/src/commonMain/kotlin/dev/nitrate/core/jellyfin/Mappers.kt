@@ -34,6 +34,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
         id = normalizeId(id),
         name = name.orEmpty(),
         dateAddedMs = dateCreated?.let(::parseDateMs),
+        playlistEntryId = playlistItemId,
         kind = kind,
         mediaKind = when (mediaType) {
             "Video" -> MediaKind.VIDEO

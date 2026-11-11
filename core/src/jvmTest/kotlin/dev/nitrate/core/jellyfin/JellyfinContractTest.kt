@@ -61,6 +61,7 @@ class JellyfinContractTest {
             path.endsWith("/Users") -> "[$USER]"
             path.contains("/RemoteSearch/Subtitles/") -> """[{"Id":"os-1","Name":"Nitrate.2023.srt","ThreeLetterISOLanguageName":"eng","ProviderName":"Open Subtitles","Format":"srt","DownloadCount":900,"IsHashMatch":true}]"""
             path.contains("/Items/RemoteSearch/") && !path.contains("/Apply/") -> """[{"Name":"Nitrate","ProductionYear":2023,"ProviderIds":{"Tmdb":"1"},"SearchProviderName":"TheMovieDb","ImageUrl":"http://x/i.jpg"}]"""
+            (path.endsWith("/Collections") || path.endsWith("/Playlists")) && request.method.value == "POST" -> """{"Id":"$HEX"}"""
             path.endsWith("/SyncPlay/List") -> """[{"GroupId":"$HEX","GroupName":"Movie night","State":"Paused","Participants":["joe","sam"],"LastUpdatedAt":"2026-01-01T00:00:00Z"}]"""
             path.endsWith("/GetUtcTime") -> """{"RequestReceptionTime":"2026-01-01T00:00:00.100Z","ResponseTransmissionTime":"2026-01-01T00:00:00.102Z"}"""
             path.endsWith("/Images") -> """[{"ImageType":"Primary","ImageTag":"t","Width":1000,"Height":1500},{"ImageType":"Backdrop","ImageIndex":1,"ImageTag":"b","Width":1920,"Height":1080}]"""
@@ -205,6 +206,15 @@ class JellyfinContractTest {
         for (g in dev.nitrate.core.admin.GeneralCommand.entries) client.sendGeneralCommand("s1", g)
         client.authorizeQuickConnect(" 123456 ")
         client.recentEpisodes()
+        assertEquals(DASHED, client.createCollection("Heist films", listOf(DASHED)))
+        client.addToCollection(DASHED, listOf(DASHED))
+        client.removeFromCollection(DASHED, listOf(DASHED))
+        assertEquals(DASHED, client.createPlaylist("Road trip", listOf(DASHED)))
+        client.renamePlaylist(DASHED, "Long road trip")
+        client.addToPlaylist(DASHED, listOf(DASHED))
+        client.removeFromPlaylist(DASHED, listOf("entry-1"))
+        client.movePlaylistItem(DASHED, "entry-1", 0)
+        client.deleteList(DASHED)
         val browse = dev.nitrate.core.pages.BrowseOptions(genres = listOf("Drama"), decade = 1990, watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED).query(DASHED, dev.nitrate.core.model.CollectionKind.MOVIES)
         client.queryPage(browse, 100, 50)
         client.queryPage(dev.nitrate.core.pages.Browse.before(browse, "M")!!, 0, 0)

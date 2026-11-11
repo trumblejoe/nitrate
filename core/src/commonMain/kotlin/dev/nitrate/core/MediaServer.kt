@@ -196,6 +196,24 @@ interface MediaServer {
     /** Live events from the server while signed in (remote control, library and watch changes). */
     fun events(): Flow<ServerEvent> = kotlinx.coroutines.flow.emptyFlow()
 
+    // ---- Collections and playlists ----
+    /** Makes a collection (box set) of [itemIds]; returns its id. Needs collection permission. */
+    suspend fun createCollection(name: String, itemIds: List<String>): String = unsupported()
+    suspend fun addToCollection(collectionId: String, itemIds: List<String>): Unit = unsupported()
+    suspend fun removeFromCollection(collectionId: String, itemIds: List<String>): Unit = unsupported()
+
+    /** Makes a playlist of [itemIds] (audio or video); returns its id. */
+    suspend fun createPlaylist(name: String, itemIds: List<String>, audio: Boolean = false): String = unsupported()
+    suspend fun renamePlaylist(playlistId: String, name: String): Unit = unsupported()
+    suspend fun addToPlaylist(playlistId: String, itemIds: List<String>): Unit = unsupported()
+
+    /** Removes entries by [MediaItem.playlistEntryId] (one item can be in a playlist more than once). */
+    suspend fun removeFromPlaylist(playlistId: String, entryIds: List<String>): Unit = unsupported()
+    suspend fun movePlaylistItem(playlistId: String, entryId: String, newIndex: Int): Unit = unsupported()
+
+    /** Deletes a playlist or collection (not media files). */
+    suspend fun deleteList(itemId: String): Unit = unsupported()
+
     /** Episodes most recently added to the server, newest first, with [MediaItem.dateAddedMs]. */
     suspend fun recentEpisodes(limit: Int = 50): List<MediaItem> = unsupported()
 

@@ -211,6 +211,11 @@ class ScreenshotTest {
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.LIST, watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, genres = listOf("Drama")))
     }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
 
+    @Test fun addToList() = shoot("phone-add-to-list", setup = { c -> c.refreshAccount() }) { a ->
+        val film = androidx.compose.runtime.produceState<dev.nitrate.core.model.MediaItem?>(null) { value = a.server.getItem("m1") }.value
+        if (film != null) dev.nitrate.mobile.ui.AddToListDialog(a, film) {}
+    }
+
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 
     @Test

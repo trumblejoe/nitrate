@@ -74,6 +74,8 @@ fun DetailsScreen(
     onOpen: (MediaItem) -> Unit,
     /** Admins: opens the item's management screen. */
     onManage: ((String) -> Unit)? = null,
+    /** May add to collections (playlists are anyone's). */
+    canCollect: Boolean = false,
 ) {
     val vm = viewModel(key = "details-$itemId") {
         DetailsViewModel(repository, itemId, seasonId)
@@ -108,7 +110,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect)
             }
 
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -167,6 +169,37 @@ fun DetailsScreen(
                 }
             }
 
+            if (state.contents.isNotEmpty()) {
+                item(key = "contents") {
+                    var removing by remember { mutableStateOf<MediaItem?>(null) }
+                    Column {
+                        RowTitle(if (canCollect) "In this collection (hold OK on one to remove it)" else "In this collection")
+                        LazyRow(contentPadding = PaddingValues(horizontal = PagePadding), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                            items(state.contents, key = { it.id }) { member ->
+                                MediaCard(
+                                    item = member,
+                                    imageUrl = repository.imageUrl(member, ImageKind.PRIMARY, 360),
+                                    width = 140.dp,
+                                    aspectRatio = 2f / 3f,
+                                    onClick = { onOpen(member) },
+                                    onLongClick = if (canCollect) ({ removing = member }) else null,
+                                )
+                            }
+                        }
+                    }
+                    removing?.let { member ->
+                        val keep = remember { androidx.compose.ui.focus.FocusRequester() }
+                        dev.nitrate.tv.ui.lists.TvDialog({ removing = null }, width = 520) {
+                            Text("Remove “${member.name}” from this collection?", style = MaterialTheme.typography.headlineSmall)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedButton(onClick = { removing = null }, modifier = Modifier.focusRequester(keep)) { Text("Keep it") }
+                                Button(onClick = { vm.removeFromCollection(member); removing = null }) { Text("Remove") }
+                            }
+                            LaunchedEffect(Unit) { runCatching { keep.requestFocus() } }
+                        }
+                    }
+                }
+            }
             if (state.similar.isNotEmpty() && prefs.similar) {
                 item(key = "similar") {
                     Column {
@@ -201,6 +234,7 @@ private fun Header(
     playFocus: FocusRequester,
     onPlay: (MediaItem, Boolean) -> Unit,
     onManage: ((String) -> Unit)?,
+    canCollect: Boolean,
 ) {
     Column(
         Modifier.padding(start = PagePadding, end = PagePadding, top = 48.dp).fillMaxWidth(0.6f),
@@ -248,6 +282,11 @@ private fun Header(
                 var showInfo by remember { mutableStateOf(false) }
                 OutlinedButton(onClick = { showInfo = true }) { Text("Playback info") }
                 if (showInfo) PlaybackDecisionDialog(repository, item) { showInfo = false }
+            }
+            if (item.isPlayable || item.kind == ItemKind.SERIES) {
+                var adding by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { adding = true }) { Text("Add to…") }
+                if (adding) dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect) { adding = false }
             }
             if (onManage != null) OutlinedButton(onClick = { onManage(item.id) }) { Text("Manage") }
         }

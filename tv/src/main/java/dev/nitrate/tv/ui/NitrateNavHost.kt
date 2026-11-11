@@ -178,6 +178,7 @@ fun NitrateNavHost(container: AppContainer) {
                 onPlay = { item, fromStart -> gate.play(item, fromStart) },
                 onOpen = nav::openItem,
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
+                canCollect = account?.canManageCollections == true,
             )
         }
         composable<SettingsRoute> {
@@ -237,6 +238,7 @@ fun NitrateNavHost(container: AppContainer) {
                 playlistId = entry.toRoute<PlaylistRoute>().playlistId,
                 onPlayQueue = { items -> nav.playQueue(items.map { it.id }) },
                 onOpen = nav::openItem,
+                onDeleted = { nav.popBackStack() },
             )
         }
         composable<PlayerRoute> { entry ->

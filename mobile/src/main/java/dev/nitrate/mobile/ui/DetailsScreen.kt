@@ -48,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -140,6 +141,9 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         RoundAction(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", onClick = vm::toggleFavorite, active = item.user.isFavorite)
                         if (item.isPlayable) DownloadAction(actions, item)
                         if (item.kind == ItemKind.SERIES) SmartDownloadAction(actions, item)
+                        var adding by remember { mutableStateOf(false) }
+                        if (item.isPlayable || item.kind == ItemKind.SERIES) RoundAction(Icons.Default.Add, "Add to", onClick = { adding = true })
+                        if (adding) AddToListDialog(actions, item) { adding = false }
                         if (account?.isAdmin == true) RoundAction(Icons.Default.Edit, "Manage", onClick = { actions.nav.navigate(ManageItemRoute(item.id)) })
                     }
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
@@ -195,6 +199,25 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(people, key = { "${it.id}-${it.role}" }) { person ->
                                 PersonBubble(person, actions) { actions.nav.navigate(PersonRoute(person.id, person.name)) }
+                            }
+                        }
+                    }
+                }
+            }
+            if (state.contents.isNotEmpty()) {
+                item(key = "contents") {
+                    var removing by remember { mutableStateOf(false) }
+                    Column(Modifier.padding(top = 28.dp)) {
+                        SectionHeader("In this collection") {
+                            if (account?.canManageCollections == true) androidx.compose.material3.TextButton(onClick = { removing = !removing }) { Text(if (removing) "Done" else "Edit") }
+                        }
+                        LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(state.contents, key = { it.id }) { m ->
+                                val key = "contents-${item.id}-${m.id}"
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    MediaCard(m, server.cardImage(m, CardShape.POSTER), CardShape.POSTER, onClick = { actions.open(m, key) }, width = 116.dp, sharedKey = key)
+                                    if (removing) androidx.compose.material3.TextButton(onClick = { vm.removeFromCollection(m) }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                                }
                             }
                         }
                     }

@@ -87,6 +87,12 @@ PATHS = [
     "/SyncPlay/NextItem",
     "/SyncPlay/Ping",
     "/GetUtcTime",
+    "/Collections",
+    "/Collections/{collectionId}/Items",
+    "/Playlists",
+    "/Playlists/{playlistId}",
+    "/Playlists/{playlistId}/Items",
+    "/Playlists/{playlistId}/Items/{itemId}/Move/{newIndex}",
 ]
 OUT = "core/src/jvmTest/resources/jellyfin-openapi.json"
 

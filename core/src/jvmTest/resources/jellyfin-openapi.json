@@ -1575,6 +1575,16 @@
     ],
     "type": "string"
    },
+   "CollectionCreationResult": {
+    "additionalProperties": false,
+    "properties": {
+     "Id": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "CollectionType": {
     "enum": [
      "unknown",
@@ -1625,6 +1635,54 @@
       ]
      }
     },
+    "type": "object"
+   },
+   "CreatePlaylistDto": {
+    "additionalProperties": false,
+    "properties": {
+     "Ids": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "IsPublic": {
+      "type": "boolean"
+     },
+     "MediaType": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/MediaType"
+       }
+      ],
+      "enum": [
+       "Unknown",
+       "Video",
+       "Audio",
+       "Photo",
+       "Book"
+      ],
+      "nullable": true
+     },
+     "Name": {
+      "type": "string"
+     },
+     "UserId": {
+      "format": "uuid",
+      "nullable": true,
+      "type": "string"
+     },
+     "Users": {
+      "items": {
+       "$ref": "#/components/schemas/PlaylistUserPermissions"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "Name"
+    ],
     "type": "object"
    },
    "CreateUserByName": {
@@ -3783,6 +3841,54 @@
     },
     "type": "object"
    },
+   "PlaylistCreationResult": {
+    "additionalProperties": false,
+    "properties": {
+     "Id": {
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "PlaylistDto": {
+    "additionalProperties": false,
+    "properties": {
+     "ItemIds": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "OpenAccess": {
+      "type": "boolean"
+     },
+     "Shares": {
+      "items": {
+       "$ref": "#/components/schemas/PlaylistUserPermissions"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "ItemIds",
+     "Shares"
+    ],
+    "type": "object"
+   },
+   "PlaylistUserPermissions": {
+    "additionalProperties": false,
+    "properties": {
+     "CanEdit": {
+      "type": "boolean"
+     },
+     "UserId": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "PlaystateCommand": {
     "enum": [
      "Stop",
@@ -5112,6 +5218,35 @@
      "Other"
     ],
     "type": "string"
+   },
+   "UpdatePlaylistDto": {
+    "additionalProperties": false,
+    "properties": {
+     "Ids": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "IsPublic": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Users": {
+      "items": {
+       "$ref": "#/components/schemas/PlaylistUserPermissions"
+      },
+      "nullable": true,
+      "type": "array"
+     }
+    },
+    "type": "object"
    },
    "UpdateUserItemDataDto": {
     "additionalProperties": false,
@@ -6554,6 +6689,229 @@
     },
     "tags": [
      "Audio"
+    ]
+   }
+  },
+  "/Collections": {
+   "post": {
+    "operationId": "CreateCollection",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "name",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "ids",
+      "schema": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "parentId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isLocked",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CollectionCreationResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/CollectionCreationResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/CollectionCreationResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "CollectionManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Collection"
+    ]
+   }
+  },
+  "/Collections/{collectionId}/Items": {
+   "delete": {
+    "operationId": "RemoveFromCollection",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "collectionId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "ids",
+      "required": true,
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "CollectionManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Collection"
+    ]
+   },
+   "post": {
+    "operationId": "AddToCollection",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "collectionId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "ids",
+      "required": true,
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "CollectionManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Collection"
     ]
    }
   },
@@ -11557,6 +11915,354 @@
     ]
    }
   },
+  "/Playlists": {
+   "post": {
+    "operationId": "CreatePlaylist",
+    "parameters": [
+     {
+      "deprecated": true,
+      "in": "query",
+      "name": "name",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "deprecated": true,
+      "in": "query",
+      "name": "ids",
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "deprecated": true,
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "deprecated": true,
+      "in": "query",
+      "name": "mediaType",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/MediaType"
+        }
+       ],
+       "enum": [
+        "Unknown",
+        "Video",
+        "Audio",
+        "Photo",
+        "Book"
+       ]
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/CreatePlaylistDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/CreatePlaylistDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/CreatePlaylistDto"
+         }
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PlaylistCreationResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/PlaylistCreationResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/PlaylistCreationResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Playlist"
+    ]
+   }
+  },
+  "/Playlists/{playlistId}": {
+   "get": {
+    "operationId": "GetPlaylist",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "playlistId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PlaylistDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/PlaylistDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/PlaylistDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Playlist"
+    ]
+   },
+   "post": {
+    "operationId": "UpdatePlaylist",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "playlistId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdatePlaylistDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdatePlaylistDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdatePlaylistDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Playlist"
+    ]
+   }
+  },
   "/Playlists/{playlistId}/Items": {
    "delete": {
     "operationId": "RemoveItemFromPlaylist",
@@ -11862,6 +12568,111 @@
       "schema": {
        "format": "uuid",
        "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Playlist"
+    ]
+   }
+  },
+  "/Playlists/{playlistId}/Items/{itemId}/Move/{newIndex}": {
+   "post": {
+    "operationId": "MoveItem",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "playlistId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "newIndex",
+      "required": true,
+      "schema": {
+       "format": "int32",
+       "type": "integer"
       }
      }
     ],

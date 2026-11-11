@@ -445,4 +445,43 @@ class JellyfinLiveTest {
         println("Watched: $unwatched of $total")
         assertTrue(unwatched <= total)
     }
+
+    @Test
+    fun `makes and edits playlists and collections`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-lists", "Lists"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val library = client.views().first { it.collection == dev.nitrate.core.model.CollectionKind.MOVIES }
+        val movies = client.queryPage(dev.nitrate.core.pages.BrowseOptions().query(library.id, library.collection), 0, 3).first
+        assumeTrue("Needs three movies", movies.size == 3)
+
+        val playlist = client.createPlaylist("Nitrate test list", movies.take(2).map { it.id })
+        try {
+            client.addToPlaylist(playlist, listOf(movies[2].id))
+            var items = client.playlistItems(playlist)
+            assertEquals(movies.map { it.id }, items.map { it.id })
+            assertTrue(items.all { it.playlistEntryId != null })
+            client.movePlaylistItem(playlist, items[2].playlistEntryId!!, 0)
+            items = client.playlistItems(playlist)
+            assertEquals(listOf(movies[2].id, movies[0].id, movies[1].id), items.map { it.id })
+            client.removeFromPlaylist(playlist, listOf(items[1].playlistEntryId!!))
+            assertEquals(listOf(movies[2].id, movies[1].id), client.playlistItems(playlist).map { it.id })
+            client.renamePlaylist(playlist, "Renamed list")
+            assertEquals("Renamed list", client.getItem(playlist).name)
+        } finally {
+            client.deleteList(playlist)
+        }
+        assertTrue(client.playlists().none { it.id == playlist })
+
+        assertTrue(client.account().canManageCollections)
+        val collection = client.createCollection("Nitrate test set", listOf(movies[0].id))
+        try {
+            client.addToCollection(collection, listOf(movies[1].id))
+            assertEquals(setOf(movies[0].id, movies[1].id), client.collectionItems(collection).map { it.id }.toSet())
+            client.removeFromCollection(collection, listOf(movies[0].id))
+            assertEquals(listOf(movies[1].id), client.collectionItems(collection).map { it.id })
+        } finally {
+            client.deleteList(collection)
+        }
+    }
 }

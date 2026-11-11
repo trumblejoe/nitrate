@@ -43,6 +43,7 @@ internal data class ItemDto(
     val id: String,
     val name: String? = null,
     val dateCreated: String? = null,
+    val playlistItemId: String? = null,
     val type: String? = null,
     val mediaType: String? = null,
     val overview: String? = null,
@@ -258,3 +259,12 @@ internal data class PingRequestDto(val ping: Long)
 
 @Serializable
 internal data class UtcTimeResponseDto(val requestReceptionTime: String, val responseTransmissionTime: String)
+
+@Serializable
+internal data class CreatePlaylistDto(val name: String, val ids: List<String>, val userId: String?, val mediaType: String?)
+
+@Serializable
+internal data class UpdatePlaylistDto(val name: String)
+
+@Serializable
+internal data class CreationResultDto(val id: String)

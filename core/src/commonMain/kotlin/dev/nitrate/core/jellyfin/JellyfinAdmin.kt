@@ -77,6 +77,7 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
             name = me.str("Name").orEmpty(),
             isAdmin = policy?.bool("IsAdministrator") == true,
             canDelete = policy?.bool("EnableContentDeletion") == true || policy?.bool("IsAdministrator") == true,
+            canManageCollections = policy?.bool("EnableCollectionManagement") == true || policy?.bool("IsAdministrator") == true,
         )
     }
 

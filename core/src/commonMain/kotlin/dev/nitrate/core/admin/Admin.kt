@@ -3,7 +3,14 @@ package dev.nitrate.core.admin
 import dev.nitrate.core.model.MediaItem
 
 /** The signed-in account and what it may do on the server. */
-data class AccountInfo(val id: String, val name: String, val isAdmin: Boolean, val canDelete: Boolean = isAdmin)
+data class AccountInfo(
+    val id: String,
+    val name: String,
+    val isAdmin: Boolean,
+    val canDelete: Boolean = isAdmin,
+    /** May create and edit collections (playlists are anyone's). */
+    val canManageCollections: Boolean = isAdmin,
+)
 
 /** Editable metadata of one item. Dates are "YYYY-MM-DD". [lockedFields] use Jellyfin's names (Name, Overview, Genres...). */
 data class ItemMetadata(

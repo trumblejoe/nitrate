@@ -19,6 +19,8 @@ data class DetailsState(
     val selectedSeason: Int = 0,
     val episodes: List<MediaItem> = emptyList(),
     val nextUp: MediaItem? = null,
+    /** What a collection (box set) holds. */
+    val contents: List<MediaItem> = emptyList(),
 )
 
 class DetailsViewModel(
@@ -39,8 +41,20 @@ class DetailsViewModel(
             _state.update { it.copy(item = item, error = null) }
 
             if (item.kind == ItemKind.SERIES) loadSeries(item)
+            if (item.kind == ItemKind.BOX_SET) {
+                _state.update { it.copy(contents = runCatching { repository.collectionItems(itemId) }.getOrDefault(emptyList())) }
+            }
             val similar = runCatching { repository.similar(itemId) }.getOrDefault(emptyList())
             _state.update { it.copy(similar = similar) }
+        }
+    }
+
+    /** Takes [member] out of this collection. */
+    fun removeFromCollection(member: MediaItem) {
+        viewModelScope.launch {
+            runCatching { repository.removeFromCollection(itemId, listOf(member.id)) }
+                .onSuccess { _state.update { s -> s.copy(contents = s.contents.filterNot { it.id == member.id }) } }
+                .onFailure { e -> _state.update { it.copy(error = e.message ?: "Couldn't remove it") } }
         }
     }
 

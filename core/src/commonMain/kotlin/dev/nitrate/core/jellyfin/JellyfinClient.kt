@@ -283,6 +283,44 @@ class JellyfinClient(
     override suspend fun quickConnectApproved(secret: String): Boolean =
         get("QuickConnect", "Connect", query = mapOf("secret" to secret)).decode<QuickConnectResultDto>().authenticated
 
+    // ---- Collections and playlists ----
+
+    private fun dashless(ids: List<String>) = ids.joinToString(",") { it.replace("-", "") }
+
+    override suspend fun createCollection(name: String, itemIds: List<String>): String =
+        normalizeId(post<Unit>("Collections", query = mapOf("name" to name, "ids" to dashless(itemIds).ifEmpty { null })).decode<CreationResultDto>().id)
+
+    override suspend fun addToCollection(collectionId: String, itemIds: List<String>) {
+        post<Unit>("Collections", collectionId, "Items", query = mapOf("ids" to dashless(itemIds)))
+    }
+
+    override suspend fun removeFromCollection(collectionId: String, itemIds: List<String>) {
+        http.delete(url("Collections", collectionId, "Items", query = mapOf("ids" to dashless(itemIds)))) { auth() }
+    }
+
+    override suspend fun createPlaylist(name: String, itemIds: List<String>, audio: Boolean): String =
+        normalizeId(post<CreatePlaylistDto>("Playlists", body = CreatePlaylistDto(name, itemIds, userId, if (audio) "Audio" else "Video")).decode<CreationResultDto>().id)
+
+    override suspend fun renamePlaylist(playlistId: String, name: String) {
+        post<UpdatePlaylistDto>("Playlists", playlistId, body = UpdatePlaylistDto(name))
+    }
+
+    override suspend fun addToPlaylist(playlistId: String, itemIds: List<String>) {
+        post<Unit>("Playlists", playlistId, "Items", query = mapOf("ids" to dashless(itemIds), "userId" to userId))
+    }
+
+    override suspend fun removeFromPlaylist(playlistId: String, entryIds: List<String>) {
+        http.delete(url("Playlists", playlistId, "Items", query = mapOf("entryIds" to entryIds.joinToString(",")))) { auth() }
+    }
+
+    override suspend fun movePlaylistItem(playlistId: String, entryId: String, newIndex: Int) {
+        post<Unit>("Playlists", playlistId, "Items", entryId, "Move", newIndex.toString())
+    }
+
+    override suspend fun deleteList(itemId: String) {
+        http.delete(url("Items", itemId)) { auth() }
+    }
+
     override suspend fun recentEpisodes(limit: Int): List<MediaItem> = items(
         "Items",
         query = mapOf(

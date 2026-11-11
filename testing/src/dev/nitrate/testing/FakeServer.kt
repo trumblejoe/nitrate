@@ -116,7 +116,7 @@ class FakeServer : MediaServer {
     override suspend fun collectionItems(collectionId: String) = films.take(3)
     override suspend fun genres(libraryId: String?) = listOf("Action", "Comedy", "Drama", "Horror", "Mystery", "Sci-Fi", "Thriller")
     override suspend fun collections() = listOf(MediaItem("c1", "Reel Classics", ItemKind.BOX_SET), MediaItem("c2", "Midnight Movies", ItemKind.BOX_SET))
-    override suspend fun playlists() = listOf(MediaItem("p1", "Rainy day", ItemKind.PLAYLIST))
+    override suspend fun playlists() = listOf(MediaItem("p1", "Rainy day", ItemKind.PLAYLIST), MediaItem("p2", "Road trip", ItemKind.PLAYLIST))
     override suspend fun account() = dev.nitrate.core.admin.AccountInfo("user-1", "Joe", isAdmin = true)
     override suspend fun metadata(itemId: String) = getItem(itemId).let { i ->
         dev.nitrate.core.admin.ItemMetadata(

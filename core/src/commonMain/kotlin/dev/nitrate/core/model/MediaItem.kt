@@ -42,6 +42,8 @@ data class MediaItem(
     val people: List<Person> = emptyList(),
     /** Picture and sound quality labels, e.g. 4K, Dolby Vision, Atmos (see QualityBadges). */
     val badges: List<String> = emptyList(),
+    /** This item's entry in the playlist it was listed from, for removing or moving it. */
+    val playlistEntryId: String? = null,
     /** When the server added it (epoch ms), where known. */
     val dateAddedMs: Long? = null,
 ) {

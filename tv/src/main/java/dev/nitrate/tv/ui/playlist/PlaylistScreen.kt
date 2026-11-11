@@ -61,12 +61,19 @@ fun PlaylistScreen(
     /** Play [items] in order, starting with the first. */
     onPlayQueue: (items: List<MediaItem>) -> Unit,
     onOpen: (MediaItem) -> Unit,
+    /** Leaves the page after the playlist was deleted. */
+    onDeleted: () -> Unit = {},
 ) {
     val id = remember(playlistId) { playlistId }
-    val playlist by produceState<MediaItem?>(null, id) { value = runCatching { repository.getItem(id) }.getOrNull() }
-    val items by produceState<List<MediaItem>?>(null, id) {
+    var refresh by remember { mutableStateOf(0) }
+    val playlist by produceState<MediaItem?>(null, id, refresh) { value = runCatching { repository.getItem(id) }.getOrNull() }
+    val items by produceState<List<MediaItem>?>(null, id, refresh) {
         value = runCatching { repository.playlistItems(id) }.getOrDefault(emptyList())
     }
+    var editing by remember { mutableStateOf(false) }
+    var entryActions by remember { mutableStateOf<Int?>(null) }
+    var renaming by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
 
     val userId = repository.userId.orEmpty()
     val view by remember { settings.view(userId, "playlist-page", PlaylistPageView()) }.collectAsState(PlaylistPageView())
@@ -122,6 +129,11 @@ fun PlaylistScreen(
                 OutlinedButton(onClick = { scope.launch { settings.saveView(userId, "playlist-page", view.copy(cinematic = !view.cinematic)) } }) {
                     Text(if (view.cinematic) "Compact view" else "Cinematic view")
                 }
+                OutlinedButton(onClick = { editing = !editing }) { Text(if (editing) "Done editing" else "Edit") }
+                if (editing) {
+                    OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
+                    OutlinedButton(onClick = { deleting = true }) { Text("Delete playlist") }
+                }
             }
 
             LazyColumn(
@@ -129,18 +141,65 @@ fun PlaylistScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                itemsIndexed(list, key = { i, it -> "$i-${it.id}" }) { index, item ->
+                itemsIndexed(list, key = { i, it -> it.playlistEntryId ?: "$i-${it.id}" }) { index, item ->
                     PlaylistEntry(
                         index = index,
                         item = item,
                         repository = repository,
-                        // Selecting an entry plays from there; long-press opens its details.
-                        onClick = { onPlayQueue(list.drop(index)) },
+                        // Selecting an entry plays from there (or, editing, offers moves); long-press opens its details.
+                        onClick = { if (editing) entryActions = index else onPlayQueue(list.drop(index)) },
                         onLongClick = { onOpen(item) },
                         modifier = Modifier.onFocusChanged { if (it.hasFocus) focused = item },
                     )
                 }
             }
+        }
+    }
+
+    fun change(block: suspend () -> Unit) {
+        scope.launch {
+            runCatching { block() }
+            refresh++
+        }
+    }
+    entryActions?.let { index ->
+        val item = list.getOrNull(index)
+        val entry = item?.playlistEntryId
+        if (item == null || entry == null) {
+            entryActions = null
+        } else {
+            dev.nitrate.tv.ui.lists.PlaylistEntryDialog(
+                item,
+                canMoveUp = index > 0,
+                canMoveDown = index < list.lastIndex,
+                onMove = { delta -> entryActions = null; change { repository.movePlaylistItem(id, entry, index + delta) } },
+                onRemove = { entryActions = null; change { repository.removeFromPlaylist(id, listOf(entry)) } },
+                onOpen = { entryActions = null; onOpen(item) },
+                onDismiss = { entryActions = null },
+            )
+        }
+    }
+    if (renaming) {
+        var name by remember { mutableStateOf(pl.name) }
+        dev.nitrate.tv.ui.lists.TvDialog({ renaming = false }) {
+            Text("Rename playlist", style = MaterialTheme.typography.headlineSmall)
+            dev.nitrate.tv.ui.components.TvTextField(name, { name = it }, placeholder = "Name")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(enabled = name.isNotBlank(), onClick = { renaming = false; change { repository.renamePlaylist(id, name.trim()) } }) { Text("Save") }
+                OutlinedButton(onClick = { renaming = false }) { Text("Cancel") }
+            }
+        }
+    }
+    if (deleting) {
+        val confirm = remember { FocusRequester() }
+        dev.nitrate.tv.ui.lists.TvDialog({ deleting = false }) {
+            Text("Delete “${pl.name}”?", style = MaterialTheme.typography.headlineSmall)
+            Text("The playlist goes; what's in it stays.")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = { deleting = false }, modifier = Modifier.focusRequester(confirm)) { Text("Keep it") }
+                Button(onClick = { deleting = false; scope.launch { runCatching { repository.deleteList(id) }.onSuccess { onDeleted() } } }) { Text("Delete") }
+            }
+            LaunchedEffect(Unit) { runCatching { confirm.requestFocus() } }
         }
     }
 }

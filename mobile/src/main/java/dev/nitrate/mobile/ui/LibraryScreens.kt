@@ -1,5 +1,13 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Close
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
@@ -71,12 +79,18 @@ import dev.nitrate.core.model.formatRuntime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BackScaffold(title: String, onBack: () -> Unit, content: @Composable (PaddingValues) -> Unit) {
+fun BackScaffold(
+    title: String,
+    onBack: () -> Unit,
+    topActions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
+    content: @Composable (PaddingValues) -> Unit,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                actions = topActions,
             )
         },
         content = content,
@@ -174,9 +188,26 @@ private fun LibraryGrid(actions: AppActions, library: MediaItem) {
 
 @Composable
 fun PlaylistScreen(actions: AppActions, playlistId: String) {
-    val playlist by produceState<MediaItem?>(null, playlistId) { value = runCatching { actions.server.getItem(playlistId) }.getOrNull() }
-    val items by produceState<List<MediaItem>?>(null, playlistId) { value = runCatching { actions.server.playlistItems(playlistId) }.getOrDefault(emptyList()) }
-    BackScaffold(playlist?.name ?: "", onBack = { actions.nav.popBackStack() }) { padding ->
+    val server = actions.server
+    val scope = rememberCoroutineScope()
+    var refresh by remember { mutableIntStateOf(0) }
+    val playlist by produceState<MediaItem?>(null, playlistId, refresh) { value = runCatching { server.getItem(playlistId) }.getOrNull() }
+    val items by produceState<List<MediaItem>?>(null, playlistId, refresh) { value = runCatching { server.playlistItems(playlistId) }.getOrDefault(emptyList()) }
+    var editing by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    fun change(block: suspend () -> Unit) {
+        scope.launch {
+            runCatching { block() }.onFailure { error = it.message ?: "Couldn't change the playlist" }
+            refresh++
+        }
+    }
+    BackScaffold(
+        playlist?.name ?: "",
+        onBack = { actions.nav.popBackStack() },
+        topActions = { TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit") } },
+    ) { padding ->
         val list = items
         if (list == null) {
             Loading(Modifier.padding(padding))
@@ -184,19 +215,28 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
         }
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
-                Row(Modifier.padding(ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { actions.playQueue(list.map { it.id }) }, enabled = list.isNotEmpty()) {
-                        Icon(Icons.Default.PlayArrow, null)
-                        Text("Play all")
+                Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (editing) {
+                            OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
+                            OutlinedButton(onClick = { deleting = true }) { Text("Delete playlist", color = MaterialTheme.colorScheme.error) }
+                        } else {
+                            Button(onClick = { actions.playQueue(list.map { it.id }) }, enabled = list.isNotEmpty()) {
+                                Icon(Icons.Default.PlayArrow, null)
+                                Text("Play all")
+                            }
+                            OutlinedButton(onClick = { actions.playQueue(list.shuffled().map { it.id }) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
+                        }
                     }
-                    OutlinedButton(onClick = { actions.playQueue(list.shuffled().map { it.id }) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
                 }
             }
-            itemsIndexed(list, key = { i, it -> "$i-${it.id}" }) { index, item ->
+            itemsIndexed(list, key = { i, it -> it.playlistEntryId ?: "$i-${it.id}" }) { index, item ->
                 val audio = item.mediaKind == MediaKind.AUDIO
-                val thumb = if (audio) actions.server.imageUrl(item, ImageKind.PRIMARY, 120) else actions.server.cardImage(item, CardShape.WIDE, 160)
+                val thumb = if (audio) server.imageUrl(item, ImageKind.PRIMARY, 120) else server.cardImage(item, CardShape.WIDE, 160)
+                val entry = item.playlistEntryId
                 ListItem(
-                    modifier = Modifier.clickable { actions.playQueue(list.drop(index).map { it.id }) },
+                    modifier = Modifier.clickable(enabled = !editing) { actions.playQueue(list.drop(index).map { it.id }) },
                     leadingContent = {
                         Box(Modifier.height(48.dp).aspectRatio(if (audio) 1f else 16f / 9f).clip(RoundedCornerShape(6.dp))) {
                             if (thumb != null) AsyncImage(thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -205,13 +245,49 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                     headlineContent = { Text(item.displayTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = { Text(item.episodeLabel ?: item.productionYear?.toString().orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     trailingContent = {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (item.user.played) Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.primary)
-                            item.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium) }
+                        if (editing && entry != null) {
+                            Row {
+                                IconButton(onClick = { change { server.movePlaylistItem(playlistId, entry, index - 1) } }, enabled = index > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
+                                IconButton(onClick = { change { server.movePlaylistItem(playlistId, entry, index + 1) } }, enabled = index < list.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, "Move down") }
+                                IconButton(onClick = { change { server.removeFromPlaylist(playlistId, listOf(entry)) } }) { Icon(Icons.Default.Close, "Remove") }
+                            }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (item.user.played && LocalDisplayPrefs.current.watchedMarks) Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.primary)
+                                item.runtimeMs?.takeIf { LocalDisplayPrefs.current.runtime }?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium) }
+                            }
                         }
                     },
                 )
             }
         }
+    }
+    if (renaming) {
+        var name by remember { mutableStateOf(playlist?.name.orEmpty()) }
+        AlertDialog(
+            onDismissRequest = { renaming = false },
+            title = { Text("Rename playlist") },
+            text = { OutlinedTextField(name, { name = it }, singleLine = true) },
+            confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { renaming = false; change { server.renamePlaylist(playlistId, name.trim()) } }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
+        )
+    }
+    if (deleting) {
+        AlertDialog(
+            onDismissRequest = { deleting = false },
+            title = { Text("Delete “${playlist?.name}”?") },
+            text = { Text("The playlist goes; the movies and episodes in it stay.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleting = false
+                    scope.launch {
+                        runCatching { server.deleteList(playlistId) }
+                            .onSuccess { actions.nav.popBackStack() }
+                            .onFailure { error = it.message ?: "Couldn't delete it" }
+                    }
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } },
+        )
     }
 }
