@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.library
 
+import dev.nitrate.tv.ui.rows.PageEditor
+import dev.nitrate.core.pages.PageKeys
 import dev.nitrate.android.viewmodel.LibraryGridViewModel
 import dev.nitrate.android.viewmodel.RowsState
 import dev.nitrate.android.viewmodel.RowsViewModel
@@ -90,12 +92,15 @@ fun LibraryScreen(
     when (tab) {
         LibraryTab.RECOMMENDED -> {
             val vm = viewModel(key = "library-rows-$libraryId") {
-                RowsViewModel({ repository.libraryRows(lib) }, displaySettings, repository.userId)
+                RowsViewModel(PageKeys.library(lib.id), { repository.libraryRows(lib) }, displaySettings, repository)
             }
             val state by vm.state.collectAsStateWithLifecycle()
             val overrides by vm.overrides.collectAsStateWithLifecycle()
+            var editing by remember { mutableStateOf(false) }
+            if (editing) PageEditor(lib.name, vm, repository, libraryId = lib.id, onDone = { editing = false })
             when (val s = state) {
                 is RowsState.Loaded -> RowsPage(
+                    onEditPage = { editing = true },
                     rows = s.rows,
                     overrides = overrides,
                     repository = repository,

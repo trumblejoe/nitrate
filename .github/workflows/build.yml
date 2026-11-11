@@ -31,5 +31,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mobile-screenshots
-          path: mobile/build/outputs/roborazzi/*.png
+          name: screenshots
+          path: |
+            mobile/build/outputs/roborazzi/*.png
+            tv/build/outputs/roborazzi/*.png

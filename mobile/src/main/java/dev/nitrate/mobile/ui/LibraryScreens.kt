@@ -1,5 +1,11 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.Edit
+import dev.nitrate.core.pages.PageKeys
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -106,14 +112,21 @@ fun LibraryScreen(actions: AppActions, libraryId: String) {
 @Composable
 private fun LibraryRows(actions: AppActions, library: MediaItem) {
     val c = actions.container
-    val vm = viewModel(key = "rows-${library.id}") { RowsViewModel({ c.server.libraryRows(library) }, c.displaySettings, c.server.userId) }
+    val vm = viewModel(key = "rows-${library.id}") { RowsViewModel(PageKeys.library(library.id), { c.server.libraryRows(library) }, c.displaySettings, c.server) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
+    var editing by remember { mutableStateOf(false) }
+    if (editing) PageEditor(library.name, vm, actions, libraryId = library.id, onDone = { editing = false })
     when (val s = state) {
         RowsState.Loading -> Loading()
         is RowsState.Error -> ErrorMessage(s.message, vm::refresh)
-        is RowsState.Loaded -> LazyColumn(contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            items(s.rows, key = { it.key }) { row -> CardRow(row, (overrides[row.key] ?: row.defaultDisplay).style, c.server, actions::open) }
+        is RowsState.Loaded -> LazyColumn(contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions) }
+            item(key = "edit") {
+                Box(Modifier.fillMaxWidth().padding(bottom = 24.dp), Alignment.Center) {
+                    PillButton("Edit this page", Icons.Default.Edit, primary = false, onClick = { editing = true })
+                }
+            }
         }
     }
 }

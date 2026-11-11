@@ -48,7 +48,18 @@ private val Light = lightColorScheme(
     outline = Color(0xFFCFC6B8),
 )
 
+/** Follows the system's light/dark setting, with the user's accent and true-black choices. */
 @Composable
 fun NitrateTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, content = content)
+    val prefs = LocalDisplayPrefs.current
+    var scheme = if (isSystemInDarkTheme()) Dark else Light
+    prefs.fixedAccent?.let {
+        // Selected chips and similar highlights take a muted version of the accent.
+        val container = androidx.compose.ui.graphics.lerp(scheme.background, it, 0.28f)
+        scheme = scheme.copy(primary = it, onPrimary = contentOn(it), secondaryContainer = container, onSecondaryContainer = scheme.onBackground, primaryContainer = container)
+    }
+    if (prefs.trueBlack && scheme == Dark || prefs.trueBlack && isSystemInDarkTheme()) {
+        scheme = scheme.copy(background = Color.Black, surface = Color.Black, surfaceContainer = Color(0xFF0E0E10), surfaceContainerHigh = Color(0xFF17171A))
+    }
+    MaterialTheme(colorScheme = scheme, content = content)
 }

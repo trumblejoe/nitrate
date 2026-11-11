@@ -5717,6 +5717,218 @@
     ]
    }
   },
+  "/Genres": {
+   "get": {
+    "operationId": "GetGenres",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "searchTerm",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "parentId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fields",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFields"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "excludeItemTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/BaseItemKind"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeItemTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/BaseItemKind"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isFavorite",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageTypeLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImageTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ImageType"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "nameStartsWithOrGreater",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "nameStartsWith",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "nameLessThan",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortBy",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemSortBy"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortOrder",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/SortOrder"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImages",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableTotalRecordCount",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Genre"
+    ]
+   }
+  },
   "/Items": {
    "delete": {
     "operationId": "DeleteItems",

@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.rows
 
+import dev.nitrate.tv.ui.components.LocalDisplayPrefs
+import dev.nitrate.core.pages.isSpoiler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -193,7 +195,7 @@ private fun Expanded(
             TitleOrLogo(item, if (options.showLogo) repository.logoUrl(item) else null)
             item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
             if (options.showDetails) ItemMetaLine(item, showRatings = options.showRatings)
-            if (options.showOverview) {
+            if (options.showOverview && LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.isSpoiler(item)) {
                 item.overview?.let {
                     Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 3, overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)

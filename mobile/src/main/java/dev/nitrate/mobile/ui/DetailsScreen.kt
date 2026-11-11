@@ -1,5 +1,7 @@
 package dev.nitrate.mobile.ui
 
+import dev.nitrate.core.pages.facts
+import dev.nitrate.core.pages.isSpoiler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -92,6 +95,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
     val downloaded = remember(records) { records.map { it.itemId }.toSet() }
     val list = rememberLazyListState()
     val bg = MaterialTheme.colorScheme.background
+    val prefs = LocalDisplayPrefs.current
 
     TintedBackdrop(tint, strength = 0.32f) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
@@ -112,7 +116,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         )
                         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x88000000), 0.25f to Color.Transparent, 1f to Color.Transparent)))
                         Column(Modifier.align(Alignment.BottomStart).padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val logo = server.logoUrl(item)
+                            val logo = server.logoUrl(item)?.takeIf { prefs.logos }
                             if (logo != null) {
                                 AsyncImage(logo, item.displayTitle, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
                                     modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 100.dp))
@@ -126,8 +130,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
             }
             item(key = "facts") {
                 Column(Modifier.padding(horizontal = ScreenPadding, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { facts(item).forEach { GlassChip(it) } }
-                    if (item.genres.isNotEmpty()) Text(item.genres.take(4).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { prefs.facts(item).forEach { GlassChip(it) } }
+                    if (item.genres.isNotEmpty() && prefs.genres) Text(item.genres.take(4).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
@@ -135,8 +139,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         if (item.isPlayable) DownloadAction(actions, item)
                         if (item.kind == ItemKind.SERIES) SmartDownloadAction(actions, item)
                     }
-                    item.tagline?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
-                    item.overview?.let { ExpandableText(it) }
+                    item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
+                    item.overview?.takeIf { prefs.overview && !prefs.isSpoiler(item) }?.let { ExpandableText(it) }
                 }
             }
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -180,7 +184,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                 }
                 items(state.episodes, key = { "ep-${it.id}" }) { episode -> EpisodeCard(actions, episode, episode.id in downloaded) }
             }
-            val people = item.people.filter { it.imageTag != null || it.role != null }.take(20)
+            val people = item.people.filter { it.imageTag != null || it.role != null }.take(20).takeIf { prefs.cast }.orEmpty()
             if (people.isNotEmpty()) {
                 item(key = "cast") {
                     Column(Modifier.padding(top = 28.dp)) {
@@ -193,7 +197,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     }
                 }
             }
-            if (state.similar.isNotEmpty()) {
+            if (state.similar.isNotEmpty() && prefs.similar) {
                 item(key = "similar") {
                     Column(Modifier.padding(top = 28.dp)) {
                         SectionHeader("More like this")
@@ -215,17 +219,6 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
     }
 }
 
-private fun facts(item: MediaItem) = buildList {
-    if (item.kind == ItemKind.SERIES) {
-        item.productionYear?.let { start -> add(if (item.endYear != null && item.endYear != start) "$start–${item.endYear}" else "$start") }
-    } else {
-        item.productionYear?.let { add(it.toString()) }
-    }
-    item.officialRating?.let { add(it) }
-    item.runtimeMs?.takeIf { item.kind != ItemKind.SERIES }?.let { add(formatRuntime(it)) }
-    item.communityRating?.let { add("★ ${formatOneDecimal(it.toDouble())}") }
-    item.criticRating?.let { add("${it.toInt()}% critics") }
-}
 
 /** The big Play (or Resume) button, with progress and "From start" when part-watched. */
 @Composable
@@ -276,21 +269,24 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 Modifier.width(148.dp).aspectRatio(16f / 9f).sharedArtwork("ep-${episode.id}").clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp)),
             ) {
-                actions.server.cardImage(episode, CardShape.WIDE, 240)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                val spoiler = LocalDisplayPrefs.current.isSpoiler(episode)
+                actions.server.cardImage(episode, CardShape.WIDE, 240)?.let {
+                    AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().then(if (spoiler) Modifier.blur(16.dp) else Modifier))
+                }
                 // Play straight from the list.
                 Box(
                     Modifier.align(Alignment.Center).size(36.dp).clip(CircleShape).background(Color(0x88000000)).pressable({ actions.play(episode, false) }),
                     Alignment.Center,
                 ) { Icon(Icons.Default.PlayArrow, "Play", tint = Color.White) }
                 val pct = episode.user.playedPercentage?.toFloat()?.div(100f)
-                if (pct != null && pct > 0f && !episode.user.played) {
+                if (pct != null && pct > 0f && !episode.user.played && LocalDisplayPrefs.current.progressBars) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x99000000))) {
                         Box(Modifier.fillMaxWidth(pct).height(3.dp).background(accentColor()))
                     }
                 }
                 Row(Modifier.align(Alignment.TopEnd).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (downloaded) Badge(NitrateIcons.DownloadDone, "Downloaded")
-                    if (episode.user.played) Badge(Icons.Default.Check, "Watched")
+                    if (episode.user.played && LocalDisplayPrefs.current.watchedMarks) Badge(Icons.Default.Check, "Watched")
                 }
             }
             Column(Modifier.padding(start = 14.dp).weight(1f)) {
@@ -298,7 +294,7 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
             }
         }
-        episode.overview?.let {
+        episode.overview?.takeIf { LocalDisplayPrefs.current.let { p -> p.overview && !p.isSpoiler(episode) } }?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
         }
     }

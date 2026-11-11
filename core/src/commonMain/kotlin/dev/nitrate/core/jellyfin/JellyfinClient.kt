@@ -26,6 +26,10 @@ import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.SubtitleDelivery
 import dev.nitrate.core.model.subtitleMimeType
 import dev.nitrate.core.downloads.TranscodeSpec
+import dev.nitrate.core.pages.ItemQuery
+import dev.nitrate.core.pages.QuerySort
+import dev.nitrate.core.pages.ResolutionFilter
+import dev.nitrate.core.pages.WatchFilter
 import dev.nitrate.core.playback.ChannelClip
 import dev.nitrate.core.playback.ChannelTest
 import dev.nitrate.core.playback.DeviceCapabilities
@@ -540,6 +544,26 @@ class JellyfinClient(
         )
     }
 
+    // ---- Custom rows ----
+
+    override suspend fun queryItems(query: ItemQuery): List<MediaItem> = items("Items", query = itemQueryParams(query))
+
+    override suspend fun collectionItems(collectionId: String): List<MediaItem> = items(
+        "Items",
+        query = mapOf("parentId" to collectionId, "sortBy" to "ProductionYear,SortName", "sortOrder" to "Ascending,Ascending", "fields" to ROW_FIELDS, "limit" to 100),
+    )
+
+    override suspend fun genres(libraryId: String?): List<String> =
+        get("Genres", query = mapOf("parentId" to libraryId, "sortBy" to "SortName", "sortOrder" to "Ascending", "enableTotalRecordCount" to false))
+            .decode<QueryResultDto<ItemDto>>().items.mapNotNull { it.name }
+
+    override suspend fun collections(): List<MediaItem> = listOfType("BoxSet")
+
+    override suspend fun playlists(): List<MediaItem> = listOfType("Playlist")
+
+    private suspend fun listOfType(type: String) =
+        items("Items", query = mapOf("includeItemTypes" to type, "recursive" to true, "sortBy" to "SortName", "sortOrder" to "Ascending", "fields" to "PrimaryImageAspectRatio", "limit" to 500))
+
     // ---- Search ----
 
     override suspend fun search(query: String): SearchResults = coroutineScope {
@@ -691,7 +715,7 @@ class JellyfinClient(
         }
     }
 
-    private companion object {
+    internal companion object {
         const val PREFS_CLIENT = "nitrate"
         const val ROW_LIMIT = 24
         const val ROW_FIELDS = "Overview,PrimaryImageAspectRatio,Genres"
@@ -699,4 +723,61 @@ class JellyfinClient(
         const val TRICKPLAY_MIN_WIDTH = 240
         val WIDE_DEFAULT = RowDisplay(style = RowStyle.WIDE, showTitles = true)
     }
+}
+
+/** Jellyfin /Items parameters for a saved search. */
+internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
+    val types = q.types.mapNotNull {
+        when (it) {
+            ItemKind.MOVIE -> "Movie"
+            ItemKind.SERIES -> "Series"
+            ItemKind.EPISODE -> "Episode"
+            ItemKind.BOX_SET -> "BoxSet"
+            ItemKind.VIDEO -> "Video"
+            ItemKind.MUSIC_VIDEO -> "MusicVideo"
+            else -> null
+        }
+    }.ifEmpty { if (q.libraryId == null) listOf("Movie", "Series") else emptyList() }
+    val sort = when (q.sort) {
+        QuerySort.DATE_ADDED -> "DateCreated"
+        QuerySort.RELEASE_DATE -> "PremiereDate"
+        QuerySort.NAME -> "SortName"
+        QuerySort.RATING -> "CommunityRating"
+        QuerySort.CRITIC_RATING -> "CriticRating"
+        QuerySort.RUNTIME -> "Runtime"
+        QuerySort.DATE_PLAYED -> "DatePlayed"
+        QuerySort.RANDOM -> "Random"
+    }
+    val filters = listOfNotNull(
+        when (q.watched) {
+            WatchFilter.UNWATCHED -> "IsUnplayed"
+            WatchFilter.WATCHED -> "IsPlayed"
+            WatchFilter.IN_PROGRESS -> "IsResumable"
+            WatchFilter.ANY -> null
+        },
+        "IsFavorite".takeIf { q.favoritesOnly },
+    )
+    val years = if (q.yearFrom != null && q.yearTo != null && q.yearTo >= q.yearFrom && q.yearTo - q.yearFrom <= 200) (q.yearFrom..q.yearTo).joinToString(",") else null
+    return mapOf(
+        "parentId" to q.libraryId,
+        "recursive" to true,
+        "includeItemTypes" to types.joinToString(",").ifEmpty { null },
+        // Jellyfin takes several genres, tags and studios separated by "|".
+        "genres" to q.genres.joinToString("|").ifEmpty { null },
+        "tags" to q.tags.joinToString("|").ifEmpty { null },
+        "studios" to q.studios.joinToString("|").ifEmpty { null },
+        "personIds" to q.personId,
+        "years" to years,
+        "minPremiereDate" to (if (years == null) q.yearFrom?.let { "$it-01-01T00:00:00Z" } else null),
+        "maxPremiereDate" to (if (years == null) q.yearTo?.let { "$it-12-31T23:59:59Z" } else null),
+        "minCommunityRating" to q.minRating,
+        "filters" to filters.joinToString(",").ifEmpty { null },
+        "isHd" to (if (q.resolution == ResolutionFilter.HD) true else null),
+        "is4K" to (if (q.resolution == ResolutionFilter.UHD) true else null),
+        "sortBy" to if (q.sort == QuerySort.RANDOM) sort else "$sort,SortName",
+        "sortOrder" to if (q.descending) "Descending,Ascending" else "Ascending,Ascending",
+        "limit" to q.limit,
+        "fields" to "Overview,PrimaryImageAspectRatio,Genres",
+        "enableTotalRecordCount" to false,
+    )
 }

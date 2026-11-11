@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.components
 
+import dev.nitrate.core.pages.facts
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -26,25 +27,14 @@ import java.util.Date
 @Composable
 fun ItemMetaLine(item: MediaItem, modifier: Modifier = Modifier, showRatings: Boolean = true) {
     val context = LocalContext.current
-    val parts = buildList {
-        if (item.kind == ItemKind.SERIES) {
-            val start = item.productionYear
-            val end = item.endYear
-            if (start != null) add(if (end != null && end != start) "$start–$end" else "$start")
-        } else {
-            item.productionYear?.let { add(it.toString()) }
-        }
-        item.officialRating?.let { add(it) }
-        item.runtimeMs?.takeIf { item.kind != ItemKind.SERIES }?.let { runtime ->
-            add(formatRuntime(runtime))
-            val remainingMs = runtime - item.user.positionMs
-            val endsAt = Date(System.currentTimeMillis() + remainingMs)
-            add("Ends at ${DateFormat.getTimeFormat(context).format(endsAt)}")
-        }
-        if (showRatings) {
-            item.communityRating?.let { add("★ %.1f".format(it)) }
-            item.criticRating?.let { add("${it.toInt()}% critics") }
-        }
+    // The user's display choices decide which facts appear; a row can also turn ratings off.
+    val prefs = LocalDisplayPrefs.current.let { if (showRatings) it else it.copy(communityRating = false, criticRating = false) }
+    val parts = prefs.facts(item).toMutableList()
+    if (prefs.runtime) item.runtimeMs?.takeIf { item.kind != ItemKind.SERIES }?.let { runtime ->
+        val remainingMs = runtime - item.user.positionMs
+        val endsAt = Date(System.currentTimeMillis() + remainingMs)
+        val at = parts.indexOf(formatRuntime(runtime)) + 1
+        parts.add(at.coerceAtLeast(0), "Ends at ${DateFormat.getTimeFormat(context).format(endsAt)}")
     }
     if (parts.isEmpty()) return
     Text(
@@ -60,7 +50,7 @@ fun ItemMetaLine(item: MediaItem, modifier: Modifier = Modifier, showRatings: Bo
 /** Logo image when the server has one, otherwise the title in display type. */
 @Composable
 fun TitleOrLogo(item: MediaItem, logoUrl: String?, modifier: Modifier = Modifier) {
-    if (logoUrl != null) {
+    if (logoUrl != null && LocalDisplayPrefs.current.logos) {
         AsyncImage(
             model = logoUrl,
             contentDescription = item.displayTitle,
@@ -81,6 +71,7 @@ fun TitleOrLogo(item: MediaItem, logoUrl: String?, modifier: Modifier = Modifier
 
 @Composable
 fun GenreLine(item: MediaItem, modifier: Modifier = Modifier) {
+    if (!LocalDisplayPrefs.current.genres) return
     val genres = item.genres.orEmpty().take(4)
     if (genres.isEmpty()) return
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

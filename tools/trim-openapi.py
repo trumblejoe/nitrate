@@ -45,6 +45,7 @@ PATHS = [
     "/Videos/{routeItemId}/{routeMediaSourceId}/Subtitles/{routeIndex}/Stream.{routeFormat}",
     "/UserItems/{itemId}/UserData",
     "/Persons",
+    "/Genres",
     "/MediaSegments/{itemId}",
     "/Videos/{itemId}/Trickplay/{width}/{index}.jpg",
 ]

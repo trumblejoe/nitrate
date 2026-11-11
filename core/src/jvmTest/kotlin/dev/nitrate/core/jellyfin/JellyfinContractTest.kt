@@ -130,6 +130,22 @@ class JellyfinContractTest {
         }
         client.channelTestClips()
 
+        client.queryItems(
+            dev.nitrate.core.pages.ItemQuery(
+                libraryId = DASHED, types = listOf(ItemKind.MOVIE, ItemKind.SERIES), genres = listOf("Horror", "Sci-Fi"), tags = listOf("cult"),
+                studios = listOf("A24"), personId = DASHED, yearFrom = 1980, yearTo = 1989, minRating = 7f,
+                watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, favoritesOnly = true, resolution = dev.nitrate.core.pages.ResolutionFilter.UHD,
+                sort = dev.nitrate.core.pages.QuerySort.CRITIC_RATING,
+            ),
+        )
+        for (sort in dev.nitrate.core.pages.QuerySort.entries) {
+            client.queryItems(dev.nitrate.core.pages.ItemQuery(sort = sort, yearFrom = 2000, watched = dev.nitrate.core.pages.WatchFilter.IN_PROGRESS, resolution = dev.nitrate.core.pages.ResolutionFilter.HD))
+        }
+        client.collectionItems(DASHED)
+        client.genres(DASHED)
+        client.collections()
+        client.playlists()
+
         val found = client.search("pilot")
         assertEquals(1, found.episodes.size)
         client.itemsWithPerson(DASHED)
@@ -168,7 +184,7 @@ class JellyfinContractTest {
         val problems = sent.flatMap { check(it.method, it.url, it.body) } + urls.flatMap { check(HttpMethod.Get, Url(it), null) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
         val endpoints = sent.map { "${it.method.value} ${template(it.url)}" }.toSet()
-        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 33)
+        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 34)
     }
 
     @Test

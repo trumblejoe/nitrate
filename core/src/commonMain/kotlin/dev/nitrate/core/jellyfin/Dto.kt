@@ -75,6 +75,9 @@ internal data class ItemDto(
     val people: List<PersonDto>? = null,
     val locationType: String? = null,
     val mediaSources: List<MediaSourceDto>? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val mediaStreams: List<MediaStreamDto>? = null,
     /** Media source id -> thumbnail width -> sheet layout. */
     val trickplay: Map<String, Map<String, TrickplayInfoDto>>? = null,
 )

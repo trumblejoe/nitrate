@@ -1,5 +1,7 @@
 package dev.nitrate.mobile.ui
 
+import dev.nitrate.core.pages.facts
+import dev.nitrate.core.pages.isSpoiler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -68,6 +71,14 @@ fun MediaCard(
     /** Lets the artwork morph into the page this card opens. */
     sharedKey: String? = null,
 ) {
+    val prefs = LocalDisplayPrefs.current
+    // Titles follow the row unless the user always or never wants them.
+    val shownTitle = when (prefs.cardTitles) {
+        dev.nitrate.core.pages.CardTitles.NEVER -> null
+        dev.nitrate.core.pages.CardTitles.ALWAYS -> title ?: item.displayTitle
+        dev.nitrate.core.pages.CardTitles.BY_ROW -> title
+    }
+    val shownSubtitle = subtitle.takeIf { prefs.cardTitles != dev.nitrate.core.pages.CardTitles.NEVER }
     Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()).pressable(onClick)) {
         Box(
             Modifier
@@ -79,17 +90,45 @@ fun MediaCard(
                 .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp)),
         ) {
             if (imageUrl != null) {
-                AsyncImage(imageUrl, contentDescription = item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                AsyncImage(
+                    imageUrl,
+                    contentDescription = item.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().then(if (prefs.isSpoiler(item)) Modifier.blur(16.dp) else Modifier),
+                )
             } else {
                 Text(item.name, Modifier.align(Alignment.Center).padding(8.dp), style = MaterialTheme.typography.labelLarge, maxLines = 3)
             }
-            val progress = item.user.playedPercentage?.toFloat()?.div(100f)
+            val progress = item.user.playedPercentage?.toFloat()?.div(100f)?.takeIf { prefs.progressBars }
             if (progress != null && progress > 0f) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x99000000))) {
                     Box(Modifier.fillMaxWidth(progress).height(4.dp).background(accentColor()))
                 }
             }
-            if (item.user.played) {
+            if (prefs.qualityBadges) {
+                // The most notable quality label, e.g. 4K or Dolby Vision.
+                item.badges.firstOrNull { it == "4K" || it == "Dolby Vision" || it.startsWith("HDR") }?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Color(0xAA000000), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
+            if (prefs.unwatchedCounts && !item.user.played) {
+                item.user.unplayedCount?.takeIf { it > 0 && item.kind == ItemKind.SERIES }?.let {
+                    Text(
+                        "$it",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = contentOn(accentColor()),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(accentColor(), RoundedCornerShape(50)).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
+            }
+            if (item.user.played && prefs.watchedMarks) {
                 Icon(
                     Icons.Default.Check,
                     contentDescription = "Watched",
@@ -99,11 +138,11 @@ fun MediaCard(
                 )
             }
         }
-        if (title != null) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+        if (shownTitle != null) {
+            Text(shownTitle, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
         }
-        if (subtitle != null) {
-            Text(subtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (shownSubtitle != null) {
+            Text(shownSubtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

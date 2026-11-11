@@ -60,6 +60,10 @@ android {
         buildConfig = true
     }
 
+    // Test fixtures shared with :tv (fake server, sample artwork).
+    sourceSets["test"].kotlin.srcDir("../testing/src")
+    sourceSets["test"].resources.srcDir("../testing/resources")
+
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true

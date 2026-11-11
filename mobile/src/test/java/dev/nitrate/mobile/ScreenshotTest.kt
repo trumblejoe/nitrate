@@ -10,6 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.nitrate.android.AppContainer
+import dev.nitrate.testing.FakeServer
 import dev.nitrate.mobile.ui.AppActions
 import dev.nitrate.mobile.ui.ConnectScreen
 import dev.nitrate.core.downloads.DownloadQuality
@@ -23,6 +24,21 @@ import dev.nitrate.core.model.UserState
 import dev.nitrate.mobile.ui.DetailsScreen
 import dev.nitrate.mobile.ui.DownloadsScreen
 import dev.nitrate.mobile.ui.SearchScreen
+import dev.nitrate.android.viewmodel.RowsViewModel
+import dev.nitrate.core.pages.AccentMode
+import dev.nitrate.core.pages.CustomPage
+import dev.nitrate.core.pages.DisplayPrefs
+import dev.nitrate.core.pages.ItemQuery
+import dev.nitrate.core.pages.PageKeys
+import dev.nitrate.core.pages.PageLayout
+import dev.nitrate.core.pages.QuerySort
+import dev.nitrate.core.pages.RowEntry
+import dev.nitrate.core.pages.RowSource
+import dev.nitrate.core.pages.WatchFilter
+import dev.nitrate.mobile.ui.PageEditor
+import dev.nitrate.mobile.ui.ProvideDisplayPrefs
+import dev.nitrate.mobile.ui.RowBuilderDialog
+import dev.nitrate.mobile.ui.SettingsScreen
 import dev.nitrate.mobile.ui.PlayerLayout
 import dev.nitrate.mobile.ui.WritingScreen
 import dev.nitrate.mobile.ui.TransferDialog
@@ -62,8 +78,18 @@ class ScreenshotTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun shoot(name: String, downloads: DownloadsData = DownloadsData(), content: @Composable (AppActions) -> Unit) {
+    private fun shoot(
+        name: String,
+        downloads: DownloadsData = DownloadsData(),
+        setup: suspend (AppContainer) -> Unit = {},
+        content: @Composable (AppActions) -> Unit,
+    ) {
         val container = AppContainer(compose.activity, "test", "0", serverOverride = FakeServer(), downloadStoreOverride = MemoryDownloadStore(downloads))
+        kotlinx.coroutines.runBlocking {
+            // Stored settings outlive a test in the same process: start each one clean.
+            container.displaySettings.import("user-1", emptyMap())
+            setup(container)
+        }
         // Load artwork without background threads so it's on screen when the picture is taken.
         SingletonImageLoader.setUnsafe(
             ImageLoader.Builder(compose.activity)
@@ -77,9 +103,13 @@ class ScreenshotTest {
         compose.setContent {
             NitrateTheme {
                 // Same root as the app: background and text colours come from this Surface.
-                Surface(color = MaterialTheme.colorScheme.background) {
-                    val nav = rememberNavController()
-                    content(AppActions(container, nav, play = { _, _ -> }))
+                ProvideDisplayPrefs(container, "user-1") {
+                    NitrateTheme {
+                        Surface(color = MaterialTheme.colorScheme.background) {
+                            val nav = rememberNavController()
+                            content(AppActions(container, nav, play = { _, _ -> }))
+                        }
+                    }
                 }
             }
         }
@@ -146,6 +176,41 @@ class ScreenshotTest {
     fun transfer() = shoot("phone-writing-transfer") {
         TransferDialog(dev.nitrate.core.writing.TransferServer.State(running = true, address = "http://192.168.1.42:8765", pin = "482913"), onToggle = {}, onDismiss = {})
     }
+
+    /** A Home the user has edited: a renamed row, a hidden one, and a row of their own. */
+    private suspend fun customizeHome(c: AppContainer) {
+        val horror = RowEntry("h1", RowSource.Query(ItemQuery(genres = listOf("Horror"), watched = WatchFilter.UNWATCHED, sort = QuerySort.RANDOM)), title = "Unwatched horror")
+        c.displaySettings.saveLayout(
+            "user-1", PageKeys.HOME,
+            PageLayout(
+                listOf(
+                    RowEntry.builtIn("home/next_up"),
+                    horror,
+                    RowEntry.builtIn("home/continue_watching").copy(title = "Pick up where you left off"),
+                    RowEntry.builtIn("home/latest/lib-movies").copy(hidden = true),
+                ),
+            ),
+        )
+        c.displaySettings.saveCustomPages("user-1", listOf(CustomPage("pg1", "Friday night"), CustomPage("pg2", "Kids", pinned = false)))
+    }
+
+    @Test fun homeEdited() = shoot("phone-home-edited", setup = ::customizeHome) { MainScreen(it) {} }
+
+    @Test fun pageEditor() = shoot("phone-page-editor", setup = ::customizeHome) {
+        val c = it.container
+        val vm = androidx.lifecycle.viewmodel.compose.viewModel { RowsViewModel(PageKeys.HOME, c.server::homeRows, c.displaySettings, c.server) }
+        PageEditor("Home", vm, it, null) {}
+    }
+
+    @Test fun rowBuilder() = shoot("phone-row-builder") { RowBuilderDialog(it, null, initial = null, initialTitle = null, onSave = { _, _ -> }, onDismiss = {}) }
+
+    @Test fun displaySettings() = shoot("phone-display-settings", setup = { c ->
+        c.displaySettings.savePrefs("user-1", DisplayPrefs(accent = AccentMode.TEAL, hideSpoilers = true, criticRating = false))
+    }) { SettingsScreen(it, {}) }
+
+    @Test fun spoilerFree() = shoot("phone-series-spoilers", setup = { c ->
+        c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true, communityRating = false, overview = false))
+    }) { DetailsScreen(it, "series-1", null) }
 
     /** Writing beside the video: side by side when wide, stacked when upright. */
     @Test

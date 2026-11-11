@@ -40,6 +40,8 @@ data class MediaItem(
     val user: UserState = UserState(),
     val images: ItemImages = ItemImages(),
     val people: List<Person> = emptyList(),
+    /** Picture and sound quality labels, e.g. 4K, Dolby Vision, Atmos (see QualityBadges). */
+    val badges: List<String> = emptyList(),
 ) {
     val isEpisode get() = kind == ItemKind.EPISODE
     val isPlayable get() = kind in PLAYABLE

@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.home
 
+import dev.nitrate.tv.ui.rows.PageEditor
+import dev.nitrate.core.pages.PageKeys
 import dev.nitrate.android.viewmodel.RowsState
 import dev.nitrate.android.viewmodel.RowsViewModel
 import androidx.compose.foundation.layout.Arrangement
@@ -44,11 +46,15 @@ fun HomeScreen(
     onOffline: () -> Unit = {},
     /** More footer buttons, e.g. plugin pages. */
     extraActions: List<Pair<String, () -> Unit>> = emptyList(),
+    /** Pinned custom pages (shown above the rows) and opening one. */
+    pinnedPages: List<Pair<String, () -> Unit>> = emptyList(),
 ) {
-    val vm = viewModel(key = "home") { RowsViewModel(repository::homeRows, displaySettings, repository.userId) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    var editing by remember { mutableStateOf(false) }
+    if (editing) PageEditor("Home", vm, repository, libraryId = null, onDone = { editing = false })
     val signOut: () -> Unit = { scope.launch { repository.logout(); onSignOut() } }
 
     // Refresh "Continue Watching" when returning from the player or details.
@@ -79,6 +85,14 @@ fun HomeScreen(
             onOpen = onOpen,
             onPlay = onPlay,
             onSaveDisplay = vm::save,
+            onEditPage = { editing = true },
+            header = if (pinnedPages.isEmpty()) null else {
+                {
+                    Row(Modifier.padding(start = 58.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        for ((label, open) in pinnedPages) OutlinedButton(onClick = open) { Text(label) }
+                    }
+                }
+            },
             footer = {
                 item(key = "settings") {
                     Row(Modifier.padding(start = 58.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -23,7 +23,15 @@ private val NitrateColors = darkColorScheme(
     border = Color(0xFF3A4152),
 )
 
+/** Amber on near-black, or the user's accent and true-black choices. */
 @Composable
 fun NitrateTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = NitrateColors, content = content)
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    var scheme = NitrateColors
+    prefs.accent.argb?.let { scheme = scheme.copy(primary = Color(it)) }
+    if (prefs.trueBlack) scheme = scheme.copy(background = Color.Black, surface = Color(0xFF0E0E10), surfaceVariant = Color(0xFF1A1A1E))
+    MaterialTheme(colorScheme = scheme) {
+        // Text outside a tv Surface (most screens, and dialogs) would otherwise default to black.
+        androidx.compose.runtime.CompositionLocalProvider(androidx.tv.material3.LocalContentColor provides scheme.onSurface, content = content)
+    }
 }

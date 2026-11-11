@@ -1,5 +1,8 @@
 package dev.nitrate.mobile.ui
 
+import dev.nitrate.core.pages.facts
+import dev.nitrate.core.pages.isSpoiler
+import dev.nitrate.core.pages.PageKeys
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -84,9 +88,13 @@ fun featuredItems(rows: List<MediaRow>): List<MediaItem> {
 @Composable
 fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val container = actions.container
-    val vm = viewModel(key = "home") { RowsViewModel(container.server::homeRows, container.displaySettings, container.server.userId) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server) }
     val state by vm.state.collectAsStateWithLifecycle()
+    val overrides by vm.overrides.collectAsStateWithLifecycle()
     var refreshing by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    val prefs = LocalDisplayPrefs.current
+    if (editing) PageEditor("Home", vm, actions, libraryId = null, onDone = { editing = false })
 
     // Refresh "Continue Watching" when coming back from the player or details.
     var first by remember { mutableStateOf(true) }
@@ -109,10 +117,17 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
             TintedBackdrop(tint, modifier) {
                 PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; vm.refresh(); refreshing = false }) {
                     LazyColumn(state = list, contentPadding = PaddingValues(bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(28.dp), modifier = Modifier.fillMaxSize()) {
-                        if (featured.isNotEmpty()) {
+                        if (featured.isNotEmpty() && prefs.homeHero) {
                             item(key = "hero") { HeroCarousel(featured, pager, actions) }
+                        } else {
+                            // Room for the wordmark bar when there's no hero under it.
+                            item(key = "top") { Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars).height(56.dp)) }
                         }
-                        items(s.rows.filterNot { it.key == "home/my_media" }, key = { it.key }) { row -> CinematicRow(row, actions) }
+                        item(key = "pages") { PinnedPages(actions) }
+                        items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions) }
+                        item(key = "edit") {
+                            Box(Modifier.fillMaxWidth(), Alignment.Center) { PillButton("Edit Home", Icons.Default.Edit, primary = false, onClick = { editing = true }) }
+                        }
                     }
                 }
                 // Wordmark and search over the hero; a scrim fades in once the hero scrolls away.
@@ -124,6 +139,7 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Wordmark(Modifier.weight(1f))
+                    IconButton(onClick = { editing = true }) { Icon(Icons.Default.Edit, "Edit Home", tint = Color.White) }
                     IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Search", tint = Color.White) }
                 }
             }
@@ -193,19 +209,20 @@ private fun HeroPage(item: MediaItem, server: MediaServer, offset: Float, onPlay
                 .graphicsLayer { alpha = 1f - offset.absoluteValue.coerceIn(0f, 1f) * 1.4f; translationX = offset * 60f },
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            val logo = server.logoUrl(item)
+            val logo = server.logoUrl(item)?.takeIf { LocalDisplayPrefs.current.logos }
             if (logo != null) {
                 AsyncImage(logo, item.name, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart, modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 110.dp))
             } else {
                 Text(item.name, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
+            val prefs = LocalDisplayPrefs.current
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                heroFacts(item).forEach { GlassChip(it) }
+                prefs.facts(item).forEach { GlassChip(it) }
             }
-            if (item.genres.isNotEmpty()) {
+            if (item.genres.isNotEmpty() && prefs.genres) {
                 Text(item.genres.take(3).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             }
-            item.overview?.let { Text(it, color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            item.overview?.takeIf { prefs.overview }?.let { Text(it, color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
                 PillButton(if (item.kind == ItemKind.SERIES) "Watch" else if (item.user.positionMs > 0) "Resume" else "Play", Icons.Default.PlayArrow, primary = true, onClick = onPlay)
                 PillButton("Details", Icons.Default.Info, primary = false, onClick = onOpen)
@@ -214,12 +231,6 @@ private fun HeroPage(item: MediaItem, server: MediaServer, offset: Float, onPlay
     }
 }
 
-private fun heroFacts(item: MediaItem) = listOfNotNull(
-    if (item.kind == ItemKind.SERIES) item.productionYear?.let { start -> if (item.endYear != null && item.endYear != start) "$start–${item.endYear}" else "$start" } else item.productionYear?.toString(),
-    item.officialRating,
-    item.runtimeMs?.takeIf { item.kind != ItemKind.SERIES }?.let(::formatRuntime),
-    item.communityRating?.let { "★ ${dev.nitrate.core.model.formatOneDecimal(it.toDouble())}" },
-)
 
 /** A big rounded button: accent-filled when [primary], glass otherwise. */
 @Composable
@@ -240,10 +251,10 @@ fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVec
     }
 }
 
-/** A row in the cinematic style: wide cards for Continue Watching and Next Up, posters otherwise. */
+/** A row in the cinematic style, as wide cards or posters per the row's [display] setting. */
 @Composable
-fun CinematicRow(row: MediaRow, actions: AppActions) {
-    val wide = row.key.endsWith("continue_watching") || row.key.endsWith("next_up") || row.defaultDisplay.style == dev.nitrate.core.rows.RowStyle.WIDE
+fun CinematicRow(row: MediaRow, display: dev.nitrate.core.rows.RowDisplay, actions: AppActions) {
+    val wide = display.style != dev.nitrate.core.rows.RowStyle.POSTER
     Column {
         SectionHeader(row.title)
         androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -255,8 +266,8 @@ fun CinematicRow(row: MediaRow, actions: AppActions) {
                         imageUrl = actions.server.cardImage(item, CardShape.WIDE),
                         shape = CardShape.WIDE,
                         width = 272.dp,
-                        title = item.displayTitle,
-                        subtitle = listOfNotNull(item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · "),
+                        title = item.displayTitle.takeIf { display.showTitles },
+                        subtitle = listOfNotNull(item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · ").takeIf { display.showTitles },
                         sharedKey = key,
                         onClick = { actions.open(item, key) },
                     )
@@ -266,6 +277,8 @@ fun CinematicRow(row: MediaRow, actions: AppActions) {
                         imageUrl = actions.server.cardImage(item, CardShape.POSTER),
                         shape = CardShape.POSTER,
                         width = 128.dp,
+                        title = item.name.takeIf { display.showTitles },
+                        subtitle = item.productionYear?.toString().takeIf { display.showTitles },
                         sharedKey = key,
                         onClick = { actions.open(item, key) },
                     )

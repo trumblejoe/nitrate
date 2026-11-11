@@ -1,5 +1,12 @@
 package dev.nitrate.tv.ui
 
+import dev.nitrate.tv.ui.pages.rememberCustomPages
+import dev.nitrate.tv.ui.pages.PagesScreen
+import dev.nitrate.tv.ui.pages.DisplaySettingsScreen
+import dev.nitrate.tv.ui.pages.CustomPageScreen
+import dev.nitrate.tv.ui.theme.NitrateTheme
+import dev.nitrate.tv.ui.components.ProvideDisplayPrefs
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -55,6 +62,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class PluginScreenRoute(val pluginId: String)
 @Serializable data class LibraryRoute(val libraryId: String)
 @Serializable data class PlaylistRoute(val playlistId: String)
+@Serializable object PagesRoute
+@Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
+@Serializable object DisplaySettingsRoute
 
 /** [queue] is comma-separated item ids to play after [itemId]. */
 @Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "")
@@ -85,6 +95,11 @@ fun NitrateNavHost(container: AppContainer) {
     val enabledIds by container.plugins.enabledIds.collectAsState(emptySet())
     val enabledPlugins = TV_PLUGIN_UI.filter { it.pluginId in enabledIds }
     val pluginContext = remember(container) { PluginContext(container) }
+    // Display choices belong to the signed-in user, known only after sign-in.
+    val backEntry by nav.currentBackStackEntryAsState()
+    val userId = remember(backEntry) { container.server.userId }
+    ProvideDisplayPrefs(container, userId) {
+    NitrateTheme {
     NavHost(
         navController = nav,
         startDestination = startRoute,
@@ -116,7 +131,8 @@ fun NitrateNavHost(container: AppContainer) {
                 onPlay = { item -> gate.play(item) },
                 onSettings = { nav.navigate(SettingsRoute) },
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
-                extraActions = listOf("Plugins" to { nav.navigate(PluginsRoute) }) +
+                pinnedPages = rememberCustomPages(container).filter { it.pinned }.map { p -> p.title to { nav.navigate(CustomPageRoute(p.id)) } },
+                extraActions = listOf("Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.pluginId)) } },
                 onSignOut = {
                     nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } }
@@ -153,6 +169,12 @@ fun NitrateNavHost(container: AppContainer) {
                 onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
             )
         }
+        composable<PagesRoute> { PagesScreen(container) { id, editNow -> nav.navigate(CustomPageRoute(id, editNow)) } }
+        composable<CustomPageRoute> { entry ->
+            val route = entry.toRoute<CustomPageRoute>()
+            CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() })
+        }
+        composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) }
         composable<PluginsRoute> { PluginsScreen(container.plugins, TV_PLUGIN_UI, pluginContext) }
         composable<PluginScreenRoute> { entry ->
             val id = entry.toRoute<PluginScreenRoute>().pluginId
@@ -203,6 +225,8 @@ fun NitrateNavHost(container: AppContainer) {
         }
     }
     PlaybackGateDialog(gate)
+    }
+    }
 }
 
 /** Where selecting an item goes. Seasons open their series with that season selected. */

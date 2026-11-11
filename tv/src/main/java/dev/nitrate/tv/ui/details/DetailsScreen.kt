@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.details
 
+import dev.nitrate.tv.ui.components.LocalDisplayPrefs
+import dev.nitrate.core.pages.isSpoiler
 import dev.nitrate.android.viewmodel.DetailsState
 import dev.nitrate.android.viewmodel.DetailsViewModel
 import androidx.compose.foundation.layout.Arrangement
@@ -75,6 +77,7 @@ fun DetailsScreen(
         DetailsViewModel(repository, itemId, seasonId)
     }
     val state by vm.state.collectAsStateWithLifecycle()
+    val prefs = LocalDisplayPrefs.current
 
     var firstResume by remember { mutableStateOf(true) }
     LifecycleResumeEffect(Unit) {
@@ -132,8 +135,9 @@ fun DetailsScreen(
                         }
                         // Overview of the focused episode, so the row stays compact.
                         val ep = focusedEpisode?.takeIf { f -> state.episodes.any { it.id == f.id } }
+                        val prefs = LocalDisplayPrefs.current
                         Text(
-                            ep?.overview.orEmpty(),
+                            ep?.overview?.takeIf { prefs.overview && !prefs.isSpoiler(ep) }.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -144,7 +148,7 @@ fun DetailsScreen(
                 }
             }
 
-            val people = item.people.filter { it.imageTag != null || it.role != null }.take(20)
+            val people = item.people.filter { it.imageTag != null || it.role != null }.take(20).takeIf { prefs.cast }.orEmpty()
             if (people.isNotEmpty()) {
                 item(key = "cast") {
                     Column {
@@ -161,7 +165,7 @@ fun DetailsScreen(
                 }
             }
 
-            if (state.similar.isNotEmpty()) {
+            if (state.similar.isNotEmpty() && prefs.similar) {
                 item(key = "similar") {
                     Column {
                         RowTitle("More like this")
@@ -204,10 +208,11 @@ private fun Header(
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleLarge) }
         ItemMetaLine(item)
         GenreLine(item)
-        item.tagline?.let {
+        val prefs = LocalDisplayPrefs.current
+        item.tagline?.takeIf { prefs.tagline }?.let {
             Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
         }
-        item.overview?.let {
+        item.overview?.takeIf { prefs.overview && !prefs.isSpoiler(item) }?.let {
             Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.height(4.dp))

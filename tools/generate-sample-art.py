@@ -9,7 +9,7 @@ import random
 
 from PIL import Image, ImageDraw, ImageFilter
 
-OUT = os.path.join(os.path.dirname(__file__), "..", "mobile", "src", "test", "resources", "art")
+OUT = os.path.join(os.path.dirname(__file__), "..", "testing", "resources", "art")
 
 # name: (base colour, accent)
 PALETTES = {

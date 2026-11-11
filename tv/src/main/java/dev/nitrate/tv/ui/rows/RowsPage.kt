@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.rows
 
+import dev.nitrate.tv.ui.components.LocalDisplayPrefs
+import dev.nitrate.core.pages.isSpoiler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +61,8 @@ fun RowsPage(
     modifier: Modifier = Modifier,
     header: (@Composable () -> Unit)? = null,
     footer: LazyListScope.() -> Unit = {},
+    /** Opens the page editor (order, hide, rename, own rows); without it, only row looks can change. */
+    onEditPage: (() -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf<MediaItem?>(null) }
     var activeShowcase by remember { mutableStateOf<String?>(null) }
@@ -125,8 +129,8 @@ fun RowsPage(
                     }
                 }
                 item(key = "customize-rows") {
-                    OutlinedButton(onClick = { listingRows = true }, modifier = Modifier.padding(start = RowPadding)) {
-                        Text("Customize rows")
+                    OutlinedButton(onClick = { onEditPage?.invoke() ?: run { listingRows = true } }, modifier = Modifier.padding(start = RowPadding)) {
+                        Text(if (onEditPage != null) "Edit page" else "Customize rows")
                     }
                 }
                 footer()
@@ -155,7 +159,7 @@ private fun FocusedSummary(item: MediaItem?, modifier: Modifier) {
         Text(item.displayTitle, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, maxLines = 1) }
         ItemMetaLine(item)
-        item.overview?.let {
+        item.overview?.takeIf { LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.isSpoiler(item) }?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)

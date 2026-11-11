@@ -52,9 +52,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Test fixtures shared with :mobile (fake server, sample artwork).
+    sourceSets["test"].kotlin.srcDir("../testing/src")
+    sourceSets["test"].resources.srcDir("../testing/resources")
+
     testOptions {
         // Lets JVM tests touch android.os.Build fields without Robolectric.
         unitTests.isReturnDefaultValues = true
+        unitTests.isIncludeAndroidResources = true
+        // Screenshot tests write PNGs to build/outputs/roborazzi (see ScreenshotTest).
+        unitTests.all { it.systemProperty("roborazzi.test.record", "true") }
     }
 
     buildFeatures {
@@ -88,6 +95,28 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
+}
+
+// Robolectric's Android jar comes through Gradle (cached, retried); Robolectric then runs offline.
+val robolectricAndroid: Configuration by configurations.creating
+dependencies {
+    robolectricAndroid("org.robolectric:android-all-instrumented:15-robolectric-13954326-i7")
+}
+val robolectricDeps = layout.buildDirectory.dir("robolectric-deps")
+val copyRobolectricDeps by tasks.registering(Copy::class) {
+    from(robolectricAndroid)
+    into(robolectricDeps)
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(copyRobolectricDeps)
+    systemProperty("robolectric.offline", "true")
+    systemProperty("robolectric.dependency.dir", robolectricDeps.get().asFile.absolutePath)
 }
 
 kotlin {

@@ -1,4 +1,4 @@
-package dev.nitrate.mobile
+package dev.nitrate.testing
 
 import dev.nitrate.core.LibrarySort
 import dev.nitrate.core.MediaServer
@@ -106,6 +106,11 @@ class FakeServer : MediaServer {
         people = series.people,
     )
     override fun trickplaySheetUrl(itemId: String, info: dev.nitrate.core.model.TrickplayInfo, sheet: Int) = art("trickplay-0")!!
+    override suspend fun queryItems(query: dev.nitrate.core.pages.ItemQuery) = films.reversed()
+    override suspend fun collectionItems(collectionId: String) = films.take(3)
+    override suspend fun genres(libraryId: String?) = listOf("Action", "Comedy", "Drama", "Horror", "Mystery", "Sci-Fi", "Thriller")
+    override suspend fun collections() = listOf(MediaItem("c1", "Reel Classics", ItemKind.BOX_SET), MediaItem("c2", "Midnight Movies", ItemKind.BOX_SET))
+    override suspend fun playlists() = listOf(MediaItem("p1", "Rainy day", ItemKind.PLAYLIST))
     override suspend fun itemsWithPerson(personId: String) = films + series
     override fun logoUrl(item: MediaItem): String? = null
     override fun personImageUrl(person: Person): String? = null

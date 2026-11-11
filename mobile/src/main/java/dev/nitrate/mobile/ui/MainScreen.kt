@@ -113,7 +113,9 @@ private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Column {
                     Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-                    Text("Library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                    Text("Library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 12.dp, bottom = 16.dp))
+                    CustomPagesSection(actions)
+                    Text("Libraries", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
                 }
             }
             items(result.getOrThrow(), key = { it.id }) { view ->

@@ -12,6 +12,7 @@ import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.SubtitleDelivery
 import dev.nitrate.core.model.UserState
+import dev.nitrate.core.pages.QualityBadges
 
 /** Server times are 100 ns ticks; Nitrate's are milliseconds. */
 internal fun Long.ticksToMs() = this / 10_000
@@ -78,6 +79,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
             seriesPrimary = seriesPrimaryImageTag,
         ),
         people = people.orEmpty().map { Person(normalizeId(it.id), it.name.orEmpty(), it.role, it.primaryImageTag) },
+        badges = badges(),
     )
 }
 
@@ -149,4 +151,12 @@ internal fun PlayMethod.wire() = when (this) {
     PlayMethod.DIRECT_PLAY -> "DirectPlay"
     PlayMethod.DIRECT_STREAM -> "DirectStream"
     PlayMethod.TRANSCODE -> "Transcode"
+}
+
+/** Quality labels from the item's size and, when the response includes them, its streams. */
+internal fun ItemDto.badges(): List<String> {
+    val streams = mediaStreams ?: mediaSources?.firstOrNull()?.mediaStreams.orEmpty()
+    val video = streams.firstOrNull { it.type == "Video" }
+    val audio = streams.filter { it.type == "Audio" }.map { QualityBadges.AudioInfo(it.codec, it.profile, it.displayTitle, it.channels) }
+    return QualityBadges.of(video?.width ?: width, video?.height ?: height, video?.videoRangeType, audio)
 }

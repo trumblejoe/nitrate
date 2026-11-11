@@ -1,5 +1,17 @@
 package dev.nitrate.mobile.ui
 
+import dev.nitrate.core.pages.DisplayPrefs
+import dev.nitrate.core.pages.CardTitles
+import dev.nitrate.core.pages.AccentMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -50,6 +62,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
     val writing by store.settings(WritingPlugin.id, WritingSettings()).collectAsState(WritingSettings())
     val updatePlayback: ((PlaybackSettings) -> PlaybackSettings) -> Unit = { f -> scope.launch { c.playbackSettings.update(f) } }
     val caps = c.capabilities
+    val prefs = LocalDisplayPrefs.current
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
@@ -63,6 +76,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                 },
             )
         }
+
+        header("Display", "For your account; follows you to your other devices.")
+        displaySettings(prefs) { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
 
         header("Playback", "Settings for this device; they aren't synced.")
         item {
@@ -127,6 +143,53 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                 }
             }
         }
+    }
+}
+
+/** Toggles for what's shown about items, the look, and Home. */
+private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((DisplayPrefs) -> DisplayPrefs) -> Unit) {
+    item(key = "accent") {
+        ListItem(
+            headlineContent = { Text("Accent colour") },
+            supportingContent = {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                    AccentMode.entries.forEach { m ->
+                        FilterChip(
+                            selected = prefs.accent == m,
+                            onClick = { update { it.copy(accent = m) } },
+                            label = { Text(m.label) },
+                            leadingIcon = m.argb?.let { c -> { Box(Modifier.size(12.dp).clip(CircleShape).background(Color(c))) } },
+                        )
+                    }
+                }
+            },
+        )
+    }
+    item(key = "black") { Toggle("True black", "Pure black backgrounds, for OLED screens", prefs.trueBlack) { v -> update { it.copy(trueBlack = v) } } }
+    item(key = "hero") { Toggle("Home hero", "The big rotating picture at the top of Home", prefs.homeHero) { v -> update { it.copy(homeHero = v) } } }
+    item(key = "titles") {
+        Choice("Titles under cards", prefs.cardTitles.label) { update { it.copy(cardTitles = CardTitles.entries[(it.cardTitles.ordinal + 1) % CardTitles.entries.size]) } }
+    }
+    val toggles: List<Triple<String, String, Pair<(DisplayPrefs) -> Boolean, (DisplayPrefs, Boolean) -> DisplayPrefs>>> = listOf(
+        Triple("Community rating", "★ 7.8", Pair({ p -> p.communityRating }, { p, v -> p.copy(communityRating = v) })),
+        Triple("Critic rating", "92% critics", Pair({ p -> p.criticRating }, { p, v -> p.copy(criticRating = v) })),
+        Triple("Age rating", "PG-13, TV-14", Pair({ p -> p.officialRating }, { p, v -> p.copy(officialRating = v) })),
+        Triple("Year", "Release year", Pair({ p -> p.year }, { p, v -> p.copy(year = v) })),
+        Triple("Runtime", "1h 56m", Pair({ p -> p.runtime }, { p, v -> p.copy(runtime = v) })),
+        Triple("Genres", "Drama • Mystery", Pair({ p -> p.genres }, { p, v -> p.copy(genres = v) })),
+        Triple("Plot overviews", "Descriptions on Home and details pages", Pair({ p -> p.overview }, { p, v -> p.copy(overview = v) })),
+        Triple("Taglines", "The one-line pitch on details pages", Pair({ p -> p.tagline }, { p, v -> p.copy(tagline = v) })),
+        Triple("Quality labels", "4K, HDR, Dolby Vision, Atmos, 5.1", Pair({ p -> p.qualityBadges }, { p, v -> p.copy(qualityBadges = v) })),
+        Triple("Progress bars", "How far into something you are", Pair({ p -> p.progressBars }, { p, v -> p.copy(progressBars = v) })),
+        Triple("Watched ticks", "On cards and episodes", Pair({ p -> p.watchedMarks }, { p, v -> p.copy(watchedMarks = v) })),
+        Triple("Unwatched counts", "On shows", Pair({ p -> p.unwatchedCounts }, { p, v -> p.copy(unwatchedCounts = v) })),
+        Triple("Logos", "Title art instead of plain titles", Pair({ p -> p.logos }, { p, v -> p.copy(logos = v) })),
+        Triple("Cast & crew", "On details pages", Pair({ p -> p.cast }, { p, v -> p.copy(cast = v) })),
+        Triple("More like this", "On details pages", Pair({ p -> p.similar }, { p, v -> p.copy(similar = v) })),
+        Triple("Hide spoilers", "Blur stills and hide descriptions of episodes you haven't seen", Pair({ p -> p.hideSpoilers }, { p, v -> p.copy(hideSpoilers = v) })),
+    )
+    toggles.forEach { (label, detail, get) ->
+        item(key = "pref-$label") { Toggle(label, detail, get.first(prefs)) { v -> update { get.second(it, v) } } }
     }
 }
 

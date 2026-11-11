@@ -15,6 +15,7 @@ import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.downloads.TranscodeSpec
+import dev.nitrate.core.pages.ItemQuery
 import dev.nitrate.core.playback.ChannelClip
 import dev.nitrate.core.rows.MediaRow
 import kotlinx.coroutines.flow.Flow
@@ -114,6 +115,22 @@ interface MediaServer {
 
     /** Files titled "Nitrate Test …" for the audio channel test, always as the original file. */
     suspend fun channelTestClips(): List<ChannelClip>
+
+    // ---- Custom rows ----
+    /** Items matching a saved search, for custom rows. */
+    suspend fun queryItems(query: ItemQuery): List<MediaItem> = unsupported()
+
+    /** A collection's (box set's) items. */
+    suspend fun collectionItems(collectionId: String): List<MediaItem> = unsupported()
+
+    /** Genres in a library (or all libraries), for building rows. */
+    suspend fun genres(libraryId: String?): List<String> = unsupported()
+
+    /** All collections, for building rows. */
+    suspend fun collections(): List<MediaItem> = unsupported()
+
+    /** All playlists, for building rows. */
+    suspend fun playlists(): List<MediaItem> = unsupported()
 
     // ---- Search ----
     /** Movies, shows, episodes, collections and people matching [query]. */

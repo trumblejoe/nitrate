@@ -1,5 +1,8 @@
 package dev.nitrate.tv.ui.components
 
+import androidx.compose.ui.draw.blur
+import dev.nitrate.core.pages.isSpoiler
+import dev.nitrate.core.pages.CardTitles
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,7 +56,14 @@ fun MediaCard(
     onLongClick: (() -> Unit)? = null,
     showProgress: Boolean = true,
 ) {
-    val progress = item.user.playedPercentage?.toFloat()?.div(100f)
+    val prefs = LocalDisplayPrefs.current
+    val progress = item.user.playedPercentage?.toFloat()?.div(100f)?.takeIf { prefs.progressBars }
+    val shownTitle = when (prefs.cardTitles) {
+        CardTitles.NEVER -> null
+        CardTitles.ALWAYS -> title ?: item.displayTitle
+        CardTitles.BY_ROW -> title
+    }
+    val shownSubtitle = subtitle.takeIf { prefs.cardTitles != CardTitles.NEVER }
     Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())) {
         Card(
             onClick = onClick,
@@ -66,7 +76,12 @@ fun MediaCard(
         ) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
                 if (imageUrl != null) {
-                    AsyncImage(imageUrl, contentDescription = item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    AsyncImage(
+                        imageUrl,
+                        contentDescription = item.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().then(if (prefs.isSpoiler(item)) Modifier.blur(20.dp) else Modifier),
+                    )
                 } else {
                     Text(
                         item.name.orEmpty(),
@@ -79,7 +94,27 @@ fun MediaCard(
                         Box(Modifier.fillMaxWidth(progress).height(4.dp).background(MaterialTheme.colorScheme.primary))
                     }
                 }
-                if (item.user.played) {
+                if (prefs.qualityBadges) {
+                    item.badges.firstOrNull { it == "4K" || it == "Dolby Vision" || it.startsWith("HDR") }?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Color(0xAA000000), MaterialTheme.shapes.small).padding(horizontal = 5.dp),
+                        )
+                    }
+                }
+                if (prefs.unwatchedCounts && !item.user.played) {
+                    item.user.unplayedCount?.takeIf { it > 0 && item.kind == dev.nitrate.core.model.ItemKind.SERIES }?.let {
+                        Text(
+                            "$it",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(MaterialTheme.colorScheme.primary, MaterialTheme.shapes.small).padding(horizontal = 6.dp),
+                        )
+                    }
+                }
+                if (item.user.played && prefs.watchedMarks) {
                     Text(
                         "✓",
                         style = MaterialTheme.typography.labelLarge,
@@ -91,18 +126,18 @@ fun MediaCard(
                 }
             }
         }
-        if (title != null) {
+        if (shownTitle != null) {
             Text(
-                title,
+                shownTitle,
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 8.dp),
             )
         }
-        if (subtitle != null) {
+        if (shownSubtitle != null) {
             Text(
-                subtitle,
+                shownSubtitle,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

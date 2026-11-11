@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.nitrate.core.pages.CustomPage
+import dev.nitrate.core.pages.DisplayPrefs
+import dev.nitrate.core.pages.PageKeys
+import dev.nitrate.core.pages.PageLayout
 import dev.nitrate.core.rows.MediaRow
 import dev.nitrate.core.rows.RowDisplay
 import kotlinx.coroutines.flow.Flow
@@ -42,7 +46,11 @@ class DisplaySettingsStore(private val context: Context) {
     }
 
     /** Saved view options for a page (e.g. a library), or [default] when nothing is stored. */
-    inline fun <reified T> view(userId: String, pageKey: String, default: T): Flow<T> = rawFlow(userId, VIEW + pageKey).map { raw ->
+    inline fun <reified T> view(userId: String, pageKey: String, default: T): Flow<T> = stored(userId, VIEW + pageKey, default)
+
+    /** A stored entry decoded as [T], or [default] when missing or unreadable. */
+    @PublishedApi
+    internal inline fun <reified T> stored(userId: String, name: String, default: T): Flow<T> = rawFlow(userId, name).map { raw ->
         raw?.let { runCatching { json.decodeFromString<T>(it) }.getOrNull() } ?: default
     }
 
@@ -56,6 +64,36 @@ class DisplaySettingsStore(private val context: Context) {
     @PublishedApi
     internal suspend fun saveRaw(userId: String, name: String, raw: String) {
         context.displayDataStore.edit { it[prefKey(userId, name)] = raw }
+        onChanged(userId)
+    }
+
+    // ---- Pages ----
+
+    /** A page's row layout (Home, a library, or a custom page). */
+    fun layout(userId: String, pageKey: String): Flow<PageLayout> = stored(userId, LAYOUT + pageKey, PageLayout())
+
+    suspend fun saveLayout(userId: String, pageKey: String, layout: PageLayout) =
+        if (layout.entries.isEmpty()) removeRaw(userId, LAYOUT + pageKey) else saveRaw(userId, LAYOUT + pageKey, json.encodeToString(layout))
+
+    fun customPages(userId: String): Flow<List<CustomPage>> = stored(userId, PAGES, emptyList())
+
+    suspend fun saveCustomPages(userId: String, pages: List<CustomPage>) = saveRaw(userId, PAGES, json.encodeToString(pages))
+
+    /** Deletes a custom page and its rows. */
+    suspend fun deleteCustomPage(userId: String, id: String) {
+        val pages = customPages(userId).first().filterNot { it.id == id }
+        saveCustomPages(userId, pages)
+        removeRaw(userId, LAYOUT + PageKeys.custom(id))
+    }
+
+    /** What to show about items (ratings, overviews, badges...). */
+    fun prefs(userId: String): Flow<DisplayPrefs> = stored(userId, PREFS, DisplayPrefs())
+
+    suspend fun savePrefs(userId: String, prefs: DisplayPrefs) = saveRaw(userId, PREFS, json.encodeToString(prefs))
+
+    @PublishedApi
+    internal suspend fun removeRaw(userId: String, name: String) {
+        context.displayDataStore.edit { it.remove(prefKey(userId, name)) }
         onChanged(userId)
     }
 
@@ -92,5 +130,8 @@ class DisplaySettingsStore(private val context: Context) {
     internal companion object {
         const val ROWS = "rows"
         const val VIEW = "view:"
+        const val LAYOUT = "layout:"
+        const val PAGES = "pages"
+        const val PREFS = "prefs"
     }
 }

@@ -60,8 +60,11 @@ val LocalArtworkTint = compositionLocalOf<Color?> { null }
 
 /** Fills the screen with a soft wash of [tint] fading into the background, animated as it changes. */
 @Composable
-fun TintedBackdrop(tint: Color?, modifier: Modifier = Modifier, strength: Float = 0.38f, content: @Composable BoxScope.() -> Unit) {
+fun TintedBackdrop(artworkTint: Color?, modifier: Modifier = Modifier, strength: Float = 0.38f, content: @Composable BoxScope.() -> Unit) {
     val bg = MaterialTheme.colorScheme.background
+    val prefs = LocalDisplayPrefs.current
+    // A fixed accent replaces the artwork colour everywhere.
+    val tint = if (prefs.tintFromArtwork) artworkTint else prefs.fixedAccent
     val animated by animateColorAsState(tint ?: MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), tween(900), label = "tint")
     Box(
         modifier.fillMaxSize().background(bg).background(
@@ -75,7 +78,7 @@ fun TintedBackdrop(tint: Color?, modifier: Modifier = Modifier, strength: Float 
 /** Accent for buttons and highlights on a tinted screen: the artwork colour if there is one. */
 @Composable
 fun accentColor(): Color {
-    val tint = LocalArtworkTint.current ?: MaterialTheme.colorScheme.primary
+    val tint = LocalDisplayPrefs.current.fixedAccent ?: LocalArtworkTint.current ?: MaterialTheme.colorScheme.primary
     return animateColorAsState(tint, tween(700), label = "accent").value
 }
 

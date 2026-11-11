@@ -34,6 +34,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.toRoute
 import dev.nitrate.android.AppContainer
 import dev.nitrate.core.downloads.DownloadState
@@ -58,6 +59,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null)
 @Serializable data class PlaylistRoute(val playlistId: String)
 @Serializable data class PersonRoute(val personId: String, val name: String)
+
+/** A page of the user's own rows; [editNow] opens the editor straight away (just created). */
+@Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 
 /** [queue] is comma-separated item ids to play after [itemId]; [local] plays the downloaded file. */
 @Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false)
@@ -158,6 +162,12 @@ fun MobileApp(container: AppContainer) {
             }
         }
 
+        // The user is known only after sign-in, so their display choices (accent, true black) apply here.
+        val backEntry by nav.currentBackStackEntryAsState()
+        val userId = remember(backEntry) { container.server.userId }
+        ProvideDisplayPrefs(container, userId) {
+        NitrateTheme {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         SharedTransitionLayout {
         CompositionLocalProvider(LocalSharedScope provides this) {
         NavHost(
@@ -196,6 +206,10 @@ fun MobileApp(container: AppContainer) {
                 DetailsScreen(actions, route.itemId, route.seasonId, route.artKey)
             }
             screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
+            screen<CustomPageRoute> { entry ->
+                val route = entry.toRoute<CustomPageRoute>()
+                CustomPageScreen(actions, route.pageId, route.editNow)
+            }
             screen<PersonRoute> { entry ->
                 val route = entry.toRoute<PersonRoute>()
                 PersonScreen(actions, route.personId, route.name)
@@ -219,6 +233,9 @@ fun MobileApp(container: AppContainer) {
             }
         }
 
+        }
+        }
+        }
         }
         }
 
