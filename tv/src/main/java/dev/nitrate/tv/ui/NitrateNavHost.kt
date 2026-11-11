@@ -1,5 +1,9 @@
 package dev.nitrate.tv.ui
 
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import dev.nitrate.tv.ui.admin.ServerAdminScreen
+import dev.nitrate.tv.ui.admin.ManageItemScreen
 import dev.nitrate.tv.ui.pages.rememberCustomPages
 import dev.nitrate.tv.ui.pages.PagesScreen
 import dev.nitrate.tv.ui.pages.DisplaySettingsScreen
@@ -65,6 +69,8 @@ import kotlinx.serialization.Serializable
 @Serializable object PagesRoute
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 @Serializable object DisplaySettingsRoute
+@Serializable data class ManageItemRoute(val itemId: String)
+@Serializable object ServerAdminRoute
 
 /** [queue] is comma-separated item ids to play after [itemId]. */
 @Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "")
@@ -74,7 +80,7 @@ fun NitrateNavHost(container: AppContainer) {
     var start by remember { mutableStateOf<Any?>(null) }
     LaunchedEffect(Unit) {
         start = when (container.server.restoreSession()) {
-            SessionState.VALID -> { container.settingsSync.pull(); HomeRoute }
+            SessionState.VALID -> { container.settingsSync.pull(); container.refreshAccount(); HomeRoute }
             SessionState.UNREACHABLE -> OfflineRoute
             SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
         }
@@ -89,6 +95,8 @@ fun NitrateNavHost(container: AppContainer) {
     }
 
     val nav = rememberNavController()
+    val scope = rememberCoroutineScope()
+    val account by container.account.collectAsState()
     // Every "play this item" goes through plugin guards first; queues (playlists) don't.
     val gate = rememberPlaybackGate(container.plugins) { item, fromStart -> nav.navigate(PlayerRoute(item.id, fromStart)) }
     // The TV screens of plugins that are switched on.
@@ -119,6 +127,7 @@ fun NitrateNavHost(container: AppContainer) {
                 serverName = route.serverName,
                 onLoggedIn = {
                     container.settingsSync.pull()
+                    scope.launch { container.refreshAccount() }
                     nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
                 },
             )
@@ -133,6 +142,7 @@ fun NitrateNavHost(container: AppContainer) {
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 pinnedPages = rememberCustomPages(container).filter { it.pinned }.map { p -> p.title to { nav.navigate(CustomPageRoute(p.id)) } },
                 extraActions = listOf("Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
+                    (if (account?.isAdmin == true) listOf("Server" to { nav.navigate(ServerAdminRoute) }) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.pluginId)) } },
                 onSignOut = {
                     nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } }
@@ -147,6 +157,7 @@ fun NitrateNavHost(container: AppContainer) {
                 seasonId = route.seasonId,
                 onPlay = { item, fromStart -> gate.play(item, fromStart) },
                 onOpen = nav::openItem,
+                onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
             )
         }
         composable<SettingsRoute> {
@@ -175,6 +186,8 @@ fun NitrateNavHost(container: AppContainer) {
             CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() })
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) }
+        composable<ManageItemRoute> { entry -> ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId) }
+        composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
         composable<PluginsRoute> { PluginsScreen(container.plugins, TV_PLUGIN_UI, pluginContext) }
         composable<PluginScreenRoute> { entry ->
             val id = entry.toRoute<PluginScreenRoute>().pluginId

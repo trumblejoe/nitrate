@@ -24,6 +24,8 @@ import dev.nitrate.core.model.UserState
 import dev.nitrate.mobile.ui.DetailsScreen
 import dev.nitrate.mobile.ui.DownloadsScreen
 import dev.nitrate.mobile.ui.SearchScreen
+import dev.nitrate.mobile.ui.ManageItemScreen
+import dev.nitrate.mobile.ui.ServerAdminScreen
 import dev.nitrate.android.viewmodel.RowsViewModel
 import dev.nitrate.core.pages.AccentMode
 import dev.nitrate.core.pages.CustomPage
@@ -211,6 +213,10 @@ class ScreenshotTest {
     @Test fun spoilerFree() = shoot("phone-series-spoilers", setup = { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true, communityRating = false, overview = false))
     }) { DetailsScreen(it, "series-1", null) }
+
+    @Test fun manageDetails() = shoot("phone-manage-details") { ManageItemScreen(it, "m1") }
+
+    @Test fun serverAdmin() = shoot("phone-server-admin") { ServerAdminScreen(it) }
 
     /** Writing beside the video: side by side when wide, stacked when upright. */
     @Test

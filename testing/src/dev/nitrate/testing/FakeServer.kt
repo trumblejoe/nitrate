@@ -111,6 +111,45 @@ class FakeServer : MediaServer {
     override suspend fun genres(libraryId: String?) = listOf("Action", "Comedy", "Drama", "Horror", "Mystery", "Sci-Fi", "Thriller")
     override suspend fun collections() = listOf(MediaItem("c1", "Reel Classics", ItemKind.BOX_SET), MediaItem("c2", "Midnight Movies", ItemKind.BOX_SET))
     override suspend fun playlists() = listOf(MediaItem("p1", "Rainy day", ItemKind.PLAYLIST))
+    override suspend fun account() = dev.nitrate.core.admin.AccountInfo("user-1", "Joe", isAdmin = true)
+    override suspend fun metadata(itemId: String) = getItem(itemId).let { i ->
+        dev.nitrate.core.admin.ItemMetadata(
+            id = i.id, name = i.name, overview = i.overview, productionYear = i.productionYear, officialRating = i.officialRating,
+            communityRating = i.communityRating, genres = i.genres, tags = listOf("cult"), studios = listOf("Reel House"),
+            people = i.people.map { dev.nitrate.core.admin.PersonCredit(it.name, it.role) }, premiereDate = "2023-10-13",
+            providerIds = mapOf("Tmdb" to "12345", "Imdb" to "tt0000001"), lockedFields = listOf("Overview"),
+        )
+    }
+    override suspend fun remoteSearch(item: MediaItem, name: String, year: Int?) = listOf(
+        dev.nitrate.core.admin.RemoteMatch("Nitrate", 2023, "A projectionist discovers a reel that shouldn't exist.", art("m1-poster"), "TheMovieDb", mapOf("Tmdb" to "12345"), "{}"),
+        dev.nitrate.core.admin.RemoteMatch("Nitrate (Director's Cut)", 2024, null, art("m3-poster"), "TheMovieDb", mapOf("Tmdb" to "67890"), "{}"),
+    )
+    override suspend fun itemImages(itemId: String) = listOfNotNull(
+        art("m1-poster")?.let { dev.nitrate.core.admin.ItemImage(dev.nitrate.core.admin.ImageType.PRIMARY, null, 1000, 1500, it) },
+        art("m1-backdrop")?.let { dev.nitrate.core.admin.ItemImage(dev.nitrate.core.admin.ImageType.BACKDROP, 0, 1920, 1080, it) },
+        art("m2-backdrop")?.let { dev.nitrate.core.admin.ItemImage(dev.nitrate.core.admin.ImageType.BACKDROP, 1, 1920, 1080, it) },
+    )
+    override suspend fun remoteImages(itemId: String, type: dev.nitrate.core.admin.ImageType) =
+        listOf("m1", "m2", "m3", "m4", "series-1").mapNotNull { k -> art("$k-poster")?.let { dev.nitrate.core.admin.RemoteImage(it, it, "TheMovieDb", 1000, 1500, "en", 7.2) } }
+    override suspend fun tasks() = listOf(
+        dev.nitrate.core.admin.ServerTask("t1", "Scan media library", "Library", "Scans your libraries for new files", dev.nitrate.core.admin.TaskState.RUNNING, 42.0, "Completed", null, "2026-11-11T08:00:00Z"),
+        dev.nitrate.core.admin.ServerTask("t2", "Generate trickplay images", "Library", "Creates scrubbing thumbnails", dev.nitrate.core.admin.TaskState.IDLE, null, "Failed", "ffmpeg exited with code 1", "2026-11-10T03:00:00Z"),
+        dev.nitrate.core.admin.ServerTask("t3", "Clean cache directory", "Maintenance", null, dev.nitrate.core.admin.TaskState.IDLE, null, "Completed", null, "2026-11-11T02:00:00Z"),
+    )
+    override suspend fun activity(limit: Int) = listOf(
+        dev.nitrate.core.admin.ActivityEntry(3, "Joe is playing Nitrate on Living room TV", null, "VideoPlayback", "2026-11-11T20:14:00Z", "Information"),
+        dev.nitrate.core.admin.ActivityEntry(2, "Sam successfully authenticated", null, "AuthenticationSucceeded", "2026-11-11T19:02:00Z", "Information"),
+        dev.nitrate.core.admin.ActivityEntry(1, "Generate trickplay images failed", "ffmpeg exited with code 1", "ScheduledTaskFailed", "2026-11-10T03:00:00Z", "Error"),
+    )
+    override suspend fun sessions() = listOf(
+        dev.nitrate.core.admin.ServerSession("s1", "Joe", "Nitrate TV", "Living room TV", "d1", films[0], 2_100_000, false, "DirectPlay", "192.168.1.30", null, true, true),
+        dev.nitrate.core.admin.ServerSession("s2", "Sam", "Jellyfin Web", "Firefox", "d2", null, null, false, null, "192.168.1.44", null, true, false),
+    )
+    override suspend fun users() = listOf(
+        dev.nitrate.core.admin.UserAccount("user-1", "Joe", true, "2026-11-11T19:00:00Z", null, dev.nitrate.core.admin.UserPermissions(isAdministrator = true, enableContentDeletion = true)),
+        dev.nitrate.core.admin.UserAccount("user-2", "Sam", true, "2026-11-11T19:02:00Z", null, dev.nitrate.core.admin.UserPermissions()),
+        dev.nitrate.core.admin.UserAccount("user-3", "Kids", false, null, null, dev.nitrate.core.admin.UserPermissions(enableContentDownloading = false, enableRemoteAccess = false)),
+    )
     override suspend fun itemsWithPerson(personId: String) = films + series
     override fun logoUrl(item: MediaItem): String? = null
     override fun personImageUrl(person: Person): String? = null

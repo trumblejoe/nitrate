@@ -109,6 +109,10 @@ class TvScreenshotTest {
         DisplaySettingsScreen(c)
     }
 
+    @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
+
+    @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }
+
     @Test fun seriesNoRatings() = shoot("tv-series-trimmed", { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(communityRating = false, overview = false, officialRating = false))
     }) { c -> DetailsScreen(c.server, "series-1", null, onPlay = { _, _ -> }, onOpen = {}) }

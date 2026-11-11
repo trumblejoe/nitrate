@@ -63,6 +63,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
     val updatePlayback: ((PlaybackSettings) -> PlaybackSettings) -> Unit = { f -> scope.launch { c.playbackSettings.update(f) } }
     val caps = c.capabilities
     val prefs = LocalDisplayPrefs.current
+    val account by c.account.collectAsState()
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
@@ -75,6 +76,17 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                     OutlinedButton(onClick = { scope.launch { actions.server.logout(); onSignedOut() } }) { Text("Sign out") }
                 },
             )
+        }
+
+        if (account?.isAdmin == true) {
+            item {
+                ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(ServerAdminRoute) },
+                    headlineContent = { Text("Manage server") },
+                    supportingContent = { Text("Libraries, tasks, activity, devices and users") },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
         }
 
         header("Display", "For your account; follows you to your other devices.")

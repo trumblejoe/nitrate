@@ -11,6 +11,9 @@ import dev.nitrate.android.storage.SessionStore
 import dev.nitrate.android.sync.SettingsSync
 import dev.nitrate.android.writing.WritingStore
 import dev.nitrate.core.MediaServer
+import dev.nitrate.core.admin.AccountInfo
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import dev.nitrate.core.downloads.DownloadManager
 import dev.nitrate.core.downloads.DownloadStore
 import dev.nitrate.core.downloads.FileDownloadStore
@@ -73,6 +76,16 @@ class AppContainer(
     }
 
     val searchHistory by lazy { SearchHistoryStore(appContext) }
+
+    private val accountState = MutableStateFlow<AccountInfo?>(null)
+
+    /** The signed-in account (null until known, or offline); admin tools show only for admins. */
+    val account: StateFlow<AccountInfo?> = accountState
+
+    /** Re-reads the account, after sign-in or when the server comes back. */
+    suspend fun refreshAccount() {
+        accountState.value = runCatching { server.account() }.getOrNull()
+    }
 
     /** Free space where downloads are saved. */
     fun downloadSpaceFree(): Long = downloadDir.also { it.mkdirs() }.usableSpace

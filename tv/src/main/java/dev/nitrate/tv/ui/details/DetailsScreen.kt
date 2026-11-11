@@ -72,6 +72,8 @@ fun DetailsScreen(
     seasonId: String?,
     onPlay: (item: MediaItem, fromStart: Boolean) -> Unit,
     onOpen: (MediaItem) -> Unit,
+    /** Admins: opens the item's management screen. */
+    onManage: ((String) -> Unit)? = null,
 ) {
     val vm = viewModel(key = "details-$itemId") {
         DetailsViewModel(repository, itemId, seasonId)
@@ -106,7 +108,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage)
             }
 
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -198,6 +200,7 @@ private fun Header(
     vm: DetailsViewModel,
     playFocus: FocusRequester,
     onPlay: (MediaItem, Boolean) -> Unit,
+    onManage: ((String) -> Unit)?,
 ) {
     Column(
         Modifier.padding(start = PagePadding, end = PagePadding, top = 48.dp).fillMaxWidth(0.6f),
@@ -246,6 +249,7 @@ private fun Header(
                 OutlinedButton(onClick = { showInfo = true }) { Text("Playback info") }
                 if (showInfo) PlaybackDecisionDialog(repository, item) { showInfo = false }
             }
+            if (onManage != null) OutlinedButton(onClick = { onManage(item.id) }) { Text("Manage") }
         }
     }
 }

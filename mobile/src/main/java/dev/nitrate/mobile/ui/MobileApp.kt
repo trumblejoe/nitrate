@@ -60,6 +60,12 @@ import kotlinx.serialization.Serializable
 @Serializable data class PlaylistRoute(val playlistId: String)
 @Serializable data class PersonRoute(val personId: String, val name: String)
 
+/** Admin: an item's metadata, identity, images and refresh. */
+@Serializable data class ManageItemRoute(val itemId: String)
+
+/** Admin: the whole server (tasks, activity, devices, users). */
+@Serializable object ServerAdminRoute
+
 /** A page of the user's own rows; [editNow] opens the editor straight away (just created). */
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 
@@ -119,7 +125,7 @@ fun MobileApp(container: AppContainer) {
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         start = when (container.server.restoreSession()) {
-            SessionState.VALID -> { container.settingsSync.pull(); appScope.launch { container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
+            SessionState.VALID -> { container.settingsSync.pull(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
             SessionState.UNREACHABLE -> OfflineRoute
             SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
         }
@@ -183,6 +189,7 @@ fun MobileApp(container: AppContainer) {
                 val route = entry.toRoute<LoginRoute>()
                 LoginScreen(actions, route.serverUrl, route.serverName) {
                     container.settingsSync.pull()
+                    appScope.launch { container.refreshAccount() }
                     nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                 }
             }
@@ -191,7 +198,7 @@ fun MobileApp(container: AppContainer) {
                     actions,
                     onOnline = {
                         container.settingsSync.pull()
-                        appScope.launch { container.downloads.syncWatchState(); container.downloads.refreshSmart() }
+                        appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }
                         nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                     },
                     onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
@@ -206,6 +213,8 @@ fun MobileApp(container: AppContainer) {
                 DetailsScreen(actions, route.itemId, route.seasonId, route.artKey)
             }
             screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
+            screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
+            screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<CustomPageRoute> { entry ->
                 val route = entry.toRoute<CustomPageRoute>()
                 CustomPageScreen(actions, route.pageId, route.editNow)
