@@ -1,5 +1,13 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import dev.nitrate.core.plugins.PlaybackControls
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,9 +86,29 @@ private val ELEMENTS = listOf(
     "Transition" to Element.TRANSITION,
 )
 
-/** Fountain editor for touch: element buttons instead of Ctrl shortcuts, saves as you type. */
+/** Hardware-keyboard shortcuts, the same as on TV: Ctrl+1-6 set the line's element. */
+private val ELEMENT_KEYS = mapOf(
+    Key.One to Element.SCENE_HEADING,
+    Key.Two to Element.ACTION,
+    Key.Three to Element.CHARACTER,
+    Key.Four to Element.PARENTHETICAL,
+    Key.Five to Element.DIALOGUE,
+    Key.Six to Element.TRANSITION,
+)
+
+/**
+ * Fountain editor: element buttons for touch, Ctrl shortcuts for a keyboard, saves as you type.
+ * As a [pane] beside the video it has a compact header and [playback] keys (Ctrl+K play/pause,
+ * Ctrl+J back 10 s, Ctrl+L forward 30 s).
+ */
 @Composable
-fun WritingScreen(actions: AppActions, onBack: (() -> Unit)?, modifier: Modifier = Modifier) {
+fun WritingScreen(
+    actions: AppActions,
+    onBack: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    pane: Boolean = false,
+    playback: PlaybackControls? = null,
+) {
     val store = actions.container.writing
     val settings by actions.container.plugins.host.store.settings(WritingPlugin.id, WritingSettings()).collectAsState(WritingSettings())
     val docs by store.docs.collectAsState()
@@ -138,9 +166,9 @@ fun WritingScreen(actions: AppActions, onBack: (() -> Unit)?, modifier: Modifier
     val highlight = remember(colors) { FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant) }
 
     Column(modifier.fillMaxSize().imePadding()) {
-        Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+        if (!pane) Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (pane) 4.dp else 0.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            if (onBack != null) IconButton(onClick = onBack) { Icon(if (pane) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack, if (pane) "Close writing" else "Back") }
             Column(Modifier.weight(1f).padding(start = 8.dp)) {
                 Text(Scripts.titleOf(value.text), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
@@ -199,8 +227,21 @@ fun WritingScreen(actions: AppActions, onBack: (() -> Unit)?, modifier: Modifier
                 visualTransformation = highlight,
                 textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurface),
                 cursorBrush = SolidColor(colors.primary),
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(12.dp)
-                    .background(colors.surfaceContainer, MaterialTheme.shapes.medium).padding(14.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(if (pane) 8.dp else 12.dp)
+                    .background(colors.surfaceContainer, MaterialTheme.shapes.medium).padding(14.dp)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) return@onPreviewKeyEvent false
+                        ELEMENT_KEYS[event.key]?.let { convert(it); return@onPreviewKeyEvent true }
+                        when (event.key) {
+                            Key.S -> { docId?.let { id -> scope.launch { store.save(id, value.text); saved = value.text; status = "Saved" } }; true }
+                            Key.N -> { scope.launch { open(store.create()) }; true }
+                            Key.O -> { showDocs = true; true }
+                            Key.K -> { playback?.togglePlay(); playback != null }
+                            Key.J -> { playback?.seekBy(-10_000); playback != null }
+                            Key.L -> { playback?.seekBy(30_000); playback != null }
+                            else -> false
+                        }
+                    },
             )
         }
     }

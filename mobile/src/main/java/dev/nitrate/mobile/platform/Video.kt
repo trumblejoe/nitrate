@@ -207,9 +207,12 @@ class VolumeControl(context: Context) {
     }
 }
 
-/** Full screen and landscape while playing; restores the previous state afterwards. */
+/**
+ * Full screen while playing, and landscape unless [lockLandscape] is off (writing beside the
+ * video can be done upright, with room for the keyboard). Restores everything afterwards.
+ */
 @Composable
-fun FullscreenPlayback() {
+fun FullscreenPlayback(lockLandscape: Boolean = true) {
     val activity = LocalContext.current.findActivity() ?: return
     DisposableEffect(activity) {
         val window = activity.window
@@ -217,11 +220,15 @@ fun FullscreenPlayback() {
         val previousOrientation = activity.requestedOrientation
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller.hide(WindowInsetsCompat.Type.systemBars())
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         onDispose {
             controller.show(WindowInsetsCompat.Type.systemBars())
             activity.requestedOrientation = previousOrientation
         }
+    }
+    DisposableEffect(activity, lockLandscape) {
+        // Upright is allowed only while writing, and respects the user's rotation lock.
+        activity.requestedOrientation = if (lockLandscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        onDispose { }
     }
 }
 

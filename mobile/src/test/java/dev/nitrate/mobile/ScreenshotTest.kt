@@ -23,6 +23,8 @@ import dev.nitrate.core.model.UserState
 import dev.nitrate.mobile.ui.DetailsScreen
 import dev.nitrate.mobile.ui.DownloadsScreen
 import dev.nitrate.mobile.ui.SearchScreen
+import dev.nitrate.mobile.ui.PlayerLayout
+import dev.nitrate.mobile.ui.WritingScreen
 import dev.nitrate.mobile.ui.GestureFeedback
 import dev.nitrate.mobile.ui.GestureFeedbackView
 import dev.nitrate.mobile.ui.TrickplayPreview
@@ -136,6 +138,21 @@ class ScreenshotTest {
             GestureFeedbackView(GestureFeedback.Seek(-20_000))
             TrickplayPreview(server, "s2e4", info, positionMs = 21_000, x = 900f, barTop = 1000f)
             UpNextCard(next, server, seconds = 10, onPlay = {}, onHide = {})
+        }
+    }
+
+    /** Writing beside the video: side by side when wide, stacked when upright. */
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun writingBesideVideo() = shoot("phone-player-writing-wide") { WritingBesideStill(it) }
+
+    @Test
+    fun writingBesideVideoUpright() = shoot("phone-player-writing-upright") { WritingBesideStill(it) }
+
+    @Composable
+    private fun WritingBesideStill(actions: AppActions) {
+        PlayerLayout(writing = true, modifier = Modifier, pane = { WritingScreen(actions, onBack = {}, pane = true) }) {
+            AsyncImage(actions.server.backdropUrl(MediaItem("m3", "", ItemKind.MOVIE)), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }
 

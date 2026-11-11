@@ -1,5 +1,27 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import dev.nitrate.core.writing.WritingPlugin
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -101,8 +123,14 @@ fun PlayerScreen(
         }
     }
     DisposableEffect(session) { onDispose { session.release() } }
-    FullscreenPlayback()
-    BackHandler(onBack = onExit)
+    // The writing pane beside the video (Writing plugin): Write button or Ctrl+E.
+    val enabledPlugins by actions.container.plugins.enabledIds.collectAsState(emptySet())
+    val canWrite = WritingPlugin.id in enabledPlugins
+    var writing by rememberSaveable { mutableStateOf(false) }
+    FullscreenPlayback(lockLandscape = !writing)
+    BackHandler(onBack = { if (writing) writing = false else onExit() })
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(writing) { if (!writing) runCatching { keys.requestFocus() } }
 
     val item by session.item.collectAsState()
     val plan by session.plan.collectAsState()
@@ -162,7 +190,18 @@ fun PlayerScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    PlayerLayout(
+        writing = writing && canWrite,
+        modifier = Modifier.focusRequester(keys).focusable().onPreviewKeyEvent { event ->
+            if (canWrite && event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.E) {
+                writing = !writing
+                true
+            } else {
+                false
+            }
+        },
+        pane = { WritingScreen(actions, onBack = { writing = false }, pane = true, playback = session.controls) },
+    ) {
         VideoSurface(session.player, onControlsVisible = { controlsVisible = it }, modifier = Modifier.fillMaxSize(), gestures = gestures, fill = fill)
         GestureFeedbackView(feedback)
 
@@ -178,6 +217,7 @@ fun PlayerScreen(
                     val sub = listOfNotNull(item?.episodeLabel, "Downloaded".takeIf { local }, plan?.method?.takeIf { it != PlayMethod.DIRECT_PLAY }?.let { if (it == PlayMethod.TRANSCODE) "Transcoding" else "Direct stream" })
                     if (sub.isNotEmpty()) Text(sub.joinToString(" · "), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                 }
+                if (canWrite && !writing) IconButton(onClick = { writing = true }) { Icon(Icons.Default.Edit, "Write beside the video (Ctrl+E)", tint = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.AUDIO }, enabled = plan != null) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.SUBTITLES }, enabled = plan != null) { Text("Subtitles", color = Color.White) }
                 IconButton(onClick = { dialog = PlayerDialog.INFO }, enabled = plan != null) { Icon(Icons.Default.Info, "Playback info", tint = Color.White) }
@@ -248,4 +288,28 @@ private fun TrackPicker(title: String, choices: List<TrackChoice>, selected: Int
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+/**
+ * The video alone, or with the writing [pane]: side by side when the screen is wide, video on
+ * top when it's upright (so the keyboard has room). The video keeps playing either way.
+ */
+@Composable
+internal fun PlayerLayout(writing: Boolean, modifier: Modifier, pane: @Composable () -> Unit, video: @Composable BoxScope.() -> Unit) {
+    BoxWithConstraints(modifier.fillMaxSize().background(Color.Black)) {
+        val paneWidth = (maxWidth * 0.45f).coerceIn(320.dp, 560.dp)
+        when {
+            !writing -> Box(Modifier.fillMaxSize(), content = video)
+            maxWidth > maxHeight -> Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight(), content = video)
+                Surface(Modifier.width(paneWidth).fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
+                    Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.End + WindowInsetsSides.Top))) { pane() }
+                }
+            }
+            else -> Column(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f), content = video)
+                Surface(Modifier.weight(1f).fillMaxWidth(), color = MaterialTheme.colorScheme.background) { pane() }
+            }
+        }
+    }
 }
