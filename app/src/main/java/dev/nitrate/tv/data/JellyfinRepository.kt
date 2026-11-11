@@ -18,7 +18,12 @@ import org.jellyfin.sdk.api.client.extensions.showApi
 import org.jellyfin.sdk.api.client.extensions.userApi
 import org.jellyfin.sdk.api.client.extensions.userViewApi
 import org.jellyfin.sdk.api.client.extensions.videoApi
+import dev.nitrate.tv.data.playback.DeviceCapabilities
 import dev.nitrate.tv.data.playback.DeviceProfileFactory
+import dev.nitrate.tv.data.playback.PlaybackSettingsStore
+import org.jellyfin.sdk.model.api.MediaSourceInfo
+import org.jellyfin.sdk.model.api.MediaStreamType
+import org.jellyfin.sdk.model.api.SubtitleDeliveryMethod
 import dev.nitrate.tv.data.rows.MediaRow
 import dev.nitrate.tv.data.rows.RowDisplay
 import dev.nitrate.tv.data.rows.RowStyle
@@ -63,6 +68,9 @@ enum class LibrarySort(val label: String, val field: ItemSortBy, val order: Sort
     RANDOM("Random", ItemSortBy.RANDOM, SortOrder.ASCENDING),
 }
 
+/** A subtitle file the server serves separately from the video, side-loaded into the player. */
+data class ExternalSubtitle(val streamIndex: Int, val url: String, val mimeType: String, val language: String?, val label: String)
+
 /** How a given item will be played, as negotiated with the server. */
 data class PlaybackPlan(
     val itemId: UUID,
@@ -72,12 +80,21 @@ data class PlaybackPlan(
     val mediaSourceId: String?,
     /** True when the URL is an HLS playlist (remux or transcode). */
     val isHls: Boolean,
+    val source: MediaSourceInfo,
+    /** Jellyfin stream index of the selected audio track, if any. */
+    val audioIndex: Int?,
+    /** Jellyfin stream index of the selected subtitle track, or -1 for none. */
+    val subtitleIndex: Int,
+    val externalSubtitles: List<ExternalSubtitle>,
+    /** Server's reasons for transcoding, from the transcoding URL (e.g. VideoCodecNotSupported). */
+    val transcodeReasons: List<String>,
 )
 
 class JellyfinRepository(
     private val jellyfin: Jellyfin,
     private val sessionStore: SessionStore,
-    private val profileFactory: DeviceProfileFactory,
+    private val capabilities: () -> DeviceCapabilities,
+    private val playbackSettings: PlaybackSettingsStore,
 ) {
     private val api: ApiClient = jellyfin.createApi()
 
@@ -396,60 +413,123 @@ class JellyfinRepository(
     )
 
     /**
-     * Asks the server how to play [itemId] given this device's capabilities.
+     * Asks the server how to play [itemId] given this device's effective profile.
      * With [forceTranscode] the server must re-encode, used after a local decoder failure.
+     * [audioIndex] / [subtitleIndex] pick streams (null lets the server choose; subtitle -1 is off).
      */
     suspend fun resolvePlayback(
         itemId: UUID,
         isAudio: Boolean,
         startMs: Long,
         forceTranscode: Boolean = false,
-        maxBitrate: Int = DEFAULT_MAX_BITRATE,
+        audioIndex: Int? = null,
+        subtitleIndex: Int? = null,
+        mediaSourceId: String? = null,
     ): PlaybackPlan {
+        val settings = playbackSettings.current()
+        val directPlay = !forceTranscode && settings.allowDirectPlay
+        val directStream = !forceTranscode && settings.allowDirectStream
         val info = api.mediaInfoApi.getPostedPlaybackInfo(
             itemId = itemId,
             data = PlaybackInfoDto(
-                deviceProfile = profileFactory.create(maxBitrate),
-                maxStreamingBitrate = maxBitrate,
+                deviceProfile = DeviceProfileFactory.create(capabilities(), settings),
+                maxStreamingBitrate = settings.maxBitrate,
                 startTimeTicks = startMs.msToTicks(),
-                enableDirectPlay = !forceTranscode,
-                enableDirectStream = !forceTranscode,
+                audioStreamIndex = audioIndex,
+                subtitleStreamIndex = subtitleIndex,
+                mediaSourceId = mediaSourceId,
+                enableDirectPlay = directPlay,
+                enableDirectStream = directStream,
                 enableTranscoding = true,
-                allowVideoStreamCopy = !forceTranscode,
-                allowAudioStreamCopy = !forceTranscode,
+                allowVideoStreamCopy = directStream,
+                allowAudioStreamCopy = directStream,
                 autoOpenLiveStream = true,
             ),
         ).content
         info.errorCode?.let { error("Server can't play this item: $it") }
         val source = info.mediaSources.firstOrNull() ?: error("Item has no playable media")
 
+        val streams = source.mediaStreams.orEmpty()
+        val chosenAudio = audioIndex ?: source.defaultAudioStreamIndex ?: streams.firstOrNull { it.type == MediaStreamType.AUDIO }?.index
+        val chosenSubtitle = subtitleIndex ?: source.defaultSubtitleStreamIndex ?: -1
+        val external = streams
+            .filter { it.type == MediaStreamType.SUBTITLE && it.deliveryMethod == SubtitleDeliveryMethod.EXTERNAL && it.deliveryUrl != null }
+            .mapNotNull { stream ->
+                val mime = subtitleMime(stream.codec) ?: return@mapNotNull null
+                ExternalSubtitle(
+                    streamIndex = stream.index,
+                    url = absoluteUrl(stream.deliveryUrl!!),
+                    mimeType = mime,
+                    language = stream.language,
+                    label = stream.displayTitle ?: stream.language ?: "Subtitle ${stream.index}",
+                )
+            }
+
         val transcodingUrl = source.transcodingUrl
-        return if (source.supportsDirectPlay && !forceTranscode) {
-            PlaybackPlan(
-                itemId = itemId,
-                url = if (isAudio) {
+        val (url, method) = when {
+            source.supportsDirectPlay && directPlay -> {
+                val streamUrl = if (isAudio) {
                     api.audioApi.getAudioStreamUrl(itemId = itemId, static = true, mediaSourceId = source.id, playSessionId = info.playSessionId, tag = source.eTag)
                 } else {
                     api.videoApi.getVideoStreamUrl(itemId = itemId, static = true, mediaSourceId = source.id, playSessionId = info.playSessionId, tag = source.eTag)
-                },
-                playMethod = PlayMethod.DIRECT_PLAY,
-                playSessionId = info.playSessionId,
-                mediaSourceId = source.id,
-                isHls = false,
-            )
-        } else if (transcodingUrl != null) {
-            PlaybackPlan(
-                itemId = itemId,
-                url = api.baseUrl!!.trimEnd('/') + transcodingUrl,
-                playMethod = if (source.supportsDirectStream && !forceTranscode) PlayMethod.DIRECT_STREAM else PlayMethod.TRANSCODE,
-                playSessionId = info.playSessionId,
-                mediaSourceId = source.id,
-                isHls = source.transcodingSubProtocol == MediaStreamProtocol.HLS,
-            )
-        } else {
-            error("Server offered no way to play this item")
+                }
+                streamUrl to PlayMethod.DIRECT_PLAY
+            }
+            transcodingUrl != null -> absoluteUrl(transcodingUrl) to
+                if (source.supportsDirectStream && directStream) PlayMethod.DIRECT_STREAM else PlayMethod.TRANSCODE
+            else -> error("Server offered no way to play this item")
         }
+
+        return PlaybackPlan(
+            itemId = itemId,
+            url = url,
+            playMethod = method,
+            playSessionId = info.playSessionId,
+            mediaSourceId = source.id,
+            isHls = method != PlayMethod.DIRECT_PLAY && source.transcodingSubProtocol == MediaStreamProtocol.HLS,
+            source = source,
+            audioIndex = chosenAudio,
+            subtitleIndex = chosenSubtitle,
+            externalSubtitles = external,
+            transcodeReasons = transcodingUrl?.let(::transcodeReasons).orEmpty(),
+        )
     }
+
+    /**
+     * Remembers that direct play failed on this TV so it isn't attempted again for the same
+     * format. Blames the HDR format if the video is HDR (the codec itself usually works in SDR).
+     */
+    suspend fun recordDirectPlayFailure(plan: PlaybackPlan, videoFailed: Boolean, error: String) {
+        val streams = plan.source.mediaStreams.orEmpty()
+        val id = if (videoFailed) {
+            val video = streams.firstOrNull { it.type == MediaStreamType.VIDEO } ?: return
+            val range = video.videoRangeType?.serialName
+            when {
+                range == null || range == "SDR" || range == "Unknown" -> video.codec?.lowercase()
+                range.startsWith("DOVI") -> PlaybackSettingsStore.hdrIdFor("DOVI")
+                range.startsWith("HDR10Plus") -> PlaybackSettingsStore.hdrIdFor("HDR10Plus")
+                else -> PlaybackSettingsStore.hdrIdFor(range)
+            }
+        } else {
+            streams.firstOrNull { it.index == plan.audioIndex }?.codec?.lowercase()
+        } ?: return
+        playbackSettings.recordFailure(id, error)
+    }
+
+    private fun absoluteUrl(path: String) = if (path.startsWith("http")) path else api.baseUrl!!.trimEnd('/') + path
+
+    private fun subtitleMime(codec: String?): String? = when (codec?.lowercase()) {
+        "srt", "subrip" -> "application/x-subrip"
+        "vtt", "webvtt" -> "text/vtt"
+        "ass", "ssa" -> "text/x-ssa"
+        "ttml" -> "application/ttml+xml"
+        else -> null
+    }
+
+    private fun transcodeReasons(url: String): List<String> =
+        Regex("[?&]TranscodeReasons=([^&]+)", RegexOption.IGNORE_CASE).find(url)?.groupValues?.get(1)
+            ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+            ?.split(',')?.filter(String::isNotBlank).orEmpty()
 
     suspend fun reportStart(plan: PlaybackPlan, positionMs: Long) = runCatching {
         api.sessionApi.reportPlaybackStart(
@@ -503,14 +583,14 @@ class JellyfinRepository(
     }
 
     companion object {
+        /** Default for the bitrate setting. */
+        const val DEFAULT_BITRATE = 120_000_000
         private const val PREFS_ID = "nitrate"
         private const val PREFS_CLIENT = "nitrate"
         private const val ROW_LIMIT = 24
         private val ROW_FIELDS = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO, ItemFields.GENRES)
         private val WIDE_DEFAULT = RowDisplay(style = RowStyle.WIDE, showTitles = true)
 
-        /** 120 Mbps: enough for 4K remuxes on a LAN. Becomes a setting later. */
-        const val DEFAULT_MAX_BITRATE = 120_000_000
     }
 }
 

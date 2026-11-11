@@ -1,11 +1,6 @@
 package dev.nitrate.tv.data.playback
 
-import android.content.Context
-import android.hardware.display.DisplayManager
-import android.media.MediaCodecInfo
-import android.media.MediaCodecList
 import android.os.Build
-import android.view.Display
 import org.jellyfin.sdk.model.api.CodecProfile
 import org.jellyfin.sdk.model.api.CodecType
 import org.jellyfin.sdk.model.api.DeviceProfile
@@ -20,67 +15,67 @@ import org.jellyfin.sdk.model.api.SubtitleDeliveryMethod
 import org.jellyfin.sdk.model.api.SubtitleProfile
 import org.jellyfin.sdk.model.api.TranscodingProfile
 
+/** The effective, post-override view of one capability. Shared by the profile and the settings UI. */
+data class EffectiveCapability(val id: String, val claimed: Boolean, val allowed: Boolean)
+
 /**
- * Describes what this TV can play, so the server can decide between direct play,
- * remuxing (direct stream) and transcoding. Built from the device's real decoders
- * rather than a hard-coded list, because TV hardware varies wildly.
+ * Describes what this TV can play, so the server can choose between direct play, remuxing
+ * (direct stream) and transcoding. Starts from what the device reports ([DeviceCapabilities]),
+ * then applies the user's overrides and failures learned on this TV ([PlaybackSettings]).
  */
-class DeviceProfileFactory(private val context: Context) {
+object DeviceProfileFactory {
 
-    /** Capabilities of one decodable video codec. */
-    private data class VideoCaps(val maxWidth: Int, val maxHeight: Int, val tenBit: Boolean)
+    fun videoCodecs(caps: DeviceCapabilities, settings: PlaybackSettings) =
+        DeviceCapabilities.VIDEO_CODECS.keys.map { EffectiveCapability(it, it in caps.video, settings.allows(it, it in caps.video)) }
 
-    private val decoders: List<MediaCodecInfo> by lazy {
-        MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filterNot { it.isEncoder }
-    }
-
-    private fun hasDecoder(mime: String) = decoders.any { info -> info.supportedTypes.any { it.equals(mime, true) } }
-
-    private fun videoCaps(mime: String): VideoCaps? {
-        var best: VideoCaps? = null
-        for (info in decoders) {
-            val type = info.supportedTypes.firstOrNull { it.equals(mime, true) } ?: continue
-            val caps = runCatching { info.getCapabilitiesForType(type) }.getOrNull() ?: continue
-            val video = caps.videoCapabilities ?: continue
-            val tenBit = caps.profileLevels.any { it.profile in TEN_BIT_PROFILES[mime].orEmpty() }
-            val candidate = VideoCaps(video.supportedWidths.upper, video.supportedHeights.upper, tenBit)
-            if (best == null || candidate.maxWidth * candidate.maxHeight > best.maxWidth * best.maxHeight) {
-                best = candidate
-            }
+    fun audioCodecs(caps: DeviceCapabilities, settings: PlaybackSettings) =
+        DeviceCapabilities.AUDIO_CODECS.keys.map {
+            val claimed = caps.audio[it]?.supported == true
+            EffectiveCapability(it, claimed, settings.allows(it, claimed))
         }
-        return best
+
+    fun hdrFormats(caps: DeviceCapabilities, settings: PlaybackSettings) =
+        DeviceCapabilities.HDR_FORMATS.map {
+            EffectiveCapability(PlaybackSettings.hdrId(it), it in caps.hdr, settings.allows(PlaybackSettings.hdrId(it), it in caps.hdr))
+        }
+
+    /**
+     * Jellyfin video range types that can be shown without tone mapping. Dolby Vision and HDR10+
+     * files with an HDR10/HLG base layer play as that base layer when the enhanced format is off.
+     */
+    fun allowedRangeTypes(caps: DeviceCapabilities, settings: PlaybackSettings): List<String> {
+        val allowed = hdrFormats(caps, settings).filter { it.allowed }.map { it.id.removePrefix("range:") }.toSet()
+        return buildList {
+            add("SDR")
+            add("DOVIWithSDR")
+            if ("HDR10" in allowed) addAll(listOf("HDR10", "DOVIWithHDR10", "HDR10Plus", "DOVIWithHDR10Plus"))
+            if ("HDR10Plus" in allowed) add("HDR10Plus")
+            if ("HLG" in allowed) addAll(listOf("HLG", "DOVIWithHLG"))
+            if ("DOVI" in allowed) addAll(listOf("DOVI", "DOVIWithHDR10", "DOVIWithHLG", "DOVIWithHDR10Plus"))
+        }.distinct()
     }
 
-    private fun displaySupportsHdr(): Boolean {
-        val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY) ?: return false
-        @Suppress("DEPRECATION")
-        val types = display.hdrCapabilities?.supportedHdrTypes ?: return false
-        return types.isNotEmpty()
-    }
+    fun create(caps: DeviceCapabilities, settings: PlaybackSettings): DeviceProfile {
+        val maxBitrate = settings.maxBitrate
+        val video = videoCodecs(caps, settings).filter { it.allowed }.map { it.id }
+        val audio = audioCodecs(caps, settings).filter { it.allowed }.map { it.id } + listOf("pcm_s16le", "pcm_s24le")
+        val ranges = allowedRangeTypes(caps, settings)
 
-    fun create(maxBitrate: Int): DeviceProfile {
-        val video = VIDEO_CODECS.mapNotNull { (jellyfinName, mime) -> videoCaps(mime)?.let { jellyfinName to it } }.toMap()
-        val audio = AUDIO_CODECS.filter { (_, mime) -> mime == null || hasDecoder(mime) }.keys.toList()
-        val hdr = displaySupportsHdr()
+        val directPlay = buildList {
+            if (video.isNotEmpty()) {
+                add(
+                    DirectPlayProfile(
+                        container = DIRECT_PLAY_CONTAINERS,
+                        videoCodec = video.joinToString(","),
+                        audioCodec = audio.joinToString(","),
+                        type = DlnaProfileType.VIDEO,
+                    ),
+                )
+            }
+            add(DirectPlayProfile(container = AUDIO_CONTAINERS, audioCodec = audio.joinToString(","), type = DlnaProfileType.AUDIO))
+        }
 
-        val videoCodecs = video.keys.joinToString(",")
-        val audioCodecs = audio.joinToString(",")
-
-        val directPlay = listOf(
-            DirectPlayProfile(
-                container = DIRECT_PLAY_CONTAINERS,
-                videoCodec = videoCodecs,
-                audioCodec = audioCodecs,
-                type = DlnaProfileType.VIDEO,
-            ),
-            DirectPlayProfile(
-                container = AUDIO_CONTAINERS,
-                audioCodec = audioCodecs,
-                type = DlnaProfileType.AUDIO,
-            ),
-        )
-
-        // Prefer HEVC output when the device can decode it: half the bitrate for the same quality.
+        // Prefer HEVC output when allowed: half the bitrate of H.264 for the same quality.
         val transcodeVideo = listOfNotNull("hevc".takeIf { it in video }, "h264").joinToString(",")
         val transcodeAudio = listOf("aac", "ac3", "eac3").filter { it in audio }.ifEmpty { listOf("aac") }.joinToString(",")
         val transcoding = listOf(
@@ -106,17 +101,24 @@ class DeviceProfileFactory(private val context: Context) {
             ),
         )
 
-        val codecProfiles = video.map { (codec, caps) ->
+        val userWidth = settings.maxResolution.width ?: Int.MAX_VALUE
+        val userHeight = settings.maxResolution.height ?: Int.MAX_VALUE
+        val codecProfiles = video.map { codec ->
+            // A codec forced on that the device doesn't report gets 4K (or the panel size) and 10-bit.
+            val c = caps.video[codec]
+            val width = minOf(c?.maxWidth ?: maxOf(caps.displayWidth, 3840), userWidth)
+            val height = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight)
+            val tenBit = c?.tenBit ?: true
             CodecProfile(
                 type = CodecType.VIDEO,
                 codec = codec,
-                conditions = buildList {
-                    add(condition(ProfileConditionType.LESS_THAN_EQUAL, ProfileConditionValue.WIDTH, caps.maxWidth))
-                    add(condition(ProfileConditionType.LESS_THAN_EQUAL, ProfileConditionValue.HEIGHT, caps.maxHeight))
-                    add(condition(ProfileConditionType.LESS_THAN_EQUAL, ProfileConditionValue.VIDEO_BIT_DEPTH, if (caps.tenBit) 10 else 8))
-                    // Without an HDR display, let the server tone-map rather than showing washed-out colours.
-                    if (!hdr) add(ProfileCondition(ProfileConditionType.EQUALS_ANY, ProfileConditionValue.VIDEO_RANGE_TYPE, "SDR", true))
-                },
+                conditions = listOf(
+                    condition(ProfileConditionType.LESS_THAN_EQUAL, ProfileConditionValue.WIDTH, width.toString()),
+                    condition(ProfileConditionType.LESS_THAN_EQUAL, ProfileConditionValue.HEIGHT, height.toString()),
+                    condition(ProfileConditionType.LESS_THAN_EQUAL, ProfileConditionValue.VIDEO_BIT_DEPTH, if (tenBit) "10" else "8"),
+                    // Other ranges are tone-mapped by the server rather than shown with wrong colours.
+                    condition(ProfileConditionType.EQUALS_ANY, ProfileConditionValue.VIDEO_RANGE_TYPE, ranges.joinToString("|")),
+                ),
                 applyConditions = emptyList(),
             )
         }
@@ -146,54 +148,9 @@ class DeviceProfileFactory(private val context: Context) {
         )
     }
 
-    private fun condition(type: ProfileConditionType, property: ProfileConditionValue, value: Int) =
-        ProfileCondition(type, property, value.toString(), true)
+    private fun condition(type: ProfileConditionType, property: ProfileConditionValue, value: String) =
+        ProfileCondition(type, property, value, true)
 
-    private companion object {
-        /** Jellyfin codec name to Android MIME type. Order matters: first match is preferred. */
-        val VIDEO_CODECS = linkedMapOf(
-            "av1" to "video/av01",
-            "hevc" to "video/hevc",
-            "vp9" to "video/x-vnd.on2.vp9",
-            "h264" to "video/avc",
-            "vp8" to "video/x-vnd.on2.vp8",
-            "mpeg2video" to "video/mpeg2",
-            "mpeg4" to "video/mp4v-es",
-        )
-
-        /** Null MIME means ExoPlayer handles it without a platform decoder. */
-        val AUDIO_CODECS = linkedMapOf(
-            "aac" to "audio/mp4a-latm",
-            "mp3" to "audio/mpeg",
-            "ac3" to "audio/ac3",
-            "eac3" to "audio/eac3",
-            "truehd" to "audio/true-hd",
-            "dts" to "audio/vnd.dts",
-            "opus" to "audio/opus",
-            "vorbis" to "audio/vorbis",
-            "flac" to "audio/flac",
-            "alac" to "audio/alac",
-            "pcm_s16le" to null,
-            "pcm_s24le" to null,
-        )
-
-        val TEN_BIT_PROFILES = mapOf(
-            "video/hevc" to setOf(
-                MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10,
-                MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10,
-                MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10Plus,
-            ),
-            "video/x-vnd.on2.vp9" to setOf(
-                MediaCodecInfo.CodecProfileLevel.VP9Profile2,
-                MediaCodecInfo.CodecProfileLevel.VP9Profile2HDR,
-            ),
-            "video/av01" to setOf(
-                MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10,
-                MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10HDR10,
-            ),
-        )
-
-        const val AUDIO_CONTAINERS = "mp3,flac,m4a,mp4,aac,ogg,oga,opus,webm,wav,mka"
-        const val DIRECT_PLAY_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts"
-    }
+    private const val DIRECT_PLAY_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts"
+    private const val AUDIO_CONTAINERS = "mp3,flac,m4a,mp4,aac,ogg,oga,opus,webm,wav,mka"
 }
