@@ -1,6 +1,7 @@
 package dev.nitrate.tv.data.playback
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -69,5 +70,41 @@ class PlaybackTestTest {
         assertTrue(clip("HEVC 1080p").claimed(c))
         assertTrue(!clip("HEVC 4K 10-bit").claimed(c))
         assertTrue(!clip("HEVC 1080p HLG").claimed(c))
+    }
+}
+
+class DolbyVisionAdviceTest {
+    private val dvCaps = caps().copy(hdr = setOf("HDR10", "HLG", "DOVI"), dolbyVisionProfiles = setOf(5, 8))
+    private fun result(label: String, outcome: Outcome) = ClipResult(clip(label), outcome, null, "")
+    private fun advice(vararg results: ClipResult, c: DeviceCapabilities = dvCaps) =
+        PlaybackTest.suggestions(listOf(pass("HEVC 1080p"), pass("HEVC 4K 10-bit")) + results, c, PlaybackSettings())
+            .fold(PlaybackSettings()) { s, x -> x.apply(s) }
+
+    @Test
+    fun `claimed Dolby Vision that falls back to HDR10 gets disabled`() {
+        val s = advice(result("Dolby Vision 8.1 4K", Outcome.FALLBACK), result("Dolby Vision 5 4K", Outcome.FAILED))
+        assertEquals(Override.NEVER, s.overrides[PlaybackSettings.hdrId("DOVI")])
+        assertTrue("hevc" !in s.overrides)
+    }
+
+    @Test
+    fun `Dolby Vision that really plays needs no change`() {
+        val s = advice(result("Dolby Vision 8.1 4K", Outcome.PASSED), result("Dolby Vision 5 4K", Outcome.PASSED))
+        assertTrue(s.overrides.isEmpty())
+    }
+
+    @Test
+    fun `falling back on a TV without Dolby Vision is expected, not a mismatch`() {
+        val noDv = caps()
+        assertFalse(clip("Dolby Vision 8.1 4K").claimed(noDv))
+        val s = advice(result("Dolby Vision 8.1 4K", Outcome.FALLBACK), result("Dolby Vision 5 4K", Outcome.FAILED), c = noDv)
+        assertTrue(s.overrides.isEmpty())
+    }
+
+    @Test
+    fun `claim needs the decoder profile as well as the display`() {
+        val displayOnly = dvCaps.copy(dolbyVisionProfiles = setOf(8))
+        assertTrue(clip("Dolby Vision 8.1 4K").claimed(displayOnly))
+        assertFalse(clip("Dolby Vision 5 4K").claimed(displayOnly))
     }
 }

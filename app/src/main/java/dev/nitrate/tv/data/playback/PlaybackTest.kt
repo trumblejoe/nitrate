@@ -11,8 +11,10 @@ data class TestClip(
     val codec: String,
     val height: Int = 0,
     val tenBit: Boolean = false,
-    /** HDR format as a Jellyfin range name (HDR10, HLG), or null for SDR. */
+    /** HDR format as a Jellyfin range name (HDR10, HLG, DOVI), or null for SDR. */
     val hdr: String? = null,
+    /** Dolby Vision profile for DOVI clips (5 or 8). */
+    val dolbyVisionProfile: Int? = null,
 ) {
     val uri get() = "asset:///testclips/$asset"
 
@@ -21,13 +23,17 @@ data class TestClip(
         ClipKind.AUDIO -> caps.audio[codec]?.supported == true
         ClipKind.VIDEO -> {
             val v = caps.video[codec]
-            v != null && v.maxHeight >= height && (!tenBit || v.tenBit) && (hdr == null || hdr in caps.hdr)
+            val dv = dolbyVisionProfile == null || dolbyVisionProfile in caps.dolbyVisionProfiles
+            v != null && v.maxHeight >= height && (!tenBit || v.tenBit) && (hdr == null || hdr in caps.hdr) && dv
         }
     }
 }
 
 enum class Outcome(val label: String) {
     PASSED("Plays"),
+
+    /** Dolby Vision Profile 8.1 that played as its HDR10 base layer, without Dolby Vision. */
+    FALLBACK("Plays as HDR10"),
 
     /** Decoded, but dropped so many frames it isn't watchable. */
     SLOW("Too slow"),
@@ -58,6 +64,8 @@ object PlaybackTest {
         TestClip("hevc_1080p_hlg.mp4", "HEVC 1080p HLG", ClipKind.VIDEO, "hevc", 1080, tenBit = true, hdr = "HLG"),
         TestClip("hevc_2160p_10bit.mp4", "HEVC 4K 10-bit", ClipKind.VIDEO, "hevc", 2160, tenBit = true),
         TestClip("hevc_2160p_hdr10.mp4", "HEVC 4K HDR10", ClipKind.VIDEO, "hevc", 2160, tenBit = true, hdr = "HDR10"),
+        TestClip("dv_p81_2160p.mp4", "Dolby Vision 8.1 4K", ClipKind.VIDEO, "hevc", 2160, tenBit = true, hdr = "DOVI", dolbyVisionProfile = 8),
+        TestClip("dv_p5_2160p.mp4", "Dolby Vision 5 4K", ClipKind.VIDEO, "hevc", 2160, tenBit = true, hdr = "DOVI", dolbyVisionProfile = 5),
         TestClip("vp9_1080p.webm", "VP9 1080p", ClipKind.VIDEO, "vp9", 1080),
         TestClip("vp9_2160p_10bit.webm", "VP9 4K 10-bit", ClipKind.VIDEO, "vp9", 2160, tenBit = true),
         TestClip("av1_1080p.mp4", "AV1 1080p", ClipKind.VIDEO, "av1", 1080),
@@ -118,8 +126,17 @@ object PlaybackTest {
                 }
             }
 
+            // Dolby Vision: the TV claims it, but a clip fails or plays without Dolby Vision.
+            val dvId = PlaybackSettings.hdrId("DOVI")
+            val dvProblem = codecResults.firstOrNull { it.clip.hdr == "DOVI" && it.clip.claimed(caps) && !it.ok }
+            if (dvProblem != null && current.overrides[dvId] != Override.NEVER) {
+                out += Suggestion("Never direct play Dolby Vision: ${dvProblem.clip.label} ${dvProblem.outcome.label.lowercase()}; the server will send the HDR10 layer or tone-map") {
+                    it.copy(overrides = it.overrides + (dvId to Override.NEVER))
+                }
+            }
+
             // HDR clips that fail while an SDR clip of the same depth passes point at the HDR format.
-            for (failed in codecResults.filter { it.clip.hdr != null && !it.ok }) {
+            for (failed in codecResults.filter { it.clip.hdr != null && it.clip.hdr != "DOVI" && !it.ok }) {
                 val sdrTwin = sdr.any { it.ok && it.clip.tenBit == failed.clip.tenBit && it.clip.height >= failed.clip.height }
                 val id = PlaybackSettings.hdrId(failed.clip.hdr!!)
                 if (sdrTwin && current.overrides[id] != Override.NEVER) {

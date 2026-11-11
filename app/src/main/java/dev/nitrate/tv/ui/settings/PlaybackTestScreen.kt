@@ -134,7 +134,8 @@ fun PlaybackTestScreen(
                     Text("Playback test", style = MaterialTheme.typography.headlineMedium)
                     Text(
                         "Plays short clips in each format and compares the result with what ${capabilities.model} reports. " +
-                            "HDR clips test decoding; whether the colours look right in the preview shows whether HDR output works.",
+                            "HDR clips test decoding; whether the colours look right in the preview shows whether HDR output works. " +
+                            "Dolby Vision 5 looks green and purple unless Dolby Vision is really applied, and your TV's Dolby Vision badge should appear.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -226,6 +227,7 @@ private fun ResultRow(clip: TestClip, result: ClipResult?, claimed: Boolean, act
                 },
                 color = when (result?.outcome) {
                     Outcome.PASSED -> MaterialTheme.colorScheme.primary
+                    Outcome.FALLBACK -> MaterialTheme.colorScheme.secondary
                     Outcome.SLOW, Outcome.FAILED -> MaterialTheme.colorScheme.error
                     null -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
@@ -267,6 +269,8 @@ private suspend fun ExoPlayer.runClip(clip: TestClip, decoderName: () -> String?
     if (clip.kind == ClipKind.AUDIO) return ClipResult(clip, Outcome.PASSED, decoderName(), "Played to the end")
 
     val counters = videoDecoderCounters?.also { it.ensureUpdated() }
+    // Profile 8.1 falls back to plain HEVC without a Dolby Vision decoder; that isn't Dolby Vision.
+    val dvFallback = clip.dolbyVisionProfile != null && !DeviceCapabilities.isDolbyVisionDecoder(decoderName())
     val rendered = counters?.renderedOutputBufferCount ?: 0
     val dropped = (counters?.droppedBufferCount ?: 0) + (counters?.skippedOutputBufferCount ?: 0)
     val total = rendered + dropped
@@ -274,6 +278,9 @@ private suspend fun ExoPlayer.runClip(clip: TestClip, decoderName: () -> String?
         rendered < 5 -> ClipResult(clip, Outcome.FAILED, decoderName(), "No frames shown", rendered, dropped)
         total > 0 && dropped.toDouble() / total > MAX_DROPPED_SHARE ->
             ClipResult(clip, Outcome.SLOW, decoderName(), "Dropped $dropped of $total frames", rendered, dropped)
+        dvFallback && clip.dolbyVisionProfile == 5 ->
+            ClipResult(clip, Outcome.FAILED, decoderName(), "Decoded without Dolby Vision, so the colours are wrong", rendered, dropped)
+        dvFallback -> ClipResult(clip, Outcome.FALLBACK, decoderName(), "No Dolby Vision decoder used; showed the HDR10 base layer", rendered, dropped)
         else -> ClipResult(clip, Outcome.PASSED, decoderName(), "Showed $rendered frames" + if (dropped > 0) ", dropped $dropped" else "", rendered, dropped)
     }
 }

@@ -37,8 +37,27 @@ data class DeviceCapabilities(
     val displayWidth: Int,
     val displayHeight: Int,
     val model: String,
+    /** Dolby Vision profiles a decoder advertises (5 = dvhe.05, 8 = dvhe.08, ...). */
+    val dolbyVisionProfiles: Set<Int> = emptySet(),
 ) {
     companion object {
+        const val DOLBY_VISION_MIME = "video/dolby-vision"
+
+        /** Whether the named decoder handles Dolby Vision (as opposed to plain HEVC fallback). */
+        fun isDolbyVisionDecoder(name: String?): Boolean = name != null &&
+            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any { info ->
+                info.name == name && info.supportedTypes.any { it.equals(DOLBY_VISION_MIME, true) }
+            }
+
+        private val DV_PROFILE_NUMBERS = mapOf(
+            MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheDtr to 4,
+            MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheStn to 5,
+            MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheDth to 6,
+            MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheDtb to 7,
+            MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheSt to 8,
+            MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvavSe to 9,
+        )
+
         /** Jellyfin codec name to Android MIME type. */
         val VIDEO_CODECS = linkedMapOf(
             "av1" to "video/av01",
@@ -125,6 +144,12 @@ data class DeviceCapabilities(
                 }
             }.toSet()
 
+            val dolbyVision = decoders.flatMap { info ->
+                info.supportedTypes.filter { it.equals(DOLBY_VISION_MIME, true) }.flatMap { type ->
+                    runCatching { info.getCapabilitiesForType(type).profileLevels.mapNotNull { DV_PROFILE_NUMBERS[it.profile] } }.getOrDefault(emptyList())
+                }
+            }.toSet()
+
             // Physical panel size, not the (often 1080p) UI size.
             val mode = display?.mode
             return DeviceCapabilities(
@@ -134,6 +159,7 @@ data class DeviceCapabilities(
                 displayWidth = mode?.physicalWidth ?: 1920,
                 displayHeight = mode?.physicalHeight ?: 1080,
                 model = "${Build.MANUFACTURER} ${Build.MODEL}",
+                dolbyVisionProfiles = dolbyVision,
             )
         }
     }
