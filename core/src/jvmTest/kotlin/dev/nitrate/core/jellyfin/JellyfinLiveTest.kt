@@ -18,6 +18,7 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -218,5 +219,37 @@ class JellyfinLiveTest {
             client.deleteUser(temp.id)
         }
         assertTrue(client.users().none { it.id == temp.id })
+    }
+
+    @Test
+    fun `live events reach a controllable client`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val user = System.getenv("JELLYFIN_USER") ?: "nitrate"
+        val pw = System.getenv("JELLYFIN_PASSWORD").orEmpty()
+        val tv = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-tv", "Live TV"), storage, { caps() }, settings)
+        tv.login(url!!, user, pw)
+        val phone = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-phone", "Live phone"), object : SessionStorage {
+            override suspend fun load(): StoredSession? = null
+            override suspend fun save(session: StoredSession) {}
+            override suspend fun clear() {}
+        }, { caps() }, settings)
+        phone.login(url, user, pw)
+
+        val received = java.util.concurrent.CopyOnWriteArrayList<dev.nitrate.core.events.ServerEvent>()
+        val listening = launch { tv.events().collect { received += it } }
+        kotlinx.coroutines.withTimeout(10_000) { while (received.none { it is dev.nitrate.core.events.ServerEvent.Connected }) kotlinx.coroutines.delay(100) }
+        tv.reportCapabilities()
+
+        val target = phone.sessions().first { it.deviceId == "nitrate-live-tv" }
+        assertTrue("The TV must look controllable", target.supportsRemoteControl)
+        phone.sessionCommand(target.id, dev.nitrate.core.admin.SessionCommand.PAUSE)
+        phone.sendMessage(target.id, "Hello", "From the phone")
+        kotlinx.coroutines.withTimeout(10_000) {
+            while (received.none { it is dev.nitrate.core.events.ServerEvent.General && it.name == "DisplayMessage" }) kotlinx.coroutines.delay(100)
+        }
+        println("Events: $received")
+        assertTrue(received.any { it == dev.nitrate.core.events.ServerEvent.Playstate("Pause", null) })
+        println("Subtitles: ${runCatching { tv.searchSubtitles(phone.views().first().id, "eng").size }.getOrElse { "search failed (expected without providers): ${it.message}" }}")
+        listening.cancel()
     }
 }

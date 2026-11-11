@@ -15,6 +15,9 @@ import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.admin.AccountInfo
+import dev.nitrate.core.admin.GeneralCommand
+import dev.nitrate.core.events.ServerEvent
+import dev.nitrate.core.playback.RemoteSubtitle
 import dev.nitrate.core.admin.ActivityEntry
 import dev.nitrate.core.admin.ImageType
 import dev.nitrate.core.admin.ItemImage
@@ -157,6 +160,26 @@ interface MediaServer {
     suspend fun createUser(name: String, password: String): UserAccount = unsupported()
     suspend fun deleteUser(userId: String): Unit = unsupported()
     suspend fun setPassword(userId: String, newPassword: String): Unit = unsupported()
+
+    // ---- Subtitles from providers ----
+    /** Subtitles the server can download for [itemId] in [language] (ISO 639-2, e.g. "eng"). */
+    suspend fun searchSubtitles(itemId: String, language: String): List<RemoteSubtitle> = unsupported()
+    suspend fun downloadSubtitle(itemId: String, subtitleId: String): Unit = unsupported()
+
+    // ---- Remote control ----
+    /** Tells the server this app can be controlled (play, pause, seek, messages) from elsewhere. */
+    suspend fun reportCapabilities(): Unit = Unit
+
+    /** Starts [itemIds] on another client, from [startMs]. */
+    suspend fun playOn(sessionId: String, itemIds: List<String>, startMs: Long): Unit = unsupported()
+    suspend fun seekSession(sessionId: String, positionMs: Long): Unit = unsupported()
+    suspend fun sendGeneralCommand(sessionId: String, command: GeneralCommand): Unit = unsupported()
+
+    /** This app's device id on the server, to leave it out of "play on" lists. */
+    val deviceId: String? get() = null
+
+    /** Live events from the server while signed in (remote control, library and watch changes). */
+    fun events(): Flow<ServerEvent> = kotlinx.coroutines.flow.emptyFlow()
 
     // ---- Custom rows ----
     /** Items matching a saved search, for custom rows. */

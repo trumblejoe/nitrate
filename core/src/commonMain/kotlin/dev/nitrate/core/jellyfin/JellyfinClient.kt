@@ -26,6 +26,9 @@ import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.SubtitleDelivery
 import dev.nitrate.core.model.subtitleMimeType
 import dev.nitrate.core.admin.AccountInfo
+import dev.nitrate.core.admin.GeneralCommand
+import dev.nitrate.core.events.ServerEvent
+import dev.nitrate.core.playback.RemoteSubtitle
 import dev.nitrate.core.admin.ActivityEntry
 import dev.nitrate.core.admin.ImageType
 import dev.nitrate.core.admin.ItemImage
@@ -54,6 +57,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.HttpRequestBuilder
@@ -106,6 +110,7 @@ class JellyfinClient(
     internal val http = HttpClient(engine) {
         expectSuccess = true
         install(ContentNegotiation) { json(JellyfinJson) }
+        install(WebSockets)
         // Pin the casing: a request with no Accept header gets camelCase from newer servers.
         defaultRequest { header(HttpHeaders.Accept, "application/json; profile=PascalCase") }
         install(HttpTimeout) {
@@ -118,7 +123,7 @@ class JellyfinClient(
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var baseUrl: String? = null
-    private var token: String? = null
+    internal var token: String? = null
 
     override var userId: String? = null
         private set
@@ -586,6 +591,49 @@ class JellyfinClient(
     override suspend fun setPassword(userId: String, newPassword: String) = admin.setPassword(userId, newPassword)
 
     private val admin = JellyfinAdmin(this)
+
+    // ---- Subtitles from providers ----
+
+    override suspend fun searchSubtitles(itemId: String, language: String): List<RemoteSubtitle> =
+        get("Items", itemId, "RemoteSearch", "Subtitles", language).decode<List<RemoteSubtitleDto>>().map {
+            RemoteSubtitle(it.id, it.name ?: it.id, it.threeLetterISOLanguageName, it.providerName, it.format, it.downloadCount, it.communityRating,
+                it.isHashMatch == true, it.forced == true, it.hearingImpaired == true, it.machineTranslated == true || it.aiTranslated == true)
+        }.sortedWith(compareByDescending<RemoteSubtitle> { it.hashMatch }.thenByDescending { it.downloads ?: 0 })
+
+    override suspend fun downloadSubtitle(itemId: String, subtitleId: String) {
+        post<Unit>("Items", itemId, "RemoteSearch", "Subtitles", subtitleId)
+    }
+
+    // ---- Remote control ----
+
+    override val deviceId: String get() = identity.deviceId
+
+    override suspend fun reportCapabilities() {
+        runCatching {
+            post<CapabilitiesDto>(
+                "Sessions", "Capabilities", "Full",
+                body = CapabilitiesDto(
+                    playableMediaTypes = listOf("Video", "Audio"),
+                    supportedCommands = listOf("DisplayMessage", "VolumeUp", "VolumeDown", "ToggleMute", "SetAudioStreamIndex", "SetSubtitleStreamIndex", "PlayState", "Play"),
+                    supportsMediaControl = true,
+                ),
+            )
+        }
+    }
+
+    override suspend fun playOn(sessionId: String, itemIds: List<String>, startMs: Long) {
+        post<Unit>("Sessions", sessionId, "Playing", query = mapOf("playCommand" to "PlayNow", "itemIds" to itemIds.joinToString(","), "startPositionTicks" to startMs.msToTicks()))
+    }
+
+    override suspend fun seekSession(sessionId: String, positionMs: Long) {
+        post<Unit>("Sessions", sessionId, "Playing", "Seek", query = mapOf("seekPositionTicks" to positionMs.msToTicks()))
+    }
+
+    override suspend fun sendGeneralCommand(sessionId: String, command: GeneralCommand) {
+        post<Unit>("Sessions", sessionId, "Command", command.wire)
+    }
+
+    override fun events(): Flow<ServerEvent> = socketEvents { token != null }
 
     // ---- Custom rows ----
 

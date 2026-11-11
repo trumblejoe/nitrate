@@ -59,6 +59,7 @@ class JellyfinContractTest {
         val json = when {
             path.endsWith("/Users/Me") || path.endsWith("/Users/$HEX") || path.endsWith("/Users/$DASHED") || path.endsWith("/Users/New") -> USER
             path.endsWith("/Users") -> "[$USER]"
+            path.contains("/RemoteSearch/Subtitles/") -> """[{"Id":"os-1","Name":"Nitrate.2023.srt","ThreeLetterISOLanguageName":"eng","ProviderName":"Open Subtitles","Format":"srt","DownloadCount":900,"IsHashMatch":true}]"""
             path.contains("/Items/RemoteSearch/") && !path.contains("/Apply/") -> """[{"Name":"Nitrate","ProductionYear":2023,"ProviderIds":{"Tmdb":"1"},"SearchProviderName":"TheMovieDb","ImageUrl":"http://x/i.jpg"}]"""
             path.endsWith("/Images") -> """[{"ImageType":"Primary","ImageTag":"t","Width":1000,"Height":1500},{"ImageType":"Backdrop","ImageIndex":1,"ImageTag":"b","Width":1920,"Height":1080}]"""
             path.endsWith("/RemoteImages") -> """{"Images":[{"Url":"http://x/a.jpg","ProviderName":"TheMovieDb","Width":1000,"Height":1500,"Language":"en","CommunityRating":7.5}],"TotalRecordCount":1}"""
@@ -193,6 +194,13 @@ class JellyfinContractTest {
         assertEquals(60_000L, client.sessions().single().positionMs)
         client.sendMessage("s1", "Hi", "Dinner's ready")
         for (c in dev.nitrate.core.admin.SessionCommand.entries) client.sessionCommand("s1", c)
+        val subs = client.searchSubtitles(DASHED, "eng")
+        assertTrue(subs.single().hashMatch)
+        client.downloadSubtitle(DASHED, "os-1")
+        client.reportCapabilities()
+        client.playOn("s1", listOf(DASHED), 60_000)
+        client.seekSession("s1", 90_000)
+        for (g in dev.nitrate.core.admin.GeneralCommand.entries) client.sendGeneralCommand("s1", g)
         val user = client.users().single()
         assertTrue(user.permissions.isAdministrator)
         client.setPermissions(user.id, user.permissions.copy(enableContentDownloading = false))
@@ -231,7 +239,7 @@ class JellyfinContractTest {
         val problems = sent.flatMap { check(it.method, it.url, it.body) } + urls.flatMap { check(HttpMethod.Get, Url(it), null) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
         val endpoints = sent.map { "${it.method.value} ${template(it.url)}" }.toSet()
-        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 55)
+        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 61)
     }
 
     @Test
@@ -253,6 +261,8 @@ class JellyfinContractTest {
             serializer<UserDataDto>() to "UserItemDataDto",
             serializer<UpdateUserDataDto>() to "UpdateUserItemDataDto",
             serializer<TrickplayInfoDto>() to "TrickplayInfoDto",
+            serializer<RemoteSubtitleDto>() to "RemoteSubtitleInfo",
+            serializer<CapabilitiesDto>() to "ClientCapabilitiesDto",
             serializer<MediaSegmentDto>() to "MediaSegmentDto",
         ).flatMap { (s, schema) -> fields(s.descriptor, schema(schema), schema) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
@@ -283,8 +293,9 @@ class JellyfinContractTest {
     // ---- Spec checks ----
 
     /** Spec path for a URL, preferring literal segments over parameters (/Items/Latest over /Items/{itemId}). */
-    private fun template(url: Url): String? =
-        paths.keys.filter { matches(it, url.encodedPath) }.minByOrNull { t -> t.count { it == '{' } }
+    private fun template(url: Url, method: HttpMethod? = null): String? =
+        paths.keys.filter { matches(it, url.encodedPath) && (method == null || paths[it]!!.jsonObject.containsKey(method.value.lowercase())) }
+            .minByOrNull { t -> t.count { it == '{' } }
 
     private fun matches(template: String, path: String): Boolean {
         val a = template.trim('/').split('/')
@@ -297,7 +308,7 @@ class JellyfinContractTest {
 
     private fun check(method: HttpMethod, url: Url, body: String?): List<String> {
         val where = "${method.value} ${url.encodedPath}"
-        val template = template(url) ?: return listOf("$where: no such path")
+        val template = template(url, method) ?: template(url) ?: return listOf("$where: no such path")
         val op = paths[template]!!.jsonObject[method.value.lowercase()]?.jsonObject ?: return listOf("$where: no ${method.value} on $template")
         val params = op["parameters"]?.jsonArray.orEmpty().map { it.jsonObject }.filter { it["in"]?.jsonPrimitive?.content == "query" }
             .associateBy { it["name"]!!.jsonPrimitive.content }

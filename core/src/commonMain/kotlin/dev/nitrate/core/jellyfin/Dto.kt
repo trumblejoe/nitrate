@@ -201,3 +201,27 @@ internal data class TrickplayInfoDto(
 
 @Serializable
 internal data class MediaSegmentDto(val type: String = "Unknown", val startTicks: Long = 0, val endTicks: Long = 0)
+
+@Serializable
+internal data class RemoteSubtitleDto(
+    val id: String,
+    val name: String? = null,
+    val threeLetterISOLanguageName: String? = null,
+    val providerName: String? = null,
+    val format: String? = null,
+    val downloadCount: Int? = null,
+    val communityRating: Float? = null,
+    val isHashMatch: Boolean? = null,
+    val forced: Boolean? = null,
+    val hearingImpaired: Boolean? = null,
+    val machineTranslated: Boolean? = null,
+    val aiTranslated: Boolean? = null,
+)
+
+@Serializable
+internal data class CapabilitiesDto(
+    val playableMediaTypes: List<String>,
+    val supportedCommands: List<String>,
+    val supportsMediaControl: Boolean,
+    val supportsPersistentIdentifier: Boolean = true,
+)

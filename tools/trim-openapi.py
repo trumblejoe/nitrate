@@ -65,6 +65,11 @@ PATHS = [
     "/Users/{userId}/Policy",
     "/Users/New",
     "/Users/Password",
+    "/Items/{itemId}/RemoteSearch/Subtitles/{language}",
+    "/Items/{itemId}/RemoteSearch/Subtitles/{subtitleId}",
+    "/Sessions/Capabilities/Full",
+    "/Sessions/{sessionId}/Playing",
+    "/Sessions/{sessionId}/Command/{command}",
     "/MediaSegments/{itemId}",
     "/Videos/{itemId}/Trickplay/{width}/{index}.jpg",
 ]

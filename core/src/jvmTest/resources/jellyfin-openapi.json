@@ -3131,6 +3131,16 @@
     ],
     "type": "string"
    },
+   "PlayCommand": {
+    "enum": [
+     "PlayNow",
+     "PlayNext",
+     "PlayLast",
+     "PlayInstantMix",
+     "PlayShuffle"
+    ],
+    "type": "string"
+   },
    "PlayMethod": {
     "enum": [
      "Transcode",
@@ -4060,6 +4070,80 @@
       "type": "object"
      },
      "SearchProviderName": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "RemoteSubtitleInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "AiTranslated": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "Author": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Comment": {
+      "nullable": true,
+      "type": "string"
+     },
+     "CommunityRating": {
+      "format": "float",
+      "nullable": true,
+      "type": "number"
+     },
+     "DateCreated": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "DownloadCount": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Forced": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "Format": {
+      "nullable": true,
+      "type": "string"
+     },
+     "FrameRate": {
+      "format": "float",
+      "nullable": true,
+      "type": "number"
+     },
+     "HearingImpaired": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "Id": {
+      "nullable": true,
+      "type": "string"
+     },
+     "IsHashMatch": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "MachineTranslated": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ProviderName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ThreeLetterISOLanguageName": {
       "nullable": true,
       "type": "string"
      }
@@ -10600,6 +10684,200 @@
     ]
    }
   },
+  "/Items/{itemId}/RemoteSearch/Subtitles/{language}": {
+   "get": {
+    "operationId": "SearchRemoteSubtitles",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "language",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isPerfectMatch",
+      "schema": {
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSubtitleInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSubtitleInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSubtitleInfo"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SubtitleManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Subtitle"
+    ]
+   }
+  },
+  "/Items/{itemId}/RemoteSearch/Subtitles/{subtitleId}": {
+   "post": {
+    "operationId": "DownloadRemoteSubtitles",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "subtitleId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SubtitleManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Subtitle"
+    ]
+   }
+  },
   "/Items/{itemId}/Similar": {
    "get": {
     "operationId": "GetSimilarItems",
@@ -11952,6 +12230,88 @@
     ]
    }
   },
+  "/Sessions/Capabilities/Full": {
+   "post": {
+    "operationId": "PostFullCapabilities",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "id",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/ClientCapabilitiesDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/ClientCapabilitiesDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/ClientCapabilitiesDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Session"
+    ]
+   }
+  },
   "/Sessions/Logout": {
    "post": {
     "operationId": "ReportSessionEnded",
@@ -12209,6 +12569,114 @@
     ]
    }
   },
+  "/Sessions/{sessionId}/Command/{command}": {
+   "post": {
+    "operationId": "SendGeneralCommand",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sessionId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "command",
+      "required": true,
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/GeneralCommandType"
+        }
+       ],
+       "enum": [
+        "MoveUp",
+        "MoveDown",
+        "MoveLeft",
+        "MoveRight",
+        "PageUp",
+        "PageDown",
+        "PreviousLetter",
+        "NextLetter",
+        "ToggleOsd",
+        "ToggleContextMenu",
+        "Select",
+        "Back",
+        "TakeScreenshot",
+        "SendKey",
+        "SendString",
+        "GoHome",
+        "GoToSettings",
+        "VolumeUp",
+        "VolumeDown",
+        "Mute",
+        "Unmute",
+        "ToggleMute",
+        "SetVolume",
+        "SetAudioStreamIndex",
+        "SetSubtitleStreamIndex",
+        "ToggleFullscreen",
+        "DisplayContent",
+        "GoToSearch",
+        "DisplayMessage",
+        "SetRepeatMode",
+        "ChannelUp",
+        "ChannelDown",
+        "Guide",
+        "ToggleStats",
+        "PlayMediaSource",
+        "PlayTrailers",
+        "SetShuffleQueue",
+        "PlayState",
+        "PlayNext",
+        "ToggleOsdMenu",
+        "Play",
+        "SetMaxStreamingBitrate",
+        "SetPlaybackOrder"
+       ]
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Session"
+    ]
+   }
+  },
   "/Sessions/{sessionId}/Message": {
    "post": {
     "operationId": "SendMessageCommand",
@@ -12254,6 +12722,127 @@
      },
      "required": true
     },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Session"
+    ]
+   }
+  },
+  "/Sessions/{sessionId}/Playing": {
+   "post": {
+    "operationId": "Play",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sessionId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "playCommand",
+      "required": true,
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/PlayCommand"
+        }
+       ],
+       "enum": [
+        "PlayNow",
+        "PlayNext",
+        "PlayLast",
+        "PlayInstantMix",
+        "PlayShuffle"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "itemIds",
+      "required": true,
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startPositionTicks",
+      "schema": {
+       "format": "int64",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "mediaSourceId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioStreamIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "subtitleStreamIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     }
+    ],
     "responses": {
      "204": {},
      "401": {},

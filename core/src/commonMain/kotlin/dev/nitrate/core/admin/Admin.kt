@@ -159,4 +159,10 @@ enum class SessionCommand(val wire: String, val label: String) {
     STOP("Stop", "Stop"),
     PAUSE("Pause", "Pause"),
     UNPAUSE("Unpause", "Resume"),
+    PLAY_PAUSE("PlayPause", "Play/pause"),
+    NEXT("NextTrack", "Next"),
+    PREVIOUS("PreviousTrack", "Previous"),
 }
+
+/** Non-playback commands for another client (volume, messages...), by Jellyfin's names. */
+enum class GeneralCommand(val wire: String) { VOLUME_UP("VolumeUp"), VOLUME_DOWN("VolumeDown"), TOGGLE_MUTE("ToggleMute"), GO_HOME("GoHome") }

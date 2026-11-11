@@ -38,6 +38,14 @@ data class PlaybackSettings(
     val eightBitOnly: Set<String> = emptySet(),
     /** Treat learned failures as Never (unless overridden to Always). */
     val useLearnedFailures: Boolean = true,
+    /** How subtitles look on this device. */
+    val subtitleStyle: SubtitleStyle = SubtitleStyle(),
+    /** Keep audio playing with the screen off or in another app (phones). */
+    val backgroundAudio: Boolean = false,
+    /** Shrink the video into a corner window when leaving the app mid-playback (phones). */
+    val pictureInPicture: Boolean = true,
+    /** Evens out loud and quiet sound and lifts dialogue, for late nights. */
+    val nightMode: Boolean = false,
 ) {
     /** Whether [id] may be direct played, given what the device claims. */
     fun allows(id: String, claimed: Boolean): Boolean = when (overrides[id]) {
