@@ -6,24 +6,26 @@ An Android TV client for [Jellyfin](https://jellyfin.org), built with Kotlin and
 
 ## Status
 
-Early scaffold. Working today:
+Early, but usable end to end:
 
-- Connect to a server by address (http/https and default ports are tried automatically)
-- Sign in with username and password; session is remembered
-- Home screen: Continue Watching, Next Up, and Latest per video library, with a backdrop and details for the focused item
-- Direct-play video with Media3/ExoPlayer, resuming from the saved position
-- Playback start, progress, and stop reported back to the server
+- **Sign-in:** connect by address (http/https and default ports tried automatically); the session is remembered
+- **Home:** My Media, Continue Watching, Next Up, and Latest per library
+- **Library pages:** a *Recommended* tab with rows per library type, and an *All* tab with a sortable, paged grid
+- **Row display settings:** every row on Home and on each library page can be Posters, Wide or **Showcase**, in three sizes, saved per user. Long-press a card (or use *Customize rows*) to change one
+- **Showcase rows:** focused, the row fills the screen with the item's artwork, logo, details and overview, and Left/Right step through it. Optional wrap-around and backdrop rotation
+- **Detail pages:** movies, episodes and series (season chips and episode row), with resume/from start, watched, favourite, cast and similar items
+- **Playlists:** large tiles (stylized art when a playlist has no wide image), an optional progress count or bar, grouping by tag with a jump list, and a playlist page with a cinematic header, thumbnails, Play all and Shuffle
+- **Playback:** a device profile built from the TV's real decoders; the server picks direct play, remux or transcode, and a direct-play failure falls back to a transcode. Progress is reported to the server
 
 ## Roadmap
 
-- [ ] Detail screens for movies, series, seasons
-- [ ] Library browsing with sort and filter
-- [ ] Transcoding fallback (PlaybackInfo + device profile) for unsupported codecs
-- [ ] Audio and subtitle track selection
+- [ ] Audio and subtitle track selection, and a custom player overlay
 - [ ] Quick Connect sign-in (no typing passwords on a remote)
-- [ ] Multiple servers and users
 - [ ] Search
 - [ ] Skip intro and credits (media segments)
+- [ ] Settings screen (max bitrate, rewatching in Next Up)
+- [ ] Multiple servers and users
+- [ ] Sync row settings to the server so they follow the user between devices
 
 ## Stack
 
@@ -63,11 +65,17 @@ app/src/main/java/dev/nitrate/tv/
 ├── data/
 │   ├── AppContainer.kt    Manual dependency wiring
 │   ├── SessionStore.kt    Saved server URL, token, user (DataStore)
-│   └── JellyfinRepository.kt  All Jellyfin SDK calls
+│   ├── JellyfinRepository.kt  All Jellyfin SDK calls
+│   ├── rows/              Row model, display options, per-user settings store
+│   └── playback/          Device profile built from the TV's decoders
 └── ui/
     ├── NitrateNavHost.kt  Routes and start-destination logic
     ├── theme/             Colors and TV Material theme
     ├── components/        Shared composables (D-pad text field)
+    ├── rows/              Shared rows page, card and showcase rows, row settings dialogs
+    ├── details/           Movie / series / episode pages
+    ├── library/           Library pages, grids, playlists library
+    ├── playlist/          Playlist page
     ├── connect/  login/  home/  player/
 ```
 

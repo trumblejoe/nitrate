@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.nitrate.tv.data.rows.MediaRow
 import dev.nitrate.tv.data.rows.RowDisplay
-import dev.nitrate.tv.data.rows.RowSettingsStore
+import dev.nitrate.tv.data.rows.DisplaySettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +21,7 @@ sealed interface RowsState {
 /** Loads a page of rows and the user's display overrides for them. Used by Home and libraries. */
 class RowsViewModel(
     private val load: suspend () -> List<MediaRow>,
-    private val store: RowSettingsStore,
+    private val store: DisplaySettingsStore,
     private val userId: String?,
 ) : ViewModel() {
     private val _state = MutableStateFlow<RowsState>(RowsState.Loading)

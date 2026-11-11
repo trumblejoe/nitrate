@@ -25,7 +25,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import dev.nitrate.tv.data.JellyfinRepository
-import dev.nitrate.tv.data.rows.RowSettingsStore
+import dev.nitrate.tv.data.rows.DisplaySettingsStore
 import dev.nitrate.tv.ui.rows.RowsPage
 import dev.nitrate.tv.ui.rows.RowsState
 import dev.nitrate.tv.ui.rows.RowsViewModel
@@ -35,12 +35,12 @@ import org.jellyfin.sdk.model.api.BaseItemDto
 @Composable
 fun HomeScreen(
     repository: JellyfinRepository,
-    rowSettings: RowSettingsStore,
+    displaySettings: DisplaySettingsStore,
     onOpen: (BaseItemDto) -> Unit,
     onPlay: (BaseItemDto) -> Unit,
     onSignOut: () -> Unit,
 ) {
-    val vm = viewModel(key = "home") { RowsViewModel(repository::homeRows, rowSettings, repository.userId) }
+    val vm = viewModel(key = "home") { RowsViewModel(repository::homeRows, displaySettings, repository.userId) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()

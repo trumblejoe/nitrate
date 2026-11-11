@@ -41,7 +41,8 @@ fun Modifier.onPlayKey(onPlay: (() -> Unit)?): Modifier =
 fun MediaCard(
     item: BaseItemDto,
     imageUrl: String?,
-    width: Dp,
+    /** Fixed width, or null to fill the parent (grid cells). */
+    width: Dp?,
     aspectRatio: Float,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -53,7 +54,7 @@ fun MediaCard(
     showProgress: Boolean = true,
 ) {
     val progress = item.userData?.playedPercentage?.toFloat()?.div(100f)
-    Column(modifier.width(width)) {
+    Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())) {
         Card(
             onClick = onClick,
             onLongClick = onLongClick,

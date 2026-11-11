@@ -39,6 +39,7 @@ import dev.nitrate.tv.data.ticksToMs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.jellyfin.sdk.model.api.MediaType
 import org.jellyfin.sdk.model.api.PlayMethod
 import java.util.UUID
 
@@ -51,6 +52,7 @@ fun PlayerScreen(
     itemId: String,
     fromStart: Boolean,
     onExit: () -> Unit,
+    onEnded: () -> Unit = onExit,
 ) {
     val context = LocalContext.current
     val id = remember(itemId) { UUID.fromString(itemId) }
@@ -66,11 +68,12 @@ fun PlayerScreen(
     }
     var plan by remember { mutableStateOf<PlaybackPlan?>(null) }
     var title by remember { mutableStateOf<String?>(null) }
+    var isAudio by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     suspend fun start(startMs: Long, forceTranscode: Boolean) {
-        runCatching { repository.resolvePlayback(id, startMs, forceTranscode) }
+        runCatching { repository.resolvePlayback(id, isAudio, startMs, forceTranscode) }
             .onSuccess { p ->
                 plan = p
                 val media = MediaItem.Builder()
@@ -91,6 +94,7 @@ fun PlayerScreen(
         runCatching { repository.getItem(id) }
             .onSuccess { item ->
                 title = item.name
+                isAudio = item.mediaType == MediaType.AUDIO
                 val resumeMs = if (fromStart) 0L else item.userData?.playbackPositionTicks?.ticksToMs() ?: 0L
                 start(resumeMs, forceTranscode = false)
             }
@@ -125,7 +129,7 @@ fun PlayerScreen(
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) onExit()
+                if (state == Player.STATE_ENDED) onEnded()
             }
         }
         player.addListener(listener)

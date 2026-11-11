@@ -24,6 +24,8 @@ import androidx.navigation.NavController
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
 import dev.nitrate.tv.ui.home.HomeScreen
+import dev.nitrate.tv.ui.library.LibraryScreen
+import dev.nitrate.tv.ui.playlist.PlaylistScreen
 import dev.nitrate.tv.ui.login.LoginScreen
 import dev.nitrate.tv.ui.player.PlayerScreen
 import kotlinx.serialization.Serializable
@@ -32,7 +34,11 @@ import kotlinx.serialization.Serializable
 @Serializable data class LoginRoute(val serverUrl: String, val serverName: String)
 @Serializable object HomeRoute
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
-@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false)
+@Serializable data class LibraryRoute(val libraryId: String)
+@Serializable data class PlaylistRoute(val playlistId: String)
+
+/** [queue] is comma-separated item ids to play after [itemId]. */
+@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "")
 
 @Composable
 fun NitrateNavHost(container: AppContainer) {
@@ -75,7 +81,7 @@ fun NitrateNavHost(container: AppContainer) {
         composable<HomeRoute> {
             HomeScreen(
                 repository = container.repository,
-                rowSettings = container.rowSettings,
+                displaySettings = container.displaySettings,
                 onOpen = nav::openItem,
                 onPlay = { item -> nav.navigate(PlayerRoute(item.id.toString())) },
                 onSignOut = {
@@ -93,6 +99,24 @@ fun NitrateNavHost(container: AppContainer) {
                 onOpen = nav::openItem,
             )
         }
+        composable<LibraryRoute> { entry ->
+            LibraryScreen(
+                repository = container.repository,
+                displaySettings = container.displaySettings,
+                libraryId = entry.toRoute<LibraryRoute>().libraryId,
+                onOpen = nav::openItem,
+                onPlay = { item -> nav.navigate(PlayerRoute(item.id.toString())) },
+            )
+        }
+        composable<PlaylistRoute> { entry ->
+            PlaylistScreen(
+                repository = container.repository,
+                settings = container.displaySettings,
+                playlistId = entry.toRoute<PlaylistRoute>().playlistId,
+                onPlayQueue = { items -> nav.playQueue(items.map { it.id.toString() }) },
+                onOpen = nav::openItem,
+            )
+        }
         composable<PlayerRoute> { entry ->
             val route = entry.toRoute<PlayerRoute>()
             PlayerScreen(
@@ -100,10 +124,26 @@ fun NitrateNavHost(container: AppContainer) {
                 itemId = route.itemId,
                 fromStart = route.fromStart,
                 onExit = { nav.popBackStack() },
+                onEnded = {
+                    val next = route.queue.split(',').filter(String::isNotBlank)
+                    if (next.isEmpty()) {
+                        nav.popBackStack()
+                    } else {
+                        nav.popBackStack()
+                        nav.playQueue(next)
+                    }
+                },
             )
         }
     }
 }
+
+private val LIBRARY_KINDS = setOf(
+    BaseItemKind.COLLECTION_FOLDER,
+    BaseItemKind.USER_VIEW,
+    BaseItemKind.PLAYLISTS_FOLDER,
+    BaseItemKind.MANUAL_PLAYLISTS_FOLDER,
+)
 
 /** Where selecting an item goes. Seasons open their series with that season selected. */
 fun NavController.openItem(item: BaseItemDto) {
@@ -111,6 +151,15 @@ fun NavController.openItem(item: BaseItemDto) {
     when {
         item.type == BaseItemKind.SEASON && seriesId != null ->
             navigate(DetailsRoute(seriesId.toString(), seasonId = item.id.toString()))
+        item.type in LIBRARY_KINDS ->
+            navigate(LibraryRoute(item.id.toString()))
+        item.type == BaseItemKind.PLAYLIST -> navigate(PlaylistRoute(item.id.toString()))
         else -> navigate(DetailsRoute(item.id.toString()))
     }
+}
+
+/** Plays the first id, queueing the rest. Queue items always start from the beginning. */
+fun NavController.playQueue(ids: List<String>) {
+    val first = ids.firstOrNull() ?: return
+    navigate(PlayerRoute(first, fromStart = true, queue = ids.drop(1).joinToString(",")))
 }

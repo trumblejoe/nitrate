@@ -73,6 +73,11 @@ class DeviceProfileFactory(private val context: Context) {
                 audioCodec = audioCodecs,
                 type = DlnaProfileType.VIDEO,
             ),
+            DirectPlayProfile(
+                container = AUDIO_CONTAINERS,
+                audioCodec = audioCodecs,
+                type = DlnaProfileType.AUDIO,
+            ),
         )
 
         // Prefer HEVC output when the device can decode it: half the bitrate for the same quality.
@@ -88,6 +93,15 @@ class DeviceProfileFactory(private val context: Context) {
                 context = EncodingContext.STREAMING,
                 minSegments = 1,
                 breakOnNonKeyFrames = true,
+                conditions = emptyList(),
+            ),
+            TranscodingProfile(
+                container = "mp3",
+                type = DlnaProfileType.AUDIO,
+                videoCodec = "",
+                audioCodec = "mp3",
+                protocol = MediaStreamProtocol.HTTP,
+                context = EncodingContext.STREAMING,
                 conditions = emptyList(),
             ),
         )
@@ -179,6 +193,7 @@ class DeviceProfileFactory(private val context: Context) {
             ),
         )
 
+        const val AUDIO_CONTAINERS = "mp3,flac,m4a,mp4,aac,ogg,oga,opus,webm,wav,mka"
         const val DIRECT_PLAY_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts"
     }
 }

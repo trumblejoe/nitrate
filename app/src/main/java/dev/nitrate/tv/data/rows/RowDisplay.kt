@@ -54,3 +54,30 @@ data class MediaRow(
     val items: List<BaseItemDto>,
     val defaultDisplay: RowDisplay,
 )
+
+/** View options for the Playlists library page. */
+@Serializable
+data class PlaylistLibraryView(
+    val image: PlaylistTileImage = PlaylistTileImage.WIDE,
+    val progress: PlaylistProgress = PlaylistProgress.NONE,
+    val groupByTag: Boolean = false,
+)
+
+@Serializable
+enum class PlaylistTileImage(val label: String, val columns: Int) {
+    /** Thumb or backdrop, else stylized art from the primary image. */
+    WIDE("Wide tiles", 3),
+
+    /** The playlist's square primary image (usually the server's collage). */
+    SQUARE("Square tiles", 6),
+}
+
+@Serializable
+enum class PlaylistProgress(val label: String) { NONE("None"), COUNT("Unwatched count"), BAR("Progress bar") }
+
+/** View options for a single playlist page. */
+@Serializable
+data class PlaylistPageView(
+    /** Large header for the focused item over its backdrop. */
+    val cinematic: Boolean = true,
+)

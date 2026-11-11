@@ -3,10 +3,12 @@ package dev.nitrate.tv.data
 import org.jellyfin.sdk.Jellyfin
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.authenticateUserByName
+import org.jellyfin.sdk.api.client.extensions.audioApi
 import org.jellyfin.sdk.api.client.extensions.authenticationApi
 import org.jellyfin.sdk.api.client.extensions.imageApi
 import org.jellyfin.sdk.api.client.extensions.libraryApi
 import org.jellyfin.sdk.api.client.extensions.mediaInfoApi
+import org.jellyfin.sdk.api.client.extensions.playlistApi
 import org.jellyfin.sdk.api.client.extensions.userDataApi
 import org.jellyfin.sdk.api.client.extensions.sessionApi
 import org.jellyfin.sdk.api.client.extensions.systemApi
@@ -45,6 +47,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.util.UUID
+
+enum class LibrarySort(val label: String, val field: ItemSortBy, val order: SortOrder) {
+    NAME("Name", ItemSortBy.SORT_NAME, SortOrder.ASCENDING),
+    DATE_ADDED("Date added", ItemSortBy.DATE_CREATED, SortOrder.DESCENDING),
+    RELEASE_DATE("Release date", ItemSortBy.PREMIERE_DATE, SortOrder.DESCENDING),
+    RATING("Rating", ItemSortBy.COMMUNITY_RATING, SortOrder.DESCENDING),
+    RANDOM("Random", ItemSortBy.RANDOM, SortOrder.ASCENDING),
+}
 
 /** How a given item will be played, as negotiated with the server. */
 data class PlaybackPlan(
@@ -172,6 +182,37 @@ class JellyfinRepository(
         return rows
     }
 
+    /** One page of a library's contents for the grid view. Returns the items and the total count. */
+    suspend fun libraryPage(
+        library: BaseItemDto,
+        sort: LibrarySort,
+        startIndex: Int,
+        limit: Int,
+        extraFields: List<ItemFields> = emptyList(),
+    ): Pair<List<BaseItemDto>, Int> {
+        val types = when (library.collectionType) {
+            CollectionType.MOVIES -> listOf(BaseItemKind.MOVIE)
+            CollectionType.TVSHOWS -> listOf(BaseItemKind.SERIES)
+            CollectionType.BOXSETS -> listOf(BaseItemKind.BOX_SET)
+            CollectionType.PLAYLISTS -> listOf(BaseItemKind.PLAYLIST)
+            else -> null
+        }
+        val result = api.libraryApi.getItems(
+            GetItemsRequest(
+                parentId = library.id,
+                includeItemTypes = types,
+                recursive = types != null,
+                sortBy = listOf(sort.field, ItemSortBy.SORT_NAME),
+                sortOrder = listOf(sort.order, SortOrder.ASCENDING),
+                startIndex = startIndex,
+                limit = limit,
+                fields = ROW_FIELDS + extraFields,
+                enableTotalRecordCount = true,
+            ),
+        ).content
+        return result.items to result.totalRecordCount
+    }
+
     private suspend fun resumeItems(parentId: UUID?, types: List<BaseItemKind>?): List<BaseItemDto> =
         api.libraryApi.getResumeItems(
             parentId = parentId,
@@ -261,6 +302,12 @@ class JellyfinRepository(
         api.libraryApi.getSimilarItems(itemId = itemId, limit = 16, fields = listOf(ItemFields.PRIMARY_IMAGE_ASPECT_RATIO))
             .content.items
 
+    suspend fun playlistItems(playlistId: UUID): List<BaseItemDto> =
+        api.playlistApi.getPlaylistItems(
+            playlistId = playlistId,
+            fields = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO, ItemFields.GENRES),
+        ).content.items
+
     suspend fun setPlayed(itemId: UUID, played: Boolean) {
         if (played) api.userDataApi.markPlayedItem(itemId = itemId) else api.userDataApi.markUnplayedItem(itemId = itemId)
     }
@@ -281,7 +328,7 @@ class JellyfinRepository(
     }
 
     fun isPlayable(item: BaseItemDto) =
-        item.type in setOf(BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO, BaseItemKind.MUSIC_VIDEO)
+        item.type in setOf(BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO, BaseItemKind.MUSIC_VIDEO, BaseItemKind.AUDIO)
 
     /** Authorization header for requests made outside the SDK (ExoPlayer). */
     fun authorizationHeader(): String = AuthorizationHeaderBuilder.buildHeader(
@@ -298,6 +345,7 @@ class JellyfinRepository(
      */
     suspend fun resolvePlayback(
         itemId: UUID,
+        isAudio: Boolean,
         startMs: Long,
         forceTranscode: Boolean = false,
         maxBitrate: Int = DEFAULT_MAX_BITRATE,
@@ -323,13 +371,11 @@ class JellyfinRepository(
         return if (source.supportsDirectPlay && !forceTranscode) {
             PlaybackPlan(
                 itemId = itemId,
-                url = api.videoApi.getVideoStreamUrl(
-                    itemId = itemId,
-                    static = true,
-                    mediaSourceId = source.id,
-                    playSessionId = info.playSessionId,
-                    tag = source.eTag,
-                ),
+                url = if (isAudio) {
+                    api.audioApi.getAudioStreamUrl(itemId = itemId, static = true, mediaSourceId = source.id, playSessionId = info.playSessionId, tag = source.eTag)
+                } else {
+                    api.videoApi.getVideoStreamUrl(itemId = itemId, static = true, mediaSourceId = source.id, playSessionId = info.playSessionId, tag = source.eTag)
+                },
                 playMethod = PlayMethod.DIRECT_PLAY,
                 playSessionId = info.playSessionId,
                 mediaSourceId = source.id,
