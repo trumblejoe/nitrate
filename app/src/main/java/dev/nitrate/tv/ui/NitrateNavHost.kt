@@ -24,6 +24,8 @@ import androidx.navigation.NavController
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
 import dev.nitrate.tv.ui.home.HomeScreen
+import dev.nitrate.tv.ui.settings.PlaybackSettingsScreen
+import dev.nitrate.tv.ui.settings.PlaybackTestScreen
 import dev.nitrate.tv.ui.library.LibraryScreen
 import dev.nitrate.tv.ui.playlist.PlaylistScreen
 import dev.nitrate.tv.ui.login.LoginScreen
@@ -34,6 +36,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class LoginRoute(val serverUrl: String, val serverName: String)
 @Serializable object HomeRoute
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
+@Serializable object SettingsRoute
+@Serializable object PlaybackTestRoute
 @Serializable data class LibraryRoute(val libraryId: String)
 @Serializable data class PlaylistRoute(val playlistId: String)
 
@@ -87,6 +91,7 @@ fun NitrateNavHost(container: AppContainer) {
                 displaySettings = container.displaySettings,
                 onOpen = nav::openItem,
                 onPlay = { item -> nav.navigate(PlayerRoute(item.id.toString())) },
+                onSettings = { nav.navigate(SettingsRoute) },
                 onSignOut = {
                     nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } }
                 },
@@ -101,6 +106,16 @@ fun NitrateNavHost(container: AppContainer) {
                 onPlay = { item, fromStart -> nav.navigate(PlayerRoute(item.id.toString(), fromStart)) },
                 onOpen = nav::openItem,
             )
+        }
+        composable<SettingsRoute> {
+            PlaybackSettingsScreen(
+                store = container.playbackSettings,
+                capabilities = container.capabilities,
+                onRunTest = { nav.navigate(PlaybackTestRoute) },
+            )
+        }
+        composable<PlaybackTestRoute> {
+            PlaybackTestScreen(store = container.playbackSettings, capabilities = container.capabilities)
         }
         composable<LibraryRoute> { entry ->
             LibraryScreen(

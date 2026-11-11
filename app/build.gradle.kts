@@ -34,6 +34,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        // Lets JVM tests touch android.os.Build fields without Robolectric.
+        unitTests.isReturnDefaultValues = true
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -63,6 +68,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(libs.junit)
 }
 
 kotlin {

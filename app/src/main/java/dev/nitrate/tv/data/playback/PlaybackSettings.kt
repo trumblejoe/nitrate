@@ -39,6 +39,10 @@ data class PlaybackSettings(
     val allowDirectStream: Boolean = true,
     val overrides: Map<String, Override> = emptyMap(),
     val learnedFailures: Map<String, LearnedFailure> = emptyMap(),
+    /** Per video codec: largest height to direct play, e.g. 1080 when 4K decodes too slowly. */
+    val codecMaxHeight: Map<String, Int> = emptyMap(),
+    /** Video codecs limited to 8-bit even if the device reports 10-bit support. */
+    val eightBitOnly: Set<String> = emptySet(),
     /** Treat learned failures as Never (unless overridden to Always). */
     val useLearnedFailures: Boolean = true,
 ) {

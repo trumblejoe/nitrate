@@ -107,8 +107,8 @@ object DeviceProfileFactory {
             // A codec forced on that the device doesn't report gets 4K (or the panel size) and 10-bit.
             val c = caps.video[codec]
             val width = minOf(c?.maxWidth ?: maxOf(caps.displayWidth, 3840), userWidth)
-            val height = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight)
-            val tenBit = c?.tenBit ?: true
+            val height = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight, settings.codecMaxHeight[codec] ?: Int.MAX_VALUE)
+            val tenBit = (c?.tenBit ?: true) && codec !in settings.eightBitOnly
             CodecProfile(
                 type = CodecType.VIDEO,
                 codec = codec,

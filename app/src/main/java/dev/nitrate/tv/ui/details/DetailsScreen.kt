@@ -20,6 +20,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.focusable
+import dev.nitrate.tv.data.PlaybackPlan
+import dev.nitrate.tv.ui.player.PlaybackInfoPanel
+import org.jellyfin.sdk.model.api.MediaType
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -230,6 +236,11 @@ private fun Header(
             OutlinedButton(onClick = vm::toggleFavorite) {
                 Text(if (item.userData?.isFavorite == true) "Favorite ♥" else "Favorite ♡")
             }
+            if (repository.isPlayable(item)) {
+                var showInfo by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { showInfo = true }) { Text("Playback info") }
+                if (showInfo) PlaybackDecisionDialog(repository, item) { showInfo = false }
+            }
         }
     }
 }
@@ -293,4 +304,20 @@ private fun formatClock(ms: Long): String {
     val m = (total % 3600) / 60
     val s = total % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+}
+
+/** What the server would do if this item were played now, and why, without starting playback. */
+@Composable
+private fun PlaybackDecisionDialog(repository: JellyfinRepository, item: BaseItemDto, onDismiss: () -> Unit) {
+    val plan by produceState<Result<PlaybackPlan>?>(null, item.id) {
+        value = runCatching { repository.resolvePlayback(item.id, item.mediaType == MediaType.AUDIO, startMs = 0) }
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        val p = plan
+        when {
+            p == null -> Text("Asking the server…")
+            p.isFailure -> Text(p.exceptionOrNull()?.message ?: "Failed", color = MaterialTheme.colorScheme.error)
+            else -> PlaybackInfoPanel(p.getOrThrow(), videoDecoder = null, audioDecoder = null, modifier = Modifier.focusable())
+        }
+    }
 }

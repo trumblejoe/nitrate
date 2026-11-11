@@ -38,6 +38,7 @@ fun HomeScreen(
     displaySettings: DisplaySettingsStore,
     onOpen: (BaseItemDto) -> Unit,
     onPlay: (BaseItemDto) -> Unit,
+    onSettings: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val vm = viewModel(key = "home") { RowsViewModel(repository::homeRows, displaySettings, repository.userId) }
@@ -74,8 +75,11 @@ fun HomeScreen(
             onPlay = onPlay,
             onSaveDisplay = vm::save,
             footer = {
-                item(key = "sign-out") {
-                    OutlinedButton(onClick = signOut, modifier = Modifier.padding(start = 58.dp)) { Text("Sign out") }
+                item(key = "settings") {
+                    Row(Modifier.padding(start = 58.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = onSettings) { Text("Playback settings") }
+                        OutlinedButton(onClick = signOut) { Text("Sign out") }
+                    }
                 }
             },
         )
