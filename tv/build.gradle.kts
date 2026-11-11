@@ -39,6 +39,8 @@ android {
         release {
             // Without the CI key (local builds), sign with the debug key so the APK still installs.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // Dev builds signed with the public dev key get their own ID (see signing/README.md).
+            System.getenv("NITRATE_APP_ID_SUFFIX")?.let { applicationIdSuffix = it }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

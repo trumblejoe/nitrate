@@ -4,8 +4,10 @@ name: Release
 #  - Push a tag like v0.2.0 for a release.
 #  - Or run it from the Actions tab ("Run workflow") for a test build from any branch,
 #    published as a pre-release named dev-<run number>.
-# Needs the signing key in repository secrets: NITRATE_KEYSTORE_BASE64,
-# NITRATE_KEYSTORE_PASSWORD and NITRATE_KEY_ALIAS (see README, "Releases").
+# Signed with the release key from repository secrets (NITRATE_KEYSTORE_BASE64,
+# NITRATE_KEYSTORE_PASSWORD, NITRATE_KEY_ALIAS; see README, "Releases"). Without them, builds are
+# signed with the public dev key in signing/ and published as "Nitrate Dev" pre-releases under
+# their own app IDs.
 
 on:
   push:
@@ -38,26 +40,38 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.NITRATE_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.NITRATE_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.NITRATE_KEY_ALIAS }}
+        id: signing
         run: |
-          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
-            echo "::error::Add NITRATE_KEYSTORE_BASE64, NITRATE_KEYSTORE_PASSWORD and NITRATE_KEY_ALIAS to the repository's Actions secrets (see README, Releases)."
-            exit 1
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nitrate-release.jks"
+            {
+              echo "NITRATE_KEYSTORE_FILE=$RUNNER_TEMP/nitrate-release.jks"
+              echo "NITRATE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "NITRATE_KEY_ALIAS=$KEY_ALIAS"
+            } >> "$GITHUB_ENV"
+            echo "dev=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No release key in secrets: signing with the public dev key (signing/README.md)."
+            {
+              echo "NITRATE_KEYSTORE_FILE=$GITHUB_WORKSPACE/signing/dev.jks"
+              echo "NITRATE_KEYSTORE_PASSWORD=nitrate-dev"
+              echo "NITRATE_KEY_ALIAS=nitrate-dev"
+              echo "NITRATE_APP_ID_SUFFIX=.dev"
+            } >> "$GITHUB_ENV"
+            echo "dev=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nitrate-release.jks"
-          {
-            echo "NITRATE_KEYSTORE_FILE=$RUNNER_TEMP/nitrate-release.jks"
-            echo "NITRATE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "NITRATE_KEY_ALIAS=$KEY_ALIAS"
-          } >> "$GITHUB_ENV"
 
       - name: Version
         id: version
+        env:
+          DEV_KEY: ${{ steps.signing.outputs.dev }}
         run: |
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$DEV_KEY" != "true" ]; then
             tag="$GITHUB_REF_NAME"
             name="${tag#v}"
             prerelease=false
           else
+            # A tag pushed without the release key still only makes a dev build.
             tag="dev-$GITHUB_RUN_NUMBER"
             name="0.0.0-dev.$GITHUB_RUN_NUMBER"
             prerelease=true
@@ -78,6 +92,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           NAME: ${{ steps.version.outputs.name }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          DEV_KEY: ${{ steps.signing.outputs.dev }}
         run: |
           mkdir dist
           cp mobile/build/outputs/apk/release/mobile-release.apk "dist/nitrate-mobile-$NAME.apk"
@@ -86,7 +101,14 @@ jobs:
           notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk
 
           Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}."
-          flags=(--title "Nitrate $NAME" --notes "$notes" --target "$GITHUB_SHA")
+          title="Nitrate $NAME"
+          if [ "$DEV_KEY" = "true" ]; then
+            title="Nitrate Dev $NAME"
+            notes="$notes
+
+          Signed with the public dev key: installs as a separate app (dev.nitrate.app.dev / dev.nitrate.tv.dev) and updates from later dev builds."
+          fi
+          flags=(--title "$title" --notes "$notes" --target "$GITHUB_SHA")
           if [ "$PRERELEASE" = "true" ]; then
             flags+=(--prerelease)
           else

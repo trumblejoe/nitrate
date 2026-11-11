@@ -87,7 +87,11 @@ Debug builds use the application IDs `dev.nitrate.tv.debug` and `dev.nitrate.app
 
 Every build has a higher version code, so it installs over the previous one. On a phone, open the release on GitHub and tap the `nitrate-mobile-….apk` (allow installs from your browser when asked). On a TV, use an app such as Downloader, or `adb install -r nitrate-tv-….apk`.
 
-### Signing key (one-time setup)
+### Dev builds (no setup)
+
+Until a release key is set up, every build is signed with the public dev key in `signing/` and published as a **Nitrate Dev** pre-release. Dev builds install as their own apps (`dev.nitrate.app.dev`, `dev.nitrate.tv.dev`), update from one dev build to the next, and never clash with real releases. The key isn't secret, so only install dev builds from this repository's Releases page.
+
+### Signing key (for real releases)
 
 Android only updates an app with an APK signed by the same key, so releases use a key kept in the repository's secrets. Create it once on your computer (needs a JDK for `keytool`) and keep a backup: losing it means uninstalling before the next release can install.
 
@@ -109,7 +113,7 @@ gh secret set NITRATE_KEYSTORE_PASSWORD -R trumblejoe/nitrate
 gh secret set NITRATE_KEY_ALIAS -R trumblejoe/nitrate --body nitrate
 ```
 
-`keytool` asks for one password; use it for `NITRATE_KEYSTORE_PASSWORD`. Without the secrets the workflow stops with a message saying what's missing; local `assembleRelease` builds are signed with the debug key instead.
+`keytool` asks for one password; use it for `NITRATE_KEYSTORE_PASSWORD`. Without the secrets the workflow makes a dev build instead; local `assembleRelease` builds are signed with the debug key.
 
 ## Project layout
 

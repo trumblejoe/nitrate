@@ -12,3 +12,4 @@ build/
 *.aab
 *.keystore
 *.jks
+!signing/dev.jks
