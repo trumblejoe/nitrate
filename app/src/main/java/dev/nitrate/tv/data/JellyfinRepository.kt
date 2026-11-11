@@ -3,6 +3,8 @@ package dev.nitrate.tv.data
 import org.jellyfin.sdk.Jellyfin
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.authenticateUserByName
+import org.jellyfin.sdk.api.client.extensions.authenticateWithQuickConnect
+import org.jellyfin.sdk.api.client.extensions.displayPreferenceApi
 import org.jellyfin.sdk.api.client.extensions.audioApi
 import org.jellyfin.sdk.api.client.extensions.authenticationApi
 import org.jellyfin.sdk.api.client.extensions.imageApi
@@ -28,7 +30,12 @@ import java.time.LocalDateTime
 import org.jellyfin.sdk.api.client.util.AuthorizationHeaderBuilder
 import org.jellyfin.sdk.discovery.RecommendedServerInfo
 import org.jellyfin.sdk.discovery.RecommendedServerInfoScore
+import org.jellyfin.sdk.model.api.AuthenticationResult
 import org.jellyfin.sdk.model.api.BaseItemDto
+import org.jellyfin.sdk.model.api.QuickConnectResult
+import org.jellyfin.sdk.model.api.ServerDiscoveryInfo
+import org.jellyfin.sdk.model.api.UserDto
+import kotlinx.coroutines.flow.Flow
 import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.CollectionType
 import org.jellyfin.sdk.model.api.ImageType
@@ -102,9 +109,44 @@ class JellyfinRepository(
             ?: error("No Jellyfin server found at \"$input\"")
     }
 
+    /** Jellyfin servers answering a UDP broadcast on the local network. */
+    fun discoverServers(): Flow<ServerDiscoveryInfo> = jellyfin.discovery.discoverLocalServers()
+
+    /** Users the server shows on its login screen (hidden users are not listed). */
+    suspend fun publicUsers(serverUrl: String): List<UserDto> = runCatching {
+        api.update(baseUrl = serverUrl, accessToken = null)
+        api.userApi.getPublicUsers().content
+    }.getOrDefault(emptyList())
+
+    fun userImageUrl(user: UserDto): String? =
+        user.primaryImageTag?.let { api.imageApi.getUserImageUrl(userId = user.id, tag = it) }
+
     suspend fun login(serverUrl: String, username: String, password: String) {
         api.update(baseUrl = serverUrl, accessToken = null)
         val result by api.authenticationApi.authenticateUserByName(username = username, password = password)
+        finishLogin(serverUrl, result)
+    }
+
+    suspend fun quickConnectEnabled(serverUrl: String): Boolean = runCatching {
+        api.update(baseUrl = serverUrl, accessToken = null)
+        api.authenticationApi.getQuickConnectEnabled().content
+    }.getOrDefault(false)
+
+    /** Starts a Quick Connect request; the user approves [QuickConnectResult.code] from another device. */
+    suspend fun startQuickConnect(serverUrl: String): QuickConnectResult {
+        api.update(baseUrl = serverUrl, accessToken = null)
+        return api.authenticationApi.initiateQuickConnect().content
+    }
+
+    suspend fun quickConnectApproved(secret: String): Boolean =
+        api.authenticationApi.getQuickConnectState(secret = secret).content.authenticated
+
+    suspend fun finishQuickConnect(serverUrl: String, secret: String) {
+        val result by api.authenticationApi.authenticateWithQuickConnect(secret)
+        finishLogin(serverUrl, result)
+    }
+
+    private suspend fun finishLogin(serverUrl: String, result: AuthenticationResult) {
         val token = requireNotNull(result.accessToken) { "Server returned no access token" }
         val user = requireNotNull(result.user) { "Server returned no user" }
         api.update(baseUrl = serverUrl, accessToken = token)
@@ -116,6 +158,20 @@ class JellyfinRepository(
                 userId = user.id.toString(),
                 userName = user.name.orEmpty(),
             )
+        )
+    }
+
+    /** Nitrate's entries in the user's server-side display preferences. */
+    suspend fun loadCustomPrefs(): Map<String, String> =
+        api.displayPreferenceApi.getDisplayPreferences(displayPreferencesId = PREFS_ID, client = PREFS_CLIENT).content.customPrefs
+            .orEmpty().mapNotNull { (k, v) -> v?.let { k to it } }.toMap()
+
+    suspend fun saveCustomPrefs(prefs: Map<String, String>) {
+        val current = api.displayPreferenceApi.getDisplayPreferences(displayPreferencesId = PREFS_ID, client = PREFS_CLIENT).content
+        api.displayPreferenceApi.updateDisplayPreferences(
+            displayPreferencesId = PREFS_ID,
+            client = PREFS_CLIENT,
+            data = current.copy(customPrefs = prefs),
         )
     }
 
@@ -447,6 +503,8 @@ class JellyfinRepository(
     }
 
     companion object {
+        private const val PREFS_ID = "nitrate"
+        private const val PREFS_CLIENT = "nitrate"
         private const val ROW_LIMIT = 24
         private val ROW_FIELDS = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO, ItemFields.GENRES)
         private val WIDE_DEFAULT = RowDisplay(style = RowStyle.WIDE, showTitles = true)
