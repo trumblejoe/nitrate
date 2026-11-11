@@ -148,27 +148,35 @@ fun WritingEditor(
         }
     }
 
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
-        if (uri != null) {
-            runCatching { context.contentResolver.openOutputStream(uri)?.use { it.write(value.text.toByteArray()) } }
-                .onSuccess { status = "Exported" }.onFailure { status = "Export failed: ${it.message}" }
-        }
+    fun writeTo(uri: Uri?, bytes: () -> ByteArray) {
+        if (uri == null) return
+        runCatching { context.contentResolver.openOutputStream(uri)?.use { it.write(bytes()) } }
+            .onSuccess { status = "Exported" }.onFailure { status = "Export failed: ${it.message}" }
+    }
+    val exportFountain = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        writeTo(uri) { value.text.toByteArray() }
+    }
+    val exportFadeIn = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        writeTo(uri) { FadeIn.export(value.text) }
     }
     val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } }.getOrNull()
+                val text = runCatching { context.contentResolver.openInputStream(uri)?.use { importText(it.readBytes()) } }.getOrNull()
                 if (text != null) open(store.create(text)) else status = "Couldn't read that file"
             }
         }
     }
-    fun exportNow() {
-        val name = WritingStore.titleOf(value.text).replace(Regex("[^A-Za-z0-9 _-]"), "").ifBlank { "Untitled" } + ".fountain"
+    fun exportNow(format: ExportFormat) {
+        val name = fileName(value.text, format)
         try {
-            export.launch(name)
+            when (format) {
+                ExportFormat.FOUNTAIN -> exportFountain.launch(name)
+                ExportFormat.FADE_IN -> exportFadeIn.launch(name)
+            }
         } catch (_: ActivityNotFoundException) {
             // Many TVs have no file picker: fall back to the shared Downloads folder.
-            status = exportToDownloads(context, name, value.text)
+            status = exportToDownloads(context, name, format.mime, format.bytes(value.text))
         }
     }
     fun importNow() {
@@ -260,7 +268,7 @@ private fun Documents(
     onOpen: (String) -> Unit,
     onNew: () -> Unit,
     onDelete: (String) -> Unit,
-    onExport: () -> Unit,
+    onExport: (ExportFormat) -> Unit,
     onImport: () -> Unit,
     modifier: Modifier,
 ) {
@@ -269,7 +277,8 @@ private fun Documents(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(onClick = onNew) { Text("New") }
-            OutlinedButton(onClick = onExport) { Text("Export .fountain") }
+            OutlinedButton(onClick = { onExport(ExportFormat.FADE_IN) }) { Text("Export .fadein") }
+            OutlinedButton(onClick = { onExport(ExportFormat.FOUNTAIN) }) { Text("Export .fountain") }
             OutlinedButton(onClick = onImport) { Text("Import") }
         }
         Text("Long-press a document to delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -309,7 +318,8 @@ private fun Help(withVideo: Boolean, modifier: Modifier) {
     LazyColumn(modifier) {
         item {
             Text(
-                "Write in Fountain: plain text that Fade In and other screenwriting apps open as a formatted script. " +
+                "Write in Fountain: plain text that screenwriting apps open as a formatted script. Export .fadein to open it " +
+                    "directly in Fade In (desktop or mobile), or .fountain for other apps. " +
                     "Scene headings start with INT. or EXT., characters are in capitals above their dialogue.",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(bottom = 10.dp),
@@ -349,20 +359,41 @@ private class FountainHighlight(private val heading: Color, private val characte
     }
 }
 
+enum class ExportFormat(val extension: String, val mime: String) {
+    FOUNTAIN("fountain", "text/plain"),
+    FADE_IN("fadein", "application/octet-stream"),
+    ;
+
+    fun bytes(text: String): ByteArray = when (this) {
+        FOUNTAIN -> text.toByteArray()
+        FADE_IN -> FadeIn.export(text)
+    }
+}
+
+fun fileName(text: String, format: ExportFormat): String =
+    WritingStore.titleOf(text).replace(Regex("[^A-Za-z0-9 _-]"), "").trim().ifBlank { "Untitled" } + "." + format.extension
+
+/** Fountain text from an imported file: `.fadein` ZIPs and OSF XML are converted, anything else is read as text. */
+fun importText(bytes: ByteArray): String {
+    val head = bytes.take(64).toByteArray().decodeToString().trimStart()
+    val isZip = bytes.size >= 2 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
+    return if (isZip || head.startsWith("<?xml") || head.startsWith("<document")) FadeIn.import(bytes) else bytes.decodeToString()
+}
+
 /** Writes to Downloads/Nitrate where a file manager or USB connection can reach it. */
-private fun exportToDownloads(context: android.content.Context, name: String, text: String): String = runCatching {
+private fun exportToDownloads(context: android.content.Context, name: String, mime: String, bytes: ByteArray): String = runCatching {
     if (Build.VERSION.SDK_INT >= 29) {
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, name)
-            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+            put(MediaStore.Downloads.MIME_TYPE, mime)
             put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Nitrate")
         }
         val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("no Downloads folder")
-        context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+        context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
         "Exported to Downloads/Nitrate/$name"
     } else {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: error("no shared storage")
-        java.io.File(dir, name).writeText(text)
+        java.io.File(dir, name).writeBytes(bytes)
         "Exported to ${dir.absolutePath}/$name"
     }
 }.getOrElse { "Export failed: ${it.message}" }
