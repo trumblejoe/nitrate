@@ -50,15 +50,38 @@ import dev.nitrate.core.playback.audioChoices
 import dev.nitrate.core.playback.infoRows
 import dev.nitrate.core.playback.subtitleChoices
 import dev.nitrate.mobile.platform.FullscreenPlayback
+import dev.nitrate.mobile.platform.PlayerGestures
+import dev.nitrate.mobile.platform.Scrub
+import dev.nitrate.mobile.platform.VolumeControl
+import dev.nitrate.mobile.platform.rememberBrightnessControl
+import dev.nitrate.core.episodes.UpNext
+import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.playback.PlaybackMoments
+import kotlinx.coroutines.delay
 import dev.nitrate.mobile.platform.VideoSurface
 
 private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO }
 
 @Composable
-fun PlayerScreen(actions: AppActions, itemId: String, fromStart: Boolean, onExit: () -> Unit, onEnded: () -> Unit, local: Boolean = false) {
+fun PlayerScreen(
+    actions: AppActions,
+    itemId: String,
+    fromStart: Boolean,
+    onExit: () -> Unit,
+    onEnded: () -> Unit,
+    local: Boolean = false,
+    /** Plays the following episode; null turns Up Next off (e.g. playlists, which queue their own). */
+    onPlayNext: ((MediaItem) -> Unit)? = null,
+) {
     val context = LocalContext.current
-    val ended by rememberUpdatedState(onEnded)
     val downloads = actions.container.downloads
+    var upNext by remember { mutableStateOf<MediaItem?>(null) }
+    var upNextHidden by remember { mutableStateOf(false) }
+    // At the end: roll into the next episode unless Up Next was dismissed.
+    val ended by rememberUpdatedState {
+        val next = upNext
+        if (next != null && onPlayNext != null && !upNextHidden) onPlayNext(next) else onEnded()
+    }
     val session = remember(itemId) {
         PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() })
             .also { if (!local) it.load(itemId, fromStart) }
@@ -87,11 +110,61 @@ fun PlayerScreen(actions: AppActions, itemId: String, fromStart: Boolean, onExit
     val notice by session.notice.collectAsState()
     val videoDecoder by session.videoDecoder.collectAsState()
     val audioDecoder by session.audioDecoder.collectAsState()
+    val segments by session.segments.collectAsState()
+    val trickplay by session.trickplay.collectAsState()
+    val progress by session.progress.collectAsState()
     var controlsVisible by remember { mutableStateOf(true) }
     var dialog by remember { mutableStateOf(PlayerDialog.NONE) }
+    val fillState = remember { mutableStateOf(false) }
+    val scrubState = remember { mutableStateOf<Scrub?>(null) }
+    val fill by fillState
+    val scrub by scrubState
+    var feedback by remember { mutableStateOf<GestureFeedback?>(null) }
+    var feedbackAt by remember { mutableStateOf(0L) }
+    val brightness = rememberBrightnessControl()
+    val volume = remember { VolumeControl(context) }
+
+    // The next episode in viewing order: from the server, or from downloads when offline.
+    LaunchedEffect(item?.id) {
+        val current = item ?: return@LaunchedEffect
+        if (onPlayNext == null || !current.isEpisode) return@LaunchedEffect
+        upNext = (if (local) null else current.seriesId?.let { series -> runCatching { UpNext.after(current, actions.server.allEpisodes(series)) }.getOrNull() })
+            ?: downloads.nextDownloaded(current)
+    }
+    // Gesture feedback fades shortly after the last change.
+    LaunchedEffect(feedbackAt) {
+        delay(800)
+        feedback = null
+    }
+    fun show(f: GestureFeedback) {
+        feedback = f
+        feedbackAt = System.nanoTime()
+    }
+    val gestures = remember(session) {
+        object : PlayerGestures {
+            override fun onSeek(deltaMs: Long) {
+                // Repeated taps on the same side add up: +10s, +20s...
+                val previous = (feedback as? GestureFeedback.Seek)?.totalMs?.takeIf { (it > 0) == (deltaMs > 0) } ?: 0L
+                session.seekTo(session.player.currentPosition + deltaMs)
+                show(GestureFeedback.Seek(previous + deltaMs))
+            }
+            override fun onTogglePlay() = session.controls.togglePlay()
+            override fun onBrightness(delta: Float) = show(GestureFeedback.Level(true, brightness.adjust(delta)))
+            override fun onVolume(delta: Float) = show(GestureFeedback.Level(false, volume.adjust(delta)))
+            override fun onZoom(fill: Boolean) {
+                if (fill == fillState.value) return
+                fillState.value = fill
+                show(GestureFeedback.Zoom(fill))
+            }
+            override fun onScrub(scrub: Scrub?) {
+                scrubState.value = scrub
+            }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        VideoSurface(session.player, onControlsVisible = { controlsVisible = it }, modifier = Modifier.fillMaxSize())
+        VideoSurface(session.player, onControlsVisible = { controlsVisible = it }, modifier = Modifier.fillMaxSize(), gestures = gestures, fill = fill)
+        GestureFeedbackView(feedback)
 
         // Top bar that shows and hides with the player's own controls.
         AnimatedVisibility(controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {
@@ -110,6 +183,16 @@ fun PlayerScreen(actions: AppActions, itemId: String, fromStart: Boolean, onExit
                 IconButton(onClick = { dialog = PlayerDialog.INFO }, enabled = plan != null) { Icon(Icons.Default.Info, "Playback info", tint = Color.White) }
             }
         }
+
+        val upNextAt = PlaybackMoments.upNextAtMs(progress.durationMs, segments)
+        val next = upNext
+        val showUpNext = next != null && onPlayNext != null && !upNextHidden && upNextAt != null && progress.positionMs >= upNextAt && scrub == null
+        SkipButton(PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }) { session.seekTo(it.endMs) }
+        if (showUpNext && next != null) {
+            val remaining = ((progress.durationMs - progress.positionMs) / 1000).toInt()
+            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15), onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true })
+        }
+        scrub?.let { s -> item?.let { TrickplayPreview(actions.server, it.id, trickplay, s.positionMs, s.x, s.barTop) } }
 
         notice?.let {
             Text(

@@ -9,7 +9,10 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import java.util.concurrent.TimeUnit
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -45,7 +48,21 @@ class WorkManagerScheduler(private val context: Context) : DownloadScheduler {
         WorkManager.getInstance(context).enqueueUniqueWork(SYNC_WORK, ExistingWorkPolicy.REPLACE, request)
     }
 
+    override fun scheduleSmartRefresh(enabled: Boolean, wifiOnly: Boolean) {
+        val work = WorkManager.getInstance(context)
+        if (!enabled) {
+            work.cancelUniqueWork(SMART_WORK)
+            return
+        }
+        val request = PeriodicWorkRequestBuilder<DownloadWorker>(6, TimeUnit.HOURS)
+            .setInputData(workDataOf(KEY_SYNC to true))
+            .setConstraints(Constraints(requiredNetworkType = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED, requiresBatteryNotLow = true))
+            .build()
+        work.enqueueUniquePeriodicWork(SMART_WORK, ExistingPeriodicWorkPolicy.UPDATE, request)
+    }
+
     internal companion object {
+        const val SMART_WORK = "nitrate-smart-downloads"
         const val QUEUE_WORK = "nitrate-downloads"
         const val SYNC_WORK = "nitrate-watch-sync"
         const val KEY_SYNC = "sync"
@@ -61,6 +78,8 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
         if (inputData.getBoolean(WorkManagerScheduler.KEY_SYNC, false)) {
             downloads.syncWatchState()
+            // Watched episodes make room for the next ones.
+            downloads.refreshSmart()
             val left = downloads.downloads.first().count { it.pendingSync }
             return if (left > 0) Result.retry() else Result.success()
         }

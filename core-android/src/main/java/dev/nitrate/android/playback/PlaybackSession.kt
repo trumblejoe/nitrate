@@ -21,6 +21,8 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import dev.nitrate.core.MediaServer
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.MediaKind
+import dev.nitrate.core.model.MediaSegment
+import dev.nitrate.core.model.TrickplayInfo
 import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.PlaybackPlan
 import dev.nitrate.core.model.StreamKind
@@ -76,6 +78,21 @@ class PlaybackSession(
     val videoDecoder: StateFlow<String?> = _videoDecoder
     private val _audioDecoder = MutableStateFlow<String?>(null)
     val audioDecoder: StateFlow<String?> = _audioDecoder
+
+    private val _segments = MutableStateFlow<List<MediaSegment>>(emptyList())
+
+    /** Intro, credits... from the server, for skip buttons and Up Next timing. */
+    val segments: StateFlow<List<MediaSegment>> = _segments
+    private val _trickplay = MutableStateFlow<TrickplayInfo?>(null)
+
+    /** Scrubbing thumbnails, when the server has them. */
+    val trickplay: StateFlow<TrickplayInfo?> = _trickplay
+
+    /** Position and duration (ms), updated twice a second while playing. */
+    data class Progress(val positionMs: Long, val durationMs: Long)
+
+    private val _progress = MutableStateFlow(Progress(0, 0))
+    val progress: StateFlow<Progress> = _progress
 
     private var selectionApplied = false
     private var progressJob: Job? = null
@@ -144,6 +161,12 @@ class PlaybackSession(
     }
 
     init {
+        scope.launch {
+            while (isActive) {
+                _progress.value = Progress(player.currentPosition, player.duration.coerceAtLeast(0))
+                delay(500)
+            }
+        }
         player.addListener(listener)
         player.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
@@ -163,6 +186,7 @@ class PlaybackSession(
                 .onSuccess {
                     _item.value = it
                     start(if (fromStart) 0L else it.user.positionMs, forceTranscode = false)
+                    loadExtras(it.id)
                 }
                 .onFailure { _error.value = it.message ?: "Could not load item" }
         }
@@ -173,6 +197,8 @@ class PlaybackSession(
         localProgress = onProgress
         _item.value = item
         play(plan, startMs, item.name)
+        // Skip markers still work offline if the server answers; thumbnails need it anyway.
+        loadExtras(item.id, thumbnails = false)
         progressJob?.cancel()
         progressJob = scope.launch {
             while (isActive) {
@@ -181,6 +207,13 @@ class PlaybackSession(
             }
         }
     }
+
+    private fun loadExtras(itemId: String, thumbnails: Boolean = true) {
+        scope.launch { _segments.value = runCatching { server.mediaSegments(itemId) }.getOrDefault(emptyList()) }
+        if (thumbnails) scope.launch { _trickplay.value = runCatching { server.trickplay(itemId, _plan.value?.mediaSourceId) }.getOrNull() }
+    }
+
+    fun seekTo(positionMs: Long) = player.seekTo(positionMs.coerceAtLeast(0))
 
     private fun uriOf(url: String): Uri = if (url.startsWith("/")) Uri.fromFile(File(url)) else Uri.parse(url)
 

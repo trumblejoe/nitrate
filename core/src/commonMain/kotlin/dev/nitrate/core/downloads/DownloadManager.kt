@@ -48,6 +48,9 @@ interface DownloadScheduler {
 
     /** Run [DownloadManager.syncWatchState] once any network is available. */
     fun scheduleSync() {}
+
+    /** Keep smart downloads topped up every few hours; [enabled] false stops it. */
+    fun scheduleSmartRefresh(enabled: Boolean, wifiOnly: Boolean) {}
 }
 
 /** What [DownloadManager.runQueue] tells the background job. */
@@ -142,11 +145,15 @@ class DownloadManager(
         val url = server.serverUrl ?: return
         val rule = SmartRule(url, user, series.id, series.name, keep, quality, hevc)
         store.update { d -> d.copy(rules = d.rules.filterNot { it.matches(series.id) } + rule) }
+        scheduler.scheduleSmartRefresh(true, store.data.value.settings.wifiOnly)
         refreshSmart()
     }
 
     /** Turns smart downloads off for a show. Episodes already downloaded stay. */
-    suspend fun removeSmartRule(seriesId: String) = store.update { d -> d.copy(rules = d.rules.filterNot { it.matches(seriesId) }) }
+    suspend fun removeSmartRule(seriesId: String) {
+        store.update { d -> d.copy(rules = d.rules.filterNot { it.matches(seriesId) }) }
+        if (store.data.value.rules.isEmpty()) scheduler.scheduleSmartRefresh(false, false)
+    }
 
     private fun SmartRule.matches(seriesId: String) = this.seriesId == seriesId && userId == server.userId && serverUrl == server.serverUrl
 
@@ -176,6 +183,7 @@ class DownloadManager(
             }
             queued += enqueue(UpNext.upcoming(withLocal, rule.keep), rule.quality, rule.hevc, auto = true)
         }
+        // enqueue() already scheduled the queue for anything new.
         return queued
     }
 

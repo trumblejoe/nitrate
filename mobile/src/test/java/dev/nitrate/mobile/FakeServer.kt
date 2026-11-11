@@ -105,6 +105,7 @@ class FakeServer : MediaServer {
         episodes = (1..3).map { episode(1, it, false) },
         people = series.people,
     )
+    override fun trickplaySheetUrl(itemId: String, info: dev.nitrate.core.model.TrickplayInfo, sheet: Int) = art("trickplay-0")!!
     override suspend fun itemsWithPerson(personId: String) = films + series
     override fun logoUrl(item: MediaItem): String? = null
     override fun personImageUrl(person: Person): String? = null

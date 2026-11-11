@@ -62,6 +62,12 @@ def main():
     base, accent = PALETTES["series-1"]
     for n in range(1, 7):
         art((480, 270), base, accent, f"ep{n}").save(os.path.join(OUT, f"episode-{n}.jpg"), quality=80)
+    # A 2x2 trickplay sheet of 320x180 frames, for the scrubbing preview.
+    sheet = Image.new("RGB", (640, 360))
+    for i, key in enumerate(["series-1", "m1", "m3", "m2"]):
+        base, accent = PALETTES[key]
+        sheet.paste(art((320, 180), base, accent, f"t{i}"), ((i % 2) * 320, (i // 2) * 180))
+    sheet.save(os.path.join(OUT, "trickplay-0.jpg"), quality=80)
     print("wrote", len(os.listdir(OUT)), "files to", os.path.normpath(OUT))
 
 

@@ -23,6 +23,18 @@ import dev.nitrate.core.model.UserState
 import dev.nitrate.mobile.ui.DetailsScreen
 import dev.nitrate.mobile.ui.DownloadsScreen
 import dev.nitrate.mobile.ui.SearchScreen
+import dev.nitrate.mobile.ui.GestureFeedback
+import dev.nitrate.mobile.ui.GestureFeedbackView
+import dev.nitrate.mobile.ui.TrickplayPreview
+import dev.nitrate.mobile.ui.UpNextCard
+import dev.nitrate.core.model.TrickplayInfo
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.imageDecoderEnabled
@@ -110,6 +122,21 @@ class ScreenshotTest {
                 record(episode(2, positionMs = 754_000).let { it }, DownloadQuality.LOW, DownloadState.COMPLETED, 470_000_000, 470_000_000).copy(pendingSync = true),
             ),
         )
+    }
+
+    /** The player's overlays over a still: seek feedback, scrubbing preview and Up Next. */
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun playerOverlays() = shoot("phone-player-overlays") { actions ->
+        val server = actions.server
+        val next = MediaItem("s2e5", "Episode title 5", ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 2, indexNumber = 5)
+        val info = TrickplayInfo(320, 180, 2, 2, 4, 10_000)
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            AsyncImage(server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            GestureFeedbackView(GestureFeedback.Seek(-20_000))
+            TrickplayPreview(server, "s2e4", info, positionMs = 21_000, x = 900f, barTop = 1000f)
+            UpNextCard(next, server, seconds = 10, onPlay = {}, onHide = {})
+        }
     }
 
     @Test

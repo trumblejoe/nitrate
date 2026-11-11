@@ -115,7 +115,7 @@ fun MobileApp(container: AppContainer) {
     val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         start = when (container.server.restoreSession()) {
-            SessionState.VALID -> { container.settingsSync.pull(); appScope.launch { container.downloads.syncWatchState() }; MainRoute }
+            SessionState.VALID -> { container.settingsSync.pull(); appScope.launch { container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
             SessionState.UNREACHABLE -> OfflineRoute
             SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
         }
@@ -181,7 +181,7 @@ fun MobileApp(container: AppContainer) {
                     actions,
                     onOnline = {
                         container.settingsSync.pull()
-                        appScope.launch { container.downloads.syncWatchState() }
+                        appScope.launch { container.downloads.syncWatchState(); container.downloads.refreshSmart() }
                         nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                     },
                     onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
@@ -207,6 +207,8 @@ fun MobileApp(container: AppContainer) {
                     itemId = route.itemId,
                     fromStart = route.fromStart,
                     local = route.local,
+                    // Playlists queue their own next item; single episodes get Up Next.
+                    onPlayNext = if (route.queue.isBlank()) { next -> nav.popBackStack(); actions.play(next, false) } else null,
                     onExit = { nav.popBackStack() },
                     onEnded = {
                         val next = route.queue.split(',').filter(String::isNotBlank)
