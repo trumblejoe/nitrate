@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.home
 
+import dev.nitrate.android.viewmodel.RowsState
+import dev.nitrate.android.viewmodel.RowsViewModel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,8 +29,6 @@ import androidx.tv.material3.Text
 import dev.nitrate.core.MediaServer
 import dev.nitrate.android.storage.DisplaySettingsStore
 import dev.nitrate.tv.ui.rows.RowsPage
-import dev.nitrate.tv.ui.rows.RowsState
-import dev.nitrate.tv.ui.rows.RowsViewModel
 import kotlinx.coroutines.launch
 import dev.nitrate.core.model.MediaItem
 

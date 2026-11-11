@@ -1,6 +1,6 @@
 # Nitrate
 
-An Android TV client for [Jellyfin](https://jellyfin.org), built with Kotlin and Jetpack Compose for TV.
+A [Jellyfin](https://jellyfin.org) client for Android TV and Android phones/tablets (iOS planned), built with Kotlin and Jetpack Compose.
 
 > Named after nitrate film, the early film stock known for its glow on the screen.
 
@@ -79,30 +79,18 @@ The debug build uses the application ID `dev.nitrate.tv.debug`, so it can sit al
 
 ## Project layout
 
-```
-app/src/main/java/dev/nitrate/tv/
-├── NitrateApp.kt          Application; builds the AppContainer and Coil image loader
-├── MainActivity.kt        Single activity, hosts Compose
-├── data/
-│   ├── AppContainer.kt    Manual dependency wiring
-│   ├── SessionStore.kt    Saved server URL, token, user (DataStore)
-│   ├── JellyfinRepository.kt  All Jellyfin SDK calls
-│   ├── rows/              Row model, display options, per-user settings store
-│   └── playback/          Device profile built from the TV's decoders
-└── ui/
-    ├── NitrateNavHost.kt  Routes and start-destination logic
-    ├── theme/             Colors and TV Material theme
-    ├── components/        Shared composables (D-pad text field)
-    ├── rows/              Shared rows page, card and showcase rows, row settings dialogs
-    ├── details/           Movie / series / episode pages
-    ├── library/           Library pages, grids, playlists library
-    ├── playlist/          Playlist page
-    ├── connect/  login/  home/  player/  settings/
-plugins/
-    ├── core/              Plugin interfaces, registry, per-device store, playback gate
-    ├── previousepisode/   Viewing order with specials, gap detection, the guard
-    └── writing/           Fountain parser, editor, document store
-```
+| Module | What it is |
+| --- | --- |
+| `core` | Plain Kotlin, no Android or Jellyfin SDK: Nitrate's own models, the `MediaServer` interface, and all platform-neutral logic (rows, playback rules and test advisor, episode order, Fountain/.fadein, transfer server, plugins). Becomes Kotlin Multiplatform for iOS. |
+| `core-android` | Android implementation: `JellyfinServer` (the only code using the Jellyfin SDK), on-device storage, the decoder/display probe, `PlaybackSession` (Media3), settings sync, shared view models and `AppContainer`. |
+| `tv` | Android TV app (Compose for TV), application ID `dev.nitrate.tv`. |
+| `mobile` | Android phone/tablet app (Material 3, bottom bar on phones, side rail on tablets), application ID `dev.nitrate.app`. Screens use only multiplatform-ready libraries; Android-only pieces live in its `platform` package. |
+
+Builds: `./gradlew assembleDebug` produces `tv/build/outputs/apk/debug/tv-debug.apk` and `mobile/build/outputs/apk/debug/mobile-debug.apk`. `./gradlew :mobile:testDebugUnitTest` also renders phone and tablet screenshots against a fake server into `mobile/build/outputs/roborazzi/`.
+
+### Toward iOS
+
+The Jellyfin Kotlin SDK has no iOS target, so phase 2 makes `core` Kotlin Multiplatform with a client generated from Jellyfin's OpenAPI spec; phase 3 moves `mobile`'s screens to Compose Multiplatform with an AVPlayer/VLCKit player chosen per file. iOS builds need macOS (GitHub's macOS runners can build and upload to TestFlight).
 
 ## Notes
 

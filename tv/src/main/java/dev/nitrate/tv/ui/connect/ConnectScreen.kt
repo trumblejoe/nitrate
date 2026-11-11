@@ -93,9 +93,9 @@ fun ConnectScreen(
             found.forEachIndexed { i, server ->
                 ListItem(
                     selected = false,
-                    onClick = { connect(server.address ?: return@ListItem) },
-                    headlineContent = { Text(server.name ?: "Jellyfin") },
-                    supportingContent = { Text(server.address.orEmpty()) },
+                    onClick = { connect(server.address) },
+                    headlineContent = { Text(server.name) },
+                    supportingContent = { Text(server.address) },
                     modifier = if (i == 0) Modifier.focusRequester(firstServer) else Modifier,
                 )
             }

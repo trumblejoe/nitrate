@@ -1,4 +1,4 @@
-package dev.nitrate.tv.ui.details
+package dev.nitrate.android.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

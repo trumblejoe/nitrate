@@ -18,3 +18,4 @@ rootProject.name = "Nitrate"
 include(":core")
 include(":core-android")
 include(":tv")
+include(":mobile")

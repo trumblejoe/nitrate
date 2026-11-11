@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.details
 
+import dev.nitrate.android.viewmodel.DetailsState
+import dev.nitrate.android.viewmodel.DetailsViewModel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -256,7 +258,7 @@ private fun SeasonSelector(seasons: List<MediaItem>, selected: Int, onSelect: (I
                 onClick = { onSelect(index) },
                 modifier = Modifier.onFocusChanged { if (it.isFocused) onSelect(index) },
             ) {
-                Text(season.name ?: "Season ${season.indexNumber}")
+                Text(season.name.ifBlank { "Season ${season.indexNumber}" })
             }
         }
     }

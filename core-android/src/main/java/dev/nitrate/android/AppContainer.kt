@@ -22,12 +22,21 @@ import org.jellyfin.sdk.model.ClientInfo
  * Manual dependency container shared by the TV and phone/tablet apps. Each app passes its own
  * [clientName] and [version], which the server shows in its device list.
  */
-class AppContainer(context: Context, clientName: String, version: String) {
+class AppContainer(
+    context: Context,
+    clientName: String,
+    version: String,
+    /** Replaces the Jellyfin server, for screenshot tests and previews. */
+    serverOverride: MediaServer? = null,
+) {
     private val appContext = context.applicationContext
 
-    private val jellyfin = createJellyfin {
-        clientInfo = ClientInfo(name = clientName, version = version)
-        this.context = appContext
+    // Created only when needed, so a test server override never touches the SDK.
+    private val jellyfin by lazy {
+        createJellyfin {
+            clientInfo = ClientInfo(name = clientName, version = version)
+            this.context = appContext
+        }
     }
 
     val displaySettings = DisplaySettingsStore(appContext)
@@ -37,7 +46,7 @@ class AppContainer(context: Context, clientName: String, version: String) {
     /** Probed once: decoder lists don't change while the app runs. */
     val capabilities: DeviceCapabilities by lazy { DeviceProbe.probe(appContext) }
 
-    val server: MediaServer = JellyfinServer(jellyfin, SessionStore(appContext), { capabilities }, playbackSettings)
+    val server: MediaServer = serverOverride ?: JellyfinServer(jellyfin, SessionStore(appContext), { capabilities }, playbackSettings)
 
     val settingsSync = SettingsSync(server, displaySettings)
 

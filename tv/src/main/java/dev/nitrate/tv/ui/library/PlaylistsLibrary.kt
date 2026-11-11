@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.library
 
+import dev.nitrate.android.viewmodel.LibraryGridViewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

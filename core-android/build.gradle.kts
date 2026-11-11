@@ -29,6 +29,7 @@ dependencies {
     api(project(":core"))
     implementation(libs.jellyfin.core)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.media3.exoplayer)
+    api(libs.media3.exoplayer)
+    api(libs.androidx.lifecycle.viewmodel.compose)
     testImplementation(libs.junit)
 }

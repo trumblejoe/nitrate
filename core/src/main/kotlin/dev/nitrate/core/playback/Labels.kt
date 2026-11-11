@@ -1,4 +1,4 @@
-package dev.nitrate.tv.ui.settings
+package dev.nitrate.core.playback
 
 /** Human names for capability ids (codecs and "range:<format>"). */
 fun capabilityLabel(id: String): String = when (id) {
