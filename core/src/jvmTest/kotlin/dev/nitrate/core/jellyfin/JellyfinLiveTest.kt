@@ -172,4 +172,51 @@ class JellyfinLiveTest {
         root.deleteRecursively()
         Unit
     }
+
+    @Test
+    fun `administration works against a live server`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        assertTrue("The live test account must be an admin", client.account().isAdmin)
+
+        val movie = client.views().flatMap { client.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 50, false).first }.first { it.kind == ItemKind.MOVIE }
+        val before = client.metadata(movie.id)
+        println("Metadata: ${before.name} ${before.productionYear} genres=${before.genres} providerIds=${before.providerIds}")
+        client.saveMetadata(before.copy(tagline = "Live test tagline", genres = before.genres + "Nitrate Test", lockedFields = listOf("Genres")))
+        val after = client.metadata(movie.id)
+        assertEquals("Live test tagline", after.tagline)
+        assertTrue("Nitrate Test" in after.genres)
+        assertEquals(listOf("Genres"), after.lockedFields)
+        assertEquals("Live test tagline", client.getItem(movie.id).tagline)
+        client.saveMetadata(before)
+        assertEquals(before.genres, client.metadata(movie.id).genres)
+
+        println("Images: ${client.itemImages(movie.id).map { "${it.type} ${it.width}x${it.height}" }}")
+        println("Remote posters: ${runCatching { client.remoteImages(movie.id, dev.nitrate.core.admin.ImageType.PRIMARY).size }.getOrElse { "failed: ${it.message}" }}")
+        println("Identify: ${runCatching { client.remoteSearch(movie, before.name, before.productionYear).map { "${it.name} (${it.year}) ${it.providerName}" } }.getOrElse { "failed: ${it.message}" }}")
+        client.refreshItem(movie.id, dev.nitrate.core.admin.RefreshMode.NEW_FILES, replaceImages = false, regenerateTrickplay = false)
+
+        val tasks = client.tasks()
+        println("Tasks: ${tasks.size}, e.g. ${tasks.take(4).map { "${it.name} (${it.state}, last ${it.lastResult})" }}")
+        val clean = tasks.first { it.name.contains("Clean", ignoreCase = true) || it.name.contains("Log", ignoreCase = true) }
+        client.startTask(clean.id)
+        client.stopTask(clean.id)
+        println("Activity: ${client.activity(5).map { it.name }}")
+        val sessions = client.sessions()
+        println("Sessions: ${sessions.map { "${it.userName} on ${it.client} / ${it.deviceName}" }}")
+        assertTrue(sessions.any { it.deviceId == "nitrate-live-test" })
+
+        val temp = client.createUser("nitrate-temp-user", "pw-123")
+        try {
+            client.setPermissions(temp.id, temp.permissions.copy(enableContentDownloading = false, enableRemoteAccess = false))
+            val reread = client.users().first { it.id == temp.id }
+            assertEquals(false, reread.permissions.enableContentDownloading)
+            assertEquals(false, reread.permissions.enableRemoteAccess)
+            client.setPassword(temp.id, "pw-456")
+        } finally {
+            client.deleteUser(temp.id)
+        }
+        assertTrue(client.users().none { it.id == temp.id })
+    }
 }

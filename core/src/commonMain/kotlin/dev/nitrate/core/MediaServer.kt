@@ -14,6 +14,19 @@ import dev.nitrate.core.model.TrickplayInfo
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
+import dev.nitrate.core.admin.AccountInfo
+import dev.nitrate.core.admin.ActivityEntry
+import dev.nitrate.core.admin.ImageType
+import dev.nitrate.core.admin.ItemImage
+import dev.nitrate.core.admin.ItemMetadata
+import dev.nitrate.core.admin.RefreshMode
+import dev.nitrate.core.admin.RemoteImage
+import dev.nitrate.core.admin.RemoteMatch
+import dev.nitrate.core.admin.ServerSession
+import dev.nitrate.core.admin.ServerTask
+import dev.nitrate.core.admin.SessionCommand
+import dev.nitrate.core.admin.UserAccount
+import dev.nitrate.core.admin.UserPermissions
 import dev.nitrate.core.downloads.TranscodeSpec
 import dev.nitrate.core.pages.ItemQuery
 import dev.nitrate.core.playback.ChannelClip
@@ -115,6 +128,35 @@ interface MediaServer {
 
     /** Files titled "Nitrate Test …" for the audio channel test, always as the original file. */
     suspend fun channelTestClips(): List<ChannelClip>
+
+    // ---- Administration (server admins) ----
+    /** The signed-in account, including whether it's a server admin. */
+    suspend fun account(): AccountInfo = unsupported()
+    suspend fun metadata(itemId: String): ItemMetadata = unsupported()
+    suspend fun saveMetadata(metadata: ItemMetadata): Unit = unsupported()
+
+    /** Possible online-database matches for "Identify". */
+    suspend fun remoteSearch(item: MediaItem, name: String, year: Int?): List<RemoteMatch> = unsupported()
+    suspend fun applyMatch(itemId: String, match: RemoteMatch, replaceImages: Boolean): Unit = unsupported()
+    suspend fun refreshItem(itemId: String, mode: RefreshMode, replaceImages: Boolean, regenerateTrickplay: Boolean): Unit = unsupported()
+    suspend fun itemImages(itemId: String): List<ItemImage> = unsupported()
+    suspend fun remoteImages(itemId: String, type: ImageType): List<RemoteImage> = unsupported()
+    suspend fun downloadRemoteImage(itemId: String, type: ImageType, url: String): Unit = unsupported()
+    suspend fun deleteImage(itemId: String, type: ImageType, index: Int?): Unit = unsupported()
+    suspend fun uploadImage(itemId: String, type: ImageType, bytes: ByteArray, mimeType: String): Unit = unsupported()
+    suspend fun scanAllLibraries(): Unit = unsupported()
+    suspend fun tasks(): List<ServerTask> = unsupported()
+    suspend fun startTask(taskId: String): Unit = unsupported()
+    suspend fun stopTask(taskId: String): Unit = unsupported()
+    suspend fun activity(limit: Int = 50): List<ActivityEntry> = unsupported()
+    suspend fun sessions(): List<ServerSession> = unsupported()
+    suspend fun sendMessage(sessionId: String, header: String, text: String): Unit = unsupported()
+    suspend fun sessionCommand(sessionId: String, command: SessionCommand): Unit = unsupported()
+    suspend fun users(): List<UserAccount> = unsupported()
+    suspend fun setPermissions(userId: String, permissions: UserPermissions): Unit = unsupported()
+    suspend fun createUser(name: String, password: String): UserAccount = unsupported()
+    suspend fun deleteUser(userId: String): Unit = unsupported()
+    suspend fun setPassword(userId: String, newPassword: String): Unit = unsupported()
 
     // ---- Custom rows ----
     /** Items matching a saved search, for custom rows. */

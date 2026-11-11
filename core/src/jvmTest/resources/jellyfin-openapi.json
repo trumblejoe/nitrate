@@ -43,6 +43,95 @@
     },
     "type": "object"
    },
+   "ActivityLogEntry": {
+    "additionalProperties": false,
+    "properties": {
+     "Date": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "Id": {
+      "format": "int64",
+      "type": "integer"
+     },
+     "ItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Name": {
+      "type": "string"
+     },
+     "Overview": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Severity": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/LogLevel"
+       }
+      ],
+      "enum": [
+       "Trace",
+       "Debug",
+       "Information",
+       "Warning",
+       "Error",
+       "Critical",
+       "None"
+      ]
+     },
+     "ShortOverview": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Type": {
+      "type": "string"
+     },
+     "UserId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "UserPrimaryImageTag": {
+      "deprecated": true,
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "ActivityLogEntryQueryResult": {
+    "additionalProperties": false,
+    "properties": {
+     "Items": {
+      "items": {
+       "$ref": "#/components/schemas/ActivityLogEntry"
+      },
+      "type": "array"
+     },
+     "StartIndex": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "TotalRecordCount": {
+      "format": "int32",
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "ActivityLogSortBy": {
+    "enum": [
+     "Name",
+     "Overiew",
+     "ShortOverview",
+     "Type",
+     "DateCreated",
+     "Username",
+     "LogSeverity"
+    ],
+    "type": "string"
+   },
    "AudioSpatialFormat": {
     "enum": [
      "None",
@@ -1517,6 +1606,23 @@
     },
     "type": "object"
    },
+   "CreateUserByName": {
+    "additionalProperties": false,
+    "properties": {
+     "Name": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "Password": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "required": [
+     "Name"
+    ],
+    "type": "object"
+   },
    "DayOfWeek": {
     "enum": [
      "Sunday",
@@ -1835,6 +1941,65 @@
     ],
     "type": "string"
    },
+   "ImageInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "BlurHash": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Height": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "ImageIndex": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "ImageTag": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ImageType": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/ImageType"
+       }
+      ],
+      "enum": [
+       "Primary",
+       "Art",
+       "Backdrop",
+       "Banner",
+       "Logo",
+       "Thumb",
+       "Disc",
+       "Box",
+       "Screenshot",
+       "Menu",
+       "Chapter",
+       "BoxRear",
+       "Profile"
+      ]
+     },
+     "Path": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Size": {
+      "format": "int64",
+      "type": "integer"
+     },
+     "Width": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
    "ImageOrientation": {
     "enum": [
      "TopLeft",
@@ -1982,6 +2147,18 @@
      "Remote",
      "Virtual",
      "Offline"
+    ],
+    "type": "string"
+   },
+   "LogLevel": {
+    "enum": [
+     "Trace",
+     "Debug",
+     "Information",
+     "Warning",
+     "Error",
+     "Critical",
+     "None"
     ],
     "type": "string"
    },
@@ -2775,6 +2952,28 @@
     },
     "type": "object"
    },
+   "MessageCommand": {
+    "additionalProperties": false,
+    "properties": {
+     "Header": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Text": {
+      "minLength": 1,
+      "type": "string"
+     },
+     "TimeoutMs": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "Text"
+    ],
+    "type": "object"
+   },
    "MetadataField": {
     "enum": [
      "Cast",
@@ -2788,6 +2987,97 @@
      "OfficialRating"
     ],
     "type": "string"
+   },
+   "MetadataRefreshMode": {
+    "enum": [
+     "None",
+     "ValidationOnly",
+     "Default",
+     "FullRefresh"
+    ],
+    "type": "string"
+   },
+   "MovieInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "IndexNumber": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "IsAutomated": {
+      "type": "boolean"
+     },
+     "MetadataCountryCode": {
+      "nullable": true,
+      "type": "string"
+     },
+     "MetadataLanguage": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "OriginalTitle": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentIndexNumber": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Path": {
+      "nullable": true,
+      "type": "string"
+     },
+     "PremiereDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "ProviderIds": {
+      "additionalProperties": {
+       "nullable": true,
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "object"
+     },
+     "Year": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "MovieInfoRemoteSearchQuery": {
+    "additionalProperties": false,
+    "properties": {
+     "IncludeDisabledProviders": {
+      "type": "boolean"
+     },
+     "ItemId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "SearchInfo": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/MovieInfo"
+       }
+      ],
+      "nullable": true
+     },
+     "SearchProviderName": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
    },
    "NameGuidPair": {
     "additionalProperties": false,
@@ -3355,6 +3645,20 @@
     },
     "type": "object"
    },
+   "PlaystateCommand": {
+    "enum": [
+     "Stop",
+     "Pause",
+     "Unpause",
+     "NextTrack",
+     "PreviousTrack",
+     "Seek",
+     "Rewind",
+     "FastForward",
+     "PlayPause"
+    ],
+    "type": "string"
+   },
    "ProblemDetails": {
     "additionalProperties": {},
     "properties": {
@@ -3589,6 +3893,179 @@
     },
     "type": "object"
    },
+   "RatingType": {
+    "enum": [
+     "Score",
+     "Likes"
+    ],
+    "type": "string"
+   },
+   "RemoteImageInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "CommunityRating": {
+      "format": "double",
+      "nullable": true,
+      "type": "number"
+     },
+     "Height": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Language": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ProviderName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "RatingType": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/RatingType"
+       }
+      ],
+      "enum": [
+       "Score",
+       "Likes"
+      ]
+     },
+     "ThumbnailUrl": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Type": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/ImageType"
+       }
+      ],
+      "enum": [
+       "Primary",
+       "Art",
+       "Backdrop",
+       "Banner",
+       "Logo",
+       "Thumb",
+       "Disc",
+       "Box",
+       "Screenshot",
+       "Menu",
+       "Chapter",
+       "BoxRear",
+       "Profile"
+      ]
+     },
+     "Url": {
+      "nullable": true,
+      "type": "string"
+     },
+     "VoteCount": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Width": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "RemoteImageResult": {
+    "additionalProperties": false,
+    "properties": {
+     "Images": {
+      "items": {
+       "$ref": "#/components/schemas/RemoteImageInfo"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "Providers": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "TotalRecordCount": {
+      "format": "int32",
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "RemoteSearchResult": {
+    "additionalProperties": false,
+    "properties": {
+     "AlbumArtist": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/RemoteSearchResult"
+       }
+      ],
+      "nullable": true
+     },
+     "Artists": {
+      "items": {
+       "$ref": "#/components/schemas/RemoteSearchResult"
+      },
+      "type": "array"
+     },
+     "ImageUrl": {
+      "nullable": true,
+      "type": "string"
+     },
+     "IndexNumber": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "IndexNumberEnd": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Overview": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentIndexNumber": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "PremiereDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "ProductionYear": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "ProviderIds": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object"
+     },
+     "SearchProviderName": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "RepeatMode": {
     "enum": [
      "RepeatNone",
@@ -3603,6 +4080,88 @@
      "Vertical"
     ],
     "type": "string"
+   },
+   "SeriesInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "IndexNumber": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "IsAutomated": {
+      "type": "boolean"
+     },
+     "MetadataCountryCode": {
+      "nullable": true,
+      "type": "string"
+     },
+     "MetadataLanguage": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "OriginalTitle": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ParentIndexNumber": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Path": {
+      "nullable": true,
+      "type": "string"
+     },
+     "PremiereDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "ProviderIds": {
+      "additionalProperties": {
+       "nullable": true,
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "object"
+     },
+     "Year": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "SeriesInfoRemoteSearchQuery": {
+    "additionalProperties": false,
+    "properties": {
+     "IncludeDisabledProviders": {
+      "type": "boolean"
+     },
+     "ItemId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "SearchInfo": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/SeriesInfo"
+       }
+      ],
+      "nullable": true
+     },
+     "SearchProviderName": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
    },
    "SeriesStatus": {
     "enum": [
@@ -3839,6 +4398,191 @@
      "CreateAndJoinGroups",
      "JoinGroups",
      "None"
+    ],
+    "type": "string"
+   },
+   "TaskCompletionStatus": {
+    "enum": [
+     "Completed",
+     "Failed",
+     "Cancelled",
+     "Aborted"
+    ],
+    "type": "string"
+   },
+   "TaskInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "Category": {
+      "nullable": true,
+      "type": "string"
+     },
+     "CurrentProgressPercentage": {
+      "format": "double",
+      "nullable": true,
+      "type": "number"
+     },
+     "Description": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Id": {
+      "nullable": true,
+      "type": "string"
+     },
+     "IsHidden": {
+      "type": "boolean"
+     },
+     "Key": {
+      "nullable": true,
+      "type": "string"
+     },
+     "LastExecutionResult": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/TaskResult"
+       }
+      ],
+      "nullable": true
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "State": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/TaskState"
+       }
+      ],
+      "enum": [
+       "Idle",
+       "Cancelling",
+       "Running"
+      ]
+     },
+     "Triggers": {
+      "items": {
+       "$ref": "#/components/schemas/TaskTriggerInfo"
+      },
+      "nullable": true,
+      "type": "array"
+     }
+    },
+    "type": "object"
+   },
+   "TaskResult": {
+    "additionalProperties": false,
+    "properties": {
+     "EndTimeUtc": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "ErrorMessage": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Id": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Key": {
+      "nullable": true,
+      "type": "string"
+     },
+     "LongErrorMessage": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "StartTimeUtc": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "Status": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/TaskCompletionStatus"
+       }
+      ],
+      "enum": [
+       "Completed",
+       "Failed",
+       "Cancelled",
+       "Aborted"
+      ]
+     }
+    },
+    "type": "object"
+   },
+   "TaskState": {
+    "enum": [
+     "Idle",
+     "Cancelling",
+     "Running"
+    ],
+    "type": "string"
+   },
+   "TaskTriggerInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "DayOfWeek": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/DayOfWeek"
+       }
+      ],
+      "enum": [
+       "Sunday",
+       "Monday",
+       "Tuesday",
+       "Wednesday",
+       "Thursday",
+       "Friday",
+       "Saturday"
+      ],
+      "nullable": true
+     },
+     "IntervalTicks": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "MaxRuntimeTicks": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "TimeOfDayTicks": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Type": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/TaskTriggerInfoType"
+       }
+      ],
+      "enum": [
+       "DailyTrigger",
+       "WeeklyTrigger",
+       "IntervalTrigger",
+       "StartupTrigger"
+      ]
+     }
+    },
+    "type": "object"
+   },
+   "TaskTriggerInfoType": {
+    "enum": [
+     "DailyTrigger",
+     "WeeklyTrigger",
+     "IntervalTrigger",
+     "StartupTrigger"
     ],
     "type": "string"
    },
@@ -4178,6 +4922,27 @@
       "format": "int32",
       "nullable": true,
       "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "UpdateUserPassword": {
+    "additionalProperties": false,
+    "properties": {
+     "CurrentPassword": {
+      "nullable": true,
+      "type": "string"
+     },
+     "CurrentPw": {
+      "nullable": true,
+      "type": "string"
+     },
+     "NewPw": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ResetPassword": {
+      "type": "boolean"
      }
     },
     "type": "object"
@@ -6987,6 +7752,318 @@
     ]
    }
   },
+  "/Items/RemoteSearch/Apply/{itemId}": {
+   "post": {
+    "operationId": "ApplySearchCriteria",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "replaceAllImages",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "ItemLookup"
+    ]
+   }
+  },
+  "/Items/RemoteSearch/Movie": {
+   "post": {
+    "operationId": "GetMovieRemoteSearchResults",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/MovieInfoRemoteSearchQuery"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/MovieInfoRemoteSearchQuery"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/MovieInfoRemoteSearchQuery"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "ItemLookup"
+    ]
+   }
+  },
+  "/Items/RemoteSearch/Series": {
+   "post": {
+    "operationId": "GetSeriesRemoteSearchResults",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/SeriesInfoRemoteSearchQuery"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/SeriesInfoRemoteSearchQuery"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/SeriesInfoRemoteSearchQuery"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/RemoteSearchResult"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "ItemLookup"
+    ]
+   }
+  },
   "/Items/{itemId}": {
    "delete": {
     "operationId": "DeleteItem",
@@ -7337,6 +8414,104 @@
     ],
     "tags": [
      "Library"
+    ]
+   }
+  },
+  "/Items/{itemId}/Images": {
+   "get": {
+    "operationId": "GetItemImageInfos",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ImageInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ImageInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ImageInfo"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Image"
     ]
    }
   },
@@ -9043,6 +10218,388 @@
     ]
    }
   },
+  "/Items/{itemId}/Refresh": {
+   "post": {
+    "operationId": "RefreshItem",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "metadataRefreshMode",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/MetadataRefreshMode"
+        }
+       ],
+       "default": "None",
+       "enum": [
+        "None",
+        "ValidationOnly",
+        "Default",
+        "FullRefresh"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageRefreshMode",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/MetadataRefreshMode"
+        }
+       ],
+       "default": "None",
+       "enum": [
+        "None",
+        "ValidationOnly",
+        "Default",
+        "FullRefresh"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "replaceAllMetadata",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "replaceAllImages",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "regenerateTrickplay",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
+    ]
+   }
+  },
+  "/Items/{itemId}/RemoteImages": {
+   "get": {
+    "operationId": "GetRemoteImages",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "type",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/ImageType"
+        }
+       ],
+       "enum": [
+        "Primary",
+        "Art",
+        "Backdrop",
+        "Banner",
+        "Logo",
+        "Thumb",
+        "Disc",
+        "Box",
+        "Screenshot",
+        "Menu",
+        "Chapter",
+        "BoxRear",
+        "Profile"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "providerName",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeAllLanguages",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RemoteImageResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/RemoteImageResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/RemoteImageResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "RemoteImage"
+    ]
+   }
+  },
+  "/Items/{itemId}/RemoteImages/Download": {
+   "post": {
+    "operationId": "DownloadRemoteImage",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "type",
+      "required": true,
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/ImageType"
+        }
+       ],
+       "enum": [
+        "Primary",
+        "Art",
+        "Backdrop",
+        "Banner",
+        "Logo",
+        "Thumb",
+        "Disc",
+        "Box",
+        "Screenshot",
+        "Menu",
+        "Chapter",
+        "BoxRear",
+        "Profile"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageUrl",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "RemoteImage"
+    ]
+   }
+  },
   "/Items/{itemId}/Similar": {
    "get": {
     "operationId": "GetSimilarItems",
@@ -9142,6 +10699,47 @@
      {
       "CustomAuthentication": [
        "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
+    ]
+   }
+  },
+  "/Library/Refresh": {
+   "post": {
+    "operationId": "RefreshLibrary",
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
       ]
      }
     ],
@@ -10039,6 +11637,321 @@
     ]
    }
   },
+  "/ScheduledTasks": {
+   "get": {
+    "operationId": "GetTasks",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "isHidden",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isEnabled",
+      "schema": {
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/TaskInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/TaskInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/TaskInfo"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "ScheduledTask"
+    ]
+   }
+  },
+  "/ScheduledTasks/Running/{taskId}": {
+   "delete": {
+    "operationId": "StopTask",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "taskId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "ScheduledTask"
+    ]
+   },
+   "post": {
+    "operationId": "StartTask",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "taskId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "ScheduledTask"
+    ]
+   }
+  },
+  "/Sessions": {
+   "get": {
+    "operationId": "GetSessions",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "controllableByUserId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "deviceId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "activeWithinSeconds",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SessionInfoDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SessionInfoDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/SessionInfoDto"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Session"
+    ]
+   }
+  },
   "/Sessions/Logout": {
    "post": {
     "operationId": "ReportSessionEnded",
@@ -10258,6 +12171,178 @@
       }
      }
     },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Session"
+    ]
+   }
+  },
+  "/Sessions/{sessionId}/Message": {
+   "post": {
+    "operationId": "SendMessageCommand",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sessionId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/MessageCommand"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/MessageCommand"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/MessageCommand"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Session"
+    ]
+   }
+  },
+  "/Sessions/{sessionId}/Playing/{command}": {
+   "post": {
+    "operationId": "SendPlaystateCommand",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sessionId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "command",
+      "required": true,
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/PlaystateCommand"
+        }
+       ],
+       "enum": [
+        "Stop",
+        "Pause",
+        "Unpause",
+        "NextTrack",
+        "PreviousTrack",
+        "Seek",
+        "Rewind",
+        "FastForward",
+        "PlayPause"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "seekPositionTicks",
+      "schema": {
+       "format": "int64",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "controllingUserId",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
     "responses": {
      "204": {},
      "401": {},
@@ -10866,6 +12951,189 @@
     ],
     "tags": [
      "Show"
+    ]
+   }
+  },
+  "/System/ActivityLog/Entries": {
+   "get": {
+    "operationId": "GetLogEntries",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "minDate",
+      "schema": {
+       "format": "date-time",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxDate",
+      "schema": {
+       "format": "date-time",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "hasUserId",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "name",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "overview",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "shortOverview",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "type",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "itemId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "username",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "severity",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/LogLevel"
+        }
+       ],
+       "enum": [
+        "Trace",
+        "Debug",
+        "Information",
+        "Warning",
+        "Error",
+        "Critical",
+        "None"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortBy",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ActivityLogSortBy"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortOrder",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/SortOrder"
+       },
+       "type": "array"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActivityLogEntryQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ActivityLogEntryQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ActivityLogEntryQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "System"
     ]
    }
   },
@@ -12190,6 +14458,208 @@
     ]
    }
   },
+  "/Users": {
+   "get": {
+    "operationId": "GetUsers",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "isHidden",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isDisabled",
+      "schema": {
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/UserDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/UserDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/UserDto"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "User"
+    ]
+   },
+   "post": {
+    "operationId": "UpdateUser",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "User"
+    ]
+   }
+  },
   "/Users/AuthenticateByName": {
    "post": {
     "operationId": "AuthenticateUserByName",
@@ -12433,6 +14903,217 @@
     ]
    }
   },
+  "/Users/New": {
+   "post": {
+    "operationId": "CreateUserByName",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/CreateUserByName"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/CreateUserByName"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/CreateUserByName"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UserDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UserDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UserDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "User"
+    ]
+   }
+  },
+  "/Users/Password": {
+   "post": {
+    "operationId": "UpdateUserPassword",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateUserPassword"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateUserPassword"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateUserPassword"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "User"
+    ]
+   }
+  },
   "/Users/Public": {
    "get": {
     "operationId": "GetPublicUsers",
@@ -12487,6 +15168,286 @@
       }
      }
     },
+    "tags": [
+     "User"
+    ]
+   }
+  },
+  "/Users/{userId}": {
+   "delete": {
+    "operationId": "DeleteUser",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "userId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "User"
+    ]
+   },
+   "get": {
+    "operationId": "GetUserById",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "userId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UserDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UserDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UserDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "IgnoreParentalControl",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "User"
+    ]
+   }
+  },
+  "/Users/{userId}/Policy": {
+   "post": {
+    "operationId": "UpdateUserPolicy",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "userId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserPolicy"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserPolicy"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserPolicy"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
     "tags": [
      "User"
     ]

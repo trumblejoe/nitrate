@@ -57,6 +57,14 @@ class JellyfinContractTest {
         sent += Sent(request.method, request.url, body)
         val path = request.url.encodedPath
         val json = when {
+            path.endsWith("/Users/Me") || path.endsWith("/Users/$HEX") || path.endsWith("/Users/$DASHED") || path.endsWith("/Users/New") -> USER
+            path.endsWith("/Users") -> "[$USER]"
+            path.contains("/Items/RemoteSearch/") && !path.contains("/Apply/") -> """[{"Name":"Nitrate","ProductionYear":2023,"ProviderIds":{"Tmdb":"1"},"SearchProviderName":"TheMovieDb","ImageUrl":"http://x/i.jpg"}]"""
+            path.endsWith("/Images") -> """[{"ImageType":"Primary","ImageTag":"t","Width":1000,"Height":1500},{"ImageType":"Backdrop","ImageIndex":1,"ImageTag":"b","Width":1920,"Height":1080}]"""
+            path.endsWith("/RemoteImages") -> """{"Images":[{"Url":"http://x/a.jpg","ProviderName":"TheMovieDb","Width":1000,"Height":1500,"Language":"en","CommunityRating":7.5}],"TotalRecordCount":1}"""
+            path.endsWith("/ScheduledTasks") -> """[{"Id":"t1","Name":"Scan media library","Category":"Library","State":"Running","CurrentProgressPercentage":42.0,"LastExecutionResult":{"Status":"Completed","EndTimeUtc":"2026-01-01T00:00:00Z"}}]"""
+            path.endsWith("/ActivityLog/Entries") -> """{"Items":[{"Id":1,"Name":"joe signed in","Type":"SessionStarted","Date":"2026-01-01T00:00:00Z","Severity":"Information"}],"TotalRecordCount":1}"""
+            path.endsWith("/Sessions") -> """[{"Id":"s1","UserName":"joe","Client":"Nitrate","DeviceName":"TV","PlayState":{"PositionTicks":600000000,"IsPaused":true,"PlayMethod":"DirectPlay"},"NowPlayingItem":$ITEM,"SupportsRemoteControl":true}]"""
             path.endsWith("/System/Info/Public") -> """{"ServerName":"Home","Version":"10.11.0","Id":"$HEX"}"""
             path.endsWith("/Users/Public") -> """[{"Id":"$HEX","Name":"joe","HasPassword":true,"PrimaryImageTag":"t"}]"""
             path.contains("/Users/AuthenticateBy") || path.contains("/Users/AuthenticateWith") ->
@@ -153,6 +161,45 @@ class JellyfinContractTest {
         val trickplay = client.trickplay(DASHED, HEX)!!
         assertEquals(320, trickplay.width)
 
+        // Administration.
+        assertTrue(client.account().isAdmin)
+        val meta = client.metadata(DASHED)
+        client.saveMetadata(
+            meta.copy(
+                tagline = "New", genres = listOf("Drama"), studios = listOf("A24"), premiereDate = "2024-05-01", lockData = true,
+                lockedFields = listOf("Overview"), people = listOf(dev.nitrate.core.admin.PersonCredit("Maya", "Lead")), providerIds = mapOf("Tmdb" to "1"),
+            ),
+        )
+        // The server can't read its own Trickplay field back, so it must not be sent.
+        val saved = sent.last { it.method == HttpMethod.Post && it.url.encodedPath.endsWith("/Items/$DASHED") }
+        assertTrue(saved.body!!.contains("\"Tagline") || saved.body!!.contains("Taglines"))
+        assertTrue("Trickplay" !in saved.body!! && "MediaSources" !in saved.body!!)
+        val match = client.remoteSearch(item.copy(kind = ItemKind.MOVIE), "Nitrate", 2023).single()
+        assertEquals("TheMovieDb", match.providerName)
+        client.applyMatch(DASHED, match, replaceImages = true)
+        client.remoteSearch(item.copy(kind = ItemKind.SERIES), "Nitrate", null)
+        for (mode in dev.nitrate.core.admin.RefreshMode.entries) client.refreshItem(DASHED, mode, replaceImages = mode == dev.nitrate.core.admin.RefreshMode.REPLACE_ALL, regenerateTrickplay = true)
+        assertEquals(2, client.itemImages(DASHED).size)
+        assertEquals(1, client.remoteImages(DASHED, dev.nitrate.core.admin.ImageType.PRIMARY).size)
+        client.downloadRemoteImage(DASHED, dev.nitrate.core.admin.ImageType.BACKDROP, "http://x/a.jpg")
+        client.deleteImage(DASHED, dev.nitrate.core.admin.ImageType.BACKDROP, 1)
+        client.deleteImage(DASHED, dev.nitrate.core.admin.ImageType.LOGO, null)
+        client.uploadImage(DASHED, dev.nitrate.core.admin.ImageType.PRIMARY, byteArrayOf(1, 2, 3), "image/jpeg")
+        client.scanAllLibraries()
+        assertEquals(dev.nitrate.core.admin.TaskState.RUNNING, client.tasks().single().state)
+        client.startTask("t1")
+        client.stopTask("t1")
+        assertEquals(1, client.activity(20).size)
+        assertEquals(60_000L, client.sessions().single().positionMs)
+        client.sendMessage("s1", "Hi", "Dinner's ready")
+        for (c in dev.nitrate.core.admin.SessionCommand.entries) client.sessionCommand("s1", c)
+        val user = client.users().single()
+        assertTrue(user.permissions.isAdministrator)
+        client.setPermissions(user.id, user.permissions.copy(enableContentDownloading = false))
+        client.createUser("kid", "pw")
+        client.deleteUser(user.id)
+        client.setPassword(user.id, "new")
+
         val source = client.mediaSource(DASHED)
         assertEquals(1_000L, source.size)
         client.userData(DASHED)
@@ -184,7 +231,7 @@ class JellyfinContractTest {
         val problems = sent.flatMap { check(it.method, it.url, it.body) } + urls.flatMap { check(HttpMethod.Get, Url(it), null) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
         val endpoints = sent.map { "${it.method.value} ${template(it.url)}" }.toSet()
-        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 34)
+        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 55)
     }
 
     @Test
@@ -264,8 +311,14 @@ class JellyfinContractTest {
             for (value in values) problems += checkQueryValue("$where?$name", resolve(param["schema"]!!.jsonObject), value)
         }
         if (body != null) {
-            val schema = op["requestBody"]?.jsonObject?.get("content")?.jsonObject?.get("application/json")?.jsonObject?.get("schema")?.jsonObject
-            if (schema == null) problems += "$where: endpoint takes no body" else problems += checkValue(where, schema, Json.parseToJsonElement(body))
+            val content = op["requestBody"]?.jsonObject?.get("content")?.jsonObject
+            val schema = content?.get("application/json")?.jsonObject?.get("schema")?.jsonObject
+            when {
+                content == null -> problems += "$where: endpoint takes no body"
+                // Binary bodies (image uploads) only need the endpoint to accept one.
+                schema == null -> Unit
+                else -> problems += checkValue(where, schema, Json.parseToJsonElement(body))
+            }
         }
         return problems
     }
@@ -344,6 +397,7 @@ class JellyfinContractTest {
     private companion object {
         const val HEX = "0123456789abcdef0123456789abcdef"
         const val DASHED = "01234567-89ab-cdef-0123-456789abcdef"
+        val USER = """{"Id":"$HEX","Name":"joe","HasPassword":true,"Policy":{"IsAdministrator":true,"EnableContentDownloading":true,"AuthenticationProviderId":"x","PasswordResetProviderId":"y"}}"""
         val ITEM = """{"Id":"$HEX","Name":"Pilot","Type":"Episode","MediaType":"Video","SeriesId":"$HEX","ParentIndexNumber":1,"IndexNumber":1,
             |"RunTimeTicks":36000000000,"ImageTags":{"Primary":"p","Thumb":"t","Logo":"l"},"BackdropImageTags":["b0","b1"],
             |"UserData":{"Played":false,"PlaybackPositionTicks":10000000,"IsFavorite":true},"LocationType":"FileSystem",

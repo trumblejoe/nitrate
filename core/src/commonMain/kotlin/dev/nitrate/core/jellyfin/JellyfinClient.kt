@@ -25,6 +25,19 @@ import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.SubtitleDelivery
 import dev.nitrate.core.model.subtitleMimeType
+import dev.nitrate.core.admin.AccountInfo
+import dev.nitrate.core.admin.ActivityEntry
+import dev.nitrate.core.admin.ImageType
+import dev.nitrate.core.admin.ItemImage
+import dev.nitrate.core.admin.ItemMetadata
+import dev.nitrate.core.admin.RefreshMode
+import dev.nitrate.core.admin.RemoteImage
+import dev.nitrate.core.admin.RemoteMatch
+import dev.nitrate.core.admin.ServerSession
+import dev.nitrate.core.admin.ServerTask
+import dev.nitrate.core.admin.SessionCommand
+import dev.nitrate.core.admin.UserAccount
+import dev.nitrate.core.admin.UserPermissions
 import dev.nitrate.core.downloads.TranscodeSpec
 import dev.nitrate.core.pages.ItemQuery
 import dev.nitrate.core.pages.QuerySort
@@ -90,7 +103,7 @@ class JellyfinClient(
     private val capabilities: () -> DeviceCapabilities,
     private val playbackSettings: PlaybackSettingsRepository,
 ) : MediaServer {
-    private val http = HttpClient(engine) {
+    internal val http = HttpClient(engine) {
         expectSuccess = true
         install(ContentNegotiation) { json(JellyfinJson) }
         // Pin the casing: a request with no Accept header gets camelCase from newer servers.
@@ -113,17 +126,17 @@ class JellyfinClient(
 
     private fun base() = baseUrl ?: error("No server selected")
 
-    private fun url(vararg segments: String, query: Map<String, Any?> = emptyMap()): String =
+    internal fun url(vararg segments: String, query: Map<String, Any?> = emptyMap()): String =
         URLBuilder(base()).apply {
             appendPathSegments(*segments)
             query.forEach { (k, v) -> if (v != null) parameters.append(k, v.toString()) }
         }.buildString()
 
-    private fun HttpRequestBuilder.auth() {
+    internal fun HttpRequestBuilder.auth() {
         header("Authorization", authorizationHeader())
     }
 
-    private suspend fun get(vararg segments: String, query: Map<String, Any?> = emptyMap()): HttpResponse =
+    internal suspend fun get(vararg segments: String, query: Map<String, Any?> = emptyMap()): HttpResponse =
         http.get(url(*segments, query = query)) { auth() }
 
     private suspend inline fun <reified T> post(vararg segments: String, body: Any? = null, query: Map<String, Any?> = emptyMap()): HttpResponse =
@@ -406,7 +419,7 @@ class JellyfinClient(
 
     // ---- Images (public on Jellyfin; tags make them cache-safe) ----
 
-    private fun image(itemId: String, type: String, tag: String, index: Int? = null, maxWidth: Int? = null, maxHeight: Int? = null): String =
+    internal fun image(itemId: String, type: String, tag: String, index: Int? = null, maxWidth: Int? = null, maxHeight: Int? = null): String =
         url(*listOfNotNull("Items", itemId, "Images", type, index?.toString()).toTypedArray(), query = mapOf("maxWidth" to maxWidth, "maxHeight" to maxHeight, "tag" to tag))
 
     override fun imageUrl(item: MediaItem, kind: ImageKind, maxHeight: Int): String? {
@@ -543,6 +556,36 @@ class JellyfinClient(
             transcodeReasons = transcodingUrl?.let(::transcodeReasons).orEmpty(),
         )
     }
+
+    // ---- Administration (implemented in JellyfinAdmin.kt) ----
+
+    override suspend fun account(): AccountInfo = admin.account()
+    override suspend fun metadata(itemId: String): ItemMetadata = admin.metadata(itemId)
+    override suspend fun saveMetadata(metadata: ItemMetadata) = admin.saveMetadata(metadata)
+    override suspend fun remoteSearch(item: MediaItem, name: String, year: Int?): List<RemoteMatch> = admin.remoteSearch(item, name, year)
+    override suspend fun applyMatch(itemId: String, match: RemoteMatch, replaceImages: Boolean) = admin.applyMatch(itemId, match, replaceImages)
+    override suspend fun refreshItem(itemId: String, mode: RefreshMode, replaceImages: Boolean, regenerateTrickplay: Boolean) =
+        admin.refreshItem(itemId, mode, replaceImages, regenerateTrickplay)
+    override suspend fun itemImages(itemId: String): List<ItemImage> = admin.itemImages(itemId)
+    override suspend fun remoteImages(itemId: String, type: ImageType): List<RemoteImage> = admin.remoteImages(itemId, type)
+    override suspend fun downloadRemoteImage(itemId: String, type: ImageType, url: String) = admin.downloadRemoteImage(itemId, type, url)
+    override suspend fun deleteImage(itemId: String, type: ImageType, index: Int?) = admin.deleteImage(itemId, type, index)
+    override suspend fun uploadImage(itemId: String, type: ImageType, bytes: ByteArray, mimeType: String) = admin.uploadImage(itemId, type, bytes, mimeType)
+    override suspend fun scanAllLibraries() = admin.scanAll()
+    override suspend fun tasks(): List<ServerTask> = admin.tasks()
+    override suspend fun startTask(taskId: String) = admin.startTask(taskId)
+    override suspend fun stopTask(taskId: String) = admin.stopTask(taskId)
+    override suspend fun activity(limit: Int): List<ActivityEntry> = admin.activity(limit)
+    override suspend fun sessions(): List<ServerSession> = admin.sessions()
+    override suspend fun sendMessage(sessionId: String, header: String, text: String) = admin.sendMessage(sessionId, header, text)
+    override suspend fun sessionCommand(sessionId: String, command: SessionCommand) = admin.sessionCommand(sessionId, command)
+    override suspend fun users(): List<UserAccount> = admin.users()
+    override suspend fun setPermissions(userId: String, permissions: UserPermissions) = admin.setPermissions(userId, permissions)
+    override suspend fun createUser(name: String, password: String): UserAccount = admin.createUser(name, password)
+    override suspend fun deleteUser(userId: String) = admin.deleteUser(userId)
+    override suspend fun setPassword(userId: String, newPassword: String) = admin.setPassword(userId, newPassword)
+
+    private val admin = JellyfinAdmin(this)
 
     // ---- Custom rows ----
 
