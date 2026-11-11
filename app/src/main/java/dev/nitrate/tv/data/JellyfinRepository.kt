@@ -18,6 +18,8 @@ import org.jellyfin.sdk.api.client.extensions.showApi
 import org.jellyfin.sdk.api.client.extensions.userApi
 import org.jellyfin.sdk.api.client.extensions.userViewApi
 import org.jellyfin.sdk.api.client.extensions.videoApi
+import dev.nitrate.tv.data.playback.ChannelClip
+import dev.nitrate.tv.data.playback.ChannelTest
 import dev.nitrate.tv.data.playback.DeviceCapabilities
 import dev.nitrate.tv.data.playback.DeviceProfileFactory
 import dev.nitrate.tv.data.playback.PlaybackSettingsStore
@@ -402,6 +404,40 @@ class JellyfinRepository(
 
     fun isPlayable(item: BaseItemDto) =
         item.type in setOf(BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO, BaseItemKind.MUSIC_VIDEO, BaseItemKind.AUDIO)
+
+    /**
+     * Files on the server whose title contains [ChannelTest.SERVER_TAG], as channel-test clips.
+     * Always the original file (static stream), never a transcode: the point is to send the
+     * real bitstream to the receiver.
+     */
+    suspend fun channelTestClips(): List<ChannelClip> {
+        val items = api.libraryApi.getItems(
+            GetItemsRequest(
+                searchTerm = ChannelTest.SERVER_TAG,
+                recursive = true,
+                includeItemTypes = listOf(BaseItemKind.MOVIE, BaseItemKind.VIDEO, BaseItemKind.EPISODE, BaseItemKind.AUDIO, BaseItemKind.MUSIC_VIDEO),
+                fields = listOf(ItemFields.MEDIA_SOURCES, ItemFields.MEDIA_STREAMS),
+                limit = 50,
+            ),
+        ).content.items
+        return items.filter { it.name?.contains(ChannelTest.SERVER_TAG, ignoreCase = true) == true }.map { item ->
+            val source = item.mediaSources?.firstOrNull()
+            val streams = source?.mediaStreams.orEmpty()
+            val audio = streams.firstOrNull { it.index == source?.defaultAudioStreamIndex } ?: streams.firstOrNull { it.type == MediaStreamType.AUDIO }
+            val url = if (item.type == BaseItemKind.AUDIO) {
+                api.audioApi.getAudioStreamUrl(itemId = item.id, static = true, mediaSourceId = source?.id)
+            } else {
+                api.videoApi.getVideoStreamUrl(itemId = item.id, static = true, mediaSourceId = source?.id)
+            }
+            ChannelTest.fromServer(
+                itemId = item.id.toString(),
+                title = item.name.orEmpty(),
+                uri = url,
+                channels = audio?.channels,
+                format = audio?.displayTitle ?: audio?.codec?.uppercase() ?: "Unknown audio",
+            )
+        }
+    }
 
     /** Authorization header for requests made outside the SDK (ExoPlayer). */
     fun authorizationHeader(): String = AuthorizationHeaderBuilder.buildHeader(

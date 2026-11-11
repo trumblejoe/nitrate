@@ -117,7 +117,7 @@ fun NitrateNavHost(container: AppContainer) {
                 onChannelTest = { nav.navigate(AudioChannelTestRoute) },
             )
         }
-        composable<AudioChannelTestRoute> { AudioChannelTestScreen() }
+        composable<AudioChannelTestRoute> { AudioChannelTestScreen(container.repository) }
         composable<PlaybackTestRoute> {
             PlaybackTestScreen(store = container.playbackSettings, capabilities = container.capabilities)
         }

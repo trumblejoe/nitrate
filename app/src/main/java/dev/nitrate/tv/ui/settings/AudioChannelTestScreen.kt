@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -46,7 +47,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.tv.material3.Card
@@ -54,6 +58,7 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.nitrate.tv.data.JellyfinRepository
 import dev.nitrate.tv.data.playback.ChannelClip
 import dev.nitrate.tv.data.playback.ChannelTest
 import dev.nitrate.tv.data.playback.Speaker
@@ -88,13 +93,22 @@ private fun describe(config: AudioSink.AudioTrackConfig, decoder: String?): Audi
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun AudioChannelTestScreen() {
+fun AudioChannelTestScreen(repository: JellyfinRepository) {
     val context = LocalContext.current
+    val serverClips by produceState<List<ChannelClip>?>(null) {
+        value = runCatching { repository.channelTestClips() }.getOrDefault(emptyList())
+    }
     var decoder by remember { mutableStateOf<String?>(null) }
     var output by remember { mutableStateOf<AudioOutput?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val player = remember {
-        ExoPlayer.Builder(context).build().apply {
+        // Bundled clips come from assets; server files need the Jellyfin auth header.
+        val http = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setDefaultRequestProperties(mapOf("Authorization" to repository.authorizationHeader()))
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http)))
+            .build().apply {
             repeatMode = Player.REPEAT_MODE_ONE
             addAnalyticsListener(object : AnalyticsListener {
                 override fun onAudioDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
@@ -160,7 +174,7 @@ fun AudioChannelTestScreen() {
                     )
                 }
             }
-            items(ChannelTest.CLIPS, key = { it.asset }) { c ->
+            items(ChannelTest.CLIPS, key = { it.uri }) { c ->
                 ListItem(
                     selected = c == current,
                     onClick = { play(c) },
@@ -168,6 +182,30 @@ fun AudioChannelTestScreen() {
                     supportingContent = { Text(c.speakers.joinToString(" ") { it.short }) },
                     modifier = if (c == ChannelTest.CLIPS.first()) Modifier.focusRequester(firstClip) else Modifier,
                 )
+            }
+            item {
+                Column(Modifier.padding(top = 24.dp, bottom = 6.dp)) {
+                    Text("From your server", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Files whose title contains \"${ChannelTest.SERVER_TAG}\" appear here and are always played as the original file. " +
+                            "Titles with \"Walk\" and a layout (e.g. \"${ChannelTest.SERVER_TAG} Walk 7.1 TrueHD\") follow the map.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            val fromServer = serverClips
+            when {
+                fromServer == null -> item { Text("Looking…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                fromServer.isEmpty() -> item { Text("None found", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                else -> items(fromServer, key = { it.serverItemId ?: it.uri }) { c ->
+                    ListItem(
+                        selected = c == current,
+                        onClick = { play(c) },
+                        headlineContent = { Text("${c.layout} · ${c.format}") },
+                        supportingContent = { Text(if (c.walk) "Walk-through: " + c.speakers.joinToString(" ") { it.short } else "Plays without the map following") },
+                    )
+                }
             }
         }
 
@@ -183,6 +221,7 @@ fun AudioChannelTestScreen() {
                 when {
                     current == null -> "Choose a format to start"
                     active != null -> active.label + if (looping != null) "  (looping)" else ""
+                    !current.walk -> "Playing ${current.layout}: listen for each channel"
                     else -> "…"
                 },
                 style = MaterialTheme.typography.headlineSmall,

@@ -28,7 +28,7 @@ Early, but usable end to end:
 - [ ] Skip intro and credits (media segments)
 - [ ] Remember preferred audio and subtitle languages per series
 - [ ] Dolby Vision test clip (needs RPU tooling beyond ffmpeg)
-- [ ] DTS and 7.1 Dolby channel-test clips (ffmpeg's encoders can't produce correct ones)
+- [ ] Bundled DTS channel-test clip (ffmpeg's DTS encoder leaks into the LFE channel; dcaenc produces a clean one)
 - [ ] Multiple servers and users
 
 ## Stack
@@ -43,6 +43,13 @@ Early, but usable end to end:
 | Storage | DataStore Preferences |
 
 Build tooling: AGP 9.5, Gradle 9.9, Kotlin 2.4, JDK 17+. compileSdk 37.2, minSdk 24, targetSdk 36.
+
+## Testing surround formats Nitrate can't bundle
+
+The audio channel test also lists files from your own server whose title contains **Nitrate Test**. They are always played as the original file, so the real bitstream (TrueHD, E-AC-3 7.1, DTS-HD, Atmos) reaches your receiver.
+
+- **Map-following walk-throughs:** encode the bundled master `app/src/main/assets/channeltest/71_flac.mka` (or `51_flac.mka`) with your own encoder, e.g. Dolby Media Encoder for 7.1 TrueHD or E-AC-3, and title it with *Walk* and the layout, e.g. `Nitrate Test Walk 7.1 TrueHD`. Speakers take 3-second turns in the order FL, FR, C, LFE, then RL, RR, SL, SR for 7.1 (SL, SR for 5.1), and the map lights each one.
+- **Any other test file** (a receiver maker's or Dolby/DTS demo): title it `Nitrate Test …` with the layout, e.g. `Nitrate Test Atmos demo 7.1`. It plays with the output readout (bitstream or PCM and channel count), without the map following.
 
 ## Testing
 
