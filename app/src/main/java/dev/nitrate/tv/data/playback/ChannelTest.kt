@@ -59,6 +59,7 @@ object ChannelTest {
         bundled("51_ac3.mka", "5.1", "Dolby Digital", SURROUND_51),
         bundled("51_eac3.mka", "5.1", "Dolby Digital Plus", SURROUND_51),
         bundled("51_truehd.mka", "5.1", "Dolby TrueHD", SURROUND_51),
+        bundled("51_dts.mka", "5.1", "DTS", SURROUND_51),
         bundled("51_aac.m4a", "5.1", "AAC", SURROUND_51),
         bundled("51_flac.mka", "5.1", "PCM (decoded by the TV)", SURROUND_51),
         bundled("71_flac.mka", "7.1", "PCM (decoded by the TV)", SURROUND_71),

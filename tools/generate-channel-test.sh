@@ -6,8 +6,9 @@
 # Requires ffmpeg built with libflite, and python3 for the isolation check.
 #
 # Formats are limited by what ffmpeg can encode correctly: its E-AC-3 and TrueHD encoders stop at
-# 5.1, so 7.1 is FLAC only (decoded to 8-channel PCM). DTS is left out: ffmpeg's experimental DTS
-# encoder leaks surround-right into the LFE channel, which would point users at the wrong speaker.
+# 5.1, so 7.1 is FLAC only (decoded to 8-channel PCM). ffmpeg's experimental DTS encoder leaks
+# surround-right into the LFE channel, so DTS uses dcaenc (https://gitlab.com/patrakov/dcaenc)
+# instead; set DCAENC=/path/to/dcaenc or put it on PATH. Without it the existing DTS clip is kept.
 set -euo pipefail
 TOOLS="$(cd "$(dirname "$0")" && pwd)"
 OUT="$TOOLS/../app/src/main/assets/channeltest"
@@ -59,7 +60,7 @@ walk stereo FL FR
 walk "5.1(side)" FL FR FC LFE SL SR
 walk 7.1 FL FR FC LFE BL BR SL SR
 
-rm -f "$OUT"/*
+find "$OUT" -type f ! -name 51_dts.mka -delete
 cd "$OUT"
 "${FF[@]}" -i "$WORK/walk-stereo.wav" -c:a aac -b:a 128k stereo_aac.m4a
 # Tag as standard 5.1 so AAC uses channel configuration 6 rather than a custom channel map.
@@ -69,6 +70,15 @@ cd "$OUT"
 "${FF[@]}" -i "$WORK/walk-5.1(side).wav" -c:a truehd -strict -2 51_truehd.mka
 "${FF[@]}" -i "$WORK/walk-5.1(side).wav" -c:a flac 51_flac.mka
 "${FF[@]}" -i "$WORK/walk-7.1.wav" -c:a flac 71_flac.mka
+
+DCAENC="${DCAENC:-$(command -v dcaenc || true)}"
+if [[ -n $DCAENC ]]; then
+  "${FF[@]}" -i "$WORK/walk-5.1(side).wav" -c:a pcm_s16le "$WORK/walk51-s16.wav"
+  "$DCAENC" "$WORK/walk51-s16.wav" "$WORK/walk51.dts" 768000
+  "${FF[@]}" -i "$WORK/walk51.dts" -c copy 51_dts.mka
+else
+  echo "dcaenc not found: keeping the existing 51_dts.mka" >&2
+fi
 
 python3 "$TOOLS/check-channel-isolation.py" "$OUT"/*
 du -sh "$OUT"
