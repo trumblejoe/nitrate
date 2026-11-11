@@ -19,4 +19,6 @@ class AppContainer(context: Context) {
     val displaySettings = DisplaySettingsStore(context.applicationContext)
 
     val repository = JellyfinRepository(jellyfin, sessionStore, DeviceProfileFactory(context.applicationContext))
+
+    val settingsSync = SettingsSync(repository, displaySettings)
 }

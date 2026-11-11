@@ -44,7 +44,9 @@ import kotlinx.serialization.Serializable
 fun NitrateNavHost(container: AppContainer) {
     var start by remember { mutableStateOf<Any?>(null) }
     LaunchedEffect(Unit) {
-        start = if (container.repository.restoreSession()) HomeRoute else ConnectRoute
+        val restored = container.repository.restoreSession()
+        if (restored) container.settingsSync.pull()
+        start = if (restored) HomeRoute else ConnectRoute
     }
 
     val startRoute = start
@@ -74,6 +76,7 @@ fun NitrateNavHost(container: AppContainer) {
                 serverUrl = route.serverUrl,
                 serverName = route.serverName,
                 onLoggedIn = {
+                    container.settingsSync.pull()
                     nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
                 },
             )
