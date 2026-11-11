@@ -40,6 +40,8 @@ fun HomeScreen(
     onPlay: (BaseItemDto) -> Unit,
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
+    /** More footer buttons, e.g. plugin pages. */
+    extraActions: List<Pair<String, () -> Unit>> = emptyList(),
 ) {
     val vm = viewModel(key = "home") { RowsViewModel(repository::homeRows, displaySettings, repository.userId) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -77,6 +79,7 @@ fun HomeScreen(
             footer = {
                 item(key = "settings") {
                     Row(Modifier.padding(start = 58.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        for ((label, action) in extraActions) OutlinedButton(onClick = action) { Text(label) }
                         OutlinedButton(onClick = onSettings) { Text("Playback settings") }
                         OutlinedButton(onClick = signOut) { Text("Sign out") }
                     }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -64,6 +66,9 @@ import androidx.tv.material3.Text
 import dev.nitrate.tv.data.JellyfinRepository
 import dev.nitrate.tv.data.PlaybackPlan
 import dev.nitrate.tv.data.ticksToMs
+import dev.nitrate.tv.plugins.core.PlaybackControls
+import dev.nitrate.tv.plugins.core.PlayerPanel
+import dev.nitrate.tv.plugins.core.PluginContext
 import dev.nitrate.tv.ui.components.displayTitle
 import dev.nitrate.tv.ui.components.episodeLabel
 import kotlinx.coroutines.delay
@@ -101,6 +106,9 @@ fun PlayerScreen(
     fromStart: Boolean,
     onExit: () -> Unit,
     onEnded: () -> Unit = onExit,
+    /** Plugin panels that can open beside the video (e.g. the writing pane). */
+    panels: List<PlayerPanel> = emptyList(),
+    pluginContext: PluginContext? = null,
 ) {
     val context = LocalContext.current
     val id = remember(itemId) { UUID.fromString(itemId) }
@@ -139,6 +147,15 @@ fun PlayerScreen(
     var duration by remember { mutableLongStateOf(0L) }
     var playing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    var openPanel by remember { mutableStateOf<PlayerPanel?>(null) }
+    var panelFocused by remember { mutableStateOf(false) }
+    val playbackControls = remember(player) {
+        object : PlaybackControls {
+            override val isPlaying get() = player.isPlaying
+            override fun togglePlay() = if (player.isPlaying) player.pause() else player.play()
+            override fun seekBy(deltaMs: Long) = player.seekTo((player.currentPosition + deltaMs).coerceAtLeast(0))
+        }
+    }
     val rootFocus = remember { FocusRequester() }
     val playPauseFocus = remember { FocusRequester() }
 
@@ -242,7 +259,8 @@ fun PlayerScreen(
             playing = player.isPlaying
             if (controlsVisible && playing && panel == Panel.NONE && System.currentTimeMillis() - lastInput > CONTROLS_TIMEOUT_MS) {
                 controlsVisible = false
-                runCatching { rootFocus.requestFocus() }
+                // Never pull focus away from someone typing in a side panel.
+                if (!panelFocused) runCatching { rootFocus.requestFocus() }
             }
             delay(250)
         }
@@ -299,18 +317,40 @@ fun PlayerScreen(
         if (controlsVisible) runCatching { playPauseFocus.requestFocus() }
     }
 
+    fun togglePanel(target: PlayerPanel) {
+        if (openPanel == target) {
+            openPanel = null
+            touch()
+        } else {
+            openPanel = target
+        }
+    }
+
     BackHandler {
         when {
             panel != Panel.NONE -> panel = Panel.NONE
+            openPanel != null -> { openPanel = null; touch() }
             controlsVisible && player.isPlaying -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
             else -> onExit()
         }
     }
 
-    Box(
+    Row(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            // Ctrl + a panel's key toggles it from anywhere, including while typing in it.
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) return@onPreviewKeyEvent false
+                val target = panels.firstOrNull { it.shortcut == event.key } ?: return@onPreviewKeyEvent false
+                togglePanel(target)
+                true
+            },
+    ) {
+    Box(
+        Modifier
+            .weight(1f)
+            .fillMaxHeight()
             .onPreviewKeyEvent { touch(); false }
             // While controls are hidden the root has focus; keys act directly on playback.
             .onKeyEvent { event ->
@@ -338,7 +378,7 @@ fun PlayerScreen(
         )
 
         val p = plan
-        AnimatedVisibility(visible = controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
+        androidx.compose.animation.AnimatedVisibility(visible = controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
             Controls(
                 item = item,
                 plan = p,
@@ -349,6 +389,7 @@ fun PlayerScreen(
                 onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                 onSeek = { delta -> player.seekTo((player.currentPosition + delta).coerceIn(0, duration)) },
                 onOpen = { panel = it },
+                extraButtons = panels.map { it.panelLabel to { togglePanel(it) } },
             )
         }
 
@@ -366,6 +407,15 @@ fun PlayerScreen(
         }
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+        val shownPanel = openPanel
+        if (shownPanel != null && pluginContext != null) {
+            shownPanel.Panel(
+                pluginContext,
+                playbackControls,
+                Modifier.fillMaxWidth(0.42f).fillMaxHeight().onFocusChanged { panelFocused = it.hasFocus },
+            )
         }
     }
 
@@ -389,6 +439,7 @@ private fun Controls(
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onOpen: (Panel) -> Unit,
+    extraButtons: List<Pair<String, () -> Unit>> = emptyList(),
 ) {
     Column(
         Modifier
@@ -407,6 +458,7 @@ private fun Controls(
             OutlinedButton(onClick = { onOpen(Panel.AUDIO) }, enabled = plan != null) { Text("Audio") }
             OutlinedButton(onClick = { onOpen(Panel.SUBTITLES) }, enabled = plan != null) { Text("Subtitles") }
             OutlinedButton(onClick = { onOpen(Panel.INFO) }, enabled = plan != null) { Text("Info") }
+            for ((label, action) in extraButtons) OutlinedButton(onClick = action) { Text(label) }
             plan?.takeIf { it.playMethod != PlayMethod.DIRECT_PLAY }?.let {
                 Text(
                     if (it.playMethod == PlayMethod.TRANSCODE) "Transcoding" else "Direct stream",

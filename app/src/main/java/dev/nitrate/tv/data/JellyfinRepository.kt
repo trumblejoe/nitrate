@@ -47,6 +47,7 @@ import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.CollectionType
 import org.jellyfin.sdk.model.api.ImageType
 import org.jellyfin.sdk.model.api.ItemFields
+import org.jellyfin.sdk.model.api.LocationType
 import org.jellyfin.sdk.model.api.MediaType
 import org.jellyfin.sdk.model.api.MediaStreamProtocol
 import org.jellyfin.sdk.model.api.PlayMethod
@@ -180,15 +181,15 @@ class JellyfinRepository(
         )
     }
 
-    /** Nitrate's entries in the user's server-side display preferences. */
-    suspend fun loadCustomPrefs(): Map<String, String> =
-        api.displayPreferenceApi.getDisplayPreferences(displayPreferencesId = PREFS_ID, client = PREFS_CLIENT).content.customPrefs
+    /** Nitrate's entries in the user's server-side display preferences ([prefsId] picks the slot). */
+    suspend fun loadCustomPrefs(prefsId: String = PREFS_ID): Map<String, String> =
+        api.displayPreferenceApi.getDisplayPreferences(displayPreferencesId = prefsId, client = PREFS_CLIENT).content.customPrefs
             .orEmpty().mapNotNull { (k, v) -> v?.let { k to it } }.toMap()
 
-    suspend fun saveCustomPrefs(prefs: Map<String, String>) {
-        val current = api.displayPreferenceApi.getDisplayPreferences(displayPreferencesId = PREFS_ID, client = PREFS_CLIENT).content
+    suspend fun saveCustomPrefs(prefs: Map<String, String>, prefsId: String = PREFS_ID) {
+        val current = api.displayPreferenceApi.getDisplayPreferences(displayPreferencesId = prefsId, client = PREFS_CLIENT).content
         api.displayPreferenceApi.updateDisplayPreferences(
-            displayPreferencesId = PREFS_ID,
+            displayPreferencesId = prefsId,
             client = PREFS_CLIENT,
             data = current.copy(customPrefs = prefs),
         )
@@ -368,6 +369,18 @@ class JellyfinRepository(
             seasonId = seasonId,
             fields = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO),
         ).content.items
+
+    /**
+     * Every episode of a series the library actually has, specials included. Placeholder
+     * "missing" items are excluded even if the server creates them.
+     */
+    suspend fun allEpisodes(seriesId: UUID): List<BaseItemDto> {
+        val all = api.showApi.getEpisodes(seriesId = seriesId, enableUserData = true).content.items
+        // Some servers list season 0 only when asked for it directly.
+        val specials = runCatching { api.showApi.getEpisodes(seriesId = seriesId, season = 0, enableUserData = true).content.items }
+            .getOrDefault(emptyList())
+        return (all + specials).distinctBy { it.id }.filter { it.locationType != LocationType.VIRTUAL }
+    }
 
     /** The episode to play when the user hits Play on a series. */
     suspend fun nextUpFor(seriesId: UUID): BaseItemDto? =

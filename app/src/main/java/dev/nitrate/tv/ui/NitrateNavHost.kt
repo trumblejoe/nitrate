@@ -25,6 +25,12 @@ import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
 import dev.nitrate.tv.ui.home.HomeScreen
 import dev.nitrate.tv.ui.settings.AudioChannelTestScreen
+import dev.nitrate.tv.ui.settings.PluginsScreen
+import dev.nitrate.tv.plugins.core.PlaybackGateDialog
+import dev.nitrate.tv.plugins.core.PlayerPanel
+import dev.nitrate.tv.plugins.core.ScreenPlugin
+import dev.nitrate.tv.plugins.core.rememberPlaybackGate
+import androidx.compose.runtime.collectAsState
 import dev.nitrate.tv.ui.settings.PlaybackSettingsScreen
 import dev.nitrate.tv.ui.settings.PlaybackTestScreen
 import dev.nitrate.tv.ui.library.LibraryScreen
@@ -40,6 +46,8 @@ import kotlinx.serialization.Serializable
 @Serializable object SettingsRoute
 @Serializable object PlaybackTestRoute
 @Serializable object AudioChannelTestRoute
+@Serializable object PluginsRoute
+@Serializable data class PluginScreenRoute(val pluginId: String)
 @Serializable data class LibraryRoute(val libraryId: String)
 @Serializable data class PlaylistRoute(val playlistId: String)
 
@@ -64,6 +72,9 @@ fun NitrateNavHost(container: AppContainer) {
     }
 
     val nav = rememberNavController()
+    // Every "play this item" goes through plugin guards first; queues (playlists) don't.
+    val gate = rememberPlaybackGate(container.plugins) { item, fromStart -> nav.navigate(PlayerRoute(item.id.toString(), fromStart)) }
+    val enabledPlugins by container.plugins.enabled.collectAsState(emptyList())
     NavHost(
         navController = nav,
         startDestination = startRoute,
@@ -92,8 +103,10 @@ fun NitrateNavHost(container: AppContainer) {
                 repository = container.repository,
                 displaySettings = container.displaySettings,
                 onOpen = nav::openItem,
-                onPlay = { item -> nav.navigate(PlayerRoute(item.id.toString())) },
+                onPlay = { item -> gate.play(item) },
                 onSettings = { nav.navigate(SettingsRoute) },
+                extraActions = listOf("Plugins" to { nav.navigate(PluginsRoute) }) +
+                    enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.id)) } },
                 onSignOut = {
                     nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } }
                 },
@@ -105,7 +118,7 @@ fun NitrateNavHost(container: AppContainer) {
                 repository = container.repository,
                 itemId = route.itemId,
                 seasonId = route.seasonId,
-                onPlay = { item, fromStart -> nav.navigate(PlayerRoute(item.id.toString(), fromStart)) },
+                onPlay = { item, fromStart -> gate.play(item, fromStart) },
                 onOpen = nav::openItem,
             )
         }
@@ -117,6 +130,11 @@ fun NitrateNavHost(container: AppContainer) {
                 onChannelTest = { nav.navigate(AudioChannelTestRoute) },
             )
         }
+        composable<PluginsRoute> { PluginsScreen(container.plugins) }
+        composable<PluginScreenRoute> { entry ->
+            val id = entry.toRoute<PluginScreenRoute>().pluginId
+            container.plugins.all.filterIsInstance<ScreenPlugin>().firstOrNull { it.id == id }?.Screen(container.plugins.context)
+        }
         composable<AudioChannelTestRoute> { AudioChannelTestScreen(container.repository) }
         composable<PlaybackTestRoute> {
             PlaybackTestScreen(store = container.playbackSettings, capabilities = container.capabilities)
@@ -127,7 +145,7 @@ fun NitrateNavHost(container: AppContainer) {
                 displaySettings = container.displaySettings,
                 libraryId = entry.toRoute<LibraryRoute>().libraryId,
                 onOpen = nav::openItem,
-                onPlay = { item -> nav.navigate(PlayerRoute(item.id.toString())) },
+                onPlay = { item -> gate.play(item) },
             )
         }
         composable<PlaylistRoute> { entry ->
@@ -146,6 +164,8 @@ fun NitrateNavHost(container: AppContainer) {
                 itemId = route.itemId,
                 fromStart = route.fromStart,
                 onExit = { nav.popBackStack() },
+                panels = enabledPlugins.filterIsInstance<PlayerPanel>(),
+                pluginContext = container.plugins.context,
                 onEnded = {
                     val next = route.queue.split(',').filter(String::isNotBlank)
                     if (next.isEmpty()) {
@@ -158,6 +178,7 @@ fun NitrateNavHost(container: AppContainer) {
             )
         }
     }
+    PlaybackGateDialog(gate)
 }
 
 private val LIBRARY_KINDS = setOf(

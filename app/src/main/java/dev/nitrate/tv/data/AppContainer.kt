@@ -3,6 +3,11 @@ package dev.nitrate.tv.data
 import android.content.Context
 import dev.nitrate.tv.BuildConfig
 import dev.nitrate.tv.data.playback.DeviceCapabilities
+import dev.nitrate.tv.plugins.core.PluginContext
+import dev.nitrate.tv.plugins.core.PluginRegistry
+import dev.nitrate.tv.plugins.core.PluginStore
+import dev.nitrate.tv.plugins.previousepisode.PreviousEpisodePlugin
+import dev.nitrate.tv.plugins.writing.WritingPlugin
 import dev.nitrate.tv.data.playback.PlaybackSettingsStore
 import dev.nitrate.tv.data.rows.DisplaySettingsStore
 import org.jellyfin.sdk.createJellyfin
@@ -27,4 +32,9 @@ class AppContainer(context: Context) {
     val repository = JellyfinRepository(jellyfin, sessionStore, { capabilities }, playbackSettings)
 
     val settingsSync = SettingsSync(repository, displaySettings)
+
+    val plugins = PluginRegistry(
+        all = listOf(PreviousEpisodePlugin, WritingPlugin),
+        context = PluginContext(repository, PluginStore(context.applicationContext), context.applicationContext),
+    )
 }

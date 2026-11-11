@@ -20,6 +20,9 @@ Early, but usable end to end:
 - **Playback settings (per TV):** bitrate and resolution caps, and an Auto / Always / Never override for every video codec, HDR format and audio codec, alongside what the TV reports and any failures learned on it
 - **Playback test:** plays bundled clips (H.264, HEVC incl. 10-bit, HDR10, HLG and Dolby Vision profiles 5 and 8.1, VP9, AV1, MPEG-2; AAC, MP3, Dolby Digital/Plus, DTS, TrueHD, Opus, Vorbis, FLAC) and compares what really plays with what the TV claims, then suggests overrides. Detail pages have a **Playback info** button showing what the server would do for that item
 - **Audio channel test:** walks through every speaker in stereo, 5.1 (Dolby Digital, Dolby Digital Plus, TrueHD, DTS, AAC, PCM) and 7.1 (PCM). Each speaker says its name, then plays noise, lit up on a room map; select a speaker to repeat it. It shows whether the TV passes the bitstream to your receiver or decodes it, and warns when it is downmixing
+- **Plugins** (Home → Plugins), built in and switchable per TV:
+  - **Unwatched previous episode:** before an episode plays, checks that what comes before it has been watched — including specials placed before, during or after seasons, or after the finale — and spots gaps in episode or season numbering that mean something is missing from your library. Offers to play the earlier one, mark it watched, or play anyway. Looks at just the previous episode, the season, or the whole series
+  - **Writing pane:** a Fountain screenplay editor for a Bluetooth keyboard, beside the video while it keeps playing (Ctrl+E or *Write* in the player) or full screen from Home. Highlights scene headings, characters and more as you type, has element shortcuts (Ctrl+1–6) and video keys (Ctrl+K play/pause, Ctrl+J/L seek), autosaves, backs up to your Jellyfin account, and exports `.fountain` files that Fade In opens
 - **Settings sync:** row and view settings are stored in your Jellyfin display preferences, so they follow you to other TVs
 
 ## Roadmap
@@ -93,7 +96,11 @@ app/src/main/java/dev/nitrate/tv/
     ├── details/           Movie / series / episode pages
     ├── library/           Library pages, grids, playlists library
     ├── playlist/          Playlist page
-    ├── connect/  login/  home/  player/
+    ├── connect/  login/  home/  player/  settings/
+plugins/
+    ├── core/              Plugin interfaces, registry, per-device store, playback gate
+    ├── previousepisode/   Viewing order with specials, gap detection, the guard
+    └── writing/           Fountain parser, editor, document store
 ```
 
 ## Notes
