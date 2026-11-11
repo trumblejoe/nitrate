@@ -48,7 +48,13 @@ enum class UpdateChannel {
  */
 object Releases {
     const val REPO = "trumblejoe/nitrate"
-    const val LIST_URL = "https://api.github.com/repos/$REPO/releases?per_page=20"
+    /** Releases a page holds; GitHub lists them by tag name as text (dev-9 before dev-14), so read every page. */
+    const val PAGE_SIZE = 100
+
+    fun listUrl(page: Int) = "https://api.github.com/repos/$REPO/releases?per_page=$PAGE_SIZE&page=$page"
+
+    /** How many releases a page of the list held, drafts and other apps included. */
+    fun pageCount(body: String): Int = runCatching { (json.parseToJsonElement(body) as? JsonArray)?.size }.getOrNull() ?: 0
 
     private val json = Json { ignoreUnknownKeys = true }
     private val codeNote = Regex("""nitrate-version-code:\s*(\d+)""")

@@ -84,10 +84,10 @@ class AppUpdater(private val context: Context, private val app: String) {
         if (_state.value is UpdateState.Downloading || _state.value is UpdateState.Installing) return
         _state.value = UpdateState.Checking
         scope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { fetch(Releases.LIST_URL) } }
+            val result = runCatching { withContext(Dispatchers.IO) { allReleases() } }
             prefs.edit().putLong(KEY_LAST, System.currentTimeMillis()).apply()
-            result.onSuccess { body ->
-                val newest = Releases.newest(Releases.parse(body, app), versionCode, channel)
+            result.onSuccess { releases ->
+                val newest = Releases.newest(releases, versionCode, channel)
                 _state.value = when {
                     newest == null -> if (quiet) UpdateState.Idle else UpdateState.UpToDate
                     // An update the user put off stays quiet until something newer comes.
@@ -129,6 +129,14 @@ class AppUpdater(private val context: Context, private val app: String) {
                 _state.value = UpdateState.Installing(release)
                 withContext(Dispatchers.IO) { commit(apk) }
             }.onFailure { e -> _state.value = UpdateState.Failed("Update failed: ${e.message ?: e.javaClass.simpleName}", release) }
+        }
+    }
+
+    private fun allReleases(): List<AppRelease> = buildList {
+        for (page in 1..10) {
+            val body = fetch(Releases.listUrl(page))
+            addAll(Releases.parse(body, app))
+            if (Releases.pageCount(body) < Releases.PAGE_SIZE) break
         }
     }
 
