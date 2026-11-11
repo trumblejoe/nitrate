@@ -182,6 +182,9 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
         SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(display, onDisplay) }
         when (display.style) {
             RowStyle.SHOWCASE -> ShowcaseRow(row, actions)
+            RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
+            RowStyle.LIGHTNING -> LightningRow(row, actions)
+            RowStyle.CRESSIDA -> CressidaRow(row, actions)
             RowStyle.WIDE -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(row.items, key = { it.id }) { item ->
                     val key = "${row.key}-${item.id}"
@@ -235,7 +238,7 @@ private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit)
                     onClick = { onDisplay(display.copy(style = style)); open = false },
                 )
             }
-            if (display.style != RowStyle.SHOWCASE) {
+            if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) {
                 HorizontalDivider()
                 DropdownMenuItem(
                     text = { Text("Titles under pictures") },

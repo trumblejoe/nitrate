@@ -228,9 +228,9 @@ private fun EntryDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Name") }, placeholder = { Text(title) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("Cards", style = MaterialTheme.typography.titleSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(RowStyle.POSTER, RowStyle.WIDE).forEach { s -> FilterChip(selected = style == s, onClick = { style = s }, label = { Text(s.label) }) }
+                Text("Style", style = MaterialTheme.typography.titleSmall)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RowStyle.entries.forEach { s -> FilterChip(selected = style == s, onClick = { style = s }, label = { Text(s.label) }) }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Titles under cards", modifier = Modifier.weight(1f))

@@ -228,14 +228,26 @@ class ScreenshotTest {
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.ARTWORK))
     }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
 
-    @Test fun showcaseRow() = shoot("phone-showcase-row") { a ->
+    /** A Home row drawn in [style], under Continue Watching as on the real Home. */
+    @Composable
+    private fun StyledRow(a: AppActions, style: dev.nitrate.core.rows.RowStyle) {
         val rows = androidx.compose.runtime.produceState<List<dev.nitrate.core.rows.MediaRow>>(emptyList()) { value = a.server.homeRows() }.value
-        rows.firstOrNull { it.key.startsWith("home/latest/") }?.let { row ->
-            androidx.compose.foundation.layout.Column(Modifier.padding(top = 24.dp)) {
-                dev.nitrate.mobile.ui.CinematicRow(row, dev.nitrate.core.rows.RowDisplay(style = dev.nitrate.core.rows.RowStyle.SHOWCASE), a, onDisplay = {})
-            }
+        androidx.compose.foundation.layout.Column(Modifier.padding(top = 24.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(28.dp)) {
+            rows.firstOrNull { it.key == "home/continue_watching" }?.let { dev.nitrate.mobile.ui.CinematicRow(it, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, showTitles = true), a, onDisplay = {}) }
+            rows.firstOrNull { it.key.startsWith("home/latest/") }?.let { dev.nitrate.mobile.ui.CinematicRow(it, dev.nitrate.core.rows.RowDisplay(style), a, onDisplay = {}) }
         }
     }
+
+    @Test fun showcaseRow() = shoot("phone-row-showcase") { StyledRow(it, dev.nitrate.core.rows.RowStyle.SHOWCASE) }
+
+    @Test @Config(qualifiers = "w411dp-h1000dp-night-xxhdpi")
+    fun filmStripRow() = shoot("phone-row-film-strip") { StyledRow(it, dev.nitrate.core.rows.RowStyle.FILM_STRIP) }
+
+    @Test @Config(qualifiers = "w411dp-h1100dp-night-xxhdpi")
+    fun lightningRow() = shoot("phone-row-lightning") { StyledRow(it, dev.nitrate.core.rows.RowStyle.LIGHTNING) }
+
+    @Test @Config(qualifiers = "w411dp-h1050dp-night-xxhdpi")
+    fun cressidaRow() = shoot("phone-row-cressida") { StyledRow(it, dev.nitrate.core.rows.RowStyle.CRESSIDA) }
 
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 

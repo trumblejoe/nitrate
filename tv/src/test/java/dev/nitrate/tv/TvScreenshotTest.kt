@@ -38,6 +38,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusGroup
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -152,6 +154,20 @@ class TvScreenshotTest {
     @Test fun liveTv() = shoot("tv-live-tv") { c ->
         dev.nitrate.tv.ui.livetv.LiveTvScreen(c.server, header = { androidx.tv.material3.Text("Live TV", style = androidx.tv.material3.MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 58.dp, top = 24.dp)) }, onPlay = {})
     }
+
+    /** One of the decorative row styles, on its own, with the first item focused. */
+    private fun artRow(name: String, draw: @Composable (dev.nitrate.core.rows.MediaRow, dev.nitrate.core.MediaServer, dev.nitrate.tv.ui.rows.RowActions) -> Unit) = shoot(name) { c ->
+        val rows = androidx.compose.runtime.produceState<List<dev.nitrate.core.rows.MediaRow>>(emptyList()) { value = c.server.homeRows() }.value
+        val row = rows.firstOrNull { it.key == "home/latest/lib-movies" } ?: return@shoot
+        val actions = androidx.compose.runtime.remember { dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}) }
+        val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+        androidx.compose.foundation.layout.Box(Modifier.padding(top = 48.dp).focusRequester(focus).focusGroup()) { draw(row, c.server, actions) }
+        androidx.compose.runtime.LaunchedEffect(row) { runCatching { focus.requestFocus() } }
+    }
+
+    @Test fun filmStripRow() = artRow("tv-row-film-strip") { r, s, a -> dev.nitrate.tv.ui.rows.FilmStripRow(r, s, a) }
+    @Test fun lightningRow() = artRow("tv-row-lightning") { r, s, a -> dev.nitrate.tv.ui.rows.LightningRow(r, s, a) }
+    @Test fun cressidaRow() = artRow("tv-row-cressida") { r, s, a -> dev.nitrate.tv.ui.rows.CressidaRow(r, s, a) }
 
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 

@@ -14,6 +14,35 @@ enum class RowStyle(val label: String) {
 
     /** Big artwork, one item at a time (TV: full screen while focused; phone: large swipeable cards). */
     SHOWCASE("Showcase"),
+
+    /** A tilted strip of film; the frame in the gate (focused, or centred on a phone) is named below it. */
+    FILM_STRIP("Film strip"),
+
+    /** Two titles to a card, split by a lightning bolt; pick a side. */
+    LIGHTNING("Lightning split"),
+
+    /** Half colour, half monochrome under tattoo-like linework, with the title up the edge. */
+    CRESSIDA("Cressida"),
+}
+
+/** Shapes the decorative row styles share, so the phone and TV draw them alike. Fractions of the card. */
+object RowArt {
+    /** The lightning bolt from top to bottom, as (x, y) fractions. */
+    val bolt: List<Pair<Float, Float>> = listOf(0.60f to 0f, 0.43f to 0.34f, 0.61f to 0.38f, 0.36f to 0.70f, 0.55f to 0.73f, 0.41f to 1f)
+
+    /** Where the bolt crosses height [y] (0–1), for telling which side a touch landed on. */
+    fun boltX(y: Float): Float {
+        for (i in 0 until bolt.lastIndex) {
+            val (x0, y0) = bolt[i]
+            val (x1, y1) = bolt[i + 1]
+            if (y in minOf(y0, y1)..maxOf(y0, y1) && y1 != y0) return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
+        }
+        return bolt.last().first
+    }
+
+    /** Cressida: where colour gives way to the marked side, and how far the seam bows. */
+    const val CRESSIDA_SPLIT = 0.47f
+    const val CRESSIDA_BOW = 0.08f
 }
 
 @Serializable

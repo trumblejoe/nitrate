@@ -34,5 +34,8 @@ dependencies {
     api(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     api(libs.androidx.lifecycle.viewmodel.compose)
+    // Drawing helpers shared by both apps' decorative row styles (paths and DrawScope only).
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
     testImplementation(libs.junit)
 }
