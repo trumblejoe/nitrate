@@ -484,4 +484,30 @@ class JellyfinLiveTest {
             client.deleteList(collection)
         }
     }
+
+    @Test
+    fun `browses and plays music`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-music", "Music"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val library = client.views().firstOrNull { it.collection == dev.nitrate.core.model.CollectionKind.MUSIC }
+        assumeTrue("No music library", library != null)
+        val (albums, total) = client.queryPage(dev.nitrate.core.pages.BrowseOptions().query(library!!.id, library.collection), 0, 50)
+        println("Albums ($total): ${albums.map { "${it.name} by ${it.albumArtist}" }}")
+        assertTrue(albums.isNotEmpty() && albums.all { it.kind == ItemKind.MUSIC_ALBUM })
+        val album = albums.maxBy { client.albumTracks(it.id).size }
+        val tracks = client.albumTracks(album.id)
+        println("Tracks of ${album.name}: ${tracks.map { "${it.indexNumber}. ${it.name} (${it.album}, ${it.artists})" }}")
+        assertEquals(tracks.sortedBy { it.indexNumber }, tracks)
+        assertTrue(tracks.all { it.kind == ItemKind.AUDIO && it.albumId == album.id })
+        val (artists, artistCount) = client.albumArtists(library.id, 0, 50)
+        println("Artists ($artistCount): ${artists.map { it.name + " " + it.kind }}")
+        assertTrue(artists.all { it.kind == ItemKind.MUSIC_ARTIST })
+        val artist = artists.first()
+        println("Albums by ${artist.name}: ${client.artistAlbums(artist.id).map { it.name }}")
+        assertTrue(client.artistAlbums(artist.id).isNotEmpty())
+        println("Instant mix: ${client.instantMix(tracks.first().id).size} tracks")
+        val plan = client.resolvePlayback(tracks.first().id, isAudio = true, startMs = 0, forceTranscode = false, audioIndex = null, subtitleIndex = null)
+        println("Plays as ${plan.method}: ${plan.url.substringBefore('?')}")
+    }
 }

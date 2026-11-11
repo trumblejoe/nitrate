@@ -216,6 +216,8 @@ class ScreenshotTest {
         if (film != null) dev.nitrate.mobile.ui.AddToListDialog(a, film) {}
     }
 
+    @Test fun album() = shoot("phone-album") { DetailsScreen(it, "al1", null) }
+
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 
     @Test

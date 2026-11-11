@@ -1,5 +1,8 @@
 package dev.nitrate.tv.ui.details
 
+import androidx.tv.material3.ListItem
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.core.pages.isSpoiler
 import dev.nitrate.android.viewmodel.DetailsState
@@ -76,6 +79,8 @@ fun DetailsScreen(
     onManage: ((String) -> Unit)? = null,
     /** May add to collections (playlists are anyone's). */
     canCollect: Boolean = false,
+    /** Plays a queue (album tracks, an instant mix). */
+    onPlayQueue: (List<MediaItem>) -> Unit = {},
 ) {
     val vm = viewModel(key = "details-$itemId") {
         DetailsViewModel(repository, itemId, seasonId)
@@ -100,7 +105,7 @@ fun DetailsScreen(
 
     var focusedEpisode by remember { mutableStateOf<MediaItem?>(null) }
     val playFocus = remember { FocusRequester() }
-    LaunchedEffect(item.id) { runCatching { playFocus.requestFocus() } }
+    LaunchedEffect(item.id, state.tracks.isEmpty()) { runCatching { playFocus.requestFocus() } }
 
     Box(Modifier.fillMaxSize()) {
         Backdrop(repository.backdropUrl(item), Modifier.fillMaxSize())
@@ -110,7 +115,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen)
             }
 
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -169,6 +174,32 @@ fun DetailsScreen(
                 }
             }
 
+            if (state.tracks.isNotEmpty()) {
+                items(state.tracks.size, key = { "track-" + state.tracks[it].id }) { i ->
+                    val t = state.tracks[i]
+                    ListItem(
+                        selected = false,
+                        onClick = { onPlayQueue(state.tracks.drop(i)) },
+                        modifier = Modifier.padding(horizontal = PagePadding),
+                        leadingContent = { Text("${t.indexNumber ?: i + 1}", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        headlineContent = { Text(t.name) },
+                        supportingContent = t.artists.joinToString().takeIf { it.isNotBlank() && it != item.albumArtist }?.let { by -> { Text(by) } },
+                        trailingContent = t.runtimeMs?.takeIf { prefs.runtime }?.let { ms -> { Text(dev.nitrate.core.model.formatClock(ms)) } },
+                    )
+                }
+            }
+            if (state.albums.isNotEmpty()) {
+                item(key = "albums") {
+                    Column {
+                        RowTitle("Albums")
+                        LazyRow(contentPadding = PaddingValues(horizontal = PagePadding), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                            items(state.albums, key = { it.id }) { album ->
+                                MediaCard(item = album, imageUrl = repository.imageUrl(album, ImageKind.PRIMARY, 360), width = 180.dp, aspectRatio = 1f, title = album.name, subtitle = album.productionYear?.toString(), onClick = { onOpen(album) })
+                            }
+                        }
+                    }
+                }
+            }
             if (state.contents.isNotEmpty()) {
                 item(key = "contents") {
                     var removing by remember { mutableStateOf<MediaItem?>(null) }
@@ -235,14 +266,20 @@ private fun Header(
     onPlay: (MediaItem, Boolean) -> Unit,
     onManage: ((String) -> Unit)?,
     canCollect: Boolean,
+    onPlayQueue: (List<MediaItem>) -> Unit,
+    onOpen: (MediaItem) -> Unit,
 ) {
+    // Music pages have more buttons in a row.
+    val wideHeader = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
     Column(
-        Modifier.padding(start = PagePadding, end = PagePadding, top = 48.dp).fillMaxWidth(0.6f),
+        Modifier.padding(start = PagePadding, end = PagePadding, top = 48.dp).fillMaxWidth(if (wideHeader) 0.95f else 0.6f),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Spacer(Modifier.height(60.dp))
         TitleOrLogo(item, repository.logoUrl(item))
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleLarge) }
+        val music = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
+        if (item.kind == ItemKind.MUSIC_ALBUM) item.albumArtist?.let { Text("by $it", style = MaterialTheme.typography.titleLarge) }
         ItemMetaLine(item)
         GenreLine(item)
         val prefs = LocalDisplayPrefs.current
@@ -253,7 +290,27 @@ private fun Header(
             Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.height(4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (music) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val scope = rememberCoroutineScope()
+            val tracks = state.tracks
+            if (tracks.isNotEmpty()) {
+                Button(onClick = { onPlayQueue(tracks) }, modifier = Modifier.focusRequester(playFocus)) { Text("Play") }
+                OutlinedButton(onClick = { onPlayQueue(tracks.shuffled()) }) { Text("Shuffle") }
+            }
+            OutlinedButton(
+                onClick = { scope.launch { vm.instantMix().takeIf { it.isNotEmpty() }?.let(onPlayQueue) } },
+                modifier = if (tracks.isEmpty()) Modifier.focusRequester(playFocus) else Modifier,
+            ) { Text("Instant mix") }
+            item.albumArtistId?.takeIf { item.kind == ItemKind.MUSIC_ALBUM }?.let { artistId ->
+                OutlinedButton(onClick = { onOpen(MediaItem(artistId, item.albumArtist.orEmpty(), ItemKind.MUSIC_ARTIST)) }) { Text("Artist") }
+            }
+            OutlinedButton(onClick = vm::toggleFavorite) { Text(if (item.user.isFavorite) "Favorite ♥" else "Favorite ♡") }
+            if (item.kind == ItemKind.MUSIC_ALBUM) {
+                var adding by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { adding = true }) { Text("Add to…") }
+                if (adding) dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect) { adding = false }
+            }
+        } else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // What "Play" means depends on the type: resume a movie, or the next episode of a series.
             val playTarget: MediaItem? = if (item.kind == ItemKind.SERIES) state.nextUp ?: state.episodes.firstOrNull() else item
             val resumeMs = playTarget?.user?.positionMs ?: 0L

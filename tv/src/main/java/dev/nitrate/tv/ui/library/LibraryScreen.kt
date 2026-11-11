@@ -73,7 +73,9 @@ fun LibraryScreen(
     }
 
     val hasRecommended = lib.collection == CollectionKind.MOVIES || lib.collection == CollectionKind.TV_SHOWS
+    val music = lib.collection == CollectionKind.MUSIC
     var tab by rememberSaveable { mutableStateOf(if (hasRecommended) LibraryTab.RECOMMENDED else LibraryTab.ALL) }
+    var artists by rememberSaveable { mutableStateOf(false) }
 
     val tabs: @Composable () -> Unit = {
         Row(
@@ -86,6 +88,10 @@ fun LibraryScreen(
                 for (t in LibraryTab.entries) {
                     FilterChip(selected = tab == t, onClick = { tab = t }) { Text(t.label) }
                 }
+            }
+            if (music) {
+                FilterChip(selected = !artists, onClick = { artists = false }) { Text("Albums") }
+                FilterChip(selected = artists, onClick = { artists = true }) { Text("Artists") }
             }
         }
     }
@@ -114,6 +120,6 @@ fun LibraryScreen(
                 RowsState.Loading -> Column { tabs(); Text("Loading…", Modifier.padding(PagePadding)) }
             }
         }
-        LibraryTab.ALL -> BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay)
+        LibraryTab.ALL -> if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay)
     }
 }

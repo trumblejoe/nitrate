@@ -88,6 +88,8 @@ PATHS = [
     "/SyncPlay/Ping",
     "/GetUtcTime",
     "/Collections",
+    "/Artists/AlbumArtists",
+    "/Items/{itemId}/InstantMix",
     "/Collections/{collectionId}/Items",
     "/Playlists",
     "/Playlists/{playlistId}",

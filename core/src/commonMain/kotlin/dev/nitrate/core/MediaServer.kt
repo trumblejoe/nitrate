@@ -196,6 +196,19 @@ interface MediaServer {
     /** Live events from the server while signed in (remote control, library and watch changes). */
     fun events(): Flow<ServerEvent> = kotlinx.coroutines.flow.emptyFlow()
 
+    // ---- Music ----
+    /** An album's tracks in disc and track order. */
+    suspend fun albumTracks(albumId: String): List<MediaItem> = unsupported()
+
+    /** An artist's albums, newest first. */
+    suspend fun artistAlbums(artistId: String): List<MediaItem> = unsupported()
+
+    /** A music library's album artists, by name, a page at a time, with the total. */
+    suspend fun albumArtists(libraryId: String, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> = unsupported()
+
+    /** Endless-radio style: tracks like a track, album or artist. */
+    suspend fun instantMix(itemId: String): List<MediaItem> = unsupported()
+
     // ---- Collections and playlists ----
     /** Makes a collection (box set) of [itemIds]; returns its id. Needs collection permission. */
     suspend fun createCollection(name: String, itemIds: List<String>): String = unsupported()

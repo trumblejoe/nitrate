@@ -367,13 +367,29 @@ class PlaybackSession(
             .setUri(uriOf(p.url))
             .apply { if (p.isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
             .setSubtitleConfigurations(subtitles)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+            .setMediaMetadata(metadata(title))
             .build()
         // Jellyfin's HLS playlists span the whole file, so every method seeks client-side.
         exo.setMediaItem(media, startMs)
         exo.prepare()
         // In a group, the group says when to play once everyone is ready.
         exo.playWhenReady = !inGroup
+    }
+
+    /** Title, and for music the artist, album and cover (shown by the player view and lock screen). */
+    private fun metadata(title: String): MediaMetadata {
+        val item = _item.value
+        return MediaMetadata.Builder()
+            .setTitle(title)
+            .apply {
+                if (item != null) {
+                    (item.artists.firstOrNull() ?: item.albumArtist ?: item.seriesName)?.let(::setArtist)
+                    item.album?.let(::setAlbumTitle)
+                    item.albumArtist?.let(::setAlbumArtist)
+                    runCatching { server.imageUrl(item, dev.nitrate.core.model.ImageKind.PRIMARY, 720) }.getOrNull()?.let { setArtworkUri(Uri.parse(it)) }
+                }
+            }
+            .build()
     }
 
     private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false) {

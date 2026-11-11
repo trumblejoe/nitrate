@@ -283,6 +283,27 @@ class JellyfinClient(
     override suspend fun quickConnectApproved(secret: String): Boolean =
         get("QuickConnect", "Connect", query = mapOf("secret" to secret)).decode<QuickConnectResultDto>().authenticated
 
+    // ---- Music ----
+
+    override suspend fun albumTracks(albumId: String): List<MediaItem> = items(
+        "Items",
+        query = mapOf("userId" to userId, "parentId" to albumId, "includeItemTypes" to "Audio", "recursive" to true, "sortBy" to "ParentIndexNumber,IndexNumber,SortName", "fields" to "MediaSources"),
+    )
+
+    override suspend fun artistAlbums(artistId: String): List<MediaItem> = items(
+        "Items",
+        query = mapOf("userId" to userId, "albumArtistIds" to artistId, "includeItemTypes" to "MusicAlbum", "recursive" to true, "sortBy" to "ProductionYear,SortName", "sortOrder" to "Descending,Ascending"),
+    )
+
+    override suspend fun albumArtists(libraryId: String, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> {
+        val result = get("Artists", "AlbumArtists", query = mapOf("userId" to userId, "parentId" to libraryId, "startIndex" to startIndex, "limit" to limit, "sortBy" to "SortName", "enableTotalRecordCount" to true))
+            .decode<QueryResultDto<ItemDto>>()
+        return result.items.map { it.toMediaItem() } to result.totalRecordCount
+    }
+
+    override suspend fun instantMix(itemId: String): List<MediaItem> =
+        items("Items", itemId, "InstantMix", query = mapOf("userId" to userId, "limit" to 100))
+
     // ---- Collections and playlists ----
 
     private fun dashless(ids: List<String>) = ids.joinToString(",") { it.replace("-", "") }
@@ -574,6 +595,8 @@ class JellyfinClient(
             tag != null -> image(item.id, type, tag, maxHeight = maxHeight)
             // Episodes without art of their own fall back to the series poster.
             kind == ImageKind.PRIMARY && series != null && item.images.seriesPrimary != null -> image(series, type, item.images.seriesPrimary, maxHeight = maxHeight)
+            // Tracks without art of their own show their album's cover.
+            kind == ImageKind.PRIMARY && item.albumId != null && item.images.albumPrimary != null -> image(item.albumId, type, item.images.albumPrimary, maxHeight = maxHeight)
             else -> null
         }
     }

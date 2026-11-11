@@ -72,7 +72,16 @@ class FakeServer : MediaServer {
     override suspend fun libraryRows(library: MediaItem) = homeRows().drop(2)
     override suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean) =
         (if (startIndex == 0) films + films.map { it.copy(id = it.id + "b") } else emptyList()) to films.size * 2
+    val album = MediaItem("al1", "Second Reel", ItemKind.MUSIC_ALBUM, productionYear = 2022, albumArtist = "The Projectionists", albumArtistId = "ar1", genres = listOf("Rock"),
+        overview = "Songs written in the booth between changeovers.")
+    private val tracks = listOf("Changeover", "Cue Dots", "Lamp House", "Take-up Reel", "House Lights").mapIndexed { i, n ->
+        MediaItem("t$i", n, ItemKind.AUDIO, mediaKind = dev.nitrate.core.model.MediaKind.AUDIO, indexNumber = i + 1, runtimeMs = 180_000L + i * 17_000, album = album.name, albumId = album.id,
+            artists = if (i == 3) listOf("The Projectionists", "Maya Ortiz") else listOf("The Projectionists"), albumArtist = "The Projectionists")
+    }
+    override suspend fun albumTracks(albumId: String) = tracks
+    override suspend fun instantMix(itemId: String) = tracks.shuffled()
     override suspend fun getItem(id: String) = when (id) {
+        album.id -> album
         series.id -> series
         movies.id -> movies
         shows.id -> shows

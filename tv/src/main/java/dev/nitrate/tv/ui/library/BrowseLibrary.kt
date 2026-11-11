@@ -99,7 +99,9 @@ fun BrowseLibrary(
     }
     LaunchedEffect(jumpedTo) { if (jumpedTo >= 0) runCatching { jumpFocus.requestFocus() } }
 
-    val columns = if (options.view == BrowseView.GRID) 7 else 2
+    // Album covers are square.
+    val music = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
+    val columns = if (options.view == BrowseView.GRID) (if (music) 6 else 7) else 2
     // The header, options bar and A–Z row are the grid's first items.
     val leading = if (options.alphabetical) 3 else 2
     LazyVerticalGrid(
@@ -159,9 +161,9 @@ fun BrowseLibrary(
                         item = item,
                         imageUrl = repository.imageUrl(item, ImageKind.PRIMARY, 360),
                         width = null,
-                        aspectRatio = 2f / 3f,
+                        aspectRatio = if (music) 1f else 2f / 3f,
                         title = item.name,
-                        subtitle = item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
+                        subtitle = if (music) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
                         onClick = { onOpen(item) },
                         onPlay = { if (item.isPlayable) onPlay(item) else onOpen(item) },
                         modifier = focus,
@@ -263,5 +265,29 @@ private fun Group(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+    }
+}
+
+
+/** A music library's artists, a page at a time. */
+@Composable
+fun ArtistsGrid(repository: MediaServer, library: MediaItem, header: @Composable () -> Unit, onOpen: (MediaItem) -> Unit) {
+    val vm = viewModel(key = "artists-${library.id}") { dev.nitrate.android.viewmodel.PagedViewModel { start, limit -> repository.albumArtists(library.id, start, limit) } }
+    val state by vm.state.collectAsStateWithLifecycle()
+    val grid = rememberLazyGridState()
+    LaunchedEffect(grid) { snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { if (it >= state.items.size - 30) vm.loadMore() } }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(6),
+        state = grid,
+        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        item(key = "header", span = { GridItemSpan(maxLineSpan) }) { header() }
+        if (state.total < 0) item(span = { GridItemSpan(maxLineSpan) }) { Text(state.error ?: "Loading…") }
+        items(state.items, key = { it.id }) { artist ->
+            MediaCard(item = artist, imageUrl = repository.imageUrl(artist, ImageKind.PRIMARY, 360), width = null, aspectRatio = 1f, title = artist.name, onClick = { onOpen(artist) })
+        }
     }
 }

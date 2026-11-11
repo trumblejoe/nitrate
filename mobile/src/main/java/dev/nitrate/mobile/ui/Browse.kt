@@ -97,6 +97,9 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
     val grid = rememberLazyGridState()
     val list = rememberLazyListState()
     var filtering by remember { mutableStateOf(false) }
+    // Album covers are square.
+    val square = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
+    val shape = if (square) CardShape.SQUARE else CardShape.POSTER
 
     // Load the next page near the end.
     LaunchedEffect(grid, list, options.view) {
@@ -121,7 +124,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                 state.loading -> Loading()
                 state.items.isEmpty() -> EmptyResults(options) { vm.update { it.clearFilters() } }
                 options.view == BrowseView.GRID -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 110.dp),
+                    columns = GridCells.Adaptive(minSize = if (square) 140.dp else 110.dp),
                     state = grid,
                     contentPadding = padding,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -131,10 +134,10 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                     items(state.items, key = { it.id }) { item ->
                         MediaCard(
                             item = item,
-                            imageUrl = actions.server.cardImage(item, CardShape.POSTER),
-                            shape = CardShape.POSTER,
+                            imageUrl = actions.server.cardImage(item, shape),
+                            shape = shape,
                             title = item.name,
-                            subtitle = item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
+                            subtitle = if (square) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
                             onClick = { actions.open(item) },
                         )
                     }
@@ -289,5 +292,31 @@ private fun Group(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
+    }
+}
+
+
+/** A music library's artists, a page at a time. */
+@Composable
+fun ArtistsGrid(actions: AppActions, library: MediaItem) {
+    val vm = viewModel(key = "artists-${library.id}") { dev.nitrate.android.viewmodel.PagedViewModel { start, limit -> actions.server.albumArtists(library.id, start, limit) } }
+    val state by vm.state.collectAsStateWithLifecycle()
+    val grid = rememberLazyGridState()
+    LaunchedEffect(grid) { snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { if (it >= state.items.size - 20) vm.loadMore() } }
+    when {
+        state.error != null && state.items.isEmpty() -> ErrorMessage(state.error ?: "", vm::loadMore)
+        state.total < 0 -> Loading()
+        else -> LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 120.dp),
+            state = grid,
+            contentPadding = PaddingValues(ScreenPadding),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            items(state.items, key = { it.id }) { artist ->
+                MediaCard(item = artist, imageUrl = actions.server.cardImage(artist, CardShape.SQUARE), shape = CardShape.SQUARE, title = artist.name, onClick = { actions.open(artist) })
+            }
+        }
     }
 }

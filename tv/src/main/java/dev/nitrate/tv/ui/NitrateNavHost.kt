@@ -189,6 +189,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onOpen = nav::openItem,
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
+                onPlayQueue = { items -> nav.playQueue(items.map { it.id }) },
             )
         }
         composable<SettingsRoute> {

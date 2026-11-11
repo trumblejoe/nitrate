@@ -21,6 +21,10 @@ data class DetailsState(
     val nextUp: MediaItem? = null,
     /** What a collection (box set) holds. */
     val contents: List<MediaItem> = emptyList(),
+    /** An album's tracks. */
+    val tracks: List<MediaItem> = emptyList(),
+    /** An artist's albums. */
+    val albums: List<MediaItem> = emptyList(),
 )
 
 class DetailsViewModel(
@@ -41,6 +45,8 @@ class DetailsViewModel(
             _state.update { it.copy(item = item, error = null) }
 
             if (item.kind == ItemKind.SERIES) loadSeries(item)
+            if (item.kind == ItemKind.MUSIC_ALBUM) _state.update { it.copy(tracks = runCatching { repository.albumTracks(itemId) }.getOrDefault(emptyList())) }
+            if (item.kind == ItemKind.MUSIC_ARTIST) _state.update { it.copy(albums = runCatching { repository.artistAlbums(itemId) }.getOrDefault(emptyList())) }
             if (item.kind == ItemKind.BOX_SET) {
                 _state.update { it.copy(contents = runCatching { repository.collectionItems(itemId) }.getOrDefault(emptyList())) }
             }
@@ -48,6 +54,9 @@ class DetailsViewModel(
             _state.update { it.copy(similar = similar) }
         }
     }
+
+    /** Tracks like this album or artist, for "Instant mix". */
+    suspend fun instantMix(): List<MediaItem> = runCatching { repository.instantMix(itemId) }.getOrDefault(emptyList())
 
     /** Takes [member] out of this collection. */
     fun removeFromCollection(member: MediaItem) {

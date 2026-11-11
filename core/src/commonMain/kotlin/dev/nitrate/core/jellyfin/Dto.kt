@@ -44,6 +44,12 @@ internal data class ItemDto(
     val name: String? = null,
     val dateCreated: String? = null,
     val playlistItemId: String? = null,
+    val album: String? = null,
+    val albumId: String? = null,
+    val artists: List<String>? = null,
+    val albumArtist: String? = null,
+    val albumArtists: List<NameIdDto>? = null,
+    val albumPrimaryImageTag: String? = null,
     val type: String? = null,
     val mediaType: String? = null,
     val overview: String? = null,
@@ -268,3 +274,6 @@ internal data class UpdatePlaylistDto(val name: String)
 
 @Serializable
 internal data class CreationResultDto(val id: String)
+
+@Serializable
+internal data class NameIdDto(val name: String? = null, val id: String)

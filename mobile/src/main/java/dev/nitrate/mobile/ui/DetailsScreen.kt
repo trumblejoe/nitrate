@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import kotlinx.coroutines.launch
 import dev.nitrate.core.pages.facts
 import dev.nitrate.core.pages.isSpoiler
 import androidx.compose.animation.animateContentSize
@@ -135,14 +136,24 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                 Column(Modifier.padding(horizontal = ScreenPadding, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { prefs.facts(item).forEach { GlassChip(it) } }
                     if (item.genres.isNotEmpty() && prefs.genres) Text(item.genres.take(4).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                    PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
+                    val music = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
+                    if (item.kind == ItemKind.MUSIC_ALBUM) item.albumArtist?.let { artist ->
+                        val artistId = item.albumArtistId
+                        Text(
+                            "by $artist",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = if (artistId != null) Modifier.pressable({ actions.nav.navigate(DetailsRoute(artistId)) }) else Modifier,
+                        )
+                    }
+                    if (!music) PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
+                        if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
                         RoundAction(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", onClick = vm::toggleFavorite, active = item.user.isFavorite)
                         if (item.isPlayable) DownloadAction(actions, item)
                         if (item.kind == ItemKind.SERIES) SmartDownloadAction(actions, item)
                         var adding by remember { mutableStateOf(false) }
-                        if (item.isPlayable || item.kind == ItemKind.SERIES) RoundAction(Icons.Default.Add, "Add to", onClick = { adding = true })
+                        if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) RoundAction(Icons.Default.Add, "Add to", onClick = { adding = true })
                         if (adding) AddToListDialog(actions, item) { adding = false }
                         if (account?.isAdmin == true) RoundAction(Icons.Default.Edit, "Manage", onClick = { actions.nav.navigate(ManageItemRoute(item.id)) })
                     }
@@ -199,6 +210,53 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(people, key = { "${it.id}-${it.role}" }) { person ->
                                 PersonBubble(person, actions) { actions.nav.navigate(PersonRoute(person.id, person.name)) }
+                            }
+                        }
+                    }
+                }
+            }
+            if (item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST) {
+                item(key = "music-actions") {
+                    val scope = androidx.compose.runtime.rememberCoroutineScope()
+                    val tracks = state.tracks
+                    androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (tracks.isNotEmpty()) {
+                            PillButton("Play", Icons.Default.PlayArrow, primary = true, onClick = { actions.playQueue(tracks.map { it.id }) })
+                            PillButton("Shuffle", null, primary = false, onClick = { actions.playQueue(tracks.shuffled().map { it.id }) })
+                        }
+                        PillButton("Instant mix", null, primary = tracks.isEmpty(), onClick = {
+                            scope.launch { vm.instantMix().takeIf { it.isNotEmpty() }?.let { mix -> actions.playQueue(mix.map { it.id }) } }
+                        })
+                    }
+                }
+            }
+            if (state.tracks.isNotEmpty()) {
+                item(key = "tracks-header") { Column(Modifier.padding(top = 20.dp)) { SectionHeader("${state.tracks.size} tracks") } }
+                items(state.tracks.size, key = { "track-" + state.tracks[it].id }) { i ->
+                    val t = state.tracks[i]
+                    Row(
+                        Modifier.fillMaxWidth().pressable({ actions.playQueue(state.tracks.drop(i).map { it.id }) }).padding(horizontal = ScreenPadding, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Text("${t.indexNumber ?: i + 1}", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(24.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(t.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val by = t.artists.joinToString().takeIf { it.isNotBlank() && it != item.albumArtist }
+                            if (by != null) Text(by, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        t.runtimeMs?.takeIf { prefs.runtime }?.let { Text(dev.nitrate.core.model.formatClock(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+            }
+            if (state.albums.isNotEmpty()) {
+                item(key = "albums") {
+                    Column(Modifier.padding(top = 28.dp)) {
+                        SectionHeader("Albums")
+                        LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(state.albums, key = { it.id }) { a ->
+                                val key = "albums-${item.id}-${a.id}"
+                                MediaCard(a, server.cardImage(a, CardShape.SQUARE), CardShape.SQUARE, title = a.name, subtitle = a.productionYear?.toString(), onClick = { actions.open(a, key) }, width = 140.dp, sharedKey = key)
                             }
                         }
                     }
@@ -330,3 +388,4 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
 private fun Badge(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
     Icon(icon, label, tint = Color.White, modifier = Modifier.background(Color(0xAA000000), CircleShape).padding(3.dp).size(14.dp))
 }
+

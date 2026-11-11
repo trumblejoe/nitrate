@@ -42,6 +42,12 @@ data class MediaItem(
     val people: List<Person> = emptyList(),
     /** Picture and sound quality labels, e.g. 4K, Dolby Vision, Atmos (see QualityBadges). */
     val badges: List<String> = emptyList(),
+    /** Music: the album a track is on, and who made it. */
+    val album: String? = null,
+    val albumId: String? = null,
+    val artists: List<String> = emptyList(),
+    val albumArtist: String? = null,
+    val albumArtistId: String? = null,
     /** This item's entry in the playlist it was listed from, for removing or moving it. */
     val playlistEntryId: String? = null,
     /** When the server added it (epoch ms), where known. */
@@ -62,7 +68,7 @@ data class MediaItem(
 }
 
 @Serializable
-enum class ItemKind { MOVIE, SERIES, SEASON, EPISODE, VIDEO, MUSIC_VIDEO, AUDIO, MUSIC_ALBUM, PLAYLIST, BOX_SET, LIBRARY, FOLDER, PERSON, OTHER }
+enum class ItemKind { MOVIE, SERIES, SEASON, EPISODE, VIDEO, MUSIC_VIDEO, AUDIO, MUSIC_ALBUM, MUSIC_ARTIST, PLAYLIST, BOX_SET, LIBRARY, FOLDER, PERSON, OTHER }
 
 @Serializable
 enum class MediaKind { VIDEO, AUDIO }
@@ -96,6 +102,8 @@ data class ItemImages(
     val parentLogoItemId: String? = null,
     val parentLogo: String? = null,
     val seriesPrimary: String? = null,
+    /** A track's album cover, when the track has no art of its own. */
+    val albumPrimary: String? = null,
 )
 
 @Serializable

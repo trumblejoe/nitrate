@@ -35,6 +35,11 @@ internal fun ItemDto.toMediaItem(): MediaItem {
         name = name.orEmpty(),
         dateAddedMs = dateCreated?.let(::parseDateMs),
         playlistEntryId = playlistItemId,
+        album = album,
+        albumId = albumId?.let(::normalizeId),
+        artists = artists.orEmpty(),
+        albumArtist = albumArtist ?: albumArtists?.firstOrNull()?.name,
+        albumArtistId = albumArtists?.firstOrNull()?.id?.let(::normalizeId),
         kind = kind,
         mediaKind = when (mediaType) {
             "Video" -> MediaKind.VIDEO
@@ -79,6 +84,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
             parentLogoItemId = parentLogoItemId?.let(::normalizeId),
             parentLogo = parentLogoImageTag,
             seriesPrimary = seriesPrimaryImageTag,
+            albumPrimary = albumPrimaryImageTag,
         ),
         people = people.orEmpty().map { Person(normalizeId(it.id), it.name.orEmpty(), it.role, it.primaryImageTag) },
         badges = badges(),
@@ -94,6 +100,7 @@ internal fun itemKind(type: String?): ItemKind = when (type) {
     "MusicVideo" -> ItemKind.MUSIC_VIDEO
     "Audio" -> ItemKind.AUDIO
     "MusicAlbum" -> ItemKind.MUSIC_ALBUM
+    "MusicArtist" -> ItemKind.MUSIC_ARTIST
     "Playlist" -> ItemKind.PLAYLIST
     "BoxSet" -> ItemKind.BOX_SET
     "CollectionFolder", "UserView", "PlaylistsFolder", "ManualPlaylistsFolder" -> ItemKind.LIBRARY

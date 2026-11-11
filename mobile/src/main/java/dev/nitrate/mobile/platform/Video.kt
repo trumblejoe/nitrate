@@ -11,6 +11,7 @@ import android.view.View
 import androidx.compose.runtime.remember
 import androidx.media3.ui.AspectRatioFrameLayout
 import dev.nitrate.android.playback.applySubtitleStyle
+import dev.nitrate.android.playback.showCover
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
 import android.content.Context
@@ -70,6 +71,8 @@ fun VideoSurface(
     subtitleStyle: dev.nitrate.core.playback.SubtitleStyle = dev.nitrate.core.playback.SubtitleStyle(),
     /** Hide the player's own controls (e.g. in picture-in-picture). */
     hideControls: Boolean = false,
+    /** Shown instead of a picture (music). */
+    coverUrl: String? = null,
 ) {
     AndroidView(
         factory = { ctx ->
@@ -85,6 +88,7 @@ fun VideoSurface(
         update = { view ->
             view.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
             view.applySubtitleStyle(subtitleStyle)
+            view.showCover(coverUrl)
             view.useController = !hideControls
         },
         modifier = modifier,

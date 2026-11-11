@@ -5814,6 +5814,355 @@
  },
  "openapi": "3.0.4",
  "paths": {
+  "/Artists/AlbumArtists": {
+   "get": {
+    "deprecated": true,
+    "operationId": "GetAlbumArtists",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "minCommunityRating",
+      "schema": {
+       "format": "double",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "searchTerm",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "parentId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fields",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFields"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "excludeItemTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/BaseItemKind"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeItemTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/BaseItemKind"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "filters",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFilter"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isFavorite",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "mediaTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/MediaType"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "genres",
+      "schema": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "genreIds",
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "officialRatings",
+      "schema": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "tags",
+      "schema": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "years",
+      "schema": {
+       "items": {
+        "format": "int32",
+        "type": "integer"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableUserData",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageTypeLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImageTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ImageType"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "person",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "personIds",
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "personTypes",
+      "schema": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "studios",
+      "schema": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "studioIds",
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "nameStartsWithOrGreater",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "nameStartsWith",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "nameLessThan",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortBy",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemSortBy"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortOrder",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/SortOrder"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImages",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableTotalRecordCount",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Artist"
+    ]
+   }
+  },
   "/Audio/{itemId}/stream": {
    "get": {
     "operationId": "GetAudioStream",
@@ -10547,6 +10896,153 @@
     ],
     "tags": [
      "Image"
+    ]
+   }
+  },
+  "/Items/{itemId}/InstantMix": {
+   "get": {
+    "operationId": "GetInstantMixFromItem",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fields",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFields"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImages",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableUserData",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageTypeLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImageTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ImageType"
+       },
+       "type": "array"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "InstantMix"
     ]
    }
   },

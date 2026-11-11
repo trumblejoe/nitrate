@@ -242,6 +242,7 @@ fun PlayerScreen(
         }
     }
 
+    val playingItem by session.item.collectAsState()
     PlayerLayout(
         writing = writing && canWrite,
         modifier = Modifier.focusRequester(keys).focusable().onPreviewKeyEvent { event ->
@@ -262,6 +263,7 @@ fun PlayerScreen(
             fill = fill,
             subtitleStyle = playbackSettings.subtitleStyle,
             hideControls = inPip,
+            coverUrl = playingItem?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { actions.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 720) },
         )
         GestureFeedbackView(feedback)
 

@@ -145,6 +145,8 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.search.SearchScreen(c.server, c.searchHistory, initialQuery = "re", onOpen = {}, onPerson = {})
     }
 
+    @Test fun album() = shoot("tv-album") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "al1", null, onPlay = { _, _ -> }, onOpen = {}) }
+
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 
     @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }

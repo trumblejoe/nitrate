@@ -1,6 +1,7 @@
 package dev.nitrate.tv.ui.player
 
 import dev.nitrate.android.playback.applySubtitleStyle
+import dev.nitrate.android.playback.showCover
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -240,7 +241,10 @@ fun PlayerScreen(
                     keepScreenOn = true
                 }
             },
-            update = { it.applySubtitleStyle(settingsNow.subtitleStyle) },
+            update = {
+                it.applySubtitleStyle(settingsNow.subtitleStyle)
+                it.showCover(item?.takeIf { i -> i.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { i -> repository.imageUrl(i, dev.nitrate.core.model.ImageKind.PRIMARY, 720) })
+            },
             modifier = Modifier.fillMaxSize(),
         )
 

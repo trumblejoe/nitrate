@@ -108,15 +108,17 @@ fun LibraryScreen(actions: AppActions, libraryId: String) {
             lib == null -> ErrorMessage(library?.exceptionOrNull()?.message ?: "Couldn't load library", modifier = modifier)
             else -> {
                 val hasRecommended = lib.collection == CollectionKind.MOVIES || lib.collection == CollectionKind.TV_SHOWS
+                val music = lib.collection == CollectionKind.MUSIC
                 var tab by rememberSaveable { mutableIntStateOf(0) }
                 Column(modifier.fillMaxSize()) {
-                    if (hasRecommended) {
+                    if (hasRecommended || music) {
                         PrimaryTabRow(selectedTabIndex = tab) {
-                            Tab(tab == 0, onClick = { tab = 0 }, text = { Text("Recommended") })
-                            Tab(tab == 1, onClick = { tab = 1 }, text = { Text("All") })
+                            Tab(tab == 0, onClick = { tab = 0 }, text = { Text(if (music) "Albums" else "Recommended") })
+                            Tab(tab == 1, onClick = { tab = 1 }, text = { Text(if (music) "Artists" else "All") })
                         }
                     }
                     when {
+                        music && tab == 1 -> ArtistsGrid(actions, lib)
                         hasRecommended && tab == 0 -> LibraryRows(actions, lib)
                         // Playlists keep their own tile grid; every other library gets sort, filters and A–Z.
                         lib.collection == CollectionKind.PLAYLISTS -> LibraryGrid(actions, lib)
