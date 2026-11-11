@@ -48,6 +48,8 @@ data class DownloadRecord(
     val pendingSync: Boolean = false,
     /** When the local watch state last changed. */
     val watchedAtMs: Long? = null,
+    /** Added by a [SmartRule]; removed by it once watched. Manual downloads are never removed. */
+    val auto: Boolean = false,
 ) {
     val key get() = Key(serverUrl, userId, itemId)
 
@@ -66,8 +68,25 @@ data class DownloadSettings(
     val wifiOnly: Boolean = true,
 )
 
+/**
+ * Smart downloads for one show: keep the next [keep] unwatched episodes on the device and delete
+ * the ones this rule downloaded once they're watched.
+ */
+@Serializable
+data class SmartRule(
+    val serverUrl: String,
+    val userId: String,
+    val seriesId: String,
+    val seriesName: String,
+    val keep: Int = 3,
+    val quality: DownloadQuality = DownloadQuality.MEDIUM,
+    val hevc: Boolean = false,
+    val deleteWatched: Boolean = true,
+)
+
 @Serializable
 data class DownloadsData(
     val records: List<DownloadRecord> = emptyList(),
     val settings: DownloadSettings = DownloadSettings(),
+    val rules: List<SmartRule> = emptyList(),
 )

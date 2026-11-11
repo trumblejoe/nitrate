@@ -44,6 +44,9 @@ PATHS = [
     "/Videos/{itemId}/stream.{container}",
     "/Videos/{routeItemId}/{routeMediaSourceId}/Subtitles/{routeIndex}/Stream.{routeFormat}",
     "/UserItems/{itemId}/UserData",
+    "/Persons",
+    "/MediaSegments/{itemId}",
+    "/Videos/{itemId}/Trickplay/{width}/{index}.jpg",
 ]
 OUT = "core/src/jvmTest/resources/jellyfin-openapi.json"
 

@@ -130,6 +130,13 @@ class JellyfinContractTest {
         }
         client.channelTestClips()
 
+        val found = client.search("pilot")
+        assertEquals(1, found.episodes.size)
+        client.itemsWithPerson(DASHED)
+        client.mediaSegments(DASHED)
+        val trickplay = client.trickplay(DASHED, HEX)!!
+        assertEquals(320, trickplay.width)
+
         val source = client.mediaSource(DASHED)
         assertEquals(1_000L, source.size)
         client.userData(DASHED)
@@ -153,6 +160,7 @@ class JellyfinContractTest {
             client.downloadUrl(DASHED, source, null, 1, "s1"),
             client.downloadUrl(DASHED, source, dev.nitrate.core.downloads.DownloadQuality.LOW.spec(hevc = true), 1, "s2"),
             client.subtitleFileUrl(DASHED, source, 2, "srt"),
+            client.trickplaySheetUrl(DASHED, trickplay, 3),
         )
         assertTrue(urls.size >= 5)
         kotlinx.coroutines.delay(200) // reportStopped is fire-and-forget
@@ -160,7 +168,7 @@ class JellyfinContractTest {
         val problems = sent.flatMap { check(it.method, it.url, it.body) } + urls.flatMap { check(HttpMethod.Get, Url(it), null) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
         val endpoints = sent.map { "${it.method.value} ${template(it.url)}" }.toSet()
-        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 30)
+        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 33)
     }
 
     @Test
@@ -181,6 +189,8 @@ class JellyfinContractTest {
             serializer<PlaybackStopDto>() to "PlaybackStopInfo",
             serializer<UserDataDto>() to "UserItemDataDto",
             serializer<UpdateUserDataDto>() to "UpdateUserItemDataDto",
+            serializer<TrickplayInfoDto>() to "TrickplayInfoDto",
+            serializer<MediaSegmentDto>() to "MediaSegmentDto",
         ).flatMap { (s, schema) -> fields(s.descriptor, schema(schema), schema) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
     }
@@ -321,6 +331,8 @@ class JellyfinContractTest {
         val ITEM = """{"Id":"$HEX","Name":"Pilot","Type":"Episode","MediaType":"Video","SeriesId":"$HEX","ParentIndexNumber":1,"IndexNumber":1,
             |"RunTimeTicks":36000000000,"ImageTags":{"Primary":"p","Thumb":"t","Logo":"l"},"BackdropImageTags":["b0","b1"],
             |"UserData":{"Played":false,"PlaybackPositionTicks":10000000,"IsFavorite":true},"LocationType":"FileSystem",
+            |"Trickplay":{"$HEX":{"160":{"Width":160,"Height":90,"TileWidth":10,"TileHeight":10,"ThumbnailCount":100,"Interval":10000},
+            |"320":{"Width":320,"Height":180,"TileWidth":10,"TileHeight":10,"ThumbnailCount":100,"Interval":10000}}},
             |"MediaSources":[{"Id":"$HEX","Container":"mkv","Size":1000,"MediaStreams":[{"Index":0,"Type":"Video","Codec":"h264"}]}]}""".trimMargin()
         val PLAYBACK_INFO = """{"PlaySessionId":"ps","MediaSources":[{"Id":"$HEX","Container":"mkv","Bitrate":8000000,"ETag":"e",
             |"SupportsDirectPlay":true,"SupportsDirectStream":true,"DefaultAudioStreamIndex":1,

@@ -8,12 +8,17 @@ import dev.nitrate.core.model.ExternalSubtitle
 import dev.nitrate.core.model.ImageKind
 import dev.nitrate.core.model.InvalidCredentialsException
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.model.MediaSegment
 import dev.nitrate.core.model.MediaSource
 import dev.nitrate.core.model.Person
 import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.PlaybackPlan
 import dev.nitrate.core.model.QuickConnectRequest
 import dev.nitrate.core.model.RemoteUserData
+import dev.nitrate.core.model.SearchResults
+import dev.nitrate.core.model.SegmentKind
+import dev.nitrate.core.model.TrickplayInfo
+import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
@@ -535,6 +540,82 @@ class JellyfinClient(
         )
     }
 
+    // ---- Search ----
+
+    override suspend fun search(query: String): SearchResults = coroutineScope {
+        val term = query.trim()
+        if (term.isEmpty()) return@coroutineScope SearchResults()
+        val items = async {
+            items(
+                "Items",
+                query = mapOf(
+                    "searchTerm" to term,
+                    "recursive" to true,
+                    "includeItemTypes" to "Movie,Series,Episode,BoxSet",
+                    "limit" to 60,
+                    "fields" to "PrimaryImageAspectRatio",
+                    "enableTotalRecordCount" to false,
+                ),
+            )
+        }
+        val people = async {
+            runCatching {
+                get("Persons", query = mapOf("searchTerm" to term, "limit" to 16)).decode<QueryResultDto<ItemDto>>().items
+                    .map { Person(normalizeId(it.id), it.name.orEmpty(), null, it.imageTags?.get("Primary")) }
+            }.getOrDefault(emptyList())
+        }
+        val found = items.await()
+        SearchResults(
+            movies = found.filter { it.kind == ItemKind.MOVIE },
+            shows = found.filter { it.kind == ItemKind.SERIES },
+            episodes = found.filter { it.kind == ItemKind.EPISODE },
+            collections = found.filter { it.kind == ItemKind.BOX_SET },
+            people = people.await(),
+        )
+    }
+
+    override suspend fun itemsWithPerson(personId: String): List<MediaItem> = items(
+        "Items",
+        query = mapOf(
+            "personIds" to personId,
+            "recursive" to true,
+            "includeItemTypes" to "Movie,Series",
+            "sortBy" to "PremiereDate,SortName",
+            "sortOrder" to "Descending,Ascending",
+            "fields" to ROW_FIELDS,
+            "limit" to 100,
+        ),
+    )
+
+    // ---- Player extras ----
+
+    override suspend fun mediaSegments(itemId: String): List<MediaSegment> = runCatching {
+        get("MediaSegments", itemId).decode<QueryResultDto<MediaSegmentDto>>().items.map { s ->
+            val kind = when (s.type) {
+                "Intro" -> SegmentKind.INTRO
+                "Outro" -> SegmentKind.OUTRO
+                "Recap" -> SegmentKind.RECAP
+                "Preview" -> SegmentKind.PREVIEW
+                "Commercial" -> SegmentKind.COMMERCIAL
+                else -> SegmentKind.UNKNOWN
+            }
+            MediaSegment(kind, s.startTicks.ticksToMs(), s.endTicks.ticksToMs())
+        }.sortedBy { it.startMs }
+    }.getOrDefault(emptyList())
+
+    override suspend fun trickplay(itemId: String, mediaSourceId: String?): TrickplayInfo? = runCatching {
+        val bySource = get("Items", itemId).decode<ItemDto>().trickplay ?: return null
+        val wanted = mediaSourceId?.replace("-", "")
+        val (sourceId, sizes) = bySource.entries.firstOrNull { it.key.replace("-", "").equals(wanted, ignoreCase = true) }?.toPair()
+            ?: bySource.entries.firstOrNull()?.toPair() ?: return null
+        // The smallest size that still looks sharp in a phone's scrubbing preview.
+        val info = sizes.values.filter { it.width >= TRICKPLAY_MIN_WIDTH }.minByOrNull { it.width } ?: sizes.values.maxByOrNull { it.width } ?: return null
+        TrickplayInfo(info.width, info.height, info.tileWidth, info.tileHeight, info.thumbnailCount, info.interval.toLong(), sourceId)
+    }.getOrNull()
+
+    override fun trickplaySheetUrl(itemId: String, info: TrickplayInfo, sheet: Int): String =
+        url("Videos", itemId, "Trickplay", info.width.toString(), "$sheet.jpg", query = mapOf("mediaSourceId" to info.mediaSourceId))
+
     // ---- Downloads ----
 
     override suspend fun mediaSource(itemId: String): MediaSource =
@@ -615,6 +696,7 @@ class JellyfinClient(
         const val ROW_LIMIT = 24
         const val ROW_FIELDS = "Overview,PrimaryImageAspectRatio,Genres"
         const val PROBE_TIMEOUT_MS = 5_000L
+        const val TRICKPLAY_MIN_WIDTH = 240
         val WIDE_DEFAULT = RowDisplay(style = RowStyle.WIDE, showTitles = true)
     }
 }

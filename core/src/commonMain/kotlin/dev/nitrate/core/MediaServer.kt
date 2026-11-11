@@ -3,11 +3,14 @@ package dev.nitrate.core
 import dev.nitrate.core.model.DiscoveredServer
 import dev.nitrate.core.model.ImageKind
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.model.MediaSegment
 import dev.nitrate.core.model.MediaSource
 import dev.nitrate.core.model.Person
 import dev.nitrate.core.model.PlaybackPlan
 import dev.nitrate.core.model.QuickConnectRequest
 import dev.nitrate.core.model.RemoteUserData
+import dev.nitrate.core.model.SearchResults
+import dev.nitrate.core.model.TrickplayInfo
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
@@ -111,6 +114,23 @@ interface MediaServer {
 
     /** Files titled "Nitrate Test …" for the audio channel test, always as the original file. */
     suspend fun channelTestClips(): List<ChannelClip>
+
+    // ---- Search ----
+    /** Movies, shows, episodes, collections and people matching [query]. */
+    suspend fun search(query: String): SearchResults = unsupported()
+
+    /** Movies and shows [personId] appears in, newest first. */
+    suspend fun itemsWithPerson(personId: String): List<MediaItem> = unsupported()
+
+    // ---- Player extras ----
+    /** Intro, recap, credits... marked on the server (empty when none, or on older servers). */
+    suspend fun mediaSegments(itemId: String): List<MediaSegment> = emptyList()
+
+    /** Scrubbing thumbnails for the item, if the server has generated them. */
+    suspend fun trickplay(itemId: String, mediaSourceId: String?): TrickplayInfo? = null
+
+    /** One thumbnail sheet (needs [authorizationHeader]). */
+    fun trickplaySheetUrl(itemId: String, info: TrickplayInfo, sheet: Int): String = unsupported()
 
     // ---- Downloads and offline watch state ----
     /** The item's first media source, with its streams and file size, for choosing a download. */

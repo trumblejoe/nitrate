@@ -49,6 +49,7 @@ class DownloadManagerTest {
 
     /** Swaps in a failure for download requests. */
     private var failDownloads: (MockRequestHandleScope.() -> HttpResponseData)? = null
+    private var showEpisodes = episodesJson(watched = setOf(1))
     private var remoteUserData = """{"Played":false,"PlaybackPositionTicks":0}"""
 
     private val engine = MockEngine { request ->
@@ -74,6 +75,7 @@ class DownloadManagerTest {
                 respond("{}", headers = json)
             }
             path.endsWith("/UserData") -> respond(remoteUserData, headers = json)
+            path.contains("/Shows/") -> respond(showEpisodes, headers = json)
             path.contains("/Items/") -> respond(ITEM, headers = json)
             else -> respond("", HttpStatusCode.NotFound)
         }
@@ -268,6 +270,34 @@ class DownloadManagerTest {
         assertEquals("4.5 GB", DownloadSizing.formatBytes(4_500_000_000))
         assertEquals("820 MB", DownloadSizing.formatBytes(820_000_000))
         assertNull(DownloadSizing.estimate(null, 1))
+    }
+
+    @Test
+    fun `smart downloads keep the next episodes and drop watched ones they added`() = runBlocking {
+        signIn()
+        val show = MediaItem("show", "Show", ItemKind.SERIES)
+        manager.setSmartRule(show, keep = 2, quality = DownloadQuality.LOW, hevc = false)
+        assertEquals(listOf("2", "3"), ids())
+        assertTrue(manager.downloads.first().all { it.auto })
+        // A manual download of the same show is never deleted by the rule.
+        manager.enqueue(listOf(movie.copy(id = episodeId(4), kind = ItemKind.EPISODE, seriesId = "show")), DownloadQuality.ORIGINAL, false)
+
+        // 2 and 4 watched elsewhere: the rule drops its copy of 2, keeps 3, adds 5; manual 4 stays.
+        showEpisodes = episodesJson(watched = setOf(1, 2, 4))
+        manager.refreshSmart()
+        assertEquals(listOf("3", "4", "5"), ids())
+
+        manager.removeSmartRule("show")
+        assertEquals(0, manager.refreshSmart())
+    }
+
+    private suspend fun ids() = manager.downloads.first().map { it.itemId.last().toString() }.sorted()
+
+    private fun episodeId(n: Int) = "00000000-0000-0000-0000-00000000000$n"
+
+    private fun episodesJson(watched: Set<Int>) = (1..5).joinToString(",", "{\"Items\":[", "]}") { n ->
+        "{\"Id\":\"0000000000000000000000000000000$n\",\"Name\":\"E$n\",\"Type\":\"Episode\",\"SeriesId\":\"show\"," +
+            "\"ParentIndexNumber\":1,\"IndexNumber\":$n,\"RunTimeTicks\":600000000,\"UserData\":{\"Played\":${n in watched}}}"
     }
 
     private companion object {

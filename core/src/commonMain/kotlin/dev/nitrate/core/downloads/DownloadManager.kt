@@ -1,6 +1,7 @@
 package dev.nitrate.core.downloads
 
 import dev.nitrate.core.MediaServer
+import dev.nitrate.core.episodes.UpNext
 import dev.nitrate.core.model.ExternalSubtitle
 import dev.nitrate.core.model.ImageKind
 import dev.nitrate.core.model.MediaItem
@@ -28,6 +29,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -111,7 +113,9 @@ class DownloadManager(
         DownloadSizing.options(server.mediaSource(item.id), item.runtimeMs, hevc)
 
     /** Queues [items] (movies or episodes) not already downloaded. Returns how many were added. */
-    suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean): Int {
+    suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean): Int = enqueue(items, quality, hevc, auto = false)
+
+    private suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean, auto: Boolean): Int {
         val user = server.userId ?: return 0
         val url = server.serverUrl ?: return 0
         val existing = mine(store.data.value).map { it.itemId }.toSet()
@@ -120,11 +124,66 @@ class DownloadManager(
         val created = now()
         store.update { data ->
             data.copy(records = data.records + fresh.mapIndexed { i, item ->
-                DownloadRecord(item.id, url, user, item, quality, hevc, createdAtMs = created + i)
+                DownloadRecord(item.id, url, user, item, quality, hevc, createdAtMs = created + i, auto = auto)
             })
         }
         scheduler.schedule(store.data.value.settings.wifiOnly)
         return fresh.size
+    }
+
+    // ---- Smart downloads ----
+
+    /** This user's smart download rules. */
+    val rules: Flow<List<SmartRule>> = store.data.map { d -> d.rules.filter { it.userId == server.userId && it.serverUrl == server.serverUrl } }
+
+    /** Turns on smart downloads for [series] and fills it right away. */
+    suspend fun setSmartRule(series: MediaItem, keep: Int, quality: DownloadQuality, hevc: Boolean) {
+        val user = server.userId ?: return
+        val url = server.serverUrl ?: return
+        val rule = SmartRule(url, user, series.id, series.name, keep, quality, hevc)
+        store.update { d -> d.copy(rules = d.rules.filterNot { it.matches(series.id) } + rule) }
+        refreshSmart()
+    }
+
+    /** Turns smart downloads off for a show. Episodes already downloaded stay. */
+    suspend fun removeSmartRule(seriesId: String) = store.update { d -> d.copy(rules = d.rules.filterNot { it.matches(seriesId) }) }
+
+    private fun SmartRule.matches(seriesId: String) = this.seriesId == seriesId && userId == server.userId && serverUrl == server.serverUrl
+
+    /**
+     * Brings every show with a rule up to date: deletes episodes the rule downloaded once they're
+     * watched (here or elsewhere), then queues the next unwatched ones. Needs the server; returns
+     * how many episodes were queued.
+     */
+    suspend fun refreshSmart(): Int {
+        var queued = 0
+        for (rule in rules.first()) {
+            val episodes = try {
+                server.allEpisodes(rule.seriesId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                continue
+            }
+            // Local watch state not yet synced counts too.
+            val localPlayed = mine(store.data.value).filter { it.item.user.played }.map { it.itemId }.toSet()
+            val withLocal = episodes.map { if (it.id in localPlayed) it.copy(user = it.user.copy(played = true)) else it }
+            val watched = withLocal.filter { it.user.played }.map { it.id }.toSet()
+            if (rule.deleteWatched) {
+                mine(store.data.value)
+                    .filter { it.auto && it.item.seriesId == rule.seriesId && it.itemId in watched && !it.pendingSync }
+                    .forEach { remove(it.itemId) }
+            }
+            queued += enqueue(UpNext.upcoming(withLocal, rule.keep), rule.quality, rule.hevc, auto = true)
+        }
+        return queued
+    }
+
+    /** The next downloaded episode after [current], for Up Next without a connection. */
+    fun nextDownloaded(current: MediaItem): MediaItem? {
+        val series = current.seriesId ?: return null
+        val episodes = mine(store.data.value).filter { it.state == DownloadState.COMPLETED && it.item.seriesId == series }.map { it.item }
+        return UpNext.after(current, (episodes + current).distinctBy { it.id })?.takeIf { next -> episodes.any { it.id == next.id } }
     }
 
     // ---- Controls ----

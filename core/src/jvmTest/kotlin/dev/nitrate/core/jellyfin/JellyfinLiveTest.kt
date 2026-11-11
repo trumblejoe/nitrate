@@ -93,6 +93,17 @@ class JellyfinLiveTest {
         assertEquals(playable.id, item.id)
         client.similar(item.id)
 
+        val found = client.search("test")
+        println("Search: ${found.movies.map { it.name }} ${found.shows.map { it.name }} ${found.episodes.size} episodes, ${found.people.size} people")
+        assertTrue(!found.isEmpty)
+        println("Segments: ${client.mediaSegments(item.id)}")
+        client.trickplay(item.id, null)?.let { info ->
+            println("Trickplay: $info")
+            val sheet = raw.get(client.trickplaySheetUrl(item.id, info, 0)) { header("Authorization", client.authorizationHeader()) }
+            assertEquals(200, sheet.status.value)
+            assertEquals("image/jpeg", sheet.headers["Content-Type"])
+        }
+
         client.imageUrl(item, ImageKind.PRIMARY, 300)?.let { assertEquals(200, raw.get(it).status.value) }
 
         val direct = client.resolvePlayback(item.id, isAudio = false, startMs = 0, forceTranscode = false, audioIndex = null, subtitleIndex = null, mediaSourceId = null)

@@ -75,6 +75,8 @@ internal data class ItemDto(
     val people: List<PersonDto>? = null,
     val locationType: String? = null,
     val mediaSources: List<MediaSourceDto>? = null,
+    /** Media source id -> thumbnail width -> sheet layout. */
+    val trickplay: Map<String, Map<String, TrickplayInfoDto>>? = null,
 )
 
 @Serializable
@@ -183,3 +185,16 @@ internal data class PlaybackStopDto(
 
 @Serializable
 internal data class UpdateUserDataDto(val playbackPositionTicks: Long, val played: Boolean, val lastPlayedDate: String)
+
+@Serializable
+internal data class TrickplayInfoDto(
+    val width: Int = 0,
+    val height: Int = 0,
+    val tileWidth: Int = 0,
+    val tileHeight: Int = 0,
+    val thumbnailCount: Int = 0,
+    val interval: Int = 0,
+)
+
+@Serializable
+internal data class MediaSegmentDto(val type: String = "Unknown", val startTicks: Long = 0, val endTicks: Long = 0)
