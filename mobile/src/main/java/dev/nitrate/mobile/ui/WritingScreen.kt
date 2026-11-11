@@ -1,5 +1,14 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import dev.nitrate.android.writing.lanAddress
+import dev.nitrate.core.writing.TransferServer
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -118,7 +127,18 @@ fun WritingScreen(
     var showDocs by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
+    var showTransfer by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // Computer transfer: off unless switched on, and off again when the editor closes or the
+    // app goes to the background.
+    val transfer = remember(store) { TransferServer(store.asTransferDocs()) }
+    val transferState by transfer.state.collectAsState()
+    DisposableEffect(transfer) { onDispose { transfer.stop() } }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (transfer.state.value.running) transfer.stop("Turned off when Nitrate went to the background.")
+    }
 
     fun open(id: String) = scope.launch {
         docId = id
@@ -165,6 +185,9 @@ fun WritingScreen(
     val colors = MaterialTheme.colorScheme
     val highlight = remember(colors) { FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant) }
 
+    if (showTransfer) {
+        TransferDialog(transferState, onToggle = { on -> if (on) transfer.start(lanAddress(context)) else transfer.stop() }, onDismiss = { showTransfer = false })
+    }
     Column(modifier.fillMaxSize().imePadding()) {
         if (!pane) Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (pane) 4.dp else 0.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -191,6 +214,10 @@ fun WritingScreen(
                     pickers.save(Scripts.fileName(value.text, ExportFormat.FOUNTAIN), ExportFormat.FOUNTAIN.mime, ExportFormat.FOUNTAIN.bytes(value.text))
                 })
                 DropdownMenuItem(text = { Text("Import .fadein or .fountain") }, onClick = { menu = false; pickers.open() })
+                DropdownMenuItem(
+                    text = { Text(if (transferState.running) "Transfer to a computer (on)" else "Transfer to a computer") },
+                    onClick = { menu = false; showTransfer = true },
+                )
             }
         }
 
@@ -245,6 +272,52 @@ fun WritingScreen(
             )
         }
     }
+}
+
+/** Switches the computer transfer page on or off and shows where to find it. */
+@Composable
+internal fun TransferDialog(state: TransferServer.State, onToggle: (Boolean) -> Unit, onDismiss: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Transfer to a computer") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { onToggle(!state.running) }.padding(vertical = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text("Transfer page", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Switch(checked = state.running, onCheckedChange = null)
+                }
+                when {
+                    state.running && state.address != null -> {
+                        Text("On a computer on the same Wi-Fi, open:", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            state.address!!,
+                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { clipboard.setText(AnnotatedString(state.address!!)) },
+                        )
+                        Text("PIN", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(state.pin.orEmpty(), style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace, letterSpacing = 6.sp))
+                        Text(
+                            "Download and upload .fadein and .fountain scripts there. Keep Nitrate open on this screen; it turns off after 15 minutes unused or when Nitrate goes to the background.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    state.running -> Text("On, but this phone's network address couldn't be found. Connect to Wi-Fi. PIN ${state.pin}.")
+                    else -> Text(
+                        state.note ?: "Off. Switch on to download or upload scripts from a browser on a computer on the same Wi-Fi.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 /** Colours Fountain elements in place; the text is unchanged, so offsets map 1:1. */

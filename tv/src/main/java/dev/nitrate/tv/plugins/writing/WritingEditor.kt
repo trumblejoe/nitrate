@@ -67,6 +67,7 @@ import dev.nitrate.core.writing.ExportFormat
 import dev.nitrate.core.writing.Fountain
 import dev.nitrate.core.writing.Scripts
 import dev.nitrate.core.writing.TransferServer
+import dev.nitrate.android.writing.lanAddress
 import dev.nitrate.core.writing.WritingDoc
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -412,10 +413,3 @@ private fun exportToDownloads(context: android.content.Context, name: String, mi
     }
 }.getOrElse { "Export failed: ${it.message}" }
 
-/** This TV's IPv4 address on the active network (Wi-Fi or Ethernet), for the transfer page link. */
-private fun lanAddress(context: android.content.Context): String? {
-    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return null
-    val props = cm.getLinkProperties(cm.activeNetwork) ?: return null
-    return props.linkAddresses.map { it.address }
-        .firstOrNull { it is java.net.Inet4Address && !it.isLoopbackAddress }?.hostAddress
-}

@@ -25,6 +25,7 @@ import dev.nitrate.mobile.ui.DownloadsScreen
 import dev.nitrate.mobile.ui.SearchScreen
 import dev.nitrate.mobile.ui.PlayerLayout
 import dev.nitrate.mobile.ui.WritingScreen
+import dev.nitrate.mobile.ui.TransferDialog
 import dev.nitrate.mobile.ui.GestureFeedback
 import dev.nitrate.mobile.ui.GestureFeedbackView
 import dev.nitrate.mobile.ui.TrickplayPreview
@@ -139,6 +140,11 @@ class ScreenshotTest {
             TrickplayPreview(server, "s2e4", info, positionMs = 21_000, x = 900f, barTop = 1000f)
             UpNextCard(next, server, seconds = 10, onPlay = {}, onHide = {})
         }
+    }
+
+    @Test
+    fun transfer() = shoot("phone-writing-transfer") {
+        TransferDialog(dev.nitrate.core.writing.TransferServer.State(running = true, address = "http://192.168.1.42:8765", pin = "482913"), onToggle = {}, onDismiss = {})
     }
 
     /** Writing beside the video: side by side when wide, stacked when upright. */
