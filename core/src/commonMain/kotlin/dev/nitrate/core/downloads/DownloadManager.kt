@@ -39,9 +39,13 @@ import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
-/** Asks the platform to run [DownloadManager.runQueue] in the background (WorkManager on Android). */
-fun interface DownloadScheduler {
+/** Background work on the platform (WorkManager on Android). */
+interface DownloadScheduler {
+    /** Run [DownloadManager.runQueue] when the network allows. */
     fun schedule(wifiOnly: Boolean)
+
+    /** Run [DownloadManager.syncWatchState] once any network is available. */
+    fun scheduleSync() {}
 }
 
 /** What [DownloadManager.runQueue] tells the background job. */
@@ -382,6 +386,7 @@ class DownloadManager(
             val user = r.item.user.copy(played = played || r.item.user.played, positionMs = position)
             r.copy(item = r.item.copy(user = user), pendingSync = true, watchedAtMs = now())
         }
+        scheduler.scheduleSync()
     }
 
     /**

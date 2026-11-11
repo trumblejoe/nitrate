@@ -28,6 +28,8 @@ android {
 dependencies {
     api(project(":core"))
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.androidx.work)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.datastore.preferences)
     api(libs.media3.exoplayer)
     api(libs.androidx.lifecycle.viewmodel.compose)

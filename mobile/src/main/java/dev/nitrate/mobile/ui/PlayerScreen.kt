@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,12 +55,27 @@ import dev.nitrate.mobile.platform.VideoSurface
 private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO }
 
 @Composable
-fun PlayerScreen(actions: AppActions, itemId: String, fromStart: Boolean, onExit: () -> Unit, onEnded: () -> Unit) {
+fun PlayerScreen(actions: AppActions, itemId: String, fromStart: Boolean, onExit: () -> Unit, onEnded: () -> Unit, local: Boolean = false) {
     val context = LocalContext.current
     val ended by rememberUpdatedState(onEnded)
+    val downloads = actions.container.downloads
     val session = remember(itemId) {
         PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() })
-            .also { it.load(itemId, fromStart) }
+            .also { if (!local) it.load(itemId, fromStart) }
+    }
+    if (local) {
+        LaunchedEffect(session) {
+            val record = downloads.find(itemId)
+            val plan = record?.let(downloads::playbackPlan)
+            if (record == null || plan == null) {
+                session.load(itemId, fromStart) // Deleted meanwhile: stream it instead.
+                return@LaunchedEffect
+            }
+            val start = if (fromStart) 0L else downloads.resumePositionMs(record)
+            session.loadLocal(record.item, plan, start) { position, duration, ended ->
+                downloads.recordPlayback(itemId, position, duration, ended)
+            }
+        }
     }
     DisposableEffect(session) { onDispose { session.release() } }
     FullscreenPlayback()
@@ -86,7 +102,7 @@ fun PlayerScreen(actions: AppActions, itemId: String, fromStart: Boolean, onExit
                 IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
                 Column(Modifier.weight(1f)) {
                     Text(item?.displayTitle.orEmpty(), color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val sub = listOfNotNull(item?.episodeLabel, plan?.method?.takeIf { it != PlayMethod.DIRECT_PLAY }?.let { if (it == PlayMethod.TRANSCODE) "Transcoding" else "Direct stream" })
+                    val sub = listOfNotNull(item?.episodeLabel, "Downloaded".takeIf { local }, plan?.method?.takeIf { it != PlayMethod.DIRECT_PLAY }?.let { if (it == PlayMethod.TRANSCODE) "Transcoding" else "Direct stream" })
                     if (sub.isNotEmpty()) Text(sub.joinToString(" · "), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                 }
                 TextButton(onClick = { dialog = PlayerDialog.AUDIO }, enabled = plan != null) { Text("Audio", color = Color.White) }

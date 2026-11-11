@@ -232,6 +232,7 @@ private fun QuickConnect(actions: AppActions, serverUrl: String, onLoggedIn: () 
 fun OfflineScreen(actions: AppActions, onOnline: () -> Unit, onSignedOut: () -> Unit) {
     var checking by remember { mutableStateOf(false) }
     var writing by remember { mutableStateOf(false) }
+    var downloads by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     suspend fun check() {
         checking = true
@@ -252,14 +253,19 @@ fun OfflineScreen(actions: AppActions, onOnline: () -> Unit, onSignedOut: () -> 
         WritingScreen(actions, onBack = { writing = false })
         return
     }
+    if (downloads) {
+        DownloadsScreen(actions, onBack = { downloads = false })
+        return
+    }
     FormPage {
         Text("Working offline", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Can't reach ${actions.server.serverUrl ?: "your server"}. Movies and shows come back when it does. " +
-                "Your writing saves on this device and backs up once the server is back.",
+            "Can't reach ${actions.server.serverUrl ?: "your server"}. Your downloads play as normal, and what you " +
+                "watch syncs when the server is back. Your writing saves on this device and backs up then too.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(onClick = { writing = true }, modifier = Modifier.fillMaxWidth()) { Text("Writing") }
+        Button(onClick = { downloads = true }, modifier = Modifier.fillMaxWidth()) { Text("Downloads") }
+        OutlinedButton(onClick = { writing = true }, modifier = Modifier.fillMaxWidth()) { Text("Writing") }
         OutlinedButton(onClick = { scope.launch { check() } }, enabled = !checking, modifier = Modifier.fillMaxWidth()) {
             Text(if (checking) "Checking…" else "Try again")
         }

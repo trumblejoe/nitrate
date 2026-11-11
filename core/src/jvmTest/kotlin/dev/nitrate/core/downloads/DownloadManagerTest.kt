@@ -95,7 +95,9 @@ class DownloadManagerTest {
     private val store = MemoryDownloadStore()
     private var scheduled = 0
     private var clock = 1_000_000L
-    private val manager = DownloadManager(server, store, engine, Path(root.path), { scheduled++ }, now = { clock })
+    private val manager = DownloadManager(server, store, engine, Path(root.path), object : DownloadScheduler {
+        override fun schedule(wifiOnly: Boolean) { scheduled++ }
+    }, now = { clock })
 
     private val movie = MediaItem(id = ITEM_ID, name = "Movie", kind = ItemKind.MOVIE, runtimeMs = 60_000)
 

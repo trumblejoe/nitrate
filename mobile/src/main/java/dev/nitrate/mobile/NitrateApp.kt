@@ -7,8 +7,8 @@ import coil3.SingletonImageLoader
 import coil3.request.crossfade
 import dev.nitrate.android.AppContainer
 
-class NitrateApp : Application(), SingletonImageLoader.Factory {
-    lateinit var container: AppContainer
+class NitrateApp : Application(), SingletonImageLoader.Factory, AppContainer.Owner {
+    override lateinit var container: AppContainer
         private set
 
     override fun onCreate() {

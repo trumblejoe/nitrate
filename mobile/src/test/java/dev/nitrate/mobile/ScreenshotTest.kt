@@ -12,7 +12,16 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import dev.nitrate.android.AppContainer
 import dev.nitrate.mobile.ui.AppActions
 import dev.nitrate.mobile.ui.ConnectScreen
+import dev.nitrate.core.downloads.DownloadQuality
+import dev.nitrate.core.downloads.DownloadRecord
+import dev.nitrate.core.downloads.DownloadState
+import dev.nitrate.core.downloads.DownloadsData
+import dev.nitrate.core.downloads.MemoryDownloadStore
+import dev.nitrate.core.model.ItemKind
+import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.model.UserState
 import dev.nitrate.mobile.ui.DetailsScreen
+import dev.nitrate.mobile.ui.DownloadsScreen
 import dev.nitrate.mobile.ui.LoginScreen
 import dev.nitrate.mobile.ui.MainScreen
 import dev.nitrate.mobile.ui.NitrateTheme
@@ -33,8 +42,8 @@ class ScreenshotTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun shoot(name: String, content: @Composable (AppActions) -> Unit) {
-        val container = AppContainer(compose.activity, "test", "0", serverOverride = FakeServer())
+    private fun shoot(name: String, downloads: DownloadsData = DownloadsData(), content: @Composable (AppActions) -> Unit) {
+        val container = AppContainer(compose.activity, "test", "0", serverOverride = FakeServer(), downloadStoreOverride = MemoryDownloadStore(downloads))
         compose.setContent {
             NitrateTheme {
                 // Same root as the app: background and text colours come from this Surface.
@@ -56,6 +65,29 @@ class ScreenshotTest {
     @Test fun home() = shoot("phone-home") { MainScreen(it) {} }
 
     @Test fun details() = shoot("phone-series") { DetailsScreen(it, "series-1", null) }
+
+    @Test
+    fun downloads() = shoot("phone-downloads", sampleDownloads()) { DownloadsScreen(it) }
+
+    private fun sampleDownloads(): DownloadsData {
+        val server = FakeServer()
+        fun record(item: MediaItem, quality: DownloadQuality, state: DownloadState, bytes: Long, total: Long, error: String? = null) =
+            DownloadRecord(item.id, server.serverUrl, server.userId, item, quality, state = state, bytesDownloaded = bytes, totalBytes = total, error = error, createdAtMs = bytes)
+        val runtime = 42 * 60_000L
+        fun episode(n: Int, watched: Boolean = false, positionMs: Long = 0) = MediaItem(
+            "s1e$n", "Episode title $n", ItemKind.EPISODE, seriesName = "The Night Reel", seasonNumber = 1, indexNumber = n, runtimeMs = runtime,
+            user = UserState(played = watched, positionMs = positionMs),
+        )
+        return DownloadsData(
+            records = listOf(
+                record(episode(4), DownloadQuality.MEDIUM, DownloadState.DOWNLOADING, 412_000_000, 1_310_000_000),
+                record(episode(5), DownloadQuality.MEDIUM, DownloadState.FAILED, 0, 1_310_000_000, "Your account isn't allowed to download from this server"),
+                record(MediaItem("m1", "Nitrate", ItemKind.MOVIE, runtimeMs = 7_000_000), DownloadQuality.ORIGINAL, DownloadState.COMPLETED, 6_400_000_000, 6_400_000_000),
+                record(episode(1, watched = true), DownloadQuality.LOW, DownloadState.COMPLETED, 480_000_000, 480_000_000),
+                record(episode(2, positionMs = 754_000).let { it }, DownloadQuality.LOW, DownloadState.COMPLETED, 470_000_000, 470_000_000).copy(pendingSync = true),
+            ),
+        )
+    }
 
     @Test
     @Config(qualifiers = "w1280dp-h800dp-land-night-mdpi")

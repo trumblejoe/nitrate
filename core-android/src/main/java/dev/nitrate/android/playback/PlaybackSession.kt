@@ -2,6 +2,7 @@ package dev.nitrate.android.playback
 
 import android.content.Context
 import android.net.Uri
+import java.io.File
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaMetadata
@@ -45,6 +46,9 @@ import androidx.media3.common.MediaItem as ExoMediaItem
  * Negotiates with the server, side-loads external subtitles, maps the server's audio/subtitle
  * streams onto the player's tracks, reports progress, and when direct play fails with a decoder
  * error, remembers the format and retries as a transcode from the same spot.
+ *
+ * [loadLocal] plays a downloaded file instead: progress goes to a callback (saved on the device
+ * and synced later) rather than to the server.
  */
 @OptIn(UnstableApi::class)
 class PlaybackSession(
@@ -56,6 +60,7 @@ class PlaybackSession(
     private val onEnded: () -> Unit,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _item = MutableStateFlow<MediaItem?>(null)
     val item: StateFlow<MediaItem?> = _item
@@ -74,6 +79,9 @@ class PlaybackSession(
 
     private var selectionApplied = false
     private var progressJob: Job? = null
+
+    /** Set for a downloaded file: where progress goes instead of the server. */
+    private var localProgress: (suspend (positionMs: Long, durationMs: Long, ended: Boolean) -> Unit)? = null
 
     val player: ExoPlayer = run {
         // The auth header covers direct play, HLS playlists and segments, and subtitle files.
@@ -103,7 +111,7 @@ class PlaybackSession(
 
         override fun onPlayerError(e: PlaybackException) {
             val failed = _plan.value
-            if (failed == null || failed.method == PlayMethod.TRANSCODE) {
+            if (failed == null || failed.method == PlayMethod.TRANSCODE || localProgress != null) {
                 _error.value = "Playback failed: ${e.errorCodeName}"
                 return
             }
@@ -125,7 +133,13 @@ class PlaybackSession(
         }
 
         override fun onPlaybackStateChanged(state: Int) {
-            if (state == Player.STATE_ENDED) onEnded()
+            if (state != Player.STATE_ENDED) return
+            localProgress?.let { record ->
+                val duration = player.duration.coerceAtLeast(0)
+                localProgress = null // Recorded as watched here, not again on release.
+                appScope.launch { record(duration, duration, true) }
+            }
+            onEnded()
         }
     }
 
@@ -154,6 +168,47 @@ class PlaybackSession(
         }
     }
 
+    /** Plays a downloaded file from [plan] (local paths), reporting progress to [onProgress]. */
+    fun loadLocal(item: MediaItem, plan: PlaybackPlan, startMs: Long, onProgress: suspend (positionMs: Long, durationMs: Long, ended: Boolean) -> Unit) {
+        localProgress = onProgress
+        _item.value = item
+        play(plan, startMs, item.name)
+        progressJob?.cancel()
+        progressJob = scope.launch {
+            while (isActive) {
+                delay(PROGRESS_INTERVAL_MS)
+                localProgress?.invoke(player.currentPosition, player.duration.coerceAtLeast(0), false)
+            }
+        }
+    }
+
+    private fun uriOf(url: String): Uri = if (url.startsWith("/")) Uri.fromFile(File(url)) else Uri.parse(url)
+
+    private fun play(p: PlaybackPlan, startMs: Long, title: String) {
+        _plan.value = p
+        selectionApplied = false
+        _videoDecoder.value = null
+        _audioDecoder.value = null
+        val subtitles = p.externalSubtitles.map { sub ->
+            ExoMediaItem.SubtitleConfiguration.Builder(uriOf(sub.url))
+                .setId("jf-${sub.streamIndex}")
+                .setMimeType(sub.mimeType)
+                .setLanguage(sub.language)
+                .setLabel(sub.label)
+                .build()
+        }
+        val media = ExoMediaItem.Builder()
+            .setUri(uriOf(p.url))
+            .apply { if (p.isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
+            .setSubtitleConfigurations(subtitles)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+            .build()
+        // Jellyfin's HLS playlists span the whole file, so every method seeks client-side.
+        player.setMediaItem(media, startMs)
+        player.prepare()
+        player.playWhenReady = true
+    }
+
     private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null) {
         val current = _item.value ?: return
         runCatching {
@@ -167,28 +222,7 @@ class PlaybackSession(
                 mediaSourceId = _plan.value?.mediaSourceId,
             )
         }.onSuccess { p ->
-            _plan.value = p
-            selectionApplied = false
-            _videoDecoder.value = null
-            _audioDecoder.value = null
-            val subtitles = p.externalSubtitles.map { sub ->
-                ExoMediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
-                    .setId("jf-${sub.streamIndex}")
-                    .setMimeType(sub.mimeType)
-                    .setLanguage(sub.language)
-                    .setLabel(sub.label)
-                    .build()
-            }
-            val media = ExoMediaItem.Builder()
-                .setUri(p.url)
-                .apply { if (p.isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
-                .setSubtitleConfigurations(subtitles)
-                .setMediaMetadata(MediaMetadata.Builder().setTitle(current.name).build())
-                .build()
-            // Jellyfin's HLS playlists span the whole file, so every method seeks client-side.
-            player.setMediaItem(media, startMs)
-            player.prepare()
-            player.playWhenReady = true
+            play(p, startMs, current.name)
             server.reportStart(p, startMs)
             startProgressReports(p)
         }.onFailure { _error.value = it.message ?: "Could not start playback" }
@@ -218,7 +252,8 @@ class PlaybackSession(
             else -> false
         }
         val updated = if (kind == StreamKind.AUDIO) p.copy(audioIndex = index) else p.copy(subtitleIndex = index)
-        if (clientSide) {
+        // A downloaded file has only what's in it.
+        if (clientSide || localProgress != null) {
             _plan.value = updated
             applySelection(updated)
         } else {
@@ -280,7 +315,15 @@ class PlaybackSession(
 
     /** Reports the stop to the server and frees the player. Call once, when leaving playback. */
     fun release() {
-        _plan.value?.let { server.reportStopped(it, player.currentPosition) }
+        val local = localProgress
+        if (local != null) {
+            val position = player.currentPosition
+            val duration = player.duration.coerceAtLeast(0)
+            // Outlives this session, so leaving the player still saves where it stopped.
+            appScope.launch { local(position, duration, false) }
+        } else {
+            _plan.value?.let { server.reportStopped(it, player.currentPosition) }
+        }
         player.removeListener(listener)
         player.release()
         scope.cancel()

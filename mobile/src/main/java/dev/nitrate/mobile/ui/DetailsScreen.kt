@@ -37,7 +37,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +81,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?) {
     }
     val server = actions.server
     val bg = MaterialTheme.colorScheme.background
+    val records by actions.container.downloads.downloads.collectAsState(emptyList())
+    val downloaded = remember(records) { records.map { it.itemId }.toSet() }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item(key = "hero") {
@@ -126,12 +130,30 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?) {
                     }
                 }
             }
+            item(key = "download-season") {
+                val missing = state.episodes.filter { it.id !in downloaded }
+                var picking by remember { mutableStateOf(false) }
+                if (missing.isNotEmpty()) {
+                    TextButton(onClick = { picking = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Icon(NitrateIcons.Download, null, modifier = Modifier.padding(end = 8.dp))
+                        Text(if (missing.size == state.episodes.size) "Download season" else "Download ${missing.size} more episodes")
+                    }
+                }
+                if (picking) {
+                    val season = state.seasons.getOrNull(state.selectedSeason)?.name.orEmpty()
+                    DownloadDialog(actions, missing, "${item.name} · $season") { picking = false }
+                }
+            }
             items(state.episodes, key = { "ep-${it.id}" }) { episode ->
                 ListItem(
                     modifier = Modifier.clickable { actions.open(episode) },
                     leadingContent = {
                         Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
                             server.cardImage(episode, CardShape.WIDE, 200)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                            if (episode.id in downloaded) {
+                                Icon(NitrateIcons.DownloadDone, "Downloaded", tint = Color.White,
+                                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).background(Color(0x99000000), CircleShape).size(18.dp).padding(2.dp))
+                            }
                             if (episode.user.played) {
                                 Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.onPrimary,
                                     modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).background(MaterialTheme.colorScheme.primary, CircleShape).size(18.dp).padding(2.dp))
@@ -203,5 +225,6 @@ private fun PlayButtons(actions: AppActions, item: MediaItem, seriesTarget: Medi
         FilledTonalIconToggleButton(checked = item.user.isFavorite, onCheckedChange = { vm.toggleFavorite() }) {
             Icon(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite")
         }
+        if (item.isPlayable) DownloadButton(actions, item)
     }
 }

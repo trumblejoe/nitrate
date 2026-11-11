@@ -129,7 +129,9 @@ class JellyfinLiveTest {
         val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
         client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
         val root = java.nio.file.Files.createTempDirectory("nitrate-live-dl").toFile()
-        val manager = DownloadManager(client, MemoryDownloadStore(), OkHttp.create(), kotlinx.io.files.Path(root.path), { })
+        val manager = DownloadManager(client, MemoryDownloadStore(), OkHttp.create(), kotlinx.io.files.Path(root.path), object : dev.nitrate.core.downloads.DownloadScheduler {
+            override fun schedule(wifiOnly: Boolean) {}
+        })
 
         val all = client.views().flatMap { client.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 50, false).first }
         val movie = all.first { it.kind == ItemKind.MOVIE }

@@ -52,6 +52,7 @@ import dev.nitrate.core.writing.WritingPlugin
 private enum class Tab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     LIBRARIES("Libraries", Icons.AutoMirrored.Filled.List),
+    DOWNLOADS("Downloads", NitrateIcons.Download),
     WRITING("Writing", Icons.Default.Edit),
     SETTINGS("Settings", Icons.Default.Settings),
 }
@@ -68,6 +69,7 @@ fun MainScreen(actions: AppActions, onSignedOut: () -> Unit) {
         when (tab) {
             Tab.HOME -> HomeTab(actions, modifier)
             Tab.LIBRARIES -> LibrariesTab(actions, modifier)
+            Tab.DOWNLOADS -> DownloadsScreen(actions, modifier)
             Tab.WRITING -> WritingScreen(actions, onBack = null, modifier = modifier)
             Tab.SETTINGS -> SettingsScreen(actions, onSignedOut, modifier)
         }

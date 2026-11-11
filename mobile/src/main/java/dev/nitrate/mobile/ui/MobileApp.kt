@@ -24,6 +24,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import dev.nitrate.android.AppContainer
+import dev.nitrate.core.downloads.DownloadState
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.SessionState
@@ -41,8 +42,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
 @Serializable data class PlaylistRoute(val playlistId: String)
 
-/** [queue] is comma-separated item ids to play after [itemId]. */
-@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "")
+/** [queue] is comma-separated item ids to play after [itemId]; [local] plays the downloaded file. */
+@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false)
 
 /** Shared by every screen: the container, navigation, and play-with-plugin-checks. */
 class AppActions(
@@ -73,9 +74,11 @@ class AppActions(
 @Composable
 fun MobileApp(container: AppContainer) {
     var start by remember { mutableStateOf<Any?>(null) }
+    // Outlives individual screens, for syncing watch state from downloads.
+    val appScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         start = when (container.server.restoreSession()) {
-            SessionState.VALID -> { container.settingsSync.pull(); MainRoute }
+            SessionState.VALID -> { container.settingsSync.pull(); appScope.launch { container.downloads.syncWatchState() }; MainRoute }
             SessionState.UNREACHABLE -> OfflineRoute
             SessionState.NONE, SessionState.EXPIRED -> ConnectRoute
         }
@@ -93,6 +96,10 @@ fun MobileApp(container: AppContainer) {
         // A plugin's question before playing (e.g. an unwatched earlier episode).
         var pending by remember { mutableStateOf<Pair<GuardDecision.Ask, CompletableDeferred<GuardAction>>?>(null) }
 
+        // A downloaded item plays from the device, online or not.
+        fun playerRoute(itemId: String, fromStart: Boolean) =
+            PlayerRoute(itemId, fromStart, local = container.downloads.find(itemId)?.state == DownloadState.COMPLETED)
+
         val actions = remember(nav) {
             AppActions(container, nav) { item, fromStart ->
                 scope.launch {
@@ -102,12 +109,12 @@ fun MobileApp(container: AppContainer) {
                         answer.await().also { pending = null }
                     }
                     when (action) {
-                        GuardAction.PlayAnyway -> nav.navigate(PlayerRoute(item.id, fromStart))
+                        GuardAction.PlayAnyway -> nav.navigate(playerRoute(item.id, fromStart))
                         GuardAction.Cancel -> Unit
-                        is GuardAction.PlayInstead -> nav.navigate(PlayerRoute(action.item.id))
+                        is GuardAction.PlayInstead -> nav.navigate(playerRoute(action.item.id, false))
                         is GuardAction.MarkWatchedThenPlay -> {
                             action.itemIds.forEach { runCatching { container.server.setPlayed(it, true) } }
-                            nav.navigate(PlayerRoute(item.id, fromStart))
+                            nav.navigate(playerRoute(item.id, fromStart))
                         }
                     }
                 }
@@ -126,7 +133,11 @@ fun MobileApp(container: AppContainer) {
             composable<OfflineRoute> {
                 OfflineScreen(
                     actions,
-                    onOnline = { container.settingsSync.pull(); nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } } },
+                    onOnline = {
+                        container.settingsSync.pull()
+                        appScope.launch { container.downloads.syncWatchState() }
+                        nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
+                    },
                     onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
                 )
             }
@@ -145,6 +156,7 @@ fun MobileApp(container: AppContainer) {
                     actions = actions,
                     itemId = route.itemId,
                     fromStart = route.fromStart,
+                    local = route.local,
                     onExit = { nav.popBackStack() },
                     onEnded = {
                         val next = route.queue.split(',').filter(String::isNotBlank)
