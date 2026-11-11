@@ -18,7 +18,8 @@ jobs:
         with:
           packages: "platforms;android-37.2"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew test assembleDebug --console=plain
+      # KMP core: jvmTest is not part of `test`; the iOS compile catches JVM-only APIs in commonMain.
+      - run: ./gradlew test :core:jvmTest :core:compileKotlinIosArm64 assembleDebug --console=plain
       - uses: actions/upload-artifact@v4
         with:
           name: nitrate-tv-debug

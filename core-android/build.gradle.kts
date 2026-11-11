@@ -1,4 +1,4 @@
-// Android implementation of :core: the Jellyfin server (via the Jellyfin Kotlin SDK), on-device
+// Android implementation of :core: the HTTP engine for core's Jellyfin client, on-device
 // storage, the decoder/display probe, and shared app wiring. Used by both :tv and :mobile.
 plugins {
     alias(libs.plugins.android.library)
@@ -27,7 +27,7 @@ android {
 
 dependencies {
     api(project(":core"))
-    implementation(libs.jellyfin.core)
+    implementation(libs.ktor.client.okhttp)
     implementation(libs.androidx.datastore.preferences)
     api(libs.media3.exoplayer)
     api(libs.androidx.lifecycle.viewmodel.compose)

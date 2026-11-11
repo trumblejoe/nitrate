@@ -17,12 +17,20 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
+        optIn.add("kotlinx.serialization.ExperimentalSerializationApi")
     }
 
     sourceSets {
         commonMain.dependencies {
             api(libs.kotlinx.coroutines.core)
             api(libs.kotlinx.serialization.json)
+            api(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.json)
+            implementation(libs.ktor.network)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -30,6 +38,8 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(libs.junit)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.ktor.client.okhttp)
         }
     }
 }

@@ -39,7 +39,7 @@ Early, but usable end to end:
 | --- | --- |
 | UI | Jetpack Compose, `androidx.tv:tv-material` |
 | Navigation | Navigation Compose (type-safe routes) |
-| Server API | [Jellyfin Kotlin SDK](https://github.com/jellyfin/jellyfin-sdk-kotlin) |
+| Server API | Nitrate's own multiplatform Jellyfin client ([Ktor](https://ktor.io) + kotlinx.serialization), contract-tested against Jellyfin's OpenAPI spec |
 | Playback | AndroidX Media3 ExoPlayer |
 | Images | Coil 3 |
 | Storage | DataStore Preferences |
@@ -81,8 +81,8 @@ The debug build uses the application ID `dev.nitrate.tv.debug`, so it can sit al
 
 | Module | What it is |
 | --- | --- |
-| `core` | Plain Kotlin, no Android or Jellyfin SDK: Nitrate's own models, the `MediaServer` interface, and all platform-neutral logic (rows, playback rules and test advisor, episode order, Fountain/.fadein, transfer server, plugins). Becomes Kotlin Multiplatform for iOS. |
-| `core-android` | Android implementation: `JellyfinServer` (the only code using the Jellyfin SDK), on-device storage, the decoder/display probe, `PlaybackSession` (Media3), settings sync, shared view models and `AppContainer`. |
+| `core` | Kotlin Multiplatform (JVM + iOS): Nitrate's own models, the `MediaServer` interface and its Jellyfin client, and all platform-neutral logic (rows, playback rules and test advisor, episode order, Fountain/.fadein, transfer server, plugins). |
+| `core-android` | Android implementation: HTTP engine and device identity for the Jellyfin client, on-device storage, the decoder/display probe, `PlaybackSession` (Media3), settings sync, shared view models and `AppContainer`. |
 | `tv` | Android TV app (Compose for TV), application ID `dev.nitrate.tv`. |
 | `mobile` | Android phone/tablet app (Material 3, bottom bar on phones, side rail on tablets), application ID `dev.nitrate.app`. Screens use only multiplatform-ready libraries; Android-only pieces live in its `platform` package. |
 
@@ -90,7 +90,7 @@ Builds: `./gradlew assembleDebug` produces `tv/build/outputs/apk/debug/tv-debug.
 
 ### Toward iOS
 
-The Jellyfin Kotlin SDK has no iOS target, so phase 2 makes `core` Kotlin Multiplatform with a client generated from Jellyfin's OpenAPI spec; phase 3 moves `mobile`'s screens to Compose Multiplatform with an AVPlayer/VLCKit player chosen per file. iOS builds need macOS (GitHub's macOS runners can build and upload to TestFlight).
+Phase 2 (done) made `core` Kotlin Multiplatform with its own Jellyfin client, so the server code already compiles for iOS; phase 3 moves `mobile`'s screens to Compose Multiplatform with an AVPlayer/VLCKit player chosen per file. iOS builds need macOS (GitHub's macOS runners can build and upload to TestFlight).
 
 ## Notes
 

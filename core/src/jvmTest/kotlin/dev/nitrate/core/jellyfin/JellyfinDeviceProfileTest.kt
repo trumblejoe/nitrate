@@ -1,11 +1,10 @@
-package dev.nitrate.android.jellyfin
+package dev.nitrate.core.jellyfin
 
 import dev.nitrate.core.playback.DeviceCapabilities
+import dev.nitrate.core.playback.caps
 import dev.nitrate.core.playback.LearnedFailure
 import dev.nitrate.core.playback.Override
 import dev.nitrate.core.playback.PlaybackSettings
-import org.jellyfin.sdk.model.api.DlnaProfileType
-import org.jellyfin.sdk.model.api.ProfileConditionValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,12 +12,12 @@ import org.junit.Test
 
 class JellyfinDeviceProfileTest {
     private fun videoCodecs(settings: PlaybackSettings, c: DeviceCapabilities = caps()) =
-        JellyfinDeviceProfile.create(c, settings).directPlayProfiles!!
-            .first { it.type == DlnaProfileType.VIDEO }.videoCodec!!.split(",")
+        JellyfinDeviceProfile.create(c, settings).directPlayProfiles
+            .first { it.type == "Video" }.videoCodec!!.split(",")
 
-    private fun condition(settings: PlaybackSettings, codec: String, property: ProfileConditionValue) =
-        JellyfinDeviceProfile.create(caps(), settings).codecProfiles!!
-            .first { it.codec == codec }.conditions.first { it.property == property }.value.orEmpty()
+    private fun condition(settings: PlaybackSettings, codec: String, property: String) =
+        JellyfinDeviceProfile.create(caps(), settings).codecProfiles
+            .first { it.codec == codec }.conditions.first { it.property == property }.value
 
     @Test
     fun `reported codecs are direct played`() {
@@ -42,21 +41,21 @@ class JellyfinDeviceProfileTest {
     @Test
     fun `per-codec limits cap height and bit depth`() {
         val s = PlaybackSettings(codecMaxHeight = mapOf("h264" to 1080), eightBitOnly = setOf("h264"))
-        assertEquals("1080", condition(s, "h264", ProfileConditionValue.HEIGHT))
-        assertEquals("8", condition(s, "h264", ProfileConditionValue.VIDEO_BIT_DEPTH))
-        assertEquals("2160", condition(s, "hevc", ProfileConditionValue.HEIGHT))
+        assertEquals("1080", condition(s, "h264", "Height"))
+        assertEquals("8", condition(s, "h264", "VideoBitDepth"))
+        assertEquals("2160", condition(s, "hevc", "Height"))
     }
 
     @Test
     fun `disabling HDR10 leaves SDR and HLG but drops HDR10 and its Dolby Vision fallback`() {
-        val ranges = condition(PlaybackSettings(overrides = mapOf("range:HDR10" to Override.NEVER)), "hevc", ProfileConditionValue.VIDEO_RANGE_TYPE).split("|")
+        val ranges = condition(PlaybackSettings(overrides = mapOf("range:HDR10" to Override.NEVER)), "hevc", "VideoRangeType").split("|")
         assertTrue("SDR" in ranges && "HLG" in ranges)
         assertFalse("HDR10" in ranges || "DOVIWithHDR10" in ranges)
     }
 
     @Test
     fun `Dolby Vision with an HDR10 base layer plays as HDR10 when DV is not supported`() {
-        val ranges = condition(PlaybackSettings(), "hevc", ProfileConditionValue.VIDEO_RANGE_TYPE).split("|")
+        val ranges = condition(PlaybackSettings(), "hevc", "VideoRangeType").split("|")
         assertTrue("DOVIWithHDR10" in ranges)
         assertFalse("DOVI" in ranges)
     }
