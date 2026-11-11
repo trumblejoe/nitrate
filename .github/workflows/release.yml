@@ -1,0 +1,95 @@
+name: Release
+
+# Builds signed APKs for the phone/tablet and TV apps and publishes them as a GitHub release.
+#  - Push a tag like v0.2.0 for a release.
+#  - Or run it from the Actions tab ("Run workflow") for a test build from any branch,
+#    published as a pre-release named dev-<run number>.
+# Needs the signing key in repository secrets: NITRATE_KEYSTORE_BASE64,
+# NITRATE_KEYSTORE_PASSWORD and NITRATE_KEY_ALIAS (see README, "Releases").
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-37.2"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.NITRATE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.NITRATE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.NITRATE_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "::error::Add NITRATE_KEYSTORE_BASE64, NITRATE_KEYSTORE_PASSWORD and NITRATE_KEY_ALIAS to the repository's Actions secrets (see README, Releases)."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nitrate-release.jks"
+          {
+            echo "NITRATE_KEYSTORE_FILE=$RUNNER_TEMP/nitrate-release.jks"
+            echo "NITRATE_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "NITRATE_KEY_ALIAS=$KEY_ALIAS"
+          } >> "$GITHUB_ENV"
+
+      - name: Version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+            name="${tag#v}"
+            prerelease=false
+          else
+            tag="dev-$GITHUB_RUN_NUMBER"
+            name="0.0.0-dev.$GITHUB_RUN_NUMBER"
+            prerelease=true
+          fi
+          # Run numbers only go up, so every build installs over the last one.
+          echo "NITRATE_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "NITRATE_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+      - name: Test and build
+        run: ./gradlew test :core:jvmTest assembleRelease --console=plain
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          NAME: ${{ steps.version.outputs.name }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          mkdir dist
+          cp mobile/build/outputs/apk/release/mobile-release.apk "dist/nitrate-mobile-$NAME.apk"
+          cp tv/build/outputs/apk/release/tv-release.apk "dist/nitrate-tv-$NAME.apk"
+          (cd dist && sha256sum *.apk > SHA256SUMS)
+          notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk
+
+          Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}."
+          flags=(--title "Nitrate $NAME" --notes "$notes" --target "$GITHUB_SHA")
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          else
+            flags+=(--generate-notes)
+          fi
+          gh release create "$TAG" dist/* "${flags[@]}"

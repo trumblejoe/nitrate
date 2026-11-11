@@ -17,8 +17,22 @@ android {
         applicationId = "dev.nitrate.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI sets these for releases (see .github/workflows/release.yml).
+        versionCode = System.getenv("NITRATE_VERSION_CODE")?.toInt() ?: 1
+        versionName = System.getenv("NITRATE_VERSION_NAME") ?: "0.1.0"
+    }
+
+    signingConfigs {
+        // The release key comes from CI secrets. Every release must use the same key, or
+        // Android refuses to install it over the previous one.
+        System.getenv("NITRATE_KEYSTORE_FILE")?.let { path ->
+            create("release") {
+                storeFile = file(path)
+                storePassword = System.getenv("NITRATE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("NITRATE_KEY_ALIAS")
+                keyPassword = System.getenv("NITRATE_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -26,6 +40,8 @@ android {
             applicationIdSuffix = ".debug"
         }
         release {
+            // Without the CI key (local builds), sign with the debug key so the APK still installs.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

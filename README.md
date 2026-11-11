@@ -70,13 +70,46 @@ Requires the Android SDK (platform 37.2). Set `sdk.dir` in `local.properties` or
 ./gradlew assembleDebug
 ```
 
-The APK lands in `app/build/outputs/apk/debug/`. Install on a TV or emulator with:
+The APKs land in `tv/build/outputs/apk/debug/` and `mobile/build/outputs/apk/debug/`. Install with:
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r tv/build/outputs/apk/debug/tv-debug.apk
 ```
 
-The debug build uses the application ID `dev.nitrate.tv.debug`, so it can sit alongside a release build.
+Debug builds use the application IDs `dev.nitrate.tv.debug` and `dev.nitrate.app.debug`, so they sit alongside release builds.
+
+## Releases
+
+`.github/workflows/release.yml` builds signed release APKs for both apps and publishes them on the repository's Releases page:
+
+- **Release:** push a tag such as `v0.2.0`.
+- **Test build:** Actions → Release → *Run workflow*, on any branch. It is published as a pre-release named `dev-<run number>`.
+
+Every build has a higher version code, so it installs over the previous one. On a phone, open the release on GitHub and tap the `nitrate-mobile-….apk` (allow installs from your browser when asked). On a TV, use an app such as Downloader, or `adb install -r nitrate-tv-….apk`.
+
+### Signing key (one-time setup)
+
+Android only updates an app with an APK signed by the same key, so releases use a key kept in the repository's secrets. Create it once on your computer (needs a JDK for `keytool`) and keep a backup: losing it means uninstalling before the next release can install.
+
+```bash
+keytool -genkeypair -keystore nitrate-release.jks -alias nitrate -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Nitrate"
+```
+
+Then add three secrets under Settings → Secrets and variables → Actions, or with the GitHub CLI:
+
+```bash
+base64 < nitrate-release.jks | tr -d '\n' | gh secret set NITRATE_KEYSTORE_BASE64 -R trumblejoe/nitrate
+```
+
+```bash
+gh secret set NITRATE_KEYSTORE_PASSWORD -R trumblejoe/nitrate
+```
+
+```bash
+gh secret set NITRATE_KEY_ALIAS -R trumblejoe/nitrate --body nitrate
+```
+
+`keytool` asks for one password; use it for `NITRATE_KEYSTORE_PASSWORD`. Without the secrets the workflow stops with a message saying what's missing; local `assembleRelease` builds are signed with the debug key instead.
 
 ## Project layout
 
