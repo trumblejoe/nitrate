@@ -1,13 +1,6 @@
 package dev.nitrate.core.writing
 
-import org.w3c.dom.Element as XmlElement
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.util.UUID
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
-import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.uuid.Uuid
 
 /**
  * Converts between Fountain and Fade In's native `.fadein` files: a ZIP holding `document.xml`
@@ -41,15 +34,7 @@ object FadeIn {
 
     // ---- Fountain -> .fadein ----
 
-    fun export(fountain: String): ByteArray {
-        val out = ByteArrayOutputStream()
-        ZipOutputStream(out).use { zip ->
-            zip.putNextEntry(ZipEntry("document.xml"))
-            zip.write(toOsfXml(fountain).toByteArray(Charsets.UTF_8))
-            zip.closeEntry()
-        }
-        return out.toByteArray()
-    }
+    fun export(fountain: String): ByteArray = Zip.write(listOf("document.xml" to toOsfXml(fountain).encodeToByteArray()))
 
     fun toOsfXml(fountain: String): String {
         val lines = fountain.replace("\r\n", "\n").split('\n')
@@ -86,7 +71,7 @@ object FadeIn {
         return buildString {
             append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
             append("<document type=\"Open Screenplay Format document\" version=\"40\">\n")
-            append("  <info uuid=\"").append(UUID.randomUUID()).append("\" pagecount=\"").append(pages).append("\"/>\n")
+            append("  <info uuid=\"").append(Uuid.random()).append("\" pagecount=\"").append(pages).append("\"/>\n")
             append("  <settings/>\n  <styles/>\n")
             append("  <paragraphs>\n").append(paras).append("  </paragraphs>\n")
             if (title.isEmpty()) append("  <titlepage/>\n") else append("  <titlepage>\n").append(title).append("  </titlepage>\n")
@@ -146,7 +131,7 @@ object FadeIn {
             if (bold) sb.append(" bold=\"1\"")
             if (italic) sb.append(" italic=\"1\"")
             if (underline) sb.append(" underline=\"1\"")
-            sb.append('>').append(escape(run.toString())).append("</text>")
+            sb.append('>').append(Xml.escape(run.toString())).append("</text>")
             run.clear()
         }
         var i = 0
@@ -164,7 +149,6 @@ object FadeIn {
         flush()
     }
 
-    private fun escape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
     // ---- .fadein -> Fountain ----
 
@@ -175,35 +159,25 @@ object FadeIn {
     }
 
     private fun unzipDocument(bytes: ByteArray): ByteArray {
-        var fallback: ByteArray? = null
-        ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                if (entry.name.endsWith("document.xml")) return zip.readBytes()
-                if (fallback == null && entry.name.endsWith(".xml")) fallback = zip.readBytes()
-            }
-        }
-        return fallback ?: error("No screenplay inside this .fadein file")
+        val entries = Zip.read(bytes)
+        return (entries.firstOrNull { it.first.endsWith("document.xml") } ?: entries.firstOrNull { it.first.endsWith(".xml") })?.second
+            ?: error("No screenplay inside this .fadein file")
     }
 
     private class Para(val style: String, val text: String, val bookmark: String?)
 
     fun fromOsfXml(xml: ByteArray): String {
-        val factory = DocumentBuilderFactory.newInstance().apply {
-            // Untrusted input: no external entities or DTDs.
-            runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
-            isExpandEntityReferences = false
-        }
-        val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(xml)).documentElement
-        require(doc.tagName == "document") { "Not an Open Screenplay Format document" }
+        // DOCTYPEs and external entities are never resolved by this parser.
+        val doc = Xml.parse(xml.decodeToString())
+        require(doc.name == "document") { "Not an Open Screenplay Format document" }
 
         fun paras(container: String): List<Para> {
-            val parent = doc.getElementsByTagName(container).item(0) as? XmlElement ?: return emptyList()
-            return parent.childElements("para").map { p ->
-                val styleEl = p.childElements("style").firstOrNull()
-                val style = styleEl?.let { s -> listOf("basestyle", "baseStyleName", "basestylename").map(s::getAttribute).firstOrNull { it.isNotEmpty() } }.orEmpty()
-                val text = p.childElements("text").joinToString("") { t -> t.toFountainRun() }
-                Para(style, text, p.getAttribute("bookmark").ifEmpty { null })
+            val parent = doc.find(container) ?: return emptyList()
+            return parent.elements("para").map { p ->
+                val styleEl = p.firstElement("style")
+                val style = styleEl?.let { st -> listOf("basestyle", "baseStyleName", "basestylename").map(st::attr).firstOrNull { it.isNotEmpty() } }.orEmpty()
+                val text = p.elements("text").joinToString("") { t -> t.toFountainRun() }
+                Para(style, text, p.attr("bookmark").ifEmpty { null })
             }
         }
 
@@ -219,9 +193,9 @@ object FadeIn {
             if (p.text.isNotBlank()) titleFields.getOrPut(key) { mutableListOf() } += p.text.trim()
         }
         if (titleFields.isEmpty()) {
-            val info = doc.childElements("info").firstOrNull()
-            info?.getAttribute("title")?.takeIf { it.isNotBlank() && it != "Untitled" }?.let { titleFields["Title"] = mutableListOf(it) }
-            info?.getAttribute("written_by")?.takeIf { it.isNotBlank() && it != "Written by" }?.let { titleFields["Author"] = mutableListOf(it) }
+            val info = doc.firstElement("info")
+            info?.attr("title")?.takeIf { it.isNotBlank() && it != "Untitled" }?.let { titleFields["Title"] = mutableListOf(it) }
+            info?.attr("written_by")?.takeIf { it.isNotBlank() && it != "Written by" }?.let { titleFields["Author"] = mutableListOf(it) }
         }
         for ((key, values) in titleFields) {
             if (values.size == 1) out.append(key).append(": ").append(values[0]).append('\n')
@@ -257,21 +231,17 @@ object FadeIn {
         }
     }
 
-    private fun XmlElement.childElements(tag: String): List<XmlElement> {
-        val nodes = childNodes
-        return (0 until nodes.length).mapNotNull { nodes.item(it) as? XmlElement }.filter { it.tagName == tag }
-    }
 
     private fun XmlElement.toFountainRun(): String {
-        val raw = textContent.orEmpty()
+        val raw = text
         if (raw.isBlank()) return raw
         // Keep surrounding spaces outside the markers so emphasis stays valid Fountain.
         val lead = raw.takeWhile { it == ' ' }
         val trail = raw.takeLastWhile { it == ' ' }
         var core = raw.trim().replace("*", "\\*").replace("_", "\\_")
-        if (getAttribute("underline") == "1") core = "_${core}_"
-        val bold = getAttribute("bold") == "1"
-        val italic = getAttribute("italic") == "1"
+        if (attr("underline") == "1") core = "_${core}_"
+        val bold = attr("bold") == "1"
+        val italic = attr("italic") == "1"
         core = when {
             bold && italic -> "***$core***"
             bold -> "**$core**"

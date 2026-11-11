@@ -58,7 +58,7 @@ object EpisodeOrder {
      */
     fun gaps(episodes: List<EpisodeRef>): List<Gap> {
         val regular = episodes.filter { !it.isSpecial && it.season != null && it.episode != null }
-        val bySeason = regular.groupBy { it.season!! }.toSortedMap()
+        val bySeason = regular.groupBy { it.season!! }.entries.sortedBy { it.key }.associate { it.key to it.value }
         val out = mutableListOf<Gap>()
 
         var previousSeason: Int? = null

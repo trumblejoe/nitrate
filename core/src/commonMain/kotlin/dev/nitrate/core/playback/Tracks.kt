@@ -4,6 +4,7 @@ import dev.nitrate.core.model.MediaStream
 import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.PlaybackPlan
 import dev.nitrate.core.model.StreamKind
+import dev.nitrate.core.model.formatOneDecimal
 
 /** One choice in a track list; [index] is the server stream index (-1 for "Off"). */
 data class TrackChoice(val index: Int, val title: String, val detail: String?)
@@ -43,7 +44,7 @@ fun PlaybackPlan.infoRows(videoDecoder: String?, audioDecoder: String?): List<Pa
         )
         if (transcodeReasons.isNotEmpty()) add("Why" to transcodeReasons.joinToString(", ") { it.toReadableReason() })
         add("Container" to (source.container ?: "?"))
-        source.bitrate?.let { add("Bitrate" to "%.1f Mbps".format(it / 1_000_000.0)) }
+        source.bitrate?.let { add("Bitrate" to "${formatOneDecimal(it / 1_000_000.0)} Mbps") }
         video?.let {
             add("Video" to listOfNotNull(it.codec?.uppercase(), it.profile, "${it.width}×${it.height}", it.rangeType, it.bitDepth?.let { b -> "$b-bit" }).joinToString(" · "))
         }

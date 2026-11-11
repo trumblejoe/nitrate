@@ -1,25 +1,35 @@
-// Platform-neutral models and logic. Plain Kotlin/JVM for now; becomes Kotlin Multiplatform
-// (adding iOS) in phase 2, so keep Android and java.* UI APIs out of here.
+// Platform-neutral models and logic, shared by the Android apps (jvm) and, later, iOS.
+// commonMain must stay free of java.* and Android APIs; JVM-only pieces live in jvmMain.
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Java 17 bytecode, matching the Android modules (no separate JDK 17 needed to build).
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
-
 kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    jvm {
+        // Java 17 bytecode, matching the Android modules.
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
-}
+    iosArm64()
+    iosSimulatorArm64()
 
-dependencies {
-    api(libs.kotlinx.coroutines.core)
-    api(libs.kotlinx.serialization.json)
-    testImplementation(libs.junit)
-    testImplementation(libs.kotlinx.coroutines.test)
+    compilerOptions {
+        optIn.add("kotlin.uuid.ExperimentalUuidApi")
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            api(libs.kotlinx.coroutines.core)
+            api(libs.kotlinx.serialization.json)
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
+        }
+        jvmTest.dependencies {
+            implementation(libs.junit)
+        }
+    }
 }

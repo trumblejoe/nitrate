@@ -29,7 +29,7 @@ enum class ExportFormat(val extension: String, val mime: String) {
     ;
 
     fun bytes(text: String): ByteArray = when (this) {
-        FOUNTAIN -> text.toByteArray()
+        FOUNTAIN -> text.encodeToByteArray()
         FADE_IN -> FadeIn.export(text)
     }
 }
