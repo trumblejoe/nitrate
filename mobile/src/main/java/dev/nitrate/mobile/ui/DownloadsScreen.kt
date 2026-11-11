@@ -70,6 +70,7 @@ import dev.nitrate.core.downloads.DownloadRecord
 import dev.nitrate.core.downloads.DownloadSettings
 import dev.nitrate.core.downloads.DownloadSizing
 import dev.nitrate.core.downloads.DownloadState
+import dev.nitrate.core.downloads.SmartRule
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.formatClock
@@ -82,6 +83,7 @@ fun DownloadsScreen(actions: AppActions, modifier: Modifier = Modifier, onBack: 
     val downloads = actions.container.downloads
     val records by downloads.downloads.collectAsState(emptyList())
     val settings by downloads.settings.collectAsState(DownloadSettings())
+    val rules by downloads.rules.collectAsState(emptyList())
     val scope = rememberCoroutineScope()
     var removing by remember { mutableStateOf<DownloadRecord?>(null) }
 
@@ -102,7 +104,7 @@ fun DownloadsScreen(actions: AppActions, modifier: Modifier = Modifier, onBack: 
             Row(Modifier.padding(start = if (onBack != null) 4.dp else ScreenPadding, end = ScreenPadding, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 Column(Modifier.weight(1f)) {
-                    Text("Downloads", style = MaterialTheme.typography.headlineSmall)
+                    Text("Downloads", style = MaterialTheme.typography.headlineMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Black)
                     Text(
                         "${DownloadSizing.formatBytes(used)} used · ${DownloadSizing.formatBytes(free)} free",
                         style = MaterialTheme.typography.labelLarge,
@@ -112,6 +114,18 @@ fun DownloadsScreen(actions: AppActions, modifier: Modifier = Modifier, onBack: 
             }
         }
         item { DownloadSettingsCard(actions, settings) }
+        if (rules.isNotEmpty()) {
+            item { SectionTitle("Smart downloads", Modifier.padding(top = 8.dp)) }
+            items(rules, key = { "r-${it.seriesId}" }) { rule ->
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                    leadingContent = { Icon(NitrateIcons.Auto, null, tint = accentColor()) },
+                    headlineContent = { Text(rule.seriesName) },
+                    supportingContent = { Text("Keeps the next ${rule.keep} · ${rule.quality.label}") },
+                    trailingContent = { TextButton(onClick = { scope.launch { downloads.removeSmartRule(rule.seriesId) } }) { Text("Turn off") } },
+                )
+            }
+        }
 
         if (records.isEmpty()) {
             item {
@@ -265,28 +279,36 @@ private fun ActiveRow(r: DownloadRecord, actions: AppActions, onRemove: () -> Un
 }
 
 /**
- * Download button for a movie or episode: shows progress while downloading and a tick when done.
- * Tapping opens the quality picker, or offers to delete a finished download.
+ * Download action for a movie or episode: progress while downloading, a tick when done. Tapping
+ * opens the quality picker, or offers to delete a download.
  */
 @Composable
-fun DownloadButton(actions: AppActions, item: MediaItem) {
+fun DownloadAction(actions: AppActions, item: MediaItem) {
     val downloads = actions.container.downloads
     val records by downloads.downloads.collectAsState(emptyList())
     val record = records.firstOrNull { it.itemId == item.id }
     var picking by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val accent = accentColor()
 
-    FilledTonalIconButton(onClick = { if (record == null) picking = true else confirmRemove = true }) {
+    val label = when (record?.state) {
+        null -> "Download"
+        DownloadState.COMPLETED -> "Downloaded"
+        DownloadState.DOWNLOADING -> record.progress?.let { "${(it * 100).toInt()}%" } ?: "Downloading"
+        DownloadState.FAILED -> "Failed"
+        else -> "Queued"
+    }
+    RoundAction(NitrateIcons.Download, label, onClick = { if (record == null) picking = true else confirmRemove = true }, active = record?.state == DownloadState.COMPLETED) {
         when (record?.state) {
-            null -> Icon(NitrateIcons.Download, "Download")
-            DownloadState.COMPLETED -> Icon(NitrateIcons.DownloadDone, "Downloaded")
+            DownloadState.COMPLETED -> Icon(NitrateIcons.DownloadDone, label, tint = accent)
             DownloadState.DOWNLOADING -> {
                 val p = record.progress
-                if (p != null) CircularProgressIndicator(progress = { p }, modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp)
-                else CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.5.dp)
+                if (p != null) CircularProgressIndicator(progress = { p }, modifier = Modifier.size(26.dp), strokeWidth = 3.dp, color = accent)
+                else CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 3.dp, color = accent)
             }
-            else -> Icon(NitrateIcons.Download, "Download queued", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            null -> Icon(NitrateIcons.Download, label, tint = androidx.compose.ui.graphics.Color.White)
+            else -> Icon(NitrateIcons.Download, label, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     if (picking) DownloadDialog(actions, listOf(item), item.episodeLabel ?: item.name) { picking = false }
@@ -299,6 +321,70 @@ fun DownloadButton(actions: AppActions, item: MediaItem) {
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Keep") } },
         )
     }
+}
+
+/** "Auto" action on a show: keeps its next episodes downloaded. */
+@Composable
+fun SmartDownloadAction(actions: AppActions, series: MediaItem) {
+    val rules by actions.container.downloads.rules.collectAsState(emptyList())
+    val rule = rules.firstOrNull { it.seriesId == series.id }
+    var open by remember { mutableStateOf(false) }
+    RoundAction(NitrateIcons.Auto, if (rule != null) "Auto: ${rule.keep}" else "Auto", onClick = { open = true }, active = rule != null)
+    if (open) SmartDownloadDialog(actions, series, rule) { open = false }
+}
+
+@Composable
+fun SmartDownloadDialog(actions: AppActions, series: MediaItem, rule: SmartRule?, onDismiss: () -> Unit) {
+    val downloads = actions.container.downloads
+    val settings by downloads.settings.collectAsState(DownloadSettings())
+    val scope = rememberCoroutineScope()
+    var keep by remember { mutableStateOf(rule?.keep ?: 3) }
+    var quality by remember { mutableStateOf(rule?.quality ?: settings.quality) }
+    var working by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Smart downloads") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Keeps the next unwatched episodes of ${series.name} on this device, and deletes the ones it downloaded once you've watched them.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text("Episodes to keep", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(1, 2, 3, 5, 10).forEach { n -> FilterChip(selected = keep == n, onClick = { keep = n }, label = { Text("$n") }) }
+                }
+                Text("Quality", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    DownloadQuality.entries.forEach { q -> FilterChip(selected = quality == q, onClick = { quality = q }, label = { Text(q.label) }) }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !working, onClick = {
+                if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                working = true
+                // Closed once saved: closing first would cancel this scope.
+                scope.launch {
+                    runCatching { downloads.setSmartRule(series, keep, quality, settings.hevc && !quality.isOriginal) }
+                    onDismiss()
+                }
+            }) { Text(if (rule == null) "Turn on" else "Save") }
+        },
+        dismissButton = {
+            if (rule != null) {
+                TextButton(onClick = { scope.launch { downloads.removeSmartRule(series.id); onDismiss() } }) { Text("Turn off") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
 }
 
 /** Picks a quality for [items] (one item, or a season's episodes) and queues them. */

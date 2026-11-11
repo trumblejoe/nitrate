@@ -1,23 +1,32 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,18 +35,12 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalIconToggleButton
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.PrimaryScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,10 +50,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -61,10 +65,12 @@ import dev.nitrate.android.viewmodel.DetailsViewModel
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.formatClock
+import dev.nitrate.core.model.formatOneDecimal
 import dev.nitrate.core.model.formatRuntime
+import dev.nitrate.mobile.platform.rememberArtworkColor
 
 @Composable
-fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?) {
+fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey: String? = null) {
     val vm = viewModel(key = "details-$itemId") { DetailsViewModel(actions.server, itemId, seasonId) }
     val state by vm.state.collectAsStateWithLifecycle()
     var first by remember { mutableStateOf(true) }
@@ -80,131 +86,150 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?) {
         return
     }
     val server = actions.server
-    val bg = MaterialTheme.colorScheme.background
+    val backdrop = server.backdropUrl(item) ?: server.imageUrl(item, maxHeight = 1080)
+    val tint by rememberArtworkColor(backdrop)
     val records by actions.container.downloads.downloads.collectAsState(emptyList())
     val downloaded = remember(records) { records.map { it.itemId }.toSet() }
+    val list = rememberLazyListState()
+    val bg = MaterialTheme.colorScheme.background
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-        item(key = "hero") {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 10f)) {
-                AsyncImage(
-                    server.backdropUrl(item),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().drawWithContent {
-                        drawContent()
-                        drawRect(Brush.verticalGradient(0.45f to Color.Transparent, 1f to bg))
-                    },
-                )
-                IconButton(
-                    onClick = { actions.nav.popBackStack() },
-                    colors = IconButtonDefaults.iconButtonColors(containerColor = Color(0x66000000), contentColor = Color.White),
-                    modifier = Modifier.padding(top = 36.dp, start = 8.dp),
-                ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                val logo = server.logoUrl(item)
-                Box(Modifier.align(Alignment.BottomStart).padding(ScreenPadding)) {
-                    if (logo != null) {
-                        AsyncImage(logo, item.displayTitle, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
-                            modifier = Modifier.widthIn(max = 260.dp).heightIn(max = 90.dp))
-                    } else {
-                        Text(item.displayTitle, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-        item(key = "info") {
-            Column(Modifier.padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-                Text(item.metaLine(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (item.genres.isNotEmpty()) Text(item.genres.take(4).joinToString(" / "), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                PlayButtons(actions, item, state.nextUp ?: state.episodes.firstOrNull(), vm)
-                item.tagline?.let { Text(it, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary) }
-                item.overview?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            }
-        }
-        if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
-            item(key = "seasons") {
-                PrimaryScrollableTabRow(selectedTabIndex = state.selectedSeason, edgePadding = ScreenPadding, modifier = Modifier.padding(top = 16.dp)) {
-                    state.seasons.forEachIndexed { i, season ->
-                        Tab(selected = i == state.selectedSeason, onClick = { vm.selectSeason(i) }, text = { Text(season.name) })
-                    }
-                }
-            }
-            item(key = "download-season") {
-                val missing = state.episodes.filter { it.id !in downloaded }
-                var picking by remember { mutableStateOf(false) }
-                if (missing.isNotEmpty()) {
-                    TextButton(onClick = { picking = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                        Icon(NitrateIcons.Download, null, modifier = Modifier.padding(end = 8.dp))
-                        Text(if (missing.size == state.episodes.size) "Download season" else "Download ${missing.size} more episodes")
-                    }
-                }
-                if (picking) {
-                    val season = state.seasons.getOrNull(state.selectedSeason)?.name.orEmpty()
-                    DownloadDialog(actions, missing, "${item.name} · $season") { picking = false }
-                }
-            }
-            items(state.episodes, key = { "ep-${it.id}" }) { episode ->
-                ListItem(
-                    modifier = Modifier.clickable { actions.open(episode) },
-                    leadingContent = {
-                        Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                            server.cardImage(episode, CardShape.WIDE, 200)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
-                            if (episode.id in downloaded) {
-                                Icon(NitrateIcons.DownloadDone, "Downloaded", tint = Color.White,
-                                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).background(Color(0x99000000), CircleShape).size(18.dp).padding(2.dp))
+    TintedBackdrop(tint, strength = 0.32f) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+            item(key = "hero") {
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val heroHeight = (maxWidth * 1.05f).coerceIn(340.dp, 560.dp)
+                    Box(Modifier.fillMaxWidth().height(heroHeight)) {
+                        AsyncImage(
+                            backdrop,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().sharedArtwork(artKey).fadeBottom(0.55f).graphicsLayer {
+                                // Parallax: the picture scrolls at half speed and fades as it leaves.
+                                val scrolled = if (list.firstVisibleItemIndex == 0) list.firstVisibleItemScrollOffset.toFloat() else size.height
+                                translationY = scrolled * 0.5f
+                                alpha = 1f - (scrolled / size.height).coerceIn(0f, 1f) * 0.6f
+                            },
+                        )
+                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x88000000), 0.25f to Color.Transparent, 1f to Color.Transparent)))
+                        Column(Modifier.align(Alignment.BottomStart).padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val logo = server.logoUrl(item)
+                            if (logo != null) {
+                                AsyncImage(logo, item.displayTitle, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
+                                    modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 100.dp))
+                            } else {
+                                Text(item.displayTitle, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 3, overflow = TextOverflow.Ellipsis)
                             }
-                            if (episode.user.played) {
-                                Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).background(MaterialTheme.colorScheme.primary, CircleShape).size(18.dp).padding(2.dp))
+                            item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White) }
+                        }
+                    }
+                }
+            }
+            item(key = "facts") {
+                Column(Modifier.padding(horizontal = ScreenPadding, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { facts(item).forEach { GlassChip(it) } }
+                    if (item.genres.isNotEmpty()) Text(item.genres.take(4).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
+                        RoundAction(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", onClick = vm::toggleFavorite, active = item.user.isFavorite)
+                        if (item.isPlayable) DownloadAction(actions, item)
+                        if (item.kind == ItemKind.SERIES) SmartDownloadAction(actions, item)
+                    }
+                    item.tagline?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
+                    item.overview?.let { ExpandableText(it) }
+                }
+            }
+            if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
+                item(key = "seasons") {
+                    Column(Modifier.padding(top = 12.dp)) {
+                        SectionHeader("Episodes")
+                        LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(state.seasons.size) { i ->
+                                val selected = i == state.selectedSeason
+                                val accent = accentColor()
+                                Text(
+                                    state.seasons[i].name,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (selected) contentOn(accent) else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                                        .background(if (selected) accent else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                        .pressable({ vm.selectSeason(i) }).padding(horizontal = 16.dp, vertical = 9.dp),
+                                )
                             }
                         }
-                    },
-                    headlineContent = { Text("${episode.indexNumber ?: "–"}. ${episode.name}", maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = { Text(listOfNotNull(episode.runtimeMs?.let(::formatRuntime), episode.overview).joinToString(" · "), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                    trailingContent = { IconButton(onClick = { actions.play(episode, false) }) { Icon(Icons.Default.PlayArrow, "Play") } },
-                )
+                    }
+                }
+                item(key = "download-season") {
+                    val missing = state.episodes.filter { it.id !in downloaded }
+                    var picking by remember { mutableStateOf(false) }
+                    if (missing.isNotEmpty()) {
+                        Row(
+                            Modifier.padding(start = ScreenPadding, top = 10.dp).clip(RoundedCornerShape(20.dp)).pressable({ picking = true }).padding(vertical = 6.dp, horizontal = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(NitrateIcons.Download, null, tint = accentColor(), modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (missing.size == state.episodes.size) "Download season" else "Download ${missing.size} more episodes", color = accentColor(), style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                    if (picking) {
+                        val season = state.seasons.getOrNull(state.selectedSeason)?.name.orEmpty()
+                        DownloadDialog(actions, missing, "${item.name} · $season") { picking = false }
+                    }
+                }
+                items(state.episodes, key = { "ep-${it.id}" }) { episode -> EpisodeCard(actions, episode, episode.id in downloaded) }
             }
-        }
-        val people = item.people.filter { it.imageTag != null || it.role != null }.take(20)
-        if (people.isNotEmpty()) {
-            item(key = "cast") {
-                Column(Modifier.padding(top = 24.dp)) {
-                    SectionTitle("Cast & crew")
-                    LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        items(people, key = { "${it.id}-${it.role}" }) { person ->
-                            Column(Modifier.width(80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), Alignment.Center) {
-                                    val url = server.personImageUrl(person)
-                                    if (url != null) AsyncImage(url, person.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                    else Text(person.name.split(" ").mapNotNull { it.firstOrNull() }.take(2).joinToString(""))
-                                }
-                                Text(person.name, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
-                                person.role?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            val people = item.people.filter { it.imageTag != null || it.role != null }.take(20)
+            if (people.isNotEmpty()) {
+                item(key = "cast") {
+                    Column(Modifier.padding(top = 28.dp)) {
+                        SectionHeader("Cast & crew")
+                        LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(people, key = { "${it.id}-${it.role}" }) { person ->
+                                PersonBubble(person, actions) { actions.nav.navigate(PersonRoute(person.id, person.name)) }
                             }
                         }
                     }
                 }
             }
-        }
-        if (state.similar.isNotEmpty()) {
-            item(key = "similar") {
-                Column(Modifier.padding(top = 24.dp)) {
-                    SectionTitle("More like this")
-                    LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(state.similar, key = { it.id }) { s ->
-                            MediaCard(s, server.cardImage(s, CardShape.POSTER), CardShape.POSTER, onClick = { actions.open(s) }, width = 110.dp)
+            if (state.similar.isNotEmpty()) {
+                item(key = "similar") {
+                    Column(Modifier.padding(top = 28.dp)) {
+                        SectionHeader("More like this")
+                        LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(state.similar, key = { it.id }) { s ->
+                                val key = "similar-${item.id}-${s.id}"
+                                MediaCard(s, server.cardImage(s, CardShape.POSTER), CardShape.POSTER, onClick = { actions.open(s, key) }, width = 116.dp, sharedKey = key)
+                            }
                         }
                     }
                 }
             }
         }
+        IconButton(
+            onClick = { actions.nav.popBackStack() },
+            colors = IconButtonDefaults.iconButtonColors(containerColor = Color(0x66000000), contentColor = Color.White),
+            modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(start = 8.dp, top = 4.dp),
+        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
     }
 }
 
+private fun facts(item: MediaItem) = buildList {
+    if (item.kind == ItemKind.SERIES) {
+        item.productionYear?.let { start -> add(if (item.endYear != null && item.endYear != start) "$start–${item.endYear}" else "$start") }
+    } else {
+        item.productionYear?.let { add(it.toString()) }
+    }
+    item.officialRating?.let { add(it) }
+    item.runtimeMs?.takeIf { item.kind != ItemKind.SERIES }?.let { add(formatRuntime(it)) }
+    item.communityRating?.let { add("★ ${formatOneDecimal(it.toDouble())}") }
+    item.criticRating?.let { add("${it.toInt()}% critics") }
+}
+
+/** The big Play (or Resume) button, with progress and "From start" when part-watched. */
 @Composable
-private fun PlayButtons(actions: AppActions, item: MediaItem, seriesTarget: MediaItem?, vm: DetailsViewModel) {
-    // "Play" resumes a movie or episode, or plays the next episode of a series.
+private fun PlaySection(actions: AppActions, item: MediaItem, seriesTarget: MediaItem?) {
     val target = if (item.kind == ItemKind.SERIES) seriesTarget else item.takeIf { it.isPlayable }
     val resumeMs = target?.user?.positionMs ?: 0L
     val label = when {
@@ -213,18 +238,73 @@ private fun PlayButtons(actions: AppActions, item: MediaItem, seriesTarget: Medi
         resumeMs > 0 -> "Resume from ${formatClock(resumeMs)}"
         else -> "Play"
     }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { target?.let { actions.play(it, false) } }, enabled = target != null) {
-            Icon(Icons.Default.PlayArrow, null)
-            Text(label)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            PillButton(label, Icons.Default.PlayArrow, primary = true, onClick = { target?.let { actions.play(it, false) } }, modifier = Modifier.weight(1f))
+            if (resumeMs > 0 && target != null) PillButton("Restart", Icons.Default.Refresh, primary = false, onClick = { actions.play(target, true) })
         }
-        if (resumeMs > 0 && target != null) OutlinedButton(onClick = { actions.play(target, true) }) { Text("From start") }
-        FilledTonalIconToggleButton(checked = item.user.played, onCheckedChange = { vm.togglePlayed() }) {
-            Icon(Icons.Default.Check, if (item.user.played) "Watched" else "Mark watched")
+        val pct = target?.user?.playedPercentage?.toFloat()?.div(100f)
+        if (pct != null && pct > 0f && !target.user.played) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.15f))) {
+                    Box(Modifier.fillMaxWidth(pct).height(4.dp).background(accentColor()))
+                }
+                timeLeft(target)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp)) }
+            }
         }
-        FilledTonalIconToggleButton(checked = item.user.isFavorite, onCheckedChange = { vm.toggleFavorite() }) {
-            Icon(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite")
-        }
-        if (item.isPlayable) DownloadButton(actions, item)
     }
+}
+
+@Composable
+private fun ExpandableText(text: String) {
+    var expanded by remember { mutableStateOf(false) }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = Color.White.copy(alpha = 0.85f),
+        maxLines = if (expanded) Int.MAX_VALUE else 4,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.animateContentSize().pressable({ expanded = !expanded }),
+    )
+}
+
+@Composable
+private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boolean) {
+    Column(Modifier.fillMaxWidth().pressable({ actions.open(episode, "ep-${episode.id}") }).padding(horizontal = ScreenPadding, vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.width(148.dp).aspectRatio(16f / 9f).sharedArtwork("ep-${episode.id}").clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp)),
+            ) {
+                actions.server.cardImage(episode, CardShape.WIDE, 240)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                // Play straight from the list.
+                Box(
+                    Modifier.align(Alignment.Center).size(36.dp).clip(CircleShape).background(Color(0x88000000)).pressable({ actions.play(episode, false) }),
+                    Alignment.Center,
+                ) { Icon(Icons.Default.PlayArrow, "Play", tint = Color.White) }
+                val pct = episode.user.playedPercentage?.toFloat()?.div(100f)
+                if (pct != null && pct > 0f && !episode.user.played) {
+                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x99000000))) {
+                        Box(Modifier.fillMaxWidth(pct).height(3.dp).background(accentColor()))
+                    }
+                }
+                Row(Modifier.align(Alignment.TopEnd).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (downloaded) Badge(NitrateIcons.DownloadDone, "Downloaded")
+                    if (episode.user.played) Badge(Icons.Default.Check, "Watched")
+                }
+            }
+            Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                Text("${episode.indexNumber ?: "–"}. ${episode.name}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
+            }
+        }
+        episode.overview?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+}
+
+@Composable
+private fun Badge(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+    Icon(icon, label, tint = Color.White, modifier = Modifier.background(Color(0xAA000000), CircleShape).padding(3.dp).size(14.dp))
 }

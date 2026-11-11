@@ -22,6 +22,11 @@ import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.UserState
 import dev.nitrate.mobile.ui.DetailsScreen
 import dev.nitrate.mobile.ui.DownloadsScreen
+import dev.nitrate.mobile.ui.SearchScreen
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.imageDecoderEnabled
+import kotlinx.coroutines.Dispatchers
 import dev.nitrate.mobile.ui.LoginScreen
 import dev.nitrate.mobile.ui.MainScreen
 import dev.nitrate.mobile.ui.NitrateTheme
@@ -44,17 +49,31 @@ class ScreenshotTest {
 
     private fun shoot(name: String, downloads: DownloadsData = DownloadsData(), content: @Composable (AppActions) -> Unit) {
         val container = AppContainer(compose.activity, "test", "0", serverOverride = FakeServer(), downloadStoreOverride = MemoryDownloadStore(downloads))
+        // Load artwork without background threads so it's on screen when the picture is taken.
+        SingletonImageLoader.setUnsafe(
+            ImageLoader.Builder(compose.activity)
+                .coroutineContext(Dispatchers.Unconfined)
+                .fetcherCoroutineContext(Dispatchers.Unconfined)
+                .decoderCoroutineContext(Dispatchers.Unconfined)
+                // Robolectric has no ImageDecoder; BitmapFactory works.
+                .imageDecoderEnabled(false)
+                .build(),
+        )
         compose.setContent {
             NitrateTheme {
                 // Same root as the app: background and text colours come from this Surface.
                 Surface(color = MaterialTheme.colorScheme.background) {
                     val nav = rememberNavController()
-                    content(AppActions(container, nav) { _, _ -> })
+                    content(AppActions(container, nav, play = { _, _ -> }))
                 }
             }
         }
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(1_500)
+        // Artwork colours are worked out off the main thread; let them land, then settle animations.
+        Thread.sleep(400)
+        compose.mainClock.advanceTimeBy(1_500)
+        compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
 
@@ -65,6 +84,10 @@ class ScreenshotTest {
     @Test fun home() = shoot("phone-home") { MainScreen(it) {} }
 
     @Test fun details() = shoot("phone-series") { DetailsScreen(it, "series-1", null) }
+
+    @Test fun movie() = shoot("phone-movie") { DetailsScreen(it, "m1", null) }
+
+    @Test fun search() = shoot("phone-search") { SearchScreen(it, initialQuery = "re", autoFocus = false) }
 
     @Test
     fun downloads() = shoot("phone-downloads", sampleDownloads()) { DownloadsScreen(it) }

@@ -1,6 +1,7 @@
 package dev.nitrate.mobile.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -29,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -62,15 +65,18 @@ fun MediaCard(
     width: Dp? = null,
     title: String? = null,
     subtitle: String? = null,
+    /** Lets the artwork morph into the page this card opens. */
+    sharedKey: String? = null,
 ) {
-    Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())) {
+    Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()).pressable(onClick)) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(shape.ratio)
-                .clip(RoundedCornerShape(10.dp))
+                .sharedArtwork(sharedKey)
+                .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(onClick = onClick),
+                .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(14.dp)),
         ) {
             if (imageUrl != null) {
                 AsyncImage(imageUrl, contentDescription = item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -80,21 +86,21 @@ fun MediaCard(
             val progress = item.user.playedPercentage?.toFloat()?.div(100f)
             if (progress != null && progress > 0f) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x99000000))) {
-                    Box(Modifier.fillMaxWidth(progress).height(4.dp).background(MaterialTheme.colorScheme.primary))
+                    Box(Modifier.fillMaxWidth(progress).height(4.dp).background(accentColor()))
                 }
             }
             if (item.user.played) {
                 Icon(
                     Icons.Default.Check,
                     contentDescription = "Watched",
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = Color.White,
                     modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
-                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)).padding(2.dp),
+                        .background(Color(0xAA000000), RoundedCornerShape(50)).padding(3.dp).size(14.dp),
                 )
             }
         }
         if (title != null) {
-            Text(title, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
         }
         if (subtitle != null) {
             Text(subtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

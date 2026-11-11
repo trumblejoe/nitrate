@@ -86,9 +86,26 @@ class FakeServer : MediaServer {
     override suspend fun playlistItems(playlistId: String) = films
     override suspend fun setPlayed(itemId: String, played: Boolean) = Unit
     override suspend fun setFavorite(itemId: String, favorite: Boolean) = Unit
-    override fun imageUrl(item: MediaItem, kind: ImageKind, maxHeight: Int): String? = null
-    override fun backdropUrl(item: MediaItem): String? = null
-    override fun backdropUrls(item: MediaItem) = emptyList<String>()
+    /** Generated abstract artwork (tools/generate-sample-art.py) as local files. */
+    private fun art(name: String): String? = javaClass.getResource("/art/$name.jpg")?.let { java.io.File(it.toURI()).path }
+
+    private fun artKey(item: MediaItem) = if (item.kind == ItemKind.EPISODE) item.seriesId ?: item.id else item.id.removeSuffix("b")
+
+    override fun imageUrl(item: MediaItem, kind: ImageKind, maxHeight: Int): String? = when {
+        kind == ImageKind.BACKDROP -> backdropUrl(item)
+        item.kind == ItemKind.EPISODE -> art("episode-${(item.indexNumber ?: 1).coerceIn(1, 6)}")
+        item.kind == ItemKind.LIBRARY -> art(if (item.collection == CollectionKind.MOVIES) "m2-backdrop" else "series-1-backdrop")
+        else -> art("${artKey(item)}-poster")
+    }
+    override fun backdropUrl(item: MediaItem): String? = art("${artKey(item)}-backdrop")
+    override fun backdropUrls(item: MediaItem) = listOfNotNull(backdropUrl(item))
+    override suspend fun search(query: String) = dev.nitrate.core.model.SearchResults(
+        movies = films.filter { it.name.contains(query, ignoreCase = true) || query.length < 3 },
+        shows = listOf(series),
+        episodes = (1..3).map { episode(1, it, false) },
+        people = series.people,
+    )
+    override suspend fun itemsWithPerson(personId: String) = films + series
     override fun logoUrl(item: MediaItem): String? = null
     override fun personImageUrl(person: Person): String? = null
     override fun authorizationHeader() = ""

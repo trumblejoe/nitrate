@@ -1,5 +1,11 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,86 +57,42 @@ import dev.nitrate.core.writing.WritingPlugin
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
-    LIBRARIES("Libraries", Icons.AutoMirrored.Filled.List),
+    SEARCH("Search", Icons.Default.Search),
+    LIBRARIES("Library", Icons.AutoMirrored.Filled.List),
     DOWNLOADS("Downloads", NitrateIcons.Download),
     WRITING("Writing", Icons.Default.Edit),
     SETTINGS("Settings", Icons.Default.Settings),
 }
 
-/** Bottom bar on phones; a side rail when there's room (tablets, landscape). */
+/** Bottom space screens leave for the floating navigation pill. */
+val NavBarClearance = 96.dp
+
+/** Every tab full-bleed, with a floating glass navigation pill over it. */
 @Composable
 fun MainScreen(actions: AppActions, onSignedOut: () -> Unit) {
     val enabled by actions.container.plugins.enabledIds.collectAsState(emptySet())
     val tabs = Tab.entries.filter { it != Tab.WRITING || WritingPlugin.id in enabled }
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     if (tab !in tabs) tab = Tab.HOME
+    // Back from another tab returns Home rather than leaving the app.
+    BackHandler(enabled = tab != Tab.HOME) { tab = Tab.HOME }
 
-    val content: @Composable (Modifier) -> Unit = { modifier ->
+    Box(Modifier.fillMaxSize()) {
+        val padded = Modifier.fillMaxSize().padding(bottom = NavBarClearance)
         when (tab) {
-            Tab.HOME -> HomeTab(actions, modifier)
-            Tab.LIBRARIES -> LibrariesTab(actions, modifier)
-            Tab.DOWNLOADS -> DownloadsScreen(actions, modifier)
-            Tab.WRITING -> WritingScreen(actions, onBack = null, modifier = modifier)
-            Tab.SETTINGS -> SettingsScreen(actions, onSignedOut, modifier)
+            Tab.HOME -> HomeTab(actions, Modifier.fillMaxSize(), onSearch = { tab = Tab.SEARCH })
+            Tab.SEARCH -> SearchScreen(actions, Modifier.fillMaxSize())
+            Tab.LIBRARIES -> LibrariesTab(actions, padded)
+            Tab.DOWNLOADS -> DownloadsScreen(actions, padded)
+            Tab.WRITING -> WritingScreen(actions, onBack = null, modifier = padded)
+            Tab.SETTINGS -> SettingsScreen(actions, onSignedOut, padded)
         }
-    }
-
-    BoxWithConstraints {
-        if (maxWidth >= 600.dp) {
-            Row(Modifier.fillMaxSize()) {
-                NavigationRail {
-                    Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars).height(8.dp))
-                    tabs.forEach { t ->
-                        NavigationRailItem(selected = tab == t, onClick = { tab = t }, icon = { Icon(t.icon, null) }, label = { Text(t.label) })
-                    }
-                }
-                content(Modifier.weight(1f))
-            }
-        } else {
-            Scaffold(
-                bottomBar = {
-                    NavigationBar {
-                        tabs.forEach { t ->
-                            NavigationBarItem(selected = tab == t, onClick = { tab = t }, icon = { Icon(t.icon, null) }, label = { Text(t.label) })
-                        }
-                    }
-                },
-            ) { padding -> content(Modifier.padding(bottom = padding.calculateBottomPadding())) }
-        }
-    }
-}
-
-@Composable
-private fun HomeTab(actions: AppActions, modifier: Modifier) {
-    val container = actions.container
-    val vm = viewModel(key = "home") { RowsViewModel(container.server::homeRows, container.displaySettings, container.server.userId) }
-    val state by vm.state.collectAsStateWithLifecycle()
-    val overrides by vm.overrides.collectAsStateWithLifecycle()
-    var refreshing by remember { mutableStateOf(false) }
-
-    // Refresh "Continue Watching" when coming back from the player or details.
-    var first by remember { mutableStateOf(true) }
-    LifecycleResumeEffect(Unit) {
-        if (!first) vm.refresh()
-        first = false
-        onPauseOrDispose { }
-    }
-
-    when (val s = state) {
-        RowsState.Loading -> Loading(modifier)
-        is RowsState.Error -> ErrorMessage(s.message, vm::refresh, modifier)
-        is RowsState.Loaded -> PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; vm.refresh(); refreshing = false }, modifier = modifier) {
-            LazyColumn(
-                contentPadding = PaddingValues(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
-                items(s.rows, key = { it.key }) { row ->
-                    CardRow(row, (overrides[row.key] ?: row.defaultDisplay).style, container.server, actions::open)
-                }
-            }
-        }
+        GlassNavBar(
+            tabs = tabs.map { NavTab(it.label, it.icon) },
+            selected = tabs.indexOf(tab),
+            onSelect = { tab = tabs[it] },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -149,10 +111,13 @@ private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
             modifier = modifier.fillMaxSize(),
         ) {
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                Column {
+                    Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                    Text("Library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                }
             }
             items(result.getOrThrow(), key = { it.id }) { view ->
-                MediaCard(view, actions.server.cardImage(view, CardShape.WIDE), CardShape.WIDE, onClick = { actions.open(view) }, title = view.name)
+                MediaCard(view, actions.server.cardImage(view, CardShape.WIDE), CardShape.WIDE, onClick = { actions.open(view) }, title = view.name, sharedKey = "lib-${view.id}")
             }
         }
     }

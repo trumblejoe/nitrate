@@ -6,6 +6,7 @@ import dev.nitrate.android.playback.DeviceProbe
 import dev.nitrate.android.storage.DisplaySettingsStore
 import dev.nitrate.android.storage.PlaybackSettingsStore
 import dev.nitrate.android.storage.PluginStore
+import dev.nitrate.android.storage.SearchHistoryStore
 import dev.nitrate.android.storage.SessionStore
 import dev.nitrate.android.sync.SettingsSync
 import dev.nitrate.android.writing.WritingStore
@@ -70,6 +71,8 @@ class AppContainer(
             scheduler = WorkManagerScheduler(appContext),
         )
     }
+
+    val searchHistory by lazy { SearchHistoryStore(appContext) }
 
     /** Free space where downloads are saved. */
     fun downloadSpaceFree(): Long = downloadDir.also { it.mkdirs() }.usableSpace

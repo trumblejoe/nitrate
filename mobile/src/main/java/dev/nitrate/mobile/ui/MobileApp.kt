@@ -1,6 +1,18 @@
+@file:OptIn(ExperimentalSharedTransitionApi::class)
+
 package dev.nitrate.mobile.ui
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
@@ -31,6 +43,9 @@ import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.plugins.GuardAction
 import dev.nitrate.core.plugins.GuardDecision
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -39,28 +54,50 @@ import kotlinx.serialization.Serializable
 @Serializable object OfflineRoute
 @Serializable object MainRoute
 @Serializable data class LibraryRoute(val libraryId: String)
-@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
+/** [artKey] names the card it was opened from, so its artwork can morph into the page. */
+@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null)
 @Serializable data class PlaylistRoute(val playlistId: String)
+@Serializable data class PersonRoute(val personId: String, val name: String)
 
 /** [queue] is comma-separated item ids to play after [itemId]; [local] plays the downloaded file. */
 @Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false)
+
+/** A destination that provides its animation scope, for shared artwork transitions. */
+inline fun <reified T : Any> NavGraphBuilder.screen(noinline content: @Composable (NavBackStackEntry) -> Unit) {
+    composable<T> { entry -> CompositionLocalProvider(LocalNavAnimatedScope provides this) { content(entry) } }
+}
 
 /** Shared by every screen: the container, navigation, and play-with-plugin-checks. */
 class AppActions(
     val container: AppContainer,
     val nav: NavController,
+    /** Outlives screens: for work started from a tap, like finding a show's next episode. */
+    val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
     val play: (MediaItem, Boolean) -> Unit,
 ) {
     val server get() = container.server
 
     /** Where tapping an item goes. Seasons open their series with that season selected. */
-    fun open(item: MediaItem) {
+    fun open(item: MediaItem, artKey: String? = null) {
         val series = item.seriesId
         when {
             item.kind == ItemKind.SEASON && series != null -> nav.navigate(DetailsRoute(series, seasonId = item.id))
             item.kind == ItemKind.LIBRARY -> nav.navigate(LibraryRoute(item.id))
             item.kind == ItemKind.PLAYLIST -> nav.navigate(PlaylistRoute(item.id))
-            else -> nav.navigate(DetailsRoute(item.id))
+            else -> nav.navigate(DetailsRoute(item.id, artKey = artKey))
+        }
+    }
+
+    /** Plays a movie or episode (resuming), a show's next episode, or opens anything else. */
+    fun playOrOpen(item: MediaItem) {
+        when {
+            item.isPlayable -> play(item, false)
+            item.kind == ItemKind.SERIES -> scope.launch {
+                val next = runCatching { server.nextUpFor(item.id) }.getOrNull()
+                    ?: runCatching { server.allEpisodes(item.id).firstOrNull { !it.user.played } }.getOrNull()
+                if (next != null) play(next, false) else open(item)
+            }
+            else -> open(item)
         }
     }
 
@@ -101,7 +138,7 @@ fun MobileApp(container: AppContainer) {
             PlayerRoute(itemId, fromStart, local = container.downloads.find(itemId)?.state == DownloadState.COMPLETED)
 
         val actions = remember(nav) {
-            AppActions(container, nav) { item, fromStart ->
+            AppActions(container, nav, appScope) { item, fromStart ->
                 scope.launch {
                     val action = container.plugins.checkBeforePlay(item) { ask ->
                         val answer = CompletableDeferred<GuardAction>()
@@ -121,16 +158,25 @@ fun MobileApp(container: AppContainer) {
             }
         }
 
-        NavHost(navController = nav, startDestination = startRoute) {
-            composable<ConnectRoute> { ConnectScreen(actions) { url, name -> nav.navigate(LoginRoute(url, name)) } }
-            composable<LoginRoute> { entry ->
+        SharedTransitionLayout {
+        CompositionLocalProvider(LocalSharedScope provides this) {
+        NavHost(
+            navController = nav,
+            startDestination = startRoute,
+            enterTransition = { fadeIn(tween(350)) + scaleIn(tween(350), initialScale = 0.97f) },
+            exitTransition = { fadeOut(tween(250)) },
+            popEnterTransition = { fadeIn(tween(300)) },
+            popExitTransition = { fadeOut(tween(250)) + scaleOut(tween(300), targetScale = 0.97f) },
+        ) {
+            screen<ConnectRoute> { ConnectScreen(actions) { url, name -> nav.navigate(LoginRoute(url, name)) } }
+            screen<LoginRoute> { entry ->
                 val route = entry.toRoute<LoginRoute>()
                 LoginScreen(actions, route.serverUrl, route.serverName) {
                     container.settingsSync.pull()
                     nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                 }
             }
-            composable<OfflineRoute> {
+            screen<OfflineRoute> {
                 OfflineScreen(
                     actions,
                     onOnline = {
@@ -141,16 +187,20 @@ fun MobileApp(container: AppContainer) {
                     onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
                 )
             }
-            composable<MainRoute> {
+            screen<MainRoute> {
                 MainScreen(actions, onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } })
             }
-            composable<LibraryRoute> { entry -> LibraryScreen(actions, entry.toRoute<LibraryRoute>().libraryId) }
-            composable<DetailsRoute> { entry ->
+            screen<LibraryRoute> { entry -> LibraryScreen(actions, entry.toRoute<LibraryRoute>().libraryId) }
+            screen<DetailsRoute> { entry ->
                 val route = entry.toRoute<DetailsRoute>()
-                DetailsScreen(actions, route.itemId, route.seasonId)
+                DetailsScreen(actions, route.itemId, route.seasonId, route.artKey)
             }
-            composable<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
-            composable<PlayerRoute> { entry ->
+            screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
+            screen<PersonRoute> { entry ->
+                val route = entry.toRoute<PersonRoute>()
+                PersonScreen(actions, route.personId, route.name)
+            }
+            screen<PlayerRoute> { entry ->
                 val route = entry.toRoute<PlayerRoute>()
                 PlayerScreen(
                     actions = actions,
@@ -165,6 +215,9 @@ fun MobileApp(container: AppContainer) {
                     },
                 )
             }
+        }
+
+        }
         }
 
         pending?.let { (ask, answer) ->
