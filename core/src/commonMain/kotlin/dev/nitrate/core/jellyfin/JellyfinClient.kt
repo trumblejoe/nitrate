@@ -57,6 +57,9 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.HttpTimeout
+import dev.nitrate.core.syncplay.ServerTimeSample
+import dev.nitrate.core.syncplay.SyncPlayGroup
+import dev.nitrate.core.syncplay.SyncPlayRequest
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -634,6 +637,50 @@ class JellyfinClient(
     }
 
     override fun events(): Flow<ServerEvent> = socketEvents { token != null }
+
+    // ---- SyncPlay ----
+
+    override suspend fun syncPlayGroups(): List<SyncPlayGroup> =
+        get("SyncPlay", "List").decode<kotlinx.serialization.json.JsonArray>().mapNotNull { (it as? kotlinx.serialization.json.JsonObject)?.let(::parseGroupInfo) }
+
+    override suspend fun syncPlayCreate(name: String) {
+        post<NewGroupRequestDto>("SyncPlay", "New", body = NewGroupRequestDto(name))
+    }
+
+    override suspend fun syncPlayJoin(groupId: String) {
+        post<JoinGroupRequestDto>("SyncPlay", "Join", body = JoinGroupRequestDto(groupId))
+    }
+
+    override suspend fun syncPlayLeave() {
+        post<Unit>("SyncPlay", "Leave")
+    }
+
+    @OptIn(kotlin.time.ExperimentalTime::class)
+    override suspend fun syncPlay(request: SyncPlayRequest) {
+        fun iso(ms: Long) = kotlin.time.Instant.fromEpochMilliseconds(ms).toString()
+        when (request) {
+            is SyncPlayRequest.SetQueue -> post<PlayRequestDto>("SyncPlay", "SetNewQueue", body = PlayRequestDto(request.itemIds, request.index, request.startMs.msToTicks()))
+            SyncPlayRequest.Pause -> post<Unit>("SyncPlay", "Pause")
+            SyncPlayRequest.Unpause -> post<Unit>("SyncPlay", "Unpause")
+            SyncPlayRequest.Stop -> post<Unit>("SyncPlay", "Stop")
+            is SyncPlayRequest.Seek -> post<SeekRequestDto>("SyncPlay", "Seek", body = SeekRequestDto(request.positionMs.msToTicks()))
+            is SyncPlayRequest.Status -> post<ReadyRequestDto>(
+                "SyncPlay", if (request.buffering) "Buffering" else "Ready",
+                body = ReadyRequestDto(iso(request.whenMs), request.positionMs.msToTicks(), request.isPlaying, request.playlistItemId),
+            )
+            is SyncPlayRequest.NextItem -> post<NextItemRequestDto>("SyncPlay", "NextItem", body = NextItemRequestDto(request.playlistItemId))
+            is SyncPlayRequest.Ping -> post<PingRequestDto>("SyncPlay", "Ping", body = PingRequestDto(request.roundTripMs))
+        }
+    }
+
+    @OptIn(kotlin.time.ExperimentalTime::class)
+    override suspend fun serverTime(): ServerTimeSample {
+        val dto = get("GetUtcTime").decode<UtcTimeResponseDto>()
+        return ServerTimeSample(
+            kotlin.time.Instant.parse(dto.requestReceptionTime).toEpochMilliseconds(),
+            kotlin.time.Instant.parse(dto.responseTransmissionTime).toEpochMilliseconds(),
+        )
+    }
 
     // ---- Custom rows ----
 

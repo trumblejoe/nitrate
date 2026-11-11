@@ -61,6 +61,8 @@ class JellyfinContractTest {
             path.endsWith("/Users") -> "[$USER]"
             path.contains("/RemoteSearch/Subtitles/") -> """[{"Id":"os-1","Name":"Nitrate.2023.srt","ThreeLetterISOLanguageName":"eng","ProviderName":"Open Subtitles","Format":"srt","DownloadCount":900,"IsHashMatch":true}]"""
             path.contains("/Items/RemoteSearch/") && !path.contains("/Apply/") -> """[{"Name":"Nitrate","ProductionYear":2023,"ProviderIds":{"Tmdb":"1"},"SearchProviderName":"TheMovieDb","ImageUrl":"http://x/i.jpg"}]"""
+            path.endsWith("/SyncPlay/List") -> """[{"GroupId":"$HEX","GroupName":"Movie night","State":"Paused","Participants":["joe","sam"],"LastUpdatedAt":"2026-01-01T00:00:00Z"}]"""
+            path.endsWith("/GetUtcTime") -> """{"RequestReceptionTime":"2026-01-01T00:00:00.100Z","ResponseTransmissionTime":"2026-01-01T00:00:00.102Z"}"""
             path.endsWith("/Images") -> """[{"ImageType":"Primary","ImageTag":"t","Width":1000,"Height":1500},{"ImageType":"Backdrop","ImageIndex":1,"ImageTag":"b","Width":1920,"Height":1080}]"""
             path.endsWith("/RemoteImages") -> """{"Images":[{"Url":"http://x/a.jpg","ProviderName":"TheMovieDb","Width":1000,"Height":1500,"Language":"en","CommunityRating":7.5}],"TotalRecordCount":1}"""
             path.endsWith("/ScheduledTasks") -> """[{"Id":"t1","Name":"Scan media library","Category":"Library","State":"Running","CurrentProgressPercentage":42.0,"LastExecutionResult":{"Status":"Completed","EndTimeUtc":"2026-01-01T00:00:00Z"}}]"""
@@ -201,6 +203,24 @@ class JellyfinContractTest {
         client.playOn("s1", listOf(DASHED), 60_000)
         client.seekSession("s1", 90_000)
         for (g in dev.nitrate.core.admin.GeneralCommand.entries) client.sendGeneralCommand("s1", g)
+        val group = client.syncPlayGroups().single()
+        assertEquals(DASHED, group.id)
+        assertEquals(dev.nitrate.core.syncplay.GroupState.PAUSED, group.state)
+        client.syncPlayCreate("Movie night")
+        client.syncPlayJoin(group.id)
+        listOf(
+            dev.nitrate.core.syncplay.SyncPlayRequest.SetQueue(listOf(DASHED), 0, 60_000),
+            dev.nitrate.core.syncplay.SyncPlayRequest.Pause,
+            dev.nitrate.core.syncplay.SyncPlayRequest.Unpause,
+            dev.nitrate.core.syncplay.SyncPlayRequest.Stop,
+            dev.nitrate.core.syncplay.SyncPlayRequest.Seek(90_000),
+            dev.nitrate.core.syncplay.SyncPlayRequest.Status(true, 1_000, 2_000, true, DASHED),
+            dev.nitrate.core.syncplay.SyncPlayRequest.Status(false, 1_000, 2_000, false, DASHED),
+            dev.nitrate.core.syncplay.SyncPlayRequest.NextItem(DASHED),
+            dev.nitrate.core.syncplay.SyncPlayRequest.Ping(40),
+        ).forEach { client.syncPlay(it) }
+        client.syncPlayLeave()
+        assertEquals(2L, client.serverTime().let { it.responseSentMs - it.requestReceivedMs })
         val user = client.users().single()
         assertTrue(user.permissions.isAdministrator)
         client.setPermissions(user.id, user.permissions.copy(enableContentDownloading = false))

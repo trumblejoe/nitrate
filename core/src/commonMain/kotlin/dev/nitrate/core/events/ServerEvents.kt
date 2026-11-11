@@ -22,9 +22,9 @@ sealed interface ServerEvent {
     /** Watched state, position or favourites changed for these items (on any device). */
     data class UserDataChanged(val itemIds: List<String>) : ServerEvent
 
-    /** A SyncPlay command to carry out at [whenMs] (server clock, epoch ms). */
-    data class SyncPlayCommand(val groupId: String, val command: String, val whenMs: Long?, val positionMs: Long?, val playlistItemId: String?) : ServerEvent
+    /** A SyncPlay command for this device's group. */
+    data class SyncPlayCommand(val groupId: String, val command: dev.nitrate.core.syncplay.SyncPlayCommand) : ServerEvent
 
-    /** A SyncPlay group change: [type] is GroupJoined, UserJoined, UserLeft, PlayQueue, StateUpdate, GroupLeft... */
-    data class SyncPlayGroupUpdate(val groupId: String, val type: String, val data: String) : ServerEvent
+    /** A change to this device's SyncPlay group. */
+    data class SyncPlayGroupUpdate(val groupId: String, val update: dev.nitrate.core.syncplay.SyncPlayUpdate) : ServerEvent
 }

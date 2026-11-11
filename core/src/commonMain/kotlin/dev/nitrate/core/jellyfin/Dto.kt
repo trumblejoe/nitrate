@@ -225,3 +225,35 @@ internal data class CapabilitiesDto(
     val supportsMediaControl: Boolean,
     val supportsPersistentIdentifier: Boolean = true,
 )
+
+// ---- SyncPlay ----
+
+@Serializable
+internal data class NewGroupRequestDto(val groupName: String)
+
+@Serializable
+internal data class JoinGroupRequestDto(val groupId: String)
+
+@Serializable
+internal data class PlayRequestDto(val playingQueue: List<String>, val playingItemPosition: Int, val startPositionTicks: Long)
+
+@Serializable
+internal data class SeekRequestDto(val positionTicks: Long)
+
+/** Body of both /SyncPlay/Ready and /SyncPlay/Buffering. */
+@Serializable
+internal data class ReadyRequestDto(
+    @kotlinx.serialization.SerialName("When") val whenTime: String,
+    val positionTicks: Long,
+    val isPlaying: Boolean,
+    val playlistItemId: String,
+)
+
+@Serializable
+internal data class NextItemRequestDto(val playlistItemId: String)
+
+@Serializable
+internal data class PingRequestDto(val ping: Long)
+
+@Serializable
+internal data class UtcTimeResponseDto(val requestReceptionTime: String, val responseTransmissionTime: String)

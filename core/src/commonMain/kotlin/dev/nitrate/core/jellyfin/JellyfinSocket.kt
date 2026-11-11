@@ -17,6 +17,11 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
+import dev.nitrate.core.syncplay.GroupState
+import dev.nitrate.core.syncplay.SyncPlayCommand
+import dev.nitrate.core.syncplay.SyncPlayGroup
+import dev.nitrate.core.syncplay.SyncPlayQueue
+import dev.nitrate.core.syncplay.SyncPlayUpdate
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
@@ -97,14 +102,16 @@ internal fun parseEvent(type: String?, data: kotlinx.serialization.json.JsonElem
         }
         "SyncPlayCommand" -> o?.let {
             ServerEvent.SyncPlayCommand(
-                groupId = it.s("GroupId").orEmpty(),
-                command = it.s("Command") ?: return null,
-                whenMs = it.s("When")?.let { w -> runCatching { Instant.parse(w).toEpochMilliseconds() }.getOrNull() },
-                positionMs = it.l("PositionTicks")?.ticksToMs(),
-                playlistItemId = it.s("PlaylistItemId"),
+                groupId = normalizeId(it.s("GroupId").orEmpty()),
+                command = SyncPlayCommand(
+                    command = it.s("Command") ?: return null,
+                    whenMs = it.s("When")?.let(::epochMs),
+                    positionMs = it.l("PositionTicks")?.ticksToMs(),
+                    playlistItemId = it.s("PlaylistItemId")?.let(::normalizeId),
+                ),
             )
         }
-        "SyncPlayGroupUpdate" -> o?.let { ServerEvent.SyncPlayGroupUpdate(it.s("GroupId").orEmpty(), it.s("Type").orEmpty(), (it["Data"] ?: JsonPrimitive("")).toString()) }
+        "SyncPlayGroupUpdate" -> o?.let { u -> parseGroupUpdate(u.s("Type").orEmpty(), u["Data"])?.let { ServerEvent.SyncPlayGroupUpdate(normalizeId(u.s("GroupId").orEmpty()), it) } }
         else -> null
     }
 }
@@ -115,3 +122,48 @@ private fun JsonObject.i(key: String) = (this[key] as? JsonPrimitive)?.intOrNull
 private fun JsonObject.list(key: String) = (this[key] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
 private fun JsonArray?.orEmpty(): List<kotlinx.serialization.json.JsonElement> = this ?: emptyList()
 private fun JsonObject?.orEmpty(): Map<String, kotlinx.serialization.json.JsonElement> = this ?: emptyMap()
+
+@OptIn(ExperimentalTime::class)
+private fun epochMs(iso: String): Long? = runCatching { Instant.parse(iso).toEpochMilliseconds() }.getOrNull()
+
+private fun groupState(s: String?) = when (s) {
+    "Waiting" -> GroupState.WAITING
+    "Paused" -> GroupState.PAUSED
+    "Playing" -> GroupState.PLAYING
+    else -> GroupState.IDLE
+}
+
+internal fun parseGroupInfo(o: JsonObject) = SyncPlayGroup(
+    id = normalizeId(o.s("GroupId").orEmpty()),
+    name = o.s("GroupName").orEmpty(),
+    state = groupState(o.s("State")),
+    participants = o.list("Participants"),
+)
+
+/** Jellyfin's GroupUpdate payloads, by type. */
+internal fun parseGroupUpdate(type: String, data: kotlinx.serialization.json.JsonElement?): SyncPlayUpdate? {
+    val o = data as? JsonObject
+    val text = (data as? JsonPrimitive)?.contentOrNull.orEmpty()
+    return when (type) {
+        "GroupJoined" -> o?.let { SyncPlayUpdate.Joined(parseGroupInfo(it)) }
+        "GroupLeft" -> SyncPlayUpdate.Left
+        "UserJoined" -> SyncPlayUpdate.UserJoined(text)
+        "UserLeft" -> SyncPlayUpdate.UserLeft(text)
+        "StateUpdate" -> o?.let { SyncPlayUpdate.State(groupState(it.s("State")), it.s("Reason")) }
+        "PlayQueue" -> o?.let { q ->
+            val playlist = (q["Playlist"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            SyncPlayUpdate.Queue(
+                SyncPlayQueue(
+                    reason = q.s("Reason").orEmpty(),
+                    itemIds = playlist.map { normalizeId(it.s("ItemId").orEmpty()) },
+                    playlistItemIds = playlist.map { normalizeId(it.s("PlaylistItemId").orEmpty()) },
+                    index = q.i("PlayingItemIndex") ?: 0,
+                    startMs = q.l("StartPositionTicks")?.ticksToMs() ?: 0,
+                    isPlaying = (q["IsPlaying"] as? JsonPrimitive)?.contentOrNull == "true",
+                ),
+            )
+        }
+        "NotInGroup", "GroupDoesNotExist", "LibraryAccessDenied" -> SyncPlayUpdate.Refused(type)
+        else -> null
+    }
+}

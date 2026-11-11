@@ -181,6 +181,17 @@ interface MediaServer {
     /** Live events from the server while signed in (remote control, library and watch changes). */
     fun events(): Flow<ServerEvent> = kotlinx.coroutines.flow.emptyFlow()
 
+    // ---- SyncPlay (watch together) ----
+    /** Groups this user can join. */
+    suspend fun syncPlayGroups(): List<dev.nitrate.core.syncplay.SyncPlayGroup> = unsupported()
+    suspend fun syncPlayCreate(name: String): Unit = unsupported()
+    suspend fun syncPlayJoin(groupId: String): Unit = unsupported()
+    suspend fun syncPlayLeave(): Unit = unsupported()
+    suspend fun syncPlay(request: dev.nitrate.core.syncplay.SyncPlayRequest): Unit = unsupported()
+
+    /** The server's clock, for keeping a group in step. */
+    suspend fun serverTime(): dev.nitrate.core.syncplay.ServerTimeSample = unsupported()
+
     // ---- Custom rows ----
     /** Items matching a saved search, for custom rows. */
     suspend fun queryItems(query: ItemQuery): List<MediaItem> = unsupported()

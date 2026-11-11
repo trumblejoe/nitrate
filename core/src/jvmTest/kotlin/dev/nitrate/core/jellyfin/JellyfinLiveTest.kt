@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -251,5 +253,85 @@ class JellyfinLiveTest {
         assertTrue(received.any { it == dev.nitrate.core.events.ServerEvent.Playstate("Pause", null) })
         println("Subtitles: ${runCatching { tv.searchSubtitles(phone.views().first().id, "eng").size }.getOrElse { "search failed (expected without providers): ${it.message}" }}")
         listening.cancel()
+    }
+
+    /** A player that just keeps time, for SyncPlay. */
+    private class ClockPlayer : dev.nitrate.core.syncplay.SyncPlayer {
+        @Volatile override var itemId: String? = null
+        @Volatile private var base = 0L
+        @Volatile private var since = 0L
+        @Volatile override var isPlaying = false
+        @Volatile override var isReady = false
+        val log = java.util.concurrent.CopyOnWriteArrayList<String>()
+        override val positionMs get() = if (isPlaying) base + (System.currentTimeMillis() - since) else base
+        override fun load(itemId: String, startMs: Long) { this.itemId = itemId; base = startMs; isPlaying = false; isReady = true; log += "load $startMs" }
+        override fun play() { base = positionMs; since = System.currentTimeMillis(); isPlaying = true; log += "play" }
+        override fun pause() { base = positionMs; isPlaying = false; log += "pause" }
+        override fun seek(positionMs: Long) { base = positionMs; since = System.currentTimeMillis(); log += "seek $positionMs" }
+        override fun setRate(rate: Float) {}
+        override fun stop() { log += "stop" }
+    }
+
+    @Test
+    fun `two devices watch together`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val user = System.getenv("JELLYFIN_USER") ?: "nitrate"
+        val pw = System.getenv("JELLYFIN_PASSWORD").orEmpty()
+        fun device(id: String) = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", id, id), object : SessionStorage {
+            override suspend fun load(): StoredSession? = null
+            override suspend fun save(session: StoredSession) {}
+            override suspend fun clear() {}
+        }, { caps() }, settings)
+        val a = device("nitrate-sync-a").also { it.login(url!!, user, pw) }
+        val b = device("nitrate-sync-b").also { it.login(url!!, user, pw) }
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default + kotlinx.coroutines.SupervisorJob())
+        val ca = dev.nitrate.core.syncplay.SyncPlayController(a, scope)
+        val cb = dev.nitrate.core.syncplay.SyncPlayController(b, scope)
+        val log = java.util.concurrent.CopyOnWriteArrayList<String>()
+        for ((name, client, c) in listOf(Triple("A", a, ca), Triple("B", b, cb))) {
+            scope.launch {
+                client.events().collect {
+                    if (it is dev.nitrate.core.events.ServerEvent.SyncPlayCommand || it is dev.nitrate.core.events.ServerEvent.SyncPlayGroupUpdate) log += "$name $it"
+                    c.handle(it)
+                }
+            }
+            scope.launch { c.notices.collect { log += "$name notice: $it" } }
+        }
+        delay(1_500)
+        suspend fun waitFor(what: String, check: () -> Boolean) =
+            kotlinx.coroutines.withTimeoutOrNull(15_000) { while (!check()) delay(100) } ?: error("Timed out waiting for $what\n${log.joinToString("\n")}")
+
+        ca.create("Nitrate live test")
+        waitFor("A in a group") { ca.group.value != null }
+        val group = cb.groups().first { it.id == ca.group.value!!.id }
+        cb.join(group.id)
+        waitFor("B in the group") { cb.group.value != null }
+        println("Clock offsets: A ${ca.clockOffsetMs} ms, B ${cb.clockOffsetMs} ms")
+
+        val movie = a.views().flatMap { a.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 50, false).first }.first { it.kind == ItemKind.MOVIE || it.kind == ItemKind.EPISODE }
+        val pa = ClockPlayer()
+        val pb = ClockPlayer()
+        val opened = scope.launch { cb.openRequests.collect { q -> cb.attach(pb, q.currentItemId!!, q.startMs) } }
+        ca.attach(pa, movie.id, 5_000)
+        waitFor("both loaded") { pa.itemId == movie.id && pb.itemId == movie.id }
+        // Loads are instant here, so both say ready and the group starts.
+        waitFor("both playing") { pa.isPlaying && pb.isPlaying }
+        delay(1_000)
+        println("Positions: A ${pa.positionMs}, B ${pb.positionMs}")
+        assertTrue("In step", kotlin.math.abs(pa.positionMs - pb.positionMs) < 300)
+
+        cb.requestPause()
+        waitFor("both paused") { !pa.isPlaying && !pb.isPlaying }
+        cb.requestSeek(15_000)
+        waitFor("both at 0:15") { pa.positionMs in 14_500..15_500 && pb.positionMs in 14_500..15_500 }
+        ca.requestPlay()
+        waitFor("playing again") { pa.isPlaying && pb.isPlaying }
+
+        cb.leave()
+        ca.leave()
+        println(log.joinToString("\n"))
+        println("A: ${pa.log}\nB: ${pb.log}")
+        opened.cancel()
+        scope.cancel()
     }
 }

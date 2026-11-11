@@ -58,8 +58,17 @@ class PlaybackExtrasTest {
             event("""{"MessageType":"UserDataChanged","Data":{"UserId":"x","UserDataList":[{"ItemId":"0123456789abcdef0123456789abcdef","Played":true}]}}"""),
         )
         val sync = event("""{"MessageType":"SyncPlayCommand","Data":{"GroupId":"g","Command":"Unpause","When":"2026-11-11T20:00:00.5Z","PositionTicks":20000000,"PlaylistItemId":"p"}}""") as ServerEvent.SyncPlayCommand
-        assertEquals(2_000L, sync.positionMs)
-        assertEquals(java.time.Instant.parse("2026-11-11T20:00:00.5Z").toEpochMilli(), sync.whenMs)
+        assertEquals(2_000L, sync.command.positionMs)
+        assertEquals(java.time.Instant.parse("2026-11-11T20:00:00.5Z").toEpochMilli(), sync.command.whenMs)
+        val queue = event("""{"MessageType":"SyncPlayGroupUpdate","Data":{"GroupId":"0123456789abcdef0123456789abcdef","Type":"PlayQueue","Data":{"Reason":"NewPlaylist","Playlist":[{"ItemId":"0123456789abcdef0123456789abcdef","PlaylistItemId":"p1"}],"PlayingItemIndex":0,"StartPositionTicks":50000000,"IsPlaying":true}}}""") as ServerEvent.SyncPlayGroupUpdate
+        val q = (queue.update as dev.nitrate.core.syncplay.SyncPlayUpdate.Queue).queue
+        assertEquals("01234567-89ab-cdef-0123-456789abcdef", q.currentItemId)
+        assertEquals(5_000L, q.startMs)
+        assertEquals(true, q.isPlaying && q.changesItem)
+        assertEquals(
+            dev.nitrate.core.syncplay.SyncPlayUpdate.UserJoined("Sam"),
+            (event("""{"MessageType":"SyncPlayGroupUpdate","Data":{"GroupId":"g","Type":"UserJoined","Data":"Sam"}}""") as ServerEvent.SyncPlayGroupUpdate).update,
+        )
         assertEquals(null, event("""{"MessageType":"KeepAlive"}"""))
     }
 }

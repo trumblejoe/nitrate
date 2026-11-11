@@ -72,6 +72,20 @@ PATHS = [
     "/Sessions/{sessionId}/Command/{command}",
     "/MediaSegments/{itemId}",
     "/Videos/{itemId}/Trickplay/{width}/{index}.jpg",
+    "/SyncPlay/List",
+    "/SyncPlay/New",
+    "/SyncPlay/Join",
+    "/SyncPlay/Leave",
+    "/SyncPlay/SetNewQueue",
+    "/SyncPlay/Pause",
+    "/SyncPlay/Unpause",
+    "/SyncPlay/Stop",
+    "/SyncPlay/Seek",
+    "/SyncPlay/Buffering",
+    "/SyncPlay/Ready",
+    "/SyncPlay/NextItem",
+    "/SyncPlay/Ping",
+    "/GetUtcTime",
 ]
 OUT = "core/src/jvmTest/resources/jellyfin-openapi.json"
 

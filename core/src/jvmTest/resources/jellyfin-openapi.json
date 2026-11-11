@@ -1431,6 +1431,27 @@
     },
     "type": "object"
    },
+   "BufferRequestDto": {
+    "additionalProperties": false,
+    "properties": {
+     "IsPlaying": {
+      "type": "boolean"
+     },
+     "PlaylistItemId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "PositionTicks": {
+      "format": "int64",
+      "type": "integer"
+     },
+     "When": {
+      "format": "date-time",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "ChannelType": {
     "enum": [
      "TV",
@@ -1917,6 +1938,51 @@
     ],
     "type": "string"
    },
+   "GroupInfoDto": {
+    "additionalProperties": false,
+    "properties": {
+     "GroupId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "GroupName": {
+      "type": "string"
+     },
+     "LastUpdatedAt": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "Participants": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "State": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/GroupStateType"
+       }
+      ],
+      "enum": [
+       "Idle",
+       "Waiting",
+       "Paused",
+       "Playing"
+      ]
+     }
+    },
+    "type": "object"
+   },
+   "GroupStateType": {
+    "enum": [
+     "Idle",
+     "Waiting",
+     "Paused",
+     "Playing"
+    ],
+    "type": "string"
+   },
    "HardwareAccelerationType": {
     "enum": [
      "none",
@@ -2140,6 +2206,16 @@
      "IndexNumber"
     ],
     "type": "string"
+   },
+   "JoinGroupRequestDto": {
+    "additionalProperties": false,
+    "properties": {
+     "GroupId": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "type": "object"
    },
    "LocationType": {
     "enum": [
@@ -3093,6 +3169,27 @@
     },
     "type": "object"
    },
+   "NewGroupRequestDto": {
+    "additionalProperties": false,
+    "properties": {
+     "GroupName": {
+      "maxLength": 200,
+      "minLength": 0,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "NextItemRequestDto": {
+    "additionalProperties": false,
+    "properties": {
+     "PlaylistItemId": {
+      "format": "uuid",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "PersonKind": {
     "enum": [
      "Unknown",
@@ -3124,6 +3221,16 @@
     ],
     "type": "string"
    },
+   "PingRequestDto": {
+    "additionalProperties": false,
+    "properties": {
+     "Ping": {
+      "format": "int64",
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
    "PlayAccess": {
     "enum": [
      "Full",
@@ -3148,6 +3255,27 @@
      "DirectPlay"
     ],
     "type": "string"
+   },
+   "PlayRequestDto": {
+    "additionalProperties": false,
+    "properties": {
+     "PlayingItemPosition": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "PlayingQueue": {
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "StartPositionTicks": {
+      "format": "int64",
+      "type": "integer"
+     }
+    },
+    "type": "object"
    },
    "PlaybackErrorCode": {
     "enum": [
@@ -3910,6 +4038,27 @@
     ],
     "type": "string"
    },
+   "ReadyRequestDto": {
+    "additionalProperties": false,
+    "properties": {
+     "IsPlaying": {
+      "type": "boolean"
+     },
+     "PlaylistItemId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "PositionTicks": {
+      "format": "int64",
+      "type": "integer"
+     },
+     "When": {
+      "format": "date-time",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "RemoteImageInfo": {
     "additionalProperties": false,
     "properties": {
@@ -4164,6 +4313,16 @@
      "Vertical"
     ],
     "type": "string"
+   },
+   "SeekRequestDto": {
+    "additionalProperties": false,
+    "properties": {
+     "PositionTicks": {
+      "format": "int64",
+      "type": "integer"
+     }
+    },
+    "type": "object"
    },
    "SeriesInfo": {
     "additionalProperties": false,
@@ -5451,6 +5610,20 @@
      "AuthenticationProviderId",
      "PasswordResetProviderId"
     ],
+    "type": "object"
+   },
+   "UtcTimeResponse": {
+    "additionalProperties": false,
+    "properties": {
+     "RequestReceptionTime": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "ResponseTransmissionTime": {
+      "format": "date-time",
+      "type": "string"
+     }
+    },
     "type": "object"
    },
    "Video3DFormat": {
@@ -6775,6 +6948,56 @@
     ],
     "tags": [
      "Genre"
+    ]
+   }
+  },
+  "/GetUtcTime": {
+   "get": {
+    "operationId": "GetUtcTime",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UtcTimeResponse"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UtcTimeResponse"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UtcTimeResponse"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "tags": [
+     "System"
     ]
    }
   },
@@ -13540,6 +13763,866 @@
     ],
     "tags": [
      "Show"
+    ]
+   }
+  },
+  "/SyncPlay/Buffering": {
+   "post": {
+    "operationId": "SyncPlayBuffering",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/BufferRequestDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/BufferRequestDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/BufferRequestDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/Join": {
+   "post": {
+    "operationId": "SyncPlayJoinGroup",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/JoinGroupRequestDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/JoinGroupRequestDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/JoinGroupRequestDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayJoinGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/Leave": {
+   "post": {
+    "operationId": "SyncPlayLeaveGroup",
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/List": {
+   "get": {
+    "operationId": "SyncPlayGetGroups",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/GroupInfoDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/GroupInfoDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/GroupInfoDto"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayJoinGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/New": {
+   "post": {
+    "operationId": "SyncPlayCreateGroup",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/NewGroupRequestDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/NewGroupRequestDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/NewGroupRequestDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GroupInfoDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/GroupInfoDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/GroupInfoDto"
+        }
+       }
+      }
+     },
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayCreateGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/NextItem": {
+   "post": {
+    "operationId": "SyncPlayNextItem",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/NextItemRequestDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/NextItemRequestDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/NextItemRequestDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/Pause": {
+   "post": {
+    "operationId": "SyncPlayPause",
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/Ping": {
+   "post": {
+    "operationId": "SyncPlayPing",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/PingRequestDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/PingRequestDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/PingRequestDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/Ready": {
+   "post": {
+    "operationId": "SyncPlayReady",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/ReadyRequestDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/ReadyRequestDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/ReadyRequestDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/Seek": {
+   "post": {
+    "operationId": "SyncPlaySeek",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/SeekRequestDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/SeekRequestDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/SeekRequestDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/SetNewQueue": {
+   "post": {
+    "operationId": "SyncPlaySetNewQueue",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/PlayRequestDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/PlayRequestDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/PlayRequestDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/Stop": {
+   "post": {
+    "operationId": "SyncPlayStop",
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
+    ]
+   }
+  },
+  "/SyncPlay/Unpause": {
+   "post": {
+    "operationId": "SyncPlayUnpause",
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "SyncPlayIsInGroup",
+       "SyncPlayHasAccess",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "SyncPlay"
     ]
    }
   },
