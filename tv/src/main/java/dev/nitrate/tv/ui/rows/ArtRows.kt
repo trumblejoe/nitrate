@@ -228,7 +228,7 @@ private fun SingleBill(row: MediaRow, item: MediaItem, repository: MediaServer, 
 
 /** Wide marked cards: half colour, half monochrome under ink, the title up the edge. */
 @Composable
-fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions) {
+fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions, ink: dev.nitrate.core.rows.CressidaInk = dev.nitrate.core.rows.CressidaInk.IVY) {
     val accent = MaterialTheme.colorScheme.primary
     val prefs = LocalDisplayPrefs.current
     Column {
@@ -253,7 +253,7 @@ fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions) {
                     )
                     Box(Modifier.fillMaxHeight().fillMaxWidth(RowArt.CRESSIDA_SPLIT).background(Brush.horizontalGradient(listOf(Color(0xCC000000), Color(0x22000000)))))
                     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color(0xAA000000))))
-                    Canvas(Modifier.fillMaxSize()) { drawCressidaInk(accent) }
+                    Canvas(Modifier.fillMaxSize()) { drawCressidaInk(accent, ink) }
                     Text(
                         item.displayTitle.uppercase(), color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp,
                         maxLines = 1, softWrap = false, modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 14.dp).sideways(),

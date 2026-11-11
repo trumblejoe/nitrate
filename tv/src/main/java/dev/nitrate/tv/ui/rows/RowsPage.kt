@@ -127,7 +127,7 @@ fun RowsPage(
                             when (display.style) {
                                 RowStyle.FILM_STRIP -> FilmStripRow(row, repository, actions)
                                 RowStyle.LIGHTNING -> LightningRow(row, repository, actions)
-                                RowStyle.CRESSIDA -> CressidaRow(row, repository, actions)
+                                RowStyle.CRESSIDA -> CressidaRow(row, repository, actions, display.ink)
                                 else -> CardRow(row, display, repository, actions)
                             }
                         }

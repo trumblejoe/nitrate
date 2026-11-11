@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -210,22 +211,24 @@ private fun SingleBill(item: MediaItem, actions: AppActions, modifier: Modifier)
 
 /** Tall marked cards: half colour, half monochrome under ink, the title up the edge. */
 @Composable
-fun CressidaRow(row: MediaRow, actions: AppActions) {
+fun CressidaRow(row: MediaRow, actions: AppActions, ink: dev.nitrate.core.rows.CressidaInk = dev.nitrate.core.rows.CressidaInk.IVY) {
     val state = rememberLazyListState()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val cardWidth = (maxWidth - ScreenPadding * 2).coerceAtMost(520.dp)
         LazyRow(state = state, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp), flingBehavior = rememberSnapFlingBehavior(state)) {
-            items(row.items, key = { it.id }) { item -> CressidaCard(item, actions, "${row.key}-${item.id}", Modifier.width(cardWidth)) }
+            items(row.items, key = { it.id }) { item -> CressidaCard(item, actions, "${row.key}-${item.id}", ink, Modifier.width(cardWidth)) }
         }
     }
 }
 
 @Composable
-private fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String, modifier: Modifier) {
+fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String, ink: dev.nitrate.core.rows.CressidaInk, modifier: Modifier) {
     val prefs = LocalDisplayPrefs.current
     val accent = accentColor()
     val art = actions.artwork(item)
-    Box(modifier.height(440.dp).clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = 0.06f)).pressable({ actions.open(item, sharedKey) })) {
+    BoxWithConstraints(modifier.height(440.dp).clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = 0.06f)).pressable({ actions.open(item, sharedKey) })) {
+        // Narrow cards (small phones, galleries) get a round play button instead of a pill.
+        val compact = maxWidth < 300.dp
         AsyncImage(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey))
         AsyncImage(
             art, null, contentScale = ContentScale.Crop,
@@ -234,7 +237,7 @@ private fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String
         )
         Box(Modifier.fillMaxHeight().fillMaxWidth(RowArt.CRESSIDA_SPLIT).background(Brush.horizontalGradient(listOf(Color(0xCC000000), Color(0x22000000)))))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color(0xAA000000))))
-        Canvas(Modifier.fillMaxSize()) { drawCressidaInk(accent) }
+        Canvas(Modifier.fillMaxSize()) { drawCressidaInk(accent, ink) }
         Text(
             item.displayTitle.uppercase(),
             color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black, letterSpacing = 5.sp, maxLines = 1, softWrap = false,
@@ -244,7 +247,13 @@ private fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String
             item.episodeLabel?.let { Text(it, color = Color.White, style = MaterialTheme.typography.labelLarge) }
             val facts = prefs.facts(item).take(3)
             if (facts.isNotEmpty()) Text(facts.joinToString(" · "), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
-            PillButton(playLabel(item), Icons.Default.PlayArrow, primary = true, onClick = { actions.playOrOpen(item) })
+            if (compact) {
+                Box(Modifier.size(52.dp).clip(androidx.compose.foundation.shape.CircleShape).background(accent).pressable({ actions.playOrOpen(item) }), Alignment.Center) {
+                    androidx.compose.material3.Icon(Icons.Default.PlayArrow, playLabel(item), tint = contentOn(accent))
+                }
+            } else {
+                PillButton(playLabel(item), Icons.Default.PlayArrow, primary = true, onClick = { actions.playOrOpen(item) })
+            }
         }
     }
 }

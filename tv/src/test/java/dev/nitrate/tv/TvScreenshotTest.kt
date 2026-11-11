@@ -169,6 +169,14 @@ class TvScreenshotTest {
     @Test fun lightningRow() = artRow("tv-row-lightning") { r, s, a -> dev.nitrate.tv.ui.rows.LightningRow(r, s, a) }
     @Test fun cressidaRow() = artRow("tv-row-cressida") { r, s, a -> dev.nitrate.tv.ui.rows.CressidaRow(r, s, a) }
 
+    @Test fun cressidaDragonRow() = shoot("tv-row-cressida-dragon") { c ->
+        val rows = androidx.compose.runtime.produceState<List<dev.nitrate.core.rows.MediaRow>>(emptyList()) { value = c.server.homeRows() }.value
+        val row = rows.firstOrNull { it.key == "home/latest/lib-movies" } ?: return@shoot
+        androidx.compose.foundation.layout.Box(Modifier.padding(top = 48.dp)) {
+            dev.nitrate.tv.ui.rows.CressidaRow(row, c.server, dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}), dev.nitrate.core.rows.CressidaInk.DRAGON)
+        }
+    }
+
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 
     @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }

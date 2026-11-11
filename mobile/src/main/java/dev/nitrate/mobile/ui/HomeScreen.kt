@@ -184,7 +184,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
             RowStyle.SHOWCASE -> ShowcaseRow(row, actions)
             RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
             RowStyle.LIGHTNING -> LightningRow(row, actions)
-            RowStyle.CRESSIDA -> CressidaRow(row, actions)
+            RowStyle.CRESSIDA -> CressidaRow(row, actions, display.ink)
             RowStyle.WIDE -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(row.items, key = { it.id }) { item ->
                     val key = "${row.key}-${item.id}"
@@ -237,6 +237,17 @@ private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit)
                     trailingIcon = { if (style == display.style) Icon(Icons.Default.Check, null) },
                     onClick = { onDisplay(display.copy(style = style)); open = false },
                 )
+            }
+            if (display.style == RowStyle.CRESSIDA) {
+                HorizontalDivider()
+                Text("Ink", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                dev.nitrate.core.rows.CressidaInk.entries.forEach { ink ->
+                    DropdownMenuItem(
+                        text = { Text(ink.label) },
+                        trailingIcon = { if (ink == display.ink) Icon(Icons.Default.Check, null) },
+                        onClick = { onDisplay(display.copy(ink = ink)); open = false },
+                    )
+                }
             }
             if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) {
                 HorizontalDivider()

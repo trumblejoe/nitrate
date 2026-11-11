@@ -91,6 +91,14 @@ fun RowSettingsDialog(
                 item {
                     ChoiceItem("Size", display.size.label) { onChange(display.copy(size = display.size.next())) }
                 }
+                if (display.style == RowStyle.CRESSIDA) {
+                    item {
+                        ChoiceItem("Ink", display.ink.label) {
+                            val inks = dev.nitrate.core.rows.CressidaInk.entries
+                            onChange(display.copy(ink = inks[(display.ink.ordinal + 1) % inks.size]))
+                        }
+                    }
+                }
                 if (display.style == RowStyle.SHOWCASE) {
                     item { ToggleItem("Show logo", display.showcase.showLogo) { showcase { copy(showLogo = it) } } }
                     item { ToggleItem("Show details", display.showcase.showDetails) { showcase { copy(showDetails = it) } } }

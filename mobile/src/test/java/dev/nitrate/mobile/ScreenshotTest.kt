@@ -67,6 +67,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -248,6 +250,25 @@ class ScreenshotTest {
 
     @Test @Config(qualifiers = "w411dp-h1050dp-night-xxhdpi")
     fun cressidaRow() = shoot("phone-row-cressida") { StyledRow(it, dev.nitrate.core.rows.RowStyle.CRESSIDA) }
+
+    /** Every Cressida ink, two to a row, on real cards. */
+    @Test @Config(qualifiers = "w411dp-h2150dp-night-xxhdpi")
+    fun cressidaInks() = shoot("phone-cressida-inks") { a ->
+        val films = androidx.compose.runtime.produceState<List<dev.nitrate.core.model.MediaItem>>(emptyList()) { value = a.server.homeRows().first { it.key.startsWith("home/latest/") }.items }.value
+        if (films.isEmpty()) return@shoot
+        androidx.compose.foundation.layout.Column(Modifier.padding(12.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp)) {
+            dev.nitrate.core.rows.CressidaInk.entries.chunked(2).forEachIndexed { r, pair ->
+                androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                    pair.forEachIndexed { i, ink ->
+                        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                            Text(ink.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp))
+                            dev.nitrate.mobile.ui.CressidaCard(films[(r * 2 + i) % films.size], a, "ink-${ink.name}", ink, Modifier.fillMaxWidth().height(300.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 

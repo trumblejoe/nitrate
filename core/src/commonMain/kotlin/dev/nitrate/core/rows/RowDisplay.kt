@@ -59,7 +59,26 @@ data class RowDisplay(
     val size: RowSize = RowSize.MEDIUM,
     val showTitles: Boolean = false,
     val showcase: ShowcaseOptions = ShowcaseOptions(),
+    /** The linework over a Cressida row's marked side. */
+    val ink: CressidaInk = CressidaInk.IVY,
 )
+
+/** Designs for the Cressida style's ink. */
+@Serializable
+enum class CressidaInk(val label: String) {
+    IVY("Ivy"),
+    TRIBAL("Tribal"),
+    DRAGON("Dragon"),
+    CONSTELLATION("Constellation"),
+    WAVES("Waves"),
+    DECO("Deco"),
+    MAGIC("Magic"),
+    SONGBIRD("Songbird"),
+    FLAMES("Flames"),
+    GEOMETRY("Geometry"),
+    THORNS("Thorns"),
+    CIRCUIT("Circuit"),
+}
 
 @Serializable
 data class ShowcaseOptions(

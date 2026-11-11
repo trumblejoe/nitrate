@@ -218,6 +218,7 @@ private fun EntryDialog(
 ) {
     var name by remember { mutableStateOf(entry.title ?: "") }
     var style by remember { mutableStateOf(display.style) }
+    var ink by remember { mutableStateOf(display.ink) }
     var titles by remember { mutableStateOf(display.showTitles) }
     var source by remember { mutableStateOf(entry.source) }
     var changing by remember { mutableStateOf(false) }
@@ -231,6 +232,12 @@ private fun EntryDialog(
                 Text("Style", style = MaterialTheme.typography.titleSmall)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RowStyle.entries.forEach { s -> FilterChip(selected = style == s, onClick = { style = s }, label = { Text(s.label) }) }
+                }
+                if (style == RowStyle.CRESSIDA) {
+                    Text("Ink", style = MaterialTheme.typography.titleSmall)
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        dev.nitrate.core.rows.CressidaInk.entries.forEach { i -> FilterChip(selected = ink == i, onClick = { ink = i }, label = { Text(i.label) }) }
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Titles under cards", modifier = Modifier.weight(1f))
@@ -256,7 +263,7 @@ private fun EntryDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val d = display.copy(style = style, showTitles = titles)
+                val d = display.copy(style = style, showTitles = titles, ink = ink)
                 onSave(entry.copy(title = name.ifBlank { null }, source = source, display = if (entry.isCustom) d else entry.display), d)
             }) { Text("Save") }
         },
