@@ -4057,6 +4057,62 @@
     ],
     "type": "string"
    },
+   "UpdateUserItemDataDto": {
+    "additionalProperties": false,
+    "properties": {
+     "IsFavorite": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "ItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Key": {
+      "nullable": true,
+      "type": "string"
+     },
+     "LastPlayedDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "Likes": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "PlayCount": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "PlaybackPositionTicks": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Played": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "PlayedPercentage": {
+      "format": "double",
+      "nullable": true,
+      "type": "number"
+     },
+     "Rating": {
+      "format": "double",
+      "nullable": true,
+      "type": "number"
+     },
+     "UnplayedItemCount": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
    "UserConfiguration": {
     "additionalProperties": false,
     "properties": {
@@ -6913,6 +6969,93 @@
     ],
     "tags": [
      "ItemUpdate"
+    ]
+   }
+  },
+  "/Items/{itemId}/Download": {
+   "get": {
+    "operationId": "GetDownload",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "audio/*": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       },
+       "video/*": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "Download",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
     ]
    }
   },
@@ -10940,6 +11083,230 @@
     ]
    }
   },
+  "/UserItems/{itemId}/UserData": {
+   "get": {
+    "operationId": "GetItemUserData",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UserItemDataDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UserItemDataDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UserItemDataDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "UserData"
+    ]
+   },
+   "post": {
+    "operationId": "UpdateItemUserData",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateUserItemDataDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateUserItemDataDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateUserItemDataDto"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UserItemDataDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UserItemDataDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/UserItemDataDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "UserData"
+    ]
+   }
+  },
   "/UserPlayedItems/{itemId}": {
    "delete": {
     "operationId": "MarkUnplayedItem",
@@ -12443,6 +12810,1060 @@
     },
     "tags": [
      "Video"
+    ]
+   }
+  },
+  "/Videos/{itemId}/stream.{container}": {
+   "get": {
+    "operationId": "GetVideoStreamByContainer",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "container",
+      "required": true,
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "static",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "params",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "tag",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "deviceProfileId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "playSessionId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "segmentContainer",
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "segmentLength",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "minSegments",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "mediaSourceId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "deviceId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioCodec",
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableAutoStreamCopy",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "allowVideoStreamCopy",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "allowAudioStreamCopy",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioSampleRate",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxAudioBitDepth",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioBitRate",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioChannels",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxAudioChannels",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "profile",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "level",
+      "schema": {
+       "pattern": "-?[0-9]+(?:\\.[0-9]+)?",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "framerate",
+      "schema": {
+       "format": "float",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxFramerate",
+      "schema": {
+       "format": "float",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "copyTimestamps",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startTimeTicks",
+      "schema": {
+       "format": "int64",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "width",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "height",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxWidth",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxHeight",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "videoBitRate",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "subtitleStreamIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "subtitleMethod",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/SubtitleDeliveryMethod"
+        }
+       ],
+       "enum": [
+        "Encode",
+        "Embed",
+        "External",
+        "Hls",
+        "Drop"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxRefFrames",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxVideoBitDepth",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "requireAvc",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "deInterlace",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "requireNonAnamorphic",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "transcodingMaxAudioChannels",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cpuCoreLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "liveStreamId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableMpegtsM2TsMode",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "videoCodec",
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "subtitleCodec",
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "transcodeReasons",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioStreamIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "videoStreamIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "context",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/EncodingContext"
+        }
+       ],
+       "enum": [
+        "Streaming",
+        "Static"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "streamOptions",
+      "schema": {
+       "additionalProperties": {
+        "nullable": true,
+        "type": "string"
+       },
+       "type": "object"
+      },
+      "style": "deepObject"
+     },
+     {
+      "in": "query",
+      "name": "enableAudioVbrEncoding",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "video/*": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "tags": [
+     "Video"
+    ]
+   },
+   "head": {
+    "operationId": "HeadVideoStreamByContainer",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "container",
+      "required": true,
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "static",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "params",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "tag",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "deviceProfileId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "playSessionId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "segmentContainer",
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "segmentLength",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "minSegments",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "mediaSourceId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "deviceId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioCodec",
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableAutoStreamCopy",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "allowVideoStreamCopy",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "allowAudioStreamCopy",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioSampleRate",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxAudioBitDepth",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioBitRate",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioChannels",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxAudioChannels",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "profile",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "level",
+      "schema": {
+       "pattern": "-?[0-9]+(?:\\.[0-9]+)?",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "framerate",
+      "schema": {
+       "format": "float",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxFramerate",
+      "schema": {
+       "format": "float",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "copyTimestamps",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startTimeTicks",
+      "schema": {
+       "format": "int64",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "width",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "height",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxWidth",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxHeight",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "videoBitRate",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "subtitleStreamIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "subtitleMethod",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/SubtitleDeliveryMethod"
+        }
+       ],
+       "enum": [
+        "Encode",
+        "Embed",
+        "External",
+        "Hls",
+        "Drop"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxRefFrames",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxVideoBitDepth",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "requireAvc",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "deInterlace",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "requireNonAnamorphic",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "transcodingMaxAudioChannels",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cpuCoreLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "liveStreamId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableMpegtsM2TsMode",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "videoCodec",
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "subtitleCodec",
+      "schema": {
+       "pattern": "^[a-zA-Z0-9\\-\\._,|]{0,40}$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "transcodeReasons",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "audioStreamIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "videoStreamIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "context",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/EncodingContext"
+        }
+       ],
+       "enum": [
+        "Streaming",
+        "Static"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "streamOptions",
+      "schema": {
+       "additionalProperties": {
+        "nullable": true,
+        "type": "string"
+       },
+       "type": "object"
+      },
+      "style": "deepObject"
+     },
+     {
+      "in": "query",
+      "name": "enableAudioVbrEncoding",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "video/*": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "tags": [
+     "Video"
+    ]
+   }
+  },
+  "/Videos/{routeItemId}/{routeMediaSourceId}/Subtitles/{routeIndex}/Stream.{routeFormat}": {
+   "get": {
+    "operationId": "GetSubtitle",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "routeItemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "routeMediaSourceId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "routeIndex",
+      "required": true,
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "path",
+      "name": "routeFormat",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "deprecated": true,
+      "in": "query",
+      "name": "itemId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "deprecated": true,
+      "in": "query",
+      "name": "mediaSourceId",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "deprecated": true,
+      "in": "query",
+      "name": "index",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "deprecated": true,
+      "in": "query",
+      "name": "format",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "endPositionTicks",
+      "schema": {
+       "format": "int64",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "copyTimestamps",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "addVttTimeMap",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startPositionTicks",
+      "schema": {
+       "default": 0,
+       "format": "int64",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "text/*": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "tags": [
+     "Subtitle"
     ]
    }
   }

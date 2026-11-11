@@ -8,15 +8,19 @@ import dev.nitrate.core.model.ExternalSubtitle
 import dev.nitrate.core.model.ImageKind
 import dev.nitrate.core.model.InvalidCredentialsException
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.model.MediaSource
 import dev.nitrate.core.model.Person
 import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.PlaybackPlan
 import dev.nitrate.core.model.QuickConnectRequest
+import dev.nitrate.core.model.RemoteUserData
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.SubtitleDelivery
+import dev.nitrate.core.model.subtitleMimeType
+import dev.nitrate.core.downloads.TranscodeSpec
 import dev.nitrate.core.playback.ChannelClip
 import dev.nitrate.core.playback.ChannelTest
 import dev.nitrate.core.playback.DeviceCapabilities
@@ -63,6 +67,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import kotlin.time.Instant
 
 /**
  * [MediaServer] for Jellyfin, in common Kotlin over Ktor: the same code serves Android (OkHttp
@@ -504,7 +509,7 @@ class JellyfinClient(
         val external = streams
             .filter { it.kind == StreamKind.SUBTITLE && it.delivery == SubtitleDelivery.EXTERNAL && it.deliveryUrl != null }
             .mapNotNull { s ->
-                val mime = subtitleMime(s.codec) ?: return@mapNotNull null
+                val mime = subtitleMimeType(s.codec) ?: return@mapNotNull null
                 ExternalSubtitle(s.index, absoluteUrl(s.deliveryUrl!!), mime, s.language, s.title ?: s.language ?: "Subtitle ${s.index}")
             }
 
@@ -530,15 +535,56 @@ class JellyfinClient(
         )
     }
 
-    private fun absoluteUrl(path: String) = if (path.startsWith("http")) path else base().trimEnd('/') + path
+    // ---- Downloads ----
 
-    private fun subtitleMime(codec: String?): String? = when (codec?.lowercase()) {
-        "srt", "subrip" -> "application/x-subrip"
-        "vtt", "webvtt" -> "text/vtt"
-        "ass", "ssa" -> "text/x-ssa"
-        "ttml" -> "application/ttml+xml"
-        else -> null
+    override suspend fun mediaSource(itemId: String): MediaSource =
+        get("Items", itemId).decode<ItemDto>().mediaSources?.firstOrNull()?.toMediaSource() ?: error("Item has no media")
+
+    override fun downloadUrl(itemId: String, source: MediaSource, transcode: TranscodeSpec?, audioIndex: Int?, sessionId: String): String {
+        // The original file, with range support so interrupted downloads resume. Honours the
+        // user's "allow media downloading" permission on the server.
+        if (transcode == null) return url("Items", itemId, "Download")
+        return url(
+            "Videos", itemId, "stream.mp4",
+            query = mapOf(
+                "static" to false,
+                "mediaSourceId" to source.id,
+                "playSessionId" to sessionId,
+                "deviceId" to identity.deviceId,
+                "videoCodec" to transcode.videoCodec,
+                "audioCodec" to "aac",
+                "videoBitRate" to transcode.videoBitrate,
+                "audioBitRate" to transcode.audioBitrate,
+                "audioChannels" to transcode.audioChannels,
+                "maxWidth" to transcode.maxWidth,
+                "maxHeight" to transcode.maxHeight,
+                "audioStreamIndex" to audioIndex,
+            ),
+        )
     }
+
+    override fun subtitleFileUrl(itemId: String, source: MediaSource, streamIndex: Int, format: String): String =
+        url("Videos", itemId, source.id ?: itemId, "Subtitles", streamIndex.toString(), "Stream.$format")
+
+    @OptIn(ExperimentalTime::class)
+    override suspend fun userData(itemId: String): RemoteUserData {
+        val data = get("UserItems", itemId, "UserData").decode<UserDataDto>()
+        return RemoteUserData(
+            played = data.played,
+            positionMs = data.playbackPositionTicks.ticksToMs(),
+            lastPlayedMs = data.lastPlayedDate?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() },
+        )
+    }
+
+    @OptIn(ExperimentalTime::class)
+    override suspend fun saveUserData(itemId: String, positionMs: Long, played: Boolean, playedAtMs: Long) {
+        post<UpdateUserDataDto>(
+            "UserItems", itemId, "UserData",
+            body = UpdateUserDataDto(positionMs.msToTicks(), played, Instant.fromEpochMilliseconds(playedAtMs).toString()),
+        )
+    }
+
+    private fun absoluteUrl(path: String) = if (path.startsWith("http")) path else base().trimEnd('/') + path
 
     private fun transcodeReasons(url: String): List<String> =
         Regex("[?&]TranscodeReasons=([^&]+)", RegexOption.IGNORE_CASE).find(url)?.groupValues?.get(1)

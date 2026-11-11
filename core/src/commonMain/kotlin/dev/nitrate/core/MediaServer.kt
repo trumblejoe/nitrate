@@ -3,12 +3,15 @@ package dev.nitrate.core
 import dev.nitrate.core.model.DiscoveredServer
 import dev.nitrate.core.model.ImageKind
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.model.MediaSource
 import dev.nitrate.core.model.Person
 import dev.nitrate.core.model.PlaybackPlan
 import dev.nitrate.core.model.QuickConnectRequest
+import dev.nitrate.core.model.RemoteUserData
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
+import dev.nitrate.core.downloads.TranscodeSpec
 import dev.nitrate.core.playback.ChannelClip
 import dev.nitrate.core.rows.MediaRow
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +26,7 @@ enum class LibrarySort(val label: String) {
 
 /**
  * Everything the apps need from a media server, in Nitrate's own types. Screens talk only to
- * this. Android implements it with the Jellyfin Kotlin SDK; iOS will use a multiplatform client.
+ * this. [dev.nitrate.core.jellyfin.JellyfinClient] implements it for every platform.
  */
 interface MediaServer {
     /** Signed-in user's id; scopes per-user settings. */
@@ -109,7 +112,29 @@ interface MediaServer {
     /** Files titled "Nitrate Test …" for the audio channel test, always as the original file. */
     suspend fun channelTestClips(): List<ChannelClip>
 
+    // ---- Downloads and offline watch state ----
+    /** The item's first media source, with its streams and file size, for choosing a download. */
+    suspend fun mediaSource(itemId: String): MediaSource = unsupported()
+
+    /**
+     * URL of the whole file to download: the original when [transcode] is null, else a single-file
+     * MP4 transcode. [sessionId] must be new per download so the server doesn't reuse another
+     * transcode. Requests need [authorizationHeader].
+     */
+    fun downloadUrl(itemId: String, source: MediaSource, transcode: TranscodeSpec?, audioIndex: Int?, sessionId: String): String = unsupported()
+
+    /** A subtitle stream (embedded or external) as a standalone file in [format]: srt, ass or vtt. */
+    fun subtitleFileUrl(itemId: String, source: MediaSource, streamIndex: Int, format: String): String = unsupported()
+
+    /** Watched state and position as the server has it now. */
+    suspend fun userData(itemId: String): RemoteUserData = unsupported()
+
+    /** Sets watched state and position, e.g. from playback while offline, stamped [playedAtMs]. */
+    suspend fun saveUserData(itemId: String, positionMs: Long, played: Boolean, playedAtMs: Long): Unit = unsupported()
+
     companion object {
         const val DEFAULT_PREFS = "nitrate"
     }
 }
+
+private fun unsupported(): Nothing = throw UnsupportedOperationException("Not supported by this server")

@@ -1,13 +1,19 @@
 package dev.nitrate.core.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class PlayMethod { DIRECT_PLAY, DIRECT_STREAM, TRANSCODE }
 
+@Serializable
 enum class StreamKind { VIDEO, AUDIO, SUBTITLE, OTHER }
 
 /** How a subtitle reaches the player: in the file, as its own file, in the HLS stream, or burned in. */
+@Serializable
 enum class SubtitleDelivery { EMBED, EXTERNAL, HLS, ENCODE }
 
 /** One audio, video or subtitle stream in a media source. */
+@Serializable
 data class MediaStream(
     /** Server stream index, used to select it. */
     val index: Int,
@@ -31,12 +37,24 @@ data class MediaStream(
     val rangeType: String? = null,
 )
 
+@Serializable
 data class MediaSource(
     val id: String?,
     val container: String?,
     val bitrate: Int?,
     val streams: List<MediaStream>,
+    /** File size in bytes, when the server knows it. */
+    val size: Long? = null,
 )
+
+/** Mime type the players use for a text subtitle codec, or null for image formats (PGS, VobSub). */
+fun subtitleMimeType(codec: String?): String? = when (codec?.lowercase()) {
+    "srt", "subrip" -> "application/x-subrip"
+    "vtt", "webvtt" -> "text/vtt"
+    "ass", "ssa" -> "text/x-ssa"
+    "ttml" -> "application/ttml+xml"
+    else -> null
+}
 
 /** A subtitle file served separately from the video, side-loaded into the player. */
 data class ExternalSubtitle(val streamIndex: Int, val url: String, val mimeType: String, val language: String?, val label: String)
@@ -60,3 +78,6 @@ data class PlaybackPlan(
 ) {
     val mediaSourceId get() = source.id
 }
+
+/** A user's state for one item on the server, with when it was last played (epoch ms). */
+data class RemoteUserData(val played: Boolean, val positionMs: Long, val lastPlayedMs: Long?)

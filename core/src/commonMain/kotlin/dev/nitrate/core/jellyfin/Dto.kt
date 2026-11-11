@@ -32,6 +32,7 @@ internal data class UserDataDto(
     val playbackPositionTicks: Long = 0,
     val isFavorite: Boolean = false,
     val unplayedItemCount: Int? = null,
+    val lastPlayedDate: String? = null,
 )
 
 @Serializable
@@ -102,6 +103,7 @@ internal data class MediaSourceDto(
     val id: String? = null,
     val container: String? = null,
     val bitrate: Int? = null,
+    val size: Long? = null,
     val eTag: String? = null,
     val mediaStreams: List<MediaStreamDto>? = null,
     val supportsDirectPlay: Boolean = false,
@@ -178,3 +180,6 @@ internal data class PlaybackStopDto(
     val positionTicks: Long,
     val failed: Boolean = false,
 )
+
+@Serializable
+internal data class UpdateUserDataDto(val playbackPositionTicks: Long, val played: Boolean, val lastPlayedDate: String)

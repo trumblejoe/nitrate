@@ -143,7 +143,7 @@ internal fun MediaStreamDto.toMediaStream() = MediaStream(
     rangeType = videoRangeType,
 )
 
-internal fun MediaSourceDto.toMediaSource() = MediaSource(id = id, container = container, bitrate = bitrate, streams = mediaStreams.orEmpty().map { it.toMediaStream() })
+internal fun MediaSourceDto.toMediaSource() = MediaSource(id = id, container = container, bitrate = bitrate, streams = mediaStreams.orEmpty().map { it.toMediaStream() }, size = size)
 
 internal fun PlayMethod.wire() = when (this) {
     PlayMethod.DIRECT_PLAY -> "DirectPlay"

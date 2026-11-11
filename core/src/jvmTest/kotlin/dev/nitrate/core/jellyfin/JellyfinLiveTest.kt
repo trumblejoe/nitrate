@@ -1,5 +1,9 @@
 package dev.nitrate.core.jellyfin
 
+import dev.nitrate.core.downloads.DownloadManager
+import dev.nitrate.core.downloads.DownloadQuality
+import dev.nitrate.core.downloads.MemoryDownloadStore
+import dev.nitrate.core.downloads.QueueResult
 import dev.nitrate.core.model.ImageKind
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.PlayMethod
@@ -13,6 +17,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -116,5 +121,42 @@ class JellyfinLiveTest {
 
         client.logout()
         assertEquals(null, storage.session)
+    }
+
+    @Test
+    fun `downloads work against a live server`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val root = java.nio.file.Files.createTempDirectory("nitrate-live-dl").toFile()
+        val manager = DownloadManager(client, MemoryDownloadStore(), OkHttp.create(), kotlinx.io.files.Path(root.path), { })
+
+        val all = client.views().flatMap { client.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 50, false).first }
+        val movie = all.first { it.kind == ItemKind.MOVIE }
+        val episode = all.first { it.kind == ItemKind.SERIES }.let { client.allEpisodes(it.id).first { e -> (e.seasonNumber ?: 0) > 0 } }
+        manager.enqueue(listOf(movie), DownloadQuality.ORIGINAL, hevc = false)
+        manager.enqueue(listOf(episode), DownloadQuality.LOW, hevc = false)
+        assertEquals(QueueResult.DONE, manager.runQueue())
+
+        val records = manager.downloads.first()
+        for (r in records) {
+            val file = java.io.File(manager.videoPath(r) ?: error("${r.item.name}: ${r.state} ${r.error}"))
+            println("${r.item.name} (${r.quality}): ${file.length()} bytes, subtitles ${r.subtitles.map { it.file }}, source ${r.source?.streams?.map { "${it.kind}:${it.codec}" }}")
+            assertTrue(file.length() > 10_000)
+            assertNotNull(r.posterFile)
+        }
+        val original = records.first { it.itemId == movie.id }
+        // The original is byte-for-byte the server's file size.
+        assertEquals(client.mediaSource(movie.id).size, original.totalBytes)
+        assertEquals(1, original.subtitles.size)
+
+        // Offline progress reaches the server.
+        val runtime = episode.runtimeMs ?: 20_000
+        manager.recordPlayback(episode.id, runtime / 2, runtime, ended = false)
+        assertEquals(1, manager.syncWatchState())
+        assertEquals(runtime / 2 / 1000, client.userData(episode.id).positionMs / 1000)
+        client.saveUserData(episode.id, 0, false, System.currentTimeMillis())
+        root.deleteRecursively()
+        Unit
     }
 }

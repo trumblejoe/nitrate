@@ -40,6 +40,10 @@ PATHS = [
     "/Sessions/Playing",
     "/Sessions/Playing/Progress",
     "/Sessions/Playing/Stopped",
+    "/Items/{itemId}/Download",
+    "/Videos/{itemId}/stream.{container}",
+    "/Videos/{routeItemId}/{routeMediaSourceId}/Subtitles/{routeIndex}/Stream.{routeFormat}",
+    "/UserItems/{itemId}/UserData",
 ]
 OUT = "core/src/jvmTest/resources/jellyfin-openapi.json"
 

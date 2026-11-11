@@ -130,6 +130,11 @@ class JellyfinContractTest {
         }
         client.channelTestClips()
 
+        val source = client.mediaSource(DASHED)
+        assertEquals(1_000L, source.size)
+        client.userData(DASHED)
+        client.saveUserData(DASHED, 60_000, played = false, playedAtMs = 1_700_000_000_000)
+
         val plan = client.resolvePlayback(DASHED, isAudio = false, startMs = 1000, forceTranscode = false, audioIndex = 1, subtitleIndex = 2, mediaSourceId = HEX)
         assertEquals(PlayMethod.DIRECT_PLAY, plan.method)
         client.reportStart(plan, 0)
@@ -144,14 +149,18 @@ class JellyfinContractTest {
             client.imageUrl(item, ImageKind.THUMB, 400),
             client.backdropUrl(item),
             client.logoUrl(item),
-        ) + client.backdropUrls(item) + plan.externalSubtitles.map { it.url }.filter { "/Subtitles/" !in it }
+        ) + client.backdropUrls(item) + plan.externalSubtitles.map { it.url }.filter { "/Subtitles/" !in it } + listOf(
+            client.downloadUrl(DASHED, source, null, 1, "s1"),
+            client.downloadUrl(DASHED, source, dev.nitrate.core.downloads.DownloadQuality.LOW.spec(hevc = true), 1, "s2"),
+            client.subtitleFileUrl(DASHED, source, 2, "srt"),
+        )
         assertTrue(urls.size >= 5)
         kotlinx.coroutines.delay(200) // reportStopped is fire-and-forget
 
         val problems = sent.flatMap { check(it.method, it.url, it.body) } + urls.flatMap { check(HttpMethod.Get, Url(it), null) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
         val endpoints = sent.map { "${it.method.value} ${template(it.url)}" }.toSet()
-        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 28)
+        assertTrue("Only ${endpoints.size} endpoints exercised: $endpoints", endpoints.size >= 30)
     }
 
     @Test
@@ -170,6 +179,8 @@ class JellyfinContractTest {
             serializer<QuickConnectDto>() to "QuickConnectDto",
             serializer<PlaybackStartDto>() to "PlaybackStartInfo",
             serializer<PlaybackStopDto>() to "PlaybackStopInfo",
+            serializer<UserDataDto>() to "UserItemDataDto",
+            serializer<UpdateUserDataDto>() to "UpdateUserItemDataDto",
         ).flatMap { (s, schema) -> fields(s.descriptor, schema(schema), schema) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
     }
@@ -205,7 +216,10 @@ class JellyfinContractTest {
     private fun matches(template: String, path: String): Boolean {
         val a = template.trim('/').split('/')
         val b = path.trim('/').split('/')
-        return a.size == b.size && a.zip(b).all { (t, p) -> (t.startsWith("{") && t.endsWith("}")) || t.equals(p, ignoreCase = true) }
+        // A segment may mix text and parameters, e.g. "stream.{container}".
+        return a.size == b.size && a.zip(b).all { (t, p) ->
+            Regex(t.split(Regex("\\{[^}]+}")).joinToString("[^/]+") { Regex.escape(it) }, RegexOption.IGNORE_CASE).matches(p)
+        }
     }
 
     private fun check(method: HttpMethod, url: Url, body: String?): List<String> {
@@ -306,7 +320,8 @@ class JellyfinContractTest {
         const val DASHED = "01234567-89ab-cdef-0123-456789abcdef"
         val ITEM = """{"Id":"$HEX","Name":"Pilot","Type":"Episode","MediaType":"Video","SeriesId":"$HEX","ParentIndexNumber":1,"IndexNumber":1,
             |"RunTimeTicks":36000000000,"ImageTags":{"Primary":"p","Thumb":"t","Logo":"l"},"BackdropImageTags":["b0","b1"],
-            |"UserData":{"Played":false,"PlaybackPositionTicks":10000000,"IsFavorite":true},"LocationType":"FileSystem"}""".trimMargin()
+            |"UserData":{"Played":false,"PlaybackPositionTicks":10000000,"IsFavorite":true},"LocationType":"FileSystem",
+            |"MediaSources":[{"Id":"$HEX","Container":"mkv","Size":1000,"MediaStreams":[{"Index":0,"Type":"Video","Codec":"h264"}]}]}""".trimMargin()
         val PLAYBACK_INFO = """{"PlaySessionId":"ps","MediaSources":[{"Id":"$HEX","Container":"mkv","Bitrate":8000000,"ETag":"e",
             |"SupportsDirectPlay":true,"SupportsDirectStream":true,"DefaultAudioStreamIndex":1,
             |"MediaStreams":[{"Index":0,"Type":"Video","Codec":"hevc"},{"Index":1,"Type":"Audio","Codec":"eac3","Channels":6},
