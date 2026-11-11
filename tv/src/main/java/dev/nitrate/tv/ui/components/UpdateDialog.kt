@@ -59,6 +59,9 @@ internal fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, on
         ) {
             Text("Android asks once: turn on \"Allow from this source\" for Nitrate, then come back and choose Update now.", style = MaterialTheme.typography.bodyMedium)
         }
+        UpdateState.UpToDate -> Panel("You're up to date", onDismiss, listOf(Choice("OK", onDismiss))) {
+            Text("This is the newest Nitrate for this TV.", style = MaterialTheme.typography.bodyMedium)
+        }
         is UpdateState.Failed -> Panel("Update", onDismiss, listOf(Choice("OK", onDismiss))) {
             Text(state.message, style = MaterialTheme.typography.bodyMedium)
         }

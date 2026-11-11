@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,12 +44,15 @@ fun HomeScreen(
     displaySettings: DisplaySettingsStore,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
+    /** Opens the settings list (playback, display, plugins, account...). */
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
+    onSearch: () -> Unit = {},
+    onProfiles: () -> Unit = {},
     /** Switches to the offline home when the server can't be reached. */
     onOffline: () -> Unit = {},
-    /** More footer buttons, e.g. plugin pages. */
-    extraActions: List<Pair<String, () -> Unit>> = emptyList(),
+    /** More stops in the side menu between the libraries and Settings (Your pages, Watch together...). */
+    menu: List<NavEntry> = emptyList(),
     /** Pinned custom pages (shown above the rows) and opening one. */
     pinnedPages: List<Pair<String, () -> Unit>> = emptyList(),
     /** Server pushes (new items, watch changes) that reload the rows. */
@@ -67,6 +74,15 @@ fun HomeScreen(
         onPauseOrDispose { }
     }
 
+    val libraries by androidx.compose.runtime.produceState(emptyList<MediaItem>(), repository) { value = runCatching { repository.views() }.getOrDefault(emptyList()) }
+    val content = remember { FocusRequester() }
+    var focusedOnce by remember { mutableStateOf(false) }
+    NavRail(
+        top = listOf(NavEntry("Search", NavIcons.search, onClick = onSearch), NavEntry("Home", NavIcons.home, selected = true) {}) +
+            libraries.map { lib -> NavEntry(lib.name, NavIcons.library(lib)) { onOpen(lib) } },
+        bottom = menu + listOf(NavEntry("Settings", NavIcons.settings, onClick = onSettings), NavEntry("Switch user", NavIcons.profile, onClick = onProfiles)),
+    ) {
+    Box(Modifier.fillMaxSize().focusRequester(content).focusGroup()) {
     when (val s = state) {
         RowsState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Loading…") }
         is RowsState.Error -> Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -95,15 +111,15 @@ fun HomeScreen(
                     }
                 }
             },
-            footer = {
-                item(key = "settings") {
-                    Row(Modifier.padding(start = 58.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        for ((label, action) in extraActions) OutlinedButton(onClick = action) { Text(label) }
-                        OutlinedButton(onClick = onSettings) { Text("Playback settings") }
-                        OutlinedButton(onClick = signOut) { Text("Sign out") }
-                    }
-                }
-            },
         )
+    }
+    }
+    }
+    // Start on the rows, not the menu (the menu is a press to the left).
+    LaunchedEffect(state is RowsState.Loaded) {
+        if (state is RowsState.Loaded && !focusedOnce) {
+            kotlinx.coroutines.delay(50)
+            focusedOnce = runCatching { content.requestFocus() }.getOrDefault(false)
+        }
     }
 }

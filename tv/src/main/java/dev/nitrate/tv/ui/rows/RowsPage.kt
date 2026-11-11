@@ -125,8 +125,8 @@ fun RowsPage(
                     } else {
                         Box(Modifier.alpha(if (hidden) 0f else 1f)) {
                             when (display.style) {
-                                RowStyle.FILM_STRIP -> FilmStripRow(row, repository, actions)
-                                RowStyle.LIGHTNING -> LightningRow(row, repository, actions)
+                                RowStyle.FILM_STRIP -> FilmStripRow(row, repository, actions, display.size)
+                                RowStyle.LIGHTNING -> LightningRow(row, repository, actions, display.size)
                                 RowStyle.CRESSIDA -> CressidaRow(row, repository, actions, display)
                                 else -> CardRow(row, display, repository, actions)
                             }

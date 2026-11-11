@@ -65,6 +65,7 @@ import kotlinx.serialization.Serializable
 @Serializable object OfflineRoute
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
 @Serializable object SettingsRoute
+@Serializable object SettingsHubRoute
 @Serializable object PlaybackTestRoute
 @Serializable object AudioChannelTestRoute
 @Serializable object PluginsRoute
@@ -163,13 +164,16 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 displaySettings = container.displaySettings,
                 onOpen = nav::openItem,
                 onPlay = { item -> gate.play(item) },
-                onSettings = { nav.navigate(SettingsRoute) },
+                onSettings = { nav.navigate(SettingsHubRoute) },
+                onSearch = { nav.navigate(SearchRoute()) },
+                onProfiles = { nav.navigate(ProfilesRoute) },
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 changes = container.serverChanges,
                 pinnedPages = rememberCustomPages(container).filter { it.pinned }.map { p -> p.title to { nav.navigate(CustomPageRoute(p.id)) } },
-                extraActions = listOf("Search" to { nav.navigate(SearchRoute()) }, "Switch user" to { nav.navigate(ProfilesRoute) }, "Watch together" to { nav.navigate(WatchTogetherRoute) }, "Your pages" to { nav.navigate(PagesRoute) }, "Display" to { nav.navigate(DisplaySettingsRoute) }, "Plugins" to { nav.navigate(PluginsRoute) }) +
-                    (if (account?.isAdmin == true) listOf("Server" to { nav.navigate(ServerAdminRoute) }) else emptyList()) +
-                    enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.pluginId)) } },
+                menu = listOf(
+                    dev.nitrate.tv.ui.home.NavEntry("Your pages", dev.nitrate.tv.ui.home.NavIcons.pages) { nav.navigate(PagesRoute) },
+                    dev.nitrate.tv.ui.home.NavEntry("Watch together", dev.nitrate.tv.ui.home.NavIcons.together) { nav.navigate(WatchTogetherRoute) },
+                ),
                 onSignOut = {
                     scope.launch {
                         container.signOut()
@@ -190,6 +194,29 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
                 onPlayQueue = { items -> nav.playQueue(items.map { it.id }) },
+            )
+        }
+        composable<SettingsHubRoute> {
+            val signOut: () -> Unit = {
+                scope.launch {
+                    container.signOut()
+                    val next: Any = if (container.server.savedAccounts().isNotEmpty()) ProfilesRoute else ConnectRoute
+                    nav.navigate(next) { popUpTo(0) { inclusive = true } }
+                }
+            }
+            dev.nitrate.tv.ui.settings.SettingsHubScreen(
+                listOf(
+                    dev.nitrate.tv.ui.settings.SettingsLink("Playback", "Formats, quality, tests and updates for this TV") { nav.navigate(SettingsRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Display", "What's shown about items; follows your account") { nav.navigate(DisplaySettingsRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Check for updates", "Nitrate ${container.updater.versionName}") { container.updater.check() },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Plugins", "Built-in extras, on or off") { nav.navigate(PluginsRoute) },
+                ) +
+                    (if (account?.isAdmin == true) listOf(dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) }) else emptyList()) +
+                    enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } } +
+                    listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Switch user", "Other users and servers, profile PINs") { nav.navigate(ProfilesRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl, signOut),
+                    ),
             )
         }
         composable<SettingsRoute> {

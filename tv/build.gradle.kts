@@ -84,6 +84,7 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.tv.material)
+    implementation(libs.compose.material.icons)
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)

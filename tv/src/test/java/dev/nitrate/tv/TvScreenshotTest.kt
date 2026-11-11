@@ -102,6 +102,21 @@ class TvScreenshotTest {
         HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, pinnedPages = listOf("Friday night" to {}))
     }
 
+    @Test fun homeArtRows() = shoot("tv-home-art-rows", { c ->
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA))
+        c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.LIGHTNING))
+    }) { c ->
+        HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+    }
+
+    @Test fun settingsHub() = shoot("tv-settings-hub") { _ ->
+        dev.nitrate.tv.ui.settings.SettingsHubScreen(
+            listOf("Playback" to "Formats, quality, tests and updates for this TV", "Display" to "What's shown about items; follows your account", "Check for updates" to "Nitrate 0.0.0-dev.18", "Plugins" to "Built-in extras, on or off", "Switch user" to "Other users and servers, profile PINs", "Sign out" to "http://jellyfin.local:8096")
+                .map { (l, d) -> dev.nitrate.tv.ui.settings.SettingsLink(l, d) {} },
+        )
+    }
+
     @Test fun pageEditor() = shoot("tv-page-editor", ::customize) { c ->
         val vm = viewModel { RowsViewModel(PageKeys.HOME, c.server::homeRows, c.displaySettings, c.server) }
         PageEditor("Home", vm, c.server, null) {}

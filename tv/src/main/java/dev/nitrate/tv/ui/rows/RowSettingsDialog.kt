@@ -10,7 +10,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -26,10 +34,28 @@ import dev.nitrate.core.rows.RowSize
 import dev.nitrate.core.rows.RowStyle
 import dev.nitrate.core.rows.ShowcaseOptions
 
+/**
+ * Ignores OK/Enter until it is pressed afresh. A long press opens these dialogs while the button
+ * is still held, and its repeats and release would otherwise click the first option.
+ */
+@Composable
+internal fun Modifier.ignoreHeldSelect(): Modifier {
+    var armed by remember { mutableStateOf(false) }
+    return onPreviewKeyEvent { event ->
+        val select = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+        when {
+            !select || armed -> false
+            event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0 -> { armed = true; false }
+            else -> true
+        }
+    }
+}
+
 @Composable
 private fun DialogPanel(title: String, subtitle: String? = null, content: @Composable () -> Unit) {
     Column(
         Modifier
+            .ignoreHeldSelect()
             .width(460.dp)
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
             .padding(24.dp),

@@ -66,6 +66,7 @@ import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.pages.facts
 import dev.nitrate.core.rows.MediaRow
 import dev.nitrate.core.rows.RowArt
+import dev.nitrate.core.rows.RowSize
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.tv.ui.components.onPlayKey
 
@@ -86,17 +87,47 @@ private fun Modifier.sideways() = layout { measurable, _ ->
     layout(p.height, p.width) { p.place((p.height - p.width) / 2, (p.width - p.height) / 2) }
 }.rotate(-90f)
 
+/**
+ * Lays the child out at its designed size (for a 1:1 scale) and shows it at [scale], so every
+ * line, word and ink stroke shrinks together. Width given to the child grows to match.
+ */
+private fun Modifier.designScale(scale: Float) = layout { measurable, c ->
+    fun grow(v: Int) = if (v == Constraints.Infinity) v else (v / scale).toInt()
+    val p = measurable.measure(Constraints(0, grow(c.maxWidth), 0, grow(c.maxHeight)))
+    layout((p.width * scale).toInt(), (p.height * scale).toInt()) {
+        p.placeWithLayer(0, 0) {
+            scaleX = scale
+            scaleY = scale
+            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+        }
+    }
+}
+
+/** How big the art cards (Lightning, Cressida) draw for each row size; designed at 340dp tall. */
+private fun cardScale(size: RowSize) = when (size) {
+    RowSize.SMALL -> 0.45f
+    RowSize.MEDIUM -> 0.55f
+    RowSize.LARGE -> 0.68f
+}
+
+/** The film strip's scale; it spans the screen, so it shrinks less. */
+private fun stripScale(size: RowSize) = when (size) {
+    RowSize.SMALL -> 0.62f
+    RowSize.MEDIUM -> 0.75f
+    RowSize.LARGE -> 0.9f
+}
+
 // ---- Film strip ----
 
 /** A tilted strip of film; the focused frame is in the gate, lit and named below. */
 @Composable
-fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions) {
+fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, size: RowSize = RowSize.MEDIUM) {
     var gate by remember(row.key) { mutableIntStateOf(0) }
     val accent = MaterialTheme.colorScheme.primary
     val prefs = LocalDisplayPrefs.current
     Column {
         RowTitle(row)
-        BoxWithConstraints(Modifier.fillMaxWidth().height(250.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().designScale(stripScale(size)).height(250.dp)) {
             Box(Modifier.align(Alignment.Center).requiredWidth(maxWidth + 200.dp).height(206.dp).rotate(-3f).background(RowArtDrawing.FilmBase)) {
                 LazyRow(contentPadding = PaddingValues(start = RowPadding + 100.dp, end = 200.dp), modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(row.items, key = { _, it -> it.id }) { i, item ->
@@ -119,7 +150,7 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions) {
                                 }
                                 Text(
                                     "${24 + i * 2}  ▸  ${item.displayTitle.uppercase()}",
-                                    color = accent.copy(alpha = if (inGate) 0.95f else 0.5f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, letterSpacing = 2.sp,
+                                    color = accent.copy(alpha = if (inGate) 0.95f else 0.5f), fontFamily = FontFamily.Monospace, fontSize = 14.sp, letterSpacing = 2.sp,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp),
                                 )
                             }
@@ -143,12 +174,14 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions) {
 
 /** Two titles per card, split by a bolt: each side is its own stop for the D-pad. */
 @Composable
-fun LightningRow(row: MediaRow, repository: MediaServer, actions: RowActions) {
+fun LightningRow(row: MediaRow, repository: MediaServer, actions: RowActions, size: RowSize = RowSize.MEDIUM) {
     Column {
         RowTitle(row)
         LazyRow(contentPadding = PaddingValues(horizontal = RowPadding), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             items(row.items.chunked(2), key = { p -> p.joinToString { it.id } }) { pair ->
-                if (pair.size == 2) DoubleBill(row, pair[0], pair[1], repository, actions) else SingleBill(row, pair[0], repository, actions)
+                Box(Modifier.designScale(cardScale(size))) {
+                    if (pair.size == 2) DoubleBill(row, pair[0], pair[1], repository, actions) else SingleBill(row, pair[0], repository, actions)
+                }
             }
         }
     }
@@ -200,12 +233,12 @@ private fun DoubleBill(row: MediaRow, left: MediaItem, right: MediaItem, reposit
         Box(Modifier.fillMaxSize().zIndex(2f).background(Brush.verticalGradient(listOf(Color(0x88000000), Color.Transparent, Color(0x99000000)))))
         Canvas(Modifier.fillMaxSize().zIndex(2f)) { drawBolt(accent, highlightRight = lit) }
         Column(Modifier.align(Alignment.TopStart).zIndex(2f).padding(22.dp).fillMaxWidth(0.5f)) {
-            Text(left.displayTitle.uppercase(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(left.episodeLabel ?: left.productionYear?.toString().orEmpty(), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+            Text(left.displayTitle.uppercase(), color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(left.episodeLabel ?: left.productionYear?.toString().orEmpty(), color = Color.White.copy(alpha = 0.8f), fontSize = 22.sp)
         }
         Column(Modifier.align(Alignment.BottomEnd).zIndex(2f).padding(22.dp).fillMaxWidth(0.5f), horizontalAlignment = Alignment.End) {
-            Text(right.displayTitle.uppercase(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(right.episodeLabel ?: right.productionYear?.toString().orEmpty(), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+            Text(right.displayTitle.uppercase(), color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(right.episodeLabel ?: right.productionYear?.toString().orEmpty(), color = Color.White.copy(alpha = 0.8f), fontSize = 22.sp)
         }
     }
 }
@@ -222,7 +255,7 @@ private fun SingleBill(row: MediaRow, item: MediaItem, repository: MediaServer, 
     ) {
         AsyncImage(repository.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xCC000000))))
-        Text(item.displayTitle.uppercase(), color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.BottomStart).padding(22.dp))
+        Text(item.displayTitle.uppercase(), color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.BottomStart).padding(22.dp))
     }
 }
 
@@ -246,7 +279,7 @@ fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions, dis
                     shape = ClickableSurfaceDefaults.shape(shape),
                     border = accentBorder(shape),
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
-                    modifier = Modifier.size(600.dp, 340.dp).onFocusChanged { if (it.isFocused) actions.onFocus(item) }.onPlayKey { actions.onPlay(item) },
+                    modifier = Modifier.designScale(cardScale(display.size)).size(600.dp, 340.dp).onFocusChanged { if (it.isFocused) actions.onFocus(item) }.onPlayKey { actions.onPlay(item) },
                 ) {
                     AsyncImage(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     AsyncImage(
@@ -262,9 +295,9 @@ fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions, dis
                         maxLines = 1, softWrap = false, modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 14.dp).sideways(),
                     )
                     Column(Modifier.align(Alignment.BottomEnd).padding(20.dp).fillMaxWidth(0.48f), horizontalAlignment = Alignment.End) {
-                        item.episodeLabel?.let { Text(it, color = Color.White, style = MaterialTheme.typography.titleSmall) }
+                        item.episodeLabel?.let { Text(it, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold) }
                         val facts = prefs.facts(item).take(3)
-                        if (facts.isNotEmpty()) Text(facts.joinToString(" · "), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                        if (facts.isNotEmpty()) Text(facts.joinToString(" · "), color = Color.White.copy(alpha = 0.85f), fontSize = 22.sp, maxLines = 1)
                     }
                 }
             }
