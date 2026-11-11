@@ -24,7 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,7 +72,10 @@ import dev.nitrate.tv.plugins.core.PluginContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import dev.nitrate.android.playback.PlaybackSession
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.playback.audioChoices
+import dev.nitrate.core.playback.subtitleChoices
 import dev.nitrate.core.playback.CapabilityRules
 import dev.nitrate.core.playback.PlaybackSettingsRepository
 import dev.nitrate.core.model.StreamKind
@@ -79,20 +83,10 @@ import dev.nitrate.core.model.MediaKind
 import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.SubtitleDelivery
 
-private const val PROGRESS_INTERVAL_MS = 10_000L
 private const val CONTROLS_TIMEOUT_MS = 5_000L
 private const val SEEK_BACK_MS = 10_000L
 private const val SEEK_FORWARD_MS = 30_000L
 
-/** Error codes that mean "this device couldn't decode it", as opposed to network or server errors. */
-private val DECODER_ERRORS = setOf(
-    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-    PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-    PlaybackException.ERROR_CODE_DECODING_FAILED,
-    PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-    PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
-)
 
 private enum class Panel { NONE, AUDIO, SUBTITLES, INFO }
 
@@ -110,51 +104,30 @@ fun PlayerScreen(
     pluginContext: PluginContext? = null,
 ) {
     val context = LocalContext.current
-    val id = remember(itemId) { itemId }
-    var videoDecoder by remember { mutableStateOf<String?>(null) }
-    var audioDecoder by remember { mutableStateOf<String?>(null) }
-    val player = remember {
-        // The auth header covers direct play, HLS playlists and segments, and subtitle files.
-        val http = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(mapOf("Authorization" to repository.authorizationHeader()))
-        ExoPlayer.Builder(context)
-            .setRenderersFactory(DefaultRenderersFactory(context).setEnableDecoderFallback(true))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http))
-            .build()
-            .apply {
-                addAnalyticsListener(object : AnalyticsListener {
-                    override fun onVideoDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
-                        videoDecoder = name
-                    }
-                    override fun onAudioDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
-                        audioDecoder = name
-                    }
-                })
-            }
+    val ended by rememberUpdatedState(onEnded)
+    // Negotiation, track mapping, reporting and transcode fallback live in the shared session.
+    val session = remember(itemId) {
+        PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() })
+            .also { it.load(itemId, fromStart) }
     }
+    DisposableEffect(session) { onDispose { session.release() } }
+    val player = session.player
+    val item by session.item.collectAsState()
+    val plan by session.plan.collectAsState()
+    val error by session.error.collectAsState()
+    val notice by session.notice.collectAsState()
+    val videoDecoder by session.videoDecoder.collectAsState()
+    val audioDecoder by session.audioDecoder.collectAsState()
 
-    var item by remember { mutableStateOf<MediaItem?>(null) }
-    var plan by remember { mutableStateOf<PlaybackPlan?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var notice by remember { mutableStateOf<String?>(null) }
-    var selectionApplied by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
     var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var panel by remember { mutableStateOf(Panel.NONE) }
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var playing by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     var openPanel by remember { mutableStateOf<PlayerPanel?>(null) }
     var panelFocused by remember { mutableStateOf(false) }
-    val playbackControls = remember(player) {
-        object : PlaybackControls {
-            override val isPlaying get() = player.isPlaying
-            override fun togglePlay() = if (player.isPlaying) player.pause() else player.play()
-            override fun seekBy(deltaMs: Long) = player.seekTo((player.currentPosition + deltaMs).coerceAtLeast(0))
-        }
-    }
+    val playbackControls = session.controls
     val rootFocus = remember { FocusRequester() }
     val playPauseFocus = remember { FocusRequester() }
 
@@ -163,92 +136,7 @@ fun PlayerScreen(
         controlsVisible = true
     }
 
-    suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null) {
-        val current = item ?: return
-        runCatching {
-            repository.resolvePlayback(
-                itemId = id,
-                isAudio = current.mediaKind == MediaKind.AUDIO,
-                startMs = startMs,
-                forceTranscode = forceTranscode,
-                audioIndex = audioIndex,
-                subtitleIndex = subtitleIndex,
-                mediaSourceId = plan?.mediaSourceId,
-            )
-        }.onSuccess { p ->
-            plan = p
-            selectionApplied = false
-            videoDecoder = null
-            audioDecoder = null
-            val subtitles = p.externalSubtitles.map { sub ->
-                ExoMediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
-                    .setId("jf-${sub.streamIndex}")
-                    .setMimeType(sub.mimeType)
-                    .setLanguage(sub.language)
-                    .setLabel(sub.label)
-                    .build()
-            }
-            val media = ExoMediaItem.Builder()
-                .setUri(p.url)
-                .apply { if (p.isHls) setMimeType(MimeTypes.APPLICATION_M3U8) }
-                .setSubtitleConfigurations(subtitles)
-                .setMediaMetadata(MediaMetadata.Builder().setTitle(current.name).build())
-                .build()
-            // Jellyfin's HLS playlists span the whole file, so every method seeks client-side.
-            player.setMediaItem(media, startMs)
-            player.prepare()
-            player.playWhenReady = true
-            repository.reportStart(p, startMs)
-        }.onFailure { error = it.message ?: "Could not start playback" }
-    }
-
-    LaunchedEffect(id) {
-        runCatching { repository.getItem(id) }
-            .onSuccess {
-                item = it
-                val resumeMs = if (fromStart) 0L else it.user.positionMs
-                start(resumeMs, forceTranscode = false)
-            }
-            .onFailure { error = it.message ?: "Could not load item" }
-    }
-
-    /** Picks a new audio or subtitle stream: in the player when it has the track, else via the server. */
-    fun selectTrack(type: StreamKind, index: Int) {
-        val p = plan ?: return
-        val stream = p.source.streams.firstOrNull { it.index == index }
-        val clientSide = when {
-            type == StreamKind.SUBTITLE && index == -1 -> true
-            type == StreamKind.SUBTITLE && stream?.delivery == SubtitleDelivery.EXTERNAL -> true
-            // Direct play has every embedded track; HLS only carries what the server chose.
-            p.method == PlayMethod.DIRECT_PLAY -> stream?.delivery != SubtitleDelivery.ENCODE
-            else -> false
-        }
-        val updated = if (type == StreamKind.AUDIO) p.copy(audioIndex = index) else p.copy(subtitleIndex = index)
-        if (clientSide) {
-            plan = updated
-            applySelection(player, updated)
-        } else {
-            val at = player.currentPosition
-            repository.reportStopped(p, at)
-            scope.launch {
-                start(
-                    at,
-                    forceTranscode = p.method == PlayMethod.TRANSCODE,
-                    audioIndex = updated.audioIndex,
-                    subtitleIndex = updated.subtitleIndex,
-                )
-            }
-        }
-    }
-
-    // Periodic progress so the server's "Continue Watching" stays accurate.
-    LaunchedEffect(plan) {
-        val p = plan ?: return@LaunchedEffect
-        while (isActive) {
-            delay(PROGRESS_INTERVAL_MS)
-            repository.reportProgress(p, player.currentPosition, isPaused = !player.isPlaying)
-        }
-    }
+    fun selectTrack(kind: StreamKind, index: Int) = session.selectTrack(kind, index)
 
     // Clock for the seek bar, and auto-hide of the controls while playing.
     LaunchedEffect(Unit) {
@@ -265,55 +153,6 @@ fun PlayerScreen(
         }
     }
 
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onTracksChanged(tracks: Tracks) {
-                val p = plan ?: return
-                if (!selectionApplied && !tracks.isEmpty) {
-                    selectionApplied = true
-                    applySelection(player, p)
-                }
-            }
-
-            override fun onPlayerError(e: PlaybackException) {
-                val failed = plan
-                if (failed != null && failed.method != PlayMethod.TRANSCODE) {
-                    val at = player.currentPosition
-                    val renderer = (e as? ExoPlaybackException)?.takeIf { it.type == ExoPlaybackException.TYPE_RENDERER }
-                    if (e.errorCode in DECODER_ERRORS && failed.method == PlayMethod.DIRECT_PLAY) {
-                        val videoFailed = !MimeTypes.isAudio(renderer?.rendererFormat?.sampleMimeType)
-                        CapabilityRules.failureCapabilityId(failed, videoFailed)?.let { id ->
-                            scope.launch { playbackSettings.recordFailure(id, e.errorCodeName, System.currentTimeMillis()) }
-                        }
-                        notice = "This TV couldn't decode it (${e.errorCodeName}). Switched to transcoding; " +
-                            "it will transcode this format from now on. Change this in Playback settings."
-                    }
-                    repository.reportStopped(failed, at)
-                    plan = null
-                    scope.launch { start(at, forceTranscode = true, audioIndex = failed.audioIndex, subtitleIndex = failed.subtitleIndex) }
-                } else {
-                    error = "Playback failed: ${e.errorCodeName}"
-                }
-            }
-
-            override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) onEnded()
-            }
-        }
-        player.addListener(listener)
-        onDispose {
-            plan?.let { repository.reportStopped(it, player.currentPosition) }
-            player.removeListener(listener)
-            player.release()
-        }
-    }
-
-    LaunchedEffect(notice) {
-        if (notice != null) {
-            delay(8_000)
-            notice = null
-        }
-    }
     LaunchedEffect(controlsVisible) {
         if (controlsVisible) runCatching { playPauseFocus.requestFocus() }
     }
@@ -512,45 +351,3 @@ private fun formatTime(ms: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
-/**
- * Points ExoPlayer at the plan's audio and subtitle streams. Embedded tracks line up with
- * Jellyfin's streams by order within their type; side-loaded subtitles carry a "jf-<index>" id.
- */
-@OptIn(UnstableApi::class)
-private fun applySelection(player: ExoPlayer, plan: PlaybackPlan) {
-    val streams = plan.source.streams
-    val groups = player.currentTracks.groups
-    val params = player.trackSelectionParameters.buildUpon()
-
-    // HLS carries only the audio the server picked, so there is nothing to choose client-side.
-    if (plan.method == PlayMethod.DIRECT_PLAY) {
-        val embeddedAudio = streams.filter { it.kind == StreamKind.AUDIO && !it.isExternal }.map { it.index }
-        val audioGroups = groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-        audioGroups.getOrNull(embeddedAudio.indexOf(plan.audioIndex))?.let {
-            params.setOverrideForType(TrackSelectionOverride(it.mediaTrackGroup, 0))
-        }
-    }
-
-    val textGroups = groups.filter { it.type == C.TRACK_TYPE_TEXT }
-    val (sideLoaded, embeddedText) = textGroups.partition { g -> g.getTrackFormat(0).id?.contains("jf-") == true }
-    val subtitle = streams.firstOrNull { it.index == plan.subtitleIndex && it.kind == StreamKind.SUBTITLE }
-    val target = when {
-        subtitle == null -> null
-        subtitle.delivery == SubtitleDelivery.EXTERNAL ->
-            sideLoaded.firstOrNull { it.getTrackFormat(0).id?.endsWith("jf-${subtitle.index}") == true }
-        // Burned in by the server: nothing to show client-side.
-        subtitle.delivery == SubtitleDelivery.ENCODE -> null
-        plan.method == PlayMethod.DIRECT_PLAY -> {
-            val embedded = streams.filter { it.kind == StreamKind.SUBTITLE && !it.isExternal }.map { it.index }
-            embeddedText.getOrNull(embedded.indexOf(subtitle.index))
-        }
-        else -> embeddedText.firstOrNull()
-    }
-    if (target != null) {
-        params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-        params.setOverrideForType(TrackSelectionOverride(target.mediaTrackGroup, 0))
-    } else {
-        params.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-    }
-    player.trackSelectionParameters = params.build()
-}

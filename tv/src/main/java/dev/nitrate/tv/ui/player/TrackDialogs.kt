@@ -18,30 +18,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import dev.nitrate.core.model.PlaybackPlan
-import dev.nitrate.core.model.MediaStream
-import dev.nitrate.core.model.StreamKind
-
-/** One choice in a track list; [index] is the Jellyfin stream index (-1 for "Off"). */
-data class TrackChoice(val index: Int, val title: String, val detail: String?)
-
-fun PlaybackPlan.audioChoices(): List<TrackChoice> =
-    source.streams.filter { it.kind == StreamKind.AUDIO }.map { it.toChoice() }
-
-fun PlaybackPlan.subtitleChoices(): List<TrackChoice> =
-    listOf(TrackChoice(-1, "Off", null)) +
-        source.streams.filter { it.kind == StreamKind.SUBTITLE }.map { it.toChoice() }
-
-private fun MediaStream.toChoice(): TrackChoice {
-    val flags = buildList {
-        if (isDefault) add("Default")
-        if (isForced) add("Forced")
-        if (isExternal) add("External")
-        codec?.let { add(it.uppercase()) }
-        channelLayout?.let { add(it) }
-    }
-    return TrackChoice(index, title ?: language ?: "Track $index", flags.joinToString(" · ").ifEmpty { null })
-}
+import dev.nitrate.core.playback.TrackChoice
 
 @Composable
 fun TrackDialog(
