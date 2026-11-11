@@ -75,6 +75,7 @@ fun NitrateNavHost(container: AppContainer) {
         composable<HomeRoute> {
             HomeScreen(
                 repository = container.repository,
+                rowSettings = container.rowSettings,
                 onOpen = nav::openItem,
                 onPlay = { item -> nav.navigate(PlayerRoute(item.id.toString())) },
                 onSignOut = {

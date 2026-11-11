@@ -49,12 +49,14 @@ fun MediaCard(
     subtitle: String? = null,
     onFocus: () -> Unit = {},
     onPlay: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     showProgress: Boolean = true,
 ) {
     val progress = item.userData?.playedPercentage?.toFloat()?.div(100f)
     Column(modifier.width(width)) {
         Card(
             onClick = onClick,
+            onLongClick = onLongClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(aspectRatio)

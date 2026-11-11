@@ -15,6 +15,14 @@ import org.jellyfin.sdk.api.client.extensions.userApi
 import org.jellyfin.sdk.api.client.extensions.userViewApi
 import org.jellyfin.sdk.api.client.extensions.videoApi
 import dev.nitrate.tv.data.playback.DeviceProfileFactory
+import dev.nitrate.tv.data.rows.MediaRow
+import dev.nitrate.tv.data.rows.RowDisplay
+import dev.nitrate.tv.data.rows.RowStyle
+import org.jellyfin.sdk.model.api.ItemFilter
+import org.jellyfin.sdk.model.api.ItemSortBy
+import org.jellyfin.sdk.model.api.SortOrder
+import org.jellyfin.sdk.model.api.request.GetItemsRequest
+import java.time.LocalDateTime
 import org.jellyfin.sdk.api.client.util.AuthorizationHeaderBuilder
 import org.jellyfin.sdk.discovery.RecommendedServerInfo
 import org.jellyfin.sdk.discovery.RecommendedServerInfoScore
@@ -38,8 +46,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-data class HomeRow(val title: String, val items: List<BaseItemDto>)
-
 /** How a given item will be played, as negotiated with the server. */
 data class PlaybackPlan(
     val itemId: UUID,
@@ -61,10 +67,15 @@ class JellyfinRepository(
     /** Outlives screens, for fire-and-forget reports such as playback stopped. */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Signed-in user's id; scopes per-user settings such as row display. */
+    var userId: String? = null
+        private set
+
     /** Restores a saved session. Returns true if the token is still valid. */
     suspend fun restoreSession(): Boolean {
         val session = sessionStore.load() ?: return false
         api.update(baseUrl = session.serverUrl, accessToken = session.accessToken)
+        userId = session.userId
         return runCatching { api.userApi.getCurrentUser() }.isSuccess
     }
 
@@ -87,6 +98,7 @@ class JellyfinRepository(
         val token = requireNotNull(result.accessToken) { "Server returned no access token" }
         val user = requireNotNull(result.user) { "Server returned no user" }
         api.update(baseUrl = serverUrl, accessToken = token)
+        userId = user.id.toString()
         sessionStore.save(
             Session(
                 serverUrl = serverUrl,
@@ -108,33 +120,92 @@ class JellyfinRepository(
         api.systemApi.getPublicSystemInfo().content.serverName
     }.getOrNull()
 
-    suspend fun homeRows(): List<HomeRow> {
-        val fields = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO)
-        val rows = mutableListOf<HomeRow>()
+    suspend fun views(): List<BaseItemDto> = api.userViewApi.getUserViews().content.items
 
-        val resume = api.libraryApi.getResumeItems(
-            limit = 20,
-            fields = fields,
-            mediaTypes = listOf(MediaType.VIDEO),
-            enableImageTypes = listOf(ImageType.PRIMARY, ImageType.THUMB, ImageType.BACKDROP),
-        ).content.items
-        if (resume.isNotEmpty()) rows += HomeRow("Continue Watching", resume)
+    suspend fun homeRows(): List<MediaRow> {
+        val rows = mutableListOf<MediaRow>()
+        val views = views()
+        if (views.isNotEmpty()) rows += MediaRow("home/my_media", "My Media", views, WIDE_DEFAULT)
 
-        val nextUp = api.showApi.getNextUp(limit = 20, fields = fields).content.items
-        if (nextUp.isNotEmpty()) rows += HomeRow("Next Up", nextUp)
+        val resume = resumeItems(parentId = null, types = null)
+        if (resume.isNotEmpty()) rows += MediaRow("home/continue_watching", "Continue Watching", resume, WIDE_DEFAULT)
 
-        val views = api.userViewApi.getUserViews().content.items
+        val nextUp = api.showApi.getNextUp(limit = ROW_LIMIT, fields = ROW_FIELDS).content.items
+        if (nextUp.isNotEmpty()) rows += MediaRow("home/next_up", "Next Up", nextUp, WIDE_DEFAULT)
+
         for (view in views) {
             if (view.collectionType !in setOf(CollectionType.MOVIES, CollectionType.TVSHOWS, CollectionType.HOMEVIDEOS, null)) continue
-            val latest = api.libraryApi.getLatestMedia(
-                parentId = view.id,
-                fields = fields,
-                limit = 20,
-            ).content
-            if (latest.isNotEmpty()) rows += HomeRow("Latest in ${view.name}", latest)
+            val latest = api.libraryApi.getLatestMedia(parentId = view.id, fields = ROW_FIELDS, limit = ROW_LIMIT).content
+            if (latest.isNotEmpty()) rows += MediaRow("home/latest/${view.id}", "Latest in ${view.name}", latest, RowDisplay())
         }
         return rows
     }
+
+    /** The "Recommended" rows for one library, chosen by library type. */
+    suspend fun libraryRows(library: BaseItemDto): List<MediaRow> {
+        val id = library.id
+        val prefix = "library/$id"
+        val now = LocalDateTime.now()
+        val rows = mutableListOf<MediaRow>()
+        fun add(key: String, title: String, items: List<BaseItemDto>, display: RowDisplay = RowDisplay()) {
+            if (items.isNotEmpty()) rows += MediaRow("$prefix/$key", title, items, display)
+        }
+
+        when (library.collectionType) {
+            CollectionType.TVSHOWS -> {
+                add("continue_watching", "Continue Watching", resumeItems(id, listOf(BaseItemKind.EPISODE)), WIDE_DEFAULT)
+                add("next_up", "Next Up", api.showApi.getNextUp(parentId = id, limit = ROW_LIMIT, fields = ROW_FIELDS).content.items, WIDE_DEFAULT)
+                add("recently_added", "Recently Added", api.libraryApi.getLatestMedia(parentId = id, fields = ROW_FIELDS, limit = ROW_LIMIT).content)
+                add("recently_released", "Recently Aired", items(id, listOf(BaseItemKind.EPISODE), ItemSortBy.PREMIERE_DATE, maxPremiere = now), WIDE_DEFAULT)
+                add("top_unwatched", "Top Unwatched", items(id, listOf(BaseItemKind.SERIES), ItemSortBy.COMMUNITY_RATING, unplayed = true))
+                add("favorites", "Favorites", items(id, listOf(BaseItemKind.SERIES), ItemSortBy.SORT_NAME, SortOrder.ASCENDING, favorite = true))
+            }
+            else -> {
+                val types = if (library.collectionType == CollectionType.MOVIES) listOf(BaseItemKind.MOVIE) else null
+                add("continue_watching", "Continue Watching", resumeItems(id, types), WIDE_DEFAULT)
+                add("recently_released", "Recently Released", items(id, types, ItemSortBy.PREMIERE_DATE, maxPremiere = now))
+                add("recently_added", "Recently Added", items(id, types, ItemSortBy.DATE_CREATED))
+                add("top_unwatched", "Top Unwatched", items(id, types, ItemSortBy.COMMUNITY_RATING, unplayed = true))
+                add("favorites", "Favorites", items(id, types, ItemSortBy.SORT_NAME, SortOrder.ASCENDING, favorite = true))
+            }
+        }
+        return rows
+    }
+
+    private suspend fun resumeItems(parentId: UUID?, types: List<BaseItemKind>?): List<BaseItemDto> =
+        api.libraryApi.getResumeItems(
+            parentId = parentId,
+            limit = ROW_LIMIT,
+            fields = ROW_FIELDS,
+            mediaTypes = listOf(MediaType.VIDEO),
+            includeItemTypes = types,
+        ).content.items
+
+    private suspend fun items(
+        parentId: UUID,
+        types: List<BaseItemKind>?,
+        sortBy: ItemSortBy,
+        order: SortOrder = SortOrder.DESCENDING,
+        unplayed: Boolean = false,
+        favorite: Boolean = false,
+        maxPremiere: LocalDateTime? = null,
+    ): List<BaseItemDto> = api.libraryApi.getItems(
+        GetItemsRequest(
+            parentId = parentId,
+            includeItemTypes = types,
+            recursive = true,
+            sortBy = listOf(sortBy, ItemSortBy.SORT_NAME),
+            sortOrder = listOf(order, SortOrder.ASCENDING),
+            filters = buildList {
+                if (unplayed) add(ItemFilter.IS_UNPLAYED)
+                if (favorite) add(ItemFilter.IS_FAVORITE)
+            },
+            maxPremiereDate = maxPremiere,
+            limit = ROW_LIMIT,
+            fields = ROW_FIELDS,
+            enableTotalRecordCount = false,
+        ),
+    ).content.items
 
     suspend fun getItem(id: UUID): BaseItemDto = api.libraryApi.getItem(itemId = id).content
 
@@ -146,6 +217,18 @@ class JellyfinRepository(
             type == ImageType.PRIMARY && item.seriesId != null && item.seriesPrimaryImageTag != null ->
                 api.imageApi.getItemImageUrl(item.seriesId!!, type, maxHeight = maxHeight, tag = item.seriesPrimaryImageTag)
             else -> null
+        }
+    }
+
+    /** Every backdrop for the item (or its series), for artwork rotation. */
+    fun backdropUrls(item: BaseItemDto): List<String> {
+        val own = item.backdropImageTags.orEmpty()
+        if (own.isNotEmpty()) {
+            return own.mapIndexed { i, tag -> api.imageApi.getItemImageUrl(item.id, ImageType.BACKDROP, maxWidth = 1920, tag = tag, imageIndex = i) }
+        }
+        val parent = item.parentBackdropItemId ?: return emptyList()
+        return item.parentBackdropImageTags.orEmpty().mapIndexed { i, tag ->
+            api.imageApi.getItemImageUrl(parent, ImageType.BACKDROP, maxWidth = 1920, tag = tag, imageIndex = i)
         }
     }
 
@@ -318,6 +401,10 @@ class JellyfinRepository(
     }
 
     companion object {
+        private const val ROW_LIMIT = 24
+        private val ROW_FIELDS = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO, ItemFields.GENRES)
+        private val WIDE_DEFAULT = RowDisplay(style = RowStyle.WIDE, showTitles = true)
+
         /** 120 Mbps: enough for 4K remuxes on a LAN. Becomes a setting later. */
         const val DEFAULT_MAX_BITRATE = 120_000_000
     }

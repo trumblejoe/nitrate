@@ -35,7 +35,7 @@ fun formatRuntime(ticks: Long): String {
 
 /** Year, runtime, ratings and the clock time it would finish if started now. */
 @Composable
-fun ItemMetaLine(item: BaseItemDto, modifier: Modifier = Modifier) {
+fun ItemMetaLine(item: BaseItemDto, modifier: Modifier = Modifier, showRatings: Boolean = true) {
     val context = LocalContext.current
     val parts = buildList {
         if (item.type == BaseItemKind.SERIES) {
@@ -52,8 +52,10 @@ fun ItemMetaLine(item: BaseItemDto, modifier: Modifier = Modifier) {
             val endsAt = Date(System.currentTimeMillis() + remainingMs)
             add("Ends at ${DateFormat.getTimeFormat(context).format(endsAt)}")
         }
-        item.communityRating?.let { add("★ %.1f".format(it)) }
-        item.criticRating?.let { add("${it.toInt()}% critics") }
+        if (showRatings) {
+            item.communityRating?.let { add("★ %.1f".format(it)) }
+            item.criticRating?.let { add("${it.toInt()}% critics") }
+        }
     }
     if (parts.isEmpty()) return
     Text(
