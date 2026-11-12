@@ -89,7 +89,8 @@ fun SearchScreen(
         }
         delay(350)
         searching = true
-        results = runCatching { repository.search(q) }.getOrNull()
+        // A newer query cancels this one (keep what's shown until its results arrive).
+        results = try { repository.search(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
         searching = false
     }
     LaunchedEffect(Unit) {

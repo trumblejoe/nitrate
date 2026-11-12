@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.lazy.itemsIndexed
 import kotlinx.coroutines.launch
 import dev.nitrate.core.pages.facts
 import dev.nitrate.core.pages.isSpoiler
@@ -79,7 +80,8 @@ import dev.nitrate.mobile.platform.rememberArtworkColor
 fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey: String? = null) {
     val vm = viewModel(key = "details-$itemId") { DetailsViewModel(actions.server, itemId, seasonId) }
     val state by vm.state.collectAsStateWithLifecycle()
-    var first by remember { mutableStateOf(true) }
+    // Saved with the screen, so coming back (from the player) counts as coming back.
+    var first by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     LifecycleResumeEffect(Unit) {
         if (!first) vm.load()
         first = false
@@ -208,7 +210,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     Column(Modifier.padding(top = 28.dp)) {
                         SectionHeader("Cast & crew")
                         LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(people, key = { "${it.id}-${it.role}" }) { person ->
+                            itemsIndexed(people, key = { i, it -> "$i:${it.id}" }) { _, person ->
                                 PersonBubble(person, actions) { actions.nav.navigate(PersonRoute(person.id, person.name)) }
                             }
                         }

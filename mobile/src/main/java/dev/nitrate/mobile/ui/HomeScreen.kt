@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.aspectRatio
 import dev.nitrate.core.model.ImageKind
 import androidx.compose.material.icons.filled.Check
@@ -99,7 +100,8 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
     if (editing) PageEditor("Home", vm, actions, libraryId = null, onDone = { editing = false })
 
     // Refresh "Continue Watching" when coming back from the player or details.
-    var first by remember { mutableStateOf(true) }
+    // Saved with the screen, so coming back (from the player) counts as coming back.
+    var first by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     LifecycleResumeEffect(Unit) {
         if (!first) vm.refresh()
         first = false
@@ -186,7 +188,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
             RowStyle.LIGHTNING -> LightningRow(row, actions)
             RowStyle.CRESSIDA -> CressidaRow(row, actions, display)
             RowStyle.WIDE -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(row.items, key = { it.id }) { item ->
+                itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                     val key = "${row.key}-${item.id}"
                     MediaCard(
                         item = item,
@@ -201,7 +203,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
                 }
             }
             RowStyle.POSTER -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(row.items, key = { it.id }) { item ->
+                itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                     val key = "${row.key}-${item.id}"
                     MediaCard(
                         item = item,
@@ -280,7 +282,7 @@ private fun ShowcaseRow(row: MediaRow, actions: AppActions) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(state),
         ) {
-            items(row.items, key = { it.id }) { item ->
+            itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                 val key = "${row.key}-${item.id}"
                 ShowcaseCard(item, actions, key, Modifier.width(cardWidth))
             }

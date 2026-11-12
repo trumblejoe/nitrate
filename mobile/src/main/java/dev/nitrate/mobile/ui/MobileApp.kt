@@ -291,7 +291,11 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         val currentEntry by nav.currentBackStackEntryAsState()
         LaunchedEffect(pendingOpen, currentEntry) {
             val id = pendingOpen ?: return@LaunchedEffect
-            if (currentEntry?.destination?.hasRoute(MainRoute::class) == true) {
+            val signedIn = nav.currentBackStack.value.any { it.destination.hasRoute(MainRoute::class) }
+            val busy = currentEntry?.destination?.let { d ->
+                d.hasRoute(PlayerRoute::class) || d.hasRoute(ProfilesRoute::class) || d.hasRoute(ConnectRoute::class) || d.hasRoute(LoginRoute::class)
+            } == true
+            if (signedIn && !busy) {
                 openItem.value = null
                 nav.navigate(DetailsRoute(id))
             }
@@ -299,14 +303,17 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         // Watch together: the group started something while no player was open.
         LaunchedEffect(Unit) {
             container.syncPlay.openRequests.collect { q ->
-                q.currentItemId?.let { nav.navigate(PlayerRoute(it, startMs = q.startMs)) }
+                q.currentItemId?.let { nav.navigate(PlayerRoute(it, startMs = q.startMs)) { popUpTo<PlayerRoute> { inclusive = true } } }
             }
         }
         LaunchedEffect(Unit) {
             container.remote.events.collect { e ->
                 when (e) {
                     is dev.nitrate.core.events.ServerEvent.Play -> e.itemIds.firstOrNull()?.let { first ->
-                        nav.navigate(PlayerRoute(first, fromStart = e.startMs == null, queue = e.itemIds.drop(1).joinToString(","), startMs = e.startMs ?: -1))
+                        // In place of a player already open, so Back doesn't return to the old one.
+                        nav.navigate(PlayerRoute(first, fromStart = e.startMs == null, queue = e.itemIds.drop(1).joinToString(","), startMs = e.startMs ?: -1)) {
+                            popUpTo<PlayerRoute> { inclusive = true }
+                        }
                     }
                     is dev.nitrate.core.events.ServerEvent.General -> when (e.name) {
                         "DisplayMessage" -> message = (e.arguments["Header"] ?: "Message") to e.arguments["Text"].orEmpty()

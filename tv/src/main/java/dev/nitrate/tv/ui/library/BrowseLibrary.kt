@@ -89,15 +89,22 @@ fun BrowseLibrary(
     val options = state.options
     val grid = rememberLazyGridState()
     val scope = rememberCoroutineScope()
+    // New sort, filters or view: a new list, from its top.
+    val update: ((dev.nitrate.core.pages.BrowseOptions) -> dev.nitrate.core.pages.BrowseOptions) -> Unit = { change ->
+        vm.update(change)
+        scope.launch { runCatching { grid.scrollToItem(0) } }
+    }
     var dialog by remember { mutableStateOf<String?>(null) }
     // Item focus moves here after a letter jump.
     val jumpFocus = remember { FocusRequester() }
     var jumpedTo by remember { mutableStateOf(-1) }
+    // Counts jumps, so jumping to the same letter again still moves focus.
+    var jumps by remember { mutableStateOf(0) }
 
     LaunchedEffect(grid) {
         snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { last -> if (last >= state.items.size - 30) vm.loadMore() }
     }
-    LaunchedEffect(jumpedTo) { if (jumpedTo >= 0) runCatching { jumpFocus.requestFocus() } }
+    LaunchedEffect(jumps) { if (jumpedTo >= 0) runCatching { jumpFocus.requestFocus() } }
 
     // Album covers are square.
     val music = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
@@ -121,10 +128,10 @@ fun BrowseLibrary(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { dialog = "sort" }) { Text("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}") }
                 OutlinedButton(onClick = { dialog = "filters" }) { Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") }
-                OutlinedButton(onClick = { vm.update { it.copy(view = BrowseView.entries[(it.view.ordinal + 1) % BrowseView.entries.size]) } }) {
+                OutlinedButton(onClick = { update { it.copy(view = BrowseView.entries[(it.view.ordinal + 1) % BrowseView.entries.size]) } }) {
                     Text("View: ${options.view.label}")
                 }
-                if (options.filterCount > 0) OutlinedButton(onClick = { vm.update { it.clearFilters() } }) { Text("Clear filters") }
+                if (options.filterCount > 0) OutlinedButton(onClick = { update { it.clearFilters() } }) { Text("Clear filters") }
                 if (state.total >= 0) Text("${state.total} items", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -138,6 +145,7 @@ fun BrowseLibrary(
                                     val index = vm.positionOf(letter) ?: return@launch
                                     grid.scrollToItem(index + leading)
                                     jumpedTo = index
+                                    jumps++
                                 }
                             },
                             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
@@ -164,7 +172,7 @@ fun BrowseLibrary(
                     val artwork = options.view == BrowseView.ARTWORK && !music
                     MediaCard(
                         item = item,
-                        imageUrl = if (artwork) repository.imageUrl(item, ImageKind.THUMB, 360) ?: repository.backdropUrl(item) else repository.imageUrl(item, ImageKind.PRIMARY, 360),
+                        imageUrl = if (artwork) repository.imageUrl(item, ImageKind.THUMB, 360) ?: repository.backdropUrl(item, 640) else repository.imageUrl(item, ImageKind.PRIMARY, 360),
                         width = null,
                         aspectRatio = if (music) 1f else if (artwork) 16f / 9f else 2f / 3f,
                         title = item.name,
@@ -178,11 +186,18 @@ fun BrowseLibrary(
                 }
             }
         }
+        // A later page failed: say so, with a retry (it doesn't retry by itself).
+        if (state.error != null && state.items.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Couldn't load more: ${state.error}", color = MaterialTheme.colorScheme.error)
+                Button(onClick = vm::retry) { Text("Try again") }
+            }
+        }
     }
 
     when (dialog) {
-        "sort" -> SortDialog(options, onPick = { change -> vm.update(change); dialog = null }, onDismiss = { dialog = null })
-        "filters" -> FilterDialog(options, genres, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = vm::update, onDismiss = { dialog = null })
+        "sort" -> SortDialog(options, onPick = { change -> update(change); dialog = null }, onDismiss = { dialog = null })
+        "filters" -> FilterDialog(options, genres, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
     }
 }
 

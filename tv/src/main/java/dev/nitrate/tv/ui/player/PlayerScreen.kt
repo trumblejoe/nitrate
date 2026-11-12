@@ -265,7 +265,11 @@ fun PlayerScreen(
                 playing = playing,
                 playPauseFocus = playPauseFocus,
                 onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
-                onSeek = { delta -> player.seekTo((player.currentPosition + delta).coerceIn(0, duration)) },
+                onSeek = { delta ->
+                    // Duration is 0 while unknown (live TV, still loading): don't clamp to it.
+                    val target = (player.currentPosition + delta).coerceAtLeast(0)
+                    player.seekTo(if (duration > 0) target.coerceAtMost(duration) else target)
+                },
                 onOpen = { panel = it },
                 extraButtons = panels.map { it.panelLabel to { togglePanel(it) } } +
                     listOfNotNull(sendLog?.let { send ->

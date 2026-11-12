@@ -63,6 +63,8 @@ fun TvTextField(
     val keyboard = LocalSoftwareKeyboardController.current
     val transformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None
     fun stop(then: (() -> Unit)? = null) {
+        // The next edit starts fresh: its field's first "not focused" report mustn't end it.
+        hadFocus = false
         keyboard?.hide()
         editing = false
         then?.invoke()
@@ -125,7 +127,7 @@ fun TvTextField(
             // A plain focus stop until OK: shows what's typed (or the hint).
             val shown = transformation.filter(androidx.compose.ui.text.AnnotatedString(value)).text.text
             androidx.tv.material3.Surface(
-                onClick = { editing = true },
+                onClick = { hadFocus = false; editing = true },
                 shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape),
                 colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,

@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
@@ -88,7 +89,8 @@ fun DetailsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val prefs = LocalDisplayPrefs.current
 
-    var firstResume by remember { mutableStateOf(true) }
+    // Saved with the screen, so coming back (from the player) counts as coming back.
+    var firstResume by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     LifecycleResumeEffect(Unit) {
         if (!firstResume) vm.load()
         firstResume = false
@@ -166,7 +168,7 @@ fun DetailsScreen(
                             contentPadding = PaddingValues(horizontal = PagePadding),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            items(people, key = { "${it.id}-${it.role}" }) { person ->
+                            itemsIndexed(people, key = { i, it -> "$i:${it.id}" }) { _, person ->
                                 PersonCard(person, repository.personImageUrl(person))
                             }
                         }
@@ -352,16 +354,23 @@ private fun Header(
 
 @Composable
 private fun SeasonSelector(seasons: List<MediaItem>, selected: Int, onSelect: (Int) -> Unit) {
+    val selectedChip = remember { FocusRequester() }
+    var rowEntered by remember { mutableStateOf(false) }
     LazyRow(
+        // Coming in from above lands on the season shown (then the last one focused).
+        modifier = Modifier.focusRestorer(selectedChip).onFocusChanged { rowEntered = it.hasFocus },
         contentPadding = PaddingValues(horizontal = PagePadding),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         itemsIndexed(seasons, key = { _, s -> s.id }) { index, season ->
-            // Focusing a season switches to it, so the D-pad alone browses seasons.
+            // Moving along the chips switches season, so the D-pad alone browses them; arriving
+            // from above lands on the season already shown, so it doesn't switch on the way in.
             FilterChip(
                 selected = index == selected,
                 onClick = { onSelect(index) },
-                modifier = Modifier.onFocusChanged { if (it.isFocused) onSelect(index) },
+                modifier = Modifier
+                    .then(if (index == selected) Modifier.focusRequester(selectedChip) else Modifier)
+                    .onFocusChanged { if (it.isFocused && rowEntered) onSelect(index) },
             ) {
                 Text(season.name.ifBlank { "Season ${season.indexNumber}" })
             }

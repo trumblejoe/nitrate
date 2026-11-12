@@ -69,8 +69,11 @@ fun FullArtPage(
         Box(modifier.fillMaxSize(), Alignment.Center) { Text("Nothing here yet") }
         return
     }
-    var rowIndex by remember { mutableIntStateOf(0) }
-    val itemIndex = remember { mutableStateMapOf<String, Int>() }
+    // Where you are, by row key (rows can come and go on a refresh), kept when you come back
+    // from a title or the player.
+    var rowKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val rowIndex = shown.indexOfFirst { it.key == rowKey }.takeIf { it >= 0 } ?: 0
+    val itemIndex = androidx.compose.runtime.saveable.rememberSaveable(saver = PositionsSaver) { mutableStateMapOf<String, Int>() }
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     var longPressHandled by remember { mutableStateOf(false) }
     val reachMenu = LocalMenuEdge.current
@@ -78,7 +81,7 @@ fun FullArtPage(
     LaunchedEffect(rowIndex, shown.size) { reportRows(rowIndex == 0, rowIndex >= shown.lastIndex) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    val row = shown[rowIndex.coerceIn(0, shown.lastIndex)]
+    val row = shown[rowIndex]
     val current = (itemIndex[row.key] ?: 0).coerceIn(0, row.items.lastIndex)
     val item = row.items[current]
     // Fetch the pictures one press away (either side, and the rows above and below) so stepping
@@ -107,9 +110,11 @@ fun FullArtPage(
                     // Past the first/last item or row: on to the menu if it's that way, otherwise stay.
                     Key.DirectionRight -> { if (down) { if (current < row.items.lastIndex) itemIndex[row.key] = current + 1 else reachMenu(event.key) }; true }
                     Key.DirectionLeft -> { if (down) { if (current > 0) itemIndex[row.key] = current - 1 else reachMenu(event.key) }; true }
-                    Key.DirectionDown -> { if (down) { if (rowIndex < shown.lastIndex) rowIndex++ else reachMenu(event.key) }; true }
-                    Key.DirectionUp -> { if (down) { if (rowIndex > 0) rowIndex-- else reachMenu(event.key) }; true }
+                    Key.DirectionDown -> { if (down) { if (rowIndex < shown.lastIndex) rowKey = shown[rowIndex + 1].key else reachMenu(event.key) }; true }
+                    Key.DirectionUp -> { if (down) { if (rowIndex > 0) rowKey = shown[rowIndex - 1].key else reachMenu(event.key) }; true }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        // A fresh press starts clean: a long press's release goes to the dialog it opened.
+                        if (down && event.nativeKeyEvent.repeatCount == 0) longPressHandled = false
                         if (down && event.nativeKeyEvent.repeatCount > 0 && !longPressHandled) {
                             longPressHandled = true
                             editing = row
@@ -170,3 +175,9 @@ fun FullArtPage(
         )
     }
 }
+
+/** Saves the position in each row ("row key" → item index) across navigation. */
+private val PositionsSaver = androidx.compose.runtime.saveable.Saver<androidx.compose.runtime.snapshots.SnapshotStateMap<String, Int>, ArrayList<String>>(
+    save = { map -> ArrayList(map.map { (k, v) -> "$v:$k" }) },
+    restore = { list -> mutableStateMapOf<String, Int>().apply { list.forEach { e -> e.substringBefore(':').toIntOrNull()?.let { put(e.substringAfter(':'), it) } } } },
+)

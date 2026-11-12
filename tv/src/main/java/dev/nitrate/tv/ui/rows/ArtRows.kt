@@ -130,7 +130,7 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
         BoxWithConstraints(Modifier.fillMaxWidth().designScale(stripScale(size)).height(250.dp)) {
             Box(Modifier.align(Alignment.Center).requiredWidth(maxWidth + 200.dp).height(206.dp).rotate(-3f).background(RowArtDrawing.FilmBase)) {
                 LazyRow(contentPadding = PaddingValues(start = RowPadding + 100.dp, end = 200.dp), modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(row.items, key = { _, it -> it.id }) { i, item ->
+                    itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { i, item ->
                         val inGate = i == gate
                         Box(Modifier.width(264.dp).fillMaxHeight()) {
                             Canvas(Modifier.fillMaxSize()) { drawSprockets(14.dp.toPx(), 10.dp.toPx(), 22.dp.toPx(), 8.dp.toPx()) }
@@ -269,7 +269,7 @@ fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions, dis
     Column {
         RowTitle(row)
         LazyRow(contentPadding = PaddingValues(horizontal = RowPadding), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            items(row.items, key = { it.id }) { item ->
+            itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                 val shape = RoundedCornerShape(20.dp)
                 val art = repository.artwork(item)
                 val inkColor = rememberInkColor(art, display, accent)

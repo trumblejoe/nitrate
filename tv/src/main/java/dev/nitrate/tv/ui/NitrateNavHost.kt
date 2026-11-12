@@ -138,7 +138,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             libraries, customPages,
             dev.nitrate.tv.ui.home.MenuActions(
                 onSearch = { nav.navigate(SearchRoute(), fromHome) },
-                onHome = { if (!nav.popBackStack(HomeRoute, inclusive = false)) nav.navigate(HomeRoute) },
+                onHome = {
+                    // Already home: nothing to do (popping to Home from Home pops nothing, and
+                    // navigating would stack a second Home).
+                    val atHome = nav.currentBackStackEntry?.destination?.hasRoute(HomeRoute::class) == true
+                    if (!atHome && !nav.popBackStack(HomeRoute, inclusive = false)) nav.navigate(HomeRoute) { launchSingleTop = true }
+                },
                 onLibrary = { lib -> nav.navigate(LibraryRoute(lib.id), fromHome) },
                 onPage = { id -> nav.navigate(CustomPageRoute(id), fromHome) },
                 onPages = { nav.navigate(PagesRoute, fromHome) },
@@ -381,7 +386,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     LaunchedEffect(pendingRequest, currentEntry) {
         val request = pendingRequest ?: return@LaunchedEffect
         val signedIn = nav.currentBackStack.value.any { it.destination.hasRoute(HomeRoute::class) }
-        if (!signedIn) return@LaunchedEffect
+        // Not over the profile picker or a sign-in either: wait until one is chosen.
+        val picking = currentEntry?.destination?.let { d -> d.hasRoute(ProfilesRoute::class) || d.hasRoute(ConnectRoute::class) || d.hasRoute(LoginRoute::class) } == true
+        if (!signedIn || picking) return@LaunchedEffect
         requests.value = null
         when (request) {
             is TvRequest.Search -> nav.navigate(SearchRoute(request.query, request.voice))
@@ -400,14 +407,17 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     // Watch together: the group started something while no player was open.
     LaunchedEffect(Unit) {
         container.syncPlay.openRequests.collect { q ->
-            q.currentItemId?.let { nav.navigate(PlayerRoute(it, fromStart = false, startMs = q.startMs)) }
+            // In place of a player already open, so Back doesn't return to the old one.
+            q.currentItemId?.let { nav.navigate(PlayerRoute(it, fromStart = false, startMs = q.startMs)) { popUpTo<PlayerRoute> { inclusive = true } } }
         }
     }
     LaunchedEffect(Unit) {
         container.remote.events.collect { e ->
             when (e) {
                 is dev.nitrate.core.events.ServerEvent.Play -> e.itemIds.firstOrNull()?.let { first ->
-                    nav.navigate(PlayerRoute(first, fromStart = e.startMs == null, queue = e.itemIds.drop(1).joinToString(","), startMs = e.startMs ?: -1))
+                    nav.navigate(PlayerRoute(first, fromStart = e.startMs == null, queue = e.itemIds.drop(1).joinToString(","), startMs = e.startMs ?: -1)) {
+                        popUpTo<PlayerRoute> { inclusive = true }
+                    }
                 }
                 is dev.nitrate.core.events.ServerEvent.General -> when (e.name) {
                     "DisplayMessage" -> message = (e.arguments["Header"] ?: "Message") to e.arguments["Text"].orEmpty()

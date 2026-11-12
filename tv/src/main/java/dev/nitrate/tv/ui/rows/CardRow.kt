@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.rows
 
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -40,7 +41,7 @@ fun CardRow(
             contentPadding = PaddingValues(horizontal = RowPadding),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            items(row.items, key = { it.id }) { item ->
+            itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                 MediaCard(
                     item = item,
                     imageUrl = if (wide) wideImage(repository, item) else repository.imageUrl(item, ImageKind.PRIMARY, (height * 2)),

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -96,6 +97,11 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
     val scope = rememberCoroutineScope()
     val grid = rememberLazyGridState()
     val list = rememberLazyListState()
+    // New sort, filters or view: a new list, from its top.
+    val update: ((dev.nitrate.core.pages.BrowseOptions) -> dev.nitrate.core.pages.BrowseOptions) -> Unit = { change ->
+        vm.update(change)
+        scope.launch { runCatching { grid.scrollToItem(0) }; runCatching { list.scrollToItem(0) } }
+    }
     var filtering by remember { mutableStateOf(false) }
     // Album covers are square.
     val square = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
@@ -119,13 +125,13 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        BrowseBar(options, state.total, onChange = vm::update, onFilters = { filtering = true })
+        BrowseBar(options, state.total, onChange = update, onFilters = { filtering = true })
         Box(Modifier.fillMaxSize()) {
             val padding = PaddingValues(start = ScreenPadding, end = if (options.alphabetical) 34.dp else ScreenPadding, top = 4.dp, bottom = 24.dp)
             when {
                 state.error != null && state.items.isEmpty() -> ErrorMessage(state.error ?: "", vm::retry)
                 state.loading -> Loading()
-                state.items.isEmpty() -> EmptyResults(options) { vm.update { it.clearFilters() } }
+                state.items.isEmpty() -> EmptyResults(options) { update { it.clearFilters() } }
                 options.view != BrowseView.LIST -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = if (artwork) 240.dp else if (square) 140.dp else 110.dp),
                     state = grid,
@@ -144,9 +150,11 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                             onClick = { actions.open(item) },
                         )
                     }
+                    if (state.error != null) item(span = { GridItemSpan(maxLineSpan) }) { LoadMoreFailed(state.error.orEmpty(), vm::retry) }
                 }
                 else -> LazyColumn(state = list, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxSize()) {
                     items(state.items, key = { it.id }) { item -> ListRow(actions, item) }
+                    if (state.error != null) item { LoadMoreFailed(state.error.orEmpty(), vm::retry) }
                 }
             }
             if (options.alphabetical && state.items.isNotEmpty()) {
@@ -154,7 +162,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
             }
         }
     }
-    if (filtering) FilterSheet(options, genres, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = vm::update, onDismiss = { filtering = false })
+    if (filtering) FilterSheet(options, genres, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { filtering = false })
 }
 
 @Composable
@@ -348,5 +356,14 @@ fun ArtistsGrid(actions: AppActions, library: MediaItem) {
                 MediaCard(item = artist, imageUrl = actions.server.cardImage(artist, CardShape.SQUARE), shape = CardShape.SQUARE, title = artist.name, onClick = { actions.open(artist) })
             }
         }
+    }
+}
+
+/** A later page failed: said under the list, with a retry (it doesn't retry by itself). */
+@Composable
+private fun LoadMoreFailed(error: String, onRetry: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Couldn't load more: $error", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        TextButton(onClick = onRetry) { Text("Try again") }
     }
 }

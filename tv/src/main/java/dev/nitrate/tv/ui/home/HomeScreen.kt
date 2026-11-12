@@ -64,7 +64,8 @@ fun HomeScreen(
     val signOut: () -> Unit = onSignOut
 
     // Refresh "Continue Watching" when returning from the player or details.
-    var firstResume by remember { mutableStateOf(true) }
+    // Saved with the screen, so coming back (from the player) counts as coming back.
+    var firstResume by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     LifecycleResumeEffect(Unit) {
         if (!firstResume) vm.refresh()
         firstResume = false

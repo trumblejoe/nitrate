@@ -214,9 +214,16 @@ class AppContainer(
 
     /** Switches to a saved account; on VALID everything follows the new user. */
     suspend fun switchAccount(key: String): SessionState {
+        val previous = server.currentAccountKey
         leaveSession()
         val state = server.switchAccount(key)
-        if (state == SessionState.VALID) onSignedIn()
+        if (state == SessionState.VALID) {
+            onSignedIn()
+        } else if (previous != null && previous != key) {
+            // Couldn't open it (server away, or it needs signing in again): stay on the account
+            // that was open, so the screens behind don't act on the new one.
+            if (server.switchAccount(previous) == SessionState.VALID) onSignedIn()
+        }
         return state
     }
 

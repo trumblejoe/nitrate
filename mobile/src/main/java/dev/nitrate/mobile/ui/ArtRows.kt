@@ -111,7 +111,7 @@ fun FilmStripRow(row: MediaRow, actions: AppActions) {
                     flingBehavior = rememberSnapFlingBehavior(state),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    itemsIndexed(row.items, key = { _, it -> it.id }) { i, item ->
+                    itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { i, item ->
                         val inGate = i == gate
                         Box(
                             Modifier.width(frameWidth).fillMaxHeight()
@@ -216,7 +216,7 @@ fun CressidaRow(row: MediaRow, actions: AppActions, display: dev.nitrate.core.ro
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val cardWidth = (maxWidth - ScreenPadding * 2).coerceAtMost(520.dp)
         LazyRow(state = state, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp), flingBehavior = rememberSnapFlingBehavior(state)) {
-            items(row.items, key = { it.id }) { item -> CressidaCard(item, actions, "${row.key}-${item.id}", display, Modifier.width(cardWidth)) }
+            itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item -> CressidaCard(item, actions, "${row.key}-${item.id}", display, Modifier.width(cardWidth)) }
         }
     }
 }

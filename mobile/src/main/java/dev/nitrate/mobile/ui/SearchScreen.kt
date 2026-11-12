@@ -83,7 +83,8 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
         }
         delay(280) // Wait for a pause in typing.
         loading = true
-        results = runCatching { actions.server.search(query) }
+        // A newer query cancels this one: not an error to show.
+        results = try { Result.success(actions.server.search(query)) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { Result.failure(e) }
         loading = false
     }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }

@@ -126,6 +126,13 @@ class PlaybackSession(
     private var selectionApplied = false
     private var progressJob: Job? = null
 
+    /** The one start in flight: a newer request (track change, retry, next item) replaces it. */
+    private var startJob: Job? = null
+
+    /** Subtitle timing per subtitle stream of this item, and the retime in flight. */
+    private val subtitleOffsets = mutableMapOf<Int, Long>()
+    private var retimeJob: Job? = null
+
     /** The last few hundred things the player did, for a playback report. */
     private val events = ArrayDeque<String>()
     private val clock = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
@@ -199,11 +206,13 @@ class PlaybackSession(
             scope.launch {
                 runCatching { server.getItem(itemId) }
                     .onSuccess {
+                        startJob?.cancel()
+                        forgetItemState()
                         _item.value = it
                         _plan.value?.let { old -> server.reportStopped(old, exo.currentPosition) }
                         _plan.value = null
                         loading = null
-                        start(startMs, forceTranscode = false, useMemory = true)
+                        restart(startMs, forceTranscode = false, useMemory = true)
                         loadExtras(it.id)
                     }
                     .onFailure {
@@ -279,7 +288,7 @@ class PlaybackSession(
             log("Direct ${failed.method} failed at ${at}ms: retrying as a transcode")
             server.reportStopped(failed, at)
             _plan.value = null
-            scope.launch { start(at, forceTranscode = true, audioIndex = failed.audioIndex, subtitleIndex = failed.subtitleIndex) }
+            restart(at, forceTranscode = true, audioIndex = failed.audioIndex, subtitleIndex = failed.subtitleIndex)
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -360,7 +369,9 @@ class PlaybackSession(
             g.attach(syncPlayer, itemId, startMs ?: 0)
             return
         }
-        scope.launch {
+        forgetItemState()
+        startJob?.cancel()
+        startJob = scope.launch {
             runCatching { server.getItem(itemId) }
                 .onSuccess {
                     _item.value = it
@@ -396,7 +407,7 @@ class PlaybackSession(
 
     private fun uriOf(url: String): Uri = if (url.startsWith("/")) Uri.fromFile(File(url)) else Uri.parse(url)
 
-    private fun play(p: PlaybackPlan, startMs: Long, title: String) {
+    private fun play(p: PlaybackPlan, startMs: Long, title: String, keepPaused: Boolean? = null) {
         _plan.value = p
         selectionApplied = false
         _videoDecoder.value = null
@@ -418,8 +429,10 @@ class PlaybackSession(
         // Jellyfin's HLS playlists span the whole file, so every method seeks client-side.
         exo.setMediaItem(media, startMs)
         exo.prepare()
-        // In a group, the group says when to play once everyone is ready.
-        exo.playWhenReady = !inGroup
+        _error.value = null
+        // In a group, the group says when to play once everyone is ready; a reload of what was
+        // paused (e.g. a subtitle retime) stays paused.
+        exo.playWhenReady = !inGroup && (keepPaused?.not() ?: true)
     }
 
     /** Title, and for music the artist, album and cover (shown by the player view and lock screen). */
@@ -436,6 +449,24 @@ class PlaybackSession(
                 }
             }
             .build()
+    }
+
+    /** Starts (or restarts) playback, cancelling a start still waiting on the server. */
+    private fun restart(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false, before: (suspend () -> Unit)? = null) {
+        startJob?.cancel()
+        startJob = scope.launch {
+            before?.invoke()
+            start(startMs, forceTranscode, audioIndex, subtitleIndex, useMemory)
+        }
+    }
+
+    /** A new item: subtitle timing and its cached files belong to the old one. */
+    private fun forgetItemState() {
+        retimeJob?.cancel()
+        subtitleOriginals.clear()
+        subtitleOffsets.clear()
+        _subtitleOffsetMs.value = 0
+        _error.value = null
     }
 
     private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false) {
@@ -467,11 +498,17 @@ class PlaybackSession(
                 mediaSourceId = _plan.value?.mediaSourceId,
             )
         }.onSuccess { p ->
+            // The plan this replaces (a track change): stopped now that the new one exists, so the
+            // server doesn't end the old stream while it's still playing.
+            _plan.value?.takeIf { it.playSessionId != p.playSessionId || it.itemId != p.itemId }?.let { old ->
+                server.reportStopped(old, exo.currentPosition)
+            }
             log("Server: ${p.method}" + (if (p.transcodeReasons.isNotEmpty()) " because ${p.transcodeReasons.joinToString(", ")}" else "") + "; ${dev.nitrate.core.playback.PlaybackReport.streamSummary(p)}")
             play(p, startMs, current.name)
             server.reportStart(p, startMs)
             startProgressReports(p)
         }.onFailure {
+            if (it is kotlinx.coroutines.CancellationException) throw it
             log("Couldn't start: ${it.message ?: it::class.simpleName}")
             _error.value = it.message ?: "Could not start playback"
         }
@@ -483,8 +520,10 @@ class PlaybackSession(
         progressJob = scope.launch {
             while (isActive) {
                 delay(PROGRESS_INTERVAL_MS)
-                if (_plan.value != p) break
-                server.reportProgress(p, exo.currentPosition, isPaused = !exo.isPlaying)
+                // Track changes made on the device keep the session (and update the plan).
+                val now = _plan.value ?: break
+                if (now.playSessionId != p.playSessionId || now.itemId != p.itemId) break
+                server.reportProgress(now, exo.currentPosition, isPaused = !exo.isPlaying)
             }
         }
     }
@@ -502,14 +541,16 @@ class PlaybackSession(
         }
         val updated = if (kind == StreamKind.AUDIO) p.copy(audioIndex = index) else p.copy(subtitleIndex = index)
         rememberLanguages(updated)
+        // Each subtitle keeps its own timing.
+        if (kind == StreamKind.SUBTITLE) _subtitleOffsetMs.value = subtitleOffsets[index] ?: 0
         // A downloaded file has only what's in it.
         if (clientSide || localProgress != null) {
             _plan.value = updated
             applySelection(updated)
         } else {
+            // The current stream plays on until the new one is ready (start() then stops it on the server).
             val at = exo.currentPosition
-            server.reportStopped(p, at)
-            scope.launch { start(at, forceTranscode = p.method == PlayMethod.TRANSCODE, audioIndex = updated.audioIndex, subtitleIndex = updated.subtitleIndex) }
+            restart(at, forceTranscode = p.method == PlayMethod.TRANSCODE, audioIndex = updated.audioIndex, subtitleIndex = updated.subtitleIndex)
         }
     }
 
@@ -549,7 +590,12 @@ class PlaybackSession(
             return
         }
         val itemId = _item.value?.id ?: return
-        scope.launch {
+        // Shown at once and taken from here by the next press; only the latest retime runs.
+        val previous = subtitleOffsets[index] ?: 0
+        subtitleOffsets[index] = offsetMs
+        _subtitleOffsetMs.value = offsetMs
+        retimeJob?.cancel()
+        retimeJob = scope.launch {
             runCatching {
                 val original = subtitleOriginals[index] ?: withContext(Dispatchers.IO) {
                     val local = p.externalSubtitles.firstOrNull { it.streamIndex == index }?.url?.takeIf { it.startsWith("/") }
@@ -560,11 +606,17 @@ class PlaybackSession(
                 val shifted = ExternalSubtitle(index, file.absolutePath, "application/x-subrip", stream.language, stream.title ?: stream.language ?: "Subtitle")
                 val updated = p.copy(
                     externalSubtitles = p.externalSubtitles.filterNot { it.streamIndex == index } + shifted,
-                    source = p.source.copy(streams = p.source.streams.map { if (it.index == index) it.copy(isExternal = true, delivery = SubtitleDelivery.EXTERNAL) else it }),
+                    // Delivered from the side-loaded file now, but still in the container: embedded
+                    // streams keep their order (it stays non-external for that mapping).
+                    source = p.source.copy(streams = p.source.streams.map { if (it.index == index) it.copy(delivery = SubtitleDelivery.EXTERNAL) else it }),
                 )
-                _subtitleOffsetMs.value = offsetMs
-                play(updated, exo.currentPosition, _item.value?.name.orEmpty())
-            }.onFailure { showNotice("Couldn't retime subtitles: ${it.message}") }
+                play(updated, exo.currentPosition, _item.value?.name.orEmpty(), keepPaused = !exo.playWhenReady)
+            }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                subtitleOffsets[index] = previous
+                if (_plan.value?.subtitleIndex == index) _subtitleOffsetMs.value = previous
+                showNotice("Couldn't retime subtitles: ${it.message}")
+            }
         }
     }
 
@@ -579,11 +631,12 @@ class PlaybackSession(
         val p = _plan.value ?: return
         val before = p.source.streams.filter { it.kind == StreamKind.SUBTITLE }.map { it.index }.toSet()
         val at = exo.currentPosition
-        scope.launch {
+        startJob?.cancel()
+        startJob = scope.launch {
             val source = runCatching { server.mediaSource(p.itemId) }.getOrNull()
             val added = source?.streams?.filter { it.kind == StreamKind.SUBTITLE && it.index !in before }
                 ?.let { list -> list.firstOrNull { it.language.equals(language, ignoreCase = true) } ?: list.firstOrNull() }
-            server.reportStopped(p, at)
+            // A new playback session (the server's new subtitle list); start() stops the old one.
             start(at, forceTranscode = p.method == PlayMethod.TRANSCODE, audioIndex = p.audioIndex, subtitleIndex = added?.index ?: p.subtitleIndex)
         }
     }

@@ -32,6 +32,7 @@ import dev.nitrate.core.MediaServer
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.MediaKind
 import dev.nitrate.tv.ui.components.TvTextField
+import dev.nitrate.tv.ui.rows.ignoreHeldSelect
 import kotlinx.coroutines.launch
 
 /** A dialog panel with the TV look. */
@@ -39,7 +40,8 @@ import kotlinx.coroutines.launch
 fun TvDialog(onDismiss: () -> Unit, width: Int = 620, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.width(width.dp).heightIn(max = 620.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp).verticalScroll(rememberScrollState()),
+            // Some open from a long press: the held OK mustn't click the first choice.
+            Modifier.ignoreHeldSelect().width(width.dp).heightIn(max = 620.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) { content() }
     }

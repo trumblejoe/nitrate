@@ -249,6 +249,8 @@ fun OfflineScreen(actions: AppActions, onOnline: () -> Unit, onSignedOut: () -> 
             check()
         }
     }
+    // Back closes these views (this page is the only one: Back would otherwise leave the app).
+    androidx.activity.compose.BackHandler(enabled = writing || downloads) { writing = false; downloads = false }
     if (writing) {
         WritingScreen(actions, onBack = { writing = false })
         return

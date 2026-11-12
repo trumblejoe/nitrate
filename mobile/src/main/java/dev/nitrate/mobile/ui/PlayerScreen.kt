@@ -110,8 +110,13 @@ fun PlayerScreen(
     // At the end: roll into the next episode unless Up Next was dismissed.
     var sleepAtEndRef by remember { mutableStateOf(false) }
     val ended by rememberUpdatedState {
-        val next = upNext.takeIf { !sleepAtEndRef }
-        if (next != null && onPlayNext != null && !upNextHidden) onPlayNext(next) else onEnded()
+        val next = upNext
+        when {
+            // "Sleep at the end of this": stop here, not on to the next episode or queue item.
+            sleepAtEndRef -> onExit()
+            next != null && onPlayNext != null && !upNextHidden -> onPlayNext(next)
+            else -> onEnded()
+        }
     }
     var logMessage by remember { mutableStateOf<String?>(null) }
     val logScope = rememberCoroutineScope()
@@ -162,8 +167,9 @@ fun PlayerScreen(
     LaunchedEffect(playbackSettings.pictureInPicture, playingNow, aspect) { pip.update(playbackSettings.pictureInPicture, playingNow, aspect) }
     // Leaving the app: keep audio going if asked to (with a media notification), else pause, unless shrunk to a window.
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+        // Shown in a PiP window the activity is only paused, so a stop here means the window was
+        // closed (Android stops the activity before telling it PiP ended): same as leaving.
         when {
-            inPip -> Unit
             playbackSettings.backgroundAudio && session.player.isPlaying -> BackgroundPlayback.start(context, session.player)
             else -> session.player.pause()
         }

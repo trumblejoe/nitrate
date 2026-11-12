@@ -71,9 +71,10 @@ val NavBarClearance = 96.dp
 /** Every tab full-bleed, with a floating glass navigation pill over it. */
 @Composable
 fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut: () -> Unit) {
-    val enabled by actions.container.plugins.enabledIds.collectAsState(emptySet())
-    val tabs = Tab.entries.filter { it != Tab.WRITING || WritingPlugin.id in enabled }
+    // Null until read: until then the tab you were on stays (Writing would otherwise flick to Home).
+    val enabled by actions.container.plugins.enabledIds.collectAsState<Set<String>, Set<String>?>(null)
     var tab by rememberSaveable { mutableStateOf(if (startOnLibrary) Tab.LIBRARIES else Tab.HOME) }
+    val tabs = Tab.entries.filter { it != Tab.WRITING || enabled?.contains(WritingPlugin.id) ?: (tab == Tab.WRITING) }
     if (tab !in tabs) tab = Tab.HOME
     // Back from another tab returns Home rather than leaving the app.
     BackHandler(enabled = tab != Tab.HOME) { tab = Tab.HOME }

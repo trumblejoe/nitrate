@@ -99,18 +99,17 @@ fun ShowcaseRow(
             .onPreviewKeyEvent { event ->
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
-                    Key.DirectionRight -> {
-                        if (down) {
-                            when {
-                                current < items.lastIndex -> onIndexChange(current + 1)
-                                options.infiniteScroll -> onIndexChange(0)
-                            }
-                        }
-                        true
+                    // On the last item (unless it wraps round), let focus leave the row, e.g. to a rail on the right.
+                    Key.DirectionRight -> when {
+                        current < items.lastIndex -> { if (down) onIndexChange(current + 1); true }
+                        options.infiniteScroll -> { if (down) onIndexChange(0); true }
+                        else -> false
                     }
                     // On the first item, let focus leave the row.
                     Key.DirectionLeft -> if (current > 0) { if (down) onIndexChange(current - 1); true } else false
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                        // A fresh press starts clean: a long press's release goes to the dialog it opened.
+                        if (down && event.nativeKeyEvent.repeatCount == 0) longPressHandled = false
                         if (down && event.nativeKeyEvent.repeatCount > 0 && !longPressHandled) {
                             longPressHandled = true
                             actions.onEditRow(row)
@@ -225,7 +224,7 @@ private fun Filmstrip(row: MediaRow, index: Int, repository: MediaServer, modifi
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = modifier.fillMaxWidth(),
     ) {
-        itemsIndexed(row.items, key = { _, it -> it.id }) { i, it ->
+        itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { i, it ->
             val selected = i == index
             val alpha by animateFloatAsState(if (selected) 1f else 0.45f, label = "filmstrip")
             Box(
