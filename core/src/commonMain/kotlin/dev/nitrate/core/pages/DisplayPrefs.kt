@@ -52,10 +52,10 @@ enum class TvHomeLayout(val label: String) {
 enum class TvMenuStyle(val label: String, val detail: String) {
     LEFT("Left", "Icons down the left; opens with labels when you move onto it"),
     RIGHT("Right", "The same rail on the right-hand side"),
-    TOP("Top", "A bar along the top"),
-    BOTTOM("Bottom", "A bar along the bottom"),
-    FADE("Fade in", "Hidden until you press Back or move up past the top"),
-    RADIAL("Dial", "Press Back for a ring of destinations around the centre"),
+    TOP("Top", "A bar along the top; Next row takes you back down"),
+    BOTTOM("Bottom", "A bar along the bottom; Next row takes you back up"),
+    FADE("Fade in", "Hidden until you move up past the top, or press the remote's Menu key"),
+    RADIAL("Dial", "Rings of destinations straight up, right, down and left; move up past the top or press Menu"),
 }
 
 @Serializable

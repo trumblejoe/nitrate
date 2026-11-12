@@ -49,7 +49,7 @@ data class MenuInsets(val start: Dp = 0.dp, val top: Dp = 0.dp, val end: Dp = 0.
 /**
  * Home as one picture at a time: the focused title fills the screen with its details in the
  * corner. Left/Right step through the row, Up/Down move between rows, OK opens, Play plays, and a
- * long press (or Menu) changes the row. At the first/last item or row the D-pad moves on to the
+ * long press changes the row (Menu opens the main menu). At the first/last item or row the D-pad moves on to the
  * menu, wherever it is.
  */
 @Composable
@@ -73,6 +73,7 @@ fun FullArtPage(
     val itemIndex = remember { mutableStateMapOf<String, Int>() }
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     var longPressHandled by remember { mutableStateOf(false) }
+    val reachMenu = LocalMenuEdge.current
 
     val row = shown[rowIndex.coerceIn(0, shown.lastIndex)]
     val current = (itemIndex[row.key] ?: 0).coerceIn(0, row.items.lastIndex)
@@ -85,10 +86,11 @@ fun FullArtPage(
             .onPreviewKeyEvent { event ->
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
-                    Key.DirectionRight -> if (current < row.items.lastIndex) { if (down) itemIndex[row.key] = current + 1; true } else false
-                    Key.DirectionLeft -> if (current > 0) { if (down) itemIndex[row.key] = current - 1; true } else false
-                    Key.DirectionDown -> if (rowIndex < shown.lastIndex) { if (down) rowIndex++; true } else false
-                    Key.DirectionUp -> if (rowIndex > 0) { if (down) rowIndex--; true } else false
+                    // Past the first/last item or row: on to the menu if it's that way, otherwise stay.
+                    Key.DirectionRight -> { if (down) { if (current < row.items.lastIndex) itemIndex[row.key] = current + 1 else reachMenu(event.key) }; true }
+                    Key.DirectionLeft -> { if (down) { if (current > 0) itemIndex[row.key] = current - 1 else reachMenu(event.key) }; true }
+                    Key.DirectionDown -> { if (down) { if (rowIndex < shown.lastIndex) rowIndex++ else reachMenu(event.key) }; true }
+                    Key.DirectionUp -> { if (down) { if (rowIndex > 0) rowIndex-- else reachMenu(event.key) }; true }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         if (down && event.nativeKeyEvent.repeatCount > 0 && !longPressHandled) {
                             longPressHandled = true
@@ -100,7 +102,6 @@ fun FullArtPage(
                         true
                     }
                     Key.MediaPlay, Key.MediaPlayPause -> { if (!down) onPlay(item); true }
-                    Key.Menu -> { if (!down) editing = row; true }
                     else -> false
                 }
             }

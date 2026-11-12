@@ -40,6 +40,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.onNodeWithText
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -103,18 +106,63 @@ class TvScreenshotTest {
 
     private val rowsHome = dev.nitrate.core.pages.DisplayPrefs(tvHome = dev.nitrate.core.pages.TvHomeLayout.ROWS)
 
-    private fun fullArt(menu: dev.nitrate.core.pages.TvMenuStyle, open: Boolean = false) =
-        shoot("tv-home-full-art-${menu.name.lowercase()}", { c -> c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = menu)) },
-            act = { if (open) compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() } }) { c ->
+    private fun fullArt(menu: dev.nitrate.core.pages.TvMenuStyle) =
+        shoot("tv-home-full-art-${menu.name.lowercase()}", { c -> c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = menu)) }) { c ->
             HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
         }
+
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+    private fun press(vararg keys: String) {
+        keys.forEach { name ->
+            val k = when (name) { "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
+            compose.onRoot().performKeyInput { pressKey(k) }
+            compose.mainClock.advanceTimeBy(400)
+            compose.waitForIdle()
+        }
+    }
+
+    private fun focusedHasText(text: String) =
+        compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText(text, substring = true, ignoreCase = false), useUnmergedTree = false)
+            .fetchSemanticsNodes().isNotEmpty()
+
+    private fun menuShot(name: String, menu: dev.nitrate.core.pages.TvMenuStyle, check: () -> Unit) =
+        shoot(name, { c -> c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = menu)) }, act = check) { c ->
+            HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+        }
+
+    /** Up from the first row reaches the bar; Down on a stop stays there; "Next row" goes back. */
+    @Test fun topBarNextRow() = menuShot("tv-home-top-next-row", dev.nitrate.core.pages.TvMenuStyle.TOP) {
+        press("up")
+        org.junit.Assert.assertTrue("Up reaches the bar", focusedHasText("Home"))
+        press("down")
+        org.junit.Assert.assertTrue("Down on a stop stays on it", focusedHasText("Home"))
+        press("left", "left")
+        org.junit.Assert.assertTrue("Next row is first", focusedHasText("Next row"))
+        press("down")
+        org.junit.Assert.assertFalse("Down on Next row leaves the bar", focusedHasText("Next row"))
+        press("up", "left", "left")
+    }
+
+    /** The fade-in bar appears when you move up past the top (Back is left alone). */
+    @Test fun fadeOnEdge() = menuShot("tv-home-full-art-fade", dev.nitrate.core.pages.TvMenuStyle.FADE) {
+        press("up")
+        org.junit.Assert.assertTrue(focusedHasText("Home"))
+    }
+
+    /** Up opens the dial; Up, Up walks out the top spoke to the second ring; Right swings to its right stop. */
+    @Test fun dialRings() = menuShot("tv-home-full-art-radial", dev.nitrate.core.pages.TvMenuStyle.RADIAL) {
+        press("up")
+        compose.onNodeWithText("▲ ▶ ▼ ◀").assertExists()
+        press("up")
+        compose.onNodeWithText("Search").assertExists()
+        press("up", "right")
+        compose.onNodeWithText("Switch user").assertExists()
+    }
 
     @Test fun homeFullArtLeft() = fullArt(dev.nitrate.core.pages.TvMenuStyle.LEFT)
     @Test fun homeFullArtRight() = fullArt(dev.nitrate.core.pages.TvMenuStyle.RIGHT)
     @Test fun homeFullArtTop() = fullArt(dev.nitrate.core.pages.TvMenuStyle.TOP)
     @Test fun homeFullArtBottom() = fullArt(dev.nitrate.core.pages.TvMenuStyle.BOTTOM)
-    @Test fun homeFullArtFade() = fullArt(dev.nitrate.core.pages.TvMenuStyle.FADE, open = true)
-    @Test fun homeFullArtDial() = fullArt(dev.nitrate.core.pages.TvMenuStyle.RADIAL, open = true)
 
     @Test fun home() = shoot("tv-home", { c -> customize(c); c.displaySettings.savePrefs("user-1", rowsHome) }) { c ->
         HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, pinnedPages = listOf("Friday night" to {}))

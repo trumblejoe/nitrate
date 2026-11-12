@@ -121,7 +121,6 @@ fun ShowcaseRow(
                         true
                     }
                     Key.MediaPlay, Key.MediaPlayPause -> { if (!down) actions.onPlay(item); true }
-                    Key.Menu -> { if (!down) actions.onEditRow(row); true }
                     else -> false
                 }
             }
