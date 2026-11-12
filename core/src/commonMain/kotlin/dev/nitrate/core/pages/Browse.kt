@@ -24,15 +24,19 @@ data class BrowseOptions(
     val minRating: Float? = null,
     val resolution: ResolutionFilter = ResolutionFilter.ANY,
     val view: BrowseView = BrowseView.GRID,
+    /** Video codecs, any of ([Codecs.VIDEO] ids). */
+    val videoCodecs: List<String> = emptyList(),
+    /** Audio codecs, any of ([Codecs.AUDIO] ids). */
+    val audioCodecs: List<String> = emptyList(),
 ) {
     /** How many filters narrow the list, for a badge on the Filter button. */
     val filterCount: Int
-        get() = listOf(watched != WatchFilter.ANY, favoritesOnly, genres.isNotEmpty(), decade != null, minRating != null, resolution != ResolutionFilter.ANY).count { it }
+        get() = listOf(watched != WatchFilter.ANY, favoritesOnly, genres.isNotEmpty(), decade != null, minRating != null, resolution != ResolutionFilter.ANY, videoCodecs.isNotEmpty(), audioCodecs.isNotEmpty()).count { it }
 
     /** A–Z only makes sense when sorted by name. */
     val alphabetical: Boolean get() = sort == QuerySort.NAME
 
-    fun clearFilters() = copy(watched = WatchFilter.ANY, favoritesOnly = false, genres = emptyList(), decade = null, minRating = null, resolution = ResolutionFilter.ANY)
+    fun clearFilters() = copy(watched = WatchFilter.ANY, favoritesOnly = false, genres = emptyList(), decade = null, minRating = null, resolution = ResolutionFilter.ANY, videoCodecs = emptyList(), audioCodecs = emptyList())
 
     /** The query for [libraryId] of [kind]. */
     fun query(libraryId: String, kind: CollectionKind?): ItemQuery = ItemQuery(
@@ -45,10 +49,16 @@ data class BrowseOptions(
         watched = watched,
         favoritesOnly = favoritesOnly,
         resolution = resolution,
+        videoCodecs = videoCodecs,
+        audioCodecs = audioCodecs,
         sort = sort,
         // Names read best A first; everything else newest/highest first unless flipped.
         descending = descending,
     )
+
+    /** Turns [codec] on or off in the video (or audio) codec filter. */
+    fun toggleVideoCodec(codec: String) = copy(videoCodecs = if (codec in videoCodecs) videoCodecs - codec else videoCodecs + codec)
+    fun toggleAudioCodec(codec: String) = copy(audioCodecs = if (codec in audioCodecs) audioCodecs - codec else audioCodecs + codec)
 
     /** Default direction when picking a sort. */
     fun withSort(newSort: QuerySort) = copy(sort = newSort, descending = newSort != QuerySort.NAME)

@@ -24,6 +24,8 @@ import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.model.SavedServer
+import dev.nitrate.core.pages.Codecs
+import kotlinx.coroutines.sync.withLock
 import dev.nitrate.core.model.AddressCheck
 import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.SubtitleDelivery
@@ -985,9 +987,83 @@ class JellyfinClient(
     override suspend fun queryItems(query: ItemQuery): List<MediaItem> = items("Items", query = itemQueryParams(query))
 
     override suspend fun queryPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> {
+        if (query.filtersCodecs) return codecFilteredPage(query, startIndex, limit)
         val params = itemQueryParams(query) + mapOf("startIndex" to startIndex, "limit" to limit, "enableTotalRecordCount" to true, "userId" to userId)
         val result = get("Items", query = params).decode<QueryResultDto<ItemDto>>()
         return result.items.map { it.toMediaItem() } to result.totalRecordCount
+    }
+
+    // ---- Codec filters (Jellyfin has none: Nitrate reads the streams and filters) ----
+
+    /** Video and audio codecs per item id; shows carry their episodes' codecs. */
+    private class CodecIndex(val codecs: Map<String, Pair<Set<String>, Set<String>>>, val builtMs: Long)
+
+    private val codecIndexes = mutableMapOf<String, CodecIndex>()
+    private val codecIndexLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * One page of a codec-filtered query: the server's list for everything else (ids only, in its
+     * order), narrowed by the codec index, then this page's items fetched by id.
+     */
+    private suspend fun codecFilteredPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> {
+        val base = query.copy(videoCodecs = emptyList(), audioCodecs = emptyList())
+        val ids = get(
+            "Items",
+            query = itemQueryParams(base) + mapOf("userId" to userId, "limit" to null, "fields" to null, "enableImages" to false, "enableUserData" to false),
+        ).decode<QueryResultDto<ItemDto>>().items.map { normalizeId(it.id) }
+        val index = codecIndex(query)
+        val matching = ids.filter { id ->
+            val (video, audio) = index[id] ?: return@filter false
+            Codecs.matches(video, audio, query.videoCodecs, query.audioCodecs)
+        }
+        val page = matching.drop(startIndex).take(limit)
+        if (page.isEmpty()) return emptyList<MediaItem>() to matching.size
+        val items = get(
+            "Items",
+            query = mapOf("ids" to page.joinToString(","), "userId" to userId, "fields" to "Overview,PrimaryImageAspectRatio,Genres", "enableTotalRecordCount" to false),
+        ).decode<QueryResultDto<ItemDto>>().items.associateBy { normalizeId(it.id) }
+        return page.mapNotNull { items[it]?.toMediaItem() } to matching.size
+    }
+
+    /** The codecs of everything [query] can list in its library, kept for a while (it's a big read). */
+    private suspend fun codecIndex(query: ItemQuery): Map<String, Pair<Set<String>, Set<String>>> = codecIndexLock.withLock {
+        val key = "${baseUrl}|${userId}|${query.libraryId}|${query.types.sorted()}"
+        val now = Clock.System.now().toEpochMilliseconds()
+        codecIndexes[key]?.takeIf { now - it.builtMs < CODEC_INDEX_TTL_MS }?.let { return@withLock it.codecs }
+        val codecs = mutableMapOf<String, Pair<MutableSet<String>, MutableSet<String>>>()
+        fun add(id: String, streams: List<MediaStreamDto>?) {
+            val (video, audio) = codecs.getOrPut(id) { mutableSetOf<String>() to mutableSetOf() }
+            streams.orEmpty().forEach { st ->
+                val codec = Codecs.normalize(st.codec) ?: return@forEach
+                when (st.type) {
+                    "Video" -> video += codec
+                    "Audio" -> audio += codec
+                }
+            }
+        }
+        // Shows have no streams of their own: their episodes speak for them.
+        val shows = ItemKind.SERIES in query.types || query.types.isEmpty()
+        val others = query.types.filter { it != ItemKind.SERIES }.ifEmpty { if (query.types.isEmpty()) listOf(ItemKind.MOVIE, ItemKind.VIDEO, ItemKind.MUSIC_VIDEO) else emptyList() }
+        suspend fun read(types: List<ItemKind>, each: (ItemDto) -> Unit) {
+            var start = 0
+            while (true) {
+                val page = get(
+                    "Items",
+                    query = itemQueryParams(ItemQuery(libraryId = query.libraryId, types = types)) + mapOf(
+                        "userId" to userId, "startIndex" to start, "limit" to CODEC_INDEX_PAGE, "fields" to "MediaStreams",
+                        "sortBy" to "SortName", "sortOrder" to "Ascending", "enableImages" to false, "enableUserData" to false,
+                    ),
+                ).decode<QueryResultDto<ItemDto>>().items
+                page.forEach(each)
+                if (page.size < CODEC_INDEX_PAGE) break
+                start += page.size
+            }
+        }
+        if (others.isNotEmpty()) read(others) { item -> add(normalizeId(item.id), item.mediaStreams) }
+        if (shows) read(listOf(ItemKind.EPISODE)) { ep -> ep.seriesId?.let { add(normalizeId(it), ep.mediaStreams) } }
+        val built = codecs.mapValues { (_, v) -> v.first.toSet() to v.second.toSet() }
+        codecIndexes[key] = CodecIndex(built, now)
+        built
     }
 
     override suspend fun collectionItems(collectionId: String): List<MediaItem> = items(
@@ -1163,6 +1239,10 @@ class JellyfinClient(
         const val ROW_FIELDS = "Overview,PrimaryImageAspectRatio,Genres"
         const val PROBE_TIMEOUT_MS = 5_000L
         const val LOCAL_PROBE_TIMEOUT_MS = 2_500L
+
+        /** How long a library's codec index is reused before it's read again. */
+        const val CODEC_INDEX_TTL_MS = 15 * 60_000L
+        const val CODEC_INDEX_PAGE = 1000
         const val TRICKPLAY_MIN_WIDTH = 240
         val WIDE_DEFAULT = RowDisplay(style = RowStyle.WIDE, showTitles = true)
     }

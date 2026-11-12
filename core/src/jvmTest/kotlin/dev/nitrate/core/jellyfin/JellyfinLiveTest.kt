@@ -559,4 +559,25 @@ class JellyfinLiveTest {
         assertEquals(SessionState.VALID, client.saveServerAddresses(url, local = "http://127.0.0.1:$port", vpn = "http://10.255.255.1:$port", remote = "http://localhost:$port"))
         assertEquals("http://127.0.0.1:$port", client.serverUrl)
     }
+
+    /** Codec filters against the real server: the codecs its films use find them; others find none. */
+    @Test
+    fun `codec filters`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-codecs", "Codecs"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val movies = client.views().first { it.collection == dev.nitrate.core.model.CollectionKind.MOVIES }
+        val all = client.queryPage(dev.nitrate.core.pages.BrowseOptions().query(movies.id, movies.collection), 0, 100)
+        val h264 = client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(movies.id, movies.collection), 0, 100)
+        val vc1 = client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("vc1")).query(movies.id, movies.collection), 0, 100)
+        println("Movies: ${all.second}; H.264: ${h264.second} ${h264.first.map { it.name }}; VC-1: ${vc1.second}")
+        assertTrue(h264.second > 0)
+        assertEquals(h264.first.size, h264.second)
+        assertEquals(0, vc1.second)
+        val shows = client.views().firstOrNull { it.collection == dev.nitrate.core.model.CollectionKind.TV_SHOWS }
+        if (shows != null) {
+            val showsH264 = client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(shows.id, shows.collection), 0, 100)
+            println("Shows with H.264 episodes: ${showsH264.first.map { it.name }}")
+        }
+    }
 }

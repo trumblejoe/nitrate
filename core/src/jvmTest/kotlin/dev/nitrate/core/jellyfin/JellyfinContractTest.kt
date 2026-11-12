@@ -232,6 +232,9 @@ class JellyfinContractTest {
         client.queryPage(browse, 100, 50)
         client.queryPage(dev.nitrate.core.pages.Browse.before(browse, "M")!!, 0, 0)
         client.queryPage(browse.copy(nameFrom = "M"), 0, 10)
+        // Codec filters: the codec index (MediaStreams) and the page by ids, for movies and for shows.
+        client.queryPage(browse.copy(videoCodecs = listOf("hevc"), audioCodecs = listOf("dts")), 0, 10)
+        client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(DASHED, dev.nitrate.core.model.CollectionKind.TV_SHOWS), 0, 10)
         client.followedSeries()
         val group = client.syncPlayGroups().single()
         assertEquals(DASHED, group.id)

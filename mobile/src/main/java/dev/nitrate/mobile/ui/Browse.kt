@@ -154,7 +154,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
             }
         }
     }
-    if (filtering) FilterSheet(options, genres, onChange = vm::update, onDismiss = { filtering = false })
+    if (filtering) FilterSheet(options, genres, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = vm::update, onDismiss = { filtering = false })
 }
 
 @Composable
@@ -267,7 +267,7 @@ private fun EmptyResults(options: BrowseOptions, onClear: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun FilterSheet(options: BrowseOptions, genres: List<String>, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
+private fun FilterSheet(options: BrowseOptions, genres: List<String>, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = ScreenPadding).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -283,6 +283,15 @@ private fun FilterSheet(options: BrowseOptions, genres: List<String>, onChange: 
             }
             Group("Quality") {
                 ResolutionFilter.entries.forEach { r -> FilterChip(options.resolution == r, { onChange { it.copy(resolution = r) } }, label = { Text(r.label) }) }
+            }
+            if (codecs) {
+                // Read from each file's streams (shows by their episodes); the first use takes a moment.
+                Group("Video codec (any of)") {
+                    dev.nitrate.core.pages.Codecs.VIDEO.forEach { (id, label) -> FilterChip(id in options.videoCodecs, { onChange { it.toggleVideoCodec(id) } }, label = { Text(label) }) }
+                }
+                Group("Audio codec (any of)") {
+                    dev.nitrate.core.pages.Codecs.AUDIO.forEach { (id, label) -> FilterChip(id in options.audioCodecs, { onChange { it.toggleAudioCodec(id) } }, label = { Text(label) }) }
+                }
             }
             Group("Rating") {
                 listOf<Float?>(null, 6f, 7f, 8f).forEach { r -> FilterChip(options.minRating == r, { onChange { it.copy(minRating = r) } }, label = { Text(r?.let { "★ ${it.toInt()}+" } ?: "Any") }) }

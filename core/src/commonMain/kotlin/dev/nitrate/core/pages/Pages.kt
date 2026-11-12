@@ -31,7 +31,14 @@ data class ItemQuery(
     val nameFrom: String? = null,
     /** Names before this one, for counting where a letter starts. */
     val nameBefore: String? = null,
+    /** Only items with video in one of these codecs ([Codecs.VIDEO] ids); shows count their episodes. */
+    val videoCodecs: List<String> = emptyList(),
+    /** Only items with audio in one of these codecs ([Codecs.AUDIO] ids). */
+    val audioCodecs: List<String> = emptyList(),
 ) {
+    /** Jellyfin can't filter by codec: such queries are filtered by Nitrate. */
+    val filtersCodecs: Boolean get() = videoCodecs.isNotEmpty() || audioCodecs.isNotEmpty()
+
     /** A short description for editors, e.g. "Unwatched · Horror · 1980–1989 · Random". */
     fun describe(): String = buildList {
         if (types.isNotEmpty()) add(types.joinToString("/") { it.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase) + "s" })
@@ -47,6 +54,8 @@ data class ItemQuery(
         }
         minRating?.let { add("★ $it+") }
         if (resolution != ResolutionFilter.ANY) add(resolution.label)
+        if (videoCodecs.isNotEmpty()) add(videoCodecs.joinToString("/") { Codecs.label(it) })
+        if (audioCodecs.isNotEmpty()) add(audioCodecs.joinToString("/") { Codecs.label(it) })
         add(sort.label + if (sort != QuerySort.RANDOM && !descending) " (ascending)" else "")
     }.joinToString(" · ")
 }

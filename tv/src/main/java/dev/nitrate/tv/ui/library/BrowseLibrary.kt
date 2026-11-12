@@ -182,7 +182,7 @@ fun BrowseLibrary(
 
     when (dialog) {
         "sort" -> SortDialog(options, onPick = { change -> vm.update(change); dialog = null }, onDismiss = { dialog = null })
-        "filters" -> FilterDialog(options, genres, onChange = vm::update, onDismiss = { dialog = null })
+        "filters" -> FilterDialog(options, genres, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = vm::update, onDismiss = { dialog = null })
     }
 }
 
@@ -231,7 +231,7 @@ private fun SortDialog(options: BrowseOptions, onPick: ((BrowseOptions) -> Brows
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FilterDialog(options: BrowseOptions, genres: List<String>, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
+private fun FilterDialog(options: BrowseOptions, genres: List<String>, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -248,6 +248,15 @@ private fun FilterDialog(options: BrowseOptions, genres: List<String>, onChange:
                 FilterChip(options.favoritesOnly, { onChange { it.copy(favoritesOnly = true) } }) { Text("Favourites only") }
             }
             Group("Quality") { ResolutionFilter.entries.forEach { r -> FilterChip(options.resolution == r, { onChange { it.copy(resolution = r) } }) { Text(r.label) } } }
+            if (codecs) {
+                // Read from each file's streams (shows by their episodes); the first use takes a moment.
+                Group("Video codec (any of)") {
+                    dev.nitrate.core.pages.Codecs.VIDEO.forEach { (id, label) -> FilterChip(id in options.videoCodecs, { onChange { it.toggleVideoCodec(id) } }) { Text(label) } }
+                }
+                Group("Audio codec (any of)") {
+                    dev.nitrate.core.pages.Codecs.AUDIO.forEach { (id, label) -> FilterChip(id in options.audioCodecs, { onChange { it.toggleAudioCodec(id) } }) { Text(label) } }
+                }
+            }
             Group("Rating") {
                 listOf<Float?>(null, 6f, 7f, 8f).forEach { r -> FilterChip(options.minRating == r, { onChange { it.copy(minRating = r) } }) { Text(r?.let { "★ ${it.toInt()}+" } ?: "Any") } }
             }
