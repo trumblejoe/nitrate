@@ -49,6 +49,8 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -111,6 +113,8 @@ fun PlayerScreen(
         val next = upNext.takeIf { !sleepAtEndRef }
         if (next != null && onPlayNext != null && !upNextHidden) onPlayNext(next) else onEnded()
     }
+    var logMessage by remember { mutableStateOf<String?>(null) }
+    val logScope = rememberCoroutineScope()
     val session = remember(itemId) {
         PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() }, trackMemory = actions.container.trackMemory)
             .also {
@@ -334,9 +338,33 @@ fun PlayerScreen(
                             Text(value, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+                    logMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor(), modifier = Modifier.padding(top = 10.dp)) }
                 }
             },
             confirmButton = { TextButton(onClick = { dialog = PlayerDialog.NONE }) { Text("Close") } },
+            dismissButton = {
+                Row {
+                    // A report of this playback: to the Jellyfin server's logs, or out through the share sheet.
+                    TextButton(onClick = {
+                        logMessage = "Sending…"
+                        logScope.launch {
+                            logMessage = actions.container.sendPlaybackReport(session).fold(
+                                { name -> "Saved on your server as $name (Jellyfin Dashboard → Logs)" },
+                                { e -> "Couldn't send: ${e.message ?: e::class.simpleName}" },
+                            )
+                        }
+                    }) { Text("Send log") }
+                    TextButton(onClick = {
+                        logScope.launch {
+                            val text = actions.container.playbackReport(session)
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                                .putExtra(android.content.Intent.EXTRA_SUBJECT, "Nitrate playback log")
+                                .putExtra(android.content.Intent.EXTRA_TEXT, text)
+                            context.startActivity(android.content.Intent.createChooser(send, "Share playback log"))
+                        }
+                    }) { Text("Share") }
+                }
+            },
         )
     }
 }

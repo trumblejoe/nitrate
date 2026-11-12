@@ -72,6 +72,7 @@ class JellyfinContractTest {
             path.endsWith("/ScheduledTasks") -> """[{"Id":"t1","Name":"Scan media library","Category":"Library","State":"Running","CurrentProgressPercentage":42.0,"LastExecutionResult":{"Status":"Completed","EndTimeUtc":"2026-01-01T00:00:00Z"}}]"""
             path.endsWith("/ActivityLog/Entries") -> """{"Items":[{"Id":1,"Name":"joe signed in","Type":"SessionStarted","Date":"2026-01-01T00:00:00Z","Severity":"Information"}],"TotalRecordCount":1}"""
             path.endsWith("/Sessions") -> """[{"Id":"s1","UserName":"joe","Client":"Nitrate","DeviceName":"TV","PlayState":{"PositionTicks":600000000,"IsPaused":true,"PlayMethod":"DirectPlay"},"NowPlayingItem":$ITEM,"SupportsRemoteControl":true}]"""
+            path.endsWith("/ClientLog/Document") -> """{"FileName":"upload_nitrate.log"}"""
             path.endsWith("/System/Info/Public") -> """{"ServerName":"Home","Version":"10.11.0","Id":"$HEX"}"""
             path.endsWith("/Users/Public") -> """[{"Id":"$HEX","Name":"joe","HasPassword":true,"PrimaryImageTag":"t"}]"""
             path.contains("/Users/AuthenticateBy") || path.contains("/Users/AuthenticateWith") ->
@@ -236,6 +237,7 @@ class JellyfinContractTest {
         client.queryPage(browse.copy(videoCodecs = listOf("hevc"), audioCodecs = listOf("dts")), 0, 10)
         client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(DASHED, dev.nitrate.core.model.CollectionKind.TV_SHOWS), 0, 10)
         client.followedSeries()
+        assertEquals("upload_nitrate.log", client.sendClientLog("Nitrate playback report"))
         val group = client.syncPlayGroups().single()
         assertEquals(DASHED, group.id)
         assertEquals(dev.nitrate.core.syncplay.GroupState.PAUSED, group.state)

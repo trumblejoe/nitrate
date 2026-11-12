@@ -247,6 +247,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onRunTest = { nav.navigate(PlaybackTestRoute) },
                 onChannelTest = { nav.navigate(AudioChannelTestRoute) },
                 updater = container.updater,
+                sendReport = { container.sendPlaybackReport() },
             )
         }
         composable<OfflineRoute> {
@@ -354,6 +355,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 remote = container.remote,
                 startMs = route.startMs.takeIf { it >= 0 },
                 syncPlay = container.syncPlay,
+                sendLog = { session -> container.sendPlaybackReport(session) },
                 onEnded = {
                     val next = route.queue.split(',').filter(String::isNotBlank)
                     if (next.isEmpty()) {

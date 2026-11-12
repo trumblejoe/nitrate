@@ -20,6 +20,7 @@ PATHS = [
     "/QuickConnect/Connect",
     "/QuickConnect/Authorize",
     "/Sessions/Logout",
+    "/ClientLog/Document",
     "/DisplayPreferences/{displayPreferencesId}",
     "/UserViews",
     "/UserItems/Resume",

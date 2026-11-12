@@ -277,3 +277,6 @@ internal data class CreationResultDto(val id: String)
 
 @Serializable
 internal data class NameIdDto(val name: String? = null, val id: String)
+
+@Serializable
+internal data class ClientLogDocumentResponseDto(val fileName: String? = null)

@@ -126,6 +126,18 @@ class PlaybackSession(
     private var selectionApplied = false
     private var progressJob: Job? = null
 
+    /** The last few hundred things the player did, for a playback report. */
+    private val events = ArrayDeque<String>()
+    private val clock = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
+
+    private fun log(message: String) = synchronized(events) {
+        if (events.size >= MAX_EVENTS) events.removeFirst()
+        events.addLast("${clock.format(java.util.Date())}  $message")
+    }
+
+    /** What the player did recently, oldest first. */
+    fun eventLog(): List<String> = synchronized(events) { events.toList() }
+
     /** Set for a downloaded file: where progress goes instead of the server. */
     private var localProgress: (suspend (positionMs: Long, durationMs: Long, ended: Boolean) -> Unit)? = null
 
@@ -244,6 +256,9 @@ class PlaybackSession(
         }
 
         override fun onPlayerError(e: PlaybackException) {
+            val format = (e as? ExoPlaybackException)?.takeIf { it.type == ExoPlaybackException.TYPE_RENDERER }?.rendererFormat
+            log("Error ${e.errorCodeName}: ${e.message}" + (e.cause?.let { "; cause ${it::class.simpleName}: ${it.message}" } ?: "") +
+                (format?.let { "; format ${it.sampleMimeType} ${it.codecs ?: ""} ${it.width}x${it.height}" } ?: ""))
             val failed = _plan.value
             if (failed == null || failed.method == PlayMethod.TRANSCODE || localProgress != null) {
                 _error.value = "Playback failed: ${e.errorCodeName}"
@@ -261,6 +276,7 @@ class PlaybackSession(
                         "it will transcode this format from now on. Change this in Playback settings.",
                 )
             }
+            log("Direct ${failed.method} failed at ${at}ms: retrying as a transcode")
             server.reportStopped(failed, at)
             _plan.value = null
             scope.launch { start(at, forceTranscode = true, audioIndex = failed.audioIndex, subtitleIndex = failed.subtitleIndex) }
@@ -271,6 +287,7 @@ class PlaybackSession(
         }
 
         override fun onPlaybackStateChanged(state: Int) {
+            log("State ${when (state) { Player.STATE_BUFFERING -> "buffering"; Player.STATE_READY -> "ready"; Player.STATE_ENDED -> "ended"; else -> "idle" }} at ${exo.currentPosition}ms")
             group?.onPlayerState()
             if (state != Player.STATE_ENDED) return
             group?.let { g ->
@@ -300,16 +317,43 @@ class PlaybackSession(
         exo.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
                 _videoDecoder.value = name
+                log("Video decoder $name (${initializationDurationMs}ms to start)")
             }
 
             override fun onAudioDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
                 _audioDecoder.value = name
+                log("Audio decoder $name (${initializationDurationMs}ms to start)")
+            }
+
+            override fun onVideoInputFormatChanged(e: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
+                log("Video in: ${format.sampleMimeType} ${format.codecs ?: ""} ${format.width}x${format.height} ${format.frameRate}fps ${format.colorInfo?.toLogString() ?: ""}")
+            }
+
+            override fun onAudioInputFormatChanged(e: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
+                log("Audio in: ${format.sampleMimeType} ${format.codecs ?: ""} ${format.channelCount}ch ${format.sampleRate}Hz")
+            }
+
+            override fun onDroppedVideoFrames(e: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                log("Dropped $droppedFrames video frames in ${elapsedMs}ms")
+            }
+
+            override fun onAudioSinkError(e: AnalyticsListener.EventTime, audioSinkError: Exception) {
+                log("Audio output error: ${audioSinkError::class.simpleName}: ${audioSinkError.message}")
+            }
+
+            override fun onAudioCodecError(e: AnalyticsListener.EventTime, audioCodecError: Exception) {
+                log("Audio decoder error: ${audioCodecError::class.simpleName}: ${audioCodecError.message}")
+            }
+
+            override fun onVideoCodecError(e: AnalyticsListener.EventTime, videoCodecError: Exception) {
+                log("Video decoder error: ${videoCodecError::class.simpleName}: ${videoCodecError.message}")
             }
         })
     }
 
     /** Loads [itemId] and starts playing: at [startMs] if given, else resuming unless [fromStart]. */
     fun load(itemId: String, fromStart: Boolean, startMs: Long? = null) {
+        log("Load $itemId (fromStart=$fromStart, startMs=$startMs)")
         pendingItem = itemId to (startMs ?: 0)
         group?.let { g ->
             // Watching together: the group decides where everyone starts.
@@ -411,6 +455,7 @@ class PlaybackSession(
         }
         val audioIndex = audio
         val subtitleIndex = subtitle
+        log("Ask the server how to play ${current.id} from ${startMs}ms (forceTranscode=$forceTranscode, audio=$audioIndex, subtitle=$subtitleIndex)")
         runCatching {
             server.resolvePlayback(
                 itemId = current.id,
@@ -422,10 +467,14 @@ class PlaybackSession(
                 mediaSourceId = _plan.value?.mediaSourceId,
             )
         }.onSuccess { p ->
+            log("Server: ${p.method}" + (if (p.transcodeReasons.isNotEmpty()) " because ${p.transcodeReasons.joinToString(", ")}" else "") + "; ${dev.nitrate.core.playback.PlaybackReport.streamSummary(p)}")
             play(p, startMs, current.name)
             server.reportStart(p, startMs)
             startProgressReports(p)
-        }.onFailure { _error.value = it.message ?: "Could not start playback" }
+        }.onFailure {
+            log("Couldn't start: ${it.message ?: it::class.simpleName}")
+            _error.value = it.message ?: "Could not start playback"
+        }
     }
 
     /** Periodic progress so the server's "Continue Watching" stays accurate. */
@@ -625,6 +674,9 @@ class PlaybackSession(
     private companion object {
         const val PROGRESS_INTERVAL_MS = 10_000L
         const val NOTICE_MS = 8_000L
+
+        /** Events kept for a playback report. */
+        const val MAX_EVENTS = 300
 
         /** Error codes that mean "this device couldn't decode it", as opposed to network or server errors. */
         val DECODER_ERRORS = setOf(

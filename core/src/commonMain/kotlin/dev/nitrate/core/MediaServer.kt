@@ -82,6 +82,12 @@ interface MediaServer {
     /** Every server and user signed in on this device. */
     suspend fun savedAccounts(): List<SavedAccount> = emptyList()
 
+    /**
+     * Saves [text] on the server as a client log (Jellyfin keeps it with its own logs: Dashboard →
+     * Logs) and returns the file name it was saved as.
+     */
+    suspend fun sendClientLog(text: String): String = unsupported()
+
     /** Every server signed in to here, the primary first. */
     suspend fun servers(): List<SavedServer> = emptyList()
 

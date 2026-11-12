@@ -42,8 +42,8 @@ import java.io.File
  */
 class AppContainer(
     context: Context,
-    clientName: String,
-    version: String,
+    private val clientName: String,
+    private val version: String,
     /** Replaces the Jellyfin server, for screenshot tests and previews. */
     serverOverride: MediaServer? = null,
     /** Replaces the downloads database, for screenshot tests. */
@@ -113,6 +113,32 @@ class AppContainer(
 
     /** New-episode notifications (phone). */
     val newEpisodes by lazy { dev.nitrate.android.notifications.NewEpisodeNotifier(appContext, server) }
+
+    /**
+     * Builds a playback report (this device, what Nitrate allows, and [session]'s item, server
+     * decision and player events if given) as text.
+     */
+    suspend fun playbackReport(session: dev.nitrate.android.playback.PlaybackSession? = null): String =
+        dev.nitrate.core.playback.PlaybackReport(
+            app = clientName,
+            version = version,
+            createdAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date()),
+            caps = capabilities,
+            settings = playbackSettings.current(),
+            item = session?.item?.value,
+            plan = session?.plan?.value,
+            videoDecoder = session?.videoDecoder?.value,
+            audioDecoder = session?.audioDecoder?.value,
+            events = session?.eventLog().orEmpty(),
+            error = session?.error?.value,
+        ).render()
+
+    /**
+     * Sends a playback report to the signed-in Jellyfin server as a client log, and returns the
+     * file name it's saved as there (Dashboard → Logs).
+     */
+    suspend fun sendPlaybackReport(session: dev.nitrate.android.playback.PlaybackSession? = null): Result<String> =
+        runCatching { server.sendClientLog(playbackReport(session)) }
 
     /** Libraries as last seen, for menus that should be whole at once. */
     val libraryCache by lazy { dev.nitrate.android.storage.LibraryCache(appContext) }

@@ -128,6 +128,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         displaySettings(prefs) { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
 
         header("Playback", "Settings for this device; they aren't synced.")
+        item { DeviceReportRow(actions) }
         item {
             Choice("Maximum bitrate", formatBitrate(playback.maxBitrate)) {
                 val list = PlaybackSettings.BITRATES
@@ -500,4 +501,25 @@ private fun UpdatesSection(updater: dev.nitrate.android.update.AppUpdater) {
         )
         Toggle("Check automatically", "Look for a new version when Nitrate opens", auto, updater::setAutoCheck)
     }
+}
+
+/** Sends what this device can play (and what Nitrate allows) to the server's logs, for diagnosing playback. */
+@Composable
+private fun DeviceReportRow(actions: AppActions) {
+    val scope = rememberCoroutineScope()
+    var message by remember { mutableStateOf<String?>(null) }
+    ListItem(
+        modifier = Modifier.clickable {
+            message = "Sending…"
+            scope.launch {
+                message = actions.container.sendPlaybackReport().fold(
+                    { name -> "Saved on your server as $name (Jellyfin Dashboard → Logs)" },
+                    { e -> "Couldn't send: ${e.message ?: e::class.simpleName}" },
+                )
+            }
+        },
+        headlineContent = { Text("Send device report") },
+        supportingContent = { Text(message ?: "What this device can play, saved to your Jellyfin server's logs. During playback, Info → Send log adds the file and what happened.") },
+        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+    )
 }

@@ -1525,6 +1525,15 @@
     },
     "type": "object"
    },
+   "ClientLogDocumentResponseDto": {
+    "additionalProperties": false,
+    "properties": {
+     "FileName": {
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "CodecProfile": {
     "additionalProperties": false,
     "properties": {
@@ -7621,6 +7630,112 @@
     },
     "tags": [
      "Audio"
+    ]
+   }
+  },
+  "/ClientLog/Document": {
+   "post": {
+    "operationId": "LogFile",
+    "requestBody": {
+     "content": {
+      "text/plain": {
+       "schema": {
+        "format": "binary",
+        "type": "string"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ClientLogDocumentResponseDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ClientLogDocumentResponseDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ClientLogDocumentResponseDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "413": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "System"
     ]
    }
   },

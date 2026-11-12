@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,7 +52,10 @@ fun PlaybackSettingsScreen(
     onRunTest: () -> Unit,
     onChannelTest: () -> Unit,
     updater: dev.nitrate.android.update.AppUpdater? = null,
+    /** Sends this device's playback report (no item) to the server. */
+    sendReport: (suspend () -> Result<String>)? = null,
 ) {
+    var reportMessage by remember { mutableStateOf<String?>(null) }
     val settings by store.settings.collectAsState(PlaybackSettings())
     val scope = rememberCoroutineScope()
     val update: ((PlaybackSettings) -> PlaybackSettings) -> Unit = { f -> scope.launch { store.update(f) } }
@@ -71,10 +76,20 @@ fun PlaybackSettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                reportMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = onRunTest, modifier = Modifier.focusRequester(first)) { Text("Run playback test") }
                     OutlinedButton(onClick = onChannelTest) { Text("Audio channel test") }
                     if (updater != null) OutlinedButton(onClick = { updater.check() }) { Text("Check for updates") }
+                    if (sendReport != null) OutlinedButton(onClick = {
+                        reportMessage = "Sending…"
+                        scope.launch {
+                            reportMessage = sendReport().fold(
+                                { name -> "Saved on your server as $name (Jellyfin Dashboard → Logs)" },
+                                { e -> "Couldn't send: ${e.message ?: e::class.simpleName}" },
+                            )
+                        }
+                    }) { Text("Send device report") }
                     if (settings.learnedFailures.isNotEmpty()) {
                         OutlinedButton(onClick = { scope.launch { store.clearFailures() } }) {
                             Text("Forget ${settings.learnedFailures.size} learned failure(s)")

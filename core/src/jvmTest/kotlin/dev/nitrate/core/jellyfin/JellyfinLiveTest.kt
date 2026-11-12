@@ -583,4 +583,15 @@ class JellyfinLiveTest {
             println("Shows with H.264 episodes: ${showsH264.first.map { it.name }}")
         }
     }
+
+    /** A playback report saved on the real server as a client log. */
+    @Test
+    fun `client log`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-log", "Log"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val name = client.sendClientLog(dev.nitrate.core.playback.PlaybackReport("Nitrate", "test", "now", caps(), dev.nitrate.core.playback.PlaybackSettings()).render())
+        println("Client log saved as $name")
+        assertTrue(name.isNotBlank())
+    }
 }

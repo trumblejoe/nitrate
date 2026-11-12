@@ -219,6 +219,15 @@ class JellyfinClient(
 
     // ---- Addresses (home and away) ----
 
+    override suspend fun sendClientLog(text: String): String {
+        val response = http.post(url("ClientLog", "Document")) {
+            auth()
+            contentType(ContentType.Text.Plain)
+            setBody(text)
+        }
+        return response.decode<ClientLogDocumentResponseDto>().fileName ?: error("The server didn't say where it saved the log")
+    }
+
     override suspend fun servers(): List<SavedServer> {
         val accounts = savedAccounts()
         return sessionStorage.all().groupBy { it.serverUrl.trimEnd('/') }.map { (url, sessions) ->

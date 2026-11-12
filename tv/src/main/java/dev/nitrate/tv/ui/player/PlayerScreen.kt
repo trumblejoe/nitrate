@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -110,6 +111,8 @@ fun PlayerScreen(
     startMs: Long? = null,
     /** Watch together: follows this device's group when it's in one. */
     syncPlay: dev.nitrate.core.syncplay.SyncPlayController? = null,
+    /** Sends a playback report for this session to the server; returns the saved file's name. */
+    sendLog: (suspend (PlaybackSession) -> Result<String>)? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
@@ -143,6 +146,10 @@ fun PlayerScreen(
     val plan by session.plan.collectAsState()
     val error by session.error.collectAsState()
     val notice by session.notice.collectAsState()
+    // The result of "Send log", shown like a notice for a while.
+    var logMessage by remember { mutableStateOf<String?>(null) }
+    val logScope = rememberCoroutineScope()
+    LaunchedEffect(logMessage) { if (logMessage != null) { kotlinx.coroutines.delay(12_000); logMessage = null } }
     val videoDecoder by session.videoDecoder.collectAsState()
     val audioDecoder by session.audioDecoder.collectAsState()
 
@@ -260,7 +267,19 @@ fun PlayerScreen(
                 onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                 onSeek = { delta -> player.seekTo((player.currentPosition + delta).coerceIn(0, duration)) },
                 onOpen = { panel = it },
-                extraButtons = panels.map { it.panelLabel to { togglePanel(it) } },
+                extraButtons = panels.map { it.panelLabel to { togglePanel(it) } } +
+                    listOfNotNull(sendLog?.let { send ->
+                        "Send log" to {
+                            logMessage = "Sending the playback log…"
+                            logScope.launch {
+                                logMessage = send(session).fold(
+                                    { name -> "Playback log saved on your server as $name (Jellyfin Dashboard → Logs)." },
+                                    { e -> "Couldn't send the log: ${e.message ?: e::class.simpleName}" },
+                                )
+                            }
+                            Unit
+                        }
+                    }),
             )
         }
 
@@ -268,7 +287,7 @@ fun PlayerScreen(
             PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.TopEnd).padding(32.dp))
         }
 
-        notice?.let {
+        (logMessage ?: notice)?.let {
             Text(
                 it,
                 style = MaterialTheme.typography.bodyMedium,
