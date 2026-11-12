@@ -77,11 +77,17 @@ fun HomeScreen(
     val libraries by androidx.compose.runtime.produceState(emptyList<MediaItem>(), repository) { value = runCatching { repository.views() }.getOrDefault(emptyList()) }
     val content = remember { FocusRequester() }
     var focusedOnce by remember { mutableStateOf(false) }
-    NavRail(
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val fullArt = prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
+    TvMenu(
+        style = prefs.tvMenu,
         top = listOf(NavEntry("Search", NavIcons.search, onClick = onSearch), NavEntry("Home", NavIcons.home, selected = true) {}) +
-            libraries.map { lib -> NavEntry(lib.name, NavIcons.library(lib)) { onOpen(lib) } },
+            libraries.map { lib -> NavEntry(lib.name, NavIcons.library(lib)) { onOpen(lib) } } +
+            // The full-screen Home has no header for pinned pages, so they join the menu.
+            (if (fullArt) pinnedPages.map { (label, open) -> NavEntry(label, NavIcons.pages, onClick = open) } else emptyList()),
         bottom = menu + listOf(NavEntry("Settings", NavIcons.settings, onClick = onSettings), NavEntry("Switch user", NavIcons.profile, onClick = onProfiles)),
-    ) {
+        overlay = fullArt,
+    ) { insets ->
     Box(Modifier.fillMaxSize().focusRequester(content).focusGroup()) {
     when (val s = state) {
         RowsState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Loading…") }
@@ -96,7 +102,16 @@ fun HomeScreen(
                 }
             }
         }
-        is RowsState.Loaded -> RowsPage(
+        is RowsState.Loaded -> if (fullArt) FullArtPage(
+            rows = s.rows,
+            overrides = overrides,
+            repository = repository,
+            onOpen = onOpen,
+            onPlay = onPlay,
+            onSaveDisplay = vm::save,
+            onEditPage = { editing = true },
+            insets = insets,
+        ) else RowsPage(
             rows = s.rows,
             overrides = overrides,
             repository = repository,

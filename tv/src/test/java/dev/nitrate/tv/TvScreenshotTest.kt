@@ -54,7 +54,7 @@ class TvScreenshotTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun shoot(name: String, setup: suspend (AppContainer) -> Unit = {}, content: @Composable (AppContainer) -> Unit) {
+    private fun shoot(name: String, setup: suspend (AppContainer) -> Unit = {}, act: () -> Unit = {}, content: @Composable (AppContainer) -> Unit) {
         val container = AppContainer(compose.activity, "test", "0", serverOverride = FakeServer())
         runBlocking {
             // Stored settings outlive a test in the same process: start each one clean.
@@ -81,6 +81,9 @@ class TvScreenshotTest {
         Thread.sleep(300)
         compose.mainClock.advanceTimeBy(1_500)
         compose.waitForIdle()
+        act()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
 
@@ -98,11 +101,27 @@ class TvScreenshotTest {
         c.displaySettings.saveCustomPages("user-1", listOf(CustomPage("pg1", "Friday night")))
     }
 
-    @Test fun home() = shoot("tv-home", ::customize) { c ->
+    private val rowsHome = dev.nitrate.core.pages.DisplayPrefs(tvHome = dev.nitrate.core.pages.TvHomeLayout.ROWS)
+
+    private fun fullArt(menu: dev.nitrate.core.pages.TvMenuStyle, open: Boolean = false) =
+        shoot("tv-home-full-art-${menu.name.lowercase()}", { c -> c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = menu)) },
+            act = { if (open) compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() } }) { c ->
+            HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+        }
+
+    @Test fun homeFullArtLeft() = fullArt(dev.nitrate.core.pages.TvMenuStyle.LEFT)
+    @Test fun homeFullArtRight() = fullArt(dev.nitrate.core.pages.TvMenuStyle.RIGHT)
+    @Test fun homeFullArtTop() = fullArt(dev.nitrate.core.pages.TvMenuStyle.TOP)
+    @Test fun homeFullArtBottom() = fullArt(dev.nitrate.core.pages.TvMenuStyle.BOTTOM)
+    @Test fun homeFullArtFade() = fullArt(dev.nitrate.core.pages.TvMenuStyle.FADE, open = true)
+    @Test fun homeFullArtDial() = fullArt(dev.nitrate.core.pages.TvMenuStyle.RADIAL, open = true)
+
+    @Test fun home() = shoot("tv-home", { c -> customize(c); c.displaySettings.savePrefs("user-1", rowsHome) }) { c ->
         HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, pinnedPages = listOf("Friday night" to {}))
     }
 
     @Test fun homeArtRows() = shoot("tv-home-art-rows", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
         val rows = c.server.homeRows()
         c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA))
         c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.LIGHTNING))

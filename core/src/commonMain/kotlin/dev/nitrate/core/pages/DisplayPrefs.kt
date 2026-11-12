@@ -35,7 +35,28 @@ data class DisplayPrefs(
     val accent: AccentMode = AccentMode.ARTWORK,
     /** Pure black backgrounds (OLED). */
     val trueBlack: Boolean = false,
+    /** TV Home: one row at a time across the whole screen, or the classic stack of rows. */
+    val tvHome: TvHomeLayout = TvHomeLayout.FULL_ART,
+    /** Where the TV's main menu sits. */
+    val tvMenu: TvMenuStyle = TvMenuStyle.LEFT,
 )
+
+@Serializable
+enum class TvHomeLayout(val label: String) {
+    /** The focused title fills the screen; Left/Right step through a row, Up/Down change rows. */
+    FULL_ART("Full-screen artwork"),
+    ROWS("Rows"),
+}
+
+@Serializable
+enum class TvMenuStyle(val label: String, val detail: String) {
+    LEFT("Left", "Icons down the left; opens with labels when you move onto it"),
+    RIGHT("Right", "The same rail on the right-hand side"),
+    TOP("Top", "A bar along the top"),
+    BOTTOM("Bottom", "A bar along the bottom"),
+    FADE("Fade in", "Hidden until you press Back or move up past the top"),
+    RADIAL("Dial", "Press Back for a ring of destinations around the centre"),
+}
 
 @Serializable
 enum class CardTitles(val label: String) { BY_ROW("As each row is set"), ALWAYS("Always"), NEVER("Never") }

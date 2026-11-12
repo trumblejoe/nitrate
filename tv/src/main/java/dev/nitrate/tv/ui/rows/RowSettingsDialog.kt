@@ -102,6 +102,10 @@ fun RowSettingsDialog(
     display: RowDisplay,
     onChange: (RowDisplay) -> Unit,
     onDismiss: () -> Unit,
+    /** Adds "Edit page" (order, hide, rename, own rows). */
+    onEditPage: (() -> Unit)? = null,
+    /** On the full-screen Home every row is shown the same way: only the detail toggles apply. */
+    fullArt: Boolean = false,
 ) {
     val first = remember { FocusRequester() }
     fun showcase(update: ShowcaseOptions.() -> ShowcaseOptions) = onChange(display.copy(showcase = display.showcase.update()))
@@ -109,6 +113,12 @@ fun RowSettingsDialog(
     Dialog(onDismissRequest = onDismiss) {
         DialogPanel(row.title) {
             LazyColumn {
+                if (fullArt) {
+                    item { ToggleItem("Show logo", display.showcase.showLogo, Modifier.focusRequester(first)) { showcase { copy(showLogo = it) } } }
+                    item { ToggleItem("Show details", display.showcase.showDetails) { showcase { copy(showDetails = it) } } }
+                    item { ToggleItem("Show ratings", display.showcase.showRatings) { showcase { copy(showRatings = it) } } }
+                    item { ToggleItem("Show overview", display.showcase.showOverview) { showcase { copy(showOverview = it) } } }
+                } else {
                 item {
                     ChoiceItem("Style", display.style.label, Modifier.focusRequester(first)) {
                         onChange(display.copy(style = display.style.next()))
@@ -150,6 +160,10 @@ fun RowSettingsDialog(
                 } else {
                     item { ToggleItem("Show titles", display.showTitles) { onChange(display.copy(showTitles = it)) } }
                 }
+                }
+                onEditPage?.let { edit ->
+                    item { ListItem(selected = false, onClick = edit, headlineContent = { Text("Edit page") }, supportingContent = { Text("Order, hide, rename and add rows") }) }
+                }
                 if (display != row.defaultDisplay) {
                     item {
                         ListItem(selected = false, onClick = { onChange(row.defaultDisplay) }, headlineContent = { Text("Reset to default") })
@@ -173,8 +187,9 @@ private fun ChoiceItem(label: String, value: String, modifier: Modifier = Modifi
 }
 
 @Composable
-private fun ToggleItem(label: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+private fun ToggleItem(label: String, checked: Boolean, modifier: Modifier = Modifier, onToggle: (Boolean) -> Unit) {
     ListItem(
+        modifier = modifier,
         selected = false,
         onClick = { onToggle(!checked) },
         headlineContent = { Text(label) },

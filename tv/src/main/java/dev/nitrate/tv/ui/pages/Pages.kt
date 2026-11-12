@@ -219,6 +219,24 @@ fun DisplaySettingsScreen(container: AppContainer) {
         item {
             ListItem(
                 selected = false,
+                onClick = { update { it.copy(tvHome = dev.nitrate.core.pages.TvHomeLayout.entries[(it.tvHome.ordinal + 1) % dev.nitrate.core.pages.TvHomeLayout.entries.size]) } },
+                headlineContent = { Text("Home") },
+                supportingContent = { Text(if (prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART) "One title at a time across the screen: ◀ ▶ through a row, ▲ ▼ between rows" else "Rows of cards under the focused title") },
+                trailingContent = { Text("${prefs.tvHome.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvMenu = dev.nitrate.core.pages.TvMenuStyle.entries[(it.tvMenu.ordinal + 1) % dev.nitrate.core.pages.TvMenuStyle.entries.size]) } },
+                headlineContent = { Text("Menu") },
+                supportingContent = { Text(prefs.tvMenu.detail) },
+                trailingContent = { Text("${prefs.tvMenu.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
                 onClick = { update { it.copy(cardTitles = CardTitles.entries[(it.cardTitles.ordinal + 1) % CardTitles.entries.size]) } },
                 headlineContent = { Text("Titles under cards") },
                 trailingContent = { Text("${prefs.cardTitles.label}  ›", color = MaterialTheme.colorScheme.primary) },
