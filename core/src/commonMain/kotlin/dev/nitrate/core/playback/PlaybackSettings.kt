@@ -36,6 +36,8 @@ data class PlaybackSettings(
     val codecMaxHeight: Map<String, Int> = emptyMap(),
     /** Video codecs limited to 8-bit even if the device reports 10-bit support. */
     val eightBitOnly: Set<String> = emptySet(),
+    /** Codecs proven to play 10-bit here (by the playback test) though the TV doesn't report it. */
+    val tenBitAllowed: Set<String> = emptySet(),
     /** Treat learned failures as Never (unless overridden to Always). */
     val useLearnedFailures: Boolean = true,
     /** How subtitles look on this device. */

@@ -74,7 +74,7 @@ object DeviceProbe {
                     maxHeight = v.supportedHeights.upper,
                     tenBit = caps.profileLevels.any { it.profile in TEN_BIT_PROFILES[mime].orEmpty() },
                 )
-            }.maxByOrNull { it.maxWidth.toLong() * it.maxHeight + if (it.hardware) 1 else 0 }?.let { codec to it }
+            }.let(VideoCodecCaps::combine)?.let { codec to it }
         }.toMap()
 
         val passthrough = runCatching {

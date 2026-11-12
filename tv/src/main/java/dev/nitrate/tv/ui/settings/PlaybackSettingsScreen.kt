@@ -155,6 +155,7 @@ fun PlaybackSettingsScreen(
             val limits = listOfNotNull(
                 settings.codecMaxHeight[cap.id]?.let { "limited to ${it}p" },
                 "8-bit only".takeIf { cap.id in settings.eightBitOnly },
+                "10-bit allowed (passed the test)".takeIf { cap.id in settings.tenBitAllowed },
             )
             CapabilityRow(cap, reported, limits, settings, update)
         }
@@ -235,6 +236,7 @@ private fun CapabilityRow(
                     learnedFailures = s.learnedFailures - cap.id,
                     codecMaxHeight = s.codecMaxHeight - cap.id,
                     eightBitOnly = s.eightBitOnly - cap.id,
+                    tenBitAllowed = s.tenBitAllowed - cap.id,
                 )
             }
         },

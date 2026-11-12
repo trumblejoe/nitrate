@@ -57,7 +57,7 @@ object CapabilityRules {
                 codec = cap.id,
                 maxWidth = minOf(c?.maxWidth ?: maxOf(caps.displayWidth, 3840), userWidth),
                 maxHeight = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight, settings.codecMaxHeight[cap.id] ?: Int.MAX_VALUE),
-                tenBit = (c?.tenBit ?: true) && cap.id !in settings.eightBitOnly,
+                tenBit = (c?.tenBit ?: true || cap.id in settings.tenBitAllowed) && cap.id !in settings.eightBitOnly,
             )
         }
     }

@@ -9,7 +9,21 @@ data class VideoCodecCaps(
     val maxWidth: Int,
     val maxHeight: Int,
     val tenBit: Boolean,
-)
+) {
+    companion object {
+        /**
+         * What the device can do with one codec, from all its decoders for it. Hardware decoders
+         * speak for the device when there are any (Android's own software decoders often claim a
+         * larger size but only 8-bit, and playback picks hardware first anyway); among them, the
+         * largest size, and 10-bit if any of them decodes it.
+         */
+        fun combine(decoders: List<VideoCodecCaps>): VideoCodecCaps? {
+            val tier = decoders.filter { it.hardware }.ifEmpty { decoders }
+            val best = tier.maxByOrNull { it.maxWidth.toLong() * it.maxHeight } ?: return null
+            return best.copy(tenBit = tier.any { it.tenBit })
+        }
+    }
+}
 
 /** An audio codec: decoded on the device, passed through to the receiver over HDMI, or both. */
 data class AudioCodecCaps(val codec: String, val decoder: String?, val passthrough: Boolean) {
