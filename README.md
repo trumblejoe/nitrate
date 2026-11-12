@@ -93,6 +93,10 @@ adb install -r tv/build/outputs/apk/debug/tv-debug.apk
 
 Debug builds use the application IDs `dev.nitrate.tv.debug` and `dev.nitrate.app.debug`, so they sit alongside release builds.
 
+### Audio decoder (DTS, TrueHD)
+
+Release builds include an FFmpeg audio decoder for DTS, Dolby TrueHD, Dolby Digital (Plus) and ALAC, used only when a device can't decode them itself or pass them to the receiver. FFmpeg is built LGPL, audio-only, by `tools/build-ffmpeg.sh` (needs the Android NDK); `release.yml` builds and caches it. Without it, everything still builds and those formats are converted by the server. Details and licences: `ffmpeg-decoder/README.md`, and Settings → Open-source licences in the apps.
+
 ## Releases
 
 `.github/workflows/release.yml` builds signed release APKs for both apps and publishes them on the repository's Releases page:

@@ -35,8 +35,22 @@ jobs:
           java-version: 21
       - uses: android-actions/setup-android@v3
         with:
-          packages: "platforms;android-37.2"
+          packages: "platforms;android-37.2 ndk;27.0.12077973 cmake;3.22.1"
       - uses: gradle/actions/setup-gradle@v4
+
+      # FFmpeg for the audio decoder (LGPL, audio-only; see ffmpeg-decoder/README.md). Built once
+      # and cached until tools/build-ffmpeg.sh changes.
+      - name: FFmpeg cache
+        id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-decoder/src/main/jni/ffmpeg
+          key: ffmpeg-${{ hashFiles('tools/build-ffmpeg.sh') }}
+      - name: Build FFmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: tools/build-ffmpeg.sh "$ANDROID_HOME/ndk/27.0.12077973"
+      - name: Check FFmpeg
+        run: test -f ffmpeg-decoder/src/main/jni/ffmpeg/android-libs/arm64-v8a/libavcodec.a
 
       - name: Signing key
         env:

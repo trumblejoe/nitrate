@@ -8,10 +8,11 @@ Jellyfin client for Android TV, Android phones/tablets, and (later) iOS. Kotlin 
 - `:core-android` – Android side of `:core`: OkHttp engine and device identity for `JellyfinClient`, DataStore stores, `DeviceProbe`, `PlaybackSession`, `SettingsSync`, `WritingStore`, and the shared `AppContainer`.
 - `:tv` – Android TV app (Compose for TV).
 - `:mobile` – Android phone/tablet app (Material 3), written only against `:core` and `:core-android`'s container so it can move to Compose Multiplatform.
+- `:ffmpeg-decoder` – Media3's FFmpeg audio extension (Apache 2.0 sources, video renderer left out) over FFmpeg built LGPL and audio-only (DTS, TrueHD, AC-3/E-AC-3, ALAC; ARM only) by `tools/build-ffmpeg.sh`. Without that build it compiles with no native code and reports itself unavailable. Players use it via `EXTENSION_RENDERER_MODE_ON` (only when the device has no decoder); `DeviceProbe` counts it as an audio decoder. Never enable GPL or non-free FFmpeg parts; keep `core/OpenSource` (the licences pages) in step with what ships.
 
 ## Commands
 
-- Build: `./gradlew assembleDebug`
+- Build: `./gradlew assembleDebug` (with DTS/TrueHD decoding: run `tools/build-ffmpeg.sh` first; needs the NDK named in `ffmpeg-decoder/build.gradle.kts`)
 - Unit tests: `./gradlew test`
 - If Maven Central returns 429, retry with `--max-workers=2`.
 

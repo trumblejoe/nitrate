@@ -1,0 +1,6 @@
+This module contains code from AndroidX Media (https://github.com/androidx/media),
+libraries/decoder_ffmpeg, Copyright (C) The Android Open Source Project, licensed under the
+Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
+
+The native library also includes FFmpeg (https://ffmpeg.org), licensed under the GNU Lesser
+General Public License version 2.1 or later: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html

@@ -166,6 +166,14 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
 
         header("Updates", "New versions from Nitrate's releases. Android asks before installing.")
         item { UpdatesSection(c.updater) }
+        item {
+            ListItem(
+                modifier = Modifier.clickable { actions.nav.navigate(LicensesRoute) },
+                headlineContent = { Text("Open-source licences") },
+                supportingContent = { Text("FFmpeg, Media3, Kotlin and the rest Nitrate is built with") },
+                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
 
         header("Plugins", "Built in; switch them on or off for this device.")
         items(c.plugins.all, key = { it.id }) { plugin ->

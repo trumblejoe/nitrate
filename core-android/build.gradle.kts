@@ -27,6 +27,8 @@ android {
 
 dependencies {
     api(project(":core"))
+    // Software audio decoding for DTS / TrueHD / Dolby when the device can't (LGPL FFmpeg).
+    api(project(":ffmpeg-decoder"))
     implementation(libs.ktor.client.okhttp)
     implementation(libs.androidx.work)
     implementation(libs.androidx.core.ktx)

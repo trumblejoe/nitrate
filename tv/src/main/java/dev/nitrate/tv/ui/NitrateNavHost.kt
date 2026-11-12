@@ -77,6 +77,7 @@ import kotlinx.serialization.Serializable
 @Serializable object DisplaySettingsRoute
 @Serializable object MenuStopsRoute
 @Serializable object ServerAddressesRoute
+@Serializable object LicensesRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
 @Serializable object WatchTogetherRoute
@@ -234,6 +235,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Servers", "Local, VPN and remote addresses; add, switch and choose the primary") { nav.navigate(ServerAddressesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Switch user", "Other users and servers, profile PINs") { nav.navigate(ProfilesRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Open-source licences", "FFmpeg, Media3, Kotlin and the rest Nitrate is built with") { nav.navigate(LicensesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl, signOut),
                     ),
             )
@@ -267,6 +269,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             }
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
+        composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
         composable<ServerAddressesRoute> {
             dev.nitrate.tv.ui.settings.ServersScreen(
                 container,

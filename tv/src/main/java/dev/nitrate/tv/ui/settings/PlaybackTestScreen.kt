@@ -81,7 +81,7 @@ fun PlaybackTestScreen(
     val player = remember {
         ExoPlayer.Builder(context)
             // Same fallback as real playback, so results match what playback would do.
-            .setRenderersFactory(DefaultRenderersFactory(context).setEnableDecoderFallback(true))
+            .setRenderersFactory(DefaultRenderersFactory(context).setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON))
             .build()
             .apply {
                 volume = 0.3f

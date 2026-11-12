@@ -134,6 +134,8 @@ class ScreenshotTest {
 
     @Test fun connect() = shoot("phone-connect") { ConnectScreen(it) { _, _ -> } }
 
+    @Test fun licenses() = shoot("phone-licenses") { dev.nitrate.mobile.ui.LicensesScreen() }
+
     @Test fun serverAddresses() = shoot("phone-servers") { dev.nitrate.mobile.ui.ServersScreen(it) }
 
     @Test fun login() = shoot("phone-login") { LoginScreen(it, "http://192.168.1.20:8096", "Home") {} }

@@ -140,6 +140,8 @@ class PlaybackSession(
                 DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(nightMode)).setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build()
         }.setEnableDecoderFallback(true)
+            // FFmpeg (ffmpeg-decoder) only for audio the device has no decoder for.
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         ExoPlayer.Builder(context)
             .setRenderersFactory(renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http))

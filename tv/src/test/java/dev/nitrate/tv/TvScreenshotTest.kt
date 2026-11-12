@@ -171,6 +171,8 @@ class TvScreenshotTest {
         androidx.compose.runtime.LaunchedEffect(Unit) { first.requestFocus() }
     }
 
+    @Test fun licenses() = shoot("tv-licenses") { _ -> dev.nitrate.tv.ui.settings.LicensesScreen() }
+
     @Test fun servers() = shoot("tv-servers", act = {
         // Test the current server's local address: the result shows under it.
         press("down", "right")

@@ -58,6 +58,13 @@ object DeviceProbe {
         ),
     )
 
+    /** How the FFmpeg audio decoder shows up in capabilities and Playback settings. */
+    const val SOFTWARE_AUDIO_DECODER = "FFmpeg (software)"
+
+    @OptIn(UnstableApi::class)
+    private fun ffmpegDecodes(mime: String): Boolean =
+        runCatching { androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() && androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(mime) }.getOrDefault(false)
+
     @OptIn(UnstableApi::class)
     fun probe(context: Context): DeviceCapabilities {
         val decoders = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filterNot { it.isEncoder }
@@ -88,7 +95,9 @@ object DeviceProbe {
         }.getOrNull()
         val audio = DeviceCapabilities.AUDIO_CODECS.map { (codec, mime) ->
             val encoding = PASSTHROUGH[codec]
+            // The device's own decoder, else Nitrate's FFmpeg one (DTS, TrueHD, Dolby, ALAC) when built in.
             val decoder = decoders.firstOrNull { info -> info.supportedTypes.any { it.equals(mime, true) } }?.name
+                ?: SOFTWARE_AUDIO_DECODER.takeIf { ffmpegDecodes(mime) }
             codec to AudioCodecCaps(codec, decoder, encoding != null && passthrough?.supportsEncoding(encoding) == true)
         }.toMap()
 
