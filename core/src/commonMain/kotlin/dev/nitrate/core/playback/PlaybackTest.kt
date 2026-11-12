@@ -134,6 +134,14 @@ object PlaybackTest {
                 }
             }
 
+            // Software-only decoders stop at 1080p, unless a bigger clip played smoothly.
+            val bigPass = sdr.filter { it.ok && it.clip.height > CapabilityRules.SOFTWARE_MAX_HEIGHT }.maxByOrNull { it.clip.height }
+            if (bigPass != null && caps.video[codec]?.hardware == false && current.overrides[codec] == null) {
+                out += Suggestion("Allow $name above 1080p: ${bigPass.clip.label} played smoothly on the software decoder") {
+                    it.copy(overrides = it.overrides + (codec to Override.ALWAYS))
+                }
+            }
+
             // Dolby Vision: the TV claims it, but a clip fails or plays without Dolby Vision.
             val dvId = PlaybackSettings.hdrId("DOVI")
             val dvProblem = codecResults.firstOrNull { it.clip.hdr == "DOVI" && it.clip.claimed(caps) && !it.ok }

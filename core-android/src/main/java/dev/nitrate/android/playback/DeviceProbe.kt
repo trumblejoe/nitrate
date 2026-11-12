@@ -41,6 +41,8 @@ object DeviceProbe {
     )
 
     private val TEN_BIT_PROFILES = mapOf(
+        // High 10 is rare in hardware, but some boxes have it.
+        "video/avc" to setOf(MediaCodecInfo.CodecProfileLevel.AVCProfileHigh10),
         "video/hevc" to setOf(
             MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10,
             MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10,
@@ -64,6 +66,10 @@ object DeviceProbe {
             decoders.mapNotNull { info ->
                 val type = info.supportedTypes.firstOrNull { it.equals(mime, true) } ?: return@mapNotNull null
                 val caps = runCatching { info.getCapabilitiesForType(type) }.getOrNull() ?: return@mapNotNull null
+                // Secure-only decoders play DRM streams, never an ordinary file.
+                if (info.name.endsWith(".secure", ignoreCase = true) ||
+                    caps.isFeatureRequired(MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback)
+                ) return@mapNotNull null
                 val v = caps.videoCapabilities ?: return@mapNotNull null
                 VideoCodecCaps(
                     codec = codec,
@@ -87,8 +93,12 @@ object DeviceProbe {
         }.toMap()
 
         val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+        // Android 14 moved HDR types onto the display mode; older ones only have the capabilities.
         @Suppress("DEPRECATION")
-        val hdrTypes = display?.hdrCapabilities?.supportedHdrTypes?.toList().orEmpty()
+        val hdrTypes = (
+            display?.hdrCapabilities?.supportedHdrTypes?.toList().orEmpty() +
+                (if (Build.VERSION.SDK_INT >= 34) display?.mode?.supportedHdrTypes?.toList().orEmpty() else emptyList())
+            ).distinct()
         val hdr = hdrTypes.mapNotNull {
             when (it) {
                 Display.HdrCapabilities.HDR_TYPE_HDR10 -> "HDR10"

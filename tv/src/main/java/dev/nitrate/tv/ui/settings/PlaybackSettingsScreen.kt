@@ -156,6 +156,7 @@ fun PlaybackSettingsScreen(
                 settings.codecMaxHeight[cap.id]?.let { "limited to ${it}p" },
                 "8-bit only".takeIf { cap.id in settings.eightBitOnly },
                 "10-bit allowed (passed the test)".takeIf { cap.id in settings.tenBitAllowed },
+                "software decoder: up to 1080p unless set to Always".takeIf { c != null && !c.hardware && settings.overrides[cap.id] != dev.nitrate.core.playback.Override.ALWAYS },
             )
             CapabilityRow(cap, reported, limits, settings, update)
         }

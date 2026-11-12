@@ -43,6 +43,9 @@ object CapabilityRules {
         }.distinct()
     }
 
+    /** The tallest video a software-only decoder is trusted with. */
+    const val SOFTWARE_MAX_HEIGHT = 1080
+
     /** Size and bit-depth limit for direct playing one video codec. */
     data class VideoLimit(val codec: String, val maxWidth: Int, val maxHeight: Int, val tenBit: Boolean)
 
@@ -53,10 +56,13 @@ object CapabilityRules {
         return videoCodecs(caps, settings).filter { it.allowed }.map { cap ->
             // A codec forced on that the device doesn't report gets 4K (or the panel size) and 10-bit.
             val c = caps.video[cap.id]
+            // Software decoding keeps up to 1080p; above that it stutters on TV boxes and phones.
+            // "Always" for the codec lifts it (the user, or the playback test, knows better).
+            val softCap = if (c != null && !c.hardware && settings.overrides[cap.id] != Override.ALWAYS) SOFTWARE_MAX_HEIGHT else Int.MAX_VALUE
             VideoLimit(
                 codec = cap.id,
-                maxWidth = minOf(c?.maxWidth ?: maxOf(caps.displayWidth, 3840), userWidth),
-                maxHeight = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight, settings.codecMaxHeight[cap.id] ?: Int.MAX_VALUE),
+                maxWidth = minOf(c?.maxWidth ?: maxOf(caps.displayWidth, 3840), userWidth, if (softCap < Int.MAX_VALUE) softCap * 16 / 9 else Int.MAX_VALUE),
+                maxHeight = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight, settings.codecMaxHeight[cap.id] ?: Int.MAX_VALUE, softCap),
                 tenBit = (c?.tenBit ?: true || cap.id in settings.tenBitAllowed) && cap.id !in settings.eightBitOnly,
             )
         }
