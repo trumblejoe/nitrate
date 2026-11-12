@@ -617,10 +617,12 @@ class JellyfinClient(
         return item.images.parentBackdrops.mapIndexed { i, tag -> image(parent, "Backdrop", tag, i, maxWidth = 1920) }
     }
 
-    override fun backdropUrl(item: MediaItem): String? {
-        item.images.backdrops.firstOrNull()?.let { return image(item.id, "Backdrop", it, maxWidth = 1920) }
+    override fun backdropUrl(item: MediaItem): String? = backdropUrl(item, 1920)
+
+    override fun backdropUrl(item: MediaItem, maxWidth: Int): String? {
+        item.images.backdrops.firstOrNull()?.let { return image(item.id, "Backdrop", it, maxWidth = maxWidth) }
         val parent = item.images.parentBackdropItemId ?: return null
-        return item.images.parentBackdrops.firstOrNull()?.let { image(parent, "Backdrop", it, maxWidth = 1920) }
+        return item.images.parentBackdrops.firstOrNull()?.let { image(parent, "Backdrop", it, maxWidth = maxWidth) }
     }
 
     override fun logoUrl(item: MediaItem): String? {

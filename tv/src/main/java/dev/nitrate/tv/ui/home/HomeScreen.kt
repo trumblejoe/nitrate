@@ -49,10 +49,9 @@ fun HomeScreen(
     onSignOut: () -> Unit,
     /** Switches to the offline home when the server can't be reached. */
     onOffline: () -> Unit = {},
-    /** Where the menu's other stops go (Search, pages, Watch together, Switch user...). */
-    menuActions: MenuActions = MenuActions(),
-    /** The user's custom pages: pinned ones show above the rows, and any can be a menu stop. */
+    /** The user's custom pages: pinned ones show above the classic rows. */
     customPages: List<dev.nitrate.core.pages.CustomPage> = emptyList(),
+    onOpenPage: (String) -> Unit = {},
     /** Server pushes (new items, watch changes) that reload the rows. */
     changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
 ) {
@@ -72,24 +71,12 @@ fun HomeScreen(
         onPauseOrDispose { }
     }
 
-    val libraries by androidx.compose.runtime.produceState(emptyList<MediaItem>(), repository) { value = runCatching { repository.views() }.getOrDefault(emptyList()) }
     val content = remember { FocusRequester() }
     var focusedOnce by remember { mutableStateOf(false) }
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val fullArt = prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
-    val catalog = remember(libraries, customPages, menuActions, onSettings) {
-        menuCatalog(libraries, customPages, MenuActions(
-            onSearch = menuActions.onSearch, onHome = {}, onLibrary = onOpen, onPage = menuActions.onPage, onPages = menuActions.onPages,
-            onTogether = menuActions.onTogether, onSettings = onSettings, onProfiles = menuActions.onProfiles,
-        ))
-    }
     val pinnedPages = customPages.filter { it.pinned }
-    TvMenu(
-        style = prefs.tvMenu,
-        stops = catalog.stops(prefs),
-        dial = catalog.dial(prefs),
-        overlay = fullArt,
-    ) { insets ->
+    MainMenu(dev.nitrate.core.pages.MenuStops.HOME, overlay = fullArt) { insets ->
     Box(Modifier.fillMaxSize().focusRequester(content).focusGroup()) {
     when (val s = state) {
         RowsState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Loading…") }
@@ -124,7 +111,7 @@ fun HomeScreen(
             header = if (pinnedPages.isEmpty()) null else {
                 {
                     Row(Modifier.padding(start = 58.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        for (p in pinnedPages) OutlinedButton(onClick = { menuActions.onPage(p.id) }) { Text(p.title) }
+                        for (p in pinnedPages) OutlinedButton(onClick = { onOpenPage(p.id) }) { Text(p.title) }
                     }
                 }
             },

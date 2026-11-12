@@ -44,6 +44,8 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.width
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -109,13 +111,70 @@ class TvScreenshotTest {
 
     private fun fullArt(menu: dev.nitrate.core.pages.TvMenuStyle) =
         shoot("tv-home-full-art-${menu.name.lowercase()}", { c -> c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = menu)) }) { c ->
-            HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+            WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
         }
+
+    /** The app's menu, as the nav host provides it. */
+    @Composable
+    private fun WithMenu(c: AppContainer, content: @Composable () -> Unit) {
+        val libraries by androidx.compose.runtime.produceState(emptyList<dev.nitrate.core.model.MediaItem>()) { value = c.server.views() }
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(libraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions())
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, content = content)
+    }
+
+    private fun prefsShot(name: String, prefs: dev.nitrate.core.pages.DisplayPrefs, check: () -> Unit = {}, content: @Composable (AppContainer) -> Unit) =
+        shoot(name, { c -> c.displaySettings.savePrefs("user-1", prefs) }, act = check, content = content)
+
+    /** Right from the open rail goes back to the page (the open drawer covers it, so focus can't find it alone). */
+    @Test fun railRightExits() = prefsShot("tv-rail-exit", dev.nitrate.core.pages.DisplayPrefs(), {
+        press("left")
+        org.junit.Assert.assertTrue("Left reaches the rail", focusedHasText("Home"))
+        press("right")
+        org.junit.Assert.assertFalse("Right leaves the rail", focusedHasText("Home"))
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** Fade in on the Top/Bottom bar: nothing over the art until you move up. */
+    @Test fun fadeInBar() = prefsShot("tv-home-fade-hidden", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.TOP, tvMenuAutoHide = true), {
+        press("up")
+        org.junit.Assert.assertTrue(focusedHasText("Home"))
+        press("down")
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** Library pages carry the menu too, with their library underlined. */
+    @Test fun libraryMenu() = prefsShot("tv-library-menu", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.TOP)) { c ->
+        WithMenu(c) {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library("lib-movies"), overlay = false) {
+                dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {})
+            }
+        }
+    }
+
+    /** The search field waits as a button; once typing, Down puts the keyboard away and moves on. */
+    @Test fun textFieldLetsGo() = shoot("tv-text-field", act = {
+        compose.onNodeWithText("Search titles").assertExists()
+        press("down")
+        org.junit.Assert.assertTrue("Down from the field reaches the button", focusedHasText("Below"))
+        press("up")
+        org.junit.Assert.assertTrue("Up returns to the field: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }, focusedHasText("Search titles"))
+        compose.onRoot().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionCenter) }
+        compose.mainClock.advanceTimeBy(400); compose.waitForIdle()
+        org.junit.Assert.assertTrue("OK starts typing", compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasSetTextAction()).fetchSemanticsNodes().isNotEmpty())
+        press("down")
+        org.junit.Assert.assertTrue("Down while typing moves on", focusedHasText("Below"))
+    }) { _ ->
+        var text by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+        val first = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+        androidx.compose.foundation.layout.Column(Modifier.padding(40.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+            dev.nitrate.tv.ui.components.TvTextField(text, { text = it }, "Search titles", Modifier.width(500.dp).focusRequester(first))
+            androidx.tv.material3.Button(onClick = {}) { androidx.tv.material3.Text("Below") }
+        }
+        androidx.compose.runtime.LaunchedEffect(Unit) { first.requestFocus() }
+    }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {
         keys.forEach { name ->
-            val k = when (name) { "menu" -> androidx.compose.ui.input.key.Key.Menu; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
+            val k = when (name) { "ok" -> androidx.compose.ui.input.key.Key.DirectionCenter; "menu" -> androidx.compose.ui.input.key.Key.Menu; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
             compose.onRoot().performKeyInput { pressKey(k) }
             compose.mainClock.advanceTimeBy(400)
             compose.waitForIdle()
@@ -128,7 +187,7 @@ class TvScreenshotTest {
 
     private fun menuShot(name: String, menu: dev.nitrate.core.pages.TvMenuStyle, check: () -> Unit) =
         shoot(name, { c -> c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = menu)) }, act = check) { c ->
-            HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+            WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
         }
 
     /** Top/Bottom: the bar is at the top on the first row and at the bottom on the last; towards the page goes back. */
@@ -164,7 +223,7 @@ class TvScreenshotTest {
         compose.onNodeWithText("Home").assertExists()
         press("up")
         compose.onNodeWithText("Search").assertExists()
-    }) { c -> HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
     private fun stopsEditor(name: String, prefs: dev.nitrate.core.pages.DisplayPrefs) = shoot(name) { c ->
         val libraries by androidx.compose.runtime.produceState(emptyList<dev.nitrate.core.model.MediaItem>()) { value = c.server.views() }
@@ -206,7 +265,7 @@ class TvScreenshotTest {
         c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA))
         c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.LIGHTNING))
     }) { c ->
-        HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
     @Test fun settingsHub() = shoot("tv-settings-hub") { _ ->

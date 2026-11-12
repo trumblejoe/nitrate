@@ -116,6 +116,9 @@ interface MediaServer {
     fun imageUrl(item: MediaItem, kind: ImageKind = ImageKind.PRIMARY, maxHeight: Int = 480): String?
     fun backdropUrl(item: MediaItem): String?
 
+    /** The backdrop no wider than [maxWidth]: cards don't need full-screen art. */
+    fun backdropUrl(item: MediaItem, maxWidth: Int): String? = backdropUrl(item)
+
     /** Every backdrop for the item (or its series), for artwork rotation. */
     fun backdropUrls(item: MediaItem): List<String>
     fun logoUrl(item: MediaItem): String?

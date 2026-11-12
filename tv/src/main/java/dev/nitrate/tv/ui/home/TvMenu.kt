@@ -143,6 +143,8 @@ fun TvMenu(
     stops: List<NavEntry>,
     dial: List<NavEntry?>,
     overlay: Boolean,
+    /** Keep the menu invisible until focus reaches it (it still sits where it always does). */
+    autoHide: Boolean = false,
     content: @Composable (MenuInsets) -> Unit,
 ) {
     val contentFocus = remember { FocusRequester() }
@@ -159,7 +161,7 @@ fun TvMenu(
         when (style) {
             TvMenuStyle.RADIAL -> dialOpen = true
             // On the first or last row the bar is already there; elsewhere Menu brings it to the top first.
-            TvMenuStyle.TOP -> if (onFirst || onLast) runCatching { menuFocus.requestFocus() } else { forcedTop = true; focusBar++ }
+            TvMenuStyle.TOP, TvMenuStyle.FADE -> if (onFirst || onLast) runCatching { menuFocus.requestFocus() } else { forcedTop = true; focusBar++ }
             else -> runCatching { menuFocus.requestFocus() }
         }
     }
@@ -172,7 +174,7 @@ fun TvMenu(
             TvMenuStyle.LEFT -> key == Key.DirectionLeft
             TvMenuStyle.RIGHT -> key == Key.DirectionRight
             // With one row the bar is only at the top.
-            TvMenuStyle.TOP -> (key == Key.DirectionUp && onFirst) || (key == Key.DirectionDown && onLast && !onFirst)
+            TvMenuStyle.TOP, TvMenuStyle.FADE -> (key == Key.DirectionUp && onFirst) || (key == Key.DirectionDown && onLast && !onFirst)
             else -> key == Key.DirectionUp
         }
         if (towards) toMenu()
@@ -184,7 +186,8 @@ fun TvMenu(
     fun page(insets: MenuInsets) = Box(Modifier.fillMaxSize().focusRequester(contentFocus).focusGroup()) {
         CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuRows provides rows) { content(insets) }
     }
-    val trackMenu = Modifier.onFocusChanged { inMenu = it.hasFocus; if (!it.hasFocus) forcedTop = false }
+    val shown by animateFloatAsState(if (!autoHide || inMenu) 1f else 0f, label = "menu-fade")
+    val trackMenu = Modifier.alpha(shown).onFocusChanged { inMenu = it.hasFocus; if (!it.hasFocus) forcedTop = false }
 
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { e ->
@@ -194,13 +197,13 @@ fun TvMenu(
         },
     ) {
         when (style) {
-            TvMenuStyle.LEFT -> Rail(stops, overlay, menuFocus, trackMenu) { page(if (overlay) MenuInsets(start = RailWidth) else MenuInsets()) }
+            TvMenuStyle.LEFT -> Rail(stops, overlay, menuFocus, trackMenu, Key.DirectionRight, toContent) { page(if (overlay && !autoHide) MenuInsets(start = RailWidth) else MenuInsets()) }
             TvMenuStyle.RIGHT -> CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                Rail(stops, overlay, menuFocus, trackMenu) {
-                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { page(if (overlay) MenuInsets(end = RailWidth) else MenuInsets()) }
+                Rail(stops, overlay, menuFocus, trackMenu, Key.DirectionLeft, toContent) {
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { page(if (overlay && !autoHide) MenuInsets(end = RailWidth) else MenuInsets()) }
                 }
             }
-            TvMenuStyle.TOP -> if (overlay) {
+            TvMenuStyle.TOP, TvMenuStyle.FADE -> if (overlay) {
                 // At the top on the first row (and when there's only one), at the bottom on the last.
                 var edge by remember { mutableStateOf<Edge?>(Edge.TOP) }
                 if (!inMenu) edge = when {
@@ -209,7 +212,11 @@ fun TvMenu(
                     else -> null
                 }
                 Box(Modifier.fillMaxSize()) {
-                    page(when (edge) { Edge.TOP -> MenuInsets(top = BarHeight); Edge.BOTTOM -> MenuInsets(bottom = BarHeight); null -> MenuInsets() })
+                    page(when {
+                        autoHide || edge == null -> MenuInsets()
+                        edge == Edge.TOP -> MenuInsets(top = BarHeight)
+                        else -> MenuInsets(bottom = BarHeight)
+                    })
                     edge?.let { e ->
                         MenuBar(stops, e, overlay = true, menuFocus, toContent, Modifier.align(if (e == Edge.TOP) Alignment.TopStart else Alignment.BottomStart).then(trackMenu))
                     }
@@ -219,14 +226,6 @@ fun TvMenu(
                 Column(Modifier.fillMaxSize()) {
                     MenuBar(stops, Edge.TOP, overlay = false, menuFocus, toContent, trackMenu)
                     Box(Modifier.weight(1f)) { page(MenuInsets()) }
-                }
-            }
-            TvMenuStyle.FADE -> {
-                // The bar is there but invisible until focus reaches it.
-                val alpha by animateFloatAsState(if (inMenu) 1f else 0f, label = "fade-menu")
-                Box(Modifier.fillMaxSize()) {
-                    page(MenuInsets(top = BarHeight))
-                    MenuBar(stops, Edge.TOP, overlay = true, menuFocus, toContent, Modifier.align(Alignment.TopStart).alpha(alpha).then(trackMenu))
                 }
             }
             TvMenuStyle.RADIAL -> Box(Modifier.fillMaxSize()) {
@@ -256,13 +255,22 @@ private fun Rail(
     overlay: Boolean,
     menuFocus: FocusRequester,
     trackMenu: Modifier,
+    /** Towards the page: leaves the rail (the open drawer covers the page, so focus can't find it). */
+    exitKey: Key,
+    toContent: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     val state = rememberDrawerState(DrawerValue.Closed)
     val target = stops.firstOrNull { it.selected } ?: stops.firstOrNull()
     val drawer: @Composable androidx.tv.material3.NavigationDrawerScope.(DrawerValue) -> Unit = {
         Column(
-            Modifier.fillMaxHeight().then(trackMenu).padding(vertical = 24.dp, horizontal = 8.dp).verticalScroll(rememberScrollState()),
+            Modifier.fillMaxHeight().then(trackMenu)
+                .onPreviewKeyEvent { e ->
+                    if (e.key != exitKey) return@onPreviewKeyEvent false
+                    if (e.type == KeyEventType.KeyDown) toContent()
+                    true
+                }
+                .padding(vertical = 24.dp, horizontal = 8.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             stops.forEach { entry ->
@@ -477,6 +485,9 @@ class MenuActions(
 
 /** Every stop the menu can have, by [MenuStops] id, and the order it starts in. */
 class MenuCatalog(val entries: Map<String, NavEntry>, val defaults: List<String>) {
+    /** The same stops with [id] underlined as the page you're on. */
+    fun current(id: String) = MenuCatalog(entries.mapValues { (k, e) -> e.copy(selected = k == id) }, defaults)
+
     /** The rail's or bar's stops as the user arranged them. */
     fun stops(prefs: dev.nitrate.core.pages.DisplayPrefs): List<NavEntry> =
         MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, entries.keys, defaults)).mapNotNull(entries::get)
@@ -502,4 +513,22 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
         list.associateBy { it.id },
         MenuStops.defaults(libraries.map { it.id }, pages.filter { it.pinned }.map { it.id }),
     )
+}
+
+/** The app's menu, provided once by the nav host so every top-level page shows the same one. */
+val LocalMenuCatalog = androidx.compose.runtime.staticCompositionLocalOf<MenuCatalog?> { null }
+
+/**
+ * The main menu around a top-level page ([current] is its [MenuStops] id), in the user's style and
+ * arrangement. [overlay] for pages that fill the screen with art. Without a catalog (tests,
+ * previews) the page shows alone.
+ */
+@Composable
+fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets) -> Unit) {
+    val catalog = LocalMenuCatalog.current ?: return content(MenuInsets())
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val marked = remember(catalog, current) { catalog.current(current) }
+    // "Fade in" used to be its own menu: it's the top/bottom bar, hidden.
+    val style = if (prefs.tvMenu == TvMenuStyle.FADE) TvMenuStyle.TOP else prefs.tvMenu
+    TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE, content = content)
 }

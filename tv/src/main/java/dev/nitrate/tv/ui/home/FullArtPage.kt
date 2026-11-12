@@ -76,10 +76,26 @@ fun FullArtPage(
     val reachMenu = LocalMenuEdge.current
     val reportRows = LocalMenuRows.current
     LaunchedEffect(rowIndex, shown.size) { reportRows(rowIndex == 0, rowIndex >= shown.lastIndex) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val row = shown[rowIndex.coerceIn(0, shown.lastIndex)]
     val current = (itemIndex[row.key] ?: 0).coerceIn(0, row.items.lastIndex)
     val item = row.items[current]
+    // Fetch the pictures one press away (either side, and the rows above and below) so stepping
+    // shows them at once.
+    LaunchedEffect(row.key, current) {
+        val loader = coil3.SingletonImageLoader.get(context)
+        val near = listOfNotNull(
+            row.items.getOrNull(current + 1), row.items.getOrNull(current - 1),
+            shown.getOrNull(rowIndex + 1)?.let { r -> r.items.getOrNull(itemIndex[r.key] ?: 0) },
+            shown.getOrNull(rowIndex - 1)?.let { r -> r.items.getOrNull(itemIndex[r.key] ?: 0) },
+        )
+        near.forEach { n ->
+            listOfNotNull(repository.backdropUrl(n), repository.logoUrl(n)).forEach { url ->
+                loader.enqueue(coil3.request.ImageRequest.Builder(context).data(url).build())
+            }
+        }
+    }
     val showcase = (overrides[row.key] ?: row.defaultDisplay).showcase
 
     Box(

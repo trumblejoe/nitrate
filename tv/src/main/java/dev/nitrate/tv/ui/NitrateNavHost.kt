@@ -126,8 +126,29 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     // Display choices belong to the signed-in user, known only after sign-in.
     val backEntry by nav.currentBackStackEntryAsState()
     val userId = remember(backEntry) { container.server.userId }
+    // The main menu: the same stops on every top-level page (Home, libraries, custom pages).
+    // Going somewhere from it starts from Home, so Back always leads home.
+    val libraries = dev.nitrate.tv.ui.home.rememberLibraries(container)
+    val customPages = rememberCustomPages(container)
+    val fromHome: androidx.navigation.NavOptionsBuilder.() -> Unit = { popUpTo(HomeRoute); launchSingleTop = true }
+    val menuCatalog = remember(libraries, customPages, nav) {
+        dev.nitrate.tv.ui.home.menuCatalog(
+            libraries, customPages,
+            dev.nitrate.tv.ui.home.MenuActions(
+                onSearch = { nav.navigate(SearchRoute(), fromHome) },
+                onHome = { if (!nav.popBackStack(HomeRoute, inclusive = false)) nav.navigate(HomeRoute) },
+                onLibrary = { lib -> nav.navigate(LibraryRoute(lib.id), fromHome) },
+                onPage = { id -> nav.navigate(CustomPageRoute(id), fromHome) },
+                onPages = { nav.navigate(PagesRoute, fromHome) },
+                onTogether = { nav.navigate(WatchTogetherRoute, fromHome) },
+                onSettings = { nav.navigate(SettingsHubRoute, fromHome) },
+                onProfiles = { nav.navigate(ProfilesRoute) },
+            ),
+        )
+    }
     ProvideDisplayPrefs(container, userId) {
     NitrateTheme {
+    androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides menuCatalog) {
     NavHost(
         navController = nav,
         startDestination = startRoute,
@@ -168,14 +189,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onSettings = { nav.navigate(SettingsHubRoute) },
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 changes = container.serverChanges,
-                customPages = rememberCustomPages(container),
-                menuActions = dev.nitrate.tv.ui.home.MenuActions(
-                    onSearch = { nav.navigate(SearchRoute()) },
-                    onPage = { id -> nav.navigate(CustomPageRoute(id)) },
-                    onPages = { nav.navigate(PagesRoute) },
-                    onTogether = { nav.navigate(WatchTogetherRoute) },
-                    onProfiles = { nav.navigate(ProfilesRoute) },
-                ),
+                customPages = customPages,
+                onOpenPage = { id -> nav.navigate(CustomPageRoute(id)) },
                 onSignOut = {
                     scope.launch {
                         container.signOut()
@@ -245,7 +260,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<PagesRoute> { PagesScreen(container) { id, editNow -> nav.navigate(CustomPageRoute(id, editNow)) } }
         composable<CustomPageRoute> { entry ->
             val route = entry.toRoute<CustomPageRoute>()
-            CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() })
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.page(route.pageId), overlay = false) {
+                CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() })
+            }
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
         composable<MenuStopsRoute> { dev.nitrate.tv.ui.settings.MenuStopsScreen(container) }
@@ -279,14 +296,17 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             PlaybackTestScreen(store = container.playbackSettings, capabilities = container.capabilities)
         }
         composable<LibraryRoute> { entry ->
-            LibraryScreen(
-                repository = container.server,
-                displaySettings = container.displaySettings,
-                libraryId = entry.toRoute<LibraryRoute>().libraryId,
-                changes = container.serverChanges,
-                onOpen = nav::openItem,
-                onPlay = { item -> gate.play(item) },
-            )
+            val libraryId = entry.toRoute<LibraryRoute>().libraryId
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library(libraryId), overlay = false) {
+                LibraryScreen(
+                    repository = container.server,
+                    displaySettings = container.displaySettings,
+                    libraryId = libraryId,
+                    changes = container.serverChanges,
+                    onOpen = nav::openItem,
+                    onPlay = { item -> gate.play(item) },
+                )
+            }
         }
         composable<PlaylistRoute> { entry ->
             PlaylistScreen(
@@ -323,6 +343,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 },
             )
         }
+    }
     }
     PlaybackGateDialog(gate)
     dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)

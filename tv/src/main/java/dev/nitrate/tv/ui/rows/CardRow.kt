@@ -60,7 +60,7 @@ fun CardRow(
 
 internal fun wideImage(repository: MediaServer, item: MediaItem): String? =
     repository.imageUrl(item, ImageKind.THUMB, 360)
-        ?: repository.backdropUrl(item)
+        ?: repository.backdropUrl(item, 640)
         ?: repository.imageUrl(item, ImageKind.PRIMARY, 360)
 
 private fun MediaItem.subtitleLine(): String? =

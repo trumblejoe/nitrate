@@ -70,7 +70,7 @@ import dev.nitrate.core.rows.RowSize
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.tv.ui.components.onPlayKey
 
-private fun MediaServer.artwork(item: MediaItem) = backdropUrl(item) ?: imageUrl(item, ImageKind.THUMB, 720) ?: imageUrl(item, ImageKind.PRIMARY, 720)
+private fun MediaServer.artwork(item: MediaItem) = backdropUrl(item, 960) ?: imageUrl(item, ImageKind.THUMB, 720) ?: imageUrl(item, ImageKind.PRIMARY, 720)
 
 @Composable
 private fun RowTitle(row: MediaRow) =

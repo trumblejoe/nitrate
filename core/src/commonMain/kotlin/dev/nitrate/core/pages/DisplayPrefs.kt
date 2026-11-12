@@ -39,6 +39,8 @@ data class DisplayPrefs(
     val tvHome: TvHomeLayout = TvHomeLayout.FULL_ART,
     /** Where the TV's main menu sits. */
     val tvMenu: TvMenuStyle = TvMenuStyle.LEFT,
+    /** Keep the menu invisible until you move onto it (any menu but the dial). */
+    val tvMenuAutoHide: Boolean = false,
     /** The menu's stops in order (rail and bars), as [MenuStops] ids; null until arranged. */
     val tvMenuStops: List<String>? = null,
     /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */
@@ -57,7 +59,8 @@ enum class TvMenuStyle(val label: String, val detail: String) {
     LEFT("Left", "Icons down the left; opens with labels when you move onto it"),
     RIGHT("Right", "The same rail on the right-hand side"),
     TOP("Top/Bottom", "A bar at the top while you're on the first row, at the bottom on the last row"),
-    FADE("Fade in", "Hidden until you move up past the top, or press the remote's Menu key"),
+    /** Kept so older saved settings still read; shown as Top/Bottom with "Fade in" on. */
+    FADE("Fade in", "Top/Bottom, hidden until you reach it"),
     RADIAL("Dial", "Rings of destinations straight up, right, down and left; move up past the top or press Menu"),
 }
 

@@ -228,10 +228,32 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
         item {
             ListItem(
                 selected = false,
-                onClick = { update { it.copy(tvMenu = dev.nitrate.core.pages.TvMenuStyle.entries[(it.tvMenu.ordinal + 1) % dev.nitrate.core.pages.TvMenuStyle.entries.size]) } },
+                onClick = {
+                    update {
+                        // "Fade in" is now a switch below, not a menu of its own.
+                        val styles = dev.nitrate.core.pages.TvMenuStyle.entries - dev.nitrate.core.pages.TvMenuStyle.FADE
+                        val now = if (it.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE) dev.nitrate.core.pages.TvMenuStyle.TOP else it.tvMenu
+                        it.copy(tvMenu = styles[(styles.indexOf(now) + 1) % styles.size], tvMenuAutoHide = it.tvMenuAutoHide || it.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE)
+                    }
+                },
                 headlineContent = { Text("Menu") },
-                supportingContent = { Text(prefs.tvMenu.detail) },
-                trailingContent = { Text("${prefs.tvMenu.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                supportingContent = { Text((if (prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE) dev.nitrate.core.pages.TvMenuStyle.TOP else prefs.tvMenu).detail) },
+                trailingContent = { Text("${(if (prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE) dev.nitrate.core.pages.TvMenuStyle.TOP else prefs.tvMenu).label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        if (prefs.tvMenu != dev.nitrate.core.pages.TvMenuStyle.RADIAL) item {
+            val on = prefs.tvMenuAutoHide || prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE
+            ListItem(
+                selected = false,
+                onClick = {
+                    update {
+                        val style = if (it.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE) dev.nitrate.core.pages.TvMenuStyle.TOP else it.tvMenu
+                        it.copy(tvMenu = style, tvMenuAutoHide = !on)
+                    }
+                },
+                headlineContent = { Text("Fade in") },
+                supportingContent = { Text("Keep the menu out of sight until you move onto it or press Menu") },
+                trailingContent = { Switch(checked = on, onCheckedChange = null) },
             )
         }
         item {

@@ -70,7 +70,7 @@ private fun spotName(index: Int, dial: Boolean) =
 fun MenuStopsScreen(container: AppContainer) {
     val prefs = LocalDisplayPrefs.current
     val scope = rememberCoroutineScope()
-    val libraries by produceState(emptyList<MediaItem>(), container.server) { value = runCatching { container.server.views() }.getOrDefault(emptyList()) }
+    val libraries = dev.nitrate.tv.ui.home.rememberLibraries(container)
     val pages = rememberCustomPages(container)
     val catalog = remember(libraries, pages) { menuCatalog(libraries, pages, MenuActions(), current = "") }
     MenuStopsEditor(prefs, catalog) { change ->
