@@ -99,7 +99,12 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
 
 @Composable
 private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
-    val views by produceState<Result<List<MediaItem>>?>(null) { value = runCatching { actions.server.views() } }
+    // Last seen libraries at once (if any), then the server's current list.
+    val cache = actions.container.libraryCache
+    val views by produceState<Result<List<MediaItem>>?>(cache.cached(actions.server).takeIf { it.isNotEmpty() }?.let { Result.success(it) }) {
+        val fresh = runCatching { cache.refresh(actions.server) }
+        if (fresh.isSuccess || value == null) value = fresh
+    }
     val result = views
     when {
         result == null -> Loading(modifier)

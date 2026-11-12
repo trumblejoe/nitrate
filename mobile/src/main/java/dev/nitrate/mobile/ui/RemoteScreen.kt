@@ -66,7 +66,7 @@ fun RemoteScreen(actions: AppActions, sessionId: String) {
     var seeking by remember { mutableStateOf<Float?>(null) }
     fun send(block: suspend () -> Unit) = scope.launch { runCatching { block() }; delay(300); tick++ }
     val np = session?.nowPlaying
-    val tint by rememberArtworkColor(np?.let { actions.server.backdropUrl(it) ?: actions.server.imageUrl(it) })
+    val tint by rememberArtworkColor(np?.let { actions.server.backdropUrl(it, 320) ?: actions.server.imageUrl(it) })
 
     TintedBackdrop(tint, strength = 0.45f) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(ScreenPadding), horizontalAlignment = Alignment.CenterHorizontally) {

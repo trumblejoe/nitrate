@@ -112,6 +112,9 @@ class AppContainer(
     /** New-episode notifications (phone). */
     val newEpisodes by lazy { dev.nitrate.android.notifications.NewEpisodeNotifier(appContext, server) }
 
+    /** Libraries as last seen, for menus that should be whole at once. */
+    val libraryCache by lazy { dev.nitrate.android.storage.LibraryCache(appContext) }
+
     /** Updates from the project's releases, for whichever app this is (phone or TV). */
     val updater by lazy {
         dev.nitrate.android.update.AppUpdater(appContext, if (appContext.packageName.contains(".tv")) "tv" else "mobile")

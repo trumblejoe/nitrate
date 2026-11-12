@@ -53,7 +53,7 @@ enum class CardShape(val ratio: Float) { POSTER(2f / 3f), WIDE(16f / 9f), SQUARE
 
 /** The image a card of [shape] should show for [item], with sensible fallbacks. */
 fun MediaServer.cardImage(item: MediaItem, shape: CardShape, height: Int = 360): String? = when (shape) {
-    CardShape.WIDE -> imageUrl(item, ImageKind.THUMB, height) ?: backdropUrl(item) ?: imageUrl(item, ImageKind.PRIMARY, height)
+    CardShape.WIDE -> imageUrl(item, ImageKind.THUMB, height) ?: backdropUrl(item, 720) ?: imageUrl(item, ImageKind.PRIMARY, height)
     else -> imageUrl(item, ImageKind.PRIMARY, height)
 }
 

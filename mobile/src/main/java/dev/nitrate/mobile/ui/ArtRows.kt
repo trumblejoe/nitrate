@@ -70,7 +70,7 @@ import kotlin.math.abs
 
 /** The widest picture for an item: backdrop, then thumb, then its poster. */
 private fun AppActions.artwork(item: MediaItem) =
-    server.backdropUrl(item) ?: server.imageUrl(item, ImageKind.THUMB, 720) ?: server.imageUrl(item, maxHeight = 720)
+    server.backdropUrl(item, 1280) ?: server.imageUrl(item, ImageKind.THUMB, 720) ?: server.imageUrl(item, maxHeight = 720)
 
 private fun playLabel(item: MediaItem) = if (item.kind == ItemKind.SERIES) "Watch" else if (item.user.positionMs > 0) "Resume" else "Play"
 

@@ -112,7 +112,7 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
         is RowsState.Loaded -> {
             // The page takes its colour from the first piece of artwork on it.
             val lead = s.rows.firstOrNull { it.items.isNotEmpty() && !it.key.endsWith("my_media") }?.items?.firstOrNull()
-            val tint by rememberArtworkColor(lead?.let { actions.server.backdropUrl(it) ?: actions.server.imageUrl(it) })
+            val tint by rememberArtworkColor(lead?.let { actions.server.backdropUrl(it, 320) ?: actions.server.imageUrl(it) })
             val list = rememberLazyListState()
 
             TintedBackdrop(tint, modifier) {
@@ -294,7 +294,7 @@ private fun ShowcaseCard(item: MediaItem, actions: AppActions, sharedKey: String
     val prefs = LocalDisplayPrefs.current
     Box(modifier.aspectRatio(4f / 3f).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.06f)).pressable({ actions.open(item, sharedKey) })) {
         AsyncImage(
-            server.backdropUrl(item) ?: server.imageUrl(item, ImageKind.THUMB, 720) ?: server.imageUrl(item, maxHeight = 720),
+            server.backdropUrl(item, 1280) ?: server.imageUrl(item, ImageKind.THUMB, 720) ?: server.imageUrl(item, maxHeight = 720),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey),
