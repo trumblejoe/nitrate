@@ -74,6 +74,8 @@ fun FullArtPage(
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     var longPressHandled by remember { mutableStateOf(false) }
     val reachMenu = LocalMenuEdge.current
+    val reportRows = LocalMenuRows.current
+    LaunchedEffect(rowIndex, shown.size) { reportRows(rowIndex == 0, rowIndex >= shown.lastIndex) }
 
     val row = shown[rowIndex.coerceIn(0, shown.lastIndex)]
     val current = (itemIndex[row.key] ?: 0).coerceIn(0, row.items.lastIndex)

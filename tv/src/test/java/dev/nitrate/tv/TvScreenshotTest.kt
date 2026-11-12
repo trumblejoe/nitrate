@@ -43,6 +43,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.runtime.getValue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -114,7 +115,7 @@ class TvScreenshotTest {
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {
         keys.forEach { name ->
-            val k = when (name) { "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
+            val k = when (name) { "menu" -> androidx.compose.ui.input.key.Key.Menu; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
             compose.onRoot().performKeyInput { pressKey(k) }
             compose.mainClock.advanceTimeBy(400)
             compose.waitForIdle()
@@ -130,18 +131,49 @@ class TvScreenshotTest {
             HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
         }
 
-    /** Up from the first row reaches the bar; Down on a stop stays there; "Next row" goes back. */
-    @Test fun topBarNextRow() = menuShot("tv-home-top-next-row", dev.nitrate.core.pages.TvMenuStyle.TOP) {
+    /** Top/Bottom: the bar is at the top on the first row and at the bottom on the last; towards the page goes back. */
+    @Test fun topBottomBar() = menuShot("tv-home-bottom-bar", dev.nitrate.core.pages.TvMenuStyle.TOP) {
         press("up")
-        org.junit.Assert.assertTrue("Up reaches the bar", focusedHasText("Home"))
+        org.junit.Assert.assertTrue("Up from the first row reaches the bar\n" + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() } + "\n" + compose.onAllNodes(androidx.compose.ui.test.hasText("Home")).fetchSemanticsNodes().joinToString { it.config.toString() }, focusedHasText("Home"))
         press("down")
-        org.junit.Assert.assertTrue("Down on a stop stays on it", focusedHasText("Home"))
-        press("left", "left")
-        org.junit.Assert.assertTrue("Next row is first", focusedHasText("Next row"))
+        org.junit.Assert.assertFalse("Down goes back to the page", focusedHasText("Home"))
+        // Middle rows have no bar; the last row has it at the bottom.
         press("down")
-        org.junit.Assert.assertFalse("Down on Next row leaves the bar", focusedHasText("Next row"))
-        press("up", "left", "left")
+        compose.onNodeWithText("Search").assertDoesNotExist()
+        press("down", "down", "down")
+        org.junit.Assert.assertTrue("Down from the last row reaches the bottom bar", focusedHasText("Home"))
+        press("left")
     }
+
+    /** Menu on a middle row brings the bar in at the top. */
+    @Test fun menuKeyMidRow() = menuShot("tv-home-menu-key", dev.nitrate.core.pages.TvMenuStyle.TOP) {
+        press("down", "menu")
+        org.junit.Assert.assertTrue("Menu on a middle row focuses the bar", focusedHasText("Home"))
+        press("menu")
+        org.junit.Assert.assertFalse("Menu again goes back", focusedHasText("Home"))
+    }
+
+    /** A dial arranged by the user: empty spots are skipped when stepping out along a spoke. */
+    @Test fun dialArranged() = shoot("tv-home-dial-arranged", { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(
+            tvMenu = dev.nitrate.core.pages.TvMenuStyle.RADIAL,
+            tvDialStops = listOf("home", null, null, "settings", null, null, null, null, "search"),
+        ))
+    }, act = {
+        press("up", "up")
+        compose.onNodeWithText("Home").assertExists()
+        press("up")
+        compose.onNodeWithText("Search").assertExists()
+    }) { c -> HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+
+    private fun stopsEditor(name: String, prefs: dev.nitrate.core.pages.DisplayPrefs) = shoot(name) { c ->
+        val libraries by androidx.compose.runtime.produceState(emptyList<dev.nitrate.core.model.MediaItem>()) { value = c.server.views() }
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(libraries, listOf(dev.nitrate.core.pages.CustomPage("pg1", "Friday night")), dev.nitrate.tv.ui.home.MenuActions(), current = "")
+        dev.nitrate.tv.ui.settings.MenuStopsEditor(prefs, catalog) {}
+    }
+
+    @Test fun menuStopsDial() = stopsEditor("tv-menu-stops-dial", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.RADIAL))
+    @Test fun menuStopsList() = stopsEditor("tv-menu-stops-list", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT))
 
     /** The fade-in bar appears when you move up past the top (Back is left alone). */
     @Test fun fadeOnEdge() = menuShot("tv-home-full-art-fade", dev.nitrate.core.pages.TvMenuStyle.FADE) {
@@ -156,16 +188,16 @@ class TvScreenshotTest {
         press("up")
         compose.onNodeWithText("Search").assertExists()
         press("up", "right")
-        compose.onNodeWithText("Switch user").assertExists()
+        // Ring two by default: Your pages up, Watch together right.
+        compose.onNodeWithText("Watch together").assertExists()
     }
 
     @Test fun homeFullArtLeft() = fullArt(dev.nitrate.core.pages.TvMenuStyle.LEFT)
     @Test fun homeFullArtRight() = fullArt(dev.nitrate.core.pages.TvMenuStyle.RIGHT)
     @Test fun homeFullArtTop() = fullArt(dev.nitrate.core.pages.TvMenuStyle.TOP)
-    @Test fun homeFullArtBottom() = fullArt(dev.nitrate.core.pages.TvMenuStyle.BOTTOM)
 
     @Test fun home() = shoot("tv-home", { c -> customize(c); c.displaySettings.savePrefs("user-1", rowsHome) }) { c ->
-        HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, pinnedPages = listOf("Friday night" to {}))
+        HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = listOf(dev.nitrate.core.pages.CustomPage("pg1", "Friday night")))
     }
 
     @Test fun homeArtRows() = shoot("tv-home-art-rows", { c ->

@@ -47,14 +47,12 @@ fun HomeScreen(
     /** Opens the settings list (playback, display, plugins, account...). */
     onSettings: () -> Unit,
     onSignOut: () -> Unit,
-    onSearch: () -> Unit = {},
-    onProfiles: () -> Unit = {},
     /** Switches to the offline home when the server can't be reached. */
     onOffline: () -> Unit = {},
-    /** More stops in the side menu between the libraries and Settings (Your pages, Watch together...). */
-    menu: List<NavEntry> = emptyList(),
-    /** Pinned custom pages (shown above the rows) and opening one. */
-    pinnedPages: List<Pair<String, () -> Unit>> = emptyList(),
+    /** Where the menu's other stops go (Search, pages, Watch together, Switch user...). */
+    menuActions: MenuActions = MenuActions(),
+    /** The user's custom pages: pinned ones show above the rows, and any can be a menu stop. */
+    customPages: List<dev.nitrate.core.pages.CustomPage> = emptyList(),
     /** Server pushes (new items, watch changes) that reload the rows. */
     changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
 ) {
@@ -79,13 +77,17 @@ fun HomeScreen(
     var focusedOnce by remember { mutableStateOf(false) }
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val fullArt = prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
+    val catalog = remember(libraries, customPages, menuActions, onSettings) {
+        menuCatalog(libraries, customPages, MenuActions(
+            onSearch = menuActions.onSearch, onHome = {}, onLibrary = onOpen, onPage = menuActions.onPage, onPages = menuActions.onPages,
+            onTogether = menuActions.onTogether, onSettings = onSettings, onProfiles = menuActions.onProfiles,
+        ))
+    }
+    val pinnedPages = customPages.filter { it.pinned }
     TvMenu(
         style = prefs.tvMenu,
-        top = listOf(NavEntry("Search", NavIcons.search, onClick = onSearch), NavEntry("Home", NavIcons.home, selected = true) {}) +
-            libraries.map { lib -> NavEntry(lib.name, NavIcons.library(lib)) { onOpen(lib) } } +
-            // The full-screen Home has no header for pinned pages, so they join the menu.
-            (if (fullArt) pinnedPages.map { (label, open) -> NavEntry(label, NavIcons.pages, onClick = open) } else emptyList()),
-        bottom = menu + listOf(NavEntry("Settings", NavIcons.settings, onClick = onSettings), NavEntry("Switch user", NavIcons.profile, onClick = onProfiles)),
+        stops = catalog.stops(prefs),
+        dial = catalog.dial(prefs),
         overlay = fullArt,
     ) { insets ->
     Box(Modifier.fillMaxSize().focusRequester(content).focusGroup()) {
@@ -122,7 +124,7 @@ fun HomeScreen(
             header = if (pinnedPages.isEmpty()) null else {
                 {
                     Row(Modifier.padding(start = 58.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        for ((label, open) in pinnedPages) OutlinedButton(onClick = open) { Text(label) }
+                        for (p in pinnedPages) OutlinedButton(onClick = { menuActions.onPage(p.id) }) { Text(p.title) }
                     }
                 }
             },

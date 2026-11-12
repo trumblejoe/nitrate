@@ -171,7 +171,7 @@ fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, 
 
 /** What's shown about items, the accent colour and black level; synced for the user. */
 @Composable
-fun DisplaySettingsScreen(container: AppContainer) {
+fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {}) {
     val prefs = LocalDisplayPrefs.current
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
@@ -232,6 +232,15 @@ fun DisplaySettingsScreen(container: AppContainer) {
                 headlineContent = { Text("Menu") },
                 supportingContent = { Text(prefs.tvMenu.detail) },
                 trailingContent = { Text("${prefs.tvMenu.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = onMenuStops,
+                headlineContent = { Text("Menu stops") },
+                supportingContent = { Text(if (prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.RADIAL) "What's on the dial and where" else "What's in the menu and in what order") },
+                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
             )
         }
         item {

@@ -75,6 +75,7 @@ import kotlinx.serialization.Serializable
 @Serializable object PagesRoute
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 @Serializable object DisplaySettingsRoute
+@Serializable object MenuStopsRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
 @Serializable object WatchTogetherRoute
@@ -165,14 +166,15 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onOpen = nav::openItem,
                 onPlay = { item -> gate.play(item) },
                 onSettings = { nav.navigate(SettingsHubRoute) },
-                onSearch = { nav.navigate(SearchRoute()) },
-                onProfiles = { nav.navigate(ProfilesRoute) },
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 changes = container.serverChanges,
-                pinnedPages = rememberCustomPages(container).filter { it.pinned }.map { p -> p.title to { nav.navigate(CustomPageRoute(p.id)) } },
-                menu = listOf(
-                    dev.nitrate.tv.ui.home.NavEntry("Your pages", dev.nitrate.tv.ui.home.NavIcons.pages) { nav.navigate(PagesRoute) },
-                    dev.nitrate.tv.ui.home.NavEntry("Watch together", dev.nitrate.tv.ui.home.NavIcons.together) { nav.navigate(WatchTogetherRoute) },
+                customPages = rememberCustomPages(container),
+                menuActions = dev.nitrate.tv.ui.home.MenuActions(
+                    onSearch = { nav.navigate(SearchRoute()) },
+                    onPage = { id -> nav.navigate(CustomPageRoute(id)) },
+                    onPages = { nav.navigate(PagesRoute) },
+                    onTogether = { nav.navigate(WatchTogetherRoute) },
+                    onProfiles = { nav.navigate(ProfilesRoute) },
                 ),
                 onSignOut = {
                     scope.launch {
@@ -245,7 +247,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             val route = entry.toRoute<CustomPageRoute>()
             CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() })
         }
-        composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) }
+        composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
+        composable<MenuStopsRoute> { dev.nitrate.tv.ui.settings.MenuStopsScreen(container) }
         composable<ManageItemRoute> { entry -> ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId) }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
         composable<SearchRoute> { entry ->

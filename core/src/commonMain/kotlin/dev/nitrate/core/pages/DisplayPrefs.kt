@@ -39,6 +39,10 @@ data class DisplayPrefs(
     val tvHome: TvHomeLayout = TvHomeLayout.FULL_ART,
     /** Where the TV's main menu sits. */
     val tvMenu: TvMenuStyle = TvMenuStyle.LEFT,
+    /** The menu's stops in order (rail and bars), as [MenuStops] ids; null until arranged. */
+    val tvMenuStops: List<String>? = null,
+    /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */
+    val tvDialStops: List<String?>? = null,
 )
 
 @Serializable
@@ -52,8 +56,7 @@ enum class TvHomeLayout(val label: String) {
 enum class TvMenuStyle(val label: String, val detail: String) {
     LEFT("Left", "Icons down the left; opens with labels when you move onto it"),
     RIGHT("Right", "The same rail on the right-hand side"),
-    TOP("Top", "A bar along the top; Next row takes you back down"),
-    BOTTOM("Bottom", "A bar along the bottom; Next row takes you back up"),
+    TOP("Top/Bottom", "A bar at the top while you're on the first row, at the bottom on the last row"),
     FADE("Fade in", "Hidden until you move up past the top, or press the remote's Menu key"),
     RADIAL("Dial", "Rings of destinations straight up, right, down and left; move up past the top or press Menu"),
 }
