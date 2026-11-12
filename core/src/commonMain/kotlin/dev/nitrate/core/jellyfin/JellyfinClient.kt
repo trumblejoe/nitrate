@@ -25,6 +25,8 @@ import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.model.SavedServer
 import dev.nitrate.core.pages.Codecs
+import dev.nitrate.core.pages.StreamInfo
+import dev.nitrate.core.pages.VideoStreamInfo
 import kotlinx.coroutines.sync.withLock
 import dev.nitrate.core.model.AddressCheck
 import dev.nitrate.core.model.StreamKind
@@ -995,8 +997,8 @@ class JellyfinClient(
 
     // ---- Codec filters (Jellyfin has none: Nitrate reads the streams and filters) ----
 
-    /** Video and audio codecs per item id; shows carry their episodes' codecs. */
-    private class CodecIndex(val codecs: Map<String, Pair<Set<String>, Set<String>>>, val builtMs: Long)
+    /** Video streams and audio codecs per item id; shows carry their episodes'. */
+    private class CodecIndex(val streams: Map<String, StreamInfo>, val builtMs: Long)
 
     private val codecIndexes = mutableMapOf<String, CodecIndex>()
     private val codecIndexLock = kotlinx.coroutines.sync.Mutex()
@@ -1006,16 +1008,13 @@ class JellyfinClient(
      * order), narrowed by the codec index, then this page's items fetched by id.
      */
     private suspend fun codecFilteredPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> {
-        val base = query.copy(videoCodecs = emptyList(), audioCodecs = emptyList())
+        val base = query.copy(videoCodecs = emptyList(), audioCodecs = emptyList(), bitDepths = emptyList(), videoRanges = emptyList())
         val ids = get(
             "Items",
             query = itemQueryParams(base) + mapOf("userId" to userId, "limit" to null, "fields" to null, "enableImages" to false, "enableUserData" to false),
         ).decode<QueryResultDto<ItemDto>>().items.map { normalizeId(it.id) }
         val index = codecIndex(query)
-        val matching = ids.filter { id ->
-            val (video, audio) = index[id] ?: return@filter false
-            Codecs.matches(video, audio, query.videoCodecs, query.audioCodecs)
-        }
+        val matching = ids.filter { id -> index[id]?.let { Codecs.matches(it, query) } == true }
         val page = matching.drop(startIndex).take(limit)
         if (page.isEmpty()) return emptyList<MediaItem>() to matching.size
         val items = get(
@@ -1026,18 +1025,17 @@ class JellyfinClient(
     }
 
     /** The codecs of everything [query] can list in its library, kept for a while (it's a big read). */
-    private suspend fun codecIndex(query: ItemQuery): Map<String, Pair<Set<String>, Set<String>>> = codecIndexLock.withLock {
+    private suspend fun codecIndex(query: ItemQuery): Map<String, StreamInfo> = codecIndexLock.withLock {
         val key = "${baseUrl}|${userId}|${query.libraryId}|${query.types.sorted()}"
         val now = Clock.System.now().toEpochMilliseconds()
-        codecIndexes[key]?.takeIf { now - it.builtMs < CODEC_INDEX_TTL_MS }?.let { return@withLock it.codecs }
-        val codecs = mutableMapOf<String, Pair<MutableSet<String>, MutableSet<String>>>()
+        codecIndexes[key]?.takeIf { now - it.builtMs < CODEC_INDEX_TTL_MS }?.let { return@withLock it.streams }
+        val found = mutableMapOf<String, Pair<MutableSet<VideoStreamInfo>, MutableSet<String>>>()
         fun add(id: String, streams: List<MediaStreamDto>?) {
-            val (video, audio) = codecs.getOrPut(id) { mutableSetOf<String>() to mutableSetOf() }
+            val (video, audio) = found.getOrPut(id) { mutableSetOf<VideoStreamInfo>() to mutableSetOf() }
             streams.orEmpty().forEach { st ->
-                val codec = Codecs.normalize(st.codec) ?: return@forEach
                 when (st.type) {
-                    "Video" -> video += codec
-                    "Audio" -> audio += codec
+                    "Video" -> video += VideoStreamInfo(Codecs.normalize(st.codec), st.bitDepth, Codecs.rangeTags(st.videoRangeType))
+                    "Audio" -> Codecs.normalize(st.codec)?.let { audio += it }
                 }
             }
         }
@@ -1061,7 +1059,7 @@ class JellyfinClient(
         }
         if (others.isNotEmpty()) read(others) { item -> add(normalizeId(item.id), item.mediaStreams) }
         if (shows) read(listOf(ItemKind.EPISODE)) { ep -> ep.seriesId?.let { add(normalizeId(it), ep.mediaStreams) } }
-        val built = codecs.mapValues { (_, v) -> v.first.toSet() to v.second.toSet() }
+        val built = found.mapValues { (_, v) -> StreamInfo(v.first.toSet(), v.second.toSet()) }
         codecIndexes[key] = CodecIndex(built, now)
         built
     }

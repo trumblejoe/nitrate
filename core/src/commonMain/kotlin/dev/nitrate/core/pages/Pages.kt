@@ -35,9 +35,13 @@ data class ItemQuery(
     val videoCodecs: List<String> = emptyList(),
     /** Only items with audio in one of these codecs ([Codecs.AUDIO] ids). */
     val audioCodecs: List<String> = emptyList(),
+    /** Only items with video of one of these bit depths (8, 10, 12). */
+    val bitDepths: List<Int> = emptyList(),
+    /** Only items with video in one of these ranges ([Codecs.RANGES] ids). */
+    val videoRanges: List<String> = emptyList(),
 ) {
-    /** Jellyfin can't filter by codec: such queries are filtered by Nitrate. */
-    val filtersCodecs: Boolean get() = videoCodecs.isNotEmpty() || audioCodecs.isNotEmpty()
+    /** Jellyfin can't filter by codec, bit depth or HDR type: such queries are filtered by Nitrate. */
+    val filtersCodecs: Boolean get() = videoCodecs.isNotEmpty() || audioCodecs.isNotEmpty() || bitDepths.isNotEmpty() || videoRanges.isNotEmpty()
 
     /** A short description for editors, e.g. "Unwatched · Horror · 1980–1989 · Random". */
     fun describe(): String = buildList {
@@ -55,6 +59,8 @@ data class ItemQuery(
         minRating?.let { add("★ $it+") }
         if (resolution != ResolutionFilter.ANY) add(resolution.label)
         if (videoCodecs.isNotEmpty()) add(videoCodecs.joinToString("/") { Codecs.label(it) })
+        if (bitDepths.isNotEmpty()) add(bitDepths.joinToString("/") { "$it-bit" })
+        if (videoRanges.isNotEmpty()) add(videoRanges.joinToString("/") { Codecs.label(it) })
         if (audioCodecs.isNotEmpty()) add(audioCodecs.joinToString("/") { Codecs.label(it) })
         add(sort.label + if (sort != QuerySort.RANDOM && !descending) " (ascending)" else "")
     }.joinToString(" · ")

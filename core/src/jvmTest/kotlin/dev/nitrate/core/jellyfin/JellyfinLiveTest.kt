@@ -574,6 +574,9 @@ class JellyfinLiveTest {
         assertTrue(h264.second > 0)
         assertEquals(h264.first.size, h264.second)
         assertEquals(0, vc1.second)
+        val eightSdr = client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264"), bitDepths = listOf(8), videoRanges = listOf("sdr")).query(movies.id, movies.collection), 0, 100)
+        val tenBit = client.queryPage(dev.nitrate.core.pages.BrowseOptions(bitDepths = listOf(10)).query(movies.id, movies.collection), 0, 100)
+        println("H.264 8-bit SDR: ${eightSdr.second}; 10-bit: ${tenBit.second}")
         val shows = client.views().firstOrNull { it.collection == dev.nitrate.core.model.CollectionKind.TV_SHOWS }
         if (shows != null) {
             val showsH264 = client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(shows.id, shows.collection), 0, 100)

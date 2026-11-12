@@ -250,8 +250,15 @@ private fun FilterDialog(options: BrowseOptions, genres: List<String>, codecs: B
             Group("Quality") { ResolutionFilter.entries.forEach { r -> FilterChip(options.resolution == r, { onChange { it.copy(resolution = r) } }) { Text(r.label) } } }
             if (codecs) {
                 // Read from each file's streams (shows by their episodes); the first use takes a moment.
+                // Video choices combine per stream: codec, bit depth and range all on the same video.
                 Group("Video codec (any of)") {
                     dev.nitrate.core.pages.Codecs.VIDEO.forEach { (id, label) -> FilterChip(id in options.videoCodecs, { onChange { it.toggleVideoCodec(id) } }) { Text(label) } }
+                }
+                Group("Bit depth") {
+                    dev.nitrate.core.pages.Codecs.BIT_DEPTHS.forEach { d -> FilterChip(d in options.bitDepths, { onChange { it.toggleBitDepth(d) } }) { Text("$d-bit") } }
+                }
+                Group("Dynamic range") {
+                    dev.nitrate.core.pages.Codecs.RANGES.forEach { (id, label) -> FilterChip(id in options.videoRanges, { onChange { it.toggleRange(id) } }) { Text(label) } }
                 }
                 Group("Audio codec (any of)") {
                     dev.nitrate.core.pages.Codecs.AUDIO.forEach { (id, label) -> FilterChip(id in options.audioCodecs, { onChange { it.toggleAudioCodec(id) } }) { Text(label) } }

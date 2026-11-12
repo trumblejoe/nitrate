@@ -20,13 +20,15 @@ import org.junit.Test
 /** Library filters by codec, which Nitrate applies itself (Jellyfin can't). */
 class CodecFilterTest {
     private fun id(n: Int) = "0000000000000000000000000000000$n"
-    private fun streams(video: String, audio: String) = """[{"Type":"Video","Codec":"$video"},{"Type":"Audio","Codec":"$audio"},{"Type":"Subtitle","Codec":"subrip"}]"""
+    private fun streams(video: String, audio: String, depth: Int = 8, range: String = "SDR") =
+        """[{"Type":"Video","Codec":"$video","BitDepth":$depth,"VideoRangeType":"$range"},{"Type":"Audio","Codec":"$audio"},{"Type":"Subtitle","Codec":"subrip"}]"""
 
     /** Films 1–4 and episodes of shows 5 and 6, as the server would list them. */
     private val films = listOf(
-        Triple(id(1), "Alpha", streams("hevc", "dts")),
+        // HEVC 10-bit SDR (like the Fire Stick file), H.264 8-bit, HEVC Dolby Vision over HDR10, AV1 8-bit.
+        Triple(id(1), "Alpha", streams("hevc", "dts", depth = 10)),
         Triple(id(2), "Bravo", streams("h264", "aac")),
-        Triple(id(3), "Charlie", streams("hevc", "truehd")),
+        Triple(id(3), "Charlie", streams("hevc", "truehd", depth = 10, range = "DOVIWithHDR10")),
         Triple(id(4), "Delta", streams("av1", "opus")),
     )
     private val episodes = listOf(id(5) to streams("h264", "ac3"), id(5) to streams("hevc", "eac3"), id(6) to streams("mpeg2video", "pcm_s16le"))
@@ -87,10 +89,29 @@ class CodecFilterTest {
         assertEquals(1, requests.count { it.parameters["fields"] == "MediaStreams" })
     }
 
+    @Test fun bitDepthAndRange() = runBlocking {
+        client.restoreSession()
+        fun q(o: BrowseOptions) = o.query("lib", CollectionKind.MOVIES)
+        // HEVC, 10-bit, SDR: only Alpha (Charlie is HEVC 10-bit but Dolby Vision over HDR10).
+        assertEquals(listOf(id(1)), names(client.queryPage(q(BrowseOptions(videoCodecs = listOf("hevc"), bitDepths = listOf(10), videoRanges = listOf("sdr"))), 0, 10)))
+        // Dolby Vision files count as their base layer too.
+        assertEquals(listOf(id(3)), names(client.queryPage(q(BrowseOptions(videoRanges = listOf("hdr10"))), 0, 10)))
+        assertEquals(listOf(id(3)), names(client.queryPage(q(BrowseOptions(videoRanges = listOf("dovi"))), 0, 10)))
+        // 8-bit anything.
+        assertEquals(listOf(id(2), id(4)), names(client.queryPage(q(BrowseOptions(bitDepths = listOf(8))), 0, 10)))
+    }
+
     @Test fun codecNames() {
         assertEquals("pcm", Codecs.normalize("pcm_s24le"))
         assertEquals("dts", Codecs.normalize("DCA"))
         assertEquals("hevc", Codecs.normalize("h265"))
-        assertTrue(Codecs.matches(setOf("hevc"), setOf("aac"), listOf("hevc", "av1"), emptyList()))
+        assertEquals(setOf("dovi", "hdr10plus", "hdr10"), Codecs.rangeTags("DOVIWithELHDR10Plus"))
+        // One stream must meet every video choice: a 10-bit H.264 and an 8-bit HEVC don't make "10-bit HEVC".
+        val mixed = dev.nitrate.core.pages.StreamInfo(
+            setOf(dev.nitrate.core.pages.VideoStreamInfo("h264", 10, setOf("sdr")), dev.nitrate.core.pages.VideoStreamInfo("hevc", 8, setOf("sdr"))),
+            setOf("aac"),
+        )
+        assertTrue(!Codecs.matches(mixed, dev.nitrate.core.pages.ItemQuery(videoCodecs = listOf("hevc"), bitDepths = listOf(10))))
+        assertTrue(Codecs.matches(mixed, dev.nitrate.core.pages.ItemQuery(videoCodecs = listOf("hevc"), bitDepths = listOf(8))))
     }
 }

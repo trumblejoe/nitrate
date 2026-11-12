@@ -28,15 +28,19 @@ data class BrowseOptions(
     val videoCodecs: List<String> = emptyList(),
     /** Audio codecs, any of ([Codecs.AUDIO] ids). */
     val audioCodecs: List<String> = emptyList(),
+    /** Video bit depths, any of. */
+    val bitDepths: List<Int> = emptyList(),
+    /** Dynamic ranges, any of ([Codecs.RANGES] ids). */
+    val videoRanges: List<String> = emptyList(),
 ) {
     /** How many filters narrow the list, for a badge on the Filter button. */
     val filterCount: Int
-        get() = listOf(watched != WatchFilter.ANY, favoritesOnly, genres.isNotEmpty(), decade != null, minRating != null, resolution != ResolutionFilter.ANY, videoCodecs.isNotEmpty(), audioCodecs.isNotEmpty()).count { it }
+        get() = listOf(watched != WatchFilter.ANY, favoritesOnly, genres.isNotEmpty(), decade != null, minRating != null, resolution != ResolutionFilter.ANY, videoCodecs.isNotEmpty(), audioCodecs.isNotEmpty(), bitDepths.isNotEmpty(), videoRanges.isNotEmpty()).count { it }
 
     /** A–Z only makes sense when sorted by name. */
     val alphabetical: Boolean get() = sort == QuerySort.NAME
 
-    fun clearFilters() = copy(watched = WatchFilter.ANY, favoritesOnly = false, genres = emptyList(), decade = null, minRating = null, resolution = ResolutionFilter.ANY, videoCodecs = emptyList(), audioCodecs = emptyList())
+    fun clearFilters() = copy(watched = WatchFilter.ANY, favoritesOnly = false, genres = emptyList(), decade = null, minRating = null, resolution = ResolutionFilter.ANY, videoCodecs = emptyList(), audioCodecs = emptyList(), bitDepths = emptyList(), videoRanges = emptyList())
 
     /** The query for [libraryId] of [kind]. */
     fun query(libraryId: String, kind: CollectionKind?): ItemQuery = ItemQuery(
@@ -51,6 +55,8 @@ data class BrowseOptions(
         resolution = resolution,
         videoCodecs = videoCodecs,
         audioCodecs = audioCodecs,
+        bitDepths = bitDepths,
+        videoRanges = videoRanges,
         sort = sort,
         // Names read best A first; everything else newest/highest first unless flipped.
         descending = descending,
@@ -59,6 +65,8 @@ data class BrowseOptions(
     /** Turns [codec] on or off in the video (or audio) codec filter. */
     fun toggleVideoCodec(codec: String) = copy(videoCodecs = if (codec in videoCodecs) videoCodecs - codec else videoCodecs + codec)
     fun toggleAudioCodec(codec: String) = copy(audioCodecs = if (codec in audioCodecs) audioCodecs - codec else audioCodecs + codec)
+    fun toggleBitDepth(depth: Int) = copy(bitDepths = if (depth in bitDepths) bitDepths - depth else bitDepths + depth)
+    fun toggleRange(range: String) = copy(videoRanges = if (range in videoRanges) videoRanges - range else videoRanges + range)
 
     /** Default direction when picking a sort. */
     fun withSort(newSort: QuerySort) = copy(sort = newSort, descending = newSort != QuerySort.NAME)
