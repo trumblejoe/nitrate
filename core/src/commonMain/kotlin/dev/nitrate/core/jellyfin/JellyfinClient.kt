@@ -23,7 +23,7 @@ import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
-import dev.nitrate.core.model.ServerAddresses
+import dev.nitrate.core.model.SavedServer
 import dev.nitrate.core.model.AddressCheck
 import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.SubtitleDelivery
@@ -164,7 +164,10 @@ class JellyfinClient(
     // ---- Session ----
 
     override suspend fun restoreSession(): SessionState {
-        val session = sessionStorage.load() ?: return SessionState.NONE
+        var session = sessionStorage.load() ?: return SessionState.NONE
+        // Start on the primary server (last account used there) if one is set.
+        val primary = sessionStorage.all().firstOrNull { it.primary }
+        if (primary != null && !session.sameServer(primary)) session = sessionStorage.select(primary.key) ?: session
         use(session)
         return reconnect()
     }
@@ -212,38 +215,71 @@ class JellyfinClient(
 
     // ---- Addresses (home and away) ----
 
-    override suspend fun serverAddresses(): ServerAddresses? = current?.let { s ->
-        ServerAddresses(signedInWith = s.serverUrl, local = s.localUrl, remote = s.remoteUrl, active = baseUrl)
+    override suspend fun servers(): List<SavedServer> {
+        val accounts = savedAccounts()
+        return sessionStorage.all().groupBy { it.serverUrl.trimEnd('/') }.map { (url, sessions) ->
+            // Every account on a server keeps the same addresses.
+            val s = sessions.first()
+            SavedServer(
+                url = url,
+                name = s.serverName.ifBlank { url.substringAfter("://") },
+                local = s.localUrl, vpn = s.vpnUrl, remote = s.remoteUrl,
+                primary = sessions.any { it.primary },
+                accounts = accounts.filter { it.serverUrl.trimEnd('/') == url },
+                active = baseUrl.takeIf { current?.serverUrl?.trimEnd('/') == url },
+            )
+        }.sortedByDescending { it.primary }
     }
 
-    override suspend fun saveServerAddresses(local: String?, remote: String?): SessionState {
-        val s = current ?: return SessionState.NONE
-        fun clean(input: String?) = input?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }?.let { addressCandidates(it).firstOrNull { c -> c.startsWith("http") } }
-        // Keep what the user typed when it already says how (scheme and port); otherwise the form that answers.
+    /** Applies [change] to every saved account on [serverUrl]'s server, keeping the current one current. */
+    private suspend fun updateServer(serverUrl: String, change: (StoredSession) -> StoredSession) {
+        sessionStorage.all().filter { it.serverUrl.trimEnd('/') == serverUrl.trimEnd('/') }.forEach { sessionStorage.update(change(it)) }
+        current = current?.let { c -> sessionStorage.all().firstOrNull { it.key == c.key } ?: c }
+    }
+
+    override suspend fun saveServerAddresses(serverUrl: String, local: String?, vpn: String?, remote: String?): SessionState {
+        fun clean(typed: String) = addressCandidates(typed).firstOrNull { it.startsWith("http") }
+        // Keep the form that answers as this server; otherwise what was typed, with a scheme.
         suspend fun resolve(input: String?): String? {
             val typed = input?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() } ?: return null
-            return (testAddress(typed) as? AddressCheck.Reached)?.url ?: clean(typed)
+            return (testAddress(typed, serverUrl) as? AddressCheck.Reached)?.takeIf { it.sameServer }?.url ?: clean(typed)
         }
-        val updated = s.copy(localUrl = resolve(local), remoteUrl = resolve(remote))
-        sessionStorage.save(updated)
-        current = updated
-        return reconnect()
+        val l = resolve(local)
+        val v = resolve(vpn)
+        val r = resolve(remote)
+        updateServer(serverUrl) { it.copy(localUrl = l, vpnUrl = v, remoteUrl = r) }
+        val isCurrent = current?.serverUrl?.trimEnd('/') == serverUrl.trimEnd('/')
+        return if (isCurrent) reconnect() else SessionState.VALID
     }
 
-    override suspend fun testAddress(input: String): AddressCheck {
+    override suspend fun setPrimaryServer(serverUrl: String) {
+        sessionStorage.all().forEach { s -> sessionStorage.update(s.copy(primary = s.serverUrl.trimEnd('/') == serverUrl.trimEnd('/'))) }
+        current = current?.let { c -> sessionStorage.all().firstOrNull { it.key == c.key } ?: c }
+    }
+
+    override suspend fun testAddress(input: String, serverUrl: String?): AddressCheck {
         val start = kotlin.time.TimeSource.Monotonic.markNow()
         val found = probe(input, PROBE_TIMEOUT_MS) ?: return AddressCheck.Failed("No Jellyfin server answered at \"${input.trim()}\"")
         val millis = start.elapsedNow().inWholeMilliseconds
-        return AddressCheck.Reached(found.url, found.name, millis, sameServer = serverId == null || found.id == serverId)
+        val expected = when {
+            serverUrl == null || serverUrl.trimEnd('/') == current?.serverUrl?.trimEnd('/') -> serverId ?: current?.serverId
+            else -> sessionStorage.all().firstOrNull { it.serverUrl.trimEnd('/') == serverUrl.trimEnd('/') }?.serverId
+        }
+        return AddressCheck.Reached(found.url, found.name, millis, sameServer = expected == null || found.id == expected)
     }
 
     override suspend fun reconnect(): SessionState {
         val s = current ?: return checkSession()
+        if (serverId == null) serverId = s.serverId
         pickAddress(s.addresses)?.let { baseUrl = it }
         val state = checkSession()
         // Learn which server this is, so other addresses are only ever used for the same one.
         if (state == SessionState.VALID && serverId == null) {
             serverId = runCatching { JellyfinJson.decodeFromString<PublicSystemInfoDto>(http.get(url("System", "Info", "Public")).bodyAsText()).id }.getOrNull()
+        }
+        if (serverId != null && s.serverId != serverId) {
+            val id = serverId
+            runCatching { updateServer(s.serverUrl) { it.copy(serverId = id) } }
         }
         return state
     }

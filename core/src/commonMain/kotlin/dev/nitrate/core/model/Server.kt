@@ -39,13 +39,24 @@ data class SavedAccount(
     val imageUrl: String?,
 )
 
-/** Where a saved server can be reached: [local] at home, [remote] away, and which is in use now. */
-data class ServerAddresses(
-    val signedInWith: String,
+/**
+ * A server signed in to here: its addresses (home, VPN, away), whether it's the primary one
+ * (opened at start), the accounts on it, and the address in use when it's the current server.
+ */
+data class SavedServer(
+    /** The address first signed in with: the server's identity here. */
+    val url: String,
+    val name: String,
     val local: String?,
+    val vpn: String?,
     val remote: String?,
+    val primary: Boolean,
+    val accounts: List<SavedAccount>,
+    /** The address in use, when this is the current server; null otherwise. */
     val active: String?,
-)
+) {
+    val isCurrent: Boolean get() = active != null
+}
 
 /** What testing an address found. */
 sealed interface AddressCheck {
@@ -65,12 +76,13 @@ fun AddressCheck.summary(): String = when (this) {
 /** Whether a test means the address is good to use. */
 val AddressCheck.ok: Boolean get() = this is AddressCheck.Reached && sameServer
 
-/** Which saved address is in use, in words. */
-fun ServerAddresses.inUse(): String = when (active?.trimEnd('/')) {
-    null -> "Not connected"
+/** Which address is in use, in words (null when this isn't the current server). */
+fun SavedServer.inUse(): String? = when (val now = active?.trimEnd('/')) {
+    null -> null
     local?.trimEnd('/') -> "Using the local address"
+    vpn?.trimEnd('/') -> "Using the VPN address"
     remote?.trimEnd('/') -> "Using the remote address"
-    else -> "Using ${active}"
+    else -> "Using $now"
 }
 
 /** A home-network address: private IPv4 ranges, .local names, or a bare hostname. */

@@ -127,10 +127,17 @@ class FakeServer : MediaServer {
         item.kind == ItemKind.LIBRARY -> art(if (item.collection == CollectionKind.MOVIES) "m2-backdrop" else "series-1-backdrop")
         else -> art("${artKey(item)}-poster")
     }
-    override suspend fun serverAddresses() = dev.nitrate.core.model.ServerAddresses(
-        signedInWith = "http://192.168.1.20:8096", local = "http://192.168.1.20:8096", remote = "https://media.example.net", active = "http://192.168.1.20:8096",
+    override suspend fun servers() = listOf(
+        dev.nitrate.core.model.SavedServer(
+            url = "http://192.168.1.20:8096", name = "Home", local = "http://192.168.1.20:8096", vpn = "http://100.64.0.7:8096", remote = "https://media.example.net",
+            primary = true, accounts = savedAccounts().filter { it.serverUrl.contains("192.168") }, active = "http://192.168.1.20:8096",
+        ),
+        dev.nitrate.core.model.SavedServer(
+            url = "https://cabin.example.net", name = "Cabin", local = null, vpn = null, remote = "https://cabin.example.net",
+            primary = false, accounts = savedAccounts().filter { it.serverUrl.contains("cabin") }, active = null,
+        ),
     )
-    override suspend fun testAddress(input: String): dev.nitrate.core.model.AddressCheck =
+    override suspend fun testAddress(input: String, serverUrl: String?): dev.nitrate.core.model.AddressCheck =
         if (input.contains("192.168")) dev.nitrate.core.model.AddressCheck.Reached("http://192.168.1.20:8096", "Home", 18, sameServer = true)
         else dev.nitrate.core.model.AddressCheck.Failed("No Jellyfin server answered at \"$input\"")
 

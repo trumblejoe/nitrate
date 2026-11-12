@@ -175,10 +175,10 @@ class AppContainer(
         return state
     }
 
-    /** Saves the current server's home and away addresses and moves to whichever answers. */
-    suspend fun saveServerAddresses(local: String?, remote: String?): SessionState {
+    /** Saves a server's home, VPN and away addresses; if it's the current one, moves to whichever answers. */
+    suspend fun saveServerAddresses(serverUrl: String, local: String?, vpn: String?, remote: String?): SessionState {
         val before = server.serverUrl
-        val state = server.saveServerAddresses(local, remote)
+        val state = server.saveServerAddresses(serverUrl, local, vpn, remote)
         if (state == SessionState.VALID && server.serverUrl != before) {
             this.remote.stop()
             this.remote.start()

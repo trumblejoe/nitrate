@@ -552,11 +552,11 @@ class JellyfinLiveTest {
         println("Test 127.0.0.1:$port -> ${check.summary()}")
         assertTrue(check.ok)
         // A local address that answers nowhere: the remote one is used.
-        assertEquals(SessionState.VALID, client.saveServerAddresses(local = "http://10.255.255.1:$port", remote = "http://127.0.0.1:$port"))
+        assertEquals(SessionState.VALID, client.saveServerAddresses(url, local = "http://10.255.255.1:$port", vpn = null, remote = "http://127.0.0.1:$port"))
         assertEquals("http://127.0.0.1:$port", client.serverUrl)
         assertTrue(client.views().isNotEmpty())
         // Both answer: local wins.
-        assertEquals(SessionState.VALID, client.saveServerAddresses(local = "http://127.0.0.1:$port", remote = "http://localhost:$port"))
+        assertEquals(SessionState.VALID, client.saveServerAddresses(url, local = "http://127.0.0.1:$port", vpn = "http://10.255.255.1:$port", remote = "http://localhost:$port"))
         assertEquals("http://127.0.0.1:$port", client.serverUrl)
     }
 }

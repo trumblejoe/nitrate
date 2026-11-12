@@ -232,7 +232,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     (if (account?.isAdmin == true) listOf(dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) }) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } } +
                     listOf(
-                        dev.nitrate.tv.ui.settings.SettingsLink("Server addresses", "Local and remote, for at home and away") { nav.navigate(ServerAddressesRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Servers", "Local, VPN and remote addresses; add, switch and choose the primary") { nav.navigate(ServerAddressesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Switch user", "Other users and servers, profile PINs") { nav.navigate(ProfilesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl, signOut),
                     ),
@@ -267,7 +267,23 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             }
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
-        composable<ServerAddressesRoute> { dev.nitrate.tv.ui.settings.ServerAddressesScreen(container) }
+        composable<ServerAddressesRoute> {
+            dev.nitrate.tv.ui.settings.ServersScreen(
+                container,
+                onSwitch = { server ->
+                    scope.launch {
+                        // A single unlocked account opens straight away; otherwise pick on the profiles screen.
+                        val only = server.accounts.singleOrNull()
+                        if (only != null && !container.profiles.hasPin(only.key) && container.switchAccount(only.key) == dev.nitrate.core.model.SessionState.VALID) {
+                            nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
+                        } else {
+                            nav.navigate(ProfilesRoute)
+                        }
+                    }
+                },
+                onAdd = { nav.navigate(ConnectRoute) },
+            )
+        }
         composable<MenuStopsRoute> { dev.nitrate.tv.ui.settings.MenuStopsScreen(container) }
         composable<ManageItemRoute> { entry -> ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId) }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }

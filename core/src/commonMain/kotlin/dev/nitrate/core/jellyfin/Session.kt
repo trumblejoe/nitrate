@@ -16,14 +16,23 @@ data class StoredSession(
     val imageTag: String? = null,
     /** The server's address on the home network, tried first. */
     val localUrl: String? = null,
-    /** Its address from anywhere else (a domain or public IP), tried when local doesn't answer. */
+    /** Its address over a VPN (Tailscale, WireGuard…), tried after local. */
+    val vpnUrl: String? = null,
+    /** Its address from anywhere else (a domain or public IP), tried last. */
     val remoteUrl: String? = null,
+    /** The server's own id once seen, so no address ever leads to a different server. */
+    val serverId: String? = null,
+    /** The server Nitrate opens at start (set on every account of that server). */
+    val primary: Boolean = false,
 ) {
     /** Stays the address signed in with, whichever one is in use, so saved settings keep their place. */
     val key: String get() = accountKey(serverUrl, userId)
 
-    /** Every address to try, in order: local, remote, then the one signed in with. */
-    val addresses: List<String> get() = listOfNotNull(localUrl, remoteUrl, serverUrl).map { it.trimEnd('/') }.distinct()
+    /** Every address to try, in order: local, VPN, remote, then the one signed in with. */
+    val addresses: List<String> get() = listOfNotNull(localUrl, vpnUrl, remoteUrl, serverUrl).map { it.trimEnd('/') }.distinct()
+
+    /** Whether [other] is an account on the same server. */
+    fun sameServer(other: StoredSession) = serverUrl.trimEnd('/') == other.serverUrl.trimEnd('/')
 }
 
 fun accountKey(serverUrl: String, userId: String) = "${serverUrl.trimEnd('/')}|$userId"
@@ -50,6 +59,13 @@ interface SessionStorage {
     suspend fun remove(key: String) {
         if (load()?.key == key) clear()
     }
+
+    /** Updates a saved account without making it current. */
+    suspend fun update(session: StoredSession) {
+        val current = load()?.key
+        save(session)
+        if (current != null && current != session.key) select(current)
+    }
 }
 
 /** Keeps sessions in memory: tests, previews, and platforms without storage yet. */
@@ -65,6 +81,10 @@ class MemorySessionStorage(initial: List<StoredSession> = emptyList()) : Session
     }
     override suspend fun clear() {
         current?.let { remove(it) }
+    }
+    override suspend fun update(session: StoredSession) {
+        val i = sessions.indexOfFirst { it.key == session.key }
+        if (i >= 0) sessions[i] = session
     }
     override suspend fun all(): List<StoredSession> = sessions.toList()
     override suspend fun select(key: String) = sessions.firstOrNull { it.key == key }?.also { current = key }

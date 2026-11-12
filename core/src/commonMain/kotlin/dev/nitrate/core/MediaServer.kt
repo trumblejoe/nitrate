@@ -15,7 +15,7 @@ import dev.nitrate.core.model.TrickplayInfo
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
-import dev.nitrate.core.model.ServerAddresses
+import dev.nitrate.core.model.SavedServer
 import dev.nitrate.core.model.AddressCheck
 import dev.nitrate.core.admin.AccountInfo
 import dev.nitrate.core.admin.GeneralCommand
@@ -82,14 +82,20 @@ interface MediaServer {
     /** Every server and user signed in on this device. */
     suspend fun savedAccounts(): List<SavedAccount> = emptyList()
 
-    /** The current account's server addresses (null when not signed in). */
-    suspend fun serverAddresses(): ServerAddresses? = null
+    /** Every server signed in to here, the primary first. */
+    suspend fun servers(): List<SavedServer> = emptyList()
 
-    /** Saves the current account's local and remote addresses (blank = none), then reconnects. */
-    suspend fun saveServerAddresses(local: String?, remote: String?): SessionState = unsupported()
+    /** Saves a server's local, VPN and remote addresses (blank = none); reconnects if it's the current one. */
+    suspend fun saveServerAddresses(serverUrl: String, local: String?, vpn: String?, remote: String?): SessionState = unsupported()
 
-    /** Whether a Jellyfin server answers at [input] (with or without scheme and port), and how fast. */
-    suspend fun testAddress(input: String): AddressCheck = AddressCheck.Failed("Not supported")
+    /** Makes [serverUrl] the server opened at start. */
+    suspend fun setPrimaryServer(serverUrl: String): Unit = unsupported()
+
+    /**
+     * Whether a Jellyfin server answers at [input] (with or without scheme and port), and how fast;
+     * with [serverUrl], also whether it's that saved server.
+     */
+    suspend fun testAddress(input: String, serverUrl: String? = null): AddressCheck = AddressCheck.Failed("Not supported")
 
     /**
      * Moves to whichever saved address answers (the local one first) and checks the sign-in; for

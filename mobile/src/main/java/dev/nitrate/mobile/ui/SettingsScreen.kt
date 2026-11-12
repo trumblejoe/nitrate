@@ -98,8 +98,8 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         item {
             ListItem(
                 modifier = Modifier.clickable { actions.nav.navigate(ServerAddressesRoute) },
-                headlineContent = { Text("Server addresses") },
-                supportingContent = { Text("Local and remote, for at home and away") },
+                headlineContent = { Text("Servers") },
+                supportingContent = { Text("Local, VPN and remote addresses; add, switch and choose the primary") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
             )
         }

@@ -46,7 +46,10 @@ class SessionStore(private val context: Context) : SessionStorage {
                 serverName = o.optString("serverName"),
                 imageTag = o.optString("imageTag").ifBlank { null },
                 localUrl = o.optString("localUrl").ifBlank { null },
+                vpnUrl = o.optString("vpnUrl").ifBlank { null },
                 remoteUrl = o.optString("remoteUrl").ifBlank { null },
+                serverId = o.optString("serverId").ifBlank { null },
+                primary = o.optBoolean("primary", false),
             )
         }
     }
@@ -67,7 +70,10 @@ class SessionStore(private val context: Context) : SessionStorage {
                         .put("serverName", s.serverName)
                         .put("imageTag", s.imageTag ?: "")
                         .put("localUrl", s.localUrl ?: "")
+                        .put("vpnUrl", s.vpnUrl ?: "")
                         .put("remoteUrl", s.remoteUrl ?: "")
+                        .put("serverId", s.serverId ?: "")
+                        .put("primary", s.primary)
                 },
             ).toString()
             if (current != null) prefs[Keys.current] = current else prefs.remove(Keys.current)
@@ -86,6 +92,14 @@ class SessionStore(private val context: Context) : SessionStorage {
     override suspend fun save(session: StoredSession) {
         val sessions = all().filterNot { it.key == session.key } + session
         write(sessions, session.key)
+    }
+
+    override suspend fun update(session: StoredSession) {
+        val prefs = context.dataStore.data.first()
+        val sessions = prefs.sessions()
+        if (sessions.none { it.key == session.key }) return
+        // In place, and whichever account was current stays current.
+        write(sessions.map { if (it.key == session.key) session else it }, prefs.currentKey())
     }
 
     override suspend fun select(key: String): StoredSession? {

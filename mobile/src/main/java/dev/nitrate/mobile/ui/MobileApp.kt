@@ -245,7 +245,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
             screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
-            screen<ServerAddressesRoute> { ServerAddressesScreen(actions) }
+            screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
             screen<CustomPageRoute> { entry ->
                 val route = entry.toRoute<CustomPageRoute>()

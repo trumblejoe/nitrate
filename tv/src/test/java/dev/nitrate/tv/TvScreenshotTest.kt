@@ -171,13 +171,14 @@ class TvScreenshotTest {
         androidx.compose.runtime.LaunchedEffect(Unit) { first.requestFocus() }
     }
 
-    @Test fun serverAddresses() = shoot("tv-server-addresses", act = {
-        // Test the local address: the result shows under it.
-        press("right")
+    @Test fun servers() = shoot("tv-servers", act = {
+        // Test the current server's local address: the result shows under it.
+        press("down", "right")
         compose.onRoot().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionCenter) }
         compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
         compose.onNodeWithText("Connected to Home in 18 ms", substring = true).assertExists()
-    }) { c -> dev.nitrate.tv.ui.settings.ServerAddressesScreen(c) }
+        press("up", "left", "up")
+    }) { c -> dev.nitrate.tv.ui.settings.ServersScreen(c, onSwitch = {}, onAdd = {}) }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {
