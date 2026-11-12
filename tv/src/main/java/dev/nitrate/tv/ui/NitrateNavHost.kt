@@ -76,6 +76,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 @Serializable object DisplaySettingsRoute
 @Serializable object MenuStopsRoute
+@Serializable object ServerAddressesRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
 @Serializable object WatchTogetherRoute
@@ -231,6 +232,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     (if (account?.isAdmin == true) listOf(dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) }) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } } +
                     listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Server addresses", "Local and remote, for at home and away") { nav.navigate(ServerAddressesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Switch user", "Other users and servers, profile PINs") { nav.navigate(ProfilesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl, signOut),
                     ),
@@ -265,6 +267,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             }
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
+        composable<ServerAddressesRoute> { dev.nitrate.tv.ui.settings.ServerAddressesScreen(container) }
         composable<MenuStopsRoute> { dev.nitrate.tv.ui.settings.MenuStopsScreen(container) }
         composable<ManageItemRoute> { entry -> ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId) }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }

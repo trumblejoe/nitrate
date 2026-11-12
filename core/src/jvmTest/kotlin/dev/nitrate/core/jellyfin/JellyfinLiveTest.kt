@@ -26,6 +26,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import dev.nitrate.core.model.summary
+import dev.nitrate.core.model.ok
 import org.junit.Test
 
 /**
@@ -537,5 +539,24 @@ class JellyfinLiveTest {
         client.cancelRecording(scheduled.timerId!!)
         assertEquals(null, client.guide(listOf(later.channelId), later.startMs, later.endMs).first { it.id == later.id }.timerId)
         println("Recordings: ${client.recordings().size}")
+    }
+
+    /** Local and remote addresses against the real server: 127.0.0.1 as "local", localhost as "remote". */
+    @Test
+    fun `addresses at home and away`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-addresses", "Addresses"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val port = io.ktor.http.Url(url).port
+        val check = client.testAddress("127.0.0.1:$port")
+        println("Test 127.0.0.1:$port -> ${check.summary()}")
+        assertTrue(check.ok)
+        // A local address that answers nowhere: the remote one is used.
+        assertEquals(SessionState.VALID, client.saveServerAddresses(local = "http://10.255.255.1:$port", remote = "http://127.0.0.1:$port"))
+        assertEquals("http://127.0.0.1:$port", client.serverUrl)
+        assertTrue(client.views().isNotEmpty())
+        // Both answer: local wins.
+        assertEquals(SessionState.VALID, client.saveServerAddresses(local = "http://127.0.0.1:$port", remote = "http://localhost:$port"))
+        assertEquals("http://127.0.0.1:$port", client.serverUrl)
     }
 }

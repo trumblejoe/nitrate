@@ -1,5 +1,7 @@
 package dev.nitrate.android
 
+import kotlinx.coroutines.launch
+
 import android.content.Context
 import dev.nitrate.android.downloads.WorkManagerScheduler
 import dev.nitrate.android.playback.DeviceProbe
@@ -129,6 +131,59 @@ class AppContainer(
         settingsSync.pull()
         remote.start()
         refreshAccount()
+        watchNetwork()
+    }
+
+    private val networkScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+    private var networkWatched = false
+    private var reconnecting: kotlinx.coroutines.Job? = null
+
+    /**
+     * When the network changes (out of the house, onto mobile data, back home), moves to whichever
+     * of the server's addresses answers and restarts the live connection if the address changed.
+     */
+    private fun watchNetwork() {
+        if (networkWatched) return
+        networkWatched = true
+        val connectivity = appContext.getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        runCatching {
+            connectivity.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) { reconnectSoon() }
+                override fun onLost(network: android.net.Network) { reconnectSoon() }
+            })
+        }
+    }
+
+    private fun reconnectSoon() {
+        reconnecting?.cancel()
+        reconnecting = networkScope.launch {
+            // Networks settle in a moment; don't chase every flap.
+            kotlinx.coroutines.delay(1_500)
+            reconnect()
+        }
+    }
+
+    /** Re-picks the server address now (also after the addresses change). */
+    suspend fun reconnect(): SessionState {
+        if (server.currentAccountKey == null) return SessionState.NONE
+        val before = server.serverUrl
+        val state = server.reconnect()
+        if (state == SessionState.VALID && server.serverUrl != before) {
+            remote.stop()
+            remote.start()
+        }
+        return state
+    }
+
+    /** Saves the current server's home and away addresses and moves to whichever answers. */
+    suspend fun saveServerAddresses(local: String?, remote: String?): SessionState {
+        val before = server.serverUrl
+        val state = server.saveServerAddresses(local, remote)
+        if (state == SessionState.VALID && server.serverUrl != before) {
+            this.remote.stop()
+            this.remote.start()
+        }
+        return state
     }
 
     /** Switches to a saved account; on VALID everything follows the new user. */

@@ -23,6 +23,8 @@ import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
+import dev.nitrate.core.model.ServerAddresses
+import dev.nitrate.core.model.AddressCheck
 import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.SubtitleDelivery
 import dev.nitrate.core.model.subtitleMimeType
@@ -164,10 +166,18 @@ class JellyfinClient(
     override suspend fun restoreSession(): SessionState {
         val session = sessionStorage.load() ?: return SessionState.NONE
         use(session)
-        return checkSession()
+        return reconnect()
     }
 
+    /** The signed-in account as stored, for its addresses. */
+    private var current: StoredSession? = null
+
+    /** The server's id once seen, so an address leading to a different server is never used. */
+    private var serverId: String? = null
+
     private fun use(session: StoredSession) {
+        if (current?.key != session.key) serverId = null
+        current = session
         baseUrl = session.serverUrl
         token = session.accessToken
         userId = session.userId
@@ -197,7 +207,87 @@ class JellyfinClient(
     override suspend fun switchAccount(key: String): SessionState {
         val session = sessionStorage.select(key) ?: return SessionState.NONE
         use(session)
-        return checkSession()
+        return reconnect()
+    }
+
+    // ---- Addresses (home and away) ----
+
+    override suspend fun serverAddresses(): ServerAddresses? = current?.let { s ->
+        ServerAddresses(signedInWith = s.serverUrl, local = s.localUrl, remote = s.remoteUrl, active = baseUrl)
+    }
+
+    override suspend fun saveServerAddresses(local: String?, remote: String?): SessionState {
+        val s = current ?: return SessionState.NONE
+        fun clean(input: String?) = input?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }?.let { addressCandidates(it).firstOrNull { c -> c.startsWith("http") } }
+        // Keep what the user typed when it already says how (scheme and port); otherwise the form that answers.
+        suspend fun resolve(input: String?): String? {
+            val typed = input?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() } ?: return null
+            return (testAddress(typed) as? AddressCheck.Reached)?.url ?: clean(typed)
+        }
+        val updated = s.copy(localUrl = resolve(local), remoteUrl = resolve(remote))
+        sessionStorage.save(updated)
+        current = updated
+        return reconnect()
+    }
+
+    override suspend fun testAddress(input: String): AddressCheck {
+        val start = kotlin.time.TimeSource.Monotonic.markNow()
+        val found = probe(input, PROBE_TIMEOUT_MS) ?: return AddressCheck.Failed("No Jellyfin server answered at \"${input.trim()}\"")
+        val millis = start.elapsedNow().inWholeMilliseconds
+        return AddressCheck.Reached(found.url, found.name, millis, sameServer = serverId == null || found.id == serverId)
+    }
+
+    override suspend fun reconnect(): SessionState {
+        val s = current ?: return checkSession()
+        pickAddress(s.addresses)?.let { baseUrl = it }
+        val state = checkSession()
+        // Learn which server this is, so other addresses are only ever used for the same one.
+        if (state == SessionState.VALID && serverId == null) {
+            serverId = runCatching { JellyfinJson.decodeFromString<PublicSystemInfoDto>(http.get(url("System", "Info", "Public")).bodyAsText()).id }.getOrNull()
+        }
+        return state
+    }
+
+    private data class Probed(val url: String, val name: String, val id: String?)
+
+    /** The first of [input]'s forms (scheme, port) where a Jellyfin server answers. */
+    private suspend fun probe(input: String, timeoutMs: Long): Probed? = coroutineScope {
+        val probes = addressCandidates(input).map { candidate ->
+            async {
+                withTimeoutOrNull(timeoutMs) {
+                    runCatching {
+                        val info = http.get("$candidate/System/Info/Public").bodyAsText().let { JellyfinJson.decodeFromString<PublicSystemInfoDto>(it) }
+                        if (info.id != null) Probed(candidate, info.serverName ?: candidate, info.id) else null
+                    }.getOrNull()
+                }
+            }
+        }
+        probes.awaitAll().firstNotNullOfOrNull { it }
+    }
+
+    /**
+     * Tries every address at once and takes the first in order (local before remote) that answers
+     * as this account's server. The local one gets a short wait: away from home it never answers.
+     */
+    private suspend fun pickAddress(addresses: List<String>): String? = coroutineScope {
+        if (addresses.size < 2) return@coroutineScope null
+        val tries = addresses.mapIndexed { i, url ->
+            async {
+                withTimeoutOrNull(if (i == 0) LOCAL_PROBE_TIMEOUT_MS else PROBE_TIMEOUT_MS) {
+                    runCatching {
+                        val info = http.get("$url/System/Info/Public").bodyAsText().let { JellyfinJson.decodeFromString<PublicSystemInfoDto>(it) }
+                        info.takeIf { it.id != null && (serverId == null || it.id == serverId) }
+                    }.getOrNull()
+                }
+            }
+        }
+        for ((i, t) in tries.withIndex()) {
+            val info = t.await() ?: continue
+            tries.drop(i + 1).forEach { it.cancel() }
+            serverId = info.id
+            return@coroutineScope addresses[i]
+        }
+        null
     }
 
     override suspend fun forgetAccount(key: String) {
@@ -238,6 +328,7 @@ class JellyfinClient(
         }
         probes.awaitAll().firstNotNullOfOrNull { it } ?: error("No Jellyfin server found at \"$input\"")
     }
+
 
     override fun discoverServers(): Flow<DiscoveredServer> = discoverJellyfinServers()
 
@@ -1035,6 +1126,7 @@ class JellyfinClient(
         const val ROW_LIMIT = 24
         const val ROW_FIELDS = "Overview,PrimaryImageAspectRatio,Genres"
         const val PROBE_TIMEOUT_MS = 5_000L
+        const val LOCAL_PROBE_TIMEOUT_MS = 2_500L
         const val TRICKPLAY_MIN_WIDTH = 240
         val WIDE_DEFAULT = RowDisplay(style = RowStyle.WIDE, showTitles = true)
     }

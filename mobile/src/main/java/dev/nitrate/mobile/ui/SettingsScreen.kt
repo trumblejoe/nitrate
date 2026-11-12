@@ -95,6 +95,15 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             )
         }
 
+        item {
+            ListItem(
+                modifier = Modifier.clickable { actions.nav.navigate(ServerAddressesRoute) },
+                headlineContent = { Text("Server addresses") },
+                supportingContent = { Text("Local and remote, for at home and away") },
+                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+
         item { QuickConnectRow(actions) }
 
         if (account?.isAdmin == true) {

@@ -15,6 +15,8 @@ import dev.nitrate.core.model.TrickplayInfo
 import dev.nitrate.core.model.ServerAddress
 import dev.nitrate.core.model.ServerUser
 import dev.nitrate.core.model.SessionState
+import dev.nitrate.core.model.ServerAddresses
+import dev.nitrate.core.model.AddressCheck
 import dev.nitrate.core.admin.AccountInfo
 import dev.nitrate.core.admin.GeneralCommand
 import dev.nitrate.core.events.ServerEvent
@@ -79,6 +81,21 @@ interface MediaServer {
     // ---- Saved accounts ----
     /** Every server and user signed in on this device. */
     suspend fun savedAccounts(): List<SavedAccount> = emptyList()
+
+    /** The current account's server addresses (null when not signed in). */
+    suspend fun serverAddresses(): ServerAddresses? = null
+
+    /** Saves the current account's local and remote addresses (blank = none), then reconnects. */
+    suspend fun saveServerAddresses(local: String?, remote: String?): SessionState = unsupported()
+
+    /** Whether a Jellyfin server answers at [input] (with or without scheme and port), and how fast. */
+    suspend fun testAddress(input: String): AddressCheck = AddressCheck.Failed("Not supported")
+
+    /**
+     * Moves to whichever saved address answers (the local one first) and checks the sign-in; for
+     * when the network changes, such as leaving home.
+     */
+    suspend fun reconnect(): SessionState = checkSession()
 
     /** The current account's [SavedAccount.key]. */
     val currentAccountKey: String? get() = null

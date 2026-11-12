@@ -127,6 +127,13 @@ class FakeServer : MediaServer {
         item.kind == ItemKind.LIBRARY -> art(if (item.collection == CollectionKind.MOVIES) "m2-backdrop" else "series-1-backdrop")
         else -> art("${artKey(item)}-poster")
     }
+    override suspend fun serverAddresses() = dev.nitrate.core.model.ServerAddresses(
+        signedInWith = "http://192.168.1.20:8096", local = "http://192.168.1.20:8096", remote = "https://media.example.net", active = "http://192.168.1.20:8096",
+    )
+    override suspend fun testAddress(input: String): dev.nitrate.core.model.AddressCheck =
+        if (input.contains("192.168")) dev.nitrate.core.model.AddressCheck.Reached("http://192.168.1.20:8096", "Home", 18, sameServer = true)
+        else dev.nitrate.core.model.AddressCheck.Failed("No Jellyfin server answered at \"$input\"")
+
     override fun backdropUrl(item: MediaItem): String? = art("${artKey(item)}-backdrop")
     override fun backdropUrls(item: MediaItem) = listOfNotNull(backdropUrl(item))
     override suspend fun search(query: String) = dev.nitrate.core.model.SearchResults(

@@ -3,6 +3,8 @@
 
     <!-- Installing updates downloaded from the project's releases (Android asks the user each time). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Noticing a network change (leaving home Wi-Fi) to move between the server's addresses. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Lets Android 12+ apply an update without asking again once Nitrate installed the version being replaced. -->
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 

@@ -70,6 +70,7 @@ import kotlinx.serialization.Serializable
 
 /** Admin: the whole server (tasks, activity, devices, users). */
 @Serializable object ServerAdminRoute
+@Serializable object ServerAddressesRoute
 
 /** A page of the user's own rows; [editNow] opens the editor straight away (just created). */
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
@@ -244,6 +245,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
             screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
+            screen<ServerAddressesRoute> { ServerAddressesScreen(actions) }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
             screen<CustomPageRoute> { entry ->
                 val route = entry.toRoute<CustomPageRoute>()

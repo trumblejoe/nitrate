@@ -45,6 +45,8 @@ class SessionStore(private val context: Context) : SessionStorage {
                 userName = o.optString("userName"),
                 serverName = o.optString("serverName"),
                 imageTag = o.optString("imageTag").ifBlank { null },
+                localUrl = o.optString("localUrl").ifBlank { null },
+                remoteUrl = o.optString("remoteUrl").ifBlank { null },
             )
         }
     }
@@ -64,6 +66,8 @@ class SessionStore(private val context: Context) : SessionStorage {
                         .put("userName", s.userName)
                         .put("serverName", s.serverName)
                         .put("imageTag", s.imageTag ?: "")
+                        .put("localUrl", s.localUrl ?: "")
+                        .put("remoteUrl", s.remoteUrl ?: "")
                 },
             ).toString()
             if (current != null) prefs[Keys.current] = current else prefs.remove(Keys.current)

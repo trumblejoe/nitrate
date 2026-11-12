@@ -14,8 +14,16 @@ data class StoredSession(
     val userName: String,
     val serverName: String = "",
     val imageTag: String? = null,
+    /** The server's address on the home network, tried first. */
+    val localUrl: String? = null,
+    /** Its address from anywhere else (a domain or public IP), tried when local doesn't answer. */
+    val remoteUrl: String? = null,
 ) {
+    /** Stays the address signed in with, whichever one is in use, so saved settings keep their place. */
     val key: String get() = accountKey(serverUrl, userId)
+
+    /** Every address to try, in order: local, remote, then the one signed in with. */
+    val addresses: List<String> get() = listOfNotNull(localUrl, remoteUrl, serverUrl).map { it.trimEnd('/') }.distinct()
 }
 
 fun accountKey(serverUrl: String, userId: String) = "${serverUrl.trimEnd('/')}|$userId"
