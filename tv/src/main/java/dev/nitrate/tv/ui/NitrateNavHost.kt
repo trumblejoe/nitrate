@@ -79,6 +79,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ServerAddressesRoute
 @Serializable object LicensesRoute
 @Serializable object DeviceBackupRoute
+@Serializable object DisplayProfilesRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
 @Serializable object WatchTogetherRoute
@@ -232,7 +233,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             dev.nitrate.tv.ui.settings.SettingsHubScreen(
                 listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Playback", "Formats, quality, tests and updates for this TV") { nav.navigate(SettingsRoute) },
-                    dev.nitrate.tv.ui.settings.SettingsLink("Display", "What's shown about items; follows your account") { nav.navigate(DisplaySettingsRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Display", "What's shown about items, in this TV's display profile") { nav.navigate(DisplaySettingsRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Display profile", "Which profile this TV uses; new, rename, import a radial menu") { nav.navigate(DisplayProfilesRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Check for updates", "Nitrate ${container.updater.versionName}") { container.updater.check() },
                     dev.nitrate.tv.ui.settings.SettingsLink("Plugins", "Built-in extras, on or off") { nav.navigate(PluginsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Device backup", "This TV's settings on your server; restore another device's") { nav.navigate(DeviceBackupRoute) },
@@ -280,6 +282,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
         composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
+        composable<DisplayProfilesRoute> { dev.nitrate.tv.ui.settings.DisplayProfilesScreen(container) }
         composable<DeviceBackupRoute> { dev.nitrate.tv.ui.settings.DeviceBackupScreen(container.backups) }
         composable<ServerAddressesRoute> {
             dev.nitrate.tv.ui.settings.ServersScreen(

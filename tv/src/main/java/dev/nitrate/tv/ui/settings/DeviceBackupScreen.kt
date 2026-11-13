@@ -97,19 +97,27 @@ internal fun RestoreChooser(
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
-/** What restoring would change, setting by setting; each line is focusable so the D-pad scrolls through them. */
+/** What restoring would change, setting by setting. */
 @Composable
-internal fun DifferencesDialog(preview: RestorePreview, onApply: () -> Unit, onBack: () -> Unit) {
+internal fun DifferencesDialog(preview: RestorePreview, onApply: () -> Unit, onBack: () -> Unit) = DifferencesPanel(
+    intro = "From ${preview.source.deviceName}, saved ${age(preview.source.savedAtMs)}. " +
+        if (preview.sameModel) "Same model, so its codec test results come too." else "A different model, so this TV keeps its own codec test results.",
+    differences = preview.differences,
+    onApply = onApply,
+    onBack = onBack,
+)
+
+/**
+ * A Differences list before anything is applied: Apply and Back first, then every change grouped
+ * by section; each line is focusable so the D-pad scrolls through them.
+ */
+@Composable
+internal fun DifferencesPanel(intro: String, differences: List<dev.nitrate.core.backup.Difference>, onApply: () -> Unit, onBack: () -> Unit) {
     val apply = remember { FocusRequester() }
     TvDialog(onBack, width = 720) {
         Text("Differences", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            "From ${preview.source.deviceName}, saved ${age(preview.source.savedAtMs)}. " +
-                if (preview.sameModel) "Same model, so its codec test results come too." else "A different model, so this TV keeps its own codec test results.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        val n = preview.differences.size
+        Text(intro, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val n = differences.size
         ListItem(
             selected = false,
             onClick = onApply,
@@ -118,7 +126,7 @@ internal fun DifferencesDialog(preview: RestorePreview, onApply: () -> Unit, onB
         )
         ListItem(selected = false, onClick = onBack, headlineContent = { Text("Back") })
         if (n == 0) Text("Nothing would change: this TV already has the same settings.")
-        preview.differences.groupBy { it.section }.forEach { (section, list) ->
+        differences.groupBy { it.section }.forEach { (section, list) ->
             Text(section, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
             list.forEach { d ->
                 ListItem(

@@ -16,6 +16,8 @@ data class DeviceSettings(
     val pluginsEnabled: Map<String, Boolean> = emptyMap(),
     /** Each plugin's settings, as the plugin's own JSON. */
     val pluginSettings: Map<String, String> = emptyMap(),
+    /** The display profile this device uses (its choice is kept on the device). */
+    val displayProfile: String? = null,
 )
 
 /**
@@ -81,6 +83,7 @@ object DeviceBackups {
             playback = playback,
             pluginsEnabled = current.pluginsEnabled + backup.pluginsEnabled,
             pluginSettings = current.pluginSettings + backup.pluginSettings,
+            displayProfile = backup.displayProfile ?: current.displayProfile,
         )
     }
 
@@ -93,7 +96,12 @@ object DeviceBackups {
         next: DeviceSettings,
         pluginNames: Map<String, String> = emptyMap(),
         pluginDefaults: Map<String, Boolean> = emptyMap(),
+        /** Display profile names by id. */
+        profileNames: Map<String, String> = emptyMap(),
     ): List<Difference> = buildList {
+        if (current.displayProfile != next.displayProfile && next.displayProfile != null) {
+            add(Difference("Display", "Display profile", current.displayProfile?.let { profileNames[it] ?: it } ?: "Built-in", profileNames[next.displayProfile] ?: next.displayProfile))
+        }
         val a = current.playback
         val n = next.playback
         fun playback(setting: String, from: String, to: String) { if (from != to) add(Difference("Playback", setting, from, to)) }

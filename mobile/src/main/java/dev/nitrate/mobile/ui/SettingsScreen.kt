@@ -124,7 +124,8 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         header("Control a device", "Play, pause, seek and change volume on your TV or another app.")
         item { RemoteTargets(actions) }
 
-        header("Display", "For your account; follows you to your other devices.")
+        header("Display", "In this device's display profile. Spoiler hiding, custom pages and series languages are the same on every device.")
+        item { DisplayProfileRow(actions) }
         displaySettings(prefs) { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
 
         header("Playback", "Settings for this device; they aren't synced.")

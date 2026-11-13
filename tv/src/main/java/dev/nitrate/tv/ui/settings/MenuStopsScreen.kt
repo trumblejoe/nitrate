@@ -58,7 +58,7 @@ import kotlinx.coroutines.launch
 private val SpokeNames = listOf("up", "right", "down", "left")
 
 /** Where a slot is, in words: "Ring 2, left" on the dial, "Stop 3" otherwise. */
-private fun spotName(index: Int, dial: Boolean) =
+internal fun spotName(index: Int, dial: Boolean) =
     if (dial) "Ring ${index / MenuStops.SPOKES + 1}, ${SpokeNames[index % MenuStops.SPOKES]}" else "Stop ${index + 1}"
 
 /**

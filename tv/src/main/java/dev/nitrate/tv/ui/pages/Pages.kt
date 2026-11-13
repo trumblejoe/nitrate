@@ -202,7 +202,7 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Display", style = MaterialTheme.typography.displaySmall)
-                Text("For your account; follows you to your other devices.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("In this TV's display profile (Settings → Display profile). Spoiler hiding is the same on every device.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Accent colour", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     AccentMode.entries.forEachIndexed { i, m ->

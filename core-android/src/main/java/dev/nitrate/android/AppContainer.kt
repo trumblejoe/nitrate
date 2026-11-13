@@ -51,7 +51,14 @@ class AppContainer(
 ) {
     private val appContext = context.applicationContext
 
-    val displaySettings = DisplaySettingsStore(appContext)
+    /** Which built-in display profile this device starts on. */
+    val deviceKind: dev.nitrate.core.pages.DeviceKind = when {
+        appContext.packageName.contains(".tv") -> dev.nitrate.core.pages.DeviceKind.TV
+        appContext.resources.configuration.smallestScreenWidthDp >= 600 -> dev.nitrate.core.pages.DeviceKind.TABLET
+        else -> dev.nitrate.core.pages.DeviceKind.PHONE
+    }
+
+    val displaySettings = DisplaySettingsStore(appContext, deviceKind, androidIdentity(appContext, clientName, version).deviceName)
 
     val playbackSettings = PlaybackSettingsStore(appContext)
 
@@ -283,6 +290,7 @@ class AppContainer(
             server = server,
             playback = playbackSettings,
             plugins = pluginStore,
+            display = displaySettings,
             pluginList = { plugins.all },
             deviceName = androidIdentity(appContext, clientName, version).deviceName,
             model = { capabilities.model },

@@ -103,7 +103,7 @@ fun PageEditor(pageTitle: String, vm: RowsViewModel, actions: AppActions, librar
                     IconButton(onClick = onDone) { Icon(Icons.Default.Close, "Done") }
                     Column(Modifier.weight(1f)) {
                         Text("Edit $pageTitle", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("Changes follow you to your other devices", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (vm.pageKey.startsWith("custom/")) "This page's rows are the same on every device" else "Saved in this device's display profile", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = { confirmReset = true }) { Text("Reset") }
                 }

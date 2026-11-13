@@ -95,7 +95,7 @@ fun PageEditor(pageTitle: String, vm: RowsViewModel, repository: MediaServer, li
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
                     Text("Edit $pageTitle", style = MaterialTheme.typography.headlineSmall)
-                    Text("Changes follow you to your other devices", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (vm.pageKey.startsWith("custom/")) "This page's rows are the same on every device" else "Saved in this device's display profile", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Button(onClick = { adding = true }, modifier = Modifier.focusRequester(first)) { Text("Add row") }
                 OutlinedButton(onClick = { vm.reset() }) { Text("Reset") }

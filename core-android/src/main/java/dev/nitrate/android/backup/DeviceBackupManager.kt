@@ -54,6 +54,7 @@ class DeviceBackupManager(
     private val server: MediaServer,
     private val playback: PlaybackSettingsStore,
     private val plugins: PluginStore,
+    private val display: dev.nitrate.android.storage.DisplaySettingsStore,
     private val pluginList: () -> List<NitratePlugin>,
     private val deviceName: String,
     private val model: () -> String,
@@ -77,7 +78,7 @@ class DeviceBackupManager(
 
     init {
         scope.launch {
-            combine(playback.settings, plugins.enabledOverrides, plugins.allRaw) { p, e, r -> DeviceSettings(p, e, r) }
+            combine(playback.settings, plugins.enabledOverrides, plugins.allRaw, display.activeProfileOf { server.userId }) { p, e, r, d -> DeviceSettings(p, e, r, d) }
                 .distinctUntilChanged()
                 .collect { schedulePush() }
         }
@@ -119,8 +120,11 @@ class DeviceBackupManager(
         val same = DeviceBackups.sameModel(backup.summary, model())
         val next = DeviceBackups.restored(current, backup.settings, same)
         val list = pluginList()
-        val diffs = DeviceBackups.differences(current, next, list.associate { it.id to it.name }, list.associate { it.id to it.enabledByDefault })
-        return RestorePreview(backup.summary, current, next, diffs, same)
+        val names = (dev.nitrate.core.pages.DisplayProfiles.BUILT_IN + server.userId?.let { display.profiles(it).first() }.orEmpty()).associate { it.id to it.name }
+        // A profile the backup used that this account no longer has stays as it is here.
+        val usable = next.copy(displayProfile = next.displayProfile?.takeIf { it in names } ?: current.displayProfile)
+        val diffs = DeviceBackups.differences(current, usable, list.associate { it.id to it.name }, list.associate { it.id to it.enabledByDefault }, names)
+        return RestorePreview(backup.summary, current, usable, diffs, same)
     }
 
     /** Applies [preview] to this device, then backs the result up. */
@@ -128,6 +132,9 @@ class DeviceBackupManager(
         playback.update { preview.next.playback }
         preview.next.pluginsEnabled.forEach { (id, on) -> if (preview.current.pluginsEnabled[id] != on) plugins.setEnabled(id, on) }
         preview.next.pluginSettings.forEach { (id, raw) -> if (preview.current.pluginSettings[id] != raw) plugins.saveRaw(id, raw) }
+        val user = server.userId
+        val profile = preview.next.displayProfile
+        if (user != null && profile != null && profile != preview.current.displayProfile) display.useProfile(user, profile)
         finishOffer()
         push()
     }
@@ -170,7 +177,10 @@ class DeviceBackupManager(
         runCatching { cloud.save(backupOfThisDevice()) }.onSuccess { markSaved(key) }
     }
 
-    private suspend fun currentSettings() = DeviceSettings(playback.current(), plugins.enabledOverrides.first(), plugins.allRaw.first())
+    private suspend fun currentSettings() = DeviceSettings(
+        playback.current(), plugins.enabledOverrides.first(), plugins.allRaw.first(),
+        displayProfile = server.userId?.let { display.activeProfile(it).first() },
+    )
 
     private suspend fun backupOfThisDevice() = DeviceBackup(
         deviceId = deviceId,

@@ -375,4 +375,22 @@ class TvScreenshotTest {
     }
 
     @Test fun backupDifferences() = shoot("tv-backup-differences") { dev.nitrate.tv.ui.settings.DifferencesDialog(dev.nitrate.testing.SampleBackups.preview, {}, {}) }
+
+    @Test fun displayProfiles() = shoot("tv-display-profiles", { c ->
+        c.displaySettings.useProfile("user-1", "tv")
+        c.displaySettings.createProfile("user-1", "Bedroom TV", from = "tv")
+        c.displaySettings.createProfile("user-1", "Living room", from = "tv")
+    }) { c -> dev.nitrate.tv.ui.settings.DisplayProfilesScreen(c) }
+
+    @Test fun dialImportDifferences() = shoot("tv-dial-import") {
+        dev.nitrate.tv.ui.settings.DifferencesPanel(
+            "The radial menu from Living room. Nothing else in this profile changes.",
+            listOf(
+                dev.nitrate.core.backup.Difference("Radial menu", "Ring 1, up", "Home", "Search"),
+                dev.nitrate.core.backup.Difference("Radial menu", "Ring 1, right", "Search", "Movies"),
+                dev.nitrate.core.backup.Difference("Radial menu", "Ring 2, up", "Empty", "Live TV"),
+            ),
+            {}, {},
+        )
+    }
 }
