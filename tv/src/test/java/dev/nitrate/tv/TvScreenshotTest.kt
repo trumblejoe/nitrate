@@ -368,4 +368,11 @@ class TvScreenshotTest {
     @Test fun seriesNoRatings() = shoot("tv-series-trimmed", { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(communityRating = false, overview = false, officialRating = false))
     }) { c -> DetailsScreen(c.server, "series-1", null, onPlay = { _, _ -> }, onOpen = {}) }
+
+    @Test fun backupPrompt() = shoot("tv-backup-prompt") { c ->
+        dev.nitrate.tv.ui.settings.RestoreChooser("Set this TV up like…", "Your other devices' settings are saved on your server. Choose one to copy its playback and plugin settings here; you'll see what changes first.",
+            dev.nitrate.testing.SampleBackups.list, c.backups, "Not now", {}, {})
+    }
+
+    @Test fun backupDifferences() = shoot("tv-backup-differences") { dev.nitrate.tv.ui.settings.DifferencesDialog(dev.nitrate.testing.SampleBackups.preview, {}, {}) }
 }

@@ -27,6 +27,11 @@ class PluginStore(private val context: Context) : PluginStorage {
         }
     }
 
+    /** Every plugin's settings JSON, by plugin id (for device backups). */
+    val allRaw: Flow<Map<String, String>> = context.pluginDataStore.data.map { prefs ->
+        prefs.asMap().mapNotNull { (k, v) -> if (k.name.startsWith("cfg_") && v is String) k.name.removePrefix("cfg_") to v else null }.toMap()
+    }
+
     override fun raw(pluginId: String): Flow<String?> = context.pluginDataStore.data.map { it[stringPreferencesKey("cfg_$pluginId")] }
 
     override suspend fun saveRaw(pluginId: String, value: String) {

@@ -78,6 +78,7 @@ import kotlinx.serialization.Serializable
 @Serializable object MenuStopsRoute
 @Serializable object ServerAddressesRoute
 @Serializable object LicensesRoute
+@Serializable object DeviceBackupRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
 @Serializable object WatchTogetherRoute
@@ -234,6 +235,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     dev.nitrate.tv.ui.settings.SettingsLink("Display", "What's shown about items; follows your account") { nav.navigate(DisplaySettingsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Check for updates", "Nitrate ${container.updater.versionName}") { container.updater.check() },
                     dev.nitrate.tv.ui.settings.SettingsLink("Plugins", "Built-in extras, on or off") { nav.navigate(PluginsRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Device backup", "This TV's settings on your server; restore another device's") { nav.navigate(DeviceBackupRoute) },
                 ) +
                     (if (account?.isAdmin == true) listOf(dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) }) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } } +
@@ -263,6 +265,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onServers = { nav.navigate(ServerAddressesRoute) },
                 onOnline = {
                     container.settingsSync.pull()
+                    container.backups.onSignedIn()
                     nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }
                 },
                 onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
@@ -277,6 +280,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
         composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
+        composable<DeviceBackupRoute> { dev.nitrate.tv.ui.settings.DeviceBackupScreen(container.backups) }
         composable<ServerAddressesRoute> {
             dev.nitrate.tv.ui.settings.ServersScreen(
                 container,
@@ -377,6 +381,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     }
     PlaybackGateDialog(gate)
     dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)
+    dev.nitrate.tv.ui.settings.BackupPrompt(container.backups)
     LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.
     var message by remember { mutableStateOf<Pair<String, String>?>(null) }

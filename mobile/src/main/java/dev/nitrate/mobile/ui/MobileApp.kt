@@ -137,7 +137,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         val state = container.server.restoreSession()
         start = when {
             container.shouldPickProfile(state) -> ProfilesRoute
-            state == SessionState.VALID -> { container.settingsSync.pull(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
+            state == SessionState.VALID -> { container.settingsSync.pull(); container.backups.onSignedIn(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
             state == SessionState.UNREACHABLE -> OfflineRoute
             else -> ConnectRoute
         }
@@ -228,6 +228,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     actions,
                     onOnline = {
                         container.settingsSync.pull()
+                        container.backups.onSignedIn()
                         container.remote.start()
                         appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }
                         nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
@@ -332,6 +333,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         }
 
         UpdatePrompt(container.updater)
+        BackupPrompt(container.backups)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }
 
         pending?.let { (ask, answer) ->

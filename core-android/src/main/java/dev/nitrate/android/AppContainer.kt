@@ -155,6 +155,7 @@ class AppContainer(
     /** After signing in or switching account: settings, account details and the live connection. */
     suspend fun onSignedIn() {
         settingsSync.pull()
+        backups.onSignedIn()
         remote.start()
         refreshAccount()
         watchNetwork()
@@ -268,8 +269,25 @@ class AppContainer(
         val container: AppContainer
     }
 
+    private val pluginStore = PluginStore(appContext)
+
     val plugins = PluginRegistry(
         all = listOf(PreviousEpisodePlugin, WritingPlugin),
-        host = PluginHost(server, PluginStore(appContext)),
+        host = PluginHost(server, pluginStore),
     )
+
+    /** This device's playback and plugin settings, backed up to the user's server and restorable on another device. */
+    val backups by lazy {
+        dev.nitrate.android.backup.DeviceBackupManager(
+            context = appContext,
+            server = server,
+            playback = playbackSettings,
+            plugins = pluginStore,
+            pluginList = { plugins.all },
+            deviceName = androidIdentity(appContext, clientName, version).deviceName,
+            model = { capabilities.model },
+            app = if (appContext.packageName.contains(".tv")) "tv" else "mobile",
+            version = version,
+        )
+    }
 }

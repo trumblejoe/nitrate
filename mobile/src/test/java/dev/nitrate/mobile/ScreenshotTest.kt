@@ -344,6 +344,16 @@ class ScreenshotTest {
         }
     }
 
+    /** The first-time question after signing in, and what restoring would change. */
+    @Test
+    fun backupPrompt() = shoot("phone-backup-prompt") {
+        dev.nitrate.mobile.ui.RestoreChooser("Set this device up like…", "Your other devices' settings are saved on your server. Choose one to copy its playback and plugin settings here; you'll see what changes first.",
+            dev.nitrate.testing.SampleBackups.list, it.container.backups, "Not now", {}, {})
+    }
+
+    @Test
+    fun backupDifferences() = shoot("phone-backup-differences") { dev.nitrate.mobile.ui.DifferencesDialog(dev.nitrate.testing.SampleBackups.preview, {}, {}) }
+
     @Test
     @Config(qualifiers = "w1280dp-h800dp-land-night-mdpi")
     fun tabletHome() = shoot("tablet-home") { MainScreen(it) {} }

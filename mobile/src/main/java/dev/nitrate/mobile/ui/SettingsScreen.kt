@@ -165,6 +165,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             Capability(cap, playback, updatePlayback)
         }
 
+        header("Device backup", "This device's playback and plugin settings, kept on your server so a new device can start the same way. No PINs; scripts have their own backup.")
+        item { DeviceBackupSection(c.backups) }
+
         header("Updates", "New versions from Nitrate's releases. Android asks before installing.")
         item { UpdatesSection(c.updater) }
         item {

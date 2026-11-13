@@ -60,8 +60,10 @@ class FakeServer : MediaServer {
     override suspend fun quickConnectApproved(secret: String) = false
     override suspend fun finishQuickConnect(serverUrl: String, secret: String) = Unit
     override suspend fun logout() = Unit
-    override suspend fun loadCustomPrefs(prefsId: String) = emptyMap<String, String>()
-    override suspend fun saveCustomPrefs(prefs: Map<String, String>, prefsId: String) = Unit
+    /** Per-user storage, kept in memory: display-preferences id → its custom prefs. */
+    val customPrefs = mutableMapOf<String, Map<String, String>>()
+    override suspend fun loadCustomPrefs(prefsId: String) = customPrefs[prefsId].orEmpty()
+    override suspend fun saveCustomPrefs(prefs: Map<String, String>, prefsId: String) { customPrefs[prefsId] = prefs }
     override suspend fun views() = listOf(movies, shows)
     override suspend fun homeRows() = listOf(
         MediaRow("home/continue_watching", "Continue Watching", listOf(films[0], episode(2, 4, false).copy(user = UserState(playedPercentage = 60.0))), RowDisplay(RowStyle.WIDE, showTitles = true)),
