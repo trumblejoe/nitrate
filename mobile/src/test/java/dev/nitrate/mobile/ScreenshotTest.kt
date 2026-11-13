@@ -332,9 +332,14 @@ class ScreenshotTest {
     @Test
     fun writingBesideVideoUpright() = shoot("phone-player-writing-upright") { WritingBesideStill(it) }
 
+    /** A tablet with the split set to video on top, for a wide film. */
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-land-night-mdpi")
+    fun writingStackedTablet() = shoot("tablet-player-writing-stacked") { WritingBesideStill(it, dev.nitrate.core.playback.WritingSplit.STACKED, 2.39f) }
+
     @Composable
-    private fun WritingBesideStill(actions: AppActions) {
-        PlayerLayout(writing = true, modifier = Modifier, pane = { WritingScreen(actions, onBack = {}, pane = true) }) {
+    private fun WritingBesideStill(actions: AppActions, split: dev.nitrate.core.playback.WritingSplit = dev.nitrate.core.playback.WritingSplit.AUTO, aspect: Float? = 16f / 9f) {
+        PlayerLayout(writing = true, split = split, videoAspect = aspect, modifier = Modifier, pane = { WritingScreen(actions, onBack = {}, pane = true) }) {
             AsyncImage(actions.server.backdropUrl(MediaItem("m3", "", ItemKind.MOVIE)), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }

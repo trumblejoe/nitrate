@@ -48,6 +48,8 @@ data class PlaybackSettings(
     val pictureInPicture: Boolean = true,
     /** Evens out loud and quiet sound and lifts dialogue, for late nights. */
     val nightMode: Boolean = false,
+    /** How the writing pane shares the screen with the video (phones and tablets). */
+    val writingSplit: WritingSplit = WritingSplit.AUTO,
 ) {
     /** Whether [id] may be direct played, given what the device claims. */
     fun allows(id: String, claimed: Boolean): Boolean = when (overrides[id]) {

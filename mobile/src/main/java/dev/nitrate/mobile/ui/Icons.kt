@@ -12,6 +12,8 @@ object NitrateIcons {
     val DownloadDone = icon("DownloadDone", "M5,18h14v2H5v-2zM9.6,15.3L5,10.7l2,-1.9 2.6,2.6L17,4l2,2 -9.4,9.3z")
     /** Smart downloads: a download arrow inside a refresh loop. */
     val Auto = icon("Auto", "M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.7,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8zM12,18c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.7,-2.8L5.24,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3zM11,9h2v3h2l-3,3 -3,-3h2z")
+    /** The writing pane's split: a picture beside lines of text. */
+    val SplitView = icon("SplitView", "M3,15h8v-2H3v2zM3,19h8v-2H3v2zM3,11h8V9H3v2zM3,5v2h8V5H3zM13,5h8v14h-8z")
     val Pause = icon("Pause", "M6,19h4V5H6v14zM14,5v14h4V5h-4z")
     val CloudOff = icon(
         "CloudOff",

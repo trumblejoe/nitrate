@@ -117,6 +117,8 @@ fun WritingScreen(
     modifier: Modifier = Modifier,
     pane: Boolean = false,
     playback: PlaybackControls? = null,
+    /** Extra header buttons, e.g. the player's split choice when shown as a [pane]. */
+    headerActions: @Composable () -> Unit = {},
 ) {
     val store = actions.container.writing
     val settings by actions.container.plugins.host.store.settings(WritingPlugin.id, WritingSettings()).collectAsState(WritingSettings())
@@ -201,6 +203,7 @@ fun WritingScreen(
                     maxLines = 1,
                 )
             }
+            headerActions()
             IconButton(onClick = { showDocs = !showDocs }) { Icon(Icons.AutoMirrored.Filled.List, "Documents") }
             IconButton(onClick = { menu = true }) { Icon(Icons.Default.Add, "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {

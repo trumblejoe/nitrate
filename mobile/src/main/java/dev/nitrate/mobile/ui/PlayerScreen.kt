@@ -50,6 +50,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import kotlinx.coroutines.launch
+import dev.nitrate.core.playback.WritingSplit
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -255,6 +260,8 @@ fun PlayerScreen(
     val playingItem by session.item.collectAsState()
     PlayerLayout(
         writing = writing && canWrite,
+        split = playbackSettings.writingSplit,
+        videoAspect = aspect?.toFloat(),
         modifier = Modifier.focusRequester(keys).focusable().onPreviewKeyEvent { event ->
             if (canWrite && event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.E) {
                 writing = !writing
@@ -263,7 +270,16 @@ fun PlayerScreen(
                 false
             }
         },
-        pane = { WritingScreen(actions, onBack = { writing = false }, pane = true, playback = session.controls) },
+        pane = {
+            WritingScreen(
+                actions, onBack = { writing = false }, pane = true, playback = session.controls,
+                headerActions = {
+                    SplitChooser(playbackSettings.writingSplit) { choice ->
+                        logScope.launch { actions.container.playbackSettings.update { it.copy(writingSplit = choice) } }
+                    }
+                },
+            )
+        },
     ) {
         VideoSurface(
             session.player,
@@ -398,24 +414,57 @@ private fun TrackPicker(title: String, choices: List<TrackChoice>, selected: Int
 }
 
 /**
- * The video alone, or with the writing [pane]: side by side when the screen is wide, video on
- * top when it's upright (so the keyboard has room). The video keeps playing either way.
+ * The video alone, or with the writing [pane] beside it or below it, as the user chose in the
+ * pane ([split]; Auto picks whichever leaves the picture bigger for this window and video). The
+ * video keeps playing either way.
  */
 @Composable
-internal fun PlayerLayout(writing: Boolean, modifier: Modifier, pane: @Composable () -> Unit, video: @Composable BoxScope.() -> Unit) {
+internal fun PlayerLayout(
+    writing: Boolean,
+    split: WritingSplit,
+    videoAspect: Float?,
+    modifier: Modifier,
+    pane: @Composable () -> Unit,
+    video: @Composable BoxScope.() -> Unit,
+) {
     BoxWithConstraints(modifier.fillMaxSize().background(Color.Black)) {
-        val paneWidth = (maxWidth * 0.45f).coerceIn(320.dp, 560.dp)
+        val w = maxWidth.value
+        val h = maxHeight.value
         when {
             !writing -> Box(Modifier.fillMaxSize(), content = video)
-            maxWidth > maxHeight -> Row(Modifier.fillMaxSize()) {
+            split.sideBySide(w, h, videoAspect) -> Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxHeight(), content = video)
-                Surface(Modifier.width(paneWidth).fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
+                Surface(Modifier.width(WritingSplit.sidePaneWidth(w).dp).fillMaxHeight(), color = MaterialTheme.colorScheme.background) {
                     Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.End + WindowInsetsSides.Top))) { pane() }
                 }
             }
             else -> Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f), content = video)
-                Surface(Modifier.weight(1f).fillMaxWidth(), color = MaterialTheme.colorScheme.background) { pane() }
+                Box(
+                    Modifier.fillMaxWidth().height(WritingSplit.stackedVideoHeight(w, h, videoAspect).dp)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+                    content = video,
+                )
+                Surface(Modifier.weight(1f).fillMaxWidth(), color = MaterialTheme.colorScheme.background) {
+                    Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) { pane() }
+                }
+            }
+        }
+    }
+}
+
+/** The writing pane's choice of split: Auto, side by side, or video on top. Saved on this device. */
+@Composable
+private fun SplitChooser(current: WritingSplit, onChoose: (WritingSplit) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(NitrateIcons.SplitView, "Split: ${current.label}") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            WritingSplit.entries.forEach { choice ->
+                DropdownMenuItem(
+                    text = { Text(choice.label) },
+                    onClick = { open = false; onChoose(choice) },
+                    trailingIcon = if (choice == current) ({ Icon(Icons.Default.Check, null) }) else null,
+                )
             }
         }
     }
