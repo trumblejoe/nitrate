@@ -46,7 +46,10 @@ class RowsViewModel(
     private val changes: Flow<Unit> = emptyFlow(),
     /** A row's look until the user picks one (e.g. artwork-first on the phone's Home). */
     private val defaults: (MediaRow) -> RowDisplay = { it.defaultDisplay },
+    /** Rows as last loaded, shown at once while fresh ones load. */
+    private val cache: dev.nitrate.android.storage.RowCache? = null,
 ) : ViewModel() {
+    private val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
     private val userId = server.userId
     private val builtIn = MutableStateFlow<Result<List<MediaRow>>?>(null)
     private val custom = MutableStateFlow<Map<String, MediaRow>>(emptyMap())
@@ -80,6 +83,12 @@ class RowsViewModel(
     }
 
     init {
+        // Last time's rows straight away; fresh ones replace them as soon as they arrive.
+        if (cache != null) viewModelScope.launch {
+            val cached = cache.read(account, pageKey) ?: return@launch
+            if (builtIn.value == null && cached.builtIn.isNotEmpty()) builtIn.value = Result.success(cached.builtIn.map { it.copy(defaultDisplay = defaults(it)) })
+            if (custom.value.isEmpty()) custom.value = cached.custom
+        }
         refresh()
         watchChanges()
         // Load custom rows whenever the page's custom entries change.
@@ -95,6 +104,8 @@ class RowsViewModel(
             // Keep showing old rows if a background refresh fails.
             if (result.isSuccess || builtIn.value?.isSuccess != true) builtIn.value = result
             loadCustom(layout.value.entries.filter { it.isCustom })
+            val rows = result.getOrNull()
+            if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value))
         }
     }
 

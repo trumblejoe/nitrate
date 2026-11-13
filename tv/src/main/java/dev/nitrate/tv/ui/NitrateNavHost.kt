@@ -198,6 +198,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onSettings = { nav.navigate(SettingsHubRoute) },
                 onOffline = { nav.navigate(OfflineRoute) { popUpTo(0) { inclusive = true } } },
                 changes = container.serverChanges,
+                rowCache = container.rowCache,
                 customPages = customPages,
                 onOpenPage = { id -> nav.navigate(CustomPageRoute(id)) },
                 onSignOut = {
@@ -339,6 +340,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     displaySettings = container.displaySettings,
                     libraryId = libraryId,
                     changes = container.serverChanges,
+                    rowCache = container.rowCache,
                     onOpen = nav::openItem,
                     onPlay = { item -> gate.play(item) },
                 )

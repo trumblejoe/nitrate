@@ -117,6 +117,7 @@ object ArtworkFirst {
  * A row on the home or a library page.
  * [key] is stable across app versions and is what display settings are saved against.
  */
+@Serializable
 data class MediaRow(
     val key: String,
     val title: String,

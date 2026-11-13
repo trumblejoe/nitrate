@@ -66,7 +66,12 @@ class AppContainer(
     val capabilities: DeviceCapabilities by lazy { DeviceProbe.probe(appContext) }
 
     val server: MediaServer = serverOverride ?: JellyfinClient(
-        engine = OkHttp.create(),
+        // Pages ask for all their rows at once; OkHttp would otherwise send 5 at a time per server.
+        engine = OkHttp.create {
+            config {
+                dispatcher(okhttp3.Dispatcher().apply { maxRequests = 64; maxRequestsPerHost = 16 })
+            }
+        },
         identity = androidIdentity(appContext, clientName, version),
         sessionStorage = SessionStore(appContext),
         capabilities = { capabilities },
@@ -147,6 +152,9 @@ class AppContainer(
     suspend fun sendPlaybackReport(session: dev.nitrate.android.playback.PlaybackSession? = null): Result<String> =
         runCatching { server.sendClientLog(playbackReport(session)) }
 
+    /** Each page's rows as last loaded, so pages open with them while fresh ones load. */
+    val rowCache by lazy { dev.nitrate.android.storage.RowCache(appContext) }
+
     /** Libraries as last seen, for menus that should be whole at once. */
     val libraryCache by lazy { dev.nitrate.android.storage.LibraryCache(appContext) }
 
@@ -164,7 +172,8 @@ class AppContainer(
         settingsSync.pull()
         backups.onSignedIn()
         remote.start()
-        refreshAccount()
+        // Not waited for: Home shouldn't wait on the account details (admin tools appear when they arrive).
+        networkScope.launch { refreshAccount() }
         watchNetwork()
     }
 

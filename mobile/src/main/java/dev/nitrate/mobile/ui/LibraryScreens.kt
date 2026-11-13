@@ -134,7 +134,7 @@ fun LibraryScreen(actions: AppActions, libraryId: String) {
 @Composable
 private fun LibraryRows(actions: AppActions, library: MediaItem) {
     val c = actions.container
-    val vm = viewModel(key = "rows-${library.id}") { RowsViewModel(PageKeys.library(library.id), { c.server.libraryRows(library) }, c.displaySettings, c.server, c.serverChanges) }
+    val vm = viewModel(key = "rows-${library.id}") { RowsViewModel(PageKeys.library(library.id), { c.server.libraryRows(library) }, c.displaySettings, c.server, c.serverChanges, cache = c.rowCache) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf(false) }

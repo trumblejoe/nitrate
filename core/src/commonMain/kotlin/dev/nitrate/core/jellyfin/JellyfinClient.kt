@@ -568,24 +568,24 @@ class JellyfinClient(
 
     override suspend fun views(): List<MediaItem> = items("UserViews", query = emptyMap())
 
-    override suspend fun homeRows(): List<MediaRow> {
-        val rows = mutableListOf<MediaRow>()
-        val views = views()
-        if (views.isNotEmpty()) rows += MediaRow("home/my_media", "My Media", views, WIDE_DEFAULT)
+    /** Every row's request goes out at once; the rows keep their order. */
+    override suspend fun homeRows(): List<MediaRow> = coroutineScope {
+        val viewsAsync = async { views() }
+        val resume = async { resumeItems(parentId = null, types = null) }
+        val nextUp = async { items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)) }
+        val because = async { runCatching { dev.nitrate.core.rows.BecauseYouWatched.rows(recentlyWatched(), ::similar) }.getOrDefault(emptyList()) }
+        val views = viewsAsync.await()
+        val latest = views
+            .filter { it.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null) }
+            .map { view -> view to async { latest(view.id) } }
 
-        val resume = resumeItems(parentId = null, types = null)
-        if (resume.isNotEmpty()) rows += MediaRow("home/continue_watching", "Continue Watching", resume, WIDE_DEFAULT)
-
-        val nextUp = items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS))
-        if (nextUp.isNotEmpty()) rows += MediaRow("home/next_up", "Next Up", nextUp, WIDE_DEFAULT)
-
-        for (view in views) {
-            if (view.collection !in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null)) continue
-            val latest = latest(view.id)
-            if (latest.isNotEmpty()) rows += MediaRow("home/latest/${view.id}", "Latest in ${view.name}", latest, RowDisplay())
+        buildList {
+            if (views.isNotEmpty()) add(MediaRow("home/my_media", "My Media", views, WIDE_DEFAULT))
+            resume.await().takeIf { it.isNotEmpty() }?.let { add(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT)) }
+            nextUp.await().takeIf { it.isNotEmpty() }?.let { add(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
+            for ((view, items) in latest) items.await().takeIf { it.isNotEmpty() }?.let { add(MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay())) }
+            addAll(because.await())
         }
-        rows += runCatching { dev.nitrate.core.rows.BecauseYouWatched.rows(recentlyWatched(), ::similar) }.getOrDefault(emptyList())
-        return rows
     }
 
     /** Movies and episodes finished most recently. */
@@ -607,34 +607,37 @@ class JellyfinClient(
             .decode<List<ItemDto>>().map { it.toMediaItem() }
 
     @OptIn(ExperimentalTime::class)
-    override suspend fun libraryRows(library: MediaItem): List<MediaRow> {
+    /** Every row's request goes out at once; the rows keep their order. */
+    override suspend fun libraryRows(library: MediaItem): List<MediaRow> = coroutineScope {
         val id = library.id
         val prefix = "library/$id"
         val now = Clock.System.now().toString()
-        val rows = mutableListOf<MediaRow>()
-        fun add(key: String, title: String, items: List<MediaItem>, display: RowDisplay = RowDisplay()) {
-            if (items.isNotEmpty()) rows += MediaRow("$prefix/$key", title, items, display)
+        val wanted = mutableListOf<Triple<String, String, RowDisplay>>()
+        val loads = mutableListOf<kotlinx.coroutines.Deferred<List<MediaItem>>>()
+        fun add(key: String, title: String, display: RowDisplay = RowDisplay(), load: suspend () -> List<MediaItem>) {
+            wanted += Triple(key, title, display)
+            loads += async { load() }
         }
 
         when (library.collection) {
             CollectionKind.TV_SHOWS -> {
-                add("continue_watching", "Continue Watching", resumeItems(id, "Episode"), WIDE_DEFAULT)
-                add("next_up", "Next Up", items("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS)), WIDE_DEFAULT)
-                add("recently_added", "Recently Added", latest(id))
-                add("recently_released", "Recently Aired", query(id, "Episode", "PremiereDate", maxPremiere = now), WIDE_DEFAULT)
-                add("top_unwatched", "Top Unwatched", query(id, "Series", "CommunityRating", filters = "IsUnplayed"))
-                add("favorites", "Favorites", query(id, "Series", "SortName", "Ascending", filters = "IsFavorite"))
+                add("continue_watching", "Continue Watching", WIDE_DEFAULT) { resumeItems(id, "Episode") }
+                add("next_up", "Next Up", WIDE_DEFAULT) { items("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS)) }
+                add("recently_added", "Recently Added") { latest(id) }
+                add("recently_released", "Recently Aired", WIDE_DEFAULT) { query(id, "Episode", "PremiereDate", maxPremiere = now) }
+                add("top_unwatched", "Top Unwatched") { query(id, "Series", "CommunityRating", filters = "IsUnplayed") }
+                add("favorites", "Favorites") { query(id, "Series", "SortName", "Ascending", filters = "IsFavorite") }
             }
             else -> {
                 val types = if (library.collection == CollectionKind.MOVIES) "Movie" else null
-                add("continue_watching", "Continue Watching", resumeItems(id, types), WIDE_DEFAULT)
-                add("recently_released", "Recently Released", query(id, types, "PremiereDate", maxPremiere = now))
-                add("recently_added", "Recently Added", query(id, types, "DateCreated"))
-                add("top_unwatched", "Top Unwatched", query(id, types, "CommunityRating", filters = "IsUnplayed"))
-                add("favorites", "Favorites", query(id, types, "SortName", "Ascending", filters = "IsFavorite"))
+                add("continue_watching", "Continue Watching", WIDE_DEFAULT) { resumeItems(id, types) }
+                add("recently_released", "Recently Released") { query(id, types, "PremiereDate", maxPremiere = now) }
+                add("recently_added", "Recently Added") { query(id, types, "DateCreated") }
+                add("top_unwatched", "Top Unwatched") { query(id, types, "CommunityRating", filters = "IsUnplayed") }
+                add("favorites", "Favorites") { query(id, types, "SortName", "Ascending", filters = "IsFavorite") }
             }
         }
-        return rows
+        wanted.zip(loads.awaitAll()).mapNotNull { (w, items) -> if (items.isEmpty()) null else MediaRow("$prefix/${w.first}", w.second, items, w.third) }
     }
 
     private suspend fun resumeItems(parentId: String?, types: String?) = items(
@@ -1245,7 +1248,8 @@ class JellyfinClient(
         const val ROW_LIMIT = 24
         const val ROW_FIELDS = "Overview,PrimaryImageAspectRatio,Genres"
         const val PROBE_TIMEOUT_MS = 5_000L
-        const val LOCAL_PROBE_TIMEOUT_MS = 2_500L
+        /** A home server answers in well under a second; away from home this is what startup waits for it. */
+        const val LOCAL_PROBE_TIMEOUT_MS = 1_200L
 
         /** How long a library's codec index is reused before it's read again. */
         const val CODEC_INDEX_TTL_MS = 15 * 60_000L

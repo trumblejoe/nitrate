@@ -55,6 +55,8 @@ fun LibraryScreen(
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
     changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
+    /** Rows as last loaded, shown at once while fresh ones load. */
+    rowCache: dev.nitrate.android.storage.RowCache? = null,
 ) {
     val library by produceState<Result<MediaItem>?>(null, libraryId) {
         value = runCatching { repository.getItem(libraryId) }
@@ -106,7 +108,7 @@ fun LibraryScreen(
     when (tab) {
         LibraryTab.RECOMMENDED -> {
             val vm = viewModel(key = "library-rows-$libraryId") {
-                RowsViewModel(PageKeys.library(lib.id), { repository.libraryRows(lib) }, displaySettings, repository, changes)
+                RowsViewModel(PageKeys.library(lib.id), { repository.libraryRows(lib) }, displaySettings, repository, changes, cache = rowCache)
             }
             val state by vm.state.collectAsStateWithLifecycle()
             val overrides by vm.overrides.collectAsStateWithLifecycle()

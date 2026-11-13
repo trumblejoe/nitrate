@@ -1,5 +1,8 @@
 package dev.nitrate.core.rows
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 
@@ -34,9 +37,14 @@ object BecauseYouWatched {
         // Watched titles never come back as suggestions.
         recentlyWatched.forEach { shown += it.id; it.seriesId?.let(shown::add) }
         val rows = mutableListOf<MediaRow>()
-        for (seed in seeds(recentlyWatched, count * 2)) {
+        // Ask for every seed's suggestions at once, then pick in order.
+        val seeds = seeds(recentlyWatched, count * 2)
+        val found = kotlinx.coroutines.coroutineScope {
+            seeds.map { seed -> async { runCatching { similar(seed.id) }.getOrDefault(emptyList()) } }.awaitAll()
+        }
+        for ((seed, suggestions) in seeds.zip(found)) {
             if (rows.size == count) break
-            val items = pick(runCatching { similar(seed.id) }.getOrDefault(emptyList()), seed, shown)
+            val items = pick(suggestions, seed, shown)
             if (items.size < minItems) continue
             shown += items.map { it.id }
             rows += MediaRow(key(rows.size + 1), "Because you watched ${seed.name}", items, RowDisplay())
