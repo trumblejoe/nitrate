@@ -38,6 +38,8 @@ fun OfflineScreen(
     repository: MediaServer,
     screens: List<Pair<String, () -> Unit>>,
     onPlugins: () -> Unit,
+    /** Opens the server addresses (local, VPN, remote), to add the one that works from here. */
+    onServers: () -> Unit,
     onOnline: () -> Unit,
     onSignedOut: () -> Unit,
 ) {
@@ -47,7 +49,8 @@ fun OfflineScreen(
 
     suspend fun check() {
         checking = true
-        when (repository.checkSession()) {
+        // Every saved address (local, VPN, remote), not just the one that stopped answering.
+        when (repository.reconnect()) {
             SessionState.VALID -> onOnline()
             SessionState.EXPIRED, SessionState.NONE -> onSignedOut()
             SessionState.UNREACHABLE -> Unit
@@ -57,6 +60,9 @@ fun OfflineScreen(
 
     LaunchedEffect(Unit) {
         runCatching { first.requestFocus() }
+        // Straight away too: coming back from the server addresses, a new one may answer.
+        delay(1_000)
+        check()
         while (true) {
             delay(AUTO_RETRY_MS)
             check()
@@ -67,8 +73,9 @@ fun OfflineScreen(
         Column(Modifier.width(640.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Working offline", style = MaterialTheme.typography.displaySmall)
             Text(
-                "Can't reach ${repository.serverUrl ?: "your server"}. Movies and shows come back when it does; " +
-                    "Nitrate checks every 30 seconds. Your writing saves on this TV and backs up once the server is back.",
+                "Can't reach ${repository.serverUrl ?: "your server"} at any of its addresses. Movies and shows come back when it does; " +
+                    "Nitrate checks every 30 seconds. Away from home? Add its remote or VPN address under Server addresses. " +
+                    "Your writing saves on this TV and backs up once the server is back.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -83,6 +90,7 @@ fun OfflineScreen(
                     enabled = !checking,
                     modifier = if (screens.isEmpty()) Modifier.focusRequester(first) else Modifier,
                 ) { Text(if (checking) "Checking…" else "Try again") }
+                OutlinedButton(onClick = onServers) { Text("Server addresses") }
                 OutlinedButton(onClick = onPlugins) { Text("Plugins") }
             }
         }

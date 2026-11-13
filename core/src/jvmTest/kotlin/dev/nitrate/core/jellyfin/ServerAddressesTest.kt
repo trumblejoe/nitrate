@@ -120,4 +120,18 @@ class ServerAddressesTest {
         assertEquals(SessionState.VALID, restarted.restoreSession())
         assertEquals(cabin, restarted.serverUrl)
     }
+
+    /** Signed in at home with only the local address, then away: add the remote one from offline. */
+    @Test fun addRemoteWhileOffline() = runBlocking {
+        val onlyLocal = MemorySessionStorage(listOf(StoredSession(home, "token", "user-1", "sam")))
+        val client = JellyfinClient(engine, ClientIdentity("Nitrate", "1.0", "dev1", "Test"), onlyLocal, { caps() }, settings)
+        up.remove(home)
+        assertEquals(SessionState.UNREACHABLE, client.restoreSession())
+        // The offline screen's Server addresses: still lists the server, and saving a remote address connects.
+        assertEquals(listOf(home), client.servers().map { it.url })
+        assertEquals(SessionState.VALID, client.saveServerAddresses(home, local = home, vpn = null, remote = away))
+        assertEquals(away, client.serverUrl)
+        // Its "Try again" tries every address too.
+        assertEquals(SessionState.VALID, client.reconnect())
+    }
 }

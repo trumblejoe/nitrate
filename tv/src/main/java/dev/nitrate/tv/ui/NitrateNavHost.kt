@@ -260,6 +260,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 repository = container.server,
                 screens = enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> p.screenLabel to { nav.navigate(PluginScreenRoute(p.pluginId)) } },
                 onPlugins = { nav.navigate(PluginsRoute) },
+                onServers = { nav.navigate(ServerAddressesRoute) },
                 onOnline = {
                     container.settingsSync.pull()
                     nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } }

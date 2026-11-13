@@ -233,6 +233,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                         nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                     },
                     onSignedOut = { signedOut() },
+                    onServers = { nav.navigate(ServerAddressesRoute) },
                 )
             }
             screen<MainRoute> {

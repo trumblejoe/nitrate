@@ -229,14 +229,15 @@ private fun QuickConnect(actions: AppActions, serverUrl: String, onLoggedIn: () 
 
 /** Shown when the server can't be reached; writing still works. Re-checks every 30 s. */
 @Composable
-fun OfflineScreen(actions: AppActions, onOnline: () -> Unit, onSignedOut: () -> Unit) {
+fun OfflineScreen(actions: AppActions, onOnline: () -> Unit, onSignedOut: () -> Unit, onServers: () -> Unit = {}) {
     var checking by remember { mutableStateOf(false) }
     var writing by remember { mutableStateOf(false) }
     var downloads by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     suspend fun check() {
         checking = true
-        when (actions.server.checkSession()) {
+        // Every saved address (local, VPN, remote), not just the one that stopped answering.
+        when (actions.server.reconnect()) {
             SessionState.VALID -> onOnline()
             SessionState.EXPIRED, SessionState.NONE -> onSignedOut()
             SessionState.UNREACHABLE -> Unit
@@ -244,6 +245,9 @@ fun OfflineScreen(actions: AppActions, onOnline: () -> Unit, onSignedOut: () -> 
         checking = false
     }
     LaunchedEffect(Unit) {
+        // Straight away too: coming back from the server addresses, a new one may answer.
+        delay(1_000)
+        check()
         while (true) {
             delay(30_000)
             check()
@@ -262,12 +266,14 @@ fun OfflineScreen(actions: AppActions, onOnline: () -> Unit, onSignedOut: () -> 
     FormPage {
         Text("Working offline", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Can't reach ${actions.server.serverUrl ?: "your server"}. Your downloads play as normal, and what you " +
+            "Can't reach ${actions.server.serverUrl ?: "your server"} at any of its addresses. Away from home? Add its " +
+                "remote or VPN address under Server addresses. Your downloads play as normal, and what you " +
                 "watch syncs when the server is back. Your writing saves on this device and backs up then too.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Button(onClick = { downloads = true }, modifier = Modifier.fillMaxWidth()) { Text("Downloads") }
         OutlinedButton(onClick = { writing = true }, modifier = Modifier.fillMaxWidth()) { Text("Writing") }
+        OutlinedButton(onClick = onServers, modifier = Modifier.fillMaxWidth()) { Text("Server addresses") }
         OutlinedButton(onClick = { scope.launch { check() } }, enabled = !checking, modifier = Modifier.fillMaxWidth()) {
             Text(if (checking) "Checking…" else "Try again")
         }
