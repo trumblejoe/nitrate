@@ -409,4 +409,8 @@ class TvScreenshotTest {
             dev.nitrate.tv.ui.rows.CressidaRow(row, c.server, dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}), dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA, ink = dev.nitrate.core.rows.CressidaInk.PHOENIX))
         }
     }
+
+    @Test fun addToLists() = shoot("tv-add-to-lists") { c ->
+        dev.nitrate.tv.ui.lists.AddToListDialog(c.server, dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE), canCollect = true) {}
+    }
 }

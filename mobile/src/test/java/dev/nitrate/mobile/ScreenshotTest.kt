@@ -255,6 +255,10 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w411dp-h1050dp-night-xxhdpi")
     fun cressidaRow() = shoot("phone-row-cressida") { StyledRow(it, dev.nitrate.core.rows.RowStyle.CRESSIDA) }
 
+    @Test fun addToLists() = shoot("phone-add-to-lists") { a ->
+        dev.nitrate.mobile.ui.AddToListDialog(a, dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE)) {}
+    }
+
     /** The figurative inks large, to judge their detail. */
     @Test @Config(qualifiers = "w411dp-h1850dp-night-xxhdpi")
     fun cressidaFigures() = shoot("phone-cressida-figures") { a ->

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -47,46 +48,130 @@ fun TvDialog(onDismiss: () -> Unit, width: Int = 620, content: @Composable () ->
     }
 }
 
-/** Adds [item] to a playlist or collection, or a new one (collections when [canCollect]). */
+/**
+ * Adds [item] to any number of playlists and collections (collections when [canCollect]), new or
+ * existing: tick them in two side-by-side columns (both always in view; "Loading…" until each list
+ * arrives, so nothing moves under the cursor), review where it will go, then add.
+ */
 @Composable
 fun AddToListDialog(server: MediaServer, item: MediaItem, canCollect: Boolean, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val playlists by produceState<List<MediaItem>?>(null) { value = runCatching { server.playlists() }.getOrDefault(emptyList()) }
-    val collections by produceState<List<MediaItem>?>(null, canCollect) { value = if (canCollect) runCatching { server.collections() }.getOrDefault(emptyList()) else emptyList() }
-    var creating by remember { mutableStateOf<String?>(null) }
-    var name by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf<String?>(null) }
+    val choices by produceState<dev.nitrate.core.lists.ListChoices?>(null, canCollect) { value = dev.nitrate.core.lists.AddToLists.load(server, canCollect) }
+    val selected = remember { androidx.compose.runtime.mutableStateListOf<dev.nitrate.core.lists.ListTarget>() }
+    val created = remember { androidx.compose.runtime.mutableStateListOf<dev.nitrate.core.lists.ListTarget>() }
+    var naming by remember { mutableStateOf<dev.nitrate.core.lists.ListKind?>(null) }
+    var reviewing by remember { mutableStateOf(false) }
+    var results by remember { mutableStateOf<List<dev.nitrate.core.lists.ListResult>?>(null) }
+    var working by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
-    fun run(done: String, block: suspend () -> Unit) {
-        scope.launch { status = runCatching { block() }.fold({ done }, { "Couldn't do that: ${it.message}" }) }
-    }
-    TvDialog(onDismiss) {
-        Text("Add “${item.displayTitle}” to…", style = MaterialTheme.typography.headlineSmall)
-        status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-        val kind = creating
-        if (kind != null) {
-            TvTextField(name, { name = it }, placeholder = if (kind == "playlist") "Playlist name" else "Collection name", modifier = Modifier.focusRequester(first))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(enabled = name.isNotBlank(), onClick = {
-                    creating = null
-                    run("Added to new $kind “$name”") {
-                        if (kind == "playlist") server.createPlaylist(name.trim(), listOf(item.id), item.mediaKind == MediaKind.AUDIO) else server.createCollection(name.trim(), listOf(item.id))
+
+    fun toggle(t: dev.nitrate.core.lists.ListTarget) { if (selected.any { it.key == t.key }) selected.removeAll { it.key == t.key } else selected += t }
+
+    Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            Modifier.ignoreHeldSelect().width(if (canCollect) 880.dp else 560.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            val done = results
+            when {
+                done != null -> {
+                    Text("Added “${item.displayTitle}”", style = MaterialTheme.typography.headlineSmall)
+                    Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        done.forEach { r ->
+                            Text(
+                                (if (r.error == null) "✓  " else "✗  ") + "${r.target.kind.label.replaceFirstChar(Char::uppercase)} “${r.target.name}”" + (r.error?.let { " — couldn't: $it" } ?: ""),
+                                color = if (r.error == null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
-                }) { Text("Create") }
-                OutlinedButton(onClick = { creating = null }) { Text("Cancel") }
+                    Button(onClick = onDismiss, modifier = Modifier.focusRequester(first)) { Text("Done") }
+                    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+                }
+                reviewing -> {
+                    Text("Add “${item.displayTitle}” to ${dev.nitrate.core.lists.AddToLists.summary(selected)}?", style = MaterialTheme.typography.headlineSmall)
+                    Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        dev.nitrate.core.lists.ListKind.entries.forEach { kind ->
+                            val these = selected.filter { it.kind == kind }
+                            if (these.isNotEmpty()) {
+                                Text(kind.plural, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
+                                these.forEach { t -> Text("•  ${t.name}" + if (t.isNew) "  (new)" else "") }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(enabled = !working, onClick = {
+                            working = true
+                            scope.launch { results = dev.nitrate.core.lists.AddToLists.apply(server, item, selected.toList(), item.mediaKind == MediaKind.AUDIO); working = false }
+                        }, modifier = Modifier.focusRequester(first)) { Text(if (working) "Adding…" else "Add") }
+                        OutlinedButton(enabled = !working, onClick = { reviewing = false }) { Text("Back") }
+                    }
+                    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+                }
+                naming != null -> {
+                    val kind = naming!!
+                    var name by remember(kind) { mutableStateOf("") }
+                    Text("New ${kind.label}", style = MaterialTheme.typography.headlineSmall)
+                    TvTextField(name, { name = it }, placeholder = "${kind.label.replaceFirstChar(Char::uppercase)} name", modifier = Modifier.focusRequester(first))
+                    Text("It's made when you add, after the review.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(enabled = name.isNotBlank(), onClick = {
+                            val t = dev.nitrate.core.lists.ListTarget(kind, null, name.trim())
+                            if (created.none { it.key == t.key }) created += t
+                            if (selected.none { it.key == t.key }) selected += t
+                            naming = null
+                        }) { Text("Add to selection") }
+                        OutlinedButton(onClick = { naming = null }) { Text("Cancel") }
+                    }
+                    LaunchedEffect(kind) { runCatching { first.requestFocus() } }
+                }
+                else -> {
+                    Text("Add “${item.displayTitle}” to…", style = MaterialTheme.typography.headlineSmall)
+                    Text("Tick as many as you like, then Review.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.height(360.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        val kinds = if (canCollect) dev.nitrate.core.lists.ListKind.entries else listOf(dev.nitrate.core.lists.ListKind.PLAYLIST)
+                        kinds.forEachIndexed { i, kind ->
+                            val existing = choices?.let { if (kind == dev.nitrate.core.lists.ListKind.PLAYLIST) it.playlists else it.collections }
+                            Column(Modifier.weight(1f)) {
+                                Text(kind.plural + (existing?.let { " (${it.size})" } ?: ""), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                                androidx.compose.foundation.lazy.LazyColumn(Modifier.padding(top = 6.dp)) {
+                                    item(key = "new") {
+                                        ListItem(
+                                            selected = false,
+                                            onClick = { naming = kind },
+                                            headlineContent = { Text("＋ New ${kind.label}") },
+                                            modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
+                                        )
+                                    }
+                                    val all = created.filter { it.kind == kind } + existing.orEmpty()
+                                    items(all.size, key = { all[it].key }) { idx ->
+                                        val t = all[idx]
+                                        val on = selected.any { it.key == t.key }
+                                        ListItem(
+                                            selected = on,
+                                            onClick = { toggle(t) },
+                                            leadingContent = { Text(if (on) "☑" else "☐", style = MaterialTheme.typography.titleMedium) },
+                                            headlineContent = { Text(t.name + if (t.isNew) "  (new)" else "") },
+                                        )
+                                    }
+                                    if (existing == null) item(key = "loading") {
+                                        Text("Loading…", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                                    } else if (existing.isEmpty() && created.none { it.kind == kind }) item(key = "none") {
+                                        Text("None yet", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(enabled = selected.isNotEmpty(), onClick = { reviewing = true }) {
+                            Text(if (selected.isEmpty()) "Review" else "Review (${selected.size})")
+                        }
+                        OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+                    }
+                    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+                }
             }
-        } else {
-            Text("Playlists", style = MaterialTheme.typography.titleSmall)
-            ListItem(selected = false, onClick = { creating = "playlist"; name = "" }, headlineContent = { Text("＋ New playlist") }, modifier = Modifier.focusRequester(first))
-            playlists?.forEach { p -> ListItem(selected = false, onClick = { run("Added to “${p.name}”") { server.addToPlaylist(p.id, listOf(item.id)) } }, headlineContent = { Text(p.name) }) }
-            if (canCollect) {
-                Text("Collections", style = MaterialTheme.typography.titleSmall)
-                ListItem(selected = false, onClick = { creating = "collection"; name = "" }, headlineContent = { Text("＋ New collection") })
-                collections?.forEach { c -> ListItem(selected = false, onClick = { run("Added to “${c.name}”") { server.addToCollection(c.id, listOf(item.id)) } }, headlineContent = { Text(c.name) }) }
-            }
-            OutlinedButton(onClick = onDismiss) { Text("Done") }
         }
-        LaunchedEffect(kind) { runCatching { first.requestFocus() } }
     }
 }
 
