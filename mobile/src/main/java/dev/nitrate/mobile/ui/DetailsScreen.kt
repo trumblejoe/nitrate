@@ -104,7 +104,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
     val account by actions.container.account.collectAsState()
 
     TintedBackdrop(tint, strength = 0.32f) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomInset(40.dp))) {
             item(key = "hero") {
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val heroHeight = (maxWidth * 1.05f).coerceIn(340.dp, 560.dp)

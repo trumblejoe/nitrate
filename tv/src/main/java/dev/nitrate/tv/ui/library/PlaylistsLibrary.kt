@@ -35,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
@@ -171,9 +173,16 @@ private fun GroupedGrid(
             headingIndex.indexOfLast { it <= first + 1 }.coerceAtLeast(0)
         }
     }
-    fun jumpTo(group: Int) {
-        val target = headingIndex.getOrNull(group.coerceIn(0, groups.lastIndex)) ?: return
-        scope.launch { gridState.animateScrollToItem(target) }
+    // The first playlist of each group, to take focus when fast-forward/rewind jump there.
+    val firstTiles = remember(groups) { groups.map { FocusRequester() } }
+    fun jumpTo(group: Int, moveFocus: Boolean = false) {
+        val g = group.coerceIn(0, groups.lastIndex)
+        val target = headingIndex.getOrNull(g) ?: return
+        scope.launch {
+            gridState.animateScrollToItem(target)
+            // Focus goes with the jump, so it isn't left on a tile scrolled out of view.
+            if (moveFocus) runCatching { firstTiles[g].requestFocus() }
+        }
     }
 
     Row(Modifier.fillMaxSize()) {
@@ -202,14 +211,14 @@ private fun GroupedGrid(
                     // Fast-forward / rewind jump between groups.
                     val up = event.type == KeyEventType.KeyUp
                     when (event.key) {
-                        Key.MediaFastForward -> { if (up) jumpTo(currentGroup + 1); true }
-                        Key.MediaRewind -> { if (up) jumpTo(currentGroup - 1); true }
+                        Key.MediaFastForward -> { if (up) jumpTo(currentGroup + 1, moveFocus = true); true }
+                        Key.MediaRewind -> { if (up) jumpTo(currentGroup - 1, moveFocus = true); true }
                         else -> false
                     }
                 },
             ) {
                 item(key = "header", span = { GridItemSpan(maxLineSpan) }) { header() }
-                groupedItems(groups, repository, view, onOpen, onPlay) { group, index -> focused = group to index }
+                groupedItems(groups, repository, view, onOpen, onPlay, firstTiles) { group, index -> focused = group to index }
             }
             focused?.let { (name, index) ->
                 val size = groups.firstOrNull { it.name == name }?.items?.size ?: 0
@@ -230,16 +239,20 @@ private fun LazyGridScope.groupedItems(
     view: PlaylistLibraryView,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
+    firstTiles: List<FocusRequester>,
     onFocus: (group: String, index: Int) -> Unit,
 ) {
-    for (group in groups) {
+    for ((g, group) in groups.withIndex()) {
         // Each heading spans the line, so a group always starts on a fresh row.
         item(key = "group-${group.name}", span = { GridItemSpan(maxLineSpan) }) {
             Text(group.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 12.dp))
         }
         items(group.items.size, key = { "${group.name}-${group.items[it].id}" }) { i ->
             val item = group.items[i]
-            PlaylistTile(item, repository, view, onOpen, onPlay, Modifier.onFocusChanged { if (it.hasFocus) onFocus(group.name, i) })
+            PlaylistTile(
+                item, repository, view, onOpen, onPlay,
+                Modifier.then(if (i == 0) Modifier.focusRequester(firstTiles[g]) else Modifier).onFocusChanged { if (it.hasFocus) onFocus(group.name, i) },
+            )
         }
     }
 }

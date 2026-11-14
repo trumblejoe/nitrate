@@ -53,6 +53,9 @@ class RowsViewModel(
 ) : ViewModel() {
     private val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
     private val userId = server.userId
+    private val _refreshing = MutableStateFlow(false)
+    /** A reload is running (for a pull-to-refresh indicator). */
+    val refreshing: StateFlow<Boolean> = _refreshing
     private val builtIn = MutableStateFlow<Result<List<MediaRow>>?>(null)
     private val custom = MutableStateFlow<Map<String, MediaRow>>(emptyMap())
 
@@ -103,6 +106,7 @@ class RowsViewModel(
         val progressive = loadProgress
         if (progressive != null) {
             viewModelScope.launch {
+                _refreshing.value = true
                 var finished: List<MediaRow>? = null
                 val outcome = runCatching {
                     progressive().collect { p ->
@@ -117,17 +121,20 @@ class RowsViewModel(
                 outcome.exceptionOrNull()?.let { e -> if (builtIn.value?.isSuccess != true) builtIn.value = Result.failure(e) }
                 loadCustom(layout.value.entries.filter { it.isCustom })
                 val rows = finished
+                _refreshing.value = false
                 if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value))
             }
             return
         }
         viewModelScope.launch {
+            _refreshing.value = true
             val result = runCatching { loadBuiltIn().map { it.copy(defaultDisplay = defaults(it)) } }
             result.getOrNull()?.forEach { knownTitles[it.key] = it.title }
             // Keep showing old rows if a background refresh fails.
             if (result.isSuccess || builtIn.value?.isSuccess != true) builtIn.value = result
             loadCustom(layout.value.entries.filter { it.isCustom })
             val rows = result.getOrNull()
+            _refreshing.value = false
             if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value))
         }
     }

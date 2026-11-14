@@ -1,5 +1,8 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Alignment
@@ -65,8 +68,17 @@ private enum class Tab(val label: String, val icon: ImageVector) {
     SETTINGS("Settings", Icons.Default.Settings),
 }
 
-/** Bottom space screens leave for the floating navigation pill. */
-val NavBarClearance = 96.dp
+/** Bottom space tab screens leave for the floating navigation pill, which sits above the system navigation bar. */
+val NavBarClearance: Dp
+    @Composable get() = 96.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+/** [extra] below the last item of a full-screen list, plus room for the system navigation bar. */
+@Composable
+fun bottomInset(extra: Dp): Dp = extra + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+/** [ScreenPadding] all round a full-screen list, clear of the system navigation bar at the bottom. */
+@Composable
+fun screenListPadding() = PaddingValues(start = ScreenPadding, end = ScreenPadding, top = ScreenPadding, bottom = bottomInset(ScreenPadding))
 
 /** Every tab full-bleed, with a floating glass navigation pill over it. */
 @Composable

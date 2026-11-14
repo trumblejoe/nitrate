@@ -99,7 +99,7 @@ fun ProfilesScreen(
         LazyVerticalGrid(
             GridCells.Adaptive(120.dp),
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 16.dp, bottom = bottomInset(16.dp)),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {

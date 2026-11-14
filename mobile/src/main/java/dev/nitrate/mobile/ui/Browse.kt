@@ -128,7 +128,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
     Column(Modifier.fillMaxSize()) {
         BrowseBar(options, state.total, onChange = update, onFilters = { filtering = true })
         Box(Modifier.fillMaxSize()) {
-            val padding = PaddingValues(start = ScreenPadding, end = if (options.alphabetical) 34.dp else ScreenPadding, top = 4.dp, bottom = 24.dp)
+            val padding = PaddingValues(start = ScreenPadding, end = if (options.alphabetical) 34.dp else ScreenPadding, top = 4.dp, bottom = bottomInset(24.dp))
             when {
                 state.error != null && state.items.isEmpty() -> ErrorMessage(state.error ?: "", vm::retry)
                 state.loading -> Loading()
@@ -354,7 +354,7 @@ fun ArtistsGrid(actions: AppActions, library: MediaItem) {
         else -> LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 120.dp),
             state = grid,
-            contentPadding = PaddingValues(ScreenPadding),
+            contentPadding = screenListPadding(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize(),

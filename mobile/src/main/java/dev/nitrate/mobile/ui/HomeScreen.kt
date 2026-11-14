@@ -95,7 +95,11 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
     val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges, ArtworkFirst::display, cache = container.dataCache, loadProgress = container.server::homeRowsProgress) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
-    var refreshing by remember { mutableStateOf(false) }
+    // The spinner shows for a pull, until that reload has finished (not for quiet background reloads).
+    val reloading by vm.refreshing.collectAsStateWithLifecycle()
+    var pulled by remember { mutableStateOf(false) }
+    LaunchedEffect(reloading) { if (!reloading) pulled = false }
+    val refreshing = pulled && reloading
     var editing by remember { mutableStateOf(false) }
     if (editing) PageEditor("Home", vm, actions, libraryId = null, onDone = { editing = false })
 
@@ -119,8 +123,8 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
             PrefetchRows(list, s.rows, overrides, actions.server)
 
             TintedBackdrop(tint, modifier) {
-                PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; vm.refresh(); refreshing = false }) {
-                    LazyColumn(state = list, contentPadding = PaddingValues(bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(28.dp), modifier = Modifier.fillMaxSize()) {
+                PullToRefreshBox(isRefreshing = refreshing, onRefresh = { pulled = true; vm.refresh() }) {
+                    LazyColumn(state = list, contentPadding = PaddingValues(bottom = NavBarClearance + 24.dp), verticalArrangement = Arrangement.spacedBy(28.dp), modifier = Modifier.fillMaxSize()) {
                         // Room for the wordmark bar.
                         item(key = "top") { Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars).height(56.dp)) }
                         item(key = "pages") { PinnedPages(actions) }

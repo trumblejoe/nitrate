@@ -145,7 +145,7 @@ private fun LibraryRows(actions: AppActions, library: MediaItem) {
         is RowsState.Loaded -> {
             val list = androidx.compose.foundation.lazy.rememberLazyListState()
             PrefetchRows(list, s.rows, overrides, actions.server)
-            LazyColumn(state = list, contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            LazyColumn(state = list, contentPadding = PaddingValues(top = 16.dp, bottom = bottomInset(16.dp)), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) }
             item(key = "edit") {
                 Box(Modifier.fillMaxWidth().padding(bottom = 24.dp), Alignment.Center) {
@@ -170,7 +170,7 @@ private fun LibraryGrid(actions: AppActions, library: MediaItem) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = if (playlists) 150.dp else 110.dp),
         state = grid,
-        contentPadding = PaddingValues(ScreenPadding),
+        contentPadding = screenListPadding(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize(),
@@ -198,8 +198,13 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
     val server = actions.server
     val scope = rememberCoroutineScope()
     var refresh by remember { mutableIntStateOf(0) }
-    val playlist by produceState<MediaItem?>(null, playlistId, refresh) { value = runCatching { server.getItem(playlistId) }.getOrNull() }
-    val items by produceState<List<MediaItem>?>(null, playlistId, refresh) { value = runCatching { server.playlistItems(playlistId) }.getOrDefault(emptyList()) }
+    // Kept while the page is in the back stack: coming back shows it at once, then refreshes quietly.
+    var playlist by retained<MediaItem?>("playlist/$playlistId") { null }
+    var items by retained<List<MediaItem>?>("playlist-items/$playlistId") { null }
+    LaunchedEffect(playlistId, refresh) {
+        runCatching { server.getItem(playlistId) }.getOrNull()?.let { playlist = it }
+        items = runCatching { server.playlistItems(playlistId) }.getOrElse { items ?: emptyList() }
+    }
     var editing by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }

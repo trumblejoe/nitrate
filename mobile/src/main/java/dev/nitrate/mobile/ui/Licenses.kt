@@ -32,7 +32,7 @@ import dev.nitrate.core.OpenSource
 fun LicensesScreen() {
     val context = LocalContext.current
     var open by remember { mutableStateOf<String?>(null) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = ScreenPadding, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, top = 16.dp, bottom = bottomInset(16.dp)), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))

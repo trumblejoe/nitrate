@@ -78,7 +78,7 @@ fun LiveTvScreen(actions: AppActions) {
         when {
             channels == null -> Loading()
             channels.isEmpty() -> ErrorMessage(state.error ?: "No channels. Live TV needs a tuner set up on the server.", vm::refresh)
-            tab == 0 -> LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
+            tab == 0 -> LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = bottomInset(8.dp))) {
                 items(channels, key = { it.id }) { ch ->
                     OnNowRow(actions, ch, state.guide[ch.id].orEmpty(), state.nowMs) { actions.play(ch.item, false) }
                 }
@@ -88,7 +88,7 @@ fun LiveTvScreen(actions: AppActions) {
             }
             else -> if (state.recordings.isEmpty()) {
                 ErrorMessage("No recordings yet. Pick something in the guide to record it.")
-            } else LazyVerticalGrid(GridCells.Adaptive(160.dp), contentPadding = PaddingValues(ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            } else LazyVerticalGrid(GridCells.Adaptive(160.dp), contentPadding = screenListPadding(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(state.recordings, key = { it.id }) { r ->
                     MediaCard(r, actions.server.cardImage(r, CardShape.WIDE), CardShape.WIDE, title = r.name, subtitle = r.episodeLabel, onClick = { actions.play(r, false) })
                 }
@@ -151,7 +151,7 @@ private fun GuideGrid(
             Text("${time(windowStartMs)} – ${time(windowStartMs + windowMs)}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
             TextButton(onClick = { onShift(slots / 2) }) { Text("Later ›") }
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomInset(24.dp))) {
             item {
                 Row {
                     Spacer(Modifier.width(88.dp))

@@ -72,7 +72,8 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
     val recent by history.recent.collectAsState(emptyList())
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf(initialQuery) }
-    var results by remember { mutableStateOf<Result<SearchResults>?>(null) }
+    var results by retained<Result<SearchResults>?>("search-results") { null }
+    var resultsFor by retained("search-results-for") { "" }
     var loading by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
 
@@ -81,12 +82,14 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
             results = null
             return@LaunchedEffect
         }
+        // Back from a result: what was shown is still right.
+        if (query == resultsFor && results?.isSuccess == true) return@LaunchedEffect
         delay(150) // A short pause in typing.
         loading = true
         // Quick matches first (names and pictures, cheap for the server), then the full results.
         // A newer query cancels this one: not an error to show.
         try { results = Result.success(actions.server.searchHints(query)) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
-        results = try { Result.success(actions.server.search(query)) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results?.takeIf { it.isSuccess } ?: Result.failure(e) }
+        results = try { Result.success(actions.server.search(query).also { resultsFor = query }) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results?.takeIf { it.isSuccess } ?: Result.failure(e) }
         loading = false
     }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -226,8 +229,9 @@ private fun EpisodeResult(ep: MediaItem, actions: AppActions, onClick: () -> Uni
 /** Everything a person appears in, newest first (or, with [studio] or [year], everything from that studio or year). */
 @Composable
 fun PersonScreen(actions: AppActions, personId: String, name: String, studio: String? = null, year: Int? = null) {
-    var items by remember { mutableStateOf<Result<List<MediaItem>>?>(null) }
+    var items by retained<Result<List<MediaItem>>?>("person/$personId/$studio/$year") { null }
     LaunchedEffect(personId, studio, year) {
+        if (items?.isSuccess == true) return@LaunchedEffect
         items = runCatching {
             when {
                 studio != null -> actions.server.queryItems(dev.nitrate.core.pages.Browse.byStudio(studio))
@@ -239,7 +243,7 @@ fun PersonScreen(actions: AppActions, personId: String, name: String, studio: St
     TintedBackdrop(null, strength = 0.25f) {
         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
             columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(110.dp),
-            contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = 32.dp),
+            contentPadding = PaddingValues(start = ScreenPadding, end = ScreenPadding, bottom = bottomInset(32.dp)),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

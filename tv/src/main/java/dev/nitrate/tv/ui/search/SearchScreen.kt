@@ -43,6 +43,7 @@ import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.Person
 import dev.nitrate.core.model.SearchResults
 import dev.nitrate.tv.ui.components.MediaCard
+import dev.nitrate.tv.ui.components.retained
 import dev.nitrate.tv.ui.components.TvTextField
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -63,7 +64,8 @@ fun SearchScreen(
     onPerson: (Person) -> Unit,
 ) {
     var query by remember { mutableStateOf(initialQuery) }
-    var results by remember { mutableStateOf<SearchResults?>(null) }
+    var results by retained<SearchResults?>("search-results") { null }
+    var resultsFor by retained("search-results-for") { "" }
     var searching by remember { mutableStateOf(false) }
     val recent by history.recent.collectAsState(emptyList())
     val scope = rememberCoroutineScope()
@@ -87,12 +89,14 @@ fun SearchScreen(
             results = null
             return@LaunchedEffect
         }
+        // Back from a result: what was shown is still right.
+        if (q == resultsFor && results != null) return@LaunchedEffect
         delay(200)
         searching = true
         // Quick matches first (names and pictures, cheap for the server), then the full results.
         // A newer query cancels this one (keep what's shown until its results arrive).
         try { results = repository.searchHints(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
-        results = try { repository.search(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results }
+        results = try { repository.search(q).also { resultsFor = q } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results }
         searching = false
     }
     LaunchedEffect(Unit) {
@@ -170,8 +174,9 @@ fun SearchScreen(
 /** Everything a person appears in (or, with [studio] or [year], everything from that studio or year), as cards. */
 @Composable
 fun PersonScreen(repository: MediaServer, person: Person, onOpen: (MediaItem) -> Unit, studio: String? = null, year: Int? = null) {
-    var items by remember { mutableStateOf<List<MediaItem>?>(null) }
+    var items by retained<List<MediaItem>?>("person/${person.id}/$studio/$year") { null }
     LaunchedEffect(person.id, studio, year) {
+        if (items != null) return@LaunchedEffect
         items = runCatching {
             when {
                 studio != null -> repository.queryItems(dev.nitrate.core.pages.Browse.byStudio(studio))

@@ -66,9 +66,12 @@ fun PlaylistScreen(
 ) {
     val id = remember(playlistId) { playlistId }
     var refresh by remember { mutableStateOf(0) }
-    val playlist by produceState<MediaItem?>(null, id, refresh) { value = runCatching { repository.getItem(id) }.getOrNull() }
-    val items by produceState<List<MediaItem>?>(null, id, refresh) {
-        value = runCatching { repository.playlistItems(id) }.getOrDefault(emptyList())
+    // Kept while the page is in the back stack: coming back shows it at once, then refreshes quietly.
+    var playlist by dev.nitrate.tv.ui.components.retained<MediaItem?>("playlist/$id") { null }
+    var items by dev.nitrate.tv.ui.components.retained<List<MediaItem>?>("playlist-items/$id") { null }
+    LaunchedEffect(id, refresh) {
+        runCatching { repository.getItem(id) }.getOrNull()?.let { playlist = it }
+        items = runCatching { repository.playlistItems(id) }.getOrElse { items ?: emptyList() }
     }
     var editing by remember { mutableStateOf(false) }
     var entryActions by remember { mutableStateOf<Int?>(null) }
