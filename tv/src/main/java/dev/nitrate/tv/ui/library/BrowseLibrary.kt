@@ -86,6 +86,7 @@ fun BrowseLibrary(
     val vm = viewModel(key = "browse-${library.id}") { BrowseViewModel(repository, displaySettings, library) }
     val state by vm.state.collectAsStateWithLifecycle()
     val genres by vm.genres.collectAsStateWithLifecycle()
+    val libraryFilters by vm.filters.collectAsStateWithLifecycle()
     val options = state.options
     val grid = rememberLazyGridState()
     val scope = rememberCoroutineScope()
@@ -197,7 +198,7 @@ fun BrowseLibrary(
 
     when (dialog) {
         "sort" -> SortDialog(options, onPick = { change -> update(change); dialog = null }, onDismiss = { dialog = null })
-        "filters" -> FilterDialog(options, genres, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
+        "filters" -> FilterDialog(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
     }
 }
 
@@ -246,7 +247,7 @@ private fun SortDialog(options: BrowseOptions, onPick: ((BrowseOptions) -> Brows
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FilterDialog(options: BrowseOptions, genres: List<String>, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
+private fun FilterDialog(options: BrowseOptions, genres: List<String>, available: dev.nitrate.core.model.LibraryFilters, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -284,10 +285,16 @@ private fun FilterDialog(options: BrowseOptions, genres: List<String>, codecs: B
             }
             Group("Decade") {
                 FilterChip(options.decade == null, { onChange { it.copy(decade = null) } }) { Text("Any") }
-                Browse.decades().forEach { d -> FilterChip(options.decade == d, { onChange { it.copy(decade = if (it.decade == d) null else d) } }) { Text("${d}s") } }
+                Browse.decadesFor(available.years).forEach { d -> FilterChip(options.decade == d, { onChange { it.copy(decade = if (it.decade == d) null else d) } }) { Text("${d}s") } }
+            }
+            if (available.officialRatings.isNotEmpty()) Group("Age rating (any of)") {
+                available.officialRatings.forEach { r -> FilterChip(r in options.officialRatings, { onChange { it.toggleRating(r) } }) { Text(r) } }
             }
             if (genres.isNotEmpty()) Group("Genres (any of)") {
                 genres.forEach { g -> FilterChip(g in options.genres, { onChange { o -> o.copy(genres = if (g in o.genres) o.genres - g else o.genres + g) } }) { Text(g) } }
+            }
+            if (available.tags.isNotEmpty()) Group("Tags (any of)") {
+                available.tags.take(60).forEach { t -> FilterChip(t in options.tags, { onChange { it.toggleTag(t) } }) { Text(t) } }
             }
             if (options.filterCount > 0) OutlinedButton(onClick = { onChange { it.clearFilters() } }) { Text("Clear all") }
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }

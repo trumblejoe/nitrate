@@ -36,6 +36,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -126,6 +127,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
 
         header("Display", "In this device's display profile. Spoiler hiding, custom pages and series languages are the same on every device.")
         item { DisplayProfileRow(actions) }
+        item { MissingEpisodesToggle(actions) }
         displaySettings(prefs) { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
 
         header("Playback", "Settings for this device; they aren't synced.")
@@ -527,4 +529,17 @@ private fun DeviceReportRow(actions: AppActions) {
         supportingContent = { Text(message ?: "What this device can play, saved to your Jellyfin server's logs. During playback, Info → Send log adds the file and what happened.") },
         trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
     )
+}
+
+/** Season lists include episodes you don't have (marked Missing, or with their air date): your server account's setting. */
+@Composable
+private fun MissingEpisodesToggle(actions: AppActions) {
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { on = runCatching { actions.server.showsMissingEpisodes() }.getOrNull() }
+    Toggle("Show missing episodes", "Seasons list episodes you don't have, marked Missing or with their air date. Saved to your server account", on == true) { next ->
+        if (on == null) return@Toggle
+        on = next
+        scope.launch { if (runCatching { actions.server.setShowMissingEpisodes(next) }.isFailure) on = !next }
+    }
 }

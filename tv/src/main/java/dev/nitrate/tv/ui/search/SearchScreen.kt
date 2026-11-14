@@ -87,10 +87,12 @@ fun SearchScreen(
             results = null
             return@LaunchedEffect
         }
-        delay(350)
+        delay(200)
         searching = true
+        // Quick matches first (names and pictures, cheap for the server), then the full results.
         // A newer query cancels this one (keep what's shown until its results arrive).
-        results = try { repository.search(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { null }
+        try { results = repository.searchHints(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        results = try { repository.search(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results }
         searching = false
     }
     LaunchedEffect(Unit) {
@@ -165,11 +167,19 @@ fun SearchScreen(
     }
 }
 
-/** Everything a person appears in, as a grid of cards. */
+/** Everything a person appears in (or, with [studio] or [year], everything from that studio or year), as cards. */
 @Composable
-fun PersonScreen(repository: MediaServer, person: Person, onOpen: (MediaItem) -> Unit) {
+fun PersonScreen(repository: MediaServer, person: Person, onOpen: (MediaItem) -> Unit, studio: String? = null, year: Int? = null) {
     var items by remember { mutableStateOf<List<MediaItem>?>(null) }
-    LaunchedEffect(person.id) { items = runCatching { repository.itemsWithPerson(person.id) }.getOrDefault(emptyList()) }
+    LaunchedEffect(person.id, studio, year) {
+        items = runCatching {
+            when {
+                studio != null -> repository.queryItems(dev.nitrate.core.pages.Browse.byStudio(studio))
+                year != null -> repository.queryItems(dev.nitrate.core.pages.Browse.byYear(year))
+                else -> repository.itemsWithPerson(person.id)
+            }
+        }.getOrDefault(emptyList())
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(PagePadding)) {
         item { Text(person.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 16.dp)) }
         val list = items

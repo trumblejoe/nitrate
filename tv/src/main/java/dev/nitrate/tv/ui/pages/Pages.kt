@@ -256,6 +256,7 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
                 trailingContent = { Switch(checked = on, onCheckedChange = null) },
             )
         }
+        item { MissingEpisodesToggle(container) }
         item {
             ListItem(
                 selected = false,
@@ -283,4 +284,23 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+}
+
+/** Season lists include episodes you don't have (marked Missing, or with their air date): your server account's setting. */
+@Composable
+private fun MissingEpisodesToggle(container: AppContainer) {
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { on = runCatching { container.server.showsMissingEpisodes() }.getOrNull() }
+    ListItem(
+        selected = false,
+        onClick = {
+            val next = !(on ?: return@ListItem)
+            on = next
+            scope.launch { if (runCatching { container.server.setShowMissingEpisodes(next) }.isFailure) on = !next }
+        },
+        headlineContent = { Text("Show missing episodes") },
+        supportingContent = { Text("Seasons list episodes you don't have, marked Missing or with their air date. Saved to your server account") },
+        trailingContent = { Switch(checked = on == true, onCheckedChange = null) },
+    )
 }

@@ -80,7 +80,8 @@ class JellyfinContractTest {
             path.endsWith("/QuickConnect/Enabled") || path.endsWith("/QuickConnect/Authorize") -> "true"
             path.contains("/QuickConnect/") -> """{"Secret":"s","Code":"123456","Authenticated":true}"""
             path.contains("/DisplayPreferences/") -> """{"Id":"x","CustomPrefs":{"a":"1"},"Client":"nitrate","SortBy":"SortName"}"""
-            path.endsWith("/Items/Latest") -> "[$ITEM]"
+            path.endsWith("/Items/Latest") || path.endsWith("/LocalTrailers") || path.endsWith("/SpecialFeatures") -> "[$ITEM]"
+            path.endsWith("/Items/Filters") -> """{"Genres":["Drama"],"Tags":["noir"],"OfficialRatings":["PG-13"],"Years":[1999]}"""
             path.endsWith("/PlaybackInfo") -> PLAYBACK_INFO
             Regex("/Items/[0-9a-f-]+$").containsMatchIn(path) -> ITEM
             path.endsWith("/Users/Me") -> """{"Id":"$HEX","Name":"joe"}"""
@@ -238,6 +239,13 @@ class JellyfinContractTest {
         client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(DASHED, dev.nitrate.core.model.CollectionKind.TV_SHOWS), 0, 10)
         client.followedSeries()
         assertEquals("upload_nitrate.log", client.sendClientLog("Nitrate playback report"))
+        client.searchHints("nitr")
+        client.additionalParts(DASHED)
+        client.extras(DASHED)
+        client.upcomingEpisodes()
+        client.libraryFilters(DASHED, listOf(dev.nitrate.core.model.ItemKind.MOVIE))
+        client.showsMissingEpisodes()
+        client.setShowMissingEpisodes(true)
         val speed = client.speedCheck()
         assertEquals(7, speed.size)
         assertTrue(speed.joinToString { "${it.id}:${it.error}" }, speed.all { it.error == null })
@@ -322,6 +330,11 @@ class JellyfinContractTest {
             serializer<RemoteSubtitleDto>() to "RemoteSubtitleInfo",
             serializer<CapabilitiesDto>() to "ClientCapabilitiesDto",
             serializer<MediaSegmentDto>() to "MediaSegmentDto",
+            serializer<SearchHintResultDto>() to "SearchHintResult",
+            serializer<SearchHintDto>() to "SearchHint",
+            serializer<ChapterInfoDto>() to "ChapterInfo",
+            serializer<MediaUrlDto>() to "MediaUrl",
+            serializer<QueryFiltersLegacyDto>() to "QueryFiltersLegacy",
         ).flatMap { (s, schema) -> fields(s.descriptor, schema(schema), schema) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
     }
@@ -466,7 +479,7 @@ class JellyfinContractTest {
     private companion object {
         const val HEX = "0123456789abcdef0123456789abcdef"
         const val DASHED = "01234567-89ab-cdef-0123-456789abcdef"
-        val USER = """{"Id":"$HEX","Name":"joe","HasPassword":true,"Policy":{"IsAdministrator":true,"EnableContentDownloading":true,"AuthenticationProviderId":"x","PasswordResetProviderId":"y"}}"""
+        val USER = """{"Id":"$HEX","Name":"joe","HasPassword":true,"Configuration":{"DisplayMissingEpisodes":false,"PlayDefaultAudioTrack":true},"Policy":{"IsAdministrator":true,"EnableContentDownloading":true,"AuthenticationProviderId":"x","PasswordResetProviderId":"y"}}"""
         val ITEM = """{"Id":"$HEX","Name":"Pilot","Type":"Episode","MediaType":"Video","SeriesId":"$HEX","ParentIndexNumber":1,"IndexNumber":1,
             |"RunTimeTicks":36000000000,"ImageTags":{"Primary":"p","Thumb":"t","Logo":"l"},"BackdropImageTags":["b0","b1"],
             |"UserData":{"Played":false,"PlaybackPositionTicks":10000000,"IsFavorite":true},"LocationType":"FileSystem",

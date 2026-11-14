@@ -10,6 +10,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,7 +94,7 @@ private const val SEEK_BACK_MS = 10_000L
 private const val SEEK_FORWARD_MS = 30_000L
 
 
-private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE }
+private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS }
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -234,6 +237,9 @@ fun PlayerScreen(
                     Key.MediaFastForward -> { player.seekTo(player.currentPosition + SEEK_FORWARD_MS); true }
                     Key.MediaRewind -> { player.seekTo(player.currentPosition - SEEK_BACK_MS); true }
                     Key.Captions -> { panel = Panel.SUBTITLES; true }
+                    // Next/previous: by chapter, when the title has them.
+                    Key.MediaNext -> item?.chapters?.let { dev.nitrate.core.playback.Chapters.next(it, player.currentPosition) }?.let { player.seekTo(it); true } ?: false
+                    Key.MediaPrevious -> item?.chapters?.let { dev.nitrate.core.playback.Chapters.previous(it, player.currentPosition) }?.let { player.seekTo(it); true } ?: false
                     else -> false
                 }
             }
@@ -271,7 +277,8 @@ fun PlayerScreen(
                     player.seekTo(if (duration > 0) target.coerceAtMost(duration) else target)
                 },
                 onOpen = { panel = it },
-                extraButtons = panels.map { it.panelLabel to { togglePanel(it) } } +
+                extraButtons = listOfNotNull(("Chapters" to { panel = Panel.CHAPTERS }).takeIf { (item?.chapters?.size ?: 0) > 1 }) +
+                    panels.map { it.panelLabel to { togglePanel(it) } } +
                     listOfNotNull(sendLog?.let { send ->
                         "Send log" to {
                             logMessage = "Sending the playback log…"
@@ -317,6 +324,9 @@ fun PlayerScreen(
     if (p != null && panel == Panel.MORE) {
         PlayerMoreDialog(repository, playbackSettings, session, sleepAt, sleepAtEndState.value,
             onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDismiss = { panel = Panel.NONE }, syncPlay = syncPlay)
+    }
+    item?.takeIf { panel == Panel.CHAPTERS && it.chapters.size > 1 }?.let { current ->
+        ChapterDialog(current, repository, player.currentPosition, onSeek = { player.seekTo(it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })
     }
     if (p != null && panel == Panel.AUDIO) {
         TrackDialog("Audio", p.audioChoices(), p.audioIndex, onSelect = { selectTrack(StreamKind.AUDIO, it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })
@@ -410,3 +420,35 @@ private fun formatTime(ms: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
+
+/** The title's chapters with their pictures; the one playing is focused, OK jumps there. */
+@Composable
+private fun ChapterDialog(item: dev.nitrate.core.model.MediaItem, server: dev.nitrate.core.MediaServer, positionMs: Long, onSeek: (Long) -> Unit, onDismiss: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    val now = dev.nitrate.core.playback.Chapters.current(item.chapters, positionMs).coerceAtLeast(0)
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(Modifier.width(620.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(24.dp)) {
+            Text("Chapters", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp))
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                items(item.chapters.size) { i ->
+                    val c = item.chapters[i]
+                    androidx.tv.material3.ListItem(
+                        selected = i == now,
+                        onClick = { onSeek(c.startMs) },
+                        leadingContent = {
+                            coil3.compose.AsyncImage(
+                                server.chapterImageUrl(item, i, 320), null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),
+                            )
+                        },
+                        headlineContent = { Text(dev.nitrate.core.playback.Chapters.title(item.chapters, i)) },
+                        supportingContent = { Text(dev.nitrate.core.model.formatClock(c.startMs)) },
+                        modifier = if (i == now) Modifier.focusRequester(focus) else Modifier,
+                    )
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}

@@ -93,6 +93,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
     val vm = viewModel(key = "browse-${library.id}") { BrowseViewModel(actions.server, actions.container.displaySettings, library) }
     val state by vm.state.collectAsStateWithLifecycle()
     val genres by vm.genres.collectAsStateWithLifecycle()
+    val libraryFilters by vm.filters.collectAsStateWithLifecycle()
     val options = state.options
     val scope = rememberCoroutineScope()
     val grid = rememberLazyGridState()
@@ -162,7 +163,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
             }
         }
     }
-    if (filtering) FilterSheet(options, genres, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { filtering = false })
+    if (filtering) FilterSheet(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { filtering = false })
 }
 
 @Composable
@@ -275,7 +276,7 @@ private fun EmptyResults(options: BrowseOptions, onClear: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun FilterSheet(options: BrowseOptions, genres: List<String>, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
+private fun FilterSheet(options: BrowseOptions, genres: List<String>, available: dev.nitrate.core.model.LibraryFilters, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = ScreenPadding).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -313,12 +314,18 @@ private fun FilterSheet(options: BrowseOptions, genres: List<String>, codecs: Bo
             }
             Group("Decade") {
                 FilterChip(options.decade == null, { onChange { it.copy(decade = null) } }, label = { Text("Any") })
-                Browse.decades().forEach { d -> FilterChip(options.decade == d, { onChange { it.copy(decade = if (it.decade == d) null else d) } }, label = { Text("${d}s") }) }
+                Browse.decadesFor(available.years).forEach { d -> FilterChip(options.decade == d, { onChange { it.copy(decade = if (it.decade == d) null else d) } }, label = { Text("${d}s") }) }
+            }
+            if (available.officialRatings.isNotEmpty()) Group("Age rating (any of)") {
+                available.officialRatings.forEach { r -> FilterChip(r in options.officialRatings, { onChange { it.toggleRating(r) } }, label = { Text(r) }) }
             }
             if (genres.isNotEmpty()) Group("Genres (any of)") {
                 genres.forEach { g ->
                     FilterChip(g in options.genres, { onChange { o -> o.copy(genres = if (g in o.genres) o.genres - g else o.genres + g) } }, label = { Text(g) })
                 }
+            }
+            if (available.tags.isNotEmpty()) Group("Tags (any of)") {
+                available.tags.take(60).forEach { t -> FilterChip(t in options.tags, { onChange { it.toggleTag(t) } }, label = { Text(t) }) }
             }
         }
     }

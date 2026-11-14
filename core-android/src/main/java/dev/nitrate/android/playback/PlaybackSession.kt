@@ -310,6 +310,14 @@ class PlaybackSession(
                 localProgress = null // Recorded as watched here, not again on release.
                 appScope.launch { record(duration, duration, true) }
             }
+            // A title in several files: on to the next part.
+            remainingParts.firstOrNull()?.let { next ->
+                if (group == null) {
+                    remainingParts = remainingParts.drop(1)
+                    load(next.id, fromStart = true, startMs = 0L, nextPart = true)
+                    return
+                }
+            }
             onEnded()
         }
     }
@@ -361,8 +369,14 @@ class PlaybackSession(
     }
 
     /** Loads [itemId] and starts playing: at [startMs] if given, else resuming unless [fromStart]. */
-    fun load(itemId: String, fromStart: Boolean, startMs: Long? = null) {
-        log("Load $itemId (fromStart=$fromStart, startMs=$startMs)")
+    /** The rest of a title split across several files, played on when each part ends. */
+    private var remainingParts: List<MediaItem> = emptyList()
+
+    fun load(itemId: String, fromStart: Boolean, startMs: Long? = null) = load(itemId, fromStart, startMs, nextPart = false)
+
+    private fun load(itemId: String, fromStart: Boolean, startMs: Long?, nextPart: Boolean) {
+        log("Load $itemId (fromStart=$fromStart, startMs=$startMs${if (nextPart) ", next part" else ""})")
+        if (!nextPart) remainingParts = emptyList()
         pendingItem = itemId to (startMs ?: 0)
         group?.let { g ->
             // Watching together: the group decides where everyone starts.
@@ -377,6 +391,10 @@ class PlaybackSession(
                     _item.value = it
                     start(startMs ?: if (fromStart) 0L else it.user.positionMs, forceTranscode = false, useMemory = true)
                     loadExtras(it.id)
+                    if (!nextPart && (it.partCount ?: 1) > 1) {
+                        remainingParts = runCatching { server.additionalParts(it.id) }.getOrDefault(emptyList())
+                        log("${remainingParts.size} more part(s) to play after this one")
+                    }
                 }
                 .onFailure { _error.value = it.message ?: "Could not load item" }
         }
@@ -495,7 +513,8 @@ class PlaybackSession(
                 forceTranscode = forceTranscode,
                 audioIndex = audioIndex,
                 subtitleIndex = subtitleIndex,
-                mediaSourceId = _plan.value?.mediaSourceId,
+                // The same version on a track change; otherwise the one chosen on the details page, if any.
+                mediaSourceId = _plan.value?.takeIf { it.itemId == current.id }?.mediaSourceId ?: VersionChoices[current.id],
             )
         }.onSuccess { p ->
             // The plan this replaces (a track change): stopped now that the new one exists, so the

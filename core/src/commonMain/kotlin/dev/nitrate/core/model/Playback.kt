@@ -45,6 +45,8 @@ data class MediaSource(
     val streams: List<MediaStream>,
     /** File size in bytes, when the server knows it. */
     val size: Long? = null,
+    /** The version's name when a title has several ("4K", "Director's cut"...). */
+    val name: String? = null,
 )
 
 /** Mime type the players use for a text subtitle codec, or null for image formats (PGS, VobSub). */

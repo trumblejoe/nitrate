@@ -138,6 +138,13 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                 Column(Modifier.padding(horizontal = ScreenPadding, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { prefs.facts(item).forEach { GlassChip(it) } }
                     if (item.genres.isNotEmpty() && prefs.genres) Text(item.genres.take(4).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    // More like it, by studio or year.
+                    val studio = item.studios.firstOrNull()
+                    val year = item.productionYear
+                    if (studio != null || year != null) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        studio?.let { Text("More from $it ›", color = accentColor(), style = MaterialTheme.typography.labelLarge, modifier = Modifier.pressable({ actions.nav.navigate(PersonRoute("", it, studio = it)) }).padding(vertical = 4.dp)) }
+                        year?.let { Text("More from $it ›", color = accentColor(), style = MaterialTheme.typography.labelLarge, modifier = Modifier.pressable({ actions.nav.navigate(PersonRoute("", "From $it", year = it)) }).padding(vertical = 4.dp)) }
+                    }
                     val music = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
                     if (item.kind == ItemKind.MUSIC_ALBUM) item.albumArtist?.let { artist ->
                         val artistId = item.albumArtistId
@@ -149,9 +156,15 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         )
                     }
                     if (!music) PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
+                    if (item.versions.size > 1) VersionChooser(item)
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
                         RoundAction(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", onClick = vm::toggleFavorite, active = item.user.isFavorite)
+                        val trailer = state.extras.firstOrNull { it.extraType == "Trailer" }
+                        val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                        if (trailer != null || item.remoteTrailers.isNotEmpty()) RoundAction(Icons.Default.PlayArrow, "Trailer", onClick = {
+                            if (trailer != null) actions.play(trailer, true) else runCatching { uri.openUri(item.remoteTrailers.first().url) }
+                        })
                         if (item.isPlayable) DownloadAction(actions, item)
                         if (item.kind == ItemKind.SERIES) SmartDownloadAction(actions, item)
                         var adding by remember { mutableStateOf(false) }
@@ -283,6 +296,22 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     }
                 }
             }
+            if (state.extras.isNotEmpty()) {
+                item(key = "extras") {
+                    Column(Modifier.padding(top = 28.dp)) {
+                        SectionHeader("Extras")
+                        LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(state.extras, key = { it.id }) { x ->
+                                MediaCard(
+                                    x, server.cardImage(x, CardShape.WIDE), CardShape.WIDE,
+                                    onClick = { actions.play(x, true) },
+                                    width = 220.dp, title = x.name, subtitle = listOfNotNull(x.extraType, x.runtimeMs?.let { dev.nitrate.core.model.formatRuntime(it) }).joinToString(" · "),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (state.similar.isNotEmpty() && prefs.similar) {
                 item(key = "similar") {
                     Column(Modifier.padding(top = 28.dp)) {
@@ -359,8 +388,8 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 actions.server.cardImage(episode, CardShape.WIDE, 240)?.let {
                     AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().then(if (spoiler) Modifier.blur(16.dp) else Modifier))
                 }
-                // Play straight from the list.
-                Box(
+                // Play straight from the list (not an episode the library doesn't have).
+                if (episode.isPlayable) Box(
                     Modifier.align(Alignment.Center).size(36.dp).clip(CircleShape).background(Color(0x88000000)).pressable({ actions.play(episode, false) }),
                     Alignment.Center,
                 ) { Icon(Icons.Default.PlayArrow, "Play", tint = Color.White) }
@@ -377,7 +406,9 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
             }
             Column(Modifier.padding(start = 14.dp).weight(1f)) {
                 Text("${episode.indexNumber ?: "–"}. ${episode.name}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
+                val status = dev.nitrate.core.model.AirDates.status(episode, System.currentTimeMillis())
+                if (status != null) Text(status, style = MaterialTheme.typography.labelMedium, color = accentColor(), modifier = Modifier.padding(top = 2.dp))
+                else episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
             }
         }
         episode.overview?.takeIf { LocalDisplayPrefs.current.let { p -> p.overview && !p.isSpoiler(episode) } }?.let {
@@ -391,3 +422,28 @@ private fun Badge(icon: androidx.compose.ui.graphics.vector.ImageVector, label: 
     Icon(icon, label, tint = Color.White, modifier = Modifier.background(Color(0xAA000000), CircleShape).padding(3.dp).size(14.dp))
 }
 
+
+/** "Version: Auto ▾" — which copy of the title plays (4K, 1080p...), or the best for this device. */
+@Composable
+private fun VersionChooser(item: MediaItem) {
+    var chosen by remember(item.id) { mutableStateOf(dev.nitrate.android.playback.VersionChoices[item.id]) }
+    var open by remember { mutableStateOf(false) }
+    val label = item.versions.firstOrNull { it.id == chosen }?.name ?: "Auto"
+    Box {
+        Text(
+            "Version: $label  ▾",
+            style = MaterialTheme.typography.labelLarge,
+            color = accentColor(),
+            modifier = Modifier.clip(RoundedCornerShape(20.dp)).pressable({ open = true }).padding(horizontal = 4.dp, vertical = 6.dp),
+        )
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            (listOf<Pair<String?, String>>(null to "Auto — the best for this device") + item.versions.map { it.id to it.name }).forEach { (id, name) ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(name) },
+                    trailingIcon = if (id == chosen) ({ Icon(Icons.Default.Check, null) }) else null,
+                    onClick = { chosen = id; dev.nitrate.android.playback.VersionChoices.set(item.id, id); open = false },
+                )
+            }
+        }
+    }
+}

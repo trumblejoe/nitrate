@@ -52,9 +52,28 @@ data class MediaItem(
     val playlistEntryId: String? = null,
     /** When the server added it (epoch ms), where known. */
     val dateAddedMs: Long? = null,
+    /** First air or release date (epoch ms), where known. */
+    val premiereDateMs: Long? = null,
+    /** Copies of this title the server has (4K, 1080p...), when there's more than one. */
+    val versions: List<MediaVersion> = emptyList(),
+    /** Files the title is split across (part 1, part 2...), when more than one. */
+    val partCount: Int? = null,
+    val chapters: List<Chapter> = emptyList(),
+    /** Trailers on the web (YouTube...), as the server lists them. */
+    val remoteTrailers: List<RemoteTrailer> = emptyList(),
+    /** How many trailer files and extras (behind the scenes, deleted scenes...) the server has. */
+    val localTrailerCount: Int = 0,
+    val specialFeatureCount: Int = 0,
+    /** What kind of extra this is ("Trailer", "Behind the scenes"...), for extras. */
+    val extraType: String? = null,
+    /** An episode the library doesn't have: missing, or not aired yet (see [premiereDateMs]). */
+    val isMissing: Boolean = false,
+    /** Studios or networks that made it. */
+    val studios: List<String> = emptyList(),
 ) {
     val isEpisode get() = kind == ItemKind.EPISODE
-    val isPlayable get() = kind in PLAYABLE
+    /** Something to play: not an episode the library is missing or that hasn't aired. */
+    val isPlayable get() = kind in PLAYABLE && !isMissing
 
     /** Series name for episodes, otherwise the item's name. */
     val displayTitle get() = if (isEpisode) seriesName ?: name else name
@@ -91,6 +110,26 @@ data class UserState(
  * Image tags for building URLs (tags make URLs cache-safe). Episodes fall back to their
  * series' artwork via the parent fields.
  */
+/** What a library can be filtered by, as the server lists it. */
+@Serializable
+data class LibraryFilters(
+    val genres: List<String> = emptyList(),
+    val years: List<Int> = emptyList(),
+    val officialRatings: List<String> = emptyList(),
+    val tags: List<String> = emptyList(),
+)
+
+/** One copy of a title, as a choice of version. */
+@Serializable
+data class MediaVersion(val id: String, val name: String)
+
+/** A chapter mark: where it starts, its name and picture. */
+@Serializable
+data class Chapter(val startMs: Long, val name: String, val imageTag: String? = null)
+
+@Serializable
+data class RemoteTrailer(val url: String, val name: String? = null)
+
 @Serializable
 data class ItemImages(
     val primary: String? = null,

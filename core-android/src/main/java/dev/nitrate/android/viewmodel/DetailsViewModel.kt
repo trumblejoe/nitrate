@@ -26,6 +26,8 @@ data class DetailsState(
     val tracks: List<MediaItem> = emptyList(),
     /** An artist's albums. */
     val albums: List<MediaItem> = emptyList(),
+    /** Trailers first, then behind the scenes, deleted scenes and other extras. */
+    val extras: List<MediaItem> = emptyList(),
 )
 
 class DetailsViewModel(
@@ -62,6 +64,9 @@ class DetailsViewModel(
             if (item.kind == ItemKind.MUSIC_ARTIST) _state.update { it.copy(albums = runCatching { repository.artistAlbums(itemId) }.getOrDefault(emptyList())) }
             if (item.kind == ItemKind.BOX_SET) {
                 _state.update { it.copy(contents = runCatching { repository.collectionItems(itemId) }.getOrDefault(emptyList())) }
+            }
+            if (item.localTrailerCount + item.specialFeatureCount > 0) {
+                _state.update { it.copy(extras = runCatching { repository.extras(itemId) }.getOrDefault(it.extras)) }
             }
             val similar = runCatching { repository.similar(itemId) }.getOrDefault(emptyList())
             _state.update { it.copy(similar = similar) }

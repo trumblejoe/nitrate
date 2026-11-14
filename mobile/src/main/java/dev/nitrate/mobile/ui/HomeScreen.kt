@@ -202,7 +202,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
                         shape = CardShape.WIDE,
                         width = 272.dp,
                         title = item.displayTitle.takeIf { display.showTitles },
-                        subtitle = listOfNotNull(item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · ").takeIf { display.showTitles },
+                        subtitle = listOfNotNull(dev.nitrate.core.model.AirDates.status(item, System.currentTimeMillis()) ?: item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · ").takeIf { display.showTitles },
                         sharedKey = key,
                         onClick = { actions.open(item, key) },
                     )

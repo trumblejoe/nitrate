@@ -328,6 +328,31 @@ interface MediaServer {
 
     // ---- Search ----
     /** Movies, shows, episodes, collections and people matching [query]. */
+    /** The other files of a title split across several ("part 2", "part 3"...), in order. */
+    suspend fun additionalParts(itemId: String): List<MediaItem> = emptyList()
+
+    /** Trailers (files on the server) then extras: behind the scenes, deleted scenes, featurettes... */
+    suspend fun extras(itemId: String): List<MediaItem> = emptyList()
+
+    /** Episodes of shows you follow that haven't aired yet, soonest first. */
+    suspend fun upcomingEpisodes(): List<MediaItem> = emptyList()
+
+    /** A chapter's picture, or null if it has none. */
+    fun chapterImageUrl(item: MediaItem, index: Int, maxWidth: Int = 480): String? = null
+
+    /** The genres, years, ratings and tags a library actually has, for filter choices. */
+    suspend fun libraryFilters(libraryId: String?, types: List<dev.nitrate.core.model.ItemKind> = emptyList()): dev.nitrate.core.model.LibraryFilters = dev.nitrate.core.model.LibraryFilters()
+
+    /** Whether season lists include episodes the library doesn't have (your server account's setting). */
+    suspend fun showsMissingEpisodes(): Boolean = false
+    suspend fun setShowMissingEpisodes(show: Boolean): Unit = unsupported()
+
+    /**
+     * Quick matches for a search being typed: names, kinds and pictures only, from the server's
+     * cheap lookup, so they show at once; [search] fills in the rest (watch state and more).
+     */
+    suspend fun searchHints(query: String): SearchResults = search(query)
+
     suspend fun search(query: String): SearchResults = unsupported()
 
     /** Movies and shows [personId] appears in, newest first. */

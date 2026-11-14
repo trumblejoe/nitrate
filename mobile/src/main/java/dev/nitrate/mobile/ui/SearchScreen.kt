@@ -81,10 +81,12 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
             results = null
             return@LaunchedEffect
         }
-        delay(280) // Wait for a pause in typing.
+        delay(150) // A short pause in typing.
         loading = true
+        // Quick matches first (names and pictures, cheap for the server), then the full results.
         // A newer query cancels this one: not an error to show.
-        results = try { Result.success(actions.server.search(query)) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { Result.failure(e) }
+        try { results = Result.success(actions.server.searchHints(query)) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        results = try { Result.success(actions.server.search(query)) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results?.takeIf { it.isSuccess } ?: Result.failure(e) }
         loading = false
     }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -221,11 +223,19 @@ private fun EpisodeResult(ep: MediaItem, actions: AppActions, onClick: () -> Uni
     }
 }
 
-/** Everything a person appears in, newest first. */
+/** Everything a person appears in, newest first (or, with [studio] or [year], everything from that studio or year). */
 @Composable
-fun PersonScreen(actions: AppActions, personId: String, name: String) {
+fun PersonScreen(actions: AppActions, personId: String, name: String, studio: String? = null, year: Int? = null) {
     var items by remember { mutableStateOf<Result<List<MediaItem>>?>(null) }
-    LaunchedEffect(personId) { items = runCatching { actions.server.itemsWithPerson(personId) } }
+    LaunchedEffect(personId, studio, year) {
+        items = runCatching {
+            when {
+                studio != null -> actions.server.queryItems(dev.nitrate.core.pages.Browse.byStudio(studio))
+                year != null -> actions.server.queryItems(dev.nitrate.core.pages.Browse.byYear(year))
+                else -> actions.server.itemsWithPerson(personId)
+            }
+        }
+    }
     TintedBackdrop(null, strength = 0.25f) {
         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
             columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(110.dp),

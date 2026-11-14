@@ -32,21 +32,27 @@ data class BrowseOptions(
     val bitDepths: List<Int> = emptyList(),
     /** Dynamic ranges, any of ([Codecs.RANGES] ids). */
     val videoRanges: List<String> = emptyList(),
+    /** Age ratings, any of, as the library has them. */
+    val officialRatings: List<String> = emptyList(),
+    /** Tags, any of. */
+    val tags: List<String> = emptyList(),
 ) {
     /** How many filters narrow the list, for a badge on the Filter button. */
     val filterCount: Int
-        get() = listOf(watched != WatchFilter.ANY, favoritesOnly, genres.isNotEmpty(), decade != null, minRating != null, resolution != ResolutionFilter.ANY, videoCodecs.isNotEmpty(), audioCodecs.isNotEmpty(), bitDepths.isNotEmpty(), videoRanges.isNotEmpty()).count { it }
+        get() = listOf(watched != WatchFilter.ANY, favoritesOnly, genres.isNotEmpty(), decade != null, minRating != null, resolution != ResolutionFilter.ANY, videoCodecs.isNotEmpty(), audioCodecs.isNotEmpty(), bitDepths.isNotEmpty(), videoRanges.isNotEmpty(), officialRatings.isNotEmpty(), tags.isNotEmpty()).count { it }
 
     /** A–Z only makes sense when sorted by name. */
     val alphabetical: Boolean get() = sort == QuerySort.NAME
 
-    fun clearFilters() = copy(watched = WatchFilter.ANY, favoritesOnly = false, genres = emptyList(), decade = null, minRating = null, resolution = ResolutionFilter.ANY, videoCodecs = emptyList(), audioCodecs = emptyList(), bitDepths = emptyList(), videoRanges = emptyList())
+    fun clearFilters() = copy(watched = WatchFilter.ANY, favoritesOnly = false, genres = emptyList(), decade = null, minRating = null, resolution = ResolutionFilter.ANY, videoCodecs = emptyList(), audioCodecs = emptyList(), bitDepths = emptyList(), videoRanges = emptyList(), officialRatings = emptyList(), tags = emptyList())
 
     /** The query for [libraryId] of [kind]. */
     fun query(libraryId: String, kind: CollectionKind?): ItemQuery = ItemQuery(
         libraryId = libraryId,
         types = Browse.typesFor(kind),
         genres = genres,
+        tags = tags,
+        officialRatings = officialRatings,
         yearFrom = decade,
         yearTo = decade?.plus(9),
         minRating = minRating,
@@ -68,6 +74,9 @@ data class BrowseOptions(
     fun toggleBitDepth(depth: Int) = copy(bitDepths = if (depth in bitDepths) bitDepths - depth else bitDepths + depth)
     fun toggleRange(range: String) = copy(videoRanges = if (range in videoRanges) videoRanges - range else videoRanges + range)
 
+    fun toggleRating(r: String) = copy(officialRatings = if (r in officialRatings) officialRatings - r else officialRatings + r)
+    fun toggleTag(t: String) = copy(tags = if (t in tags) tags - t else tags + t)
+
     /** Default direction when picking a sort. */
     fun withSort(newSort: QuerySort) = copy(sort = newSort, descending = newSort != QuerySort.NAME)
 }
@@ -78,6 +87,15 @@ object Browse {
 
     /** Decades offered as filters. */
     fun decades(fromYear: Int = 1920, toYear: Int = 2020): List<Int> = (fromYear..toYear step 10).toList().reversed()
+
+    /** Everything from one studio or network, newest first. */
+    fun byStudio(name: String) = ItemQuery(types = listOf(ItemKind.MOVIE, ItemKind.SERIES), studios = listOf(name), sort = QuerySort.RELEASE_DATE, descending = true, limit = 200)
+
+    /** Everything from one year, best rated first. */
+    fun byYear(year: Int) = ItemQuery(types = listOf(ItemKind.MOVIE, ItemKind.SERIES), yearFrom = year, yearTo = year, sort = QuerySort.RATING, descending = true, limit = 200)
+
+    /** The decades a library actually has titles from (newest first), or the usual list if unknown. */
+    fun decadesFor(years: List<Int>): List<Int> = years.map { it / 10 * 10 }.distinct().sortedDescending().ifEmpty { decades() }
 
     fun typesFor(kind: CollectionKind?): List<ItemKind> = when (kind) {
         CollectionKind.MOVIES -> listOf(ItemKind.MOVIE)

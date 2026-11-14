@@ -63,7 +63,7 @@ import kotlinx.serialization.Serializable
 /** [artKey] names the card it was opened from, so its artwork can morph into the page. */
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null)
 @Serializable data class PlaylistRoute(val playlistId: String)
-@Serializable data class PersonRoute(val personId: String, val name: String)
+@Serializable data class PersonRoute(val personId: String, val name: String, val studio: String? = null, val year: Int? = null)
 
 /** Admin: an item's metadata, identity, images and refresh. */
 @Serializable data class ManageItemRoute(val itemId: String)
@@ -257,7 +257,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             }
             screen<PersonRoute> { entry ->
                 val route = entry.toRoute<PersonRoute>()
-                PersonScreen(actions, route.personId, route.name)
+                PersonScreen(actions, route.personId, route.name, route.studio, route.year)
             }
             screen<PlayerRoute> { entry ->
                 val route = entry.toRoute<PlayerRoute>()

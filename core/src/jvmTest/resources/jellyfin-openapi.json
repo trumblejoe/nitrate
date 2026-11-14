@@ -4325,6 +4325,41 @@
     },
     "type": "object"
    },
+   "QueryFiltersLegacy": {
+    "additionalProperties": false,
+    "properties": {
+     "Genres": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "OfficialRatings": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "Tags": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "Years": {
+      "items": {
+       "format": "int32",
+       "type": "integer"
+      },
+      "nullable": true,
+      "type": "array"
+     }
+    },
+    "type": "object"
+   },
    "QueueItem": {
     "additionalProperties": false,
     "properties": {
@@ -4677,6 +4712,210 @@
      "Vertical"
     ],
     "type": "string"
+   },
+   "SearchHint": {
+    "additionalProperties": false,
+    "properties": {
+     "Album": {
+      "nullable": true,
+      "type": "string"
+     },
+     "AlbumArtist": {
+      "nullable": true,
+      "type": "string"
+     },
+     "AlbumId": {
+      "format": "uuid",
+      "nullable": true,
+      "type": "string"
+     },
+     "Artists": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "BackdropImageItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "BackdropImageTag": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ChannelId": {
+      "format": "uuid",
+      "nullable": true,
+      "type": "string"
+     },
+     "ChannelName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "EndDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "EpisodeCount": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Id": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "IndexNumber": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "IsFolder": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "ItemId": {
+      "deprecated": true,
+      "format": "uuid",
+      "type": "string"
+     },
+     "MatchedTerm": {
+      "nullable": true,
+      "type": "string"
+     },
+     "MediaType": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/MediaType"
+       }
+      ],
+      "default": "Unknown",
+      "enum": [
+       "Unknown",
+       "Video",
+       "Audio",
+       "Photo",
+       "Book"
+      ]
+     },
+     "Name": {
+      "type": "string"
+     },
+     "ParentIndexNumber": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "PrimaryImageAspectRatio": {
+      "format": "double",
+      "nullable": true,
+      "type": "number"
+     },
+     "PrimaryImageTag": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ProductionYear": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "RunTimeTicks": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Series": {
+      "nullable": true,
+      "type": "string"
+     },
+     "SongCount": {
+      "format": "int32",
+      "nullable": true,
+      "type": "integer"
+     },
+     "StartDate": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "Status": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ThumbImageItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ThumbImageTag": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Type": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/BaseItemKind"
+       }
+      ],
+      "enum": [
+       "AggregateFolder",
+       "Audio",
+       "AudioBook",
+       "BasePluginFolder",
+       "Book",
+       "BoxSet",
+       "Channel",
+       "ChannelFolderItem",
+       "CollectionFolder",
+       "Episode",
+       "Folder",
+       "Genre",
+       "ManualPlaylistsFolder",
+       "Movie",
+       "LiveTvChannel",
+       "LiveTvProgram",
+       "MusicAlbum",
+       "MusicArtist",
+       "MusicGenre",
+       "MusicVideo",
+       "Person",
+       "Photo",
+       "PhotoAlbum",
+       "Playlist",
+       "PlaylistsFolder",
+       "Program",
+       "Recording",
+       "Season",
+       "Series",
+       "Studio",
+       "Trailer",
+       "TvChannel",
+       "TvProgram",
+       "UserRootFolder",
+       "UserView",
+       "Video",
+       "Year"
+      ]
+     }
+    },
+    "type": "object"
+   },
+   "SearchHintResult": {
+    "additionalProperties": false,
+    "properties": {
+     "SearchHints": {
+      "items": {
+       "$ref": "#/components/schemas/SearchHint"
+      },
+      "type": "array"
+     },
+     "TotalRecordCount": {
+      "format": "int32",
+      "type": "integer"
+     }
+    },
+    "type": "object"
    },
    "SeekRequestDto": {
     "additionalProperties": false,
@@ -9302,6 +9541,103 @@
     ]
    }
   },
+  "/Items/Filters": {
+   "get": {
+    "operationId": "GetQueryFiltersLegacy",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "parentId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeItemTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/BaseItemKind"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "mediaTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/MediaType"
+       },
+       "type": "array"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QueryFiltersLegacy"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/QueryFiltersLegacy"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/QueryFiltersLegacy"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Filter"
+    ]
+   }
+  },
   "/Items/Latest": {
    "get": {
     "operationId": "GetLatestMedia",
@@ -11744,6 +12080,93 @@
     ]
    }
   },
+  "/Items/{itemId}/LocalTrailers": {
+   "get": {
+    "operationId": "GetLocalTrailers",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/BaseItemDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/BaseItemDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/BaseItemDto"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
+    ]
+   }
+  },
   "/Items/{itemId}/PlaybackInfo": {
    "get": {
     "operationId": "GetPlaybackInfo",
@@ -12720,6 +13143,93 @@
        "application/json; profile=\"PascalCase\"": {
         "schema": {
          "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
+    ]
+   }
+  },
+  "/Items/{itemId}/SpecialFeatures": {
+   "get": {
+    "operationId": "GetSpecialFeatures",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/BaseItemDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/BaseItemDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/BaseItemDto"
+         },
+         "type": "array"
         }
        }
       }
@@ -15846,6 +16356,212 @@
     ]
    }
   },
+  "/Search/Hints": {
+   "get": {
+    "operationId": "GetSearchHints",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "searchTerm",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeItemTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/BaseItemKind"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "excludeItemTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/BaseItemKind"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "mediaTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/MediaType"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "parentId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isMovie",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isSeries",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isNews",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isKids",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "isSports",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includePeople",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeMedia",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeGenres",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeStudios",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "includeArtists",
+      "schema": {
+       "default": true,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SearchHintResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/SearchHintResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/SearchHintResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Search"
+    ]
+   }
+  },
   "/Sessions": {
    "get": {
     "operationId": "GetSessions",
@@ -16794,6 +17510,141 @@
       "name": "enableRewatching",
       "schema": {
        "default": false,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Show"
+    ]
+   }
+  },
+  "/Shows/Upcoming": {
+   "get": {
+    "operationId": "GetUpcomingEpisodes",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fields",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFields"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "parentId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImages",
+      "schema": {
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "imageTypeLimit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableImageTypes",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ImageType"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "enableUserData",
+      "schema": {
        "type": "boolean"
       }
      }
@@ -20081,6 +20932,107 @@
     ]
    }
   },
+  "/Users/Configuration": {
+   "post": {
+    "operationId": "UpdateUserConfiguration",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserConfiguration"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserConfiguration"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UserConfiguration"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "User"
+    ]
+   }
+  },
   "/Users/Me": {
    "get": {
     "operationId": "GetCurrentUser",
@@ -20706,6 +21658,84 @@
     ],
     "tags": [
      "User"
+    ]
+   }
+  },
+  "/Videos/{itemId}/AdditionalParts": {
+   "get": {
+    "operationId": "GetAdditionalPart",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Video"
     ]
    }
   },

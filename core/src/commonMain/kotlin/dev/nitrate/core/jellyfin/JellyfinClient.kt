@@ -6,6 +6,7 @@ import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.DiscoveredServer
 import dev.nitrate.core.model.ExternalSubtitle
 import dev.nitrate.core.model.ImageKind
+import dev.nitrate.core.model.ItemImages
 import dev.nitrate.core.model.InvalidCredentialsException
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.MediaSegment
@@ -588,6 +589,9 @@ class JellyfinClient(
             dev.nitrate.core.rows.RowJob("Next Up") {
                 items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
             },
+            dev.nitrate.core.rows.RowJob("Upcoming") {
+                upcomingEpisodes().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/upcoming", "Upcoming", it, WIDE_DEFAULT)) }
+            },
             dev.nitrate.core.rows.RowJob("Latest in each library") {
                 coroutineScope {
                     views.await()
@@ -864,7 +868,12 @@ class JellyfinClient(
             ),
         ).decode<PlaybackInfoResponseDto>()
         info.errorCode?.let { error("Server can't play this item: $it") }
-        val dto = info.mediaSources.firstOrNull() ?: error("Item has no playable media")
+        // With several versions and none chosen, the one this device plays best: one it can play
+        // as it is, then one it only needs repackaged, then the first.
+        val dto = (if (mediaSourceId != null) info.mediaSources.firstOrNull { it.id == mediaSourceId } else null)
+            ?: info.mediaSources.firstOrNull { it.supportsDirectPlay && directPlay }
+            ?: info.mediaSources.firstOrNull { it.supportsDirectStream && directStream && it.transcodingUrl != null }
+            ?: info.mediaSources.firstOrNull() ?: error("Item has no playable media")
         val source = dto.toMediaSource()
 
         val streams = source.streams
@@ -1196,6 +1205,79 @@ class JellyfinClient(
 
     // ---- Search ----
 
+    override suspend fun additionalParts(itemId: String): List<MediaItem> =
+        items("Videos", itemId, "AdditionalParts", query = mapOf("userId" to userId))
+
+    override suspend fun extras(itemId: String): List<MediaItem> = coroutineScope {
+        val trailers = async { runCatching { get("Items", itemId, "LocalTrailers", query = mapOf("userId" to userId)).decode<List<ItemDto>>().map { it.toMediaItem().copy(extraType = it.extraType?.let(::extraLabel) ?: "Trailer") } }.getOrDefault(emptyList()) }
+        val features = async { runCatching { get("Items", itemId, "SpecialFeatures", query = mapOf("userId" to userId)).decode<List<ItemDto>>().map { it.toMediaItem() } }.getOrDefault(emptyList()) }
+        (trailers.await() + features.await()).distinctBy { it.id }
+    }
+
+    override suspend fun upcomingEpisodes(): List<MediaItem> =
+        items("Shows", "Upcoming", query = mapOf("userId" to userId, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS))
+
+    override fun chapterImageUrl(item: MediaItem, index: Int, maxWidth: Int): String? {
+        val tag = item.chapters.getOrNull(index)?.imageTag ?: return null
+        return url("Items", item.id, "Images", "Chapter", index.toString(), query = mapOf("tag" to tag, "maxWidth" to maxWidth, "quality" to 80))
+    }
+
+    override suspend fun libraryFilters(libraryId: String?, types: List<ItemKind>): dev.nitrate.core.model.LibraryFilters {
+        val f = get(
+            "Items", "Filters",
+            query = mapOf("userId" to userId, "parentId" to libraryId, "includeItemTypes" to types.mapNotNull(::itemTypeName).joinToString(",").ifEmpty { null }),
+        ).decode<QueryFiltersLegacyDto>()
+        return dev.nitrate.core.model.LibraryFilters(
+            genres = f.genres.orEmpty().sortedBy { it.lowercase() },
+            years = f.years.orEmpty().sortedDescending(),
+            officialRatings = f.officialRatings.orEmpty(),
+            tags = f.tags.orEmpty().sortedBy { it.lowercase() },
+        )
+    }
+
+    override suspend fun showsMissingEpisodes(): Boolean =
+        runCatching { (get("Users", "Me").decode<JsonObject>()["Configuration"] as? JsonObject)?.get("DisplayMissingEpisodes")?.let { (it as JsonPrimitive).content == "true" } }.getOrNull() ?: false
+
+    override suspend fun setShowMissingEpisodes(show: Boolean) {
+        // Round-trip the account's own settings, changing only this one.
+        val config = get("Users", "Me").decode<JsonObject>()["Configuration"] as? JsonObject ?: error("No account settings")
+        post<JsonObject>("Users", "Configuration", body = JsonObject(config + ("DisplayMissingEpisodes" to JsonPrimitive(show))), query = mapOf("userId" to userId))
+    }
+
+    override suspend fun searchHints(query: String): SearchResults {
+        val term = query.trim()
+        if (term.isEmpty()) return SearchResults()
+        val hints = get(
+            "Search", "Hints",
+            query = mapOf(
+                "searchTerm" to term, "userId" to userId, "limit" to 40,
+                "includeItemTypes" to "Movie,Series,Episode,BoxSet,Person",
+                "includePeople" to true, "includeMedia" to true,
+            ),
+        ).decode<SearchHintResultDto>().searchHints
+        val items = hints.filter { it.type != "Person" }.mapNotNull { h ->
+            val id = h.id ?: h.itemId ?: return@mapNotNull null
+            MediaItem(
+                id = normalizeId(id),
+                name = h.name.orEmpty(),
+                kind = itemKind(h.type),
+                productionYear = h.productionYear,
+                seriesName = h.series,
+                seasonNumber = h.parentIndexNumber,
+                indexNumber = h.indexNumber,
+                images = ItemImages(primary = h.primaryImageTag, thumb = h.thumbImageTag, backdrops = listOfNotNull(h.backdropImageTag?.takeIf { h.backdropImageItemId == null })),
+            )
+        }
+        val people = hints.filter { it.type == "Person" }.mapNotNull { h -> (h.id ?: h.itemId)?.let { Person(normalizeId(it), h.name.orEmpty(), null, h.primaryImageTag) } }
+        return SearchResults(
+            movies = items.filter { it.kind == ItemKind.MOVIE },
+            shows = items.filter { it.kind == ItemKind.SERIES },
+            episodes = items.filter { it.kind == ItemKind.EPISODE },
+            collections = items.filter { it.kind == ItemKind.BOX_SET },
+            people = people,
+        )
+    }
+
     override suspend fun search(query: String): SearchResults = coroutineScope {
         val term = query.trim()
         if (term.isEmpty()) return@coroutineScope SearchResults()
@@ -1361,20 +1443,21 @@ class JellyfinClient(
     }
 }
 
+/** Jellyfin's type name for a kind Nitrate queries by. */
+internal fun itemTypeName(kind: ItemKind): String? = when (kind) {
+    ItemKind.MOVIE -> "Movie"
+    ItemKind.SERIES -> "Series"
+    ItemKind.EPISODE -> "Episode"
+    ItemKind.BOX_SET -> "BoxSet"
+    ItemKind.VIDEO -> "Video"
+    ItemKind.MUSIC_VIDEO -> "MusicVideo"
+    ItemKind.MUSIC_ALBUM -> "MusicAlbum"
+    else -> null
+}
+
 /** Jellyfin /Items parameters for a saved search. */
 internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
-    val types = q.types.mapNotNull {
-        when (it) {
-            ItemKind.MOVIE -> "Movie"
-            ItemKind.SERIES -> "Series"
-            ItemKind.EPISODE -> "Episode"
-            ItemKind.BOX_SET -> "BoxSet"
-            ItemKind.VIDEO -> "Video"
-            ItemKind.MUSIC_VIDEO -> "MusicVideo"
-            ItemKind.MUSIC_ALBUM -> "MusicAlbum"
-            else -> null
-        }
-    }.ifEmpty { if (q.libraryId == null) listOf("Movie", "Series") else emptyList() }
+    val types = q.types.mapNotNull(::itemTypeName).ifEmpty { if (q.libraryId == null) listOf("Movie", "Series") else emptyList() }
     val sort = when (q.sort) {
         QuerySort.DATE_ADDED -> "DateCreated"
         QuerySort.RELEASE_DATE -> "PremiereDate"
@@ -1403,6 +1486,7 @@ internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
         "genres" to q.genres.joinToString("|").ifEmpty { null },
         "tags" to q.tags.joinToString("|").ifEmpty { null },
         "studios" to q.studios.joinToString("|").ifEmpty { null },
+        "officialRatings" to q.officialRatings.joinToString("|").ifEmpty { null },
         "personIds" to q.personId,
         "nameStartsWithOrGreater" to q.nameFrom,
         "nameLessThan" to q.nameBefore,

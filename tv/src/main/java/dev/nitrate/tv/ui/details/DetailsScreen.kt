@@ -82,6 +82,8 @@ fun DetailsScreen(
     canCollect: Boolean = false,
     /** Plays a queue (album tracks, an instant mix). */
     onPlayQueue: (List<MediaItem>) -> Unit = {},
+    /** Opens everything from a studio or a year: (title, studio, year). */
+    onBrowse: (String, String?, Int?) -> Unit = { _, _, _ -> },
 ) {
     val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
     val vm = viewModel(key = "details-$itemId") {
@@ -118,7 +120,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse)
             }
 
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -138,10 +140,10 @@ fun DetailsScreen(
                                     width = 280.dp,
                                     aspectRatio = 16f / 9f,
                                     title = "${episode.indexNumber ?: "–"}. ${episode.name.orEmpty()}",
-                                    subtitle = episode.runtimeMs?.let(::formatRuntime),
+                                    subtitle = dev.nitrate.core.model.AirDates.status(episode, System.currentTimeMillis()) ?: episode.runtimeMs?.let(::formatRuntime),
                                     onFocus = { focusedEpisode = episode },
                                     onClick = { onOpen(episode) },
-                                    onPlay = { onPlay(episode, false) },
+                                    onPlay = { if (episode.isPlayable) onPlay(episode, false) },
                                 )
                             }
                         }
@@ -234,6 +236,29 @@ fun DetailsScreen(
                     }
                 }
             }
+            if (state.extras.isNotEmpty()) {
+                item(key = "extras") {
+                    Column {
+                        RowTitle("Extras")
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = PagePadding),
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            items(state.extras, key = { it.id }) { x ->
+                                MediaCard(
+                                    item = x,
+                                    imageUrl = repository.imageUrl(x, ImageKind.THUMB, 360) ?: repository.backdropUrl(x, 640) ?: repository.imageUrl(x, ImageKind.PRIMARY, 360),
+                                    width = 260.dp,
+                                    aspectRatio = 16f / 9f,
+                                    title = x.name,
+                                    subtitle = listOfNotNull(x.extraType, x.runtimeMs?.let { dev.nitrate.core.model.formatRuntime(it) }).joinToString(" · "),
+                                    onClick = { onPlay(x, true) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (state.similar.isNotEmpty() && prefs.similar) {
                 item(key = "similar") {
                     Column {
@@ -271,6 +296,7 @@ private fun Header(
     canCollect: Boolean,
     onPlayQueue: (List<MediaItem>) -> Unit,
     onOpen: (MediaItem) -> Unit,
+    onBrowse: (String, String?, Int?) -> Unit,
 ) {
     // Music pages have more buttons in a row.
     val wideHeader = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
@@ -338,6 +364,15 @@ private fun Header(
             OutlinedButton(onClick = vm::toggleFavorite) {
                 Text(if (item.user.isFavorite) "Favorite ♥" else "Favorite ♡")
             }
+            if (item.versions.size > 1) VersionButton(item)
+            val trailer = state.extras.firstOrNull { it.extraType == "Trailer" }
+            if (trailer != null || item.remoteTrailers.isNotEmpty()) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                OutlinedButton(onClick = {
+                    if (trailer != null) onPlay(trailer, true)
+                    else runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(item.remoteTrailers.first().url))) }
+                }) { Text("Trailer") }
+            }
             if (item.isPlayable) {
                 var showInfo by remember { mutableStateOf(false) }
                 OutlinedButton(onClick = { showInfo = true }) { Text("Playback info") }
@@ -349,6 +384,13 @@ private fun Header(
                 if (adding) dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect) { adding = false }
             }
             if (onManage != null) OutlinedButton(onClick = { onManage(item.id) }) { Text("Manage") }
+        }
+        // More like it, by studio or year.
+        val studio = item.studios.firstOrNull()
+        val year = item.productionYear
+        if (!wideHeader && (studio != null || year != null)) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            studio?.let { OutlinedButton(onClick = { onBrowse(it, it, null) }) { Text("More from $it") } }
+            year?.let { OutlinedButton(onClick = { onBrowse("From $it", null, it) }) { Text("More from $it") } }
         }
     }
 }
@@ -427,5 +469,30 @@ private fun PlaybackDecisionDialog(repository: MediaServer, item: MediaItem, onD
             p.isFailure -> Text(p.exceptionOrNull()?.message ?: "Failed", color = MaterialTheme.colorScheme.error)
             else -> PlaybackInfoPanel(p.getOrThrow(), videoDecoder = null, audioDecoder = null, modifier = Modifier.focusable())
         }
+    }
+}
+
+/** "Version: Auto" — picks which copy of the title plays (4K, 1080p...), or the best for this TV. */
+@Composable
+private fun VersionButton(item: MediaItem) {
+    var chosen by remember(item.id) { mutableStateOf(dev.nitrate.android.playback.VersionChoices[item.id]) }
+    var picking by remember { mutableStateOf(false) }
+    val label = item.versions.firstOrNull { it.id == chosen }?.name ?: "Auto"
+    OutlinedButton(onClick = { picking = true }) { Text("Version: $label") }
+    if (picking) {
+        val first = remember { androidx.compose.ui.focus.FocusRequester() }
+        dev.nitrate.tv.ui.lists.TvDialog({ picking = false }) {
+            Text("Which version plays", style = MaterialTheme.typography.headlineSmall)
+            val choices = listOf<Pair<String?, String>>(null to "Auto — the best for this TV") + item.versions.map { it.id to it.name }
+            choices.forEachIndexed { i, (id, name) ->
+                androidx.tv.material3.ListItem(
+                    selected = id == chosen,
+                    onClick = { chosen = id; dev.nitrate.android.playback.VersionChoices.set(item.id, id); picking = false },
+                    headlineContent = { Text(name) },
+                    modifier = if (id == chosen || (i == 0 && chosen == null)) Modifier.focusRequester(first) else Modifier,
+                )
+            }
+        }
+        androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     }
 }

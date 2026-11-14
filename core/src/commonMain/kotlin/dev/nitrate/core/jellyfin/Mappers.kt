@@ -4,6 +4,9 @@ import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.ItemImages
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.model.RemoteTrailer
+import dev.nitrate.core.model.Chapter
+import dev.nitrate.core.model.MediaVersion
 import dev.nitrate.core.model.MediaKind
 import dev.nitrate.core.model.MediaSource
 import dev.nitrate.core.model.MediaStream
@@ -88,6 +91,16 @@ internal fun ItemDto.toMediaItem(): MediaItem {
         ),
         people = people.orEmpty().map { Person(normalizeId(it.id), it.name.orEmpty(), it.role, it.primaryImageTag) },
         badges = badges(),
+        premiereDateMs = premiereDate?.let(::parseDateMs),
+        versions = mediaSources.orEmpty().takeIf { it.size > 1 }?.mapIndexedNotNull { i, s -> s.id?.let { MediaVersion(it, s.name?.takeIf { n -> n.isNotBlank() } ?: "Version ${i + 1}") } }.orEmpty(),
+        partCount = partCount?.takeIf { it > 1 },
+        chapters = chapters.orEmpty().map { Chapter(it.startPositionTicks.ticksToMs(), it.name.orEmpty(), it.imageTag) },
+        remoteTrailers = remoteTrailers.orEmpty().mapNotNull { t -> t.url?.let { RemoteTrailer(it, t.name) } },
+        localTrailerCount = localTrailerCount ?: 0,
+        specialFeatureCount = specialFeatureCount ?: 0,
+        extraType = extraType?.let(::extraLabel),
+        isMissing = locationType == "Virtual",
+        studios = studios.orEmpty().mapNotNull { it.name },
     )
 }
 
@@ -156,7 +169,7 @@ internal fun MediaStreamDto.toMediaStream() = MediaStream(
     rangeType = videoRangeType,
 )
 
-internal fun MediaSourceDto.toMediaSource() = MediaSource(id = id, container = container, bitrate = bitrate, streams = mediaStreams.orEmpty().map { it.toMediaStream() }, size = size)
+internal fun MediaSourceDto.toMediaSource() = MediaSource(id = id, name = name, container = container, bitrate = bitrate, streams = mediaStreams.orEmpty().map { it.toMediaStream() }, size = size)
 
 internal fun PlayMethod.wire() = when (this) {
     PlayMethod.DIRECT_PLAY -> "DirectPlay"
@@ -174,3 +187,9 @@ internal fun ItemDto.badges(): List<String> {
 
 @OptIn(kotlin.time.ExperimentalTime::class)
 internal fun parseDateMs(iso: String): Long? = runCatching { kotlin.time.Instant.parse(iso).toEpochMilliseconds() }.getOrNull()
+
+/** "BehindTheScenes" → "Behind the scenes". */
+internal fun extraLabel(type: String): String = when (type) {
+    "ThemeSong", "ThemeVideo" -> "Theme"
+    else -> type.replace(Regex("([a-z])([A-Z])"), "$1 $2").lowercase().replaceFirstChar { it.uppercase() }
+}

@@ -82,6 +82,14 @@ internal data class ItemDto(
     val seriesPrimaryImageTag: String? = null,
     val people: List<PersonDto>? = null,
     val locationType: String? = null,
+    val premiereDate: String? = null,
+    val partCount: Int? = null,
+    val chapters: List<ChapterInfoDto>? = null,
+    val remoteTrailers: List<MediaUrlDto>? = null,
+    val localTrailerCount: Int? = null,
+    val specialFeatureCount: Int? = null,
+    val extraType: String? = null,
+    val studios: List<NameIdDto>? = null,
     val mediaSources: List<MediaSourceDto>? = null,
     val width: Int? = null,
     val height: Int? = null,
@@ -114,6 +122,7 @@ internal data class MediaStreamDto(
 @Serializable
 internal data class MediaSourceDto(
     val id: String? = null,
+    val name: String? = null,
     val container: String? = null,
     val bitrate: Int? = null,
     val size: Long? = null,
@@ -280,3 +289,38 @@ internal data class NameIdDto(val name: String? = null, val id: String)
 
 @Serializable
 internal data class ClientLogDocumentResponseDto(val fileName: String? = null)
+
+/** One match from `Search/Hints`: the cheap as-you-type lookup. */
+@Serializable
+internal data class SearchHintDto(
+    val id: String? = null,
+    val itemId: String? = null,
+    val name: String? = null,
+    val type: String? = null,
+    val productionYear: Int? = null,
+    val indexNumber: Int? = null,
+    val parentIndexNumber: Int? = null,
+    val series: String? = null,
+    val primaryImageTag: String? = null,
+    val thumbImageTag: String? = null,
+    val backdropImageTag: String? = null,
+    val backdropImageItemId: String? = null,
+)
+
+@Serializable
+internal data class SearchHintResultDto(val searchHints: List<SearchHintDto> = emptyList(), val totalRecordCount: Int = 0)
+
+@Serializable
+internal data class ChapterInfoDto(val startPositionTicks: Long = 0, val name: String? = null, val imageTag: String? = null)
+
+@Serializable
+internal data class MediaUrlDto(val url: String? = null, val name: String? = null)
+
+/** Choices a library offers for filtering (`Items/Filters`). */
+@Serializable
+internal data class QueryFiltersLegacyDto(
+    val genres: List<String>? = null,
+    val tags: List<String>? = null,
+    val officialRatings: List<String>? = null,
+    val years: List<Int>? = null,
+)

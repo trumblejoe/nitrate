@@ -140,6 +140,33 @@ class JellyfinLiveTest {
     }
 
     @Test
+    fun `new browsing calls work against a live server`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val hints = client.searchHints("a")
+        val full = client.search("a")
+        println("hints ${hints.movies.size + hints.shows.size + hints.episodes.size} vs full ${full.movies.size + full.shows.size + full.episodes.size}")
+        val movies = client.views().first { it.collection == dev.nitrate.core.model.CollectionKind.MOVIES }
+        val filters = client.libraryFilters(movies.id, listOf(dev.nitrate.core.model.ItemKind.MOVIE))
+        println("filters: $filters")
+        assertTrue(filters.genres.isNotEmpty() || filters.years.isNotEmpty())
+        val film = client.queryItems(dev.nitrate.core.pages.ItemQuery(libraryId = movies.id, types = listOf(dev.nitrate.core.model.ItemKind.MOVIE), limit = 1)).first()
+        val full1 = client.getItem(film.id)
+        println("item: versions=${full1.versions.size} parts=${full1.partCount} chapters=${full1.chapters.size} trailers=${full1.localTrailerCount} extras=${full1.specialFeatureCount} studios=${full1.studios}")
+        client.extras(film.id)
+        client.additionalParts(film.id)
+        client.upcomingEpisodes()
+        full1.productionYear?.let { y -> assertTrue(client.queryItems(dev.nitrate.core.pages.Browse.byYear(y)).any { it.id == film.id }) }
+        val before = client.showsMissingEpisodes()
+        client.setShowMissingEpisodes(!before)
+        kotlin.test.assertEquals(!before, client.showsMissingEpisodes())
+        client.setShowMissingEpisodes(before)
+        kotlin.test.assertEquals(before, client.showsMissingEpisodes())
+        assertTrue(client.homeRows().isNotEmpty())
+    }
+
+    @Test
     fun `speed check runs against a live server`() = runBlocking {
         assumeTrue("Set JELLYFIN_URL to run", url != null)
         val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)

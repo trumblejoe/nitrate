@@ -86,7 +86,7 @@ import kotlinx.serialization.Serializable
 @Serializable object WatchTogetherRoute
 @Serializable object ProfilesRoute
 @Serializable data class SearchRoute(val query: String = "", val voice: Boolean = false)
-@Serializable data class PersonRoute(val personId: String, val name: String)
+@Serializable data class PersonRoute(val personId: String, val name: String, val studio: String? = null, val year: Int? = null)
 
 /** Asked of the app from outside: the home screen, voice search, the remote's search button. */
 sealed interface TvRequest {
@@ -222,6 +222,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
                 onPlayQueue = { items -> nav.playQueue(items.map { it.id }) },
+                onBrowse = { title, studio, year -> nav.navigate(PersonRoute("", title, studio, year)) },
             )
         }
         composable<SettingsHubRoute> {
@@ -321,7 +322,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<PersonRoute> { entry ->
             val route = entry.toRoute<PersonRoute>()
-            dev.nitrate.tv.ui.search.PersonScreen(container.server, dev.nitrate.core.model.Person(route.personId, route.name), onOpen = nav::openItem)
+            dev.nitrate.tv.ui.search.PersonScreen(container.server, dev.nitrate.core.model.Person(route.personId, route.name), onOpen = nav::openItem, studio = route.studio, year = route.year)
         }
         composable<WatchTogetherRoute> {
             dev.nitrate.tv.ui.together.WatchTogetherScreen(container.syncPlay, account?.name?.let { "$it's group" } ?: "Movie night")

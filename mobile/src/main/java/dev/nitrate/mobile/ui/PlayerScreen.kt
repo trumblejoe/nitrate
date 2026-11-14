@@ -1,5 +1,11 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -93,7 +99,7 @@ import dev.nitrate.core.playback.PlaybackMoments
 import kotlinx.coroutines.delay
 import dev.nitrate.mobile.platform.VideoSurface
 
-private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MORE }
+private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS }
 
 @Composable
 fun PlayerScreen(
@@ -306,6 +312,7 @@ fun PlayerScreen(
                     if (sub.isNotEmpty()) Text(sub.joinToString(" · "), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                 }
                 if (canWrite && !writing) IconButton(onClick = { writing = true }) { Icon(Icons.Default.Edit, "Write beside the video (Ctrl+E)", tint = Color.White) }
+                if ((item?.chapters?.size ?: 0) > 1) TextButton(onClick = { dialog = PlayerDialog.CHAPTERS }) { Text("Chapters", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.AUDIO }, enabled = plan != null) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.SUBTITLES }, enabled = plan != null) { Text("Subtitles", color = Color.White) }
                 IconButton(onClick = { dialog = PlayerDialog.INFO }, enabled = plan != null) { Icon(Icons.Default.Info, "Playback info", tint = Color.White) }
@@ -339,6 +346,7 @@ fun PlayerScreen(
         p == null || dialog == PlayerDialog.NONE -> Unit
         dialog == PlayerDialog.AUDIO -> TrackPicker("Audio", p.audioChoices(), p.audioIndex, { session.selectTrack(StreamKind.AUDIO, it); dialog = PlayerDialog.NONE }) { dialog = PlayerDialog.NONE }
         dialog == PlayerDialog.SUBTITLES -> TrackPicker("Subtitles", p.subtitleChoices(), p.subtitleIndex, { session.selectTrack(StreamKind.SUBTITLE, it); dialog = PlayerDialog.NONE }) { dialog = PlayerDialog.NONE }
+        dialog == PlayerDialog.CHAPTERS && item != null -> ChapterSheet(item!!, actions.server, session.player.currentPosition, onSeek = { session.seekTo(it); dialog = PlayerDialog.NONE }) { dialog = PlayerDialog.NONE }
         dialog == PlayerDialog.MORE -> PlayerMoreSheet(
             actions = actions,
             session = session,
@@ -468,4 +476,45 @@ private fun SplitChooser(current: WritingSplit, onChoose: (WritingSplit) -> Unit
             }
         }
     }
+}
+
+/** The title's chapters with their pictures, and previous/next chapter. */
+@Composable
+private fun ChapterSheet(item: dev.nitrate.core.model.MediaItem, server: dev.nitrate.core.MediaServer, positionMs: Long, onSeek: (Long) -> Unit, onDismiss: () -> Unit) {
+    val chapters = item.chapters
+    val now = dev.nitrate.core.playback.Chapters.current(chapters, positionMs).coerceAtLeast(0)
+    val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = (now - 1).coerceAtLeast(0))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Chapters") },
+        text = {
+            androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.heightIn(max = 440.dp)) {
+                items(chapters.size) { i ->
+                    val c = chapters[i]
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onSeek(c.startMs) }.padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AsyncImage(
+                            server.chapterImageUrl(item, i, 320), null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.width(112.dp).aspectRatio(16f / 9f).clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.08f)),
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(dev.nitrate.core.playback.Chapters.title(chapters, i), fontWeight = if (i == now) FontWeight.Bold else null, color = if (i == now) accentColor() else Color.Unspecified)
+                            Text(dev.nitrate.core.model.formatClock(c.startMs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row {
+                dev.nitrate.core.playback.Chapters.previous(chapters, positionMs)?.let { at -> TextButton(onClick = { onSeek(at) }) { Text("Previous") } }
+                dev.nitrate.core.playback.Chapters.next(chapters, positionMs)?.let { at -> TextButton(onClick = { onSeek(at) }) { Text("Next chapter") } }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }

@@ -16,6 +16,8 @@ data class ItemQuery(
     val genres: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     val studios: List<String> = emptyList(),
+    /** Age ratings, any of ("PG-13", "TV-MA"...). */
+    val officialRatings: List<String> = emptyList(),
     val personId: String? = null,
     val yearFrom: Int? = null,
     val yearTo: Int? = null,

@@ -43,6 +43,9 @@ class BrowseViewModel(
 
     /** Genres in this library, for the filter. */
     val genres: StateFlow<List<String>> = _genres
+    private val _filters = MutableStateFlow(dev.nitrate.core.model.LibraryFilters())
+    /** Everything the library can be filtered by, from the server. */
+    val filters: StateFlow<dev.nitrate.core.model.LibraryFilters> = _filters
     private var loading: Job? = null
 
     init {
@@ -51,7 +54,12 @@ class BrowseViewModel(
                 if (options != _state.value.options || _state.value.total < 0) restart(options)
             }
         }
-        viewModelScope.launch { _genres.value = runCatching { server.genres(library.id) }.getOrDefault(emptyList()) }
+        viewModelScope.launch {
+            // The choices the library really has: genres, years, age ratings and tags.
+            val f = runCatching { server.libraryFilters(library.id, Browse.typesFor(library.collection)) }.getOrNull()
+            if (f != null) _filters.value = f
+            _genres.value = f?.genres?.takeIf { it.isNotEmpty() } ?: runCatching { server.genres(library.id) }.getOrDefault(emptyList())
+        }
     }
 
     /** Changes the options (saved, so they're there next time and on other devices). */
