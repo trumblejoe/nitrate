@@ -104,7 +104,12 @@ fun SpeedCheckScreen(container: AppContainer, startNow: Boolean = false) {
                 selected = false,
                 onClick = {},
                 headlineContent = { Text("${s.label}:  ${s.result}") },
-                supportingContent = { Text(listOfNotNull(s.detail, s.extra).joinToString(" · ")) },
+                supportingContent = {
+                    Column {
+                        Text(listOfNotNull(s.detail, s.extra).joinToString(" · "))
+                        s.parts.forEach { (name, ms) -> Text("   $name: $ms ms", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                },
                 trailingContent = { Text(s.rating.label, color = ratingColor(s.rating), style = MaterialTheme.typography.titleMedium) },
                 modifier = Modifier.widthIn(max = 900.dp),
             )

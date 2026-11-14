@@ -57,7 +57,7 @@ fun HomeScreen(
     /** Rows as last loaded, shown at once while fresh ones load. */
     dataCache: dev.nitrate.android.storage.DataCache? = null,
 ) {
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = dataCache) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = dataCache, loadProgress = repository::homeRowsProgress) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()

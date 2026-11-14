@@ -18,6 +18,8 @@ data class SpeedStep(
     /** Download speed in megabits per second (the download step only). */
     val mbps: Double? = null,
     val error: String? = null,
+    /** Parts timed separately (Home's rows), slowest first: name to milliseconds. */
+    val parts: List<Pair<String, Long>> = emptyList(),
 ) {
     val medianMs: Long? get() = samplesMs.sorted().takeIf { it.isNotEmpty() }?.let { it[it.size / 2] }
 
@@ -60,6 +62,7 @@ data class SpeedReport(
             append('\n')
             append("  ").append(s.detail).append('\n')
             if (s.samplesMs.size > 1) append("  samples: ${s.samplesMs.joinToString(", ")} ms\n")
+            s.parts.forEach { (name, ms) -> append("    $name: $ms ms\n") }
         }
     }
 }
@@ -95,7 +98,12 @@ object SpeedCheck {
         val parse = med(PARSE)
         if (parse != null && parse > 250) out += "This device is slow at reading the server's answers: $parse ms to read one large response. Lighter requests from Nitrate will help most here."
         val home = med(HOME)
-        if (home != null && home > 3000) out += "Home takes ${home / 1000.0} s to load in full."
+        val homeStep = steps.firstOrNull { it.id == HOME }
+        if (home != null && home > 3000) {
+            val slowest = homeStep?.parts?.firstOrNull()
+            out += "Home takes ${home / 1000.0} s to load in full" +
+                (slowest?.let { (name, ms) -> ", held up by \"$name\" (${ms / 1000.0} s). Nitrate shows the other rows without waiting for it." } ?: ".")
+        }
         steps.firstOrNull { it.id == DOWNLOAD }?.mbps?.let { if (it < 10) out += "Download speed is about ${(it * 10).toLong() / 10.0} Mbps, which limits video quality and makes pictures load slowly." }
         if (out.isEmpty()) out += "Everything is within normal speeds from this device."
         return out

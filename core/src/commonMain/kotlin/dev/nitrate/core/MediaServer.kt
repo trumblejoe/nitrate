@@ -134,6 +134,14 @@ interface MediaServer {
     suspend fun homeRows(): List<MediaRow>
     suspend fun libraryRows(library: MediaItem): List<MediaRow>
 
+    /** Home's rows as each arrives, so the page needn't wait for its slowest row. */
+    fun homeRowsProgress(): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
+        kotlinx.coroutines.flow.flow { emit(dev.nitrate.core.rows.RowsProgress(homeRows(), complete = true)) }
+
+    /** A library's overview rows as each arrives. */
+    fun libraryRowsProgress(library: MediaItem): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
+        kotlinx.coroutines.flow.flow { emit(dev.nitrate.core.rows.RowsProgress(libraryRows(library), complete = true)) }
+
     /** One page of a library for grids. Returns the items and the total count. */
     suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean = false): Pair<List<MediaItem>, Int>
     suspend fun getItem(id: String): MediaItem

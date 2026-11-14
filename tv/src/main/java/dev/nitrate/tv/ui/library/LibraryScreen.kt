@@ -108,7 +108,7 @@ fun LibraryScreen(
     when (tab) {
         LibraryTab.RECOMMENDED -> {
             val vm = viewModel(key = "library-rows-$libraryId") {
-                RowsViewModel(PageKeys.library(lib.id), { repository.libraryRows(lib) }, displaySettings, repository, changes, cache = dataCache)
+                RowsViewModel(PageKeys.library(lib.id), { repository.libraryRows(lib) }, displaySettings, repository, changes, cache = dataCache, loadProgress = { repository.libraryRowsProgress(lib) })
             }
             val state by vm.state.collectAsStateWithLifecycle()
             val overrides by vm.overrides.collectAsStateWithLifecycle()

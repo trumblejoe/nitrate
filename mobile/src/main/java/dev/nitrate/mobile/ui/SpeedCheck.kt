@@ -99,6 +99,7 @@ fun SpeedCheckDialog(actions: AppActions, startNow: Boolean = true, onDismiss: (
                         }
                         Text(s.result, style = MaterialTheme.typography.bodyMedium)
                         Text(listOfNotNull(s.detail, s.extra).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        s.parts.forEach { (name, ms) -> Text("   $name: $ms ms", style = MaterialTheme.typography.bodySmall) }
                     }
                 }
                 saved?.let { item { Text(it, color = accentColor(), modifier = Modifier.padding(top = 6.dp)) } }

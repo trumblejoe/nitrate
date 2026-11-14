@@ -97,6 +97,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
@@ -569,25 +570,41 @@ class JellyfinClient(
 
     override suspend fun views(): List<MediaItem> = items("UserViews", query = emptyMap())
 
-    /** Every row's request goes out at once; the rows keep their order. */
-    override suspend fun homeRows(): List<MediaRow> = coroutineScope {
-        val viewsAsync = async { views() }
-        val resume = async { resumeItems(parentId = null, types = null) }
-        val nextUp = async { items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)) }
-        val because = async { runCatching { dev.nitrate.core.rows.BecauseYouWatched.rows(recentlyWatched(), ::similar) }.getOrDefault(emptyList()) }
-        val views = viewsAsync.await()
-        val latest = views
-            .filter { it.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null) }
-            .map { view -> view to async { latest(view.id) } }
-
-        buildList {
-            if (views.isNotEmpty()) add(MediaRow("home/my_media", "My Media", views, WIDE_DEFAULT))
-            resume.await().takeIf { it.isNotEmpty() }?.let { add(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT)) }
-            nextUp.await().takeIf { it.isNotEmpty() }?.let { add(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
-            for ((view, items) in latest) items.await().takeIf { it.isNotEmpty() }?.let { add(MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay())) }
-            addAll(because.await())
-        }
+    /**
+     * Home's rows as independent jobs, all started at once: the library list (My Media, and the
+     * "Latest in…" rows that need it), Continue Watching, Next Up and "Because you watched".
+     */
+    private fun homeJobs(): List<dev.nitrate.core.rows.RowJob> {
+        val views = kotlinx.coroutines.CompletableDeferred<List<MediaItem>>()
+        return listOf(
+            dev.nitrate.core.rows.RowJob("My Media") {
+                val v = try { views() } catch (e: Exception) { views.completeExceptionally(e); throw e }
+                views.complete(v)
+                if (v.isEmpty()) emptyList() else listOf(MediaRow("home/my_media", "My Media", v, WIDE_DEFAULT))
+            },
+            dev.nitrate.core.rows.RowJob("Continue Watching") {
+                resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT)) }
+            },
+            dev.nitrate.core.rows.RowJob("Next Up") {
+                items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
+            },
+            dev.nitrate.core.rows.RowJob("Latest in each library") {
+                coroutineScope {
+                    views.await()
+                        .filter { it.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null) }
+                        .map { view -> view to async { latest(view.id) } }
+                        .mapNotNull { (view, items) -> items.await().takeIf { it.isNotEmpty() }?.let { MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay()) } }
+                }
+            },
+            dev.nitrate.core.rows.RowJob("Because you watched") {
+                dev.nitrate.core.rows.BecauseYouWatched.rows(recentlyWatched(), ::similar)
+            },
+        )
     }
+
+    override fun homeRowsProgress(): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(homeJobs())
+
+    override suspend fun homeRows(): List<MediaRow> = homeRowsProgress().last().rows
 
     /** Movies and episodes finished most recently. */
     private suspend fun recentlyWatched(): List<MediaItem> = items(
@@ -607,17 +624,15 @@ class JellyfinClient(
         get("Items", "Latest", query = mapOf("parentId" to parentId, "fields" to ROW_FIELDS, "limit" to ROW_LIMIT))
             .decode<List<ItemDto>>().map { it.toMediaItem() }
 
+    /** A library's overview rows as independent jobs, all started at once. */
     @OptIn(ExperimentalTime::class)
-    /** Every row's request goes out at once; the rows keep their order. */
-    override suspend fun libraryRows(library: MediaItem): List<MediaRow> = coroutineScope {
+    private fun libraryJobs(library: MediaItem): List<dev.nitrate.core.rows.RowJob> {
         val id = library.id
         val prefix = "library/$id"
         val now = Clock.System.now().toString()
-        val wanted = mutableListOf<Triple<String, String, RowDisplay>>()
-        val loads = mutableListOf<kotlinx.coroutines.Deferred<List<MediaItem>>>()
+        val jobs = mutableListOf<dev.nitrate.core.rows.RowJob>()
         fun add(key: String, title: String, display: RowDisplay = RowDisplay(), load: suspend () -> List<MediaItem>) {
-            wanted += Triple(key, title, display)
-            loads += async { load() }
+            jobs += dev.nitrate.core.rows.RowJob(title) { load().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("$prefix/$key", title, it, display)) } }
         }
 
         when (library.collection) {
@@ -638,8 +653,12 @@ class JellyfinClient(
                 add("favorites", "Favorites") { query(id, types, "SortName", "Ascending", filters = "IsFavorite") }
             }
         }
-        wanted.zip(loads.awaitAll()).mapNotNull { (w, items) -> if (items.isEmpty()) null else MediaRow("$prefix/${w.first}", w.second, items, w.third) }
+        return jobs
     }
+
+    override fun libraryRowsProgress(library: MediaItem): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(libraryJobs(library))
+
+    override suspend fun libraryRows(library: MediaItem): List<MediaRow> = libraryRowsProgress(library).last().rows
 
     private suspend fun resumeItems(parentId: String?, types: String?) = items(
         "UserItems", "Resume",
@@ -1144,7 +1163,16 @@ class JellyfinClient(
             total = runCatching { JellyfinJson.decodeFromString<QueryResultDto<ItemDto>>(biggest).totalRecordCount }.getOrNull()
         }
         var rowCount = 0
-        step(S.HOME, "Home page", "Loading every row of Home, all at once as Nitrate does", 2, { "$rowCount rows" }) { rowCount = homeRows().size }
+        val parts = mutableListOf<dev.nitrate.core.rows.RowTiming>()
+        val home = step(S.HOME, "Home page", "Loading every row of Home, all at once as Nitrate does; each part timed on its own", 2, { "$rowCount rows" }) {
+            parts.clear()
+            rowCount = dev.nitrate.core.rows.ProgressiveRows.run(homeJobs()) { t -> parts += t }.last().rows.size
+        }
+        if (parts.isNotEmpty()) {
+            val withParts = home.copy(parts = parts.sortedByDescending { it.ms }.map { it.name to it.ms })
+            steps[steps.indexOf(home)] = withParts
+            onStep(withParts)
+        }
         val bytes = 2_000_000
         var mbps: Double? = null
         val dl = step(S.DOWNLOAD, "Download speed", "Downloading 2 MB from the server", 2) {

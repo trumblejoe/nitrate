@@ -48,6 +48,8 @@ class RowsViewModel(
     private val defaults: (MediaRow) -> RowDisplay = { it.defaultDisplay },
     /** Rows as last loaded, shown at once while fresh ones load. */
     private val cache: dev.nitrate.android.storage.DataCache? = null,
+    /** The built-in rows as each arrives (instead of [loadBuiltIn]), so the page needn't wait for its slowest row. */
+    private val loadProgress: (() -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)? = null,
 ) : ViewModel() {
     private val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
     private val userId = server.userId
@@ -98,6 +100,27 @@ class RowsViewModel(
     }
 
     fun refresh() {
+        val progressive = loadProgress
+        if (progressive != null) {
+            viewModelScope.launch {
+                var finished: List<MediaRow>? = null
+                val outcome = runCatching {
+                    progressive().collect { p ->
+                        val fresh = p.rows.map { it.copy(defaultDisplay = defaults(it)) }
+                        fresh.forEach { knownTitles[it.key] = it.title }
+                        // Rows that have answered replace last time's in place; the rest stay until they answer.
+                        builtIn.value = Result.success(dev.nitrate.core.rows.ProgressiveRows.overlay(builtIn.value?.getOrNull(), p.copy(rows = fresh)))
+                        if (p.complete) finished = fresh
+                    }
+                }
+                // Keep showing old rows if a background refresh fails.
+                outcome.exceptionOrNull()?.let { e -> if (builtIn.value?.isSuccess != true) builtIn.value = Result.failure(e) }
+                loadCustom(layout.value.entries.filter { it.isCustom })
+                val rows = finished
+                if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value))
+            }
+            return
+        }
         viewModelScope.launch {
             val result = runCatching { loadBuiltIn().map { it.copy(defaultDisplay = defaults(it)) } }
             result.getOrNull()?.forEach { knownTitles[it.key] = it.title }
