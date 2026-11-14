@@ -78,7 +78,7 @@ import dev.nitrate.mobile.platform.rememberArtworkColor
 
 @Composable
 fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey: String? = null) {
-    val vm = viewModel(key = "details-$itemId") { DetailsViewModel(actions.server, itemId, seasonId) }
+    val vm = viewModel(key = "details-$itemId") { DetailsViewModel(actions.server, itemId, seasonId, actions.container.dataCache) }
     val state by vm.state.collectAsStateWithLifecycle()
     // Saved with the screen, so coming back (from the player) counts as coming back.
     var first by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }

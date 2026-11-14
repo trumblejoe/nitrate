@@ -153,7 +153,7 @@ class AppContainer(
         runCatching { server.sendClientLog(playbackReport(session)) }
 
     /** Each page's rows as last loaded, so pages open with them while fresh ones load. */
-    val rowCache by lazy { dev.nitrate.android.storage.RowCache(appContext) }
+    val dataCache by lazy { dev.nitrate.android.storage.DataCache(appContext) }
 
     /**
      * Times typical requests from this device to the server (see [MediaServer.speedCheck]),

@@ -83,8 +83,9 @@ fun DetailsScreen(
     /** Plays a queue (album tracks, an instant mix). */
     onPlayQueue: (List<MediaItem>) -> Unit = {},
 ) {
+    val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
     val vm = viewModel(key = "details-$itemId") {
-        DetailsViewModel(repository, itemId, seasonId)
+        DetailsViewModel(repository, itemId, seasonId, dataCache)
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val prefs = LocalDisplayPrefs.current

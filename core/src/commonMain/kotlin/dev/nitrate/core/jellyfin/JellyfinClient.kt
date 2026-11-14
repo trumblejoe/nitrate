@@ -1091,7 +1091,16 @@ class JellyfinClient(
     override suspend fun playlists(): List<MediaItem> = listOfType("Playlist")
 
     private suspend fun listOfType(type: String) =
-        items("Items", query = mapOf("includeItemTypes" to type, "recursive" to true, "sortBy" to "SortName", "sortOrder" to "Ascending", "fields" to "PrimaryImageAspectRatio", "limit" to 500))
+        // Names and pictures only: no total count and no watch data, which the server would
+        // otherwise work out for every list.
+        items(
+            "Items",
+            query = mapOf(
+                "includeItemTypes" to type, "recursive" to true, "sortBy" to "SortName", "sortOrder" to "Ascending",
+                "fields" to "PrimaryImageAspectRatio", "limit" to 500,
+                "enableTotalRecordCount" to false, "enableUserData" to false, "imageTypeLimit" to 1, "enableImageTypes" to "Primary",
+            ),
+        )
 
     // ---- Speed check ----
 

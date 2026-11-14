@@ -6,9 +6,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
+@kotlinx.serialization.Serializable
 enum class ListKind(val label: String, val plural: String) { PLAYLIST("playlist", "Playlists"), COLLECTION("collection", "Collections") }
 
 /** Somewhere an item can be added: an existing playlist or collection, or a new one ([id] null) to create. */
+@kotlinx.serialization.Serializable
 data class ListTarget(val kind: ListKind, val id: String?, val name: String) {
     val isNew get() = id == null
     /** Stable key for selection (new lists by name). */
@@ -19,6 +21,7 @@ data class ListTarget(val kind: ListKind, val id: String?, val name: String) {
 data class ListResult(val target: ListTarget, val error: String?)
 
 /** The user's playlists and collections, as targets, sorted by name. */
+@kotlinx.serialization.Serializable
 data class ListChoices(val playlists: List<ListTarget>, val collections: List<ListTarget>)
 
 /**
@@ -26,6 +29,9 @@ data class ListChoices(val playlists: List<ListTarget>, val collections: List<Li
  * together, so the picker doesn't jump while one arrives), and carrying out a reviewed selection.
  */
 object AddToLists {
+    /** Where the last choices are kept (per account) so the picker opens with them. */
+    fun cacheKey(canCollect: Boolean) = "lists/choices/$canCollect"
+
     suspend fun load(server: MediaServer, canCollect: Boolean): ListChoices = coroutineScope {
         val playlists = async { runCatching { server.playlists() }.getOrDefault(emptyList()) }
         val collections = async { if (canCollect) runCatching { server.collections() }.getOrDefault(emptyList()) else emptyList() }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.ItemKind
 
+@kotlinx.serialization.Serializable
 data class DetailsState(
     val item: MediaItem? = null,
     val error: String? = null,
@@ -31,11 +32,23 @@ class DetailsViewModel(
     private val repository: MediaServer,
     private val itemId: String,
     private val initialSeasonId: String?,
+    /** What this page showed last time, shown at once while it reloads. */
+    private val cache: dev.nitrate.android.storage.DataCache? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(DetailsState())
     val state: StateFlow<DetailsState> = _state
+    private val account = repository.currentAccountKey ?: "${repository.serverUrl}|${repository.userId}"
+    private val key = "details/$itemId"
+    private fun seasonKey(seasonId: String) = "$key/season/$seasonId"
 
-    init { load() }
+    init {
+        if (cache != null) viewModelScope.launch {
+            val cached = cache.read(account, key, DetailsState.serializer()) ?: return@launch
+            // Only while nothing fresh has arrived.
+            if (_state.value.item == null) _state.value = cached.copy(error = null)
+        }
+        load()
+    }
 
     /** Reloads user data (watched, resume point) e.g. after returning from the player. */
     fun load() {
@@ -52,6 +65,7 @@ class DetailsViewModel(
             }
             val similar = runCatching { repository.similar(itemId) }.getOrDefault(emptyList())
             _state.update { it.copy(similar = similar) }
+            cache?.write(account, key, _state.value.copy(error = null), DetailsState.serializer())
         }
     }
 
@@ -85,13 +99,22 @@ class DetailsViewModel(
     fun selectSeason(index: Int) {
         if (index == _state.value.selectedSeason && _state.value.episodes.isNotEmpty()) return
         _state.update { it.copy(selectedSeason = index, episodes = emptyList()) }
-        viewModelScope.launch { loadEpisodes(index) }
+        viewModelScope.launch {
+            // That season's episodes as last seen, while they reload.
+            val season = _state.value.seasons.getOrNull(index)
+            if (cache != null && season != null) {
+                val cached = cache.read(account, seasonKey(season.id), kotlinx.serialization.builtins.ListSerializer(MediaItem.serializer()))
+                if (cached != null && _state.value.selectedSeason == index && _state.value.episodes.isEmpty()) _state.update { it.copy(episodes = cached) }
+            }
+            loadEpisodes(index)
+        }
     }
 
     private suspend fun loadEpisodes(index: Int) {
         val season = _state.value.seasons.getOrNull(index) ?: return
-        val episodes = runCatching { repository.episodes(itemId, season.id) }.getOrDefault(emptyList())
+        val episodes = runCatching { repository.episodes(itemId, season.id) }.getOrNull() ?: return
         if (_state.value.selectedSeason == index) _state.update { it.copy(episodes = episodes) }
+        cache?.write(account, seasonKey(season.id), episodes, kotlinx.serialization.builtins.ListSerializer(MediaItem.serializer()))
     }
 
     fun togglePlayed() = mutate { item ->

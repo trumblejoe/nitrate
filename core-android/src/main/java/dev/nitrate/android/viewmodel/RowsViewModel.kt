@@ -47,7 +47,7 @@ class RowsViewModel(
     /** A row's look until the user picks one (e.g. artwork-first on the phone's Home). */
     private val defaults: (MediaRow) -> RowDisplay = { it.defaultDisplay },
     /** Rows as last loaded, shown at once while fresh ones load. */
-    private val cache: dev.nitrate.android.storage.RowCache? = null,
+    private val cache: dev.nitrate.android.storage.DataCache? = null,
 ) : ViewModel() {
     private val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
     private val userId = server.userId

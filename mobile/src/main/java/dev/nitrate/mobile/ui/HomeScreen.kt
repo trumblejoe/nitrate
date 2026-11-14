@@ -92,7 +92,7 @@ import kotlin.math.absoluteValue
 fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val container = actions.container
     // Artwork first: rows the user hasn't styled show as showcases or artwork, not posters.
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges, ArtworkFirst::display, cache = container.rowCache) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges, ArtworkFirst::display, cache = container.dataCache) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     var refreshing by remember { mutableStateOf(false) }

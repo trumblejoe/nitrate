@@ -50,7 +50,7 @@ fun AddToListDialog(actions: AppActions, item: MediaItem, onDismiss: () -> Unit)
     val scope = rememberCoroutineScope()
     val account by actions.container.account.collectAsState()
     val canCollect = account?.canManageCollections == true
-    val choices by produceState<ListChoices?>(null, canCollect) { value = AddToLists.load(server, canCollect) }
+    val choices by rememberListChoices(server, canCollect)
     val selected = remember { mutableStateListOf<ListTarget>() }
     val created = remember { mutableStateListOf<ListTarget>() }
     var tab by remember { mutableStateOf(ListKind.PLAYLIST) }

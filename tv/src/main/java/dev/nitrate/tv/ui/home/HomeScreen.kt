@@ -55,9 +55,9 @@ fun HomeScreen(
     /** Server pushes (new items, watch changes) that reload the rows. */
     changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
     /** Rows as last loaded, shown at once while fresh ones load. */
-    rowCache: dev.nitrate.android.storage.RowCache? = null,
+    dataCache: dev.nitrate.android.storage.DataCache? = null,
 ) {
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = rowCache) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = dataCache) }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()

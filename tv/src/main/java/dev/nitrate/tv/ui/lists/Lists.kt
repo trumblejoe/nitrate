@@ -56,7 +56,7 @@ fun TvDialog(onDismiss: () -> Unit, width: Int = 620, content: @Composable () ->
 @Composable
 fun AddToListDialog(server: MediaServer, item: MediaItem, canCollect: Boolean, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val choices by produceState<dev.nitrate.core.lists.ListChoices?>(null, canCollect) { value = dev.nitrate.core.lists.AddToLists.load(server, canCollect) }
+    val choices by rememberListChoices(server, canCollect)
     val selected = remember { androidx.compose.runtime.mutableStateListOf<dev.nitrate.core.lists.ListTarget>() }
     val created = remember { androidx.compose.runtime.mutableStateListOf<dev.nitrate.core.lists.ListTarget>() }
     var naming by remember { mutableStateOf<dev.nitrate.core.lists.ListKind?>(null) }
