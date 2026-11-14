@@ -142,12 +142,16 @@ private fun LibraryRows(actions: AppActions, library: MediaItem) {
     when (val s = state) {
         RowsState.Loading -> Loading()
         is RowsState.Error -> ErrorMessage(s.message, vm::refresh)
-        is RowsState.Loaded -> LazyColumn(contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        is RowsState.Loaded -> {
+            val list = androidx.compose.foundation.lazy.rememberLazyListState()
+            PrefetchRows(list, s.rows, overrides, actions.server)
+            LazyColumn(state = list, contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) }
             item(key = "edit") {
                 Box(Modifier.fillMaxWidth().padding(bottom = 24.dp), Alignment.Center) {
                     PillButton("Edit this page", Icons.Default.Edit, primary = false, onClick = { editing = true })
                 }
+            }
             }
         }
     }

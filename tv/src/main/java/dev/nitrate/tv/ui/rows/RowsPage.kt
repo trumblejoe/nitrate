@@ -70,6 +70,7 @@ fun RowsPage(
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     var listingRows by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    PrefetchRows(listState, rows, overrides, repository)
 
     val actions = remember(onOpen, onPlay) {
         RowActions(

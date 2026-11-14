@@ -69,8 +69,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /** The widest picture for an item: backdrop, then thumb, then its poster. */
-private fun AppActions.artwork(item: MediaItem) =
-    server.backdropUrl(item, 1280) ?: server.imageUrl(item, ImageKind.THUMB, 720) ?: server.imageUrl(item, maxHeight = 720)
+private fun AppActions.artwork(item: MediaItem) = server.wideArtwork(item)
 
 private fun playLabel(item: MediaItem) = if (item.kind == ItemKind.SERIES) "Watch" else if (item.user.positionMs > 0) "Resume" else "Play"
 
@@ -89,6 +88,7 @@ private fun Modifier.sideways() = layout { measurable, _ ->
 @Composable
 fun FilmStripRow(row: MediaRow, actions: AppActions) {
     val state = rememberLazyListState()
+    PrefetchAlongRow(state, row.items) { listOf(actions.artwork(it)) }
     val scope = rememberCoroutineScope()
     val gate by remember {
         derivedStateOf {
@@ -155,6 +155,7 @@ fun FilmStripRow(row: MediaRow, actions: AppActions) {
 @Composable
 fun LightningRow(row: MediaRow, actions: AppActions) {
     val state = rememberLazyListState()
+    PrefetchAlongRow(state, row.items) { listOf(actions.artwork(it)) }
     val pairs = remember(row.items) { row.items.chunked(2) }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val cardWidth = (maxWidth - ScreenPadding * 2).coerceAtMost(520.dp)
@@ -213,6 +214,7 @@ private fun SingleBill(item: MediaItem, actions: AppActions, modifier: Modifier)
 @Composable
 fun CressidaRow(row: MediaRow, actions: AppActions, display: dev.nitrate.core.rows.RowDisplay = dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA)) {
     val state = rememberLazyListState()
+    PrefetchAlongRow(state, row.items) { listOf(actions.artwork(it)) }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val cardWidth = (maxWidth - ScreenPadding * 2).coerceAtMost(520.dp)
         LazyRow(state = state, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp), flingBehavior = rememberSnapFlingBehavior(state)) {

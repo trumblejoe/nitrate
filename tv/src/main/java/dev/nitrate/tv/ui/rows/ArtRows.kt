@@ -70,7 +70,7 @@ import dev.nitrate.core.rows.RowSize
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.tv.ui.components.onPlayKey
 
-private fun MediaServer.artwork(item: MediaItem) = backdropUrl(item, 960) ?: imageUrl(item, ImageKind.THUMB, 720) ?: imageUrl(item, ImageKind.PRIMARY, 720)
+internal fun MediaServer.artwork(item: MediaItem) = backdropUrl(item, 960) ?: imageUrl(item, ImageKind.THUMB, 720) ?: imageUrl(item, ImageKind.PRIMARY, 720)
 
 @Composable
 private fun RowTitle(row: MediaRow) =
@@ -129,7 +129,9 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
         RowTitle(row)
         BoxWithConstraints(Modifier.fillMaxWidth().designScale(stripScale(size)).height(250.dp)) {
             Box(Modifier.align(Alignment.Center).requiredWidth(maxWidth + 200.dp).height(206.dp).rotate(-3f).background(RowArtDrawing.FilmBase)) {
-                LazyRow(contentPadding = PaddingValues(start = RowPadding + 100.dp, end = 200.dp), modifier = Modifier.fillMaxSize()) {
+                val stripState = androidx.compose.foundation.lazy.rememberLazyListState()
+                PrefetchAlongRow(stripState, row.items) { listOf(repository.artwork(it)) }
+                LazyRow(state = stripState, contentPadding = PaddingValues(start = RowPadding + 100.dp, end = 200.dp), modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { i, item ->
                         val inGate = i == gate
                         Box(Modifier.width(264.dp).fillMaxHeight()) {
@@ -175,9 +177,12 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
 /** Two titles per card, split by a bolt: each side is its own stop for the D-pad. */
 @Composable
 fun LightningRow(row: MediaRow, repository: MediaServer, actions: RowActions, size: RowSize = RowSize.MEDIUM) {
+    val state = androidx.compose.foundation.lazy.rememberLazyListState()
+    val pairs = remember(row.items) { row.items.chunked(2) }
+    PrefetchAlongRow(state, pairs, ahead = 3) { pair -> pair.map { repository.artwork(it) } }
     Column {
         RowTitle(row)
-        LazyRow(contentPadding = PaddingValues(horizontal = RowPadding), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        LazyRow(state = state, contentPadding = PaddingValues(horizontal = RowPadding), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             items(row.items.chunked(2), key = { p -> p.joinToString { it.id } }) { pair ->
                 Box(Modifier.designScale(cardScale(size))) {
                     if (pair.size == 2) DoubleBill(row, pair[0], pair[1], repository, actions) else SingleBill(row, pair[0], repository, actions)
@@ -266,9 +271,11 @@ private fun SingleBill(row: MediaRow, item: MediaItem, repository: MediaServer, 
 fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions, display: dev.nitrate.core.rows.RowDisplay = dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA)) {
     val accent = MaterialTheme.colorScheme.primary
     val prefs = LocalDisplayPrefs.current
+    val state = androidx.compose.foundation.lazy.rememberLazyListState()
+    PrefetchAlongRow(state, row.items) { listOf(repository.artwork(it)) }
     Column {
         RowTitle(row)
-        LazyRow(contentPadding = PaddingValues(horizontal = RowPadding), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        LazyRow(state = state, contentPadding = PaddingValues(horizontal = RowPadding), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                 val shape = RoundedCornerShape(20.dp)
                 val art = repository.artwork(item)

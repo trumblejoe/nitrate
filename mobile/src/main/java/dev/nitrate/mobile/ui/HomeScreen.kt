@@ -116,6 +116,7 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
             val lead = s.rows.firstOrNull { it.items.isNotEmpty() && !it.key.endsWith("my_media") }?.items?.firstOrNull()
             val tint by rememberArtworkColor(lead?.let { actions.server.backdropUrl(it, 320) ?: actions.server.imageUrl(it) })
             val list = rememberLazyListState()
+            PrefetchRows(list, s.rows, overrides, actions.server)
 
             TintedBackdrop(tint, modifier) {
                 PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; vm.refresh(); refreshing = false }) {
@@ -180,6 +181,11 @@ fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVec
  */
 @Composable
 fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
+    // Poster and Artwork rows: the next cards' pictures load before they scroll in (the other styles do their own).
+    val cardState = rememberLazyListState()
+    if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) {
+        PrefetchAlongRow(cardState, row.items) { listOf(actions.server.rowCardImage(it, display.style)) }
+    }
     Column {
         SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(display, onDisplay) }
         when (display.style) {
@@ -187,7 +193,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
             RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
             RowStyle.LIGHTNING -> LightningRow(row, actions)
             RowStyle.CRESSIDA -> CressidaRow(row, actions, display)
-            RowStyle.WIDE -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            RowStyle.WIDE -> LazyRow(state = cardState, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                     val key = "${row.key}-${item.id}"
                     MediaCard(
@@ -202,7 +208,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
                     )
                 }
             }
-            RowStyle.POSTER -> LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            RowStyle.POSTER -> LazyRow(state = cardState, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                     val key = "${row.key}-${item.id}"
                     MediaCard(
@@ -274,6 +280,7 @@ private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit)
 @Composable
 private fun ShowcaseRow(row: MediaRow, actions: AppActions) {
     val state = rememberLazyListState()
+    PrefetchAlongRow(state, row.items, ahead = 3) { listOf(actions.server.wideArtwork(it)) }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val cardWidth = (maxWidth - ScreenPadding * 2).coerceAtMost(560.dp)
         LazyRow(
@@ -296,7 +303,7 @@ private fun ShowcaseCard(item: MediaItem, actions: AppActions, sharedKey: String
     val prefs = LocalDisplayPrefs.current
     Box(modifier.aspectRatio(4f / 3f).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.06f)).pressable({ actions.open(item, sharedKey) })) {
         AsyncImage(
-            server.backdropUrl(item, 1280) ?: server.imageUrl(item, ImageKind.THUMB, 720) ?: server.imageUrl(item, maxHeight = 720),
+            server.wideArtwork(item),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey),

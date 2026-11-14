@@ -173,8 +173,10 @@ fun CustomPageScreen(actions: AppActions, pageId: String, editNow: Boolean) {
     val title = page?.title ?: ""
     if (editing) PageEditor(title, vm, actions, libraryId = null, onDone = { editing = false })
 
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    (state as? RowsState.Loaded)?.let { PrefetchRows(list, it.rows, overrides, actions.server) }
     TintedBackdrop(null, strength = 0.28f) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             item {
                 Column {
                     Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))

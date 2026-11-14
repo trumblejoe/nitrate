@@ -35,9 +35,14 @@ fun CardRow(
     val ratio = if (wide) 16f / 9f else 2f / 3f
     val width = (height * ratio).dp
 
+    // The next cards' pictures, and the full-screen backdrop of the next two (shown behind on focus).
+    val state = androidx.compose.foundation.lazy.rememberLazyListState()
+    PrefetchAlongRow(state, row.items) { repository.rowCardImages(it, display) }
+    PrefetchAlongRow(state, row.items, ahead = 2) { listOf(repository.backdropUrl(it)) }
     Column {
         Text(row.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = RowPadding, bottom = 12.dp))
         LazyRow(
+            state = state,
             contentPadding = PaddingValues(horizontal = RowPadding),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {

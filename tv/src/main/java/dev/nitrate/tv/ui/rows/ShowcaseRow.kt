@@ -91,6 +91,15 @@ fun ShowcaseRow(
     }
     val artwork = backdrops.getOrNull(backdropIndex)
 
+    // The titles either side of this one, so stepping shows their artwork and logo at once.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(current, items) {
+        val near = (listOf(current - 1) + (current + 1..current + 3)).mapNotNull { items.getOrNull(it) }
+        ImagePrefetch.enqueue(context, near.flatMap { n ->
+            listOf(repository.backdropUrls(n).firstOrNull() ?: repository.backdropUrl(n), wideImage(repository, n), if (options.showLogo) repository.logoUrl(n) else null)
+        })
+    }
+
     LaunchedEffect(active, item.id) { if (active) actions.onFocus(item) }
 
     Box(
