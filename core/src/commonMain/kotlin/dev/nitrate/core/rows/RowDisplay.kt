@@ -80,7 +80,8 @@ enum class InkTint(val label: String) {
 enum class CressidaInk(val label: String) {
     IVY("Ivy"),
     TRIBAL("Tribal"),
-    DRAGON("Dragon"),
+    DRAGON("Eastern dragon"),
+    WESTERN_DRAGON("Western dragon"),
     CONSTELLATION("Constellation"),
     WAVES("Waves"),
     DECO("Deco"),

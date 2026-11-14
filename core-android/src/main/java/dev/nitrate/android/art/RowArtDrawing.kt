@@ -90,6 +90,7 @@ fun DrawScope.drawCressidaInk(ink: Color, design: CressidaInk = CressidaInk.IVY)
         CressidaInk.IVY -> drawIvy(ink)
         CressidaInk.TRIBAL -> drawTribal(ink)
         CressidaInk.DRAGON -> drawDragon(ink)
+        CressidaInk.WESTERN_DRAGON -> drawWesternDragon(ink)
         CressidaInk.CONSTELLATION -> drawConstellation(ink)
         CressidaInk.WAVES -> drawWaves(ink)
         CressidaInk.DECO -> drawDeco(ink)
@@ -839,4 +840,121 @@ private fun DrawScope.drawPhoenix(ink: Color) {
         val d = r * (1.05f + rnd.next() * 0.35f)
         drawCircle(ink.copy(alpha = 0.4f + rnd.next() * 0.6f), (1.5f + rnd.next() * 2.5f) * unit, c + Offset((cos(a) * d).toFloat(), (sin(a) * d - r * 0.2f).toFloat()))
     }
+}
+
+/**
+ * Western dragon: an original winged dragon rearing on its hind legs, in fine line: a bat wing
+ * raised behind it (finger bones, scalloped membrane), a long arched neck with spines, a horned
+ * wedge head with jaws open and smoke curling out, a foreleg raised with claws out, and a spiked
+ * tail ending in a spade.
+ */
+private fun DrawScope.drawWesternDragon(ink: Color) {
+    val w = size.width * RowArt.CRESSIDA_SPLIT
+    val h = size.height
+    // Drawn in a box 0.55 wide by 1 tall, scaled to fit the marked side (tall phone or wide TV card).
+    val s = minOf(h * 0.9f, w * 1.2f / 0.55f)
+    val origin = Offset(w * 0.62f - 0.275f * s, h * 0.06f)
+    fun d(u: Float, v: Float) = origin + Offset(u * s, v * s)
+    fun shape(vararg pts: Pair<Float, Float>) = smooth(pts.map { d(it.first, it.second) }, closed = true)
+    val line = 2.3f * unit
+    val fine = 1.3f * unit
+
+    // Wing, raised behind: a strong arm to the wrist, three long fingers, membrane scalloped between.
+    val root = d(0.22f, 0.47f)
+    val elbow = d(0.10f, 0.30f)
+    val wrist = d(0.20f, 0.06f)
+    val tips = listOf(d(0.03f, 0.08f), d(0.0f, 0.24f), d(0.04f, 0.40f))
+    val trail = d(0.18f, 0.55f)
+    val membrane = Path().apply {
+        moveTo(root.x, root.y); lineTo(elbow.x, elbow.y); lineTo(wrist.x, wrist.y)
+        var from = wrist
+        (tips + trail).forEach { to ->
+            val mid = Offset((from.x + to.x) / 2, (from.y + to.y) / 2)
+            val pull = (wrist - mid) * 0.32f
+            quadraticTo(mid.x + pull.x, mid.y + pull.y, to.x, to.y)
+            from = to
+        }
+        close()
+    }
+    drawPath(membrane, Shadow.copy(alpha = 0.35f))
+    drawPath(membrane, ink, style = Stroke(fine, join = StrokeJoin.Round))
+    inked(taper(listOf(root, elbow, wrist)) { t -> s * (0.035f - 0.02f * t) }, ink, fine * 1.2f)
+    tips.forEach { tip -> drawLine(ink, wrist, tip, line * 0.8f, StrokeCap.Round) }
+    drawPath(smooth(listOf(wrist, wrist + Offset(5f * unit, -11f * unit), wrist + Offset(13f * unit, -9f * unit))), ink, style = Stroke(line, cap = StrokeCap.Round))
+
+    // Tail: back and down from the hips, curling up to a spade, spikes along its top.
+    val tailPts = smoothPoints(listOf(d(0.25f, 0.70f), d(0.15f, 0.76f), d(0.10f, 0.86f), d(0.14f, 0.94f), d(0.22f, 0.94f), d(0.25f, 0.89f)), 10)
+    inked(taper(tailPts) { t -> s * 0.06f * (1f - t) + 1.5f * unit }, ink, line)
+    val tn = normals(tailPts)
+    for (i in 4 until tailPts.size - 6 step 6) {
+        val base = tailPts[i] + tn[i] * (s * 0.06f * (1f - i / tailPts.size.toFloat()) * 0.5f)
+        val tip = base + tn[i] * 9f * unit
+        drawPath(Path().apply { moveTo(base.x - (tailPts[i + 1].x - tailPts[i].x) * 2, base.y - (tailPts[i + 1].y - tailPts[i].y) * 2); lineTo(tip.x, tip.y); lineTo(base.x + (tailPts[i + 1].x - tailPts[i].x) * 2, base.y + (tailPts[i + 1].y - tailPts[i].y) * 2) }, ink, style = Stroke(fine, join = StrokeJoin.Round))
+    }
+    inked(shape(0.25f to 0.89f, 0.22f to 0.84f, 0.27f to 0.78f, 0.31f to 0.85f), ink, line)
+
+    // Hind leg: a heavy thigh, the shin angled back, a clawed foot planted.
+    inked(shape(0.22f to 0.62f, 0.33f to 0.63f, 0.41f to 0.72f, 0.40f to 0.80f, 0.33f to 0.80f, 0.24f to 0.74f), ink, line)
+    inked(taper(listOf(d(0.38f, 0.78f), d(0.33f, 0.88f), d(0.36f, 0.95f))) { t -> s * (0.05f - 0.025f * t) }, ink, line)
+    val foot = d(0.36f, 0.95f)
+    repeat(3) { k -> drawPath(smooth(wavyLine(foot, -10f + k * 25f, (16f - k * 2f) * unit, 0f, 0f, 5f * unit, 6)), ink, style = Stroke(line, cap = StrokeCap.Round)) }
+
+    // Body: deep chest, belly drawing in to the hips, plates across the belly.
+    inked(shape(0.23f to 0.43f, 0.32f to 0.44f, 0.37f to 0.52f, 0.36f to 0.62f, 0.32f to 0.69f, 0.25f to 0.69f, 0.21f to 0.57f), ink, line)
+    for (k in 0 until 6) {
+        val v = 0.49f + k * 0.032f
+        drawPath(smooth(listOf(d(0.33f - k * 0.004f, v), d(0.355f - k * 0.006f, v + 0.004f), d(0.38f - k * 0.008f, v))), ink.copy(alpha = 0.55f), style = Stroke(fine, cap = StrokeCap.Round))
+    }
+
+    // Foreleg raised, claws out.
+    inked(taper(listOf(d(0.34f, 0.50f), d(0.43f, 0.56f), d(0.47f, 0.48f))) { t -> s * (0.045f - 0.02f * t) }, ink, line)
+    val paw = d(0.47f, 0.48f)
+    listOf(-70f, -40f, -10f).forEach { a -> drawPath(smooth(wavyLine(paw, a, 13f * unit, 0f, 0f, 5f * unit, 6)), ink, style = Stroke(line, cap = StrokeCap.Round)) }
+
+    // Neck: arching up from the shoulders, a few spines along its back.
+    val neckPts = smoothPoints(listOf(d(0.27f, 0.46f), d(0.35f, 0.36f), d(0.32f, 0.27f), d(0.39f, 0.19f)), 12)
+    inked(taper(neckPts) { t -> s * (0.10f - 0.045f * t) }, ink, line)
+    val nn = normals(neckPts)
+    for (i in 3 until neckPts.size - 4 step 7) {
+        val half = s * (0.10f - 0.045f * i / neckPts.size) * 0.5f
+        val base = neckPts[i] + nn[i] * half
+        val along = neckPts[i + 2] - neckPts[i]
+        val tip = base + nn[i] * 11f * unit - along * 0.6f
+        drawPath(Path().apply { moveTo(base.x - along.x * 0.5f, base.y - along.y * 0.5f); lineTo(tip.x, tip.y); lineTo(base.x + along.x * 0.5f, base.y + along.y * 0.5f) }, ink, style = Stroke(fine, join = StrokeJoin.Round))
+    }
+
+    // Head: a wedge facing right, jaws open, horns swept back.
+    val f = Frame(d(0.40f, 0.18f), 8f, s * 0.05f)
+    listOf(-0.9f to 1f, -0.6f to 0.7f).forEach { (y, k) ->
+        val horn = taper(listOf(f.p(-0.2f, y), f.p(-1.4f * k, y - 0.6f * k), f.p(-2.4f * k, y - 0.4f * k))) { t -> s * 0.05f * 0.5f * k * (1f - t) + 0.5f * unit }
+        inked(horn, ink, fine * 1.2f)
+    }
+    val skull = f.path(-0.6f to -0.6f, 0.2f to -1.0f, 1.0f to -0.75f, 2.6f to -0.45f, 2.9f to -0.15f, 2.4f to 0.05f, 1.0f to 0.1f, -0.2f to 0.45f, -0.7f to 0.2f)
+    val jaw = f.path(0.9f to 0.25f, 2.3f to 0.65f, 2.5f to 0.9f, 1.6f to 0.95f, 0.4f to 0.75f)
+    inked(jaw, ink, line)
+    inked(skull, ink, line)
+    listOf(1.6f, 2.2f).forEach { x -> drawPath(f.path(x - 0.1f to 0.05f, x + 0.1f to 0.04f, x to 0.35f), ink) }
+    drawPath(f.path(1.8f to 0.62f, 1.95f to 0.66f, 1.85f to 0.38f), ink)
+    drawPath(smooth(listOf(f.p(0.4f, -0.85f), f.p(1.0f, -0.65f), f.p(1.4f, -0.45f))), ink, style = Stroke(line * 1.3f, cap = StrokeCap.Round))
+    drawPath(f.path(0.75f to -0.5f, 1.05f to -0.55f, 1.25f to -0.38f, 1.0f to -0.38f), ink)
+    drawCircle(ink, 1.6f * unit, f.p(2.55f, -0.3f))
+    // Smoke curling from the jaws.
+    listOf(0f, 1f).forEach { k ->
+        val smoke = smooth(wavyLine(f.p(2.6f, 0.45f + k * 0.2f), -10f - k * 15f, s * (0.14f + 0.05f * k), 7f * unit, 1.6f, -10f * unit, 20))
+        drawPath(smoke, ink.copy(alpha = 0.6f - k * 0.2f), style = Stroke(fine * 1.2f, cap = StrokeCap.Round))
+    }
+}
+
+/** [points] smoothed into [perSpan] steps per span (Catmull-Rom), for tapering along. */
+private fun smoothPoints(points: List<Offset>, perSpan: Int): List<Offset> {
+    val out = mutableListOf<Offset>()
+    for (i in 0 until points.lastIndex) {
+        val p0 = points[(i - 1).coerceAtLeast(0)]; val p1 = points[i]; val p2 = points[i + 1]; val p3 = points[(i + 2).coerceAtMost(points.lastIndex)]
+        for (k in 0 until perSpan) {
+            val t = k / perSpan.toFloat(); val t2 = t * t; val t3 = t2 * t
+            out += (p1 * 2f + (p2 - p0) * t + (p0 * 2f - p1 * 5f + p2 * 4f - p3) * t2 + (p1 * 3f - p0 - p2 * 3f + p3) * t3) * 0.5f
+        }
+    }
+    out += points.last()
+    return out
 }

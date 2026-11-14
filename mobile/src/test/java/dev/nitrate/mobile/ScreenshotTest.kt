@@ -256,11 +256,11 @@ class ScreenshotTest {
     fun cressidaRow() = shoot("phone-row-cressida") { StyledRow(it, dev.nitrate.core.rows.RowStyle.CRESSIDA) }
 
     /** The figurative inks large, to judge their detail. */
-    @Test @Config(qualifiers = "w411dp-h1400dp-night-xxhdpi")
+    @Test @Config(qualifiers = "w411dp-h1850dp-night-xxhdpi")
     fun cressidaFigures() = shoot("phone-cressida-figures") { a ->
         val films = androidx.compose.runtime.produceState<List<dev.nitrate.core.model.MediaItem>>(emptyList()) { value = a.server.homeRows().first { it.key.startsWith("home/latest/") }.items }.value
         if (films.isEmpty()) return@shoot
-        val inks = listOf(dev.nitrate.core.rows.CressidaInk.DRAGON, dev.nitrate.core.rows.CressidaInk.PHOENIX, dev.nitrate.core.rows.CressidaInk.FLAMES, dev.nitrate.core.rows.CressidaInk.SONGBIRD, dev.nitrate.core.rows.CressidaInk.CONSTELLATION)
+        val inks = listOf(dev.nitrate.core.rows.CressidaInk.WESTERN_DRAGON, dev.nitrate.core.rows.CressidaInk.DRAGON, dev.nitrate.core.rows.CressidaInk.PHOENIX, dev.nitrate.core.rows.CressidaInk.FLAMES, dev.nitrate.core.rows.CressidaInk.SONGBIRD, dev.nitrate.core.rows.CressidaInk.CONSTELLATION)
         androidx.compose.foundation.layout.Column(Modifier.padding(12.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp)) {
             inks.chunked(2).forEachIndexed { r, pair ->
                 androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
@@ -277,7 +277,7 @@ class ScreenshotTest {
     }
 
     /** Every Cressida ink, two to a row, on real cards. */
-    @Test @Config(qualifiers = "w411dp-h2400dp-night-xxhdpi")
+    @Test @Config(qualifiers = "w411dp-h2700dp-night-xxhdpi")
     fun cressidaInks() = shoot("phone-cressida-inks") { a ->
         val films = androidx.compose.runtime.produceState<List<dev.nitrate.core.model.MediaItem>>(emptyList()) { value = a.server.homeRows().first { it.key.startsWith("home/latest/") }.items }.value
         if (films.isEmpty()) return@shoot
