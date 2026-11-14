@@ -140,6 +140,18 @@ class JellyfinLiveTest {
     }
 
     @Test
+    fun `speed check runs against a live server`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val steps = client.speedCheck()
+        val report = dev.nitrate.core.diagnostics.SpeedReport("Nitrate", "Live test", url, "now", steps)
+        println(report.render())
+        assertTrue(report.render(), steps.all { it.error == null })
+        assertTrue(steps.first { it.id == dev.nitrate.core.diagnostics.SpeedCheck.DOWNLOAD }.mbps!! > 0)
+    }
+
+    @Test
     fun `downloads work against a live server`() = runBlocking {
         assumeTrue("Set JELLYFIN_URL to run", url != null)
         val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)

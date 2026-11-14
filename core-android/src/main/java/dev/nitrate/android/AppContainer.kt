@@ -155,6 +155,25 @@ class AppContainer(
     /** Each page's rows as last loaded, so pages open with them while fresh ones load. */
     val rowCache by lazy { dev.nitrate.android.storage.RowCache(appContext) }
 
+    /**
+     * Times typical requests from this device to the server (see [MediaServer.speedCheck]),
+     * reporting each step as it finishes, and returns the whole report.
+     */
+    suspend fun speedCheck(onStep: (dev.nitrate.core.diagnostics.SpeedStep) -> Unit): dev.nitrate.core.diagnostics.SpeedReport {
+        val steps = server.speedCheck(onStep)
+        return dev.nitrate.core.diagnostics.SpeedReport(
+            app = "$clientName $version",
+            device = "${capabilities.model} (${androidIdentity(appContext, clientName, version).deviceName})",
+            server = server.serverUrl.orEmpty(),
+            createdAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date()),
+            steps = steps,
+        )
+    }
+
+    /** Saves a speed check in the server's logs (Dashboard → Logs); returns the file name. */
+    suspend fun sendSpeedReport(report: dev.nitrate.core.diagnostics.SpeedReport): Result<String> =
+        runCatching { server.sendClientLog(report.render()) }
+
     /** Libraries as last seen, for menus that should be whole at once. */
     val libraryCache by lazy { dev.nitrate.android.storage.LibraryCache(appContext) }
 

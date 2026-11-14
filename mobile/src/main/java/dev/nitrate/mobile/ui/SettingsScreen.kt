@@ -130,6 +130,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
 
         header("Playback", "Settings for this device; they aren't synced.")
         item { DeviceReportRow(actions) }
+        item { SpeedCheckRow(actions) }
         item {
             Choice("Maximum bitrate", formatBitrate(playback.maxBitrate)) {
                 val list = PlaybackSettings.BITRATES

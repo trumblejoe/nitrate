@@ -413,4 +413,6 @@ class TvScreenshotTest {
     @Test fun addToLists() = shoot("tv-add-to-lists") { c ->
         dev.nitrate.tv.ui.lists.AddToListDialog(c.server, dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE), canCollect = true) {}
     }
+
+    @Test fun speedCheck() = shoot("tv-speed-check") { c -> dev.nitrate.tv.ui.settings.SpeedCheckScreen(c, startNow = true) }
 }

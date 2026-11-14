@@ -255,6 +255,8 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w411dp-h1050dp-night-xxhdpi")
     fun cressidaRow() = shoot("phone-row-cressida") { StyledRow(it, dev.nitrate.core.rows.RowStyle.CRESSIDA) }
 
+    @Test fun speedCheck() = shoot("phone-speed-check") { a -> dev.nitrate.mobile.ui.SpeedCheckDialog(a) {} }
+
     @Test fun addToLists() = shoot("phone-add-to-lists") { a ->
         dev.nitrate.mobile.ui.AddToListDialog(a, dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE)) {}
     }

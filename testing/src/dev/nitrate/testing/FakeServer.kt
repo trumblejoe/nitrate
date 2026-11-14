@@ -162,6 +162,20 @@ class FakeServer : MediaServer {
     override suspend fun collectionItems(collectionId: String) = films.take(3)
     override suspend fun genres(libraryId: String?) = listOf("Action", "Comedy", "Drama", "Horror", "Mystery", "Sci-Fi", "Thriller")
     override suspend fun collections() = listOf(MediaItem("c1", "Reel Classics", ItemKind.BOX_SET), MediaItem("c2", "Midnight Movies", ItemKind.BOX_SET))
+    /** A check from far away: a slow round trip and a slow library search, the rest fine. */
+    override suspend fun speedCheck(onStep: (dev.nitrate.core.diagnostics.SpeedStep) -> Unit): List<dev.nitrate.core.diagnostics.SpeedStep> {
+        val S = dev.nitrate.core.diagnostics.SpeedCheck
+        return listOf(
+            dev.nitrate.core.diagnostics.SpeedStep(S.PING, "Round trip", "Time to reach the server and back, with no work for it to do", listOf(210, 190, 230, 205, 198)),
+            dev.nitrate.core.diagnostics.SpeedStep(S.SIGNED_IN, "Signed-in call", "A small request that checks your sign-in (your account)", listOf(260, 240, 250)),
+            dev.nitrate.core.diagnostics.SpeedStep(S.LIBRARIES, "Library list", "Your libraries, as the menu shows them", listOf(320, 300, 310)),
+            dev.nitrate.core.diagnostics.SpeedStep(S.SEARCH, "Library search", "Searching the whole library for 100 titles with details: the server's database at work", listOf(1800, 1650, 1700), extra = "18,402 items in the library"),
+            dev.nitrate.core.diagnostics.SpeedStep(S.HOME, "Home page", "Loading every row of Home, all at once as Nitrate does", listOf(2900, 2600), extra = "9 rows"),
+            dev.nitrate.core.diagnostics.SpeedStep(S.DOWNLOAD, "Download speed", "Downloading 2 MB from the server", listOf(700, 650), mbps = 24.6),
+            dev.nitrate.core.diagnostics.SpeedStep(S.PARSE, "Reading on this device", "Turning the library search's answer (184 KB) into titles, here on this device", listOf(120, 110, 115)),
+        ).onEach(onStep)
+    }
+
     override suspend fun playlists() = listOf(MediaItem("p1", "Rainy day", ItemKind.PLAYLIST), MediaItem("p2", "Road trip", ItemKind.PLAYLIST))
     override suspend fun account() = dev.nitrate.core.admin.AccountInfo("user-1", "Joe", isAdmin = true)
     override suspend fun metadata(itemId: String) = getItem(itemId).let { i ->

@@ -21,6 +21,8 @@ PATHS = [
     "/QuickConnect/Authorize",
     "/Sessions/Logout",
     "/ClientLog/Document",
+    "/System/Ping",
+    "/Playback/BitrateTest",
     "/DisplayPreferences/{displayPreferencesId}",
     "/UserViews",
     "/UserItems/Resume",

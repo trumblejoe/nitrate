@@ -79,6 +79,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.URLBuilder
@@ -1091,6 +1092,70 @@ class JellyfinClient(
 
     private suspend fun listOfType(type: String) =
         items("Items", query = mapOf("includeItemTypes" to type, "recursive" to true, "sortBy" to "SortName", "sortOrder" to "Ascending", "fields" to "PrimaryImageAspectRatio", "limit" to 500))
+
+    // ---- Speed check ----
+
+    override suspend fun speedCheck(onStep: (dev.nitrate.core.diagnostics.SpeedStep) -> Unit): List<dev.nitrate.core.diagnostics.SpeedStep> {
+        val clock = kotlin.time.TimeSource.Monotonic
+        val steps = mutableListOf<dev.nitrate.core.diagnostics.SpeedStep>()
+        suspend fun step(id: String, label: String, detail: String, times: Int, extra: () -> String? = { null }, block: suspend () -> Unit): dev.nitrate.core.diagnostics.SpeedStep {
+            val samples = mutableListOf<Long>()
+            val result = try {
+                repeat(times) {
+                    val mark = clock.markNow()
+                    block()
+                    samples += mark.elapsedNow().inWholeMilliseconds
+                }
+                dev.nitrate.core.diagnostics.SpeedStep(id, label, detail, samples, extra())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                dev.nitrate.core.diagnostics.SpeedStep(id, label, detail, samples, error = e.message ?: e::class.simpleName)
+            }
+            steps += result
+            onStep(result)
+            return result
+        }
+        val S = dev.nitrate.core.diagnostics.SpeedCheck
+
+        step(S.PING, "Round trip", "Time to reach the server and back, with no work for it to do", 5) { http.get(url("System", "Ping")).bodyAsText() }
+        step(S.SIGNED_IN, "Signed-in call", "A small request that checks your sign-in (your account)", 3) { get("Users", "Me").bodyAsText() }
+        step(S.LIBRARIES, "Library list", "Your libraries, as the menu shows them", 3) { get("UserViews").bodyAsText() }
+
+        var biggest = ""
+        var total: Int? = null
+        step(S.SEARCH, "Library search", "Searching the whole library for 100 titles with details: the server's database at work", 3, { total?.let { "$it items in the library" } }) {
+            biggest = get(
+                "Items",
+                query = mapOf(
+                    "userId" to userId, "recursive" to true, "includeItemTypes" to "Movie,Series,Episode",
+                    "sortBy" to "SortName", "limit" to 100, "fields" to ROW_FIELDS,
+                ),
+            ).bodyAsText()
+            total = runCatching { JellyfinJson.decodeFromString<QueryResultDto<ItemDto>>(biggest).totalRecordCount }.getOrNull()
+        }
+        var rowCount = 0
+        step(S.HOME, "Home page", "Loading every row of Home, all at once as Nitrate does", 2, { "$rowCount rows" }) { rowCount = homeRows().size }
+        val bytes = 2_000_000
+        var mbps: Double? = null
+        val dl = step(S.DOWNLOAD, "Download speed", "Downloading 2 MB from the server", 2) {
+            val mark = clock.markNow()
+            val got = http.get(url("Playback", "BitrateTest", query = mapOf("size" to bytes))) { auth() }.readRawBytes().size
+            val secs = mark.elapsedNow().inWholeMilliseconds.coerceAtLeast(1) / 1000.0
+            val now = got * 8 / secs / 1_000_000
+            mbps = maxOf(mbps ?: 0.0, now)
+        }
+        if (dl.error == null) {
+            val withSpeed = dl.copy(mbps = mbps)
+            steps[steps.lastIndex] = withSpeed
+            onStep(withSpeed)
+        }
+        step(S.PARSE, "Reading on this device", "Turning the library search's answer (${biggest.length / 1024} KB) into titles, here on this device", 3) {
+            if (biggest.isEmpty()) error("no answer to read")
+            JellyfinJson.decodeFromString<QueryResultDto<ItemDto>>(biggest).items.map { it.toMediaItem() }
+        }
+        return steps
+    }
 
     // ---- Search ----
 

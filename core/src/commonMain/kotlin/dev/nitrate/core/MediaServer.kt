@@ -88,6 +88,13 @@ interface MediaServer {
      */
     suspend fun sendClientLog(text: String): String = unsupported()
 
+    /**
+     * Times typical requests to the server from this device (round trip, a signed-in call, the
+     * library list, a library search, a full Home load, download speed, and reading a large
+     * answer here), calling [onStep] as each finishes.
+     */
+    suspend fun speedCheck(onStep: (dev.nitrate.core.diagnostics.SpeedStep) -> Unit = {}): List<dev.nitrate.core.diagnostics.SpeedStep> = unsupported()
+
     /** Every server signed in to here, the primary first. */
     suspend fun servers(): List<SavedServer> = emptyList()
 

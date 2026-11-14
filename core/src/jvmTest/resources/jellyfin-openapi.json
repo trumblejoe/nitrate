@@ -14432,6 +14432,69 @@
     ]
    }
   },
+  "/Playback/BitrateTest": {
+   "get": {
+    "operationId": "GetBitrateTestBytes",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "size",
+      "schema": {
+       "default": 102400,
+       "format": "int32",
+       "maximum": 100000000,
+       "minimum": 1,
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/octet-stream": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "MediaInfo"
+    ]
+   }
+  },
   "/Playlists": {
    "post": {
     "operationId": "CreatePlaylist",
@@ -18251,6 +18314,104 @@
        "application/json; profile=\"PascalCase\"": {
         "schema": {
          "$ref": "#/components/schemas/PublicSystemInfo"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "tags": [
+     "System"
+    ]
+   }
+  },
+  "/System/Ping": {
+   "get": {
+    "operationId": "GetPingSystem",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "string"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "type": "string"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "tags": [
+     "System"
+    ]
+   },
+   "post": {
+    "operationId": "PostPingSystem",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "string"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "type": "string"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "type": "string"
         }
        }
       }
