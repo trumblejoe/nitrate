@@ -96,6 +96,7 @@ fun DrawScope.drawCressidaInk(ink: Color, design: CressidaInk = CressidaInk.IVY)
         CressidaInk.MAGIC -> drawMagic(ink)
         CressidaInk.SONGBIRD -> drawSongbird(ink)
         CressidaInk.FLAMES -> drawFlames(ink)
+        CressidaInk.PHOENIX -> drawPhoenix(ink)
         CressidaInk.GEOMETRY -> drawGeometry(ink)
         CressidaInk.THORNS -> drawThorns(ink)
         CressidaInk.CIRCUIT -> drawCircuit(ink)
@@ -201,115 +202,6 @@ private fun DrawScope.drawTribal(ink: Color) {
         }
         drawPath(p, ink.copy(alpha = 0.8f), style = Stroke(8f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
-}
-
-/** Dragon: a scaled serpent winding down the marked side, spined back, horned head, curled tail. */
-private fun DrawScope.drawDragon(ink: Color) {
-    val steps = 90
-    // Centre line of the body, head at the top.
-    val centre = List(steps + 1) { i ->
-        val t = i / steps.toFloat()
-        at(0.27f + 0.15f * sin(t * 2.7f * PI).toFloat(), 0.10f + 0.80f * t)
-    }
-    fun thickness(i: Int) = (58f - 46f * i / steps) * unit
-    val normals = centre.indices.map { i ->
-        val a = centre[(i - 1).coerceAtLeast(0)]
-        val b = centre[(i + 1).coerceAtMost(steps)]
-        val ang = atan2(b.y - a.y, b.x - a.x)
-        Offset(-sin(ang), cos(ang))
-    }
-    val left = centre.indices.map { centre[it] + normals[it] * (thickness(it) / 2) }
-    val right = centre.indices.map { centre[it] - normals[it] * (thickness(it) / 2) }
-    val body = Path().apply {
-        moveTo(left[0].x, left[0].y)
-        left.drop(1).forEach { lineTo(it.x, it.y) }
-        right.asReversed().forEach { lineTo(it.x, it.y) }
-        close()
-    }
-    drawPath(body, Color.Black.copy(alpha = 0.35f))
-    drawPath(body, ink, style = Stroke(3f * unit))
-    // Scales: little arcs across the body.
-    for (i in 4 until steps - 4 step 3) {
-        val c = centre[i]
-        val r = thickness(i) * 0.32f
-        drawArc(ink.copy(alpha = 0.75f), (atan2(normals[i].y, normals[i].x) * 180 / PI).toFloat(), 180f, false, c - Offset(r, r), Size(r * 2, r * 2), style = Stroke(1.6f * unit))
-    }
-    // Spines along the back.
-    for (i in 6 until steps - 10 step 5) {
-        val base = left[i]
-        val n = normals[i]
-        val along = centre[i + 1] - centre[i]
-        val spike = Path().apply {
-            moveTo(base.x - along.x * 1.2f, base.y - along.y * 1.2f)
-            lineTo(base.x + n.x * thickness(i) * 0.55f, base.y + n.y * thickness(i) * 0.55f)
-            lineTo(base.x + along.x * 1.2f, base.y + along.y * 1.2f)
-            close()
-        }
-        drawPath(spike, ink)
-    }
-    // Head: a snout pointing up and right, two swept horns and an eye.
-    val head = centre[0]
-    val snout = Path().apply {
-        moveTo(head.x - 30f * unit, head.y + 10f * unit)
-        lineTo(head.x + 70f * unit, head.y - 40f * unit)
-        lineTo(head.x + 30f * unit, head.y + 22f * unit)
-        close()
-    }
-    drawPath(snout, Color.Black.copy(alpha = 0.4f))
-    drawPath(snout, ink, style = Stroke(3f * unit, join = StrokeJoin.Round))
-    listOf(-1f, 1f).forEach { s ->
-        val horn = Path().apply {
-            moveTo(head.x - 10f * unit, head.y - 6f * unit)
-            quadraticTo(head.x - 40f * unit, head.y - (60f + 15f * s) * unit, head.x - (20f - 25f * s) * unit, head.y - 95f * unit)
-        }
-        drawPath(horn, ink, style = Stroke(4f * unit, cap = StrokeCap.Round))
-    }
-    drawCircle(ink, 6f * unit, head + Offset(18f * unit, -8f * unit))
-    // Tail: a tight curl.
-    val tail = centre.last()
-    val curl = Path()
-    for (k in 0..80) {
-        val ang = k / 80f * 3 * PI
-        val r = 40f * unit * (1 - k / 80f)
-        val p = tail + Offset((cos(ang) * r).toFloat(), (sin(ang) * r).toFloat())
-        if (k == 0) curl.moveTo(p.x, p.y) else curl.lineTo(p.x, p.y)
-    }
-    drawPath(curl, ink, style = Stroke(3f * unit, cap = StrokeCap.Round))
-}
-
-/** Constellation: stars joined by fine lines, sparkles, and a crescent moon. */
-private fun DrawScope.drawConstellation(ink: Color) {
-    // Fixed "random" stars, so a card always looks the same.
-    var seed = 7L
-    fun rnd(): Float { seed = (seed * 1103515245 + 12345) and 0x7fffffff; return (seed % 10000) / 10000f }
-    val stars = List(26) { at(0.03f + rnd() * 0.52f, 0.04f + rnd() * 0.92f) }
-    // Chains: each star joins its nearest unvisited neighbour, a few chains in all.
-    listOf(0..7, 8..15, 16..25).forEach { range ->
-        val chain = range.map { stars[it] }.sortedBy { it.y }
-        for (i in 0 until chain.lastIndex) drawLine(ink.copy(alpha = 0.55f), chain[i], chain[i + 1], 1.4f * unit)
-    }
-    stars.forEachIndexed { i, p ->
-        if (i % 4 == 0) {
-            val r = (16f + rnd() * 10f) * unit
-            val spark = Path().apply {
-                moveTo(p.x, p.y - r); lineTo(p.x + r * 0.18f, p.y - r * 0.18f); lineTo(p.x + r, p.y); lineTo(p.x + r * 0.18f, p.y + r * 0.18f)
-                lineTo(p.x, p.y + r); lineTo(p.x - r * 0.18f, p.y + r * 0.18f); lineTo(p.x - r, p.y); lineTo(p.x - r * 0.18f, p.y - r * 0.18f); close()
-            }
-            drawPath(spark, ink)
-        } else {
-            drawCircle(ink, (3f + rnd() * 3f) * unit, p)
-        }
-    }
-    // Crescent moon: a disc with a bite taken out.
-    val moon = at(0.16f, 0.14f)
-    val r = 44f * unit
-    val crescent = Path().apply {
-        addOval(androidx.compose.ui.geometry.Rect(moon - Offset(r, r), Size(r * 2, r * 2)))
-    }
-    val bite = Path().apply { addOval(androidx.compose.ui.geometry.Rect(moon - Offset(r * 0.55f, r * 1.1f), Size(r * 2, r * 2))) }
-    drawPath(Path.combine(androidx.compose.ui.graphics.PathOperation.Difference, crescent, bite), ink)
-    // A scatter of dust.
-    repeat(60) { drawCircle(ink.copy(alpha = 0.35f), 1.4f * unit, at(rnd() * 0.5f, rnd())) }
 }
 
 /** Waves: overlapping wave scales (seigaiha), fading out towards the seam. */
@@ -423,78 +315,6 @@ private fun DrawScope.drawMagic(ink: Color) {
     }
 }
 
-/** Songbird: an original bird in flight, wings fanned in feathers, with a few drifting feathers. */
-private fun DrawScope.drawSongbird(ink: Color) {
-    val c = motifCentre
-    val r = motifRadius
-    val line = Stroke(2.4f * unit, cap = StrokeCap.Round, join = StrokeJoin.Round)
-    // Body: a teardrop leaning up and to the right, head at the top.
-    val body = Path().apply {
-        moveTo(c.x - r * 0.35f, c.y + r * 0.35f)
-        cubicTo(c.x - r * 0.1f, c.y - r * 0.05f, c.x + r * 0.15f, c.y - r * 0.35f, c.x + r * 0.32f, c.y - r * 0.38f)
-        cubicTo(c.x + r * 0.45f, c.y - r * 0.40f, c.x + r * 0.42f, c.y - r * 0.22f, c.x + r * 0.30f, c.y - r * 0.16f)
-        cubicTo(c.x + r * 0.10f, c.y + r * 0.05f, c.x - r * 0.10f, c.y + r * 0.30f, c.x - r * 0.35f, c.y + r * 0.35f)
-        close()
-    }
-    drawPath(body, Color.Black.copy(alpha = 0.35f))
-    drawPath(body, ink, style = line)
-    // Beak and eye.
-    val beak = Path().apply { moveTo(c.x + r * 0.42f, c.y - r * 0.36f); lineTo(c.x + r * 0.58f, c.y - r * 0.40f); lineTo(c.x + r * 0.42f, c.y - r * 0.28f); close() }
-    drawPath(beak, ink)
-    drawCircle(ink, 4f * unit, c + Offset(r * 0.33f, -r * 0.31f))
-    // Wings: fans of feathers sweeping up and back from the shoulder.
-    val shoulder = c + Offset(r * 0.02f, -r * 0.05f)
-    listOf(-1f, 1f).forEach { side ->
-        for (k in 0 until 7) {
-            val ang = (if (side < 0) -150.0 else -70.0) + side * k * 9.0
-            val len = r * (1.05f - k * 0.08f)
-            val tip = shoulder + Offset((cos(ang * PI / 180) * len).toFloat(), (sin(ang * PI / 180) * len).toFloat())
-            val mid = Offset((shoulder.x + tip.x) / 2, (shoulder.y + tip.y) / 2)
-            val feather = Path().apply {
-                moveTo(shoulder.x, shoulder.y)
-                quadraticTo(mid.x + side * 10f * unit, mid.y - 18f * unit, tip.x, tip.y)
-            }
-            drawPath(feather, ink.copy(alpha = if (side < 0) 1f else 0.6f), style = line)
-        }
-    }
-    // Tail: three long feathers fanning down and back.
-    val rump = c + Offset(-r * 0.32f, r * 0.32f)
-    listOf(110.0, 125.0, 140.0).forEach { deg ->
-        val tip = rump + Offset((cos(deg * PI / 180) * r * 0.7f).toFloat(), (sin(deg * PI / 180) * r * 0.7f).toFloat())
-        drawLine(ink, rump, tip, 2.4f * unit, StrokeCap.Round)
-    }
-    // Drifting feathers.
-    val rnd = Seeded(23)
-    repeat(4) {
-        val p = at(0.05f + rnd.next() * 0.45f, 0.70f + rnd.next() * 0.25f)
-        val s = (24f + rnd.next() * 18f) * unit
-        rotate(rnd.next() * 120f - 60f, p) {
-            drawOval(ink, p - Offset(s, s * 0.22f), Size(s * 2, s * 0.44f), style = Stroke(1.6f * unit))
-            drawLine(ink, p - Offset(s * 1.2f, 0f), p + Offset(s, 0f), 1.2f * unit)
-        }
-    }
-}
-
-/** Flames: tongues of fire rising up the marked side, with embers above. */
-private fun DrawScope.drawFlames(ink: Color) {
-    val rnd = Seeded(5)
-    for (k in 0 until 9) {
-        val x = size.width * (0.02f + k * 0.055f)
-        val height = size.height * (0.35f + rnd.next() * 0.35f)
-        val w = size.width * (0.05f + rnd.next() * 0.04f)
-        val sway = (rnd.next() - 0.5f) * w * 2
-        val flame = Path().apply {
-            moveTo(x - w, size.height)
-            cubicTo(x - w, size.height - height * 0.45f, x + sway - w * 0.4f, size.height - height * 0.7f, x + sway, size.height - height)
-            cubicTo(x + sway + w * 0.3f, size.height - height * 0.65f, x + w, size.height - height * 0.4f, x + w, size.height)
-            close()
-        }
-        drawPath(flame, Brush.verticalGradient(listOf(Color.Transparent, ink.copy(alpha = 0.55f), ink.copy(alpha = 0.9f)), startY = size.height - height, endY = size.height))
-        drawPath(flame, ink, style = Stroke(1.6f * unit))
-    }
-    repeat(30) { drawCircle(ink.copy(alpha = 0.5f + rnd.next() * 0.5f), (1.5f + rnd.next() * 3f) * unit, at(rnd.next() * 0.55f, 0.15f + rnd.next() * 0.5f)) }
-}
-
 /** Geometry: a flower of life inside a ring. */
 private fun DrawScope.drawGeometry(ink: Color) {
     val c = motifCentre
@@ -582,5 +402,403 @@ private fun DrawScope.drawCircuit(ink: Color) {
         drawLine(ink, c + Offset(s, o), c + Offset(s + 14f * unit, o), 2f * unit)
         drawLine(ink, c + Offset(o, -s), c + Offset(o, -s - 14f * unit), 2f * unit)
         drawLine(ink, c + Offset(o, s), c + Offset(o, s + 14f * unit), 2f * unit)
+    }
+}
+
+// ---- Shared shapes for the figurative inks ----
+
+private val Shadow = Color.Black
+
+/** A smooth curve through [points] (Catmull-Rom as cubics). */
+private fun smooth(points: List<Offset>, closed: Boolean = false): Path = Path().apply {
+    if (points.isEmpty()) return@apply
+    val n = points.size
+    fun pt(i: Int) = if (closed) points[(i + n) % n] else points[i.coerceIn(0, n - 1)]
+    moveTo(points[0].x, points[0].y)
+    val last = if (closed) n else n - 1
+    for (i in 0 until last) {
+        val p0 = pt(i - 1); val p1 = pt(i); val p2 = pt(i + 1); val p3 = pt(i + 2)
+        cubicTo(
+            p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f,
+            p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f,
+            p2.x, p2.y,
+        )
+    }
+    if (closed) close()
+}
+
+/** Unit normals along a centre line. */
+private fun normals(centre: List<Offset>): List<Offset> = centre.indices.map { i ->
+    val a = centre[(i - 1).coerceAtLeast(0)]
+    val b = centre[(i + 1).coerceAtMost(centre.lastIndex)]
+    val len = hypot(b.x - a.x, b.y - a.y).coerceAtLeast(0.001f)
+    Offset(-(b.y - a.y) / len, (b.x - a.x) / len)
+}
+
+/** A body around a [centre] line, [width] wide at each fraction along it (0 = start). */
+private fun taper(centre: List<Offset>, width: (Float) -> Float): Path {
+    val n = normals(centre)
+    val last = (centre.size - 1).coerceAtLeast(1).toFloat()
+    val left = centre.indices.map { centre[it] + n[it] * (width(it / last) / 2) }
+    val right = centre.indices.map { centre[it] - n[it] * (width(it / last) / 2) }
+    return smooth(left + right.asReversed(), closed = true)
+}
+
+/** Places local drawing coordinates: x forward along [angleDeg], y to its right, both times [scale]. */
+private class Frame(val origin: Offset, angleDeg: Float, val scale: Float, val mirror: Boolean = false) {
+    private val c = cos(angleDeg * PI / 180).toFloat()
+    private val s = sin(angleDeg * PI / 180).toFloat()
+    fun p(x: Float, y: Float): Offset {
+        val yy = if (mirror) -y else y
+        return origin + Offset((x * c - yy * s) * scale, (x * s + yy * c) * scale)
+    }
+    fun path(vararg pts: Pair<Float, Float>, closed: Boolean = true) = smooth(pts.map { p(it.first, it.second) }, closed)
+}
+
+/** Fills a shape in ink with a dark keyline, the way flash tattoo art is drawn. */
+private fun DrawScope.inked(path: Path, ink: Color, keyline: Float, alpha: Float = 1f) {
+    drawPath(path, ink.copy(alpha = alpha))
+    drawPath(path, Shadow.copy(alpha = 0.85f), style = Stroke(keyline, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
+/** A curling flame tongue along [centre], [width] at its root, tapering to a point. */
+private fun DrawScope.flameTongue(centre: List<Offset>, width: Float, ink: Color, alpha: Float, keyline: Float, inner: Boolean = true) {
+    val body = taper(centre) { t -> (width * (1f - t).let { it * kotlin.math.sqrt(it) } * (1f + 1.1f * t)).coerceAtLeast(width * 0.02f) }
+    drawPath(body, Brush.verticalGradient(listOf(ink.copy(alpha = alpha), ink.copy(alpha = alpha * 0.75f)), startY = centre.minOf { it.y }, endY = centre.maxOf { it.y }))
+    drawPath(body, Shadow.copy(alpha = 0.8f), style = Stroke(keyline, join = StrokeJoin.Round))
+    if (inner && centre.size > 6) {
+        // The inner tongue: a dark cut-out following the outer one, shorter and thinner.
+        val core = centre.take((centre.size * 0.62f).toInt()).drop(1)
+        val cut = taper(core) { t -> width * 0.38f * (1f - t) }
+        drawPath(cut, Shadow.copy(alpha = 0.55f))
+    }
+}
+
+/** A sinuous line from [from], [length] long, heading [angleDeg], waving [amp] with a hook at the end. */
+private fun wavyLine(from: Offset, angleDeg: Float, length: Float, amp: Float, waves: Float, hook: Float, steps: Int = 24): List<Offset> {
+    val f = Frame(from, angleDeg, 1f)
+    return List(steps + 1) { i ->
+        val t = i / steps.toFloat()
+        val bend = hook * t * t * t
+        f.p(length * t, amp * sin(t * waves * PI).toFloat() * t + bend)
+    }
+}
+
+/**
+ * Dragon: an eastern dragon in solid ink coiling down the marked side: crested, scaled and
+ * clawed, head raised with open jaws, antlers and trailing whiskers, a flame tuft on its tail.
+ */
+private fun DrawScope.drawDragon(ink: Color) {
+    val w = size.width * RowArt.CRESSIDA_SPLIT
+    val key = 2.2f * unit
+    val steps = 120
+    val centre = List(steps + 1) { i ->
+        val t = i / steps.toFloat()
+        Offset(w * (0.50f + 0.34f * sin(t * 3.3f * PI + 0.35f).toFloat() * (1f - 0.25f * t)), size.height * (0.20f + 0.70f * t))
+    }
+    fun thick(t: Float) = (66f * (1f - t) + 10f) * unit
+    val n = normals(centre)
+    val body = taper(centre) { thick(it) }
+
+    // Dorsal crest first, so the body sits over its roots.
+    for (i in 6 until steps - 6 step 6) {
+        val t = i / steps.toFloat()
+        val base = centre[i] + n[i] * (thick(t) * 0.42f)
+        val back = centre[(i + 4).coerceAtMost(steps)] - centre[i]
+        val tip = base + n[i] * (thick(t) * 0.75f + 10f * unit) + back * 0.9f
+        val fin = smooth(listOf(base - back * 0.6f, base + n[i] * thick(t) * 0.35f, tip, base + back * 0.5f), closed = true)
+        inked(fin, ink, key * 0.8f, 0.95f)
+    }
+    // Legs: shoulder and hip, each with three hooked talons.
+    listOf(0.24f, 0.60f).forEachIndexed { k, t ->
+        val i = (t * steps).toInt()
+        val side = if (k == 0) -1f else 1f
+        val hip = centre[i] - n[i] * side * thick(t) * 0.35f
+        val knee = hip - n[i] * side * thick(t) * 0.9f + Offset(0f, 14f * unit)
+        val foot = knee + Offset(-side * 4f * unit, 30f * unit)
+        drawPath(smooth(listOf(hip, knee, foot)), ink, style = Stroke(thick(t) * 0.38f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        repeat(3) { c ->
+            val a = (60f + c * 35f) * (if (side > 0) 1f else -1f) + (if (side > 0) 0f else 180f)
+            val claw = wavyLine(foot, a + 90f * side, 26f * unit, 0f, 0f, 10f * unit * side, 8)
+            drawPath(smooth(claw), Shadow, style = Stroke(5f * unit, cap = StrokeCap.Round))
+            drawPath(smooth(claw), ink, style = Stroke(3f * unit, cap = StrokeCap.Round))
+        }
+    }
+
+    inked(body, ink, key)
+    // Scales: dark crescents in staggered rows, each opening toward the head.
+    for (i in 4 until steps - 4 step 3) {
+        val t = i / steps.toFloat()
+        val along = atan2(centre[i + 1].y - centre[i].y, centre[i + 1].x - centre[i].x) * 180f / PI.toFloat()
+        val r = thick(t) * 0.17f
+        val lanes = if ((i / 3) % 2 == 0) listOf(-0.22f, 0.12f) else listOf(-0.05f, 0.29f)
+        lanes.forEach { lane ->
+            val c = centre[i] + n[i] * (thick(t) * lane)
+            drawArc(Shadow.copy(alpha = 0.6f), along + 90f, 180f, false, c - Offset(r, r), Size(r * 2, r * 2), style = Stroke(1.6f * unit, cap = StrokeCap.Round))
+        }
+        // Belly plates along the other edge.
+        val edge = centre[i] - n[i] * (thick(t) * 0.48f)
+        drawLine(Shadow.copy(alpha = 0.5f), edge, edge + n[i] * (thick(t) * 0.16f), 1.4f * unit)
+    }
+
+    // Tail: a tuft of flame.
+    val tail = centre.last()
+    listOf(-35f, 0f, 35f).forEach { d ->
+        flameTongue(wavyLine(tail, 100f + d, 70f * unit, 8f * unit, 1.2f, 10f * unit), 18f * unit, ink, 1f, key * 0.7f, inner = false)
+    }
+
+    // Head, raised and facing right, at the top of the body.
+    val neck = centre.first()
+    val f = Frame(neck + Offset(6f * unit, -6f * unit), -32f, 46f * unit)
+    // Mane behind the head.
+    repeat(5) { k ->
+        val a = 150f + k * 22f
+        flameTongue(wavyLine(f.p(-0.2f, 0f), a - 32f, 62f * unit, 7f * unit, 1.3f, -12f * unit), 22f * unit, ink, 0.95f, key * 0.7f, inner = false)
+    }
+    // Antlers sweeping back.
+    listOf(-0.55f to 0f, -0.35f to 0.25f).forEach { (y, lift) ->
+        val antler = smooth(listOf(f.p(0.2f, y), f.p(-0.6f, y - 0.6f - lift), f.p(-1.5f, y - 0.9f - lift), f.p(-2.1f, y - 0.6f - lift)))
+        drawPath(antler, Shadow, style = Stroke(9f * unit, cap = StrokeCap.Round))
+        drawPath(antler, ink, style = Stroke(6f * unit, cap = StrokeCap.Round))
+        val tine = smooth(listOf(f.p(-1.0f, y - 0.8f - lift), f.p(-1.1f, y - 1.3f - lift)))
+        drawPath(tine, ink, style = Stroke(5f * unit, cap = StrokeCap.Round))
+    }
+    // Skull and upper jaw, then the lower jaw, leaving the mouth open between them.
+    val upper = f.path(-0.4f to -0.55f, 0.4f to -0.75f, 1.3f to -0.55f, 2.05f to -0.35f, 2.25f to -0.1f, 1.9f to 0.0f, 1.0f to 0.08f, 0.2f to 0.2f, -0.45f to 0.5f)
+    val lower = f.path(0.5f to 0.3f, 1.3f to 0.32f, 1.95f to 0.55f, 1.6f to 0.75f, 0.6f to 0.75f, -0.2f to 0.6f)
+    inked(lower, ink, key)
+    inked(upper, ink, key)
+    // Teeth, nostril, brow and eye.
+    listOf(1.2f, 1.55f, 1.85f).forEach { x ->
+        drawPath(f.path(x - 0.08f to 0.04f, x + 0.08f to 0.02f, x to 0.22f), Color.White.copy(alpha = 0.9f))
+    }
+    drawCircle(Shadow, 4f * unit, f.p(2.0f, -0.28f))
+    drawPath(smooth(listOf(f.p(0.55f, -0.62f), f.p(0.95f, -0.78f), f.p(1.3f, -0.6f))), Shadow, style = Stroke(3f * unit, cap = StrokeCap.Round))
+    drawOval(Shadow, f.p(0.85f, -0.48f) - Offset(9f * unit, 6f * unit), Size(18f * unit, 12f * unit))
+    drawCircle(ink, 3f * unit, f.p(0.9f, -0.48f))
+    // Whiskers trailing back from the snout.
+    listOf(-0.15f to 160f, 0.1f to 195f).forEach { (y, a) ->
+        val whisker = smooth(wavyLine(f.p(2.0f, y), a - 32f, 170f * unit, 18f * unit, 2.2f, 22f * unit, 30))
+        drawPath(whisker, Shadow.copy(alpha = 0.7f), style = Stroke(5.5f * unit, cap = StrokeCap.Round))
+        drawPath(whisker, ink, style = Stroke(3.2f * unit, cap = StrokeCap.Round))
+    }
+}
+
+/**
+ * Constellation: a star chart: rings and ticks of a celestial grid, a band of the Milky Way,
+ * an original figure of a crane picked out in bright stars, a crescent moon and a comet.
+ */
+private fun DrawScope.drawConstellation(ink: Color) {
+    val w = size.width * RowArt.CRESSIDA_SPLIT
+    val rnd = Seeded(7)
+    onMarkedSide {
+        // Celestial grid: rings, meridians and a ticked rim, centred off the card's edge.
+        val gc = Offset(w * 0.15f, size.height * 0.58f)
+        val gr = size.height * 0.42f
+        listOf(1f, 0.72f, 0.44f).forEach { f -> drawCircle(ink.copy(alpha = 0.28f), gr * f, gc, style = Stroke(1.2f * unit)) }
+        for (k in 0 until 12) {
+            val a = k * PI / 6
+            drawLine(ink.copy(alpha = 0.18f), gc, gc + Offset((cos(a) * gr).toFloat(), (sin(a) * gr).toFloat()), 1f * unit)
+        }
+        for (k in 0 until 72) {
+            val a = k * PI / 36
+            val len = if (k % 6 == 0) 16f else 8f
+            val o = gc + Offset((cos(a) * gr).toFloat(), (sin(a) * gr).toFloat())
+            val i = gc + Offset((cos(a) * (gr - len * unit)).toFloat(), (sin(a) * (gr - len * unit)).toFloat())
+            drawLine(ink.copy(alpha = 0.4f), o, i, 1.2f * unit)
+        }
+        // The Milky Way: a soft band of dust across the marked side.
+        repeat(420) {
+            val t = rnd.next()
+            val spread = ((rnd.next() + rnd.next() + rnd.next()) / 3f - 0.5f) * size.height * 0.16f
+            val p = Offset(w * (-0.1f + 1.2f * t), size.height * (0.92f - 0.75f * t) + spread)
+            drawCircle(ink.copy(alpha = 0.12f + rnd.next() * 0.3f), (0.6f + rnd.next() * 1.4f) * unit, p)
+        }
+    }
+
+    // The crane: neck stretched up, wings raised, legs trailing. Coordinates on the marked side.
+    val crane = listOf(
+        0.78f to 0.30f, 0.70f to 0.37f, 0.60f to 0.46f, // beak, head, neck
+        0.48f to 0.52f, // body
+        0.20f to 0.40f, 0.10f to 0.28f, // left wing
+        0.66f to 0.62f, 0.86f to 0.56f, // right wing
+        0.38f to 0.66f, 0.30f to 0.80f, 0.42f to 0.84f, // legs
+    ).map { (x, y) -> Offset(w * x, size.height * y) }
+    val links = listOf(0 to 1, 1 to 2, 2 to 3, 3 to 4, 4 to 5, 3 to 6, 6 to 7, 3 to 8, 8 to 9, 8 to 10)
+    links.forEach { (a, b) -> drawLine(ink.copy(alpha = 0.75f), crane[a], crane[b], 1.6f * unit, StrokeCap.Round) }
+    val bright = setOf(1, 3, 5, 7, 9)
+    crane.forEachIndexed { i, p ->
+        if (i in bright) {
+            val r = 30f * unit
+            drawCircle(Brush.radialGradient(listOf(ink.copy(alpha = 0.55f), Color.Transparent), center = p, radius = r), r, p)
+            // A four-point glint: long thin rays.
+            drawLine(ink, p - Offset(r * 0.9f, 0f), p + Offset(r * 0.9f, 0f), 1.4f * unit, StrokeCap.Round)
+            drawLine(ink, p - Offset(0f, r * 0.9f), p + Offset(0f, r * 0.9f), 1.4f * unit, StrokeCap.Round)
+            drawCircle(Color.White, 4.5f * unit, p)
+        } else {
+            drawCircle(ink, 3.5f * unit, p)
+        }
+    }
+
+    // Crescent moon with a glow, near the top.
+    val moon = Offset(w * 0.30f, size.height * 0.12f)
+    val r = 48f * unit
+    drawCircle(Brush.radialGradient(listOf(ink.copy(alpha = 0.35f), Color.Transparent), center = moon, radius = r * 2.2f), r * 2.2f, moon)
+    val disc = Path().apply { addOval(androidx.compose.ui.geometry.Rect(moon - Offset(r, r), Size(r * 2, r * 2))) }
+    val bite = Path().apply { addOval(androidx.compose.ui.geometry.Rect(moon - Offset(r * 0.45f, r * 1.15f), Size(r * 2, r * 2))) }
+    drawPath(Path.combine(androidx.compose.ui.graphics.PathOperation.Difference, disc, bite), ink)
+
+    // A comet streaking down towards the seam.
+    val head = Offset(w * 0.86f, size.height * 0.82f)
+    val tail = taper(listOf(head, head + Offset(-w * 0.25f, -size.height * 0.10f), head + Offset(-w * 0.55f, -size.height * 0.17f))) { t -> 18f * unit * (1f - t) }
+    drawPath(tail, Brush.linearGradient(listOf(ink.copy(alpha = 0.9f), Color.Transparent), start = head, end = head + Offset(-w * 0.55f, -size.height * 0.17f)))
+    drawCircle(Color.White, 6f * unit, head)
+
+    // Faint background stars.
+    repeat(40) { drawCircle(ink.copy(alpha = 0.5f + rnd.next() * 0.4f), (1.2f + rnd.next() * 1.8f) * unit, Offset(w * rnd.next() * 1.05f, size.height * rnd.next())) }
+}
+
+/** One swallow in flight, from above: scythe wings, forked tail, solid ink with feather lines. */
+private fun DrawScope.swallow(f: Frame, ink: Color, key: Float) {
+    listOf(1f, -1f).forEach { side ->
+        // Wing: leading edge bows forward, trailing edge cut into feathers.
+        val wing = f.path(
+            0.25f to 0.05f * side, 0.05f to 0.55f * side, -0.35f to 1.05f * side, -0.75f to 1.35f * side,
+            -0.55f to 1.0f * side, -0.45f to 0.75f * side, -0.25f to 0.45f * side, -0.15f to 0.12f * side,
+        )
+        inked(wing, ink, key)
+        for (k in 1..4) {
+            val t = k / 5f
+            drawLine(Shadow.copy(alpha = 0.6f), f.p(-0.05f - 0.5f * t, (0.15f + 0.8f * t) * side), f.p(-0.25f - 0.45f * t, (0.12f + 0.62f * t) * side), 1.4f * unit, StrokeCap.Round)
+        }
+    }
+    // Body and forked tail.
+    val body = f.path(0.75f to 0f, 0.55f to -0.14f, 0.1f to -0.16f, -0.45f to -0.08f, -1.15f to -0.42f, -0.75f to 0f, -1.15f to 0.42f, -0.45f to 0.08f, 0.1f to 0.16f, 0.55f to 0.14f)
+    inked(body, ink, key)
+    // Head: a dark cap and a light throat, the classic swallow markings.
+    drawPath(f.path(0.75f to 0f, 0.55f to -0.12f, 0.35f to -0.1f, 0.35f to 0.1f, 0.55f to 0.12f), Shadow.copy(alpha = 0.55f))
+    drawCircle(Color.White, 2.6f * unit, f.p(0.58f, -0.06f))
+}
+
+/** An eighth note, tilted. */
+private fun DrawScope.note(at: Offset, s: Float, ink: Color, tilt: Float) {
+    rotate(tilt, at) {
+        drawOval(ink, at - Offset(s * 0.55f, s * 0.38f), Size(s * 1.1f, s * 0.76f))
+        drawLine(ink, at + Offset(s * 0.5f, 0f), at + Offset(s * 0.5f, -s * 2.4f), 0.16f * s, StrokeCap.Round)
+        drawPath(smooth(listOf(at + Offset(s * 0.5f, -s * 2.4f), at + Offset(s * 1.2f, -s * 1.8f), at + Offset(s * 1.0f, -s * 1.2f))), ink, style = Stroke(0.16f * s, cap = StrokeCap.Round))
+    }
+}
+
+/** Songbird: two swallows, one diving, one wheeling above, a looping flight line and drifting notes. */
+private fun DrawScope.drawSongbird(ink: Color) {
+    val w = size.width * RowArt.CRESSIDA_SPLIT
+    val key = 2f * unit
+    // The flight line: a dashed loop between the birds.
+    val trail = smooth(listOf(Offset(w * 0.75f, size.height * 0.17f), Offset(w * 0.15f, size.height * 0.30f), Offset(w * 0.30f, size.height * 0.44f), Offset(w * 0.70f, size.height * 0.40f), Offset(w * 0.55f, size.height * 0.58f)))
+    drawPath(trail, ink.copy(alpha = 0.6f), style = Stroke(2f * unit, cap = StrokeCap.Round, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f * unit, 10f * unit))))
+    swallow(Frame(Offset(w * 0.58f, size.height * 0.70f), 60f, 95f * unit), ink, key)
+    swallow(Frame(Offset(w * 0.60f, size.height * 0.15f), -15f, 70f * unit), ink, key * 0.8f)
+    note(Offset(w * 0.18f, size.height * 0.50f), 22f * unit, ink, -12f)
+    note(Offset(w * 0.80f, size.height * 0.36f), 16f * unit, ink.copy(alpha = 0.8f), 10f)
+    note(Offset(w * 0.14f, size.height * 0.88f), 18f * unit, ink.copy(alpha = 0.7f), -20f)
+}
+
+/**
+ * Flames: tattoo-style fire rising up the marked side: rows of curling tongues with dark inner
+ * cuts, wisps breaking free above them, and sparks.
+ */
+private fun DrawScope.drawFlames(ink: Color) {
+    val w = size.width * RowArt.CRESSIDA_SPLIT
+    val rnd = Seeded(5)
+    val key = 2f * unit
+    fun tongue(x: Float, height: Float, width: Float, alpha: Float, inner: Boolean) {
+        val lean = (rnd.next() - 0.5f) * 24f
+        val dir = if (rnd.next() > 0.5f) 1f else -1f
+        // An S-curve that whips over at the top, the way tattoo flames do.
+        val centre = wavyLine(Offset(x, size.height + width * 0.2f), -90f + lean, height, width * 1.1f * dir, 1.25f + rnd.next() * 0.25f, width * 1.7f * dir, 40)
+        flameTongue(centre, width, ink, alpha, key, inner)
+    }
+    // Back row: tall and faint; front row: broad and solid, with inner cuts.
+    for (k in 0 until 4) tongue(w * (0.05f + k * 0.30f), size.height * (0.50f + rnd.next() * 0.22f), w * 0.50f, 0.45f, inner = false)
+    for (k in 0 until 5) tongue(w * (-0.02f + k * 0.25f), size.height * (0.28f + rnd.next() * 0.16f), w * 0.55f, 0.95f, inner = true)
+    // Wisps that have broken free: small S-curls above the fire.
+    repeat(4) {
+        val start = Offset(w * (0.1f + rnd.next() * 0.8f), size.height * (0.30f + rnd.next() * 0.2f))
+        val dir = if (rnd.next() > 0.5f) 1f else -1f
+        flameTongue(wavyLine(start, -90f + (rnd.next() - 0.5f) * 30f, size.height * (0.08f + rnd.next() * 0.05f), 30f * unit * dir, 1.3f, 40f * unit * dir, 22), 34f * unit, ink, 0.85f, key * 0.8f, inner = false)
+    }
+    // Sparks.
+    repeat(26) { drawCircle(ink.copy(alpha = 0.5f + rnd.next() * 0.5f), (1.5f + rnd.next() * 2.5f) * unit, Offset(w * rnd.next(), size.height * (0.05f + rnd.next() * 0.45f))) }
+}
+
+/**
+ * Phoenix: an original phoenix rising inside a broken ring, wings raised in a V of flame-tipped
+ * feathers, crested head turned to the side, and a long tail of fire breaking out of the ring.
+ */
+private fun DrawScope.drawPhoenix(ink: Color) {
+    // Sized so the raised wings and the tail fit the card, tall (phone) or wide (TV).
+    val r = minOf(size.width * RowArt.CRESSIDA_SPLIT * 0.5f, size.height * 0.24f)
+    val c = Offset(size.width * RowArt.CRESSIDA_SPLIT * 0.56f, maxOf(size.height * 0.40f, r * 1.75f + size.height * 0.04f))
+    val key = 2.2f * unit
+    // Glow behind.
+    drawCircle(Brush.radialGradient(listOf(ink.copy(alpha = 0.3f), Color.Transparent), center = c, radius = r * 1.4f), r * 1.4f, c)
+    // The ring, open at the bottom where the tail breaks through.
+    val box = c - Offset(r, r)
+    drawArc(Shadow.copy(alpha = 0.6f), 120f, 300f, false, box, Size(r * 2, r * 2), style = Stroke(9f * unit, cap = StrokeCap.Round))
+    drawArc(ink, 120f, 300f, false, box, Size(r * 2, r * 2), style = Stroke(5f * unit, cap = StrokeCap.Round))
+    val inner = r * 0.9f
+    drawArc(ink.copy(alpha = 0.6f), 125f, 290f, false, c - Offset(inner, inner), Size(inner * 2, inner * 2), style = Stroke(1.6f * unit))
+
+    // The bird is bigger than the ring: its wings break out over the top.
+    val b = r * 1.3f
+    // Tail: three long feathers of fire pouring down out of the ring.
+    listOf(-16f, 0f, 16f).forEachIndexed { i, d ->
+        val dir = if (i == 0) -1f else 1f
+        val centre = wavyLine(c + Offset(0f, b * 0.28f), 90f + d, b * (1.4f - 0.15f * kotlin.math.abs(i - 1)), b * 0.14f * dir, 1.6f, b * 0.22f * dir, 36)
+        flameTongue(centre, b * 0.30f, ink, 1f, key)
+        val end = centre[centre.size - 6]
+        drawCircle(Shadow, b * 0.05f, end)
+        drawCircle(ink, b * 0.028f, end)
+    }
+
+    // Wings raised in a V: a solid wing, then a fan of flame feathers along its outer edge.
+    listOf(-1f, 1f).forEach { side ->
+        val shoulder = c + Offset(side * b * 0.06f, -b * 0.08f)
+        val wf = Frame(shoulder, 0f, b, mirror = false)
+        fun q(x: Float, y: Float) = wf.p(side * x, y)
+        val wing = smooth(listOf(q(0f, 0.05f), q(0.18f, -0.25f), q(0.30f, -0.62f), q(0.42f, -0.78f), q(0.70f, -0.55f), q(0.72f, -0.20f), q(0.40f, 0.02f)), closed = true)
+        inked(wing, ink, key)
+        // Feathers fanning from the wing's edge, longest at the top.
+        for (k in 0 until 6) {
+            val t = k / 5f
+            val root = q(0.36f + 0.34f * t, -0.74f + 0.62f * t)
+            val ang = -100f + side * (30f + k * 14f) + (if (side < 0) 0f else 0f)
+            val len = b * (0.42f - k * 0.04f)
+            val centre = wavyLine(root, if (side > 0) ang + 20f else ang - 20f, len, b * 0.04f * side, 1.0f, b * 0.10f * side, 16)
+            flameTongue(centre, b * (0.15f - k * 0.008f), ink, 1f, key * 0.9f, inner = k < 3)
+        }
+        // Covert lines across the wing.
+        for (k in 1..3) drawPath(smooth(listOf(q(0.12f + 0.06f * k, -0.10f * k), q(0.40f + 0.05f * k, -0.25f - 0.08f * k))), Shadow.copy(alpha = 0.5f), style = Stroke(1.6f * unit, cap = StrokeCap.Round))
+    }
+
+    // Body: a slim teardrop from chest to rump.
+    val body = taper(listOf(c + Offset(b * 0.04f, -b * 0.30f), c + Offset(0f, 0f), c + Offset(0f, b * 0.32f))) { t -> b * (0.22f - 0.12f * t) }
+    inked(body, ink, key)
+    // Head, turned to the right, with a hooked beak and a crest of three plumes.
+    val f = Frame(c + Offset(b * 0.06f, -b * 0.40f), 0f, b * 0.13f)
+    listOf(-150f, -125f, -100f).forEachIndexed { i, a ->
+        flameTongue(wavyLine(f.p(-0.3f, -0.4f), a, b * (0.30f - i * 0.04f), b * 0.03f, 1.4f, -b * 0.06f, 14), b * 0.07f, ink, 1f, key * 0.8f, inner = false)
+    }
+    val head = f.path(-0.9f to 0.3f, -0.8f to -0.6f, 0f to -0.95f, 0.8f to -0.6f, 1.6f to -0.2f, 1.9f to 0.35f, 1.3f to 0.15f, 0.7f to 0.55f, -0.2f to 0.8f)
+    inked(head, ink, key)
+    drawCircle(Shadow, 4.5f * unit, f.p(0.4f, -0.25f))
+    drawCircle(Color.White, 1.6f * unit, f.p(0.45f, -0.3f))
+
+    // Embers rising.
+    val rnd = Seeded(31)
+    repeat(18) {
+        val a = rnd.next() * 2 * PI
+        val d = r * (1.05f + rnd.next() * 0.35f)
+        drawCircle(ink.copy(alpha = 0.4f + rnd.next() * 0.6f), (1.5f + rnd.next() * 2.5f) * unit, c + Offset((cos(a) * d).toFloat(), (sin(a) * d - r * 0.2f).toFloat()))
     }
 }

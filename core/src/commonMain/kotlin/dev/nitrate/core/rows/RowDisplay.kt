@@ -87,6 +87,7 @@ enum class CressidaInk(val label: String) {
     MAGIC("Magic"),
     SONGBIRD("Songbird"),
     FLAMES("Flames"),
+    PHOENIX("Phoenix"),
     GEOMETRY("Geometry"),
     THORNS("Thorns"),
     CIRCUIT("Circuit"),

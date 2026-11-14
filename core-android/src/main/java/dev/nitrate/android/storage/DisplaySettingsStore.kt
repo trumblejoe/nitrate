@@ -42,7 +42,9 @@ class DisplaySettingsStore(
     private val deviceName: String = "This device",
 ) {
     @PublishedApi
-    internal val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
+    // An option from a newer version (a new row style or ink) reads as the default instead of
+    // making the whole entry unreadable.
+    internal val json = Json { ignoreUnknownKeys = true; encodeDefaults = false; coerceInputValues = true }
 
     /** Called after any local change, with the user whose settings changed. */
     var onChanged: (userId: String) -> Unit = {}

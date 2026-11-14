@@ -255,8 +255,29 @@ class ScreenshotTest {
     @Test @Config(qualifiers = "w411dp-h1050dp-night-xxhdpi")
     fun cressidaRow() = shoot("phone-row-cressida") { StyledRow(it, dev.nitrate.core.rows.RowStyle.CRESSIDA) }
 
+    /** The figurative inks large, to judge their detail. */
+    @Test @Config(qualifiers = "w411dp-h1400dp-night-xxhdpi")
+    fun cressidaFigures() = shoot("phone-cressida-figures") { a ->
+        val films = androidx.compose.runtime.produceState<List<dev.nitrate.core.model.MediaItem>>(emptyList()) { value = a.server.homeRows().first { it.key.startsWith("home/latest/") }.items }.value
+        if (films.isEmpty()) return@shoot
+        val inks = listOf(dev.nitrate.core.rows.CressidaInk.DRAGON, dev.nitrate.core.rows.CressidaInk.PHOENIX, dev.nitrate.core.rows.CressidaInk.FLAMES, dev.nitrate.core.rows.CressidaInk.SONGBIRD, dev.nitrate.core.rows.CressidaInk.CONSTELLATION)
+        androidx.compose.foundation.layout.Column(Modifier.padding(12.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp)) {
+            inks.chunked(2).forEachIndexed { r, pair ->
+                androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                    pair.forEachIndexed { i, ink ->
+                        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                            Text(ink.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp))
+                            dev.nitrate.mobile.ui.CressidaCard(films[(r * 2 + i) % films.size], a, "fig-${ink.name}", dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA, ink = ink), Modifier.fillMaxWidth().height(420.dp))
+                        }
+                    }
+                    if (pair.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+
     /** Every Cressida ink, two to a row, on real cards. */
-    @Test @Config(qualifiers = "w411dp-h2150dp-night-xxhdpi")
+    @Test @Config(qualifiers = "w411dp-h2400dp-night-xxhdpi")
     fun cressidaInks() = shoot("phone-cressida-inks") { a ->
         val films = androidx.compose.runtime.produceState<List<dev.nitrate.core.model.MediaItem>>(emptyList()) { value = a.server.homeRows().first { it.key.startsWith("home/latest/") }.items }.value
         if (films.isEmpty()) return@shoot
