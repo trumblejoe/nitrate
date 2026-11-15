@@ -185,7 +185,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         var revealed by remember(item.id) { mutableStateOf(false) }
                         if (!prefs.hidesDescription(item) || revealed) ExpandableText(overview)
                         else Text(
-                            "Description hidden until you've watched it · Show",
+                            "Plot hidden · Show",
                             style = MaterialTheme.typography.bodyMedium, color = accentColor(),
                             modifier = Modifier.pressable({ revealed = true }).padding(vertical = 6.dp),
                         )

@@ -325,7 +325,7 @@ private fun Header(
             // Spoiler hiding: unwatched movies and episodes keep their description until asked for.
             var revealed by remember(item.id) { mutableStateOf(false) }
             if (!prefs.hidesDescription(item) || revealed) Text(overview, style = MaterialTheme.typography.bodyLarge, maxLines = 4, overflow = TextOverflow.Ellipsis)
-            else OutlinedButton(onClick = { revealed = true }) { Text("Description hidden until you've watched it · Show") }
+            else OutlinedButton(onClick = { revealed = true }) { Text("Plot hidden · Show") }
         }
         Spacer(Modifier.height(4.dp))
         if (music) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
