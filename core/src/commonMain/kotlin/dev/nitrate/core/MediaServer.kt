@@ -400,6 +400,9 @@ interface MediaServer {
     /** Theme songs for a title, or its series' when it has none of its own (played quietly on details pages). */
     suspend fun themeSongs(itemId: String): List<MediaItem> = emptyList()
 
+    /** A title's theme music and whose it is (its own, or inherited from its series): for Manage → Details. */
+    suspend fun themeMusicInfo(itemId: String): dev.nitrate.core.model.ThemeMusicInfo = dev.nitrate.core.model.ThemeMusicInfo(themeSongs(itemId), null)
+
     /** The address to stream an audio file as it is (with [authorizationHeader]). */
     fun audioStreamUrl(itemId: String): String = unsupported()
 

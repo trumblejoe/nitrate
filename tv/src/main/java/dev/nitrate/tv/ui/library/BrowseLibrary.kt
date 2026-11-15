@@ -82,6 +82,8 @@ fun BrowseLibrary(
     header: @Composable () -> Unit,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
+    /** Admins can select titles and edit them together. */
+    admin: Boolean = false,
 ) {
     val vm = viewModel(key = "browse-${library.id}") { BrowseViewModel(repository, displaySettings, library) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -96,6 +98,12 @@ fun BrowseLibrary(
         scope.launch { runCatching { grid.scrollToItem(0) } }
     }
     var dialog by remember { mutableStateOf<String?>(null) }
+    val canBulkEdit = admin && library.collection != dev.nitrate.core.model.CollectionKind.MUSIC
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    fun tap(item: MediaItem) {
+        if (selecting) selected = if (item.id in selected) selected - item.id else selected + item.id else onOpen(item)
+    }
     // Item focus moves here after a letter jump.
     val jumpFocus = remember { FocusRequester() }
     var jumpedTo by remember { mutableStateOf(-1) }
@@ -134,6 +142,15 @@ fun BrowseLibrary(
                 }
                 if (options.filterCount > 0) OutlinedButton(onClick = { update { it.clearFilters() } }) { Text("Clear filters") }
                 if (state.total >= 0) Text("${state.total} items", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (canBulkEdit) {
+                    if (!selecting) OutlinedButton(onClick = { selecting = true }) { Text("Select to edit") }
+                    else {
+                        Text("${selected.size} selected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        OutlinedButton(onClick = { selected = selected + state.items.map { it.id } }) { Text("All shown") }
+                        Button(onClick = { dialog = "bulk" }, enabled = selected.isNotEmpty()) { Text("Edit…") }
+                        OutlinedButton(onClick = { selecting = false; selected = emptySet() }) { Text("Done selecting") }
+                    }
+                }
             }
         }
         if (options.alphabetical) {
@@ -173,17 +190,18 @@ fun BrowseLibrary(
                     val artwork = options.view == BrowseView.ARTWORK && !music
                     MediaCard(
                         item = item,
+                        // Selected titles carry a tick in their name while picking.
+                        title = if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else item.name,
                         imageUrl = if (artwork) repository.imageUrl(item, ImageKind.THUMB, 360) ?: repository.backdropUrl(item, 640) else repository.imageUrl(item, ImageKind.PRIMARY, 360),
                         width = null,
                         aspectRatio = if (music) 1f else if (artwork) 16f / 9f else 2f / 3f,
-                        title = item.name,
                         subtitle = if (music) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
-                        onClick = { onOpen(item) },
+                        onClick = { tap(item) },
                         onPlay = { if (item.isPlayable) onPlay(item) else onOpen(item) },
                         modifier = focus,
                     )
                 } else {
-                    ListCard(repository, item, focus) { onOpen(item) }
+                    ListCard(repository, if (selecting) item.copy(name = (if (item.id in selected) "✓ " else "○ ") + item.name) else item, focus) { tap(item) }
                 }
             }
         }
@@ -197,6 +215,10 @@ fun BrowseLibrary(
     }
 
     when (dialog) {
+        "bulk" -> BulkEditDialog(repository, state.items.filter { it.id in selected }, genres) { changed ->
+            dialog = null
+            if (changed) { selecting = false; selected = emptySet(); vm.reload() }
+        }
         "sort" -> SortDialog(options, onPick = { change -> update(change); dialog = null }, onDismiss = { dialog = null })
         "filters" -> FilterDialog(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
     }

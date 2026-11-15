@@ -176,13 +176,15 @@ class JellyfinContractTest {
         client.saveMetadata(
             meta.copy(
                 tagline = "New", genres = listOf("Drama"), studios = listOf("A24"), premiereDate = "2024-05-01", lockData = true,
-                lockedFields = listOf("Overview"), people = listOf(dev.nitrate.core.admin.PersonCredit("Maya", "Lead")), providerIds = mapOf("Tmdb" to "1"),
+                // Every field Jellyfin can lock (checked against its MetadataField enum), plus one it can't take.
+                lockedFields = dev.nitrate.core.admin.LockableField.entries.map { it.wire } + "SortName", people = listOf(dev.nitrate.core.admin.PersonCredit("Maya", "Lead")), providerIds = mapOf("Tmdb" to "1"),
             ),
         )
         // The server can't read its own Trickplay field back, so it must not be sent.
         val saved = sent.last { it.method == HttpMethod.Post && it.url.encodedPath.endsWith("/Items/$DASHED") }
         assertTrue(saved.body!!.contains("\"Tagline") || saved.body!!.contains("Taglines"))
         assertTrue("Trickplay" !in saved.body!! && "MediaSources" !in saved.body!!)
+        assertTrue("SortName\"]" !in saved.body!! && "\"ProductionLocations\"" in saved.body!!)
         val match = client.remoteSearch(item.copy(kind = ItemKind.MOVIE), "Nitrate", 2023).single()
         assertEquals("TheMovieDb", match.providerName)
         client.applyMatch(DASHED, match, replaceImages = true)
@@ -244,6 +246,7 @@ class JellyfinContractTest {
         client.extras(DASHED)
         client.upcomingEpisodes()
         client.themeSongs(DASHED)
+        client.themeMusicInfo(DASHED)
         client.healthScan(DASHED)
         client.healthScan(null)
         client.mergeVersions(listOf(DASHED, DASHED))

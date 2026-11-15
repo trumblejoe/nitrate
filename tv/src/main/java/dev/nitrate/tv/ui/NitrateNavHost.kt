@@ -323,7 +323,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             )
         }
         composable<MenuStopsRoute> { dev.nitrate.tv.ui.settings.MenuStopsScreen(container) }
-        composable<ManageItemRoute> { entry -> ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId) }
+        composable<ManageItemRoute> { entry ->
+            ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId, themePreview = { id, on -> if (on) container.themeMusic.show(id) else container.themeMusic.stop() })
+        }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
         composable<LibraryHealthRoute> {
             dev.nitrate.tv.ui.settings.LibraryHealthScreen(container, onOpen = { nav.navigate(DetailsRoute(it)) }, onManage = { nav.navigate(ManageItemRoute(it)) })
@@ -366,6 +368,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     dataCache = container.dataCache,
                     onOpen = nav::openItem,
                     onPlay = { item -> gate.play(item) },
+                    admin = account?.isAdmin == true,
                 )
             }
         }

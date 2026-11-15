@@ -161,6 +161,27 @@ enum class RefreshMode(val label: String) {
     REPLACE_ALL("Replace all metadata"),
 }
 
+/**
+ * The fields Jellyfin can lock one by one against refreshes (its MetadataField names in [wire]).
+ * Other fields can only be kept by locking the whole item.
+ */
+enum class LockableField(val wire: String, val label: String) {
+    NAME("Name", "Title"),
+    OVERVIEW("Overview", "Description"),
+    GENRES("Genres", "Genres"),
+    TAGS("Tags", "Tags"),
+    STUDIOS("Studios", "Studios"),
+    CAST("Cast", "Cast & crew"),
+    OFFICIAL_RATING("OfficialRating", "Age rating"),
+    RUNTIME("Runtime", "Runtime"),
+    PRODUCTION_LOCATIONS("ProductionLocations", "Production locations"),
+    ;
+
+    companion object {
+        fun of(wire: String) = entries.firstOrNull { it.wire.equals(wire, ignoreCase = true) }
+    }
+}
+
 /** Playback commands an admin can send to another client. */
 enum class SessionCommand(val wire: String, val label: String) {
     STOP("Stop", "Stop"),

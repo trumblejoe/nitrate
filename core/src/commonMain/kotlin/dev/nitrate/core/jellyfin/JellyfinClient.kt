@@ -1333,6 +1333,11 @@ class JellyfinClient(
     override suspend fun themeSongs(itemId: String): List<MediaItem> =
         items("Items", itemId, "ThemeSongs", query = mapOf("userId" to userId, "inheritFromParent" to true))
 
+    override suspend fun themeMusicInfo(itemId: String): dev.nitrate.core.model.ThemeMusicInfo {
+        val dto = get("Items", itemId, "ThemeSongs", query = mapOf("userId" to userId, "inheritFromParent" to true)).decode<ThemeMediaDto>()
+        return dev.nitrate.core.model.ThemeMusicInfo(dto.items.map { it.toMediaItem() }, dto.ownerId?.let(::normalizeId))
+    }
+
     override fun audioStreamUrl(itemId: String): String = url("Audio", itemId, "stream", query = mapOf("static" to true))
 
     override suspend fun upcomingEpisodes(): List<MediaItem> =

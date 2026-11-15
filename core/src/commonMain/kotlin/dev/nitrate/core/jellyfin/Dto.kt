@@ -39,6 +39,9 @@ internal data class UserDataDto(
 internal data class PersonDto(val id: String, val name: String? = null, val role: String? = null, val primaryImageTag: String? = null)
 
 @Serializable
+internal data class ThemeMediaDto(val items: List<ItemDto> = emptyList(), val ownerId: String? = null)
+
+@Serializable
 internal data class ItemDto(
     val id: String,
     val name: String? = null,

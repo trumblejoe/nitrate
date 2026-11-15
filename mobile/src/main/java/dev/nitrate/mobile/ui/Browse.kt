@@ -24,6 +24,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
@@ -104,6 +107,15 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
         scope.launch { runCatching { grid.scrollToItem(0) }; runCatching { list.scrollToItem(0) } }
     }
     var filtering by remember { mutableStateOf(false) }
+    // Admins: pick titles to edit together.
+    val account by actions.container.account.collectAsState()
+    val canBulkEdit = account?.isAdmin == true && library.collection != dev.nitrate.core.model.CollectionKind.MUSIC
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var editing by remember { mutableStateOf(false) }
+    fun tap(item: MediaItem) {
+        if (selecting) selected = if (item.id in selected) selected - item.id else selected + item.id else actions.open(item)
+    }
     // Album covers are square.
     val square = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
     val shape = if (square) CardShape.SQUARE else CardShape.POSTER
@@ -127,6 +139,16 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
 
     Column(Modifier.fillMaxSize()) {
         BrowseBar(options, state.total, onChange = update, onFilters = { filtering = true })
+        if (canBulkEdit) Row(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding), verticalAlignment = Alignment.CenterVertically) {
+            if (!selecting) {
+                TextButton(onClick = { selecting = true }) { Text("Select to edit") }
+            } else {
+                Text("${selected.size} selected", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                TextButton(onClick = { selected = selected + state.items.map { it.id } }) { Text("All shown") }
+                TextButton(onClick = { editing = true }, enabled = selected.isNotEmpty()) { Text("Edit…") }
+                TextButton(onClick = { selecting = false; selected = emptySet() }) { Text("Cancel") }
+            }
+        }
         Box(Modifier.fillMaxSize()) {
             val padding = PaddingValues(start = ScreenPadding, end = if (options.alphabetical) 34.dp else ScreenPadding, top = 4.dp, bottom = bottomInset(24.dp))
             when {
@@ -142,19 +164,27 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(state.items, key = { it.id }) { item ->
-                        MediaCard(
-                            item = item,
-                            imageUrl = actions.server.cardImage(item, cardShape),
-                            shape = cardShape,
-                            title = item.name,
-                            subtitle = if (square) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
-                            onClick = { actions.open(item) },
-                        )
+                        Box {
+                            MediaCard(
+                                item = item,
+                                imageUrl = actions.server.cardImage(item, cardShape),
+                                shape = cardShape,
+                                title = item.name,
+                                subtitle = if (square) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
+                                onClick = { tap(item) },
+                            )
+                            if (selecting) SelectMark(item.id in selected, Modifier.align(Alignment.TopEnd).padding(6.dp))
+                        }
                     }
                     if (state.error != null) item(span = { GridItemSpan(maxLineSpan) }) { LoadMoreFailed(state.error.orEmpty(), vm::retry) }
                 }
                 else -> LazyColumn(state = list, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxSize()) {
-                    items(state.items, key = { it.id }) { item -> ListRow(actions, item) }
+                    items(state.items, key = { it.id }) { item ->
+                        Box {
+                            ListRow(actions, item, onClick = { tap(item) })
+                            if (selecting) SelectMark(item.id in selected, Modifier.align(Alignment.TopEnd))
+                        }
+                    }
                     if (state.error != null) item { LoadMoreFailed(state.error.orEmpty(), vm::retry) }
                 }
             }
@@ -162,6 +192,10 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                 AlphabetStrip(Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 8.dp), ::jump)
             }
         }
+    }
+    if (editing) BulkEditSheet(actions, state.items.filter { it.id in selected }, genres) { changed ->
+        editing = false
+        if (changed) { selecting = false; selected = emptySet(); vm.reload() }
     }
     if (filtering) FilterSheet(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { filtering = false })
 }
@@ -222,9 +256,9 @@ private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOpti
 
 /** One row of the list view: poster, title, facts and overview, as the display settings allow. */
 @Composable
-private fun ListRow(actions: AppActions, item: MediaItem) {
+private fun ListRow(actions: AppActions, item: MediaItem, onClick: () -> Unit = { actions.open(item) }) {
     val prefs = LocalDisplayPrefs.current
-    Row(Modifier.fillMaxWidth().pressable({ actions.open(item) }), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    Row(Modifier.fillMaxWidth().pressable(onClick), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Box(Modifier.width(72.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.08f))) {
             actions.server.imageUrl(item, ImageKind.PRIMARY, 240)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
         }
@@ -239,6 +273,16 @@ private fun ListRow(actions: AppActions, item: MediaItem) {
         }
         if (prefs.watchedMarks && item.user.played) Icon(Icons.Default.Check, "Watched", tint = accentColor())
     }
+}
+
+/** A tick on a title picked for editing (an empty ring when not). */
+@Composable
+private fun SelectMark(on: Boolean, modifier: Modifier) {
+    Box(
+        modifier.size(26.dp).background(if (on) accentColor() else Color.Black.copy(alpha = 0.5f), androidx.compose.foundation.shape.CircleShape)
+            .border(2.dp, Color.White, androidx.compose.foundation.shape.CircleShape),
+        Alignment.Center,
+    ) { if (on) Icon(Icons.Default.Check, "Selected", tint = Color.Black, modifier = Modifier.size(16.dp)) }
 }
 
 /** # and A–Z down the edge: tap or drag to jump. */

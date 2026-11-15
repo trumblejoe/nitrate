@@ -57,6 +57,8 @@ fun LibraryScreen(
     changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
     /** Rows as last loaded, shown at once while fresh ones load. */
     dataCache: dev.nitrate.android.storage.DataCache? = null,
+    /** Admins can bulk-edit titles from the All tab. */
+    admin: Boolean = false,
 ) {
     val library by produceState<Result<MediaItem>?>(null, libraryId) {
         value = runCatching { repository.getItem(libraryId) }
@@ -129,6 +131,6 @@ fun LibraryScreen(
                 RowsState.Loading -> Column { tabs(); Text("Loading…", Modifier.padding(PagePadding)) }
             }
         }
-        LibraryTab.ALL -> if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay)
+        LibraryTab.ALL -> if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin)
     }
 }

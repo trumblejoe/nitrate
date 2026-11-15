@@ -88,6 +88,9 @@ class BrowseViewModel(
         }
     }
 
+    /** Reads the list again (after its items were changed, e.g. by a bulk edit). */
+    fun reload() = restart(_state.value.options)
+
     fun retry() {
         _state.update { it.copy(error = null) }
         loadMore()

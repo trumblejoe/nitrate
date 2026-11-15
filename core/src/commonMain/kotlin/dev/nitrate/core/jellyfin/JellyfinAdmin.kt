@@ -147,7 +147,8 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
                 "AirsAfterSeasonNumber" to (m.airsAfterSeason?.let(::JsonPrimitive) ?: JsonNull),
                 "ProviderIds" to JsonObject(m.providerIds.mapValues { JsonPrimitive(it.value) }),
                 "LockData" to JsonPrimitive(m.lockData),
-                "LockedFields" to JsonArray(m.lockedFields.map(::JsonPrimitive)),
+                // Only names Jellyfin knows: anything else would make it refuse the whole save.
+                "LockedFields" to JsonArray(m.lockedFields.mapNotNull { dev.nitrate.core.admin.LockableField.of(it)?.wire }.distinct().map(::JsonPrimitive)),
             ),
         )
         post("Items", m.id, body = updated)

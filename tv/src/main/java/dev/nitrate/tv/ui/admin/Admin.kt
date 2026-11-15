@@ -90,7 +90,12 @@ private fun Status(message: String?) {
 
 /** Admin tools for one item, with the remote: details, identify, images and refresh. */
 @Composable
-fun ManageItemScreen(repository: MediaServer, itemId: String) {
+fun ManageItemScreen(
+    repository: MediaServer,
+    itemId: String,
+    /** Plays (true) or stops (false) an item's theme music, for the preview on Details. */
+    themePreview: ((String, Boolean) -> Unit)? = null,
+) {
     val item by produceState<MediaItem?>(null, itemId) { value = runCatching { repository.getItem(itemId) }.getOrNull() }
     var tab by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -106,7 +111,7 @@ fun ManageItemScreen(repository: MediaServer, itemId: String) {
         Status(status)
         val i = item ?: run { Text("Loading…"); return@Column }
         when (tab) {
-            0 -> MetadataTab(repository, i) { status = it }
+            0 -> MetadataTab(repository, i, themePreview) { status = it }
             1 -> IdentifyTab(repository, i) { status = it }
             2 -> ImagesTab(repository, i) { status = it }
             else -> RefreshTab(repository, i) { status = it }
@@ -125,14 +130,41 @@ private fun LabeledField(label: String, value: String, modifier: Modifier = Modi
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MetadataTab(repository: MediaServer, item: MediaItem, notify: (String) -> Unit) {
+private fun MetadataTab(repository: MediaServer, item: MediaItem, themePreview: ((String, Boolean) -> Unit)?, notify: (String) -> Unit) {
     var m by remember { mutableStateOf<ItemMetadata?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(item.id) { runCatching { repository.metadata(item.id) }.onSuccess { m = it }.onFailure { error = it.message } }
     val meta = m ?: run { Text(error?.let { "Couldn't load: $it" } ?: "Loading…"); return }
     var newGenre by remember { mutableStateOf("") }
+    val theme by produceState<Result<dev.nitrate.core.model.ThemeMusicInfo>?>(null, item.id) { value = runCatching { repository.themeMusicInfo(item.id) } }
+    var previewing by remember { mutableStateOf(false) }
+    androidx.compose.runtime.DisposableEffect(item.id) { onDispose { if (previewing) themePreview?.invoke(item.id, false) } }
+    val locked = meta.lockedFields.mapNotNull(dev.nitrate.core.admin.LockableField::of).toSet()
+    fun toggleLock(f: dev.nitrate.core.admin.LockableField) {
+        m = meta.copy(lockedFields = (if (f in locked) locked - f else locked + f).sortedBy { it.ordinal }.map { it.wire })
+    }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+        item {
+            // Whether the title has theme music: its own, or its series'.
+            val t = theme?.getOrNull()
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Theme music: " + when {
+                        theme == null -> "checking…"
+                        t == null -> "couldn't check"
+                        t.songs.isEmpty() -> "none. Put a theme.mp3 in the title's folder (or use Jellyfin's theme songs plugin), then refresh it."
+                        else -> (if (t.songs.size == 1) "“${t.songs.first().name}”" else "${t.songs.size} songs") + if (t.inheritedFrom(item.id) != null) " (the series')" else " (its own)"
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                if (t != null && t.songs.isNotEmpty() && themePreview != null) OutlinedButton(onClick = {
+                    themePreview(item.id, !previewing)
+                    previewing = !previewing
+                }) { Text(if (previewing) "Stop" else "Play") }
+            }
+        }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 LabeledField("Title", meta.name, Modifier.weight(2f)) { m = meta.copy(name = it) }
@@ -174,6 +206,17 @@ private fun MetadataTab(repository: MediaServer, item: MediaItem, notify: (Strin
         item {
             ListItem(selected = false, onClick = { m = meta.copy(lockData = !meta.lockData) }, headlineContent = { Text("Lock this item against refreshes") },
                 trailingContent = { Switch(checked = meta.lockData, onCheckedChange = null) })
+        }
+        if (!meta.lockData) item {
+            // Fields Jellyfin can lock one by one: refreshes and identifying leave them as they are.
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Locked against refreshes (select to lock or unlock)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    dev.nitrate.core.admin.LockableField.entries.forEach { f ->
+                        FilterChip(selected = f in locked, onClick = { toggleLock(f) }) { Text((if (f in locked) "🔒 " else "") + f.label) }
+                    }
+                }
+            }
         }
         item {
             Button(onClick = {

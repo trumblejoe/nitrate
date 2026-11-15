@@ -149,3 +149,8 @@ data class ItemImages(
 data class Person(val id: String, val name: String, val role: String? = null, val imageTag: String? = null)
 
 enum class ImageKind { PRIMARY, THUMB, BACKDROP, LOGO }
+
+/** A title's theme songs; [ownerId] is the item they belong to when that's not the title itself (its series). */
+data class ThemeMusicInfo(val songs: List<MediaItem>, val ownerId: String?) {
+    fun inheritedFrom(itemId: String) = ownerId?.takeIf { it != itemId }
+}

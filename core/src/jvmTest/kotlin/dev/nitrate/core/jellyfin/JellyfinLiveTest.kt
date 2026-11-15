@@ -752,4 +752,37 @@ class JellyfinLiveTest {
         val libraries = client.views().filter { it.collection == dev.nitrate.core.model.CollectionKind.MOVIES || it.collection == dev.nitrate.core.model.CollectionKind.TV_SHOWS }
         assertTrue(libraries.sumOf { client.healthScan(it.id).titles.size } <= scan.titles.size + 1)
     }
+
+    @Test
+    fun `bulk edit and field locks round-trip on the server`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-bulk", "Bulk"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        assumeTrue("Needs an admin", client.account().isAdmin)
+        val movies = client.healthScan(null).titles.map { it.item }.filter { it.kind == dev.nitrate.core.model.ItemKind.MOVIE }.take(2)
+        assumeTrue("Needs two movies", movies.size == 2)
+        val before = movies.map { client.metadata(it.id) }
+        try {
+            val edit = dev.nitrate.core.admin.BulkEdit(
+                addTags = setOf("nitrate-bulk-test"), officialRating = "PG-13",
+                lock = setOf(dev.nitrate.core.admin.LockableField.OVERVIEW, dev.nitrate.core.admin.LockableField.TAGS),
+            )
+            val result = edit.run(client, movies)
+            assertEquals(2, result.changed)
+            assertTrue(result.failed.isEmpty())
+            movies.forEach { m ->
+                val now = client.metadata(m.id)
+                assertTrue("nitrate-bulk-test" in now.tags)
+                assertEquals("PG-13", now.officialRating)
+                assertEquals(setOf("Overview", "Tags"), now.lockedFields.toSet())
+            }
+            // Nothing to do the second time.
+            assertEquals(2, edit.run(client, movies).unchanged)
+        } finally {
+            before.forEach { client.saveMetadata(it) }
+        }
+        assertEquals(before.map { it.tags }, movies.map { client.metadata(it.id).tags })
+        // Theme music: the test library has none.
+        assertTrue(client.themeMusicInfo(movies.first().id).songs.isEmpty())
+    }
 }

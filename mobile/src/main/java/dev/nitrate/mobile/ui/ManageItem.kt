@@ -37,6 +37,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -93,7 +94,53 @@ import kotlinx.coroutines.launch
 private enum class ManageTab(val label: String) { DETAILS("Details"), IDENTIFY("Identify"), IMAGES("Images"), REFRESH("Refresh") }
 
 /** Fields that can be locked against metadata refreshes, by Jellyfin's names. */
-private val LOCKABLE = listOf("Name", "OriginalTitle", "SortName", "Overview", "Genres", "Tags", "Studios", "Cast", "OfficialRating", "ProductionLocations", "Runtime")
+/** Locks one field against refreshes (or shows it's locked with the whole item). */
+@Composable
+private fun LockButton(meta: ItemMetadata, field: dev.nitrate.core.admin.LockableField, onChange: (ItemMetadata) -> Unit) {
+    val locked = meta.lockData || meta.lockedFields.any { dev.nitrate.core.admin.LockableField.of(it) == field }
+    IconButton(enabled = !meta.lockData, onClick = {
+        val now = meta.lockedFields.mapNotNull(dev.nitrate.core.admin.LockableField::of).toSet()
+        onChange(meta.copy(lockedFields = (if (field in now) now - field else now + field).sortedBy { it.ordinal }.map { it.wire }))
+    }) {
+        Icon(
+            androidx.compose.material.icons.Icons.Default.Lock,
+            if (locked) "${field.label}: locked (select to unlock)" else "${field.label}: lock against refreshes",
+            tint = if (locked) accentColor() else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+        )
+    }
+}
+
+/** A title's theme music (its own, or its series'), with a preview; how to add some when there's none. */
+@Composable
+private fun ThemeMusicInfoRow(actions: AppActions, item: MediaItem) {
+    val info by androidx.compose.runtime.produceState<Result<dev.nitrate.core.model.ThemeMusicInfo>?>(null, item.id) {
+        value = runCatching { actions.server.themeMusicInfo(item.id) }
+    }
+    var playing by remember { mutableStateOf(false) }
+    androidx.compose.runtime.DisposableEffect(item.id) { onDispose { if (playing) actions.container.themeMusic.stop() } }
+    val i = info?.getOrNull()
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Theme music", style = MaterialTheme.typography.titleSmall)
+        when {
+            info == null -> Text("Checking…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            i == null -> Text("Couldn't check", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            i.songs.isEmpty() -> Text(
+                "None. Put a theme.mp3 in the title's folder (or use Jellyfin's theme songs plugin), then refresh it.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    (if (i.songs.size == 1) "“${i.songs.first().name}”" else "${i.songs.size} songs") + if (i.inheritedFrom(item.id) != null) " · from the series" else " · its own",
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = {
+                    if (playing) actions.container.themeMusic.stop() else actions.container.themeMusic.show(item.id)
+                    playing = !playing
+                }) { Text(if (playing) "Stop" else "Play") }
+            }
+        }
+    }
+}
 
 /** Admin: edit an item's metadata, identify it, manage its images, refresh it. */
 @Composable
@@ -149,11 +196,18 @@ private fun MetadataEditor(actions: AppActions, item: MediaItem, notify: (String
     val episodic = item.kind == ItemKind.EPISODE || item.kind == ItemKind.SEASON
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Field("Title", meta.name) { m = meta.copy(name = it) }
+            ThemeMusicInfoRow(actions, item)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Field("Title", meta.name, Modifier.weight(1f)) { m = meta.copy(name = it) }
+                LockButton(meta, dev.nitrate.core.admin.LockableField.NAME) { m = it }
+            }
             Field("Original title", meta.originalTitle.orEmpty()) { m = meta.copy(originalTitle = it) }
             Field("Sort title", meta.sortName.orEmpty()) { m = meta.copy(sortName = it) }
             Field("Tagline", meta.tagline.orEmpty()) { m = meta.copy(tagline = it) }
-            Field("Overview", meta.overview.orEmpty(), lines = 5) { m = meta.copy(overview = it) }
+            Row(verticalAlignment = Alignment.Top) {
+                Field("Overview", meta.overview.orEmpty(), Modifier.weight(1f), lines = 5) { m = meta.copy(overview = it) }
+                LockButton(meta, dev.nitrate.core.admin.LockableField.OVERVIEW) { m = it }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Field("Year", meta.productionYear?.toString().orEmpty(), Modifier.weight(1f), number = true) { m = meta.copy(productionYear = it.toIntOrNull()) }
                 Field("Released (YYYY-MM-DD)", meta.premiereDate.orEmpty(), Modifier.weight(2f)) { m = meta.copy(premiereDate = it) }
@@ -161,6 +215,7 @@ private fun MetadataEditor(actions: AppActions, item: MediaItem, notify: (String
             if (item.kind == ItemKind.SERIES) Field("Ended (YYYY-MM-DD)", meta.endDate.orEmpty()) { m = meta.copy(endDate = it) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Field("Age rating", meta.officialRating.orEmpty(), Modifier.weight(1f)) { m = meta.copy(officialRating = it) }
+                LockButton(meta, dev.nitrate.core.admin.LockableField.OFFICIAL_RATING) { m = it }
                 Field("Rating", meta.communityRating?.toString().orEmpty(), Modifier.weight(1f), number = true) { m = meta.copy(communityRating = it.toFloatOrNull()) }
                 Field("Critics %", meta.criticRating?.toInt()?.toString().orEmpty(), Modifier.weight(1f), number = true) { m = meta.copy(criticRating = it.toFloatOrNull()) }
             }
@@ -179,10 +234,22 @@ private fun MetadataEditor(actions: AppActions, item: MediaItem, notify: (String
                     }
                 }
             }
-            ChipList("Genres", meta.genres) { m = meta.copy(genres = it) }
-            ChipList("Tags", meta.tags) { m = meta.copy(tags = it) }
-            ChipList("Studios", meta.studios) { m = meta.copy(studios = it) }
-            PeopleEditor(meta.people) { m = meta.copy(people = it) }
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) { ChipList("Genres", meta.genres) { m = meta.copy(genres = it) } }
+                LockButton(meta, dev.nitrate.core.admin.LockableField.GENRES) { m = it }
+            }
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) { ChipList("Tags", meta.tags) { m = meta.copy(tags = it) } }
+                LockButton(meta, dev.nitrate.core.admin.LockableField.TAGS) { m = it }
+            }
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) { ChipList("Studios", meta.studios) { m = meta.copy(studios = it) } }
+                LockButton(meta, dev.nitrate.core.admin.LockableField.STUDIOS) { m = it }
+            }
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) { PeopleEditor(meta.people) { m = meta.copy(people = it) } }
+                LockButton(meta, dev.nitrate.core.admin.LockableField.CAST) { m = it }
+            }
             ProviderIdsEditor(meta.providerIds) { m = meta.copy(providerIds = it) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -192,10 +259,15 @@ private fun MetadataEditor(actions: AppActions, item: MediaItem, notify: (String
                 Switch(checked = meta.lockData, onCheckedChange = { m = meta.copy(lockData = it) })
             }
             if (!meta.lockData) {
-                Text("Lock fields", style = MaterialTheme.typography.titleSmall)
+                // Every field Jellyfin can lock on its own (the lock icons above, plus two not edited here).
+                Text("Locked against refreshes", style = MaterialTheme.typography.titleSmall)
+                Text("Refreshes and identifying keep these as they are.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val locked = meta.lockedFields.mapNotNull(dev.nitrate.core.admin.LockableField::of).toSet()
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LOCKABLE.forEach { f ->
-                        FilterChip(selected = f in meta.lockedFields, onClick = { m = meta.copy(lockedFields = if (f in meta.lockedFields) meta.lockedFields - f else meta.lockedFields + f) }, label = { Text(f) })
+                    dev.nitrate.core.admin.LockableField.entries.forEach { f ->
+                        FilterChip(selected = f in locked, onClick = {
+                            m = meta.copy(lockedFields = (if (f in locked) locked - f else locked + f).sortedBy { it.ordinal }.map { it.wire })
+                        }, label = { Text(f.label) })
                     }
                 }
             }
