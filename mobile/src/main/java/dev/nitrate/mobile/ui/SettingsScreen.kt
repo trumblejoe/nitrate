@@ -267,7 +267,7 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
         Triple("Logos", "Title art instead of plain titles", Pair({ p -> p.logos }, { p, v -> p.copy(logos = v) })),
         Triple("Cast & crew", "On details pages", Pair({ p -> p.cast }, { p, v -> p.copy(cast = v) })),
         Triple("More like this", "On details pages", Pair({ p -> p.similar }, { p, v -> p.copy(similar = v) })),
-        Triple("Hide spoilers", "Blur stills and hide descriptions of episodes you haven't seen", Pair({ p -> p.hideSpoilers }, { p, v -> p.copy(hideSpoilers = v) })),
+        Triple("Hide spoilers", "Blur episode stills and hide descriptions of episodes and movies you haven't seen", Pair({ p -> p.hideSpoilers }, { p, v -> p.copy(hideSpoilers = v) })),
         Triple("Theme music", "Plays a title's theme quietly on its details page", Pair({ p -> p.themeMusic ?: false }, { p, v -> p.copy(themeMusic = v) })),
     )
     toggles.forEach { (label, detail, get) ->

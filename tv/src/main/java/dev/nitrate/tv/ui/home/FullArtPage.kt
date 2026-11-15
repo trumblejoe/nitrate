@@ -36,7 +36,7 @@ import dev.nitrate.core.MediaServer
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.rows.MediaRow
 import dev.nitrate.core.rows.RowDisplay
-import dev.nitrate.core.pages.isSpoiler
+import dev.nitrate.core.pages.hidesDescription
 import dev.nitrate.tv.ui.components.Backdrop
 import dev.nitrate.tv.ui.components.ItemMetaLine
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
@@ -147,7 +147,7 @@ fun FullArtPage(
                 it.episodeLabel?.let { label -> Text(label, style = MaterialTheme.typography.titleMedium) }
                 if (showcase.showDetails) ItemMetaLine(it, showRatings = showcase.showRatings)
                 val prefs = LocalDisplayPrefs.current
-                if (showcase.showOverview && prefs.overview && !prefs.isSpoiler(it)) {
+                if (showcase.showOverview && prefs.overview && !prefs.hidesDescription(it)) {
                     it.overview?.let { text ->
                         Text(text, style = MaterialTheme.typography.bodyLarge, maxLines = 3, overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -1,7 +1,7 @@
 package dev.nitrate.tv.ui.rows
 
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
-import dev.nitrate.core.pages.isSpoiler
+import dev.nitrate.core.pages.hidesDescription
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -165,7 +165,7 @@ private fun FocusedSummary(item: MediaItem?, modifier: Modifier) {
         Text(item.displayTitle, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, maxLines = 1) }
         ItemMetaLine(item)
-        item.overview?.takeIf { LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.isSpoiler(item) }?.let {
+        item.overview?.takeIf { LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.hidesDescription(item) }?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)

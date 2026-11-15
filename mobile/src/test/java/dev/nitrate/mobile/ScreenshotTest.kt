@@ -380,6 +380,12 @@ class ScreenshotTest {
         c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true, communityRating = false, overview = false))
     }) { DetailsScreen(it, "series-1", null) }
 
+    /** An unwatched movie with spoilers hidden, as an admin: the description waits, and every action (How it plays too) fits. */
+    @Test fun movieSpoilerFree() = shoot("phone-movie-spoilers", setup = { c ->
+        c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true))
+        c.refreshAccount()
+    }) { DetailsScreen(it, "m2", null) }
+
     @Test fun manageDetails() = shoot("phone-manage-details") { ManageItemScreen(it, "m1") }
 
     @Test fun serverAdmin() = shoot("phone-server-admin") { ServerAdminScreen(it) }

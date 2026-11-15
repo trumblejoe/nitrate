@@ -181,6 +181,8 @@ class FakeServer : MediaServer {
     }
 
     override suspend fun playlists() = listOf(MediaItem("p1", "Rainy day", ItemKind.PLAYLIST), MediaItem("p2", "Road trip", ItemKind.PLAYLIST))
+    override suspend fun extras(itemId: String) =
+        if (itemId == "m1") listOf(MediaItem("m1-trailer", "Trailer", ItemKind.VIDEO, extraType = "Trailer")) else emptyList()
     override suspend fun account() = dev.nitrate.core.admin.AccountInfo("user-1", "Joe", isAdmin = true)
     override suspend fun metadata(itemId: String) = getItem(itemId).let { i ->
         dev.nitrate.core.admin.ItemMetadata(

@@ -4,6 +4,7 @@ import androidx.tv.material3.ListItem
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
+import dev.nitrate.core.pages.hidesDescription
 import dev.nitrate.core.pages.isSpoiler
 import dev.nitrate.android.viewmodel.DetailsState
 import dev.nitrate.android.viewmodel.DetailsViewModel
@@ -154,7 +155,7 @@ fun DetailsScreen(
                         val ep = focusedEpisode?.takeIf { f -> state.episodes.any { it.id == f.id } }
                         val prefs = LocalDisplayPrefs.current
                         Text(
-                            ep?.overview?.takeIf { prefs.overview && !prefs.isSpoiler(ep) }.orEmpty(),
+                            ep?.overview?.takeIf { prefs.overview && !prefs.hidesDescription(ep) }.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -320,8 +321,11 @@ private fun Header(
         item.tagline?.takeIf { prefs.tagline }?.let {
             Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
         }
-        item.overview?.takeIf { prefs.overview && !prefs.isSpoiler(item) }?.let {
-            Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        item.overview?.takeIf { prefs.overview }?.let { overview ->
+            // Spoiler hiding: unwatched movies and episodes keep their description until asked for.
+            var revealed by remember(item.id) { mutableStateOf(false) }
+            if (!prefs.hidesDescription(item) || revealed) Text(overview, style = MaterialTheme.typography.bodyLarge, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            else OutlinedButton(onClick = { revealed = true }) { Text("Description hidden until you've watched it · Show") }
         }
         Spacer(Modifier.height(4.dp))
         if (music) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -344,7 +348,8 @@ private fun Header(
                 OutlinedButton(onClick = { adding = true }) { Text("Add to…") }
                 if (adding) dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect) { adding = false }
             }
-        } else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        } else androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Wraps onto another line, so every button (Playback info, Add to, Manage...) stays on screen.
             // What "Play" means depends on the type: resume a movie, or the next episode of a series.
             val playTarget: MediaItem? = if (item.kind == ItemKind.SERIES) state.nextUp ?: state.episodes.firstOrNull() else item
             val resumeMs = playTarget?.user?.positionMs ?: 0L
@@ -380,7 +385,7 @@ private fun Header(
             }
             if (item.isPlayable) {
                 var showInfo by remember { mutableStateOf(false) }
-                OutlinedButton(onClick = { showInfo = true }) { Text("Playback info") }
+                OutlinedButton(onClick = { showInfo = true }) { Text("How it plays") }
                 if (showInfo) {
                     if (checkPlayback != null) CheckPlaybackDialog(item, checkPlayback, applyPlaybackFix) { showInfo = false }
                     else PlaybackDecisionDialog(repository, item) { showInfo = false }

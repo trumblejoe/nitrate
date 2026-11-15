@@ -97,8 +97,12 @@ fun DisplayPrefs.facts(item: MediaItem): List<String> = buildList {
     if (qualityBadges) addAll(item.badges)
 }
 
-/** Whether an episode's still and description would give away something not yet watched. */
+/** Whether an episode's still would give away something not yet watched (blurred). */
 fun DisplayPrefs.isSpoiler(item: MediaItem): Boolean = hideSpoilers && item.kind == ItemKind.EPISODE && !item.user.played
+
+/** Whether a description would give away something not yet watched: unwatched episodes and movies. */
+fun DisplayPrefs.hidesDescription(item: MediaItem): Boolean =
+    hideSpoilers && !item.user.played && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)
 
 /** A label shown on artwork or a details page for picture and sound quality. */
 object QualityBadges {

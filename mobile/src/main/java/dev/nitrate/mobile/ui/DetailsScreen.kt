@@ -3,6 +3,7 @@ package dev.nitrate.mobile.ui
 import androidx.compose.foundation.lazy.itemsIndexed
 import kotlinx.coroutines.launch
 import dev.nitrate.core.pages.facts
+import dev.nitrate.core.pages.hidesDescription
 import dev.nitrate.core.pages.isSpoiler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -158,7 +159,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     }
                     if (!music) PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
                     if (item.versions.size > 1) VersionChooser(item)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Wraps onto a second line when there are more actions than fit (a movie with a trailer, for an admin).
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
                         RoundAction(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", onClick = vm::toggleFavorite, active = item.user.isFavorite)
                         val trailer = state.extras.firstOrNull { it.extraType == "Trailer" }
@@ -178,7 +180,16 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         if (checking) CheckPlaybackDialog(actions, item) { checking = false }
                     }
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
-                    item.overview?.takeIf { prefs.overview && !prefs.isSpoiler(item) }?.let { ExpandableText(it) }
+                    item.overview?.takeIf { prefs.overview }?.let { overview ->
+                        // Spoiler hiding: unwatched movies and episodes keep their description until asked for.
+                        var revealed by remember(item.id) { mutableStateOf(false) }
+                        if (!prefs.hidesDescription(item) || revealed) ExpandableText(overview)
+                        else Text(
+                            "Description hidden until you've watched it · Show",
+                            style = MaterialTheme.typography.bodyMedium, color = accentColor(),
+                            modifier = Modifier.pressable({ revealed = true }).padding(vertical = 6.dp),
+                        )
+                    }
                 }
             }
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -416,7 +427,7 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 else episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
             }
         }
-        episode.overview?.takeIf { LocalDisplayPrefs.current.let { p -> p.overview && !p.isSpoiler(episode) } }?.let {
+        episode.overview?.takeIf { LocalDisplayPrefs.current.let { p -> p.overview && !p.hidesDescription(episode) } }?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
         }
     }
