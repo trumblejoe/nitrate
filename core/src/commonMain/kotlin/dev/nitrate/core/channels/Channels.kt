@@ -118,12 +118,12 @@ object Channels {
 
     /** "Sat 8:00–10:00", "Weekdays 18:00–20:00", "Every day 23:00–1:00". */
     fun describe(block: ChannelBlock): String {
-        val days = block.days.toSortedSet()
+        val days = block.days.toSet()
         val dayText = when (days) {
             (0..6).toSet() -> "Every day"
             (1..5).toSet() -> "Weekdays"
             setOf(0, 6) -> "Weekends"
-            else -> days.joinToString(", ") { DAY_NAMES[it] }
+            else -> days.sorted().joinToString(", ") { DAY_NAMES[it] }
         }
         return "$dayText ${time(block.startMinute)}–${time(block.endMinute)}"
     }

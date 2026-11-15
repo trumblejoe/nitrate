@@ -8,8 +8,10 @@ class MenuStopsTest {
     private val available = defaults.toSet()
 
     @Test fun defaultsInOrder() {
-        assertEquals(listOf("search", "home", "library:m", "library:s", "page:p1", "pages", "together", "settings", "profiles"), defaults)
+        assertEquals(listOf("search", "home", "library:m", "library:s", "page:p1", "channels", "pages", "together", "settings", "profiles"), defaults)
         assertEquals(defaults, MenuStops.arrange(null, available, defaults))
+        // Without channels on this server the defaults close up (no gap on the dial).
+        assertEquals(defaults - "channels", MenuStops.arrange(null, available - "channels", defaults))
     }
 
     @Test fun dropsMissingStopsAndKeepsSettings() {

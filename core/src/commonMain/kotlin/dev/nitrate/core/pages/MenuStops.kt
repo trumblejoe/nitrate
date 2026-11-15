@@ -30,7 +30,8 @@ object MenuStops {
      * arranged into a corner with no way back to these options.
      */
     fun arrange(saved: List<String?>?, available: Set<String>, defaults: List<String>): List<String?> {
-        val kept = (saved ?: defaults).map { id -> id?.takeIf { it in available } }.dropLastWhile { it == null }
+        // The defaults close up around stops this server doesn't have (Channels without the Companion plugin).
+        val kept = (saved ?: defaults.filter { it in available }).map { id -> id?.takeIf { it in available } }.dropLastWhile { it == null }
         return if (SETTINGS in kept || SETTINGS !in available) kept else kept + SETTINGS
     }
 
