@@ -167,6 +167,11 @@ public class ChannelTests
         Assert.Single(hub.List(Kid, false));
         Assert.Empty(hub.List(Guest, false));
         Assert.Single(hub.List(Guest, true));
+        // Not in the guide either, and asking for it by id is the same as it not existing.
+        var now = _time.GetUtcNow();
+        Assert.Empty(hub.Guide(Guest, false, now, now.AddHours(3)));
+        Assert.Single(hub.Guide(Kid, false, now, now.AddHours(3)));
+        Assert.Equal(ChannelError.NotFound, Assert.Throws<ChannelException>(() => hub.Get(family.Id, Guest, false)).Error);
         Assert.Equal(ChannelError.NotFound, Assert.Throws<ChannelException>(() => hub.Tune(family.Id, Guest, false, 5)).Error);
         Assert.Equal(ChannelError.NotAdmin, Assert.Throws<ChannelException>(() => hub.Update(family.Id, Edit(ShowA), false)).Error);
         Assert.Equal(ChannelError.NotAdmin, Assert.Throws<ChannelException>(() => hub.Create(Edit(ShowA), Kid, false)).Error);
