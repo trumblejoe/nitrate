@@ -114,6 +114,8 @@ fun PlayerScreen(
     startMs: Long? = null,
     /** Plays the following episode; null turns Up Next off (e.g. playlists, which queue their own). */
     onPlayNext: ((MediaItem) -> Unit)? = null,
+    /** A recap clip: plays from [startMs] to here, unreported, then ends. */
+    clipEndMs: Long? = null,
 ) {
     val context = LocalContext.current
     val downloads = actions.container.downloads
@@ -135,7 +137,8 @@ fun PlayerScreen(
     val session = remember(itemId) {
         PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() }, trackMemory = actions.container.trackMemory)
             .also {
-                if (!local) {
+                if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)
+                else if (!local) {
                     it.followGroup(actions.container.syncPlay)
                     it.load(itemId, fromStart, startMs)
                 }

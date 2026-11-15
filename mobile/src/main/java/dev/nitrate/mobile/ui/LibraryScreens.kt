@@ -241,6 +241,24 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                             OutlinedButton(onClick = { actions.playQueue(list.shuffled().map { it.id }) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
                         }
                     }
+                    // Story order: carries on from the first unwatched item, with a "Last time" recap after a break.
+                    val prefs = LocalDisplayPrefs.current
+                    val inOrder = playlist != null && playlist!!.id in prefs.recapPlaylists
+                    val scope = androidx.compose.runtime.rememberCoroutineScope()
+                    if (!editing && playlist != null) {
+                        androidx.compose.material3.FilterChip(
+                            inOrder, { scope.launch { actions.container.setRecapPlaylist(playlist!!.id, !inOrder) } },
+                            label = { Text("In story order: recap when I come back") },
+                        )
+                        val next = list.firstOrNull { !it.user.played }
+                        if (inOrder && next != null && next != list.first()) Button(onClick = {
+                            scope.launch {
+                                val recap = actions.container.recapBefore(next, playlist)
+                                if (recap != null) actions.nav.navigate(RecapRoute)
+                                else actions.playQueue(list.dropWhile { it.id != next.id }.map { it.id })
+                            }
+                        }) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(next)}") }
+                    }
                 }
             }
             itemsIndexed(list, key = { i, it -> it.playlistEntryId ?: "$i-${it.id}" }) { index, item ->

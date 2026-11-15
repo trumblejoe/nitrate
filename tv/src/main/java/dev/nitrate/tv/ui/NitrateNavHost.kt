@@ -99,8 +99,11 @@ sealed interface TvRequest {
     data class Play(val itemId: String) : TvRequest
 }
 
-/** [queue] is comma-separated item ids to play after [itemId]. */
-@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1)
+/** [queue] is comma-separated item ids to play after [itemId]; [clipEndMs] >= 0: a recap clip from [startMs] to there, unreported. */
+@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1, val clipEndMs: Long = -1)
+
+/** "Last time": the recap in [AppContainer.pendingRecap], before playing on. */
+@Serializable object RecapRoute
 
 @Composable
 fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.MutableStateFlow<TvRequest?> = kotlinx.coroutines.flow.MutableStateFlow(null)) {
@@ -127,7 +130,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     val scope = rememberCoroutineScope()
     val account by container.account.collectAsState()
     // Every "play this item" goes through plugin guards first; queues (playlists) don't.
-    val gate = rememberPlaybackGate(container.plugins) { item, fromStart -> nav.navigate(PlayerRoute(item.id, fromStart)) }
+    // Resuming after a break: the "Last time" recap first, when one is due.
+    val gate = rememberPlaybackGate(container.plugins) { item, fromStart ->
+        scope.launch {
+            if (!fromStart && container.recapBefore(item) != null) nav.navigate(RecapRoute) else nav.navigate(PlayerRoute(item.id, fromStart))
+        }
+    }
     // The TV screens of plugins that are switched on.
     val enabledIds by container.plugins.enabledIds.collectAsState(emptySet())
     val enabledPlugins = TV_PLUGIN_UI.filter { it.pluginId in enabledIds }
@@ -253,6 +261,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             )
             }
             watchWith?.let { s -> dev.nitrate.tv.ui.partners.WatchWithDialog(container, s) { watchWith = null } }
+        }
+        composable<RecapRoute> {
+            dev.nitrate.tv.ui.player.RecapScreen(container, onPlayOn = { recap ->
+                nav.popBackStack()
+                if (recap.then.isNotEmpty()) nav.playQueue(listOf(recap.next.id) + recap.then) else nav.navigate(PlayerRoute(recap.next.id))
+            }, onClip = { clip -> nav.navigate(PlayerRoute(clip.item.id, startMs = clip.startMs, clipEndMs = clip.endMs)) }, onBack = { nav.popBackStack() })
         }
         composable<WatchPartnersRoute> {
             dev.nitrate.tv.ui.partners.WatchPartnersScreen(container) { id -> nav.navigate(DetailsRoute(id)) }
@@ -416,6 +430,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onPlayQueue = { items -> nav.playQueue(items.map { it.id }) },
                 onOpen = nav::openItem,
                 onDeleted = { nav.popBackStack() },
+                onContinue = { pl, next, rest ->
+                    scope.launch {
+                        if (container.recapBefore(next, pl) != null) nav.navigate(RecapRoute) else nav.playQueue(rest.map { it.id })
+                    }
+                },
+                onStoryOrder = { id, on -> scope.launch { container.setRecapPlaylist(id, on) } },
             )
         }
         composable<PlayerRoute> { entry ->
@@ -434,6 +454,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 trackMemory = container.trackMemory,
                 remote = container.remote,
                 startMs = route.startMs.takeIf { it >= 0 },
+                clipEndMs = route.clipEndMs.takeIf { it >= 0 },
                 syncPlay = container.syncPlay,
                 sendLog = { session -> container.sendPlaybackReport(session) },
                 capabilities = container.capabilities,

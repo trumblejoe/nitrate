@@ -63,6 +63,10 @@ fun PlaylistScreen(
     onOpen: (MediaItem) -> Unit,
     /** Leaves the page after the playlist was deleted. */
     onDeleted: () -> Unit = {},
+    /** In story order: carries on from [next] (with a "Last time" recap when due). Null: no story-order switch. */
+    onContinue: ((playlist: MediaItem, next: MediaItem, rest: List<MediaItem>) -> Unit)? = null,
+    /** Marks the playlist in story order, or not. */
+    onStoryOrder: ((playlistId: String, on: Boolean) -> Unit)? = null,
 ) {
     val id = remember(playlistId) { playlistId }
     var refresh by remember { mutableStateOf(0) }
@@ -129,6 +133,13 @@ fun PlaylistScreen(
                     Text("Play all")
                 }
                 OutlinedButton(onClick = { onPlayQueue(list.shuffled()) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
+                // Story order: carry on from the first unwatched item, with a recap after a break.
+                val inOrder = pl.id in dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.recapPlaylists
+                val next = list.firstOrNull { !it.user.played }
+                if (inOrder && next != null && next != list.first() && onContinue != null) {
+                    Button(onClick = { onContinue(pl, next, list.dropWhile { it.id != next.id }) }) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(next)}") }
+                }
+                if (onStoryOrder != null) androidx.tv.material3.FilterChip(inOrder, { onStoryOrder(pl.id, !inOrder) }) { Text("In story order") }
                 OutlinedButton(onClick = { scope.launch { settings.saveView(userId, "playlist-page", view.copy(cinematic = !view.cinematic)) } }) {
                     Text(if (view.cinematic) "Compact view" else "Cinematic view")
                 }

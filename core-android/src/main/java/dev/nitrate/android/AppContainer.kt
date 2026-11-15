@@ -187,6 +187,29 @@ class AppContainer(
         chat
     }
 
+    /** The recap the "Last time" page shows (set just before it opens). */
+    var pendingRecap: dev.nitrate.core.recap.Recap? = null
+
+    /**
+     * The "Last time" recap due before playing [item] (as a show's next episode, or the next item of
+     * [playlist] when it's marked in story order), or null. Gives up after a moment so playing never waits long.
+     */
+    suspend fun recapBefore(item: dev.nitrate.core.model.MediaItem, playlist: dev.nitrate.core.model.MediaItem? = null): dev.nitrate.core.recap.Recap? {
+        val user = server.userId ?: return null
+        val prefs = displaySettings.prefs(user).first()
+        if (prefs.recapAfterDays <= 0) return null
+        return kotlinx.coroutines.withTimeoutOrNull(2_500) {
+            dev.nitrate.core.recap.Recaps.before(server, item, prefs, System.currentTimeMillis(), playlist)
+        }.also { pendingRecap = it }
+    }
+
+    /** Marks a playlist "in story order" (it then gets recaps), or not. Shared on every device. */
+    suspend fun setRecapPlaylist(playlistId: String, on: Boolean) {
+        val user = server.userId ?: return
+        val prefs = displaySettings.prefs(user).first()
+        displaySettings.savePrefs(user, prefs.copy(recapPlaylists = if (on) prefs.recapPlaylists + playlistId else prefs.recapPlaylists - playlistId))
+    }
+
     /** Watching shows with partners (see [dev.nitrate.core.partners.WatchPartnersPlugin]). */
     val watchPartners = dev.nitrate.core.partners.WatchPartnersPlugin(dev.nitrate.core.partners.TogetherSessions(System::currentTimeMillis), System::currentTimeMillis)
 

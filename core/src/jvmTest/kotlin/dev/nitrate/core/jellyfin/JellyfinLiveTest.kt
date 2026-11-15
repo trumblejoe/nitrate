@@ -535,6 +535,38 @@ class JellyfinLiveTest {
     }
 
     @Test
+    fun `a recap after a break uses what was watched`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val show = client.queryItems(dev.nitrate.core.pages.ItemQuery(types = listOf(dev.nitrate.core.model.ItemKind.SERIES))).firstOrNull()
+        assumeTrue("Needs a show", show != null)
+        val episodes = client.allEpisodes(show!!.id).filter { (it.seasonNumber ?: 0) > 0 }
+        assumeTrue("Needs two episodes", episodes.size >= 2)
+        val (first, second) = episodes
+        val was = episodes.take(2).map { it.user.played }
+        try {
+            client.setPlayed(first.id, true)
+            client.setPlayed(second.id, false)
+            val seen = client.allEpisodes(show.id).first { it.id == first.id }
+            assertTrue(seen.user.lastPlayedMs != null)
+            val prefs = dev.nitrate.core.pages.DisplayPrefs(recapAfterDays = 14)
+            // Not yet: just watched.
+            assertEquals(null, dev.nitrate.core.recap.Recaps.before(client, second, prefs, System.currentTimeMillis()))
+            // A month later.
+            val later = System.currentTimeMillis() + 30L * 24 * 60 * 60_000
+            val recap = dev.nitrate.core.recap.Recaps.before(client, second, prefs, later)
+            assertEquals(listOf(first.id), recap?.cards?.map { it.id })
+            assertEquals(second.id, recap?.next?.id)
+            println("Recap: ${recap?.where} · ${recap?.since} · clip ${recap?.clip}")
+            assertEquals(null, dev.nitrate.core.recap.Recaps.before(client, second, prefs.copy(recapAfterDays = 0), later))
+        } finally {
+            client.setPlayed(first.id, was[0])
+            client.setPlayed(second.id, was[1])
+        }
+    }
+
+    @Test
     fun `switches between saved accounts`() = runBlocking {
         assumeTrue("Set JELLYFIN_URL to run", url != null)
         val user = System.getenv("JELLYFIN_USER") ?: "nitrate"

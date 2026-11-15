@@ -81,7 +81,11 @@ import kotlinx.serialization.Serializable
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 
 /** [queue] is comma-separated item ids to play after [itemId]; [local] plays the downloaded file. */
-@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false, val startMs: Long = -1)
+/** [clipEndMs] >= 0: a recap clip from [startMs] to there, not reported to the server. */
+@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false, val startMs: Long = -1, val clipEndMs: Long = -1)
+
+/** "Last time": the recap in [AppContainer.pendingRecap], before playing on. */
+@Serializable object RecapRoute
 
 /** A remote control for another device's playback. */
 @Serializable data class RemoteRoute(val sessionId: String)
@@ -171,6 +175,12 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         fun playerRoute(itemId: String, fromStart: Boolean) =
             PlayerRoute(itemId, fromStart, local = container.downloads.find(itemId)?.state == DownloadState.COMPLETED)
 
+        // Resuming after a break: the "Last time" recap first, when one is due.
+        suspend fun go(target: dev.nitrate.core.model.MediaItem, fromStart: Boolean) {
+            val recap = if (fromStart) null else container.recapBefore(target)
+            if (recap != null) nav.navigate(RecapRoute) else nav.navigate(playerRoute(target.id, fromStart))
+        }
+
         val actions = remember(nav) {
             AppActions(container, nav, appScope) { item, fromStart ->
                 scope.launch {
@@ -180,7 +190,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                         answer.await().also { pending = null }
                     }
                     when (action) {
-                        GuardAction.PlayAnyway -> nav.navigate(playerRoute(item.id, fromStart))
+                        GuardAction.PlayAnyway -> go(item, fromStart)
                         GuardAction.Cancel -> Unit
                         is GuardAction.PlayInstead -> nav.navigate(playerRoute(action.item.id, false))
                         is GuardAction.MarkWatchedThenPlay -> {
@@ -189,7 +199,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                         }
                         is GuardAction.RunThenPlay -> {
                             runCatching { action.run() }
-                            nav.navigate(playerRoute(item.id, fromStart))
+                            go(item, fromStart)
                         }
                     }
                 }
@@ -265,6 +275,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }
             screen<ChannelsRoute> { ChannelsScreen(actions) }
             screen<WatchPartnersRoute> { WatchPartnersScreen(actions) }
+            screen<RecapRoute> { RecapScreen(actions) }
             screen<ChannelEditorRoute> { entry -> ChannelEditorScreen(actions, entry.toRoute<ChannelEditorRoute>().channelId.ifEmpty { null }) }
             screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<LicensesRoute> { LicensesScreen() }
@@ -288,8 +299,9 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     fromStart = route.fromStart,
                     local = route.local,
                     startMs = route.startMs.takeIf { it >= 0 },
-                    // Playlists queue their own next item; single episodes get Up Next.
-                    onPlayNext = if (route.queue.isBlank()) { next -> nav.popBackStack(); actions.play(next, false) } else null,
+                    clipEndMs = route.clipEndMs.takeIf { it >= 0 },
+                    // Playlists queue their own next item; single episodes get Up Next (not a recap clip).
+                    onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0) { next -> nav.popBackStack(); actions.play(next, false) } else null,
                     onExit = { nav.popBackStack() },
                     onEnded = {
                         val next = route.queue.split(',').filter(String::isNotBlank)

@@ -397,6 +397,10 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.partners.PartnerRequestPrompt(c)
     }
 
+    @Test fun recap() = shoot("tv-recap", setup = { c -> c.pendingRecap = (c.server as dev.nitrate.testing.FakeServer).sampleRecap() }) { c ->
+        dev.nitrate.tv.ui.player.RecapScreen(c, {}, {}, {})
+    }
+
     @Test fun album() = shoot("tv-album") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "al1", null, onPlay = { _, _ -> }, onOpen = {}) }
 
     @Test fun liveTv() = shoot("tv-live-tv") { c ->

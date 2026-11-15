@@ -301,6 +301,16 @@ class FakeServer : MediaServer {
             dev.nitrate.core.partners.PartnerProgress("g2", "user-5", "Tommy", emptySet(), "S2 E1", null),
             dev.nitrate.core.partners.PartnerProgress("g2", "user-6", "Jane", emptySet(), null, null),
         ) else emptyList()
+    /** A "Last time" recap of The Night Reel, three weeks after S1 E6. */
+    suspend fun sampleRecap(): dev.nitrate.core.recap.Recap {
+        val day = 24 * 60 * 60_000L
+        val now = System.currentTimeMillis()
+        val eps = allEpisodes("series-1").mapIndexed { i, e ->
+            if (e.user.played) e.copy(runtimeMs = 45 * 60_000L, user = e.user.copy(lastPlayedMs = now - (27 - i) * day)) else e
+        }
+        val next = eps.first { !it.user.played }
+        return dev.nitrate.core.recap.Recaps.forSeries(series, eps, next, dev.nitrate.core.pages.DisplayPrefs(recapAfterDays = 14), now)!!
+    }
     override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners"))
 
     /** People to share scripts with, and one script someone shared (its text, at version 3). */

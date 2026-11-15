@@ -174,6 +174,8 @@ class ScreenshotTest {
         c.refreshCompanionForTests()
     }) { DetailsScreen(it, "series-1", null) }
 
+    @Test fun recap() = shoot("phone-recap", setup = { c -> c.pendingRecap = (c.server as dev.nitrate.testing.FakeServer).sampleRecap() }) { dev.nitrate.mobile.ui.RecapScreen(it) }
+
     @Test fun licenses() = shoot("phone-licenses") { dev.nitrate.mobile.ui.LicensesScreen() }
 
     @Test fun serverAddresses() = shoot("phone-servers") { dev.nitrate.mobile.ui.ServersScreen(it) }

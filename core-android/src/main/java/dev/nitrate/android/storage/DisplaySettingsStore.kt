@@ -232,15 +232,18 @@ class DisplaySettingsStore(
     fun prefs(userId: String): Flow<DisplayPrefs> = context.displayDataStore.data.map { prefs ->
         val own = prefs[resolve(prefs, userId, PREFS)]?.let { runCatching { json.decodeFromString<DisplayPrefs>(it) }.getOrNull() } ?: DisplayPrefs()
         val shared = prefs[prefKey(userId, DisplayProfiles.SHARED)]?.let { runCatching { json.decodeFromString<SharedPrefs>(it) }.getOrNull() }
-        if (shared != null) own.copy(hideSpoilers = shared.hideSpoilers) else own
+        if (shared != null) own.copy(hideSpoilers = shared.hideSpoilers, recapPlaylists = shared.recapPlaylists) else own.copy(recapPlaylists = emptySet())
     }
 
     suspend fun savePrefs(userId: String, prefs: DisplayPrefs) {
         val before = prefs(userId).first()
-        if (before.hideSpoilers != prefs.hideSpoilers) saveRaw(userId, DisplayProfiles.SHARED, json.encodeToString(SharedPrefs(hideSpoilers = prefs.hideSpoilers)))
+        if (before.hideSpoilers != prefs.hideSpoilers || before.recapPlaylists != prefs.recapPlaylists) {
+            saveRaw(userId, DisplayProfiles.SHARED, json.encodeToString(SharedPrefs(hideSpoilers = prefs.hideSpoilers, recapPlaylists = prefs.recapPlaylists)))
+        }
         // Only a change to the profile's own settings is saved to it (so turning spoilers on or
-        // off doesn't start a profile from a built-in one).
-        if (before.copy(hideSpoilers = false) != prefs.copy(hideSpoilers = false)) saveRaw(userId, PREFS, json.encodeToString(prefs))
+        // off, or marking a playlist, doesn't start a profile from a built-in one).
+        fun own(p: DisplayPrefs) = p.copy(hideSpoilers = false, recapPlaylists = emptySet())
+        if (own(before) != own(prefs)) saveRaw(userId, PREFS, json.encodeToString(own(prefs)))
     }
 
     /** Audio and subtitle languages remembered per show, as a [TrackMemoryStore] for [userId]. */
@@ -303,4 +306,4 @@ class DisplaySettingsStore(
 
 /** Display settings that are the same on every device, whatever its profile. */
 @kotlinx.serialization.Serializable
-internal data class SharedPrefs(val hideSpoilers: Boolean = false)
+internal data class SharedPrefs(val hideSpoilers: Boolean = false, val recapPlaylists: Set<String> = emptySet())

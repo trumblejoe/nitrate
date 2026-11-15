@@ -374,11 +374,39 @@ class PlaybackSession(
 
     fun load(itemId: String, fromStart: Boolean, startMs: Long? = null) = load(itemId, fromStart, startMs, nextPart = false)
 
+    /** A recap clip: nothing is reported to the server (watch history and resume points stay as they were). */
+    private var quiet = false
+
+    /** Where a recap clip stops (null: play to the end). */
+    private var clipEndMs: Long? = null
+
+    /**
+     * Plays a recap clip: [itemId] from [startMs] to [endMs], then ends. It isn't reported, so the
+     * user's watch history and resume points don't change, and nothing plays on after it.
+     */
+    fun loadClip(itemId: String, startMs: Long, endMs: Long) {
+        quiet = true
+        clipEndMs = endMs
+        log("Recap clip $startMs–$endMs")
+        load(itemId, fromStart = false, startMs = startMs, nextPart = true)
+        scope.launch {
+            while (isActive) {
+                delay(250)
+                if (exo.currentPosition >= endMs && _plan.value != null) {
+                    exo.pause()
+                    onEnded()
+                    break
+                }
+            }
+        }
+    }
+
     private fun load(itemId: String, fromStart: Boolean, startMs: Long?, nextPart: Boolean) {
         log("Load $itemId (fromStart=$fromStart, startMs=$startMs${if (nextPart) ", next part" else ""})")
         if (!nextPart) remainingParts = emptyList()
         pendingItem = itemId to (startMs ?: 0)
-        group?.let { g ->
+        // A recap clip is this device's own, even in a watch-together group.
+        group?.takeIf { !quiet }?.let { g ->
             // Watching together: the group decides where everyone starts.
             g.attach(syncPlayer, itemId, startMs ?: 0)
             return
@@ -555,13 +583,15 @@ class PlaybackSession(
         }.onSuccess { p ->
             // The plan this replaces (a track change): stopped now that the new one exists, so the
             // server doesn't end the old stream while it's still playing.
-            _plan.value?.takeIf { it.playSessionId != p.playSessionId || it.itemId != p.itemId }?.let { old ->
+            _plan.value?.takeIf { !quiet && (it.playSessionId != p.playSessionId || it.itemId != p.itemId) }?.let { old ->
                 server.reportStopped(old, exo.currentPosition)
             }
             log("Server: ${p.method}" + (if (p.transcodeReasons.isNotEmpty()) " because ${p.transcodeReasons.joinToString(", ")}" else "") + "; ${dev.nitrate.core.playback.PlaybackReport.streamSummary(p)}")
             play(p, startMs, current.name)
-            server.reportStart(p, startMs)
-            startProgressReports(p)
+            if (!quiet) {
+                server.reportStart(p, startMs)
+                startProgressReports(p)
+            }
         }.onFailure {
             if (it is kotlinx.coroutines.CancellationException) throw it
             log("Couldn't start: ${it.message ?: it::class.simpleName}")
@@ -771,7 +801,7 @@ class PlaybackSession(
             val duration = exo.duration.coerceAtLeast(0)
             // Outlives this session, so leaving the exo still saves where it stopped.
             appScope.launch { local(position, duration, false) }
-        } else {
+        } else if (!quiet) {
             _plan.value?.let { server.reportStopped(it, exo.currentPosition) }
         }
         group?.detach(syncPlayer)

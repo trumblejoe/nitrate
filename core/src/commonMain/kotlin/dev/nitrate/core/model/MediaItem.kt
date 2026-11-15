@@ -104,6 +104,8 @@ data class UserState(
     val isFavorite: Boolean = false,
     /** For series, seasons and playlists. */
     val unplayedCount: Int? = null,
+    /** When it was last played (watched to the end or not), if ever. */
+    val lastPlayedMs: Long? = null,
 )
 
 /**

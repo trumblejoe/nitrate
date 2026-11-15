@@ -120,6 +120,8 @@ fun PlayerScreen(
     capabilities: dev.nitrate.core.playback.DeviceCapabilities? = null,
     /** Watch-together chat (Companion plugin), shown while this TV is in a group. */
     chat: dev.nitrate.core.companion.GroupChat? = null,
+    /** A recap clip: plays from [startMs] to here, unreported, then ends. */
+    clipEndMs: Long? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
@@ -129,8 +131,11 @@ fun PlayerScreen(
     val session = remember(itemId) {
         PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory)
             .also {
-                syncPlay?.let(it::followGroup)
-                it.load(itemId, fromStart, startMs)
+                if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)
+                else {
+                    syncPlay?.let(it::followGroup)
+                    it.load(itemId, fromStart, startMs)
+                }
             }
     }
     DisposableEffect(session) {
