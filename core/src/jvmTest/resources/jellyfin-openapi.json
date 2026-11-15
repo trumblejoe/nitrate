@@ -5601,6 +5601,30 @@
     ],
     "type": "string"
    },
+   "ThemeMediaResult": {
+    "additionalProperties": false,
+    "properties": {
+     "Items": {
+      "items": {
+       "$ref": "#/components/schemas/BaseItemDto"
+      },
+      "type": "array"
+     },
+     "OwnerId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "StartIndex": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "TotalRecordCount": {
+      "format": "int32",
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
    "TimerInfoDto": {
     "additionalProperties": false,
     "properties": {
@@ -13236,6 +13260,131 @@
      },
      "401": {},
      "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
+    ]
+   }
+  },
+  "/Items/{itemId}/ThemeSongs": {
+   "get": {
+    "operationId": "GetThemeSongs",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "inheritFromParent",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortBy",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemSortBy"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sortOrder",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/SortOrder"
+       },
+       "type": "array"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ThemeMediaResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ThemeMediaResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ThemeMediaResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
      "503": {
       "content": {
        "text/html": {}
@@ -21658,6 +21807,80 @@
     ],
     "tags": [
      "User"
+    ]
+   }
+  },
+  "/Videos/MergeVersions": {
+   "post": {
+    "operationId": "MergeVersions",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "ids",
+      "required": true,
+      "schema": {
+       "items": {
+        "format": "uuid",
+        "type": "string"
+       },
+       "type": "array"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "Video"
     ]
    }
   },

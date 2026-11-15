@@ -161,6 +161,8 @@ class ScreenshotTest {
     @Test fun storyLists() = shoot("phone-story-lists") { dev.nitrate.mobile.ui.ListsPanel(storyContext()) }
     @Test fun storyMap() = shoot("phone-story-map") { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) { dev.nitrate.mobile.ui.MapPanel(storyContext(), Modifier.weight(1f)) } }
 
+    @Test fun libraryHealth() = shoot("phone-library-health", setup = { c -> c.checkLibraryHealth(null) }) { dev.nitrate.mobile.ui.LibraryHealthScreen(it) }
+
     @Test fun licenses() = shoot("phone-licenses") { dev.nitrate.mobile.ui.LicensesScreen() }
 
     @Test fun serverAddresses() = shoot("phone-servers") { dev.nitrate.mobile.ui.ServersScreen(it) }

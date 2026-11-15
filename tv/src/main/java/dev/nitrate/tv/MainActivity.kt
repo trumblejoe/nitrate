@@ -16,6 +16,17 @@ class MainActivity : ComponentActivity() {
     /** Something the home screen, voice search or the remote asked for; the UI takes it once signed in. */
     private val requests = MutableStateFlow<TvRequest?>(null)
 
+    // Theme music never plays while Nitrate is out of view.
+    override fun onStart() {
+        super.onStart()
+        (application as NitrateApp).container.themeMusic.onAppShown()
+    }
+
+    override fun onStop() {
+        (application as NitrateApp).container.themeMusic.onAppHidden()
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val container = (application as NitrateApp).container

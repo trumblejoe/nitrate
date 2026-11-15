@@ -736,4 +736,20 @@ class JellyfinLiveTest {
         }
         assertTrue(owner.sharedScripts().none { it.id == id })
     }
+
+    @Test
+    fun `library health reads the server`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-health", "Health"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val scan = client.healthScan(null)
+        assertTrue(scan.titles.isNotEmpty())
+        // Every movie's file was read; shows carry their episodes'.
+        assertTrue(scan.titles.filter { it.item.kind == dev.nitrate.core.model.ItemKind.MOVIE }.all { it.files.isNotEmpty() })
+        val found = dev.nitrate.core.diagnostics.LibraryHealth.findings(scan, caps(), dev.nitrate.core.playback.PlaybackSettings())
+        println("Health: ${scan.titles.size} titles, ${scan.missingEpisodes.size} missing episodes; " + found.entries.joinToString { "${it.key}=${it.value.size}" })
+        // Each library on its own reads a part of the whole.
+        val libraries = client.views().filter { it.collection == dev.nitrate.core.model.CollectionKind.MOVIES || it.collection == dev.nitrate.core.model.CollectionKind.TV_SHOWS }
+        assertTrue(libraries.sumOf { client.healthScan(it.id).titles.size } <= scan.titles.size + 1)
+    }
 }

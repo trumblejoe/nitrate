@@ -70,6 +70,7 @@ import kotlinx.serialization.Serializable
 
 /** Admin: the whole server (tasks, activity, devices, users). */
 @Serializable object ServerAdminRoute
+@Serializable object LibraryHealthRoute
 @Serializable object ServerAddressesRoute
 @Serializable object LicensesRoute
 
@@ -243,11 +244,18 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<LibraryRoute> { entry -> LibraryScreen(actions, entry.toRoute<LibraryRoute>().libraryId) }
             screen<DetailsRoute> { entry ->
                 val route = entry.toRoute<DetailsRoute>()
+                // Theme music while on details pages (off by default on phones).
+                val themeOn = LocalDisplayPrefs.current.themeMusic ?: false
+                androidx.compose.runtime.DisposableEffect(route.itemId, themeOn) {
+                    if (themeOn) actions.container.themeMusic.show(route.itemId) else actions.container.themeMusic.stop()
+                    onDispose { actions.container.themeMusic.hide(route.itemId) }
+                }
                 DetailsScreen(actions, route.itemId, route.seasonId, route.artKey)
             }
             screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
             screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
+            screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }
             screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<LicensesRoute> { LicensesScreen() }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
@@ -261,6 +269,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             }
             screen<PlayerRoute> { entry ->
                 val route = entry.toRoute<PlayerRoute>()
+                androidx.compose.runtime.LaunchedEffect(Unit) { actions.container.themeMusic.stop() }
                 PlayerScreen(
                     actions = actions,
                     itemId = route.itemId,

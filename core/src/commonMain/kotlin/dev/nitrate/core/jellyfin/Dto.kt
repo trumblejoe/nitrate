@@ -53,6 +53,7 @@ internal data class ItemDto(
     val type: String? = null,
     val mediaType: String? = null,
     val overview: String? = null,
+    val providerIds: Map<String, String?>? = null,
     val taglines: List<String>? = null,
     val productionYear: Int? = null,
     val endDate: String? = null,

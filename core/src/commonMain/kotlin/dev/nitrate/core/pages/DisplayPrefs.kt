@@ -32,6 +32,8 @@ data class DisplayPrefs(
     val similar: Boolean = true,
     /** Blurs unwatched episode stills and hides their descriptions. */
     val hideSpoilers: Boolean = false,
+    /** Theme music on details pages; null: the device's default (on for TV, off for phones). */
+    val themeMusic: Boolean? = null,
     val accent: AccentMode = AccentMode.ARTWORK,
     /** Pure black backgrounds (OLED). */
     val trueBlack: Boolean = false,

@@ -207,6 +207,10 @@ class TvScreenshotTest {
         dev.nitrate.tv.plugins.writing.StoryTvPanel(storyContext(), dev.nitrate.tv.plugins.writing.StoryTvTab.LISTS, onBack = {}, modifier = Modifier.fillMaxSize().padding(40.dp))
     }
 
+    @Test fun libraryHealth() = shoot("tv-library-health", setup = { c -> c.checkLibraryHealth(null) }) { c ->
+        dev.nitrate.tv.ui.settings.LibraryHealthScreen(c, onOpen = {}, onManage = {})
+    }
+
     @Test fun licenses() = shoot("tv-licenses") { _ -> dev.nitrate.tv.ui.settings.LicensesScreen() }
 
     @Test fun servers() = shoot("tv-servers", act = {

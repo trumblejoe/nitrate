@@ -14,6 +14,17 @@ class MainActivity : ComponentActivity() {
     /** An item to open, from a tapped notification. */
     private val openItem = MutableStateFlow<String?>(null)
 
+    // Theme music never plays while Nitrate is out of view.
+    override fun onStart() {
+        super.onStart()
+        (application as NitrateApp).container.themeMusic.onAppShown()
+    }
+
+    override fun onStop() {
+        (application as NitrateApp).container.themeMusic.onAppHidden()
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

@@ -196,6 +196,7 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
         Triple("Cast & crew", { p -> p.cast }, { p, v -> p.copy(cast = v) }),
         Triple("More like this", { p -> p.similar }, { p, v -> p.copy(similar = v) }),
         Triple("Hide spoilers (blur unwatched episodes, hide their descriptions)", { p -> p.hideSpoilers }, { p, v -> p.copy(hideSpoilers = v) }),
+        Triple("Theme music on details pages (quietly, when a title has some)", { p -> p.themeMusic ?: true }, { p, v -> p.copy(themeMusic = v) }),
         Triple("True black (OLED)", { p -> p.trueBlack }, { p, v -> p.copy(trueBlack = v) }),
     )
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(PagePadding), verticalArrangement = Arrangement.spacedBy(4.dp)) {

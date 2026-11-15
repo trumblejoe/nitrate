@@ -83,6 +83,7 @@ import kotlinx.serialization.Serializable
 @Serializable object SpeedCheckRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
+@Serializable object LibraryHealthRoute
 @Serializable object WatchTogetherRoute
 @Serializable object ProfilesRoute
 @Serializable data class SearchRoute(val query: String = "", val voice: Boolean = false)
@@ -136,6 +137,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     val libraries = dev.nitrate.tv.ui.home.rememberLibraries(container)
     val customPages = rememberCustomPages(container)
     val fromHome: androidx.navigation.NavOptionsBuilder.() -> Unit = { popUpTo(HomeRoute); launchSingleTop = true }
+    // A long press on "Switch user" in the menu: switch from right there.
+    var quickSwitch by remember { mutableStateOf(false) }
     val menuCatalog = remember(libraries, customPages, nav) {
         dev.nitrate.tv.ui.home.menuCatalog(
             libraries, customPages,
@@ -153,6 +156,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onTogether = { nav.navigate(WatchTogetherRoute, fromHome) },
                 onSettings = { nav.navigate(SettingsHubRoute, fromHome) },
                 onProfiles = { nav.navigate(ProfilesRoute) },
+                onQuickSwitch = { quickSwitch = true },
             ),
         )
     }
@@ -212,6 +216,13 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             )
         }
         composable<DetailsRoute> { entry ->
+            // Theme music while on details pages (on by default on TV).
+            val themeOn = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.themeMusic ?: true
+            val themeId = entry.toRoute<DetailsRoute>().itemId
+            androidx.compose.runtime.DisposableEffect(themeId, themeOn) {
+                if (themeOn) container.themeMusic.show(themeId) else container.themeMusic.stop()
+                onDispose { container.themeMusic.hide(themeId) }
+            }
             val route = entry.toRoute<DetailsRoute>()
             DetailsScreen(
                 repository = container.server,
@@ -245,7 +256,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     dev.nitrate.tv.ui.settings.SettingsLink("Server speed check", "Is slowness the network, the server or this TV? Times it and shows you") { nav.navigate(SpeedCheckRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Device backup", "This TV's settings on your server; restore another device's") { nav.navigate(DeviceBackupRoute) },
                 ) +
-                    (if (account?.isAdmin == true) listOf(dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) }) else emptyList()) +
+                    (if (account?.isAdmin == true) listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Library health", "Missing artwork and details, duplicates, missing episodes, what this TV always converts") { nav.navigate(LibraryHealthRoute) },
+                    ) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } } +
                     listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Servers", "Local, VPN and remote addresses; add, switch and choose the primary") { nav.navigate(ServerAddressesRoute) },
@@ -311,6 +325,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<MenuStopsRoute> { dev.nitrate.tv.ui.settings.MenuStopsScreen(container) }
         composable<ManageItemRoute> { entry -> ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId) }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
+        composable<LibraryHealthRoute> {
+            dev.nitrate.tv.ui.settings.LibraryHealthScreen(container, onOpen = { nav.navigate(DetailsRoute(it)) }, onManage = { nav.navigate(ManageItemRoute(it)) })
+        }
         composable<SearchRoute> { entry ->
             val route = entry.toRoute<SearchRoute>()
             dev.nitrate.tv.ui.search.SearchScreen(
@@ -363,6 +380,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             )
         }
         composable<PlayerRoute> { entry ->
+            LaunchedEffect(Unit) { container.themeMusic.stop() }
             val route = entry.toRoute<PlayerRoute>()
             PlayerScreen(
                 repository = container.server,
@@ -392,6 +410,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
     }
     }
+    if (quickSwitch) dev.nitrate.tv.ui.profiles.QuickSwitchDialog(
+        container,
+        onOpened = { nav.navigate(HomeRoute) { popUpTo(0) { inclusive = true } } },
+        onSignInAgain = { a -> nav.navigate(LoginRoute(a.serverUrl, a.serverName)) },
+        onDismiss = { quickSwitch = false },
+    )
     PlaybackGateDialog(gate)
     dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)
     dev.nitrate.tv.ui.settings.BackupPrompt(container.backups)

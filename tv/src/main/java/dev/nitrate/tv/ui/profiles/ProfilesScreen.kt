@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
@@ -257,3 +258,58 @@ fun PinPad(title: String, check: suspend (String) -> Boolean, onDone: (String) -
         }
     }
 }
+
+/**
+ * Switches profile from the menu (a long press on "Switch user"): the other profiles here, a PIN
+ * for locked ones, then that profile's Home. The full "Who's watching?" screen is still a press away.
+ */
+@Composable
+fun QuickSwitchDialog(container: AppContainer, onOpened: () -> Unit, onSignInAgain: (SavedAccount) -> Unit, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val accounts by produceState<List<SavedAccount>?>(null) { value = container.server.savedAccounts() }
+    val locked by container.profiles.locked.collectAsState(emptySet())
+    var unlocking by remember { mutableStateOf<SavedAccount?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val first = remember { FocusRequester() }
+    fun open(account: SavedAccount) {
+        scope.launch {
+            when (container.switchAccount(account.key)) {
+                SessionState.VALID -> { onDismiss(); onOpened() }
+                SessionState.EXPIRED -> { onDismiss(); onSignInAgain(account) }
+                SessionState.UNREACHABLE -> message = "Can't reach ${account.serverName} right now."
+                SessionState.NONE -> message = "That profile isn't signed in any more."
+            }
+        }
+    }
+    val others = accounts?.filter { it.key != container.server.currentAccountKey }
+    val manyServers = accounts.orEmpty().map { it.serverUrl }.distinct().size > 1
+    unlocking?.let { account ->
+        PinPad("Enter ${account.userName}'s PIN", check = { container.profiles.check(account.key, it) }, onDone = { unlocking = null; open(account) }, onDismiss = { unlocking = null })
+        return
+    }
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 520) {
+        Text("Switch to…", style = MaterialTheme.typography.headlineSmall)
+        when {
+            others == null -> Text("Loading…")
+            others.isEmpty() -> Text("No other profiles on this TV. Add one from Switch user.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> others.forEachIndexed { i, account ->
+                ListItem(
+                    selected = false,
+                    onClick = { if (account.key in locked) unlocking = account else open(account) },
+                    leadingContent = {
+                        coil3.compose.AsyncImage(
+                            account.imageUrl, null,
+                            modifier = Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+                        )
+                    },
+                    headlineContent = { Text(account.userName) },
+                    supportingContent = listOfNotNull(account.serverName.takeIf { manyServers }, "PIN".takeIf { account.key in locked }).takeIf { it.isNotEmpty() }?.let { { Text(it.joinToString(" · ")) } },
+                    modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
+                )
+            }
+        }
+        message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
+    LaunchedEffect(others?.size) { runCatching { first.requestFocus() } }
+}
+

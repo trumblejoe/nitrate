@@ -116,6 +116,14 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                     trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
                 )
             }
+            item {
+                ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(LibraryHealthRoute) },
+                    headlineContent = { Text("Library health") },
+                    supportingContent = { Text("Missing artwork and details, duplicates, missing episodes, what this phone always converts") },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
         }
 
         header("Notifications")
@@ -260,6 +268,7 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
         Triple("Cast & crew", "On details pages", Pair({ p -> p.cast }, { p, v -> p.copy(cast = v) })),
         Triple("More like this", "On details pages", Pair({ p -> p.similar }, { p, v -> p.copy(similar = v) })),
         Triple("Hide spoilers", "Blur stills and hide descriptions of episodes you haven't seen", Pair({ p -> p.hideSpoilers }, { p, v -> p.copy(hideSpoilers = v) })),
+        Triple("Theme music", "Plays a title's theme quietly on its details page", Pair({ p -> p.themeMusic ?: false }, { p, v -> p.copy(themeMusic = v) })),
     )
     toggles.forEach { (label, detail, get) ->
         item(key = "pref-$label") { Toggle(label, detail, get.first(prefs)) { v -> update { get.second(it, v) } } }

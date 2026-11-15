@@ -183,6 +183,9 @@ class AppContainer(
         chat
     }
 
+    /** Theme music behind details pages (each app's details screens ask for it; players stop it). */
+    val themeMusic by lazy { dev.nitrate.android.playback.ThemeMusic(appContext, server) }
+
     /** Per-show audio and subtitle languages, for the signed-in user. */
     val trackMemory by lazy { displaySettings.trackMemory { server.userId } }
 
@@ -248,6 +251,28 @@ class AppContainer(
      * Times typical requests from this device to the server (see [MediaServer.speedCheck]),
      * reporting each step as it finishes, and returns the whole report.
      */
+    /** The last library health check, kept while the app runs: (library id or null for all, findings). */
+    var lastHealth: Pair<String?, Map<dev.nitrate.core.diagnostics.HealthCheck, List<dev.nitrate.core.diagnostics.HealthFinding>>>? = null
+        private set
+
+    /**
+     * Checks a library (null: all) for missing artwork, descriptions and matches, unmerged
+     * copies, what this device always has to convert, and missing episodes.
+     */
+    suspend fun checkLibraryHealth(libraryId: String?): Map<dev.nitrate.core.diagnostics.HealthCheck, List<dev.nitrate.core.diagnostics.HealthFinding>> {
+        val found = dev.nitrate.core.diagnostics.LibraryHealth.findings(server.healthScan(libraryId), capabilities, playbackSettings.current())
+        lastHealth = libraryId to found
+        return found
+    }
+
+    /** Carries out a health fix that changes the server (admins); the others open a screen. */
+    suspend fun applyHealthFix(finding: dev.nitrate.core.diagnostics.HealthFinding, fix: dev.nitrate.core.diagnostics.HealthFix) = when (fix) {
+        dev.nitrate.core.diagnostics.HealthFix.FIND_IMAGES -> server.refreshItem(finding.item.id, dev.nitrate.core.admin.RefreshMode.MISSING, replaceImages = false, regenerateTrickplay = false)
+        dev.nitrate.core.diagnostics.HealthFix.FIND_METADATA -> server.refreshItem(finding.item.id, dev.nitrate.core.admin.RefreshMode.MISSING, replaceImages = false, regenerateTrickplay = false)
+        dev.nitrate.core.diagnostics.HealthFix.MERGE -> server.mergeVersions(listOf(finding.item.id) + finding.related.map { it.id })
+        else -> Unit
+    }
+
     suspend fun speedCheck(onStep: (dev.nitrate.core.diagnostics.SpeedStep) -> Unit): dev.nitrate.core.diagnostics.SpeedReport {
         val steps = server.speedCheck(onStep)
         return dev.nitrate.core.diagnostics.SpeedReport(
@@ -389,6 +414,7 @@ class AppContainer(
         companionState.value = null
         writing.account = null
         scriptSyncJob?.cancel()
+        themeMusic.stop()
     }
 
     /** Free space where downloads are saved. */

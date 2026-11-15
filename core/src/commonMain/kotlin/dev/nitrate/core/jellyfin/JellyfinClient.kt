@@ -1284,6 +1284,57 @@ class JellyfinClient(
         (trailers.await() + features.await()).distinctBy { it.id }
     }
 
+    override suspend fun mergeVersions(itemIds: List<String>) {
+        post<Unit>("Videos", "MergeVersions", query = mapOf("ids" to itemIds.joinToString(",")))
+    }
+
+    override suspend fun healthScan(libraryId: String?): dev.nitrate.core.diagnostics.HealthScan = coroutineScope {
+        fun streams(s: List<MediaStreamDto>?) = StreamInfo(
+            s.orEmpty().filter { it.type == "Video" }.map { VideoStreamInfo(Codecs.normalize(it.codec), it.bitDepth, Codecs.rangeTags(it.videoRangeType)) }.toSet(),
+            s.orEmpty().filter { it.type == "Audio" }.mapNotNull { Codecs.normalize(it.codec) }.toSet(),
+        )
+        suspend fun all(types: String, fields: String?, extra: Map<String, Any?> = emptyMap()): List<ItemDto> {
+            val out = mutableListOf<ItemDto>()
+            var start = 0
+            while (true) {
+                val page = get(
+                    "Items",
+                    query = mapOf(
+                        "userId" to userId, "parentId" to libraryId, "recursive" to true, "includeItemTypes" to types,
+                        "fields" to fields, "startIndex" to start, "limit" to HEALTH_PAGE, "enableUserData" to false,
+                        "sortBy" to "SortName", "sortOrder" to "Ascending",
+                    ) + extra,
+                ).decode<QueryResultDto<ItemDto>>().items
+                out += page
+                if (page.size < HEALTH_PAGE) break
+                start += page.size
+            }
+            return out
+        }
+        val titles = async { all("Movie,Series", "Overview,ProviderIds,MediaStreams", mapOf("enableImageTypes" to "Primary,Backdrop", "imageTypeLimit" to 1)) }
+        val episodes = async { all("Episode", "MediaStreams", mapOf("enableImages" to false, "isMissing" to false)) }
+        val missing = async { runCatching { all("Episode", null, mapOf("enableImages" to false, "isMissing" to true)) }.getOrDefault(emptyList()) }
+        val bySeries = episodes.await().filter { it.seriesId != null && !it.mediaStreams.isNullOrEmpty() }.groupBy { normalizeId(it.seriesId!!) }
+        dev.nitrate.core.diagnostics.HealthScan(
+            titles = titles.await().map { dto ->
+                val item = dto.toMediaItem()
+                dev.nitrate.core.diagnostics.HealthTitle(
+                    item = item,
+                    hasOverview = !dto.overview.isNullOrBlank(),
+                    matched = dto.providerIds.orEmpty().any { (k, v) -> !v.isNullOrBlank() && k.lowercase() in MATCH_PROVIDERS },
+                    files = if (item.kind == ItemKind.SERIES) bySeries[item.id].orEmpty().map { it.toMediaItem() to streams(it.mediaStreams) }
+                    else listOfNotNull(dto.mediaStreams?.takeIf { it.isNotEmpty() }?.let { item to streams(it) }),
+                )
+            },
+            missingEpisodes = missing.await().map { it.toMediaItem() },
+        )
+    }
+
+    override suspend fun themeSongs(itemId: String): List<MediaItem> =
+        items("Items", itemId, "ThemeSongs", query = mapOf("userId" to userId, "inheritFromParent" to true))
+
+    override fun audioStreamUrl(itemId: String): String = url("Audio", itemId, "stream", query = mapOf("static" to true))
+
     override suspend fun upcomingEpisodes(): List<MediaItem> =
         items("Shows", "Upcoming", query = mapOf("userId" to userId, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS))
 
@@ -1509,6 +1560,9 @@ class JellyfinClient(
 
         /** How long a library's codec index is reused before it's read again. */
         const val CODEC_INDEX_TTL_MS = 15 * 60_000L
+        const val HEALTH_PAGE = 500
+        /** Online databases a title counts as identified by. */
+        val MATCH_PROVIDERS = setOf("tmdb", "imdb", "tvdb", "tvmaze", "tmdbcollection")
         const val CODEC_INDEX_PAGE = 1000
         const val TRICKPLAY_MIN_WIDTH = 240
         val WIDE_DEFAULT = RowDisplay(style = RowStyle.WIDE, showTitles = true)

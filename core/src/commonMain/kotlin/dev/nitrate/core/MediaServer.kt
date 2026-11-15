@@ -204,6 +204,15 @@ interface MediaServer {
     suspend fun remoteSearch(item: MediaItem, name: String, year: Int?): List<RemoteMatch> = unsupported()
     suspend fun applyMatch(itemId: String, match: RemoteMatch, replaceImages: Boolean): Unit = unsupported()
     suspend fun refreshItem(itemId: String, mode: RefreshMode, replaceImages: Boolean, regenerateTrickplay: Boolean): Unit = unsupported()
+
+    /** Makes separate copies of one title versions of a single title (admins). */
+    suspend fun mergeVersions(itemIds: List<String>): Unit = unsupported()
+
+    /**
+     * Reads what the library health check needs from one library (null: all): each movie and
+     * show with its artwork, description, matches and files' streams, and episodes known missing.
+     */
+    suspend fun healthScan(libraryId: String?): dev.nitrate.core.diagnostics.HealthScan = unsupported()
     suspend fun itemImages(itemId: String): List<ItemImage> = unsupported()
     suspend fun remoteImages(itemId: String, type: ImageType): List<RemoteImage> = unsupported()
     suspend fun downloadRemoteImage(itemId: String, type: ImageType, url: String): Unit = unsupported()
@@ -387,6 +396,12 @@ interface MediaServer {
     /** Movies, shows, episodes, collections and people matching [query]. */
     /** The other files of a title split across several ("part 2", "part 3"...), in order. */
     suspend fun additionalParts(itemId: String): List<MediaItem> = emptyList()
+
+    /** Theme songs for a title, or its series' when it has none of its own (played quietly on details pages). */
+    suspend fun themeSongs(itemId: String): List<MediaItem> = emptyList()
+
+    /** The address to stream an audio file as it is (with [authorizationHeader]). */
+    fun audioStreamUrl(itemId: String): String = unsupported()
 
     /** Trailers (files on the server) then extras: behind the scenes, deleted scenes, featurettes... */
     suspend fun extras(itemId: String): List<MediaItem> = emptyList()

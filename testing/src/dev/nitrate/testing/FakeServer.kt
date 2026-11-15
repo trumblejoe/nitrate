@@ -230,6 +230,29 @@ class FakeServer : MediaServer {
         dev.nitrate.core.companion.ChatMessage(4, "user-3", "jo", dev.nitrate.core.companion.ChatKind.REACTION, "😱", 3_721_000, 0),
     )
 
+    /** A library with a few things to fix, for the library health screens. */
+    override suspend fun healthScan(libraryId: String?): dev.nitrate.core.diagnostics.HealthScan {
+        fun streams(codec: String, audio: String = "aac", ranges: Set<String> = setOf("sdr")) =
+            dev.nitrate.core.pages.StreamInfo(setOf(dev.nitrate.core.pages.VideoStreamInfo(codec, 8, ranges)), setOf(audio))
+        val art = dev.nitrate.core.model.ItemImages(primary = "p", backdrops = listOf("b"))
+        fun movie(id: String, name: String, year: Int, images: dev.nitrate.core.model.ItemImages = art) =
+            dev.nitrate.core.model.MediaItem(id, name, dev.nitrate.core.model.ItemKind.MOVIE, productionYear = year, images = images)
+        val show = dev.nitrate.core.model.MediaItem("h-show", "Harbour Lights", dev.nitrate.core.model.ItemKind.SERIES, productionYear = 2019, images = art)
+        val episodes = (1..10).map { dev.nitrate.core.model.MediaItem("h-e$it", "Episode $it", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "h-show") }
+        return dev.nitrate.core.diagnostics.HealthScan(
+            titles = listOf(
+                movie("h-1", "Night Shift", 2021).let { dev.nitrate.core.diagnostics.HealthTitle(it, true, true, listOf(it to streams("h264"))) },
+                movie("h-2", "Night Shift", 2021).let { dev.nitrate.core.diagnostics.HealthTitle(it, true, true, listOf(it to streams("hevc"))) },
+                movie("h-3", "The Long Field", 2017, dev.nitrate.core.model.ItemImages(backdrops = listOf("b"))).let { dev.nitrate.core.diagnostics.HealthTitle(it, false, true, listOf(it to streams("av1"))) },
+                movie("h-4", "home_movie_2004_final", 2004, dev.nitrate.core.model.ItemImages()).let { dev.nitrate.core.diagnostics.HealthTitle(it, false, false, listOf(it to streams("h264", audio = "truehd"))) },
+                dev.nitrate.core.diagnostics.HealthTitle(show, true, true, episodes.mapIndexed { i, e -> e to streams(if (i < 4) "hevc" else "h264", ranges = if (i < 4) setOf("dovi") else setOf("sdr")) }),
+            ),
+            missingEpisodes = listOf(2, 5).map { n ->
+                dev.nitrate.core.model.MediaItem("h-m$n", "Missing $n", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "h-show", seriesName = "Harbour Lights", seasonNumber = 1, indexNumber = n)
+            },
+        )
+    }
+
     override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts"))
 
     /** People to share scripts with, and one script someone shared (its text, at version 3). */

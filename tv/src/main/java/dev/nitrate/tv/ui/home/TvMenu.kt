@@ -91,7 +91,15 @@ import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.MediaItem
 
 /** One stop in the side menu. */
-data class NavEntry(val label: String, val icon: ImageVector, val selected: Boolean = false, val id: String = label, val onClick: () -> Unit)
+data class NavEntry(
+    val label: String,
+    val icon: ImageVector,
+    val selected: Boolean = false,
+    val id: String = label,
+    /** A long press (held OK): a quicker version of what [onClick] opens, when there is one. */
+    val onLongClick: (() -> Unit)? = null,
+    val onClick: () -> Unit,
+)
 
 /** Standard icons for the menu; kept here so screens don't each pick their own. */
 object NavIcons {
@@ -277,6 +285,7 @@ private fun Rail(
                 NavigationDrawerItem(
                     selected = entry.selected,
                     onClick = entry.onClick,
+                    onLongClick = entry.onLongClick,
                     leadingContent = { Icon(entry.icon, contentDescription = null) },
                     modifier = if (entry == target) Modifier.focusRequester(menuFocus) else Modifier,
                 ) { Text(entry.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -333,6 +342,7 @@ private fun BarItem(entry: NavEntry, emphasis: Boolean = false, modifier: Modifi
     val accent = MaterialTheme.colorScheme.primary
     Surface(
         onClick = entry.onClick,
+        onLongClick = entry.onLongClick,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (emphasis) Color.White.copy(alpha = 0.12f) else Color.Transparent,
@@ -366,6 +376,7 @@ private fun Dial(slots: List<NavEntry?>, onClose: () -> Unit) {
     val rings = slots.chunked(4)
     // (spoke, ring), or null at the centre.
     var at by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var held by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     fun entry(spoke: Int, ring: Int) = rings.getOrNull(ring)?.getOrNull(spoke)
     fun move(dir: Int) {
@@ -396,7 +407,13 @@ private fun Dial(slots: List<NavEntry?>, onClose: () -> Unit) {
                 when {
                     dir >= 0 -> { if (e.type == KeyEventType.KeyDown) move(dir); true }
                     e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter -> {
-                        if (e.type == KeyEventType.KeyUp) selected?.let { onClose(); it.onClick() }
+                        val long = selected?.onLongClick
+                        when {
+                            // Held: the stop's quick version (once), and the release doesn't click it too.
+                            e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 1 && long != null -> { held = true; onClose(); long() }
+                            e.type == KeyEventType.KeyUp && !held -> selected?.let { onClose(); it.onClick() }
+                            e.type == KeyEventType.KeyUp -> held = false
+                        }
                         true
                     }
                     else -> false
@@ -481,6 +498,8 @@ class MenuActions(
     val onTogether: () -> Unit = {},
     val onSettings: () -> Unit = {},
     val onProfiles: () -> Unit = {},
+    /** Long press on "Switch user": switch straight from the menu. */
+    val onQuickSwitch: (() -> Unit)? = null,
 )
 
 /** Every stop the menu can have, by [MenuStops] id, and the order it starts in. */
@@ -507,7 +526,7 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
         add(NavEntry("Your pages", NavIcons.pages, id = MenuStops.PAGES, onClick = actions.onPages))
         add(NavEntry("Watch together", NavIcons.together, id = MenuStops.TOGETHER, onClick = actions.onTogether))
         add(NavEntry("Settings", NavIcons.settings, id = MenuStops.SETTINGS, onClick = actions.onSettings))
-        add(NavEntry("Switch user", NavIcons.profile, id = MenuStops.PROFILES, onClick = actions.onProfiles))
+        add(NavEntry("Switch user", NavIcons.profile, id = MenuStops.PROFILES, onLongClick = actions.onQuickSwitch, onClick = actions.onProfiles))
     }.map { if (it.id == current) it.copy(selected = true) else it }
     return MenuCatalog(
         list.associateBy { it.id },
