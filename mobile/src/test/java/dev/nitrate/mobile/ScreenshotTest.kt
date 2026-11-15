@@ -152,6 +152,15 @@ class ScreenshotTest {
         c.sharedWriting.open("shared-1")
     }) { actions -> WritingScreen(actions, onBack = {}) }
 
+    private fun storyContext() = dev.nitrate.mobile.ui.StoryContext(
+        text = dev.nitrate.testing.SampleStory.text, scenes = dev.nitrate.testing.SampleStory.scenes, story = dev.nitrate.testing.SampleStory.story,
+        selfId = "user-1", selfName = "joe", people = emptyList(), changeStory = {}, applyText = {}, openInScript = {}, history = null,
+    )
+
+    @Test fun storyScenes() = shoot("phone-story-scenes") { dev.nitrate.mobile.ui.ScenesPanel(storyContext()) }
+    @Test fun storyLists() = shoot("phone-story-lists") { dev.nitrate.mobile.ui.ListsPanel(storyContext()) }
+    @Test fun storyMap() = shoot("phone-story-map") { androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) { dev.nitrate.mobile.ui.MapPanel(storyContext(), Modifier.weight(1f)) } }
+
     @Test fun licenses() = shoot("phone-licenses") { dev.nitrate.mobile.ui.LicensesScreen() }
 
     @Test fun serverAddresses() = shoot("phone-servers") { dev.nitrate.mobile.ui.ServersScreen(it) }

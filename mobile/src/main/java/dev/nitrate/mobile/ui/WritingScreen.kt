@@ -49,6 +49,12 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.produceState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -168,6 +174,65 @@ fun WritingScreen(
         session?.edit(v.text, v.selection.start)
     }
 
+    /** A change made from the scene cards or a restore: applied with the cursor kept in place. */
+    fun applyOp(op: dev.nitrate.core.writing.TextOperation) {
+        val sel = value.selection
+        val t = op.apply(value.text)
+        change(TextFieldValue(t, TextRange(op.transformIndex(sel.start).coerceIn(0, t.length), op.transformIndex(sel.end).coerceIn(0, t.length))))
+    }
+
+    // ---- Story: scenes, lists, map, comments, activity ----
+    var tab by remember { mutableStateOf(StoryTab.SCRIPT) }
+    val account by actions.container.account.collectAsState()
+    val scriptStory = remember(docId, session) { docId?.let { shared.storyFor(it, session, scope) } }
+    val story by (scriptStory?.story ?: kotlinx.coroutines.flow.MutableStateFlow(dev.nitrate.core.writing.story.Story())).collectAsState()
+    val scenes = remember(value.text) { dev.nitrate.core.writing.story.Outline.scenes(value.text) }
+    // New headings get their hidden id once the writer has moved off the line.
+    LaunchedEffect(value.text) {
+        delay(1_500)
+        dev.nitrate.core.writing.story.Outline.addIds(value.text, skipAt = value.selection.start)?.let(::applyOp)
+    }
+    val people by produceState(emptyList<dev.nitrate.core.writing.UserRef>(), docId, linkedId, account) {
+        val me = listOfNotNull(account?.let { dev.nitrate.core.writing.UserRef(actions.server.userId.orEmpty(), it.name) })
+        this.value = me + (docId?.takeIf { linkedId != null }?.let { id -> runCatching { shared.info(id) }.getOrNull() }
+            ?.let { i -> (listOf(i.owner) + i.members).filter { it.id != actions.server.userId } }.orEmpty())
+    }
+    val history = remember(docId, linkedId) {
+        docId?.takeIf { linkedId != null }?.let { id ->
+            object : StoryHistory {
+                override suspend fun log() = shared.log(id)
+                override suspend fun textAt(version: Long) = shared.at(id, version)?.text.orEmpty()
+                override suspend fun recordAt(version: Long, id2: String) = shared.at(id, version)?.records?.firstOrNull { it.id == id2 }
+            }
+        }
+    }
+    fun showScene(scene: dev.nitrate.core.writing.story.Scene) {
+        tab = StoryTab.SCRIPT
+        value = value.copy(selection = TextRange(scene.start))
+    }
+    val storyCtx = StoryContext(
+        text = value.text, scenes = scenes, story = story, selfId = actions.server.userId, selfName = account?.name ?: "Me",
+        people = people, changeStory = { scriptStory?.change(it) }, applyText = ::applyOp, openInScript = ::showScene, history = history,
+    )
+    var commenting by remember { mutableStateOf(false) }
+
+    // "Who wrote this" (shared scripts): the script coloured by writer.
+    var whoWrote by remember(docId) { mutableStateOf(false) }
+    var authorship by remember(docId) { mutableStateOf<Pair<String, dev.nitrate.core.writing.story.Attribution>?>(null) }
+    LaunchedEffect(whoWrote, docId) {
+        while (whoWrote && docId != null) {
+            authorship = runCatching { shared.authorship(docId!!) }.getOrNull()
+            delay(15_000)
+        }
+        if (!whoWrote) authorship = null
+    }
+    val writers = remember(authorship, value.text) {
+        authorship?.let { (base, a) ->
+            // Typed here since the server's copy: counted as this writer's until the next refresh.
+            if (base == value.text) a else runCatching { a.apply(dev.nitrate.core.writing.TextOperation.diff(base, value.text), actions.server.userId.orEmpty(), base) }.getOrNull()
+        }
+    }
+
     // Computer transfer: off unless switched on, and off again when the editor closes or the
     // app goes to the background.
     val transfer = remember(store) { TransferServer(store.asTransferDocs()) }
@@ -220,11 +285,12 @@ fun WritingScreen(
     }
 
     val colors = MaterialTheme.colorScheme
-    val highlight = remember(colors, others) {
-        FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant, others.map { it.cursor }, colors.primary.copy(alpha = 0.55f))
+    val highlight = remember(colors, others, writers) {
+        FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant, others.map { it.cursor }, colors.primary.copy(alpha = 0.55f), writers)
     }
 
     if (sharing) docId?.let { id -> ShareScriptDialog(shared, id, onMessage = { status = it }) { sharing = false } }
+    if (commenting) LineCommentDialog(storyCtx, value.selection.start) { commenting = false }
     if (showTransfer) {
         TransferDialog(transferState, onToggle = { on -> if (on) transfer.start(lanAddress(context)) else transfer.stop() }, onDismiss = { showTransfer = false })
     }
@@ -270,6 +336,13 @@ fun WritingScreen(
             }
         }
 
+        if (!showDocs) {
+            ScrollableTabRow(selectedTabIndex = StoryTab.entries.indexOf(tab), edgePadding = 8.dp, divider = {}) {
+                StoryTab.entries.filter { it != StoryTab.ACTIVITY || history != null }.forEach { t ->
+                    Tab(selected = tab == t, onClick = { tab = t }, text = { Text(t.label) })
+                }
+            }
+        }
         if (showDocs) {
             LazyColumn(Modifier.weight(1f)) {
                 if (sharedOn) item(key = "shared-with-you") {
@@ -300,9 +373,32 @@ fun WritingScreen(
                     )
                 }
             }
+        } else if (tab == StoryTab.SCENES) {
+            ScenesPanel(storyCtx, Modifier.weight(1f))
+        } else if (tab == StoryTab.LISTS) {
+            ListsPanel(storyCtx, Modifier.weight(1f))
+        } else if (tab == StoryTab.MAP) {
+            MapPanel(storyCtx, Modifier.weight(1f))
+        } else if (tab == StoryTab.ACTIVITY) {
+            ActivityPanel(storyCtx, Modifier.weight(1f))
         } else {
             LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(ELEMENTS) { (label, element) -> AssistChip(onClick = { convert(element) }, label = { Text(label) }) }
+                // A comment on the line being written (kept on its scene, quoting the line).
+                item { AssistChip(onClick = { commenting = true }, enabled = scenes.any { it.start <= value.selection.start && it.id != null }, label = { Text("Comment") }) }
+                if (history != null) item { FilterChip(whoWrote, { whoWrote = !whoWrote }, label = { Text("Who wrote this") }) }
+            }
+            if (whoWrote) {
+                val names = people.associate { it.id to it.name }
+                Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    (writers?.shares()?.keys ?: emptySet()).forEach { id ->
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            androidx.compose.foundation.layout.Box(Modifier.size(10.dp).background(Color(dev.nitrate.core.writing.story.StoryColors.writer(id)), androidx.compose.foundation.shape.CircleShape))
+                            Text(" " + (names[id] ?: "someone"), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    if (writers == null) Text("Working out who wrote what…", style = MaterialTheme.typography.labelSmall)
+                }
             }
             BasicTextField(
                 value = value,
@@ -328,6 +424,24 @@ fun WritingScreen(
             )
         }
     }
+}
+
+/** The editor's tabs: the script itself, then its story. */
+private enum class StoryTab(val label: String) { SCRIPT("Script"), SCENES("Scenes"), LISTS("Lists"), MAP("Map"), ACTIVITY("Activity") }
+
+/** A comment on the line at the cursor, kept on its scene with the line quoted. */
+@Composable
+private fun LineCommentDialog(ctx: StoryContext, cursor: Int, onDismiss: () -> Unit) {
+    val scene = ctx.scenes.lastOrNull { it.start <= cursor && it.id != null } ?: return onDismiss()
+    val lineStart = ctx.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)).let { if (it < 0 || cursor == 0) 0 else it + 1 }
+    val lineEnd = ctx.text.indexOf('\n', cursor).let { if (it < 0) ctx.text.length else it }
+    val line = dev.nitrate.core.writing.story.Outline.stripMarkers(ctx.text.substring(lineStart, lineEnd)).trim()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(scene.heading, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = { Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { CommentThread(ctx, "scene:${scene.id}", quote = line.takeIf { it.isNotEmpty() }) } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 /** Switches the computer transfer page on or off and shows where to find it. */
@@ -384,13 +498,27 @@ private class FountainHighlight(
     /** Where the others writing in a shared script are. */
     private val cursors: List<Int> = emptyList(),
     private val cursorColor: Color = muted,
+    /** Who wrote what ("who wrote this"), or null. */
+    private val writers: dev.nitrate.core.writing.story.Attribution? = null,
 ) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
-        val elements = Fountain.classify(text.text)
+        // Scene ids are hidden: the editor shows the script without them.
+        val hidden = dev.nitrate.core.writing.story.Outline.Hidden(text.text)
+        val shown = hidden.shown
+        val elements = Fountain.classify(shown)
         val styled = buildAnnotatedString {
-            append(text.text)
+            append(shown)
+            writers?.takeIf { it.length == text.text.length }?.let { w ->
+                var at = 0
+                for (r in w.runs()) {
+                    val a = hidden.toShown(at)
+                    val b = hidden.toShown(at + r.length)
+                    if (a < b) addStyle(SpanStyle(background = Color(dev.nitrate.core.writing.story.StoryColors.writer(r.userId)).copy(alpha = 0.22f)), a, b)
+                    at += r.length
+                }
+            }
             var offset = 0
-            for ((i, line) in text.text.split('\n').withIndex()) {
+            for ((i, line) in shown.split('\n').withIndex()) {
                 val style = when (elements.getOrNull(i)) {
                     Element.SCENE_HEADING -> SpanStyle(color = heading, fontWeight = FontWeight.Bold)
                     Element.CHARACTER -> SpanStyle(color = character, fontWeight = FontWeight.Bold)
@@ -404,11 +532,15 @@ private class FountainHighlight(
                 offset += line.length + 1
             }
             // Others' cursors: the character they're at is marked (the one before, at the end of a line).
-            for (c in cursors) {
-                val at = if (c < text.length && text.text[c] != '\n') c else c - 1
-                if (at in text.text.indices) addStyle(SpanStyle(background = cursorColor), at, at + 1)
+            for (original in cursors) {
+                val c = hidden.toShown(original)
+                val at = if (c < shown.length && shown[c] != '\n') c else c - 1
+                if (at in shown.indices) addStyle(SpanStyle(background = cursorColor), at, at + 1)
             }
         }
-        return TransformedText(styled, OffsetMapping.Identity)
+        return TransformedText(styled, object : OffsetMapping {
+            override fun originalToTransformed(offset: Int) = hidden.toShown(offset)
+            override fun transformedToOriginal(offset: Int) = hidden.toOriginal(offset)
+        })
     }
 }
