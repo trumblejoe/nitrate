@@ -13,3 +13,5 @@ build/
 *.keystore
 *.jks
 !signing/dev.jks
+companion/**/bin/
+companion/**/obj/

@@ -22,6 +22,11 @@ jobs:
       # these debug APKs leave DTS/TrueHD to the server.
       # KMP core: jvmTest is not part of `test`; the iOS compile catches JVM-only APIs in commonMain.
       - run: ./gradlew test :core:jvmTest :core:compileKotlinIosArm64 assembleDebug --console=plain
+      # The Nitrate Companion server plugin (C#, for Jellyfin's own .NET version).
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet test companion/Nitrate.Companion.Tests --configuration Release
       - uses: actions/upload-artifact@v4
         with:
           name: nitrate-tv-debug

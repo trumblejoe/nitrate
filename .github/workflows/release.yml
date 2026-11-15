@@ -103,6 +103,21 @@ jobs:
       - name: Test and build
         run: ./gradlew test :core:jvmTest assembleRelease --console=plain
 
+      # The Nitrate Companion server plugin: tested, built for Jellyfin's .NET, zipped with the
+      # meta.json Jellyfin reads. Listed in the plugin repository below only when it changed.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Companion plugin
+        run: |
+          companion_version="0.1.0.$GITHUB_RUN_NUMBER"
+          echo "COMPANION_VERSION=$companion_version" >> "$GITHUB_ENV"
+          dotnet test companion/Nitrate.Companion.Tests --configuration Release
+          dotnet publish companion/Nitrate.Companion --configuration Release -o companion-out -p:Version=$companion_version
+          python3 tools/companion-manifest.py package companion-out "$companion_version" "$COMPANION_ABI" companion.zip
+        env:
+          COMPANION_ABI: "12.4.0.0"
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -114,13 +129,14 @@ jobs:
           mkdir dist
           cp mobile/build/outputs/apk/release/mobile-release.apk "dist/nitrate-mobile-$NAME.apk"
           cp tv/build/outputs/apk/release/tv-release.apk "dist/nitrate-tv-$NAME.apk"
+          cp companion.zip "dist/nitrate-companion-$COMPANION_VERSION.zip"
           (cd dist && sha256sum *.apk > SHA256SUMS)
           # Commits since the previous build of the same kind; the apps show these when offering the update.
           if [ "$PRERELEASE" = "true" ]; then match='dev-*'; else match='v*'; fi
           previous=$(git describe --tags --abbrev=0 --match "$match" HEAD^ 2>/dev/null || true)
           if [ -n "$previous" ]; then range="$previous..HEAD"; else range="-8"; fi
           changes=$(git log $range --no-merges --format='- %s' | head -12)
-          notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk
+          notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk · Jellyfin server plugin: nitrate-companion-$COMPANION_VERSION.zip
 
           What's new:
           $changes
@@ -141,3 +157,14 @@ jobs:
             flags+=(--generate-notes)
           fi
           gh release create "$TAG" dist/* "${flags[@]}"
+
+          # The plugin repository Jellyfin reads (Dashboard -> Plugins -> Repositories): a manifest
+          # kept on the fixed "companion-repo" release, listing each changed plugin build.
+          repo_tag=companion-repo
+          gh release view "$repo_tag" >/dev/null 2>&1 || gh release create "$repo_tag" --title "Nitrate Companion plugin repository" \
+            --notes "Add https://github.com/$GITHUB_REPOSITORY/releases/download/$repo_tag/manifest.json in Jellyfin: Dashboard -> Plugins -> Repositories." --latest=false
+          gh release download "$repo_tag" --pattern manifest.json --dir repo 2>/dev/null || mkdir -p repo
+          source_hash=$(git rev-parse HEAD:companion)
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/nitrate-companion-$COMPANION_VERSION.zip"
+          added=$(python3 tools/companion-manifest.py add repo/manifest.json "$COMPANION_VERSION" "12.4.0.0" companion.zip "$url" "$source_hash" "Built with $title")
+          if [ "$added" = "added" ]; then gh release upload "$repo_tag" repo/manifest.json --clobber; fi
