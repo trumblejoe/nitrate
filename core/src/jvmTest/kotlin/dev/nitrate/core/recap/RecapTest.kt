@@ -28,7 +28,7 @@ class RecapTest {
         val episodes = listOf(ep(1, 1, 40), ep(1, 2, 30), ep(1, 3, 21), ep(1, 4, 20), ep(1, 5), ep(1, 6))
         val recap = Recaps.forSeries(show, episodes, episodes[4], prefs, now)!!
         assertEquals(listOf("s1-e2", "s1-e3", "s1-e4"), recap.cards.map { it.id })
-        assertEquals("You're on S1 E5 · 1 more in the season", recap.where)
+        assertEquals("You're on S1 E5", recap.where)
         assertEquals("2 weeks ago", recap.since)
         assertEquals("s1-e4", recap.clip?.item?.id)
     }

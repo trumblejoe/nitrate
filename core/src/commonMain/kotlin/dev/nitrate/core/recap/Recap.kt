@@ -18,7 +18,7 @@ data class RecapClip(val item: MediaItem, val startMs: Long, val endMs: Long)
 data class Recap(
     /** "The Night Reel" or the playlist's name. */
     val title: String,
-    /** "You're on S2 E5 · 7 left in the season" or "6 of 12 · next: Thor". */
+    /** "You're on S2 E5" (never how many are left) or, for a playlist, "6 of 12 watched · next: Thor". */
     val where: String,
     /** "3 weeks ago". */
     val since: String,
@@ -91,10 +91,8 @@ object Recaps {
         val last = watched.lastOrNull() ?: return null
         val lastMs = watched.mapNotNull { it.user.lastPlayedMs }.maxOrNull()
         if (!due(prefs, lastMs, nowMs)) return null
-        val season = ordered.filter { it.seasonNumber == next.seasonNumber && (it.seasonNumber ?: 0) > 0 }
-        val left = season.count { !it.user.played && it.id != next.id }
-        val where = "You're on S${next.seasonNumber ?: 0} E${next.indexNumber ?: 0}" +
-            when (left) { 0 -> " · last one in the season"; 1 -> " · 1 more in the season"; else -> " · $left more in the season" }
+        // Never how many are left in the season: that gives away the shape of the show's arcs.
+        val where = "You're on S${next.seasonNumber ?: 0} E${next.indexNumber ?: 0}"
         return Recap(series.name, where, Recaps.since(lastMs!!, nowMs), watched.takeLast(CARDS), clip(last, segments), next)
     }
 
