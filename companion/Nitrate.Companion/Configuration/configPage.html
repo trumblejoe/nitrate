@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Nitrate Companion</title>
+</head>
+<body>
+<div id="NitrateCompanionConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
+    <div data-role="content">
+        <div class="content-primary">
+            <form id="NitrateCompanionConfigForm">
+                <h2>Nitrate Companion</h2>
+
+                <h3>Watch together and writing</h3>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="EnableChat" type="checkbox" is="emby-checkbox" />
+                        <span>Chat in watch-together groups</span>
+                    </label>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="ListUsersForSharing" type="checkbox" is="emby-checkbox" />
+                        <span>Show everyone's names when sharing a script</span>
+                    </label>
+                    <div class="fieldDescription">Off: people invite others by typing an exact user name.</div>
+                </div>
+
+                <h3>Single sign-on (OpenID Connect)</h3>
+                <div class="fieldDescription" style="margin-bottom:1em">
+                    Lets people sign in to the Nitrate apps with your identity provider. Only existing Jellyfin users can sign in:
+                    matched by user name, by a verified email that is their Jellyfin user name, or by a link below.
+                    Register this redirect address with the provider: <b><code id="RedirectUri"></code></b>
+                </div>
+                <div class="checkboxContainer">
+                    <label class="emby-checkbox-label">
+                        <input id="SsoEnabled" type="checkbox" is="emby-checkbox" />
+                        <span>Offer single sign-on</span>
+                    </label>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="SsoProviderName" label="Provider name (shown as &quot;Sign in with …&quot;)" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="url" id="OidcIssuer" label="Issuer address" />
+                    <div class="fieldDescription">For example https://auth.example.com/application/o/jellyfin — its /.well-known/openid-configuration is read.</div>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="OidcClientId" label="Client id" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="password" id="OidcClientSecret" label="Client secret (empty for a public client)" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="OidcScopes" label="Scopes" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="OidcUsernameClaim" label="Claim matched to Jellyfin user names" />
+                </div>
+                <div class="checkboxContainer">
+                    <label class="emby-checkbox-label">
+                        <input id="OidcMatchByEmail" type="checkbox" is="emby-checkbox" />
+                        <span>Also match a verified email to a Jellyfin user of that name</span>
+                    </label>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="OidcRequiredGroup" label="Required group (empty: anyone)" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="OidcGroupsClaim" label="Groups claim" />
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="SsoUserLinks">Links (one per line: provider subject, email or user name = Jellyfin user)</label>
+                    <textarea is="emby-textarea" id="SsoUserLinks" rows="5" class="emby-textarea"></textarea>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="url" id="SsoPublicUrl" label="Public server address (optional)" />
+                    <div class="fieldDescription">The address the provider sends people back to. Empty: the address the app used.</div>
+                </div>
+
+                <button is="emby-button" type="submit" class="raised button-submit block emby-button"><span>Save</span></button>
+            </form>
+        </div>
+    </div>
+    <script type="text/javascript">
+        (function () {
+            var pluginId = '04250121-a5d6-40da-99fc-242a178b3d2c';
+            var checks = ['EnableChat', 'ListUsersForSharing', 'SsoEnabled', 'OidcMatchByEmail'];
+            var texts = ['SsoProviderName', 'OidcIssuer', 'OidcClientId', 'OidcClientSecret', 'OidcScopes', 'OidcUsernameClaim',
+                'OidcRequiredGroup', 'OidcGroupsClaim', 'SsoUserLinks', 'SsoPublicUrl'];
+            var page = document.querySelector('#NitrateCompanionConfigPage');
+            function redirect() {
+                var base = (page.querySelector('#SsoPublicUrl').value || ApiClient.serverAddress()).replace(/\/+$/, '');
+                page.querySelector('#RedirectUri').textContent = base + '/Nitrate/Sso/Callback';
+            }
+            page.addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    checks.forEach(function (k) { page.querySelector('#' + k).checked = !!config[k]; });
+                    texts.forEach(function (k) { page.querySelector('#' + k).value = config[k] || ''; });
+                    redirect();
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+            page.querySelector('#SsoPublicUrl').addEventListener('input', redirect);
+            page.querySelector('#NitrateCompanionConfigForm').addEventListener('submit', function (e) {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    checks.forEach(function (k) { config[k] = page.querySelector('#' + k).checked; });
+                    texts.forEach(function (k) { config[k] = page.querySelector('#' + k).value; });
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+                e.preventDefault();
+                return false;
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>

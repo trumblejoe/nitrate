@@ -59,6 +59,11 @@ public class CompanionController : ControllerBase
         }
 
         features.Add("scripts");
+        features.Add("channels");
+        if (Sso.SsoSettings.From(Plugin.Instance?.Configuration).Ready)
+        {
+            features.Add("sso");
+        }
 
         return new CompanionInfo(typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "0", features);
     }
