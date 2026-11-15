@@ -132,6 +132,41 @@ fun WritingScreen(
     var showTransfer by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var sharing by remember { mutableStateOf(false) }
+
+    // A shared script (Companion plugin): everyone's changes merge as they type.
+    val shared = actions.container.sharedWriting
+    val sharedOn by shared.available.collectAsState(false)
+    val linkedId = docs.firstOrNull { it.id == docId }?.sharedId
+    val session = remember(docId, linkedId, sharedOn) { docId?.takeIf { linkedId != null && sharedOn }?.let { shared.session(it, scope) } }
+    DisposableEffect(session) {
+        session?.start()
+        onDispose { session?.close() }
+    }
+    val others by (session?.others ?: kotlinx.coroutines.flow.MutableStateFlow(emptyList())).collectAsState()
+    val sessionStatus by (session?.status ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
+    val sessionPending by (session?.pending ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
+    LaunchedEffect(session) {
+        val s = session ?: return@LaunchedEffect
+        if (value.text != s.text.value) value = TextFieldValue(s.text.value, TextRange(s.text.value.length))
+        // Others' changes: the text moves under the cursor, which keeps its place in the words.
+        s.remote.collect { change ->
+            val t = s.text.value
+            val sel = value.selection
+            value = TextFieldValue(t, TextRange(change.op.transformIndex(sel.start).coerceIn(0, t.length), change.op.transformIndex(sel.end).coerceIn(0, t.length)))
+        }
+    }
+    LaunchedEffect(sessionStatus) {
+        if (sessionStatus == dev.nitrate.core.writing.SharedScriptSession.Status.UNAVAILABLE) {
+            docId?.let { shared.lost(it) }
+            status = "No longer shared with you: kept here as your own"
+        }
+    }
+    /** Every change to the text goes through here, so a shared script hears of it. */
+    fun change(v: TextFieldValue) {
+        value = v
+        session?.edit(v.text, v.selection.start)
+    }
 
     // Computer transfer: off unless switched on, and off again when the editor closes or the
     // app goes to the background.
@@ -181,12 +216,15 @@ fun WritingScreen(
         val start = if (caret == 0) 0 else text.lastIndexOf('\n', caret - 1) + 1
         val end = text.indexOf('\n', caret).let { if (it < 0) text.length else it }
         val converted = Fountain.convertLine(text.substring(start, end), element)
-        value = TextFieldValue(text.replaceRange(start, end, converted), TextRange(start + converted.length))
+        change(TextFieldValue(text.replaceRange(start, end, converted), TextRange(start + converted.length)))
     }
 
     val colors = MaterialTheme.colorScheme
-    val highlight = remember(colors) { FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant) }
+    val highlight = remember(colors, others) {
+        FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant, others.map { it.cursor }, colors.primary.copy(alpha = 0.55f))
+    }
 
+    if (sharing) docId?.let { id -> ShareScriptDialog(shared, id, onMessage = { status = it }) { sharing = false } }
     if (showTransfer) {
         TransferDialog(transferState, onToggle = { on -> if (on) transfer.start(lanAddress(context)) else transfer.stop() }, onDismiss = { showTransfer = false })
     }
@@ -196,8 +234,15 @@ fun WritingScreen(
             if (onBack != null) IconButton(onClick = onBack) { Icon(if (pane) Icons.Default.Close else Icons.AutoMirrored.Filled.ArrowBack, if (pane) "Close writing" else "Back") }
             Column(Modifier.weight(1f).padding(start = 8.dp)) {
                 Text(Scripts.titleOf(value.text), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val sharedNote = when {
+                    session == null -> ""
+                    sessionStatus == dev.nitrate.core.writing.SharedScriptSession.Status.OFFLINE -> " · Shared: offline, changes kept"
+                    others.isNotEmpty() -> " · With " + others.joinToString { it.userName }
+                    sessionPending -> " · Shared: sending…"
+                    else -> " · Shared"
+                }
                 Text(
-                    "%d words · ~%.1f pages%s".format(Fountain.wordCount(value.text), Fountain.estimatePages(value.text), if (status.isNotEmpty()) " · $status" else ""),
+                    "%d words · ~%.1f pages%s%s".format(Fountain.wordCount(value.text), Fountain.estimatePages(value.text), sharedNote, if (status.isNotEmpty()) " · $status" else ""),
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceVariant,
                     maxLines = 1,
@@ -208,6 +253,7 @@ fun WritingScreen(
             IconButton(onClick = { menu = true }) { Icon(Icons.Default.Add, "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("New script") }, onClick = { menu = false; scope.launch { open(store.create()) } })
+                if (sharedOn) DropdownMenuItem(text = { Text(if (linkedId != null) "Sharing…" else "Share with people…") }, onClick = { menu = false; sharing = true })
                 DropdownMenuItem(text = { Text("Export .fadein (Fade In)") }, onClick = {
                     menu = false
                     pickers.save(Scripts.fileName(value.text, ExportFormat.FADE_IN), ExportFormat.FADE_IN.mime, ExportFormat.FADE_IN.bytes(value.text))
@@ -226,12 +272,19 @@ fun WritingScreen(
 
         if (showDocs) {
             LazyColumn(Modifier.weight(1f)) {
+                if (sharedOn) item(key = "shared-with-you") {
+                    SharedWithYou(shared, docs.mapNotNull { it.sharedId }.toSet()) { s ->
+                        scope.launch { runCatching { open(shared.open(s.id)) }.onFailure { status = "Couldn't open: ${it.message}" } }
+                    }
+                }
                 items(docs, key = { it.id }) { doc ->
                     var confirm by remember { mutableStateOf(false) }
                     ListItem(
                         modifier = Modifier.clickable { open(doc.id) },
                         headlineContent = { Text(doc.title) },
-                        supportingContent = { Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(doc.modifiedMs))) },
+                        supportingContent = {
+                            Text((if (doc.sharedId != null) "Shared · " else "") + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(doc.modifiedMs)))
+                        },
                         trailingContent = {
                             if (confirm) {
                                 TextButton(onClick = {
@@ -253,7 +306,7 @@ fun WritingScreen(
             }
             BasicTextField(
                 value = value,
-                onValueChange = { value = it },
+                onValueChange = { change(it) },
                 visualTransformation = highlight,
                 textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurface),
                 cursorBrush = SolidColor(colors.primary),
@@ -324,7 +377,14 @@ internal fun TransferDialog(state: TransferServer.State, onToggle: (Boolean) -> 
 }
 
 /** Colours Fountain elements in place; the text is unchanged, so offsets map 1:1. */
-private class FountainHighlight(private val heading: Color, private val character: Color, private val muted: Color) : VisualTransformation {
+private class FountainHighlight(
+    private val heading: Color,
+    private val character: Color,
+    private val muted: Color,
+    /** Where the others writing in a shared script are. */
+    private val cursors: List<Int> = emptyList(),
+    private val cursorColor: Color = muted,
+) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val elements = Fountain.classify(text.text)
         val styled = buildAnnotatedString {
@@ -342,6 +402,11 @@ private class FountainHighlight(private val heading: Color, private val characte
                 }
                 if (style != null && line.isNotEmpty()) addStyle(style, offset, offset + line.length)
                 offset += line.length + 1
+            }
+            // Others' cursors: the character they're at is marked (the one before, at the end of a line).
+            for (c in cursors) {
+                val at = if (c < text.length && text.text[c] != '\n') c else c - 1
+                if (at in text.text.indices) addStyle(SpanStyle(background = cursorColor), at, at + 1)
             }
         }
         return TransformedText(styled, OffsetMapping.Identity)

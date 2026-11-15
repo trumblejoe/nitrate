@@ -74,7 +74,7 @@ import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
-private enum class Mode { EDIT, DOCUMENTS, HELP }
+private enum class Mode { EDIT, DOCUMENTS, HELP, SHARE }
 
 private val ELEMENT_KEYS = mapOf(
     Key.One to Element.SCENE_HEADING,
@@ -99,6 +99,8 @@ fun WritingEditor(
     backup: Boolean,
     playback: PlaybackControls?,
     modifier: Modifier = Modifier,
+    /** Shared screenplays (Companion plugin), when the app has them. */
+    shared: dev.nitrate.android.writing.SharedWriting? = null,
 ) {
     val docs by store.docs.collectAsState()
     var docId by remember { mutableStateOf<String?>(null) }
@@ -135,6 +137,38 @@ fun WritingEditor(
             mode = Mode.EDIT
             runCatching { editorFocus.requestFocus() }
         }
+    }
+
+    // A shared script (Companion plugin): everyone's changes merge as they type.
+    val sharedOn by (shared?.available ?: kotlinx.coroutines.flow.flowOf(false)).collectAsState(false)
+    val linkedId = docs.firstOrNull { it.id == docId }?.sharedId
+    val session = remember(docId, linkedId, sharedOn) { docId?.takeIf { linkedId != null && sharedOn }?.let { shared?.session(it, scope) } }
+    DisposableEffect(session) {
+        session?.start()
+        onDispose { session?.close() }
+    }
+    val others by (session?.others ?: kotlinx.coroutines.flow.MutableStateFlow(emptyList())).collectAsState()
+    val sessionStatus by (session?.status ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
+    val sessionPending by (session?.pending ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
+    LaunchedEffect(session) {
+        val s = session ?: return@LaunchedEffect
+        if (value.text != s.text.value) value = TextFieldValue(s.text.value, TextRange(s.text.value.length))
+        s.remote.collect { change ->
+            val t = s.text.value
+            val sel = value.selection
+            value = TextFieldValue(t, TextRange(change.op.transformIndex(sel.start).coerceIn(0, t.length), change.op.transformIndex(sel.end).coerceIn(0, t.length)))
+        }
+    }
+    LaunchedEffect(sessionStatus) {
+        if (sessionStatus == dev.nitrate.core.writing.SharedScriptSession.Status.UNAVAILABLE) {
+            docId?.let { shared?.lost(it) }
+            status = "No longer shared with you: kept here as your own"
+        }
+    }
+    /** Every change to the text goes through here, so a shared script hears of it. */
+    fun change(v: TextFieldValue) {
+        value = v
+        session?.edit(v.text, v.selection.start)
     }
 
     // Autosave shortly after typing stops; back up less often.
@@ -204,7 +238,7 @@ fun WritingEditor(
         val start = text.lastIndexOf('\n', (caret - 1).coerceAtLeast(0)).let { if (it < 0 || caret == 0) 0 else it + 1 }
         val end = text.indexOf('\n', caret).let { if (it < 0) text.length else it }
         val converted = Fountain.convertLine(text.substring(start, end), element)
-        value = TextFieldValue(text.replaceRange(start, end, converted), TextRange(start + converted.length))
+        change(TextFieldValue(text.replaceRange(start, end, converted), TextRange(start + converted.length)))
     }
 
     // Computer transfer: off unless switched on here, and always off once the editor closes.
@@ -213,26 +247,36 @@ fun WritingEditor(
     val transferState by transfer.state.collectAsState()
 
     val colors = MaterialTheme.colorScheme
-    val highlight = remember(colors) { FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant) }
+    val highlight = remember(colors, others) {
+        FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant, others.map { it.cursor }, colors.primary.copy(alpha = 0.55f))
+    }
 
     Column(modifier.background(colors.surface).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(Scripts.titleOf(value.text), style = MaterialTheme.typography.titleLarge, maxLines = 1)
+                val sharedNote = when {
+                    session == null -> ""
+                    sessionStatus == dev.nitrate.core.writing.SharedScriptSession.Status.OFFLINE -> " · Shared: offline, changes kept"
+                    others.isNotEmpty() -> " · With " + others.joinToString { it.userName }
+                    sessionPending -> " · Shared: sending…"
+                    else -> " · Shared"
+                }
                 Text(
-                    "%d words · ~%.1f pages%s".format(Fountain.wordCount(value.text), Fountain.estimatePages(value.text), if (status.isNotEmpty()) " · $status" else ""),
+                    "%d words · ~%.1f pages%s%s".format(Fountain.wordCount(value.text), Fountain.estimatePages(value.text), sharedNote, if (status.isNotEmpty()) " · $status" else ""),
                     style = MaterialTheme.typography.labelMedium,
                     color = colors.onSurfaceVariant,
                 )
             }
             OutlinedButton(onClick = { mode = if (mode == Mode.DOCUMENTS) Mode.EDIT else Mode.DOCUMENTS }) { Text("Documents") }
+            if (sharedOn) OutlinedButton(onClick = { mode = if (mode == Mode.SHARE) Mode.EDIT else Mode.SHARE }) { Text(if (linkedId != null) "Sharing" else "Share") }
             OutlinedButton(onClick = { mode = if (mode == Mode.HELP) Mode.EDIT else Mode.HELP }) { Text("Keys") }
         }
 
         when (mode) {
             Mode.EDIT -> BasicTextField(
                 value = value,
-                onValueChange = { value = it },
+                onValueChange = { change(it) },
                 visualTransformation = highlight,
                 textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 17.sp, lineHeight = 24.sp, color = colors.onSurface),
                 cursorBrush = SolidColor(colors.primary),
@@ -273,8 +317,17 @@ fun WritingEditor(
                 transfer = transferState,
                 onTransfer = { on -> if (on) transfer.start(lanAddress(context)) else transfer.stop() },
                 modifier = Modifier.weight(1f),
+                sharedWithYou = if (shared != null && sharedOn) ({
+                    SharedWithYouItems(shared, docs.mapNotNull { it.sharedId }.toSet()) { s ->
+                        scope.launch { runCatching { open(shared.open(s.id)) }.onFailure { status = "Couldn't open: ${it.message}" } }
+                    }
+                }) else null,
             )
             Mode.HELP -> Help(playback != null, Modifier.weight(1f))
+            Mode.SHARE -> if (shared != null && docId != null) SharePanel(
+                shared, docId!!, onMessage = { status = it }, onDone = { mode = Mode.EDIT; runCatching { editorFocus.requestFocus() } },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -291,6 +344,7 @@ private fun Documents(
     transfer: TransferServer.State,
     onTransfer: (Boolean) -> Unit,
     modifier: Modifier,
+    sharedWithYou: (@Composable () -> Unit)? = null,
 ) {
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     val format = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
@@ -319,6 +373,7 @@ private fun Documents(
         )
         Text("Long-press a document to delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyColumn(Modifier.fillMaxSize()) {
+            sharedWithYou?.let { content -> item(key = "shared-with-you") { Column { content() } } }
             items(docs, key = { it.id }) { doc ->
                 val confirming = confirmDelete == doc.id
                 ListItem(
@@ -326,7 +381,7 @@ private fun Documents(
                     onClick = { if (confirming) { onDelete(doc.id); confirmDelete = null } else onOpen(doc.id) },
                     onLongClick = { confirmDelete = doc.id },
                     headlineContent = { Text(if (confirming) "Select again to delete “${doc.title}”" else doc.title) },
-                    supportingContent = { Text(format.format(Date(doc.modifiedMs))) },
+                    supportingContent = { Text((if (doc.sharedId != null) "Shared · " else "") + format.format(Date(doc.modifiedMs))) },
                 )
             }
         }
@@ -371,7 +426,14 @@ private fun Help(withVideo: Boolean, modifier: Modifier) {
 }
 
 /** Colours Fountain elements in place; the text itself is unchanged, so offsets map 1:1. */
-private class FountainHighlight(private val heading: Color, private val character: Color, private val muted: Color) : VisualTransformation {
+private class FountainHighlight(
+    private val heading: Color,
+    private val character: Color,
+    private val muted: Color,
+    /** Where the others writing in a shared script are. */
+    private val cursors: List<Int> = emptyList(),
+    private val cursorColor: Color = muted,
+) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val elements = Fountain.classify(text.text)
         val styled = buildAnnotatedString {
@@ -389,6 +451,11 @@ private class FountainHighlight(private val heading: Color, private val characte
                 }
                 if (style != null && line.isNotEmpty()) addStyle(style, offset, offset + line.length)
                 offset += line.length + 1
+            }
+            // Others' cursors: the character they're at is marked (the one before, at the end of a line).
+            for (c in cursors) {
+                val at = if (c < text.length && text.text[c] != '\n') c else c - 1
+                if (at in text.text.indices) addStyle(SpanStyle(background = cursorColor), at, at + 1)
             }
         }
         return TransformedText(styled, OffsetMapping.Identity)

@@ -20,6 +20,13 @@ import java.util.UUID
 private data class BackupEntry(val text: String, val modifiedMs: Long)
 
 /**
+ * A script here that is also a shared script: which one, on which account ("serverUrl|userId"),
+ * and what the shared-script session keeps between runs.
+ */
+@Serializable
+data class SharedLink(val sharedId: String, val account: String, val state: dev.nitrate.core.writing.SharedScriptState)
+
+/**
  * Screenplays saved as Fountain files in the app's private storage, one file per document.
  * When backup is on, each document is also kept in the user's Jellyfin display preferences
  * (a slot of its own), so a reset TV or another TV can restore it. Newest copy wins.
@@ -32,6 +39,14 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     val docs: StateFlow<List<WritingDoc>> = _docs
 
     private fun file(id: String) = File(dir, "$id.fountain")
+
+    /** Links to shared scripts, one file per linked script (never backed up: they're per account). */
+    private val linkDir = File(dir, "shared").apply { mkdirs() }
+    private fun linkFile(id: String) = File(linkDir, "$id.json")
+
+    /** The account whose shared scripts show as shared ([WritingDoc.sharedId]). */
+    @Volatile var account: String? = null
+        set(value) { field = value; _docs.value = scan() }
 
     // Backups that haven't reached the server yet (offline, server down). Survive restarts.
     private val pendingFile = File(dir, "pending-backup.json")
@@ -46,9 +61,38 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     /** Number of scripts waiting to be backed up. */
     val pendingCount: Int get() = pending().let { it.upload.size + it.delete.size }
 
-    private fun scan(): List<WritingDoc> = dir.listFiles { f -> f.extension == "fountain" }.orEmpty()
-        .map { WritingDoc(it.nameWithoutExtension, Scripts.titleOf(it.readText()), it.lastModified()) }
-        .sortedByDescending { it.modifiedMs }
+    private fun scan(): List<WritingDoc> {
+        val links = links()
+        return dir.listFiles { f -> f.extension == "fountain" }.orEmpty()
+            .map { WritingDoc(it.nameWithoutExtension, Scripts.titleOf(it.readText()), it.lastModified(), links[it.nameWithoutExtension]?.sharedId) }
+            .sortedByDescending { it.modifiedMs }
+    }
+
+    /** This account's links, by local script id. */
+    fun links(): Map<String, SharedLink> {
+        val current = account ?: return emptyMap()
+        return linkDir.listFiles { f -> f.extension == "json" }.orEmpty().mapNotNull { f ->
+            runCatching { json.decodeFromString<SharedLink>(f.readText()) }.getOrNull()?.takeIf { it.account == current }?.let { f.nameWithoutExtension to it }
+        }.toMap()
+    }
+
+    fun link(id: String): SharedLink? = runCatching { json.decodeFromString<SharedLink>(linkFile(id).readText()) }.getOrNull()?.takeIf { it.account == account }
+
+    /** Links a script here to a shared one (or updates what the session keeps), and saves its text. */
+    suspend fun saveLink(id: String, link: SharedLink) = withContext(Dispatchers.IO) {
+        val temp = File(linkDir, "$id.json.tmp")
+        temp.writeText(json.encodeToString(link))
+        temp.renameTo(linkFile(id))
+        if (file(id).let { !it.exists() || it.readText() != link.state.text }) file(id).writeText(link.state.text)
+        _docs.value = scan()
+    }
+
+    /** Makes a script here plain again (it stays, as this user's own copy). */
+    suspend fun unlink(id: String) = withContext(Dispatchers.IO) {
+        linkFile(id).delete()
+        _docs.value = scan()
+    }
+
 
     suspend fun read(id: String): String = withContext(Dispatchers.IO) { file(id).takeIf { it.exists() }?.readText().orEmpty() }
 
@@ -65,7 +109,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     }
 
     suspend fun delete(id: String, backup: Boolean) {
-        withContext(Dispatchers.IO) { file(id).delete() }
+        withContext(Dispatchers.IO) { file(id).delete(); linkFile(id).delete() }
         _docs.value = scan()
         if (backup) {
             backupLock.withLock { withContext(Dispatchers.IO) { pending().let { setPending(it.copy(upload = it.upload - id, delete = it.delete + id)) } } }

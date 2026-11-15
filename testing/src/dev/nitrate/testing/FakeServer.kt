@@ -230,7 +230,25 @@ class FakeServer : MediaServer {
         dev.nitrate.core.companion.ChatMessage(4, "user-3", "jo", dev.nitrate.core.companion.ChatKind.REACTION, "😱", 3_721_000, 0),
     )
 
-    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT))
+    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts"))
+
+    /** People to share scripts with, and one script someone shared (its text, at version 3). */
+    val people = listOf(dev.nitrate.core.writing.UserRef("user-2", "sam"), dev.nitrate.core.writing.UserRef("user-3", "jo"), dev.nitrate.core.writing.UserRef("user-4", "alex"))
+    val sharedText = "Title: Night Shift\n\nINT. DINER - NIGHT\n\nRain streaks the window. SAM (40s) nurses a coffee.\n\nSAM\nYou're late.\n"
+    private val sharedInfo = dev.nitrate.core.writing.SharedScriptInfo("shared-1", "Night Shift", dev.nitrate.core.writing.UserRef("user-2", "sam"), listOf(dev.nitrate.core.writing.UserRef("user-1", "joe")), 3, 0)
+
+    override suspend fun sharingUsers(name: String?) = if (name == null) people else people.filter { it.name == name }
+    override suspend fun sharedScripts() = listOf(sharedInfo)
+    override suspend fun sharedScript(id: String) = dev.nitrate.core.writing.SharedScriptDoc(sharedInfo, sharedText, 3)
+    override suspend fun sendScriptEdit(id: String, editId: String, baseVersion: Long, op: dev.nitrate.core.writing.TextOperation, cursor: Int?) =
+        dev.nitrate.core.writing.ScriptEditResult(true, baseVersion + 1)
+    override suspend fun sendScriptPresence(id: String, cursor: Int, version: Long) = Unit
+
+    /** Sam is in the script, at the start of "You're late."; later requests wait (as the long poll would). */
+    override suspend fun scriptEdits(id: String, after: Long, seen: Long?, waitMs: Int): dev.nitrate.core.writing.ScriptEditsPage {
+        if (seen != null && waitMs > 0) kotlinx.coroutines.awaitCancellation()
+        return dev.nitrate.core.writing.ScriptEditsPage(emptyList(), 3, listOf(dev.nitrate.core.writing.ScriptPresence("user-2", "sam", sharedText.indexOf("You're"), 3)), 1)
+    }
 
     override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int): dev.nitrate.core.companion.ChatPage {
         val page = chat.filter { it.seq > after }

@@ -181,6 +181,11 @@ class TvScreenshotTest {
         }
     }
 
+    @Test fun shareScript() = shoot("tv-share-script", setup = { c -> c.writing.account = c.server.currentAccountKey; c.refreshCompanionForTests() }) { c ->
+        val id = androidx.compose.runtime.produceState<String?>(null) { value = c.writing.create("Title: Night Shift\n\nINT. DINER - NIGHT") }.value
+        if (id != null) dev.nitrate.tv.plugins.writing.SharePanel(c.sharedWriting, id, onMessage = {}, onDone = {}, modifier = Modifier.fillMaxSize().padding(40.dp))
+    }
+
     @Test fun licenses() = shoot("tv-licenses") { _ -> dev.nitrate.tv.ui.settings.LicensesScreen() }
 
     @Test fun servers() = shoot("tv-servers", act = {

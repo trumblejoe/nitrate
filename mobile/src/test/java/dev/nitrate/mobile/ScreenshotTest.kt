@@ -144,6 +144,14 @@ class ScreenshotTest {
         }
     }
 
+    /** A script shared by sam, who is writing in it now: the header names them and their cursor is marked. */
+    @Test fun sharedScript() = shoot("phone-shared-script", setup = { c ->
+        c.writing.account = c.server.currentAccountKey
+        c.refreshCompanionForTests()
+        c.writing.docs.value.forEach { c.writing.delete(it.id, backup = false) }
+        c.sharedWriting.open("shared-1")
+    }) { actions -> WritingScreen(actions, onBack = {}) }
+
     @Test fun licenses() = shoot("phone-licenses") { dev.nitrate.mobile.ui.LicensesScreen() }
 
     @Test fun serverAddresses() = shoot("phone-servers") { dev.nitrate.mobile.ui.ServersScreen(it) }

@@ -84,7 +84,10 @@ class AppContainer(
 
     val settingsSync = SettingsSync(server, displaySettings)
 
-    val writing by lazy { WritingStore(appContext, server) }
+    val writing by lazy { WritingStore(appContext, server).also { it.account = server.currentAccountKey } }
+
+    /** Shared screenplays (Companion plugin): links scripts here to shared ones, per account. */
+    val sharedWriting by lazy { dev.nitrate.android.writing.SharedWriting(writing, server, companion) }
 
     /** App-specific storage: removed with the app, no storage permission needed. */
     private val downloadDir by lazy { File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "downloads") }
@@ -141,6 +144,10 @@ class AppContainer(
         chat
         chatOnlyGroup.value = groupId
     }
+
+    /** Tests: asks the (fake) server for its Companion plugin now, as signing in does. */
+    @androidx.annotation.VisibleForTesting
+    suspend fun refreshCompanionForTests() = refreshCompanion()
 
     private suspend fun refreshCompanion() {
         companionState.value = runCatching { server.companion() }.getOrNull()
@@ -247,6 +254,7 @@ class AppContainer(
         // Not waited for: Home shouldn't wait on the account details (admin tools appear when they arrive).
         networkScope.launch { refreshAccount() }
         networkScope.launch { refreshCompanion() }
+        writing.account = server.currentAccountKey
         watchNetwork()
     }
 
@@ -350,6 +358,7 @@ class AppContainer(
         accountState.value = null
         chatOnlyGroup.value = null
         companionState.value = null
+        writing.account = null
     }
 
     /** Free space where downloads are saved. */

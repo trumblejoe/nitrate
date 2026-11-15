@@ -1,7 +1,7 @@
 package dev.nitrate.core.writing
 
-/** A saved screenplay. */
-data class WritingDoc(val id: String, val title: String, val modifiedMs: Long)
+/** A saved screenplay; [sharedId] when it's also a shared script (for the signed-in account). */
+data class WritingDoc(val id: String, val title: String, val modifiedMs: Long, val sharedId: String? = null)
 
 object Scripts {
     /** The Title: from the title page, else the first line with text. */
