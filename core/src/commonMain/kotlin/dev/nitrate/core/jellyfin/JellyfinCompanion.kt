@@ -17,6 +17,8 @@ import dev.nitrate.core.writing.SharedScriptDoc
 import dev.nitrate.core.writing.SharedScriptInfo
 import dev.nitrate.core.writing.TextOperation
 import dev.nitrate.core.writing.UserRef
+import dev.nitrate.core.writing.story.RecordChange
+import dev.nitrate.core.writing.story.StoryRecord
 import io.ktor.client.request.delete
 import io.ktor.client.request.put
 import io.ktor.client.plugins.ClientRequestException
@@ -68,10 +70,30 @@ internal data class ScriptInfoDto(
 )
 
 @Serializable
-internal data class ScriptDocDto(val info: ScriptInfoDto, val text: String = "", val version: Long = 0)
+internal data class RecordOutDto(
+    val id: String,
+    val type: String,
+    val fields: Map<String, String> = emptyMap(),
+    val deleted: Boolean = false,
+    val createdBy: String? = null,
+    val createdByName: String? = null,
+    val createdAt: String? = null,
+    val updatedBy: String? = null,
+    val updatedByName: String? = null,
+    val updatedAt: String? = null,
+)
 
 @Serializable
-internal data class ScriptCreateDto(val text: String, val members: List<String>)
+internal data class RecordChangeDto(val id: String, val type: String, val set: Map<String, String?>? = null, val delete: Boolean = false)
+
+@Serializable
+internal data class ScriptDocDto(val info: ScriptInfoDto? = null, val text: String = "", val version: Long = 0, val records: List<RecordOutDto> = emptyList())
+
+@Serializable
+internal data class ScriptCreateDto(val text: String, val members: List<String>, val records: List<RecordChangeDto>)
+
+@Serializable
+internal data class RecordsPostDto(val editId: String, val baseVersion: Long, val records: List<RecordChangeDto>)
 
 @Serializable
 internal data class ScriptMembersDto(val members: List<String>)
@@ -83,7 +105,16 @@ internal data class EditPostDto(val editId: String, val baseVersion: Long, val o
 internal data class EditResultDto(val accepted: Boolean, val version: Long)
 
 @Serializable
-internal data class EditOutDto(val version: Long, val editId: String, val userId: String, val userName: String = "", val ops: kotlinx.serialization.json.JsonArray)
+internal data class EditOutDto(
+    val version: Long,
+    val editId: String,
+    val userId: String,
+    val userName: String = "",
+    val ops: kotlinx.serialization.json.JsonArray? = null,
+    val records: List<RecordChangeDto>? = null,
+    val at: String? = null,
+    val sceneId: String? = null,
+)
 
 @Serializable
 internal data class PresenceOutDto(val userId: String, val userName: String = "", val cursor: Int, val version: Long)
@@ -154,8 +185,21 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
     suspend fun sharedScripts(): List<SharedScriptInfo> =
         call { client.get("Nitrate", "Scripts") }.decode<List<ScriptInfoDto>>().map { it.toModel() }
 
-    suspend fun createSharedScript(text: String, members: List<String>): SharedScriptDoc =
-        call { client.http.post(client.url("Nitrate", "Scripts")) { json(ScriptCreateDto(text, members)) } }.decode<ScriptDocDto>().toModel()
+    suspend fun createSharedScript(text: String, members: List<String>, records: List<RecordChange>): SharedScriptDoc =
+        call { client.http.post(client.url("Nitrate", "Scripts")) { json(ScriptCreateDto(text, members, records.map { it.toDto() })) } }.decode<ScriptDocDto>().toModel()
+
+    suspend fun sendScriptRecords(id: String, editId: String, baseVersion: Long, records: List<RecordChange>): ScriptEditResult {
+        val dto = call { client.http.post(client.url("Nitrate", "Scripts", id, "Edits")) { json(RecordsPostDto(editId, baseVersion, records.map { it.toDto() })) } }.decode<EditResultDto>()
+        return ScriptEditResult(dto.accepted, dto.version)
+    }
+
+    suspend fun scriptLog(id: String, from: Long, limit: Int): List<ScriptEdit> =
+        call { client.get("Nitrate", "Scripts", id, "Log", query = mapOf("from" to from, "limit" to limit)) }.decode<List<EditOutDto>>().map { it.toModel() }
+
+    suspend fun scriptAt(id: String, version: Long): SharedScriptDoc {
+        val dto = call { client.get("Nitrate", "Scripts", id, "At", query = mapOf("version" to version)) }.decode<ScriptDocDto>()
+        return SharedScriptDoc(SharedScriptInfo(id, "", UserRef("", ""), emptyList(), dto.version, 0), dto.text, dto.version, dto.records.map { it.toModel() })
+    }
 
     suspend fun sharedScript(id: String): SharedScriptDoc =
         call { client.get("Nitrate", "Scripts", id) }.decode<ScriptDocDto>().toModel()
@@ -188,7 +232,7 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
             }
         }.decode<EditsOutDto>()
         return ScriptEditsPage(
-            edits = dto.edits.map { ScriptEdit(it.version, it.editId, normalizeId(it.userId), it.userName, opsFromJson(it.ops)) },
+            edits = dto.edits.map { it.toModel() },
             version = dto.version,
             presence = dto.presence.map { ScriptPresence(normalizeId(it.userId), it.userName, it.cursor, it.version) },
             stamp = dto.stamp,
@@ -239,7 +283,24 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
         updatedAtMs = updatedAt?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() } ?: 0L,
     )
 
-    private fun ScriptDocDto.toModel() = SharedScriptDoc(info.toModel(), text, version)
+    private fun ScriptDocDto.toModel() = SharedScriptDoc(info!!.toModel(), text, version, records.map { it.toModel() })
+
+    private fun RecordChange.toDto() = RecordChangeDto(id, type, set.takeIf { it.isNotEmpty() }, delete)
+
+    private fun RecordChangeDto.toModel() = RecordChange(id, type, set.orEmpty(), delete)
+
+    private fun ms(iso: String?) = iso?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() } ?: 0L
+
+    private fun RecordOutDto.toModel() = StoryRecord(
+        id = id, type = type, fields = fields, deleted = deleted,
+        updatedBy = updatedBy?.let(::normalizeId), updatedByName = updatedByName, updatedAt = ms(updatedAt),
+        createdBy = createdBy?.let(::normalizeId), createdAt = ms(createdAt),
+    )
+
+    private fun EditOutDto.toModel() = ScriptEdit(
+        version = version, editId = editId, userId = normalizeId(userId), userName = userName,
+        op = ops?.let(::opsFromJson), records = records.orEmpty().map { it.toModel() }, atMs = ms(at), sceneId = sceneId,
+    )
 
     private fun ChatMessageDto.toModel() = ChatMessage(
         seq = seq,

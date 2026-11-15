@@ -47,6 +47,13 @@ Shared scripts:
 | `POST /Nitrate/Scripts/{id}/Edits` | `{EditId, BaseVersion, Ops, Cursor}` → `{Accepted, Version}`. Taken only when `BaseVersion` is the latest: otherwise the app catches up, rebases its change and sends it again (same `EditId` is never applied twice). `Ops` walks the whole text: a positive number keeps, a negative deletes, a string inserts (UTF-16 lengths). |
 | `GET /Nitrate/Scripts/{id}/Edits?after=V&seen=S&waitMs=M` | Changes after `V` and others' cursors; waits for something new (long polling). 410 when those changes are no longer kept (the last 2000): load the script again. |
 | `POST /Nitrate/Scripts/{id}/Presence` | `{Cursor, Version}`: where the caller's cursor is. |
+| `GET /Nitrate/Scripts/{id}/Log?from=V&limit=N` | The full history of changes from version `V` (each with who, when, and for text changes the scene it was in). |
+| `GET /Nitrate/Scripts/{id}/At?version=V` | `{Version, Text, Records}`: the script and its story data as they were, rebuilt from the history. |
+
+A change can also (or instead) carry `Records`: story data changes (`{Id, Type, Set: {field: value or null}, Delete}`)
+for the apps' scene details, lists, entries, links and comments. These never wait on the version (each field takes
+the latest value, stamped with who and when), and a text change is refused only when another *text* change came
+after its base version. Every change is appended to a full history file (`<id>.log`) next to the script.
 
 Shared scripts are kept in the server's data folder (`data/nitrate-companion/scripts`, one JSON
 file each), so they survive restarts and plugin updates.

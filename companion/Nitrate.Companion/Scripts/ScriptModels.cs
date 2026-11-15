@@ -17,6 +17,15 @@ public class StoredScript
     /// <summary>Gets or sets the text now.</summary>
     public string Text { get; set; } = string.Empty;
 
+    /// <summary>Gets or sets the story data now (lists, entries, links, comments, scene details), by id.</summary>
+    public Dictionary<string, StoredRecord> Records { get; set; } = new();
+
+    /// <summary>Gets or sets the text as shared (version 0), the start of the full history.</summary>
+    public string InitialText { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the story data as shared (version 0).</summary>
+    public Dictionary<string, StoredRecord> InitialRecords { get; set; } = new();
+
     /// <summary>Gets or sets the number of changes made so far.</summary>
     public long Version { get; set; }
 
@@ -37,9 +46,57 @@ public class StoredScript
 /// <param name="Version">The script's version this change made.</param>
 /// <param name="EditId">The app's id for it, so a resent change isn't applied twice.</param>
 /// <param name="UserId">Who made it.</param>
-/// <param name="Ops">The change, in the wire form (see <see cref="TextOps"/>).</param>
+/// <param name="Ops">A text change, in the wire form (see <see cref="TextOps"/>), or null.</param>
 /// <param name="At">When the server took it.</param>
-public record StoredEdit(long Version, string EditId, Guid UserId, JsonElement Ops, DateTimeOffset At);
+/// <param name="Records">Story data changes, or null.</param>
+/// <param name="SceneId">For a text change: the scene it was in (from the heading's marker).</param>
+public record StoredEdit(long Version, string EditId, Guid UserId, JsonElement? Ops, DateTimeOffset At, List<RecordChange>? Records = null, string? SceneId = null)
+{
+    /// <summary>Gets a value indicating whether it changed the text.</summary>
+    public bool IsText => Ops is { ValueKind: JsonValueKind.Array };
+}
+
+/// <summary>A piece of story data: fields replaced one by one by the latest change, with who and when.</summary>
+public class StoredRecord
+{
+    /// <summary>Gets or sets its id.</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets what it is (list, entry, link, comment, scene).</summary>
+    public string Type { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets its fields.</summary>
+    public Dictionary<string, string> Fields { get; set; } = new();
+
+    /// <summary>Gets or sets a value indicating whether it was deleted.</summary>
+    public bool Deleted { get; set; }
+
+    /// <summary>Gets or sets who made it.</summary>
+    public Guid CreatedBy { get; set; }
+
+    /// <summary>Gets or sets when it was made.</summary>
+    public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Gets or sets who changed it last.</summary>
+    public Guid UpdatedBy { get; set; }
+
+    /// <summary>Gets or sets when it last changed.</summary>
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>A copy (the full history replays onto copies).</summary>
+    public StoredRecord Clone() => new()
+    {
+        Id = Id, Type = Type, Fields = new(Fields), Deleted = Deleted,
+        CreatedBy = CreatedBy, CreatedAt = CreatedAt, UpdatedBy = UpdatedBy, UpdatedAt = UpdatedAt,
+    };
+}
+
+/// <summary>A change to one piece of story data: fields set (null removes one), or deleted.</summary>
+/// <param name="Id">The record.</param>
+/// <param name="Type">What it is.</param>
+/// <param name="Set">Fields to set.</param>
+/// <param name="Delete">Delete it instead.</param>
+public record RecordChange(string Id, string Type, Dictionary<string, string?>? Set = null, bool Delete = false);
 
 /// <summary>Where someone's cursor is in a script, and how recently they were there.</summary>
 /// <param name="UserId">Who.</param>

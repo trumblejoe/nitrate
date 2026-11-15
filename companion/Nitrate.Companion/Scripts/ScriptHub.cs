@@ -45,8 +45,14 @@ public class ScriptHub
         }
     }
 
-    /// <summary>Starts a shared script from <paramref name="text"/>, owned by <paramref name="ownerId"/>.</summary>
-    public StoredScript Create(Guid ownerId, string? text)
+    /// <summary>Most story records one script may hold.</summary>
+    public const int MaxRecords = 5_000;
+
+    /// <summary>Longest story field, in characters.</summary>
+    public const int MaxFieldLength = 50_000;
+
+    /// <summary>Starts a shared script from <paramref name="text"/> (and its story data), owned by <paramref name="ownerId"/>.</summary>
+    public StoredScript Create(Guid ownerId, string? text, IReadOnlyList<RecordChange>? records = null)
     {
         var body = text ?? string.Empty;
         if (body.Length > MaxLength)
@@ -55,7 +61,13 @@ public class ScriptHub
         }
 
         var now = _time.GetUtcNow();
-        var script = new StoredScript { Id = Guid.NewGuid(), OwnerId = ownerId, Text = body, CreatedAt = now, UpdatedAt = now };
+        var script = new StoredScript { Id = Guid.NewGuid(), OwnerId = ownerId, Text = body, InitialText = body, CreatedAt = now, UpdatedAt = now };
+        if (records is { Count: > 0 })
+        {
+            ApplyRecords(script.Records, records, ownerId, now);
+            script.InitialRecords = script.Records.ToDictionary(r => r.Key, r => r.Value.Clone());
+        }
+
         lock (_lock)
         {
             Load();
@@ -130,19 +142,29 @@ public class ScriptHub
 
             _scripts.Remove(id);
             _storage.Delete(id);
+            _storage.DeleteLog(id);
             live.Wake();
         }
     }
 
     /// <summary>
-    /// Applies a change made on <paramref name="baseVersion"/>. Taken only when that is the
-    /// latest version; a change already taken (same <paramref name="editId"/>) answers as before.
+    /// Applies a change: to the text (<paramref name="ops"/>), to the story data
+    /// (<paramref name="records"/>), or both. A text change is taken only when no other text
+    /// change came after <paramref name="baseVersion"/>; story data changes never wait (each
+    /// field simply takes the latest value). A change already taken (same
+    /// <paramref name="editId"/>) answers as before.
     /// </summary>
-    public (EditOutcome Outcome, long Version) Edit(Guid id, Guid userId, string editId, long baseVersion, JsonElement ops, int? cursor)
+    public (EditOutcome Outcome, long Version) Edit(Guid id, Guid userId, string editId, long baseVersion, JsonElement? ops, IReadOnlyList<RecordChange>? records, int? cursor)
     {
         if (string.IsNullOrWhiteSpace(editId) || editId.Length > 64)
         {
             throw new ScriptException(ScriptError.Invalid, "A change needs an id.");
+        }
+
+        var hasText = ops is { ValueKind: JsonValueKind.Array };
+        if (!hasText && records is not { Count: > 0 })
+        {
+            throw new ScriptException(ScriptError.Invalid, "The change changes nothing.");
         }
 
         lock (_lock)
@@ -155,31 +177,56 @@ public class ScriptHub
                 return (EditOutcome.Accepted, earlier.Version);
             }
 
-            if (baseVersion != script.Version)
+            if (baseVersion > script.Version || baseVersion < 0)
             {
-                return (EditOutcome.Stale, script.Version);
+                throw new ScriptException(ScriptError.Invalid, "No such version.");
             }
 
-            string text;
-            try
+            if (hasText && baseVersion != script.Version)
             {
-                text = TextOps.Apply(script.Text, ops);
-            }
-            catch (ArgumentException e)
-            {
-                throw new ScriptException(ScriptError.Invalid, e.Message);
+                // Stale only if someone else's text change came after it (or we can't tell).
+                var oldestKept = script.Edits.Count > 0 ? script.Edits[0].Version : script.Version + 1;
+                if (baseVersion + 1 < oldestKept || script.Edits.Any(e => e.IsText && e.Version > baseVersion))
+                {
+                    return (EditOutcome.Stale, script.Version);
+                }
             }
 
-            if (text.Length > MaxLength)
+            var text = script.Text;
+            string? sceneId = null;
+            if (hasText)
             {
-                throw new ScriptException(ScriptError.Invalid, "The script would be too long.");
+                try
+                {
+                    text = TextOps.Apply(script.Text, ops!.Value);
+                }
+                catch (ArgumentException e)
+                {
+                    throw new ScriptException(ScriptError.Invalid, e.Message);
+                }
+
+                if (text.Length > MaxLength)
+                {
+                    throw new ScriptException(ScriptError.Invalid, "The script would be too long.");
+                }
+
+                sceneId = SceneAt(text, ops!.Value);
             }
 
             var now = _time.GetUtcNow();
+            var newRecords = script.Records;
+            if (records is { Count: > 0 })
+            {
+                newRecords = script.Records.ToDictionary(r => r.Key, r => r.Value);
+                ApplyRecords(newRecords, records, userId, now);
+            }
+
             script.Text = text;
+            script.Records = newRecords;
             script.Version++;
             script.UpdatedAt = now;
-            script.Edits.Add(new StoredEdit(script.Version, editId, userId, ops.Clone(), now));
+            var edit = new StoredEdit(script.Version, editId, userId, hasText ? ops!.Value.Clone() : null, now, records?.ToList(), sceneId);
+            script.Edits.Add(edit);
             if (script.Edits.Count > KeptEdits)
             {
                 script.Edits.RemoveRange(0, script.Edits.Count - KeptEdits);
@@ -191,9 +238,159 @@ public class ScriptHub
             }
 
             _storage.Save(script);
+            _storage.AppendLog(script.Id, edit);
             live.Wake();
             return (EditOutcome.Accepted, script.Version);
         }
+    }
+
+    /// <summary>Every change from <paramref name="fromVersion"/> on (up to <paramref name="limit"/>), from the full history.</summary>
+    public IReadOnlyList<StoredEdit> Log(Guid id, Guid userId, long fromVersion, int limit)
+    {
+        lock (_lock)
+        {
+            Find(id, userId);
+        }
+
+        return _storage.ReadLog(id, fromVersion, Math.Clamp(limit, 1, 5_000));
+    }
+
+    /// <summary>The text and story data as they were at <paramref name="version"/> (replayed from the full history).</summary>
+    public (string Text, Dictionary<string, StoredRecord> Records) At(Guid id, Guid userId, long version)
+    {
+        StoredScript script;
+        lock (_lock)
+        {
+            script = Find(id, userId).Script;
+            if (version < 0 || version > script.Version)
+            {
+                throw new ScriptException(ScriptError.Invalid, "No such version.");
+            }
+        }
+
+        var text = script.InitialText;
+        var records = script.InitialRecords.ToDictionary(r => r.Key, r => r.Value.Clone());
+        long from = 1;
+        while (from <= version)
+        {
+            var page = _storage.ReadLog(id, from, 2_000);
+            if (page.Count == 0)
+            {
+                throw new ScriptException(ScriptError.Gone, "That version's history isn't kept.");
+            }
+
+            foreach (var e in page.TakeWhile(e => e.Version <= version))
+            {
+                if (e.IsText)
+                {
+                    text = TextOps.Apply(text, e.Ops!.Value);
+                }
+
+                if (e.Records is { Count: > 0 })
+                {
+                    ApplyRecords(records, e.Records, e.UserId, e.At);
+                }
+            }
+
+            from = page[^1].Version + 1;
+        }
+
+        return (text, records);
+    }
+
+    /// <summary>Applies story data changes field by field, stamping who and when.</summary>
+    public static void ApplyRecords(Dictionary<string, StoredRecord> records, IEnumerable<RecordChange> changes, Guid by, DateTimeOffset at)
+    {
+        foreach (var c in changes)
+        {
+            if (string.IsNullOrWhiteSpace(c.Id) || c.Id.Length > 100 || string.IsNullOrWhiteSpace(c.Type) || c.Type.Length > 40)
+            {
+                throw new ScriptException(ScriptError.Invalid, "A story change needs an id and a type.");
+            }
+
+            if (c.Set?.Values.Any(v => v?.Length > MaxFieldLength) == true || c.Set?.Count > 100)
+            {
+                throw new ScriptException(ScriptError.Invalid, "That story change is too big.");
+            }
+
+            if (!records.TryGetValue(c.Id, out var old))
+            {
+                if (c.Delete)
+                {
+                    continue;
+                }
+
+                if (records.Count >= MaxRecords)
+                {
+                    throw new ScriptException(ScriptError.Invalid, "This script has too many story items.");
+                }
+
+                old = new StoredRecord { Id = c.Id, Type = c.Type, CreatedBy = by, CreatedAt = at };
+            }
+
+            var record = old.Clone();
+            if (c.Delete)
+            {
+                record.Deleted = true;
+            }
+            else
+            {
+                record.Deleted = false;
+                foreach (var (k, v) in c.Set ?? new())
+                {
+                    if (v is null)
+                    {
+                        record.Fields.Remove(k);
+                    }
+                    else
+                    {
+                        record.Fields[k] = v;
+                    }
+                }
+            }
+
+            record.UpdatedBy = by;
+            record.UpdatedAt = at;
+            records[c.Id] = record;
+        }
+    }
+
+    /// <summary>The scene a text change landed in: the marker on the heading at or before where it starts.</summary>
+    public static string? SceneAt(string text, JsonElement ops)
+    {
+        var pos = 0;
+        foreach (var part in ops.EnumerateArray())
+        {
+            if (part.ValueKind == JsonValueKind.Number && part.GetInt32() > 0)
+            {
+                pos += part.GetInt32();
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        pos = Math.Min(pos, text.Length);
+        var lineEnd = text.IndexOf('\n', pos);
+        if (lineEnd < 0)
+        {
+            lineEnd = text.Length;
+        }
+
+        if (lineEnd == 0)
+        {
+            return null;
+        }
+
+        var marker = text.LastIndexOf("[[scene:", lineEnd - 1, StringComparison.Ordinal);
+        if (marker < 0)
+        {
+            return null;
+        }
+
+        var close = text.IndexOf("]]", marker, StringComparison.Ordinal);
+        return close < 0 ? null : text[(marker + 8)..close];
     }
 
     /// <summary>Says where <paramref name="userId"/>'s cursor is, for the others.</summary>

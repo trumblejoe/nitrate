@@ -699,7 +699,7 @@ class JellyfinLiveTest {
         try {
             assertEquals("Night Shift", doc.info.title)
             assertTrue(writer.sharedScripts().any { it.id == id })
-            fun session(client: JellyfinClient, who: String) = SharedScriptSession(client, this, id, SharedScriptSession.fresh(doc), {}, {}) { "$who-" + java.util.UUID.randomUUID() }
+            fun session(client: JellyfinClient, who: String) = SharedScriptSession(client, this, id, SharedScriptSession.fresh(doc), {}, {}, newEditId = { "$who-" + java.util.UUID.randomUUID() })
             val a = session(owner, "owner").also { it.start() }
             val b = session(writer, "writer").also { it.start() }
             delay(500)
@@ -710,6 +710,21 @@ class JellyfinLiveTest {
                 while (a.text.value != expected || b.text.value != expected || a.pending.value || b.pending.value) delay(100)
             }
             assertEquals(expected, writer.sharedScript(id).text)
+
+            // Story data: a bio written by one shows up for the other, credited and stamped.
+            val sam = dev.nitrate.core.writing.story.Story.detectedId("characters", "SAM")
+            a.changeStory(listOf(dev.nitrate.core.writing.story.Story.setEntry(sam, "characters", "SAM", "Night cook")))
+            withTimeout(15_000) { while (b.story.value.entry(sam)?.notes != "Night cook" || a.pending.value) delay(100) }
+            val record = writer.sharedScript(id).records.single { it.id == sam }
+            assertEquals(owner.userId, record.updatedBy)
+            assertTrue(record.updatedAt > 0)
+            // The whole history, and the script as it was before anyone typed.
+            val log = owner.scriptLog(id, 1)
+            assertEquals(3, log.size)
+            assertEquals(1, log.count { it.records.isNotEmpty() })
+            assertEquals(setOf(owner.userId, writer.userId), log.map { it.userId }.toSet())
+            assertEquals(doc.text, owner.scriptAt(id, 0).text)
+            assertTrue(owner.scriptAt(id, 0).records.isEmpty())
             a.close(); b.close()
 
             // Someone who wasn't invited can't open it; once removed, the writer can't either.

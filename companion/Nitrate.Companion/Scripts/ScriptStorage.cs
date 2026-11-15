@@ -13,6 +13,15 @@ public interface IScriptStorage
 
     /// <summary>Forgets one script.</summary>
     void Delete(Guid id);
+
+    /// <summary>Adds a change to the script's full history.</summary>
+    void AppendLog(Guid id, StoredEdit edit);
+
+    /// <summary>Changes from <paramref name="fromVersion"/> on, oldest first, at most <paramref name="limit"/>.</summary>
+    IReadOnlyList<StoredEdit> ReadLog(Guid id, long fromVersion, int limit);
+
+    /// <summary>Forgets a script's history.</summary>
+    void DeleteLog(Guid id);
 }
 
 /// <summary>One JSON file per script, in the plugin's data folder.</summary>
@@ -62,7 +71,57 @@ public class FileScriptStorage : IScriptStorage
     /// <inheritdoc />
     public void Delete(Guid id) => File.Delete(PathOf(id));
 
+    /// <inheritdoc />
+    public void AppendLog(Guid id, StoredEdit edit) =>
+        File.AppendAllText(LogOf(id), JsonSerializer.Serialize(edit, Json) + "\n");
+
+    /// <inheritdoc />
+    public IReadOnlyList<StoredEdit> ReadLog(Guid id, long fromVersion, int limit)
+    {
+        var path = LogOf(id);
+        if (!File.Exists(path))
+        {
+            return Array.Empty<StoredEdit>();
+        }
+
+        var result = new List<StoredEdit>();
+        foreach (var line in File.ReadLines(path))
+        {
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            StoredEdit? edit;
+            try
+            {
+                edit = JsonSerializer.Deserialize<StoredEdit>(line, Json);
+            }
+            catch (JsonException)
+            {
+                // A line cut short (the server stopped mid-write) is skipped.
+                continue;
+            }
+
+            if (edit is not null && edit.Version >= fromVersion)
+            {
+                result.Add(edit);
+                if (result.Count >= limit)
+                {
+                    break;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public void DeleteLog(Guid id) => File.Delete(LogOf(id));
+
     private string PathOf(Guid id) => Path.Combine(_dir, id.ToString("N") + ".json");
+
+    private string LogOf(Guid id) => Path.Combine(_dir, id.ToString("N") + ".log");
 }
 
 /// <summary>Keeps scripts in memory only (tests).</summary>
@@ -79,4 +138,26 @@ public class MemoryScriptStorage : IScriptStorage
 
     /// <inheritdoc />
     public void Delete(Guid id) => Saved.Remove(id);
+
+    /// <summary>Gets each script's full history, as JSON lines.</summary>
+    public Dictionary<Guid, List<string>> Logs { get; } = new();
+
+    /// <inheritdoc />
+    public void AppendLog(Guid id, StoredEdit edit)
+    {
+        if (!Logs.TryGetValue(id, out var log))
+        {
+            Logs[id] = log = new List<string>();
+        }
+
+        log.Add(JsonSerializer.Serialize(edit));
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<StoredEdit> ReadLog(Guid id, long fromVersion, int limit) =>
+        (Logs.TryGetValue(id, out var log) ? log : new List<string>())
+            .Select(l => JsonSerializer.Deserialize<StoredEdit>(l)!).Where(e => e.Version >= fromVersion).Take(limit).ToList();
+
+    /// <inheritdoc />
+    public void DeleteLog(Guid id) => Logs.Remove(id);
 }

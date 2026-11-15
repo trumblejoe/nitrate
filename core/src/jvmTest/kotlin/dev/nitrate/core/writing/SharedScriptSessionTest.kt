@@ -46,6 +46,14 @@ class SharedScriptSessionTest {
                 return ScriptEditResult(true, version)
             }
 
+            override suspend fun sendScriptRecords(id: String, editId: String, baseVersion: Long, records: List<dev.nitrate.core.writing.story.RecordChange>): ScriptEditResult {
+                if (offline) throw java.io.IOException("offline")
+                edits.firstOrNull { it.editId == editId }?.let { return ScriptEditResult(true, it.version) }
+                edits += ScriptEdit(version + 1, editId, user, user, null, records, atMs = 1000L * (version + 1))
+                changed.value++
+                return ScriptEditResult(true, version)
+            }
+
             override suspend fun scriptEdits(id: String, after: Long, seen: Long?, waitMs: Int): ScriptEditsPage {
                 if (offline) throw java.io.IOException("offline")
                 val oldest = edits.size - minOf(edits.size, keep)
@@ -70,7 +78,7 @@ class SharedScriptSessionTest {
 
     private var ids = 0
     private fun TestScope.session(fake: FakeScripts, user: String, state: SharedScriptState = SharedScriptState(fake.version, fake.text, fake.text), saved: MutableList<SharedScriptState> = mutableListOf(), conflicts: MutableList<String> = mutableListOf()) =
-        SharedScriptSession(fake.serverFor(user), backgroundScope, "s1", state, { saved += it }, { conflicts += it }) { "$user-${ids++}" }
+        SharedScriptSession(fake.serverFor(user), backgroundScope, "s1", state, { saved += it }, { conflicts += it }, { "$user-${ids++}" }, selfId = user, selfName = user)
 
     private fun SharedScriptSession.type(newText: String) = edit(newText, newText.length)
 
@@ -214,5 +222,60 @@ class SharedScriptSessionTest {
     @Test fun stateRoundTrips() {
         val op = TextOperation.of(TextOperation.Retain(2), TextOperation.Insert("x\"y"), TextOperation.Delete(1))
         assertEquals(op, SharedScriptSession.decode(SharedScriptSession.encode(op)))
+    }
+
+    @Test fun storyChangesFromTwoWritersMeetAndShowAtOnce() = runTest {
+        val fake = FakeScripts("INT. DINER - NIGHT")
+        val a = session(fake, "ann").also { it.start() }
+        val b = session(fake, "bob").also { it.start() }
+        runCurrent()
+        val sam = dev.nitrate.core.writing.story.Story.detectedId("characters", "SAM")
+        a.changeStory(listOf(dev.nitrate.core.writing.story.Story.setEntry(sam, "characters", "SAM", "A cook")))
+        // Shown here straight away, credited to ann.
+        assertEquals("A cook", a.story.value.entry(sam)!!.notes)
+        assertEquals("ann", a.story.value.entry(sam)!!.record!!.updatedBy)
+        b.type("INT. DINER - LATE NIGHT")
+        b.changeStory(listOf(dev.nitrate.core.writing.story.Story.sceneMeta("s1", synopsis = "Sam waits")))
+        advanceTimeBy(10_000)
+        runCurrent()
+        listOf(a, b).forEach { w ->
+            assertEquals("A cook", w.story.value.entry(sam)!!.notes)
+            assertEquals("Sam waits", w.story.value.sceneMeta("s1").synopsis)
+            assertEquals("INT. DINER - LATE NIGHT", w.text.value)
+            assertFalse(w.pending.value)
+        }
+        // The server's stamp wins once confirmed (who and when).
+        assertEquals(fake.edits.first { it.records.isNotEmpty() }.atMs, b.story.value.entry(sam)!!.record!!.updatedAt)
+        // Both the same field: the later change wins everywhere.
+        a.changeStory(listOf(dev.nitrate.core.writing.story.Story.setEntry(sam, "characters", "SAM", "A cook, 40s")))
+        advanceTimeBy(1_000)
+        b.changeStory(listOf(dev.nitrate.core.writing.story.Story.setEntry(sam, "characters", "SAM", "The night cook")))
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals("The night cook", a.story.value.entry(sam)!!.notes)
+        assertEquals("The night cook", b.story.value.entry(sam)!!.notes)
+        assertEquals(4, fake.edits.count { it.records.isNotEmpty() })
+        a.close(); b.close()
+    }
+
+    @Test fun storyChangesMadeOfflineSurviveARestart() = runTest {
+        val fake = FakeScripts("x")
+        val saved = mutableListOf<SharedScriptState>()
+        val a = session(fake, "ann", saved = saved).also { it.start() }
+        runCurrent()
+        fake.offline = true
+        a.changeStory(listOf(dev.nitrate.core.writing.story.Story.comment("c1", "scene:s1", "Too long?", "ann")))
+        advanceTimeBy(2_000)
+        a.close()
+        assertEquals(1, saved.last().pendingRecords.size)
+        fake.offline = false
+        val again = session(fake, "ann", state = saved.last()).also { it.start() }
+        assertEquals("Too long?", again.story.value.comments().single().text)
+        advanceTimeBy(30_000)
+        runCurrent()
+        assertEquals(1, fake.edits.size)
+        assertFalse(again.pending.value)
+        assertEquals("Too long?", again.story.value.comments().single().text)
+        again.close()
     }
 }

@@ -18,11 +18,17 @@ public record UserRef(Guid Id, string Name);
 /// <summary>A shared script without its text.</summary>
 public record ScriptInfo(Guid Id, string Title, UserRef Owner, IReadOnlyList<UserRef> Members, long Version, DateTimeOffset UpdatedAt);
 
-/// <summary>A shared script with its text.</summary>
-public record ScriptDoc(ScriptInfo Info, string Text, long Version);
+/// <summary>A piece of story data, with who made and last changed it.</summary>
+public record RecordOut(string Id, string Type, Dictionary<string, string> Fields, bool Deleted, Guid CreatedBy, string CreatedByName, DateTimeOffset CreatedAt, Guid UpdatedBy, string UpdatedByName, DateTimeOffset UpdatedAt);
 
-/// <summary>A new shared script.</summary>
-public record ScriptCreate(string? Text, IReadOnlyList<Guid>? Members);
+/// <summary>A shared script with its text and story data.</summary>
+public record ScriptDoc(ScriptInfo Info, string Text, long Version, IReadOnlyList<RecordOut> Records);
+
+/// <summary>A new shared script, with any story data it already has.</summary>
+public record ScriptCreate(string? Text, IReadOnlyList<Guid>? Members, IReadOnlyList<RecordChange>? Records = null);
+
+/// <summary>A script as it was at a version.</summary>
+public record ScriptAt(long Version, string Text, IReadOnlyList<RecordOut> Records);
 
 /// <summary>Who a script is shared with.</summary>
 public record ScriptMembers(IReadOnlyList<Guid> Members);
@@ -30,15 +36,16 @@ public record ScriptMembers(IReadOnlyList<Guid> Members);
 /// <summary>A change to a script.</summary>
 /// <param name="EditId">The app's id for this change (resending the same id is safe).</param>
 /// <param name="BaseVersion">The version it was made on.</param>
-/// <param name="Ops">The change (see <see cref="TextOps"/>).</param>
+/// <param name="Ops">A text change (see <see cref="TextOps"/>), or null.</param>
 /// <param name="Cursor">Where the sender's cursor is after it.</param>
-public record EditPost(string EditId, long BaseVersion, JsonElement Ops, int? Cursor);
+/// <param name="Records">Story data changes, or null.</param>
+public record EditPost(string EditId, long BaseVersion, JsonElement? Ops, int? Cursor, IReadOnlyList<RecordChange>? Records = null);
 
 /// <summary>What happened to a change: taken (it made <paramref name="Version"/>), or made on an old version.</summary>
 public record EditResult(bool Accepted, long Version);
 
-/// <summary>An accepted change, for the others.</summary>
-public record EditOut(long Version, string EditId, Guid UserId, string UserName, JsonElement Ops);
+/// <summary>An accepted change, for the others (and the history).</summary>
+public record EditOut(long Version, string EditId, Guid UserId, string UserName, JsonElement? Ops, IReadOnlyList<RecordChange>? Records, DateTimeOffset At, string? SceneId);
 
 /// <summary>Someone else's cursor.</summary>
 public record PresenceOut(Guid UserId, string UserName, int Cursor, long Version);
@@ -117,7 +124,7 @@ public class ScriptsController : ControllerBase
     [HttpPost("Scripts")]
     public ActionResult<ScriptDoc> Create([FromBody] ScriptCreate body) => Run(me =>
     {
-        var script = _scripts.Create(me, body.Text);
+        var script = _scripts.Create(me, body.Text, body.Records);
         if (body.Members is { Count: > 0 })
         {
             script = _scripts.SetMembers(script.Id, me, ValidUsers(body.Members));
@@ -155,7 +162,7 @@ public class ScriptsController : ControllerBase
     [HttpPost("Scripts/{id}/Edits")]
     public ActionResult<EditResult> Edit([FromRoute] Guid id, [FromBody] EditPost body) => Run(me =>
     {
-        var (outcome, version) = _scripts.Edit(id, me, body.EditId, body.BaseVersion, body.Ops, body.Cursor);
+        var (outcome, version) = _scripts.Edit(id, me, body.EditId, body.BaseVersion, body.Ops, body.Records, body.Cursor);
         return new EditResult(outcome == EditOutcome.Accepted, version);
     });
 
@@ -176,7 +183,7 @@ public class ScriptsController : ControllerBase
             var wait = TimeSpan.FromMilliseconds(Math.Clamp(waitMs, 0, CompanionController.MaxWaitMs));
             var page = await _scripts.WaitAsync(id, me, after, seen, wait, HttpContext.RequestAborted).ConfigureAwait(false);
             return new EditsOut(
-                page.Edits.Select(e => new EditOut(e.Version, e.EditId, e.UserId, NameOf(e.UserId), e.Ops)).ToList(),
+                page.Edits.Select(Out).ToList(),
                 page.Version,
                 page.Presence.Select(p => new PresenceOut(p.UserId, NameOf(p.UserId), p.Cursor, p.Version)).ToList(),
                 page.Stamp);
@@ -190,6 +197,19 @@ public class ScriptsController : ControllerBase
             return new EmptyResult();
         }
     }
+
+    /// <summary>The full history of changes from <paramref name="from"/> on (for who-wrote-what and the activity list).</summary>
+    [HttpGet("Scripts/{id}/Log")]
+    public ActionResult<IReadOnlyList<EditOut>> Log([FromRoute] Guid id, [FromQuery] long from = 1, [FromQuery] int limit = 2_000) =>
+        Run(me => (IReadOnlyList<EditOut>)_scripts.Log(id, me, from, limit).Select(Out).ToList());
+
+    /// <summary>The script as it was at <paramref name="version"/>, to look back at or restore.</summary>
+    [HttpGet("Scripts/{id}/At")]
+    public ActionResult<ScriptAt> At([FromRoute] Guid id, [FromQuery] long version) => Run(me =>
+    {
+        var (text, records) = _scripts.At(id, me, version);
+        return new ScriptAt(version, text, records.Values.Select(RecordOutOf).ToList());
+    });
 
     /// <summary>Says where the caller's cursor is.</summary>
     [HttpPost("Scripts/{id}/Presence")]
@@ -244,5 +264,10 @@ public class ScriptsController : ControllerBase
         s.Version,
         s.UpdatedAt);
 
-    private ScriptDoc Doc(StoredScript s) => new(Info(s), s.Text, s.Version);
+    private ScriptDoc Doc(StoredScript s) => new(Info(s), s.Text, s.Version, s.Records.Values.Select(RecordOutOf).ToList());
+
+    private EditOut Out(StoredEdit e) => new(e.Version, e.EditId, e.UserId, NameOf(e.UserId), e.Ops, e.Records, e.At, e.SceneId);
+
+    private RecordOut RecordOutOf(StoredRecord r) =>
+        new(r.Id, r.Type, r.Fields, r.Deleted, r.CreatedBy, NameOf(r.CreatedBy), r.CreatedAt, r.UpdatedBy, NameOf(r.UpdatedBy), r.UpdatedAt);
 }

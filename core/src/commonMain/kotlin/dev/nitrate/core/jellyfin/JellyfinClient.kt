@@ -1036,7 +1036,12 @@ class JellyfinClient(
         companionApi.send(groupId, kind, text, positionMs)
     override suspend fun sharingUsers(name: String?) = companionApi.sharingUsers(name)
     override suspend fun sharedScripts() = companionApi.sharedScripts()
-    override suspend fun createSharedScript(text: String, members: List<String>) = companionApi.createSharedScript(text, members)
+    override suspend fun createSharedScript(text: String, members: List<String>, records: List<dev.nitrate.core.writing.story.RecordChange>) =
+        companionApi.createSharedScript(text, members, records)
+    override suspend fun sendScriptRecords(id: String, editId: String, baseVersion: Long, records: List<dev.nitrate.core.writing.story.RecordChange>) =
+        companionApi.sendScriptRecords(id, editId, baseVersion, records)
+    override suspend fun scriptLog(id: String, from: Long, limit: Int) = companionApi.scriptLog(id, from, limit)
+    override suspend fun scriptAt(id: String, version: Long) = companionApi.scriptAt(id, version)
     override suspend fun sharedScript(id: String) = companionApi.sharedScript(id)
     override suspend fun setScriptMembers(id: String, members: List<String>) = companionApi.setScriptMembers(id, members)
     override suspend fun leaveSharedScript(id: String) = companionApi.leaveSharedScript(id)

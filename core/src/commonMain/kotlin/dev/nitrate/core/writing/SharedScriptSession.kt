@@ -16,6 +16,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import dev.nitrate.core.writing.story.RecordChange
+import dev.nitrate.core.writing.story.Story
+import dev.nitrate.core.writing.story.StoryRecord
 
 /**
  * What a device keeps about a shared script between runs: the last text agreed with the server
@@ -30,7 +33,15 @@ data class SharedScriptState(
     val sentId: String? = null,
     /** The sent change, in its wire form as JSON. */
     val sent: String? = null,
+    /** The story data as the server last had it. */
+    val records: Map<String, StoryRecord> = emptyMap(),
+    /** Story changes made here that the server hasn't confirmed yet, oldest first. */
+    val pendingRecords: List<PendingRecords> = emptyList(),
 )
+
+/** Story changes waiting to be confirmed, with the id they're sent under (never applied twice). */
+@Serializable
+data class PendingRecords(val editId: String, val changes: List<RecordChange>)
 
 /** Someone else's cursor, as an offset into the text shown here. */
 data class OtherCursor(val userId: String, val userName: String, val cursor: Int)
@@ -57,6 +68,10 @@ class SharedScriptSession(
     /** Called when this device's unsent changes can't be merged (it fell too far behind): keep them as a copy. */
     private val onConflict: (String) -> Unit = {},
     private val newEditId: () -> String,
+    /** This user, for story changes shown here before the server confirms them. */
+    private val selfId: String = "",
+    private val selfName: String = "",
+    private val now: () -> Long = { 0L },
 ) {
     enum class Status { CONNECTING, LIVE, OFFLINE, UNAVAILABLE }
 
@@ -68,6 +83,10 @@ class SharedScriptSession(
     private var buffer: TextOperation? = null
     private var cursor = 0
     private var stamp: Long? = null
+    private var serverStory = Story(start.records)
+    private val pendingRecords = start.pendingRecords.toMutableList()
+    /** Story changes sent and not yet seen back (resent only after a restart). */
+    private val recordsSent = mutableSetOf<String>()
     private var presence: List<ScriptPresence> = emptyList()
     /** Recent server changes, to bring others' cursors up to date. */
     private val recent = ArrayDeque<Pair<Long, TextOperation>>()
@@ -86,6 +105,10 @@ class SharedScriptSession(
     private val _status = MutableStateFlow(Status.CONNECTING)
     val status: StateFlow<Status> = _status
 
+    private val _story = MutableStateFlow(Story())
+    /** The story data as shown here: the server's, with this device's unconfirmed changes. */
+    val story: StateFlow<Story> = _story
+
     private val _pending = MutableStateFlow(false)
     /** True while some of this device's changes haven't reached the server. */
     val pending: StateFlow<Boolean> = _pending
@@ -97,6 +120,7 @@ class SharedScriptSession(
     init {
         val confirmedOrSent = sent?.op?.let { runCatching { it.apply(serverText) }.getOrNull() } ?: run { sent = null; serverText }
         TextOperation.diff(confirmedOrSent, start.text).takeIf { !it.isNoop }?.let { buffer = it }
+        refreshStory()
         updatePending()
     }
 
@@ -105,7 +129,7 @@ class SharedScriptSession(
         if (jobs.isNotEmpty()) return
         jobs += scope.launch { pollLoop() }
         jobs += scope.launch { sendLoop() }
-        if (sent != null || buffer != null) kick.trySend(Unit)
+        if (sent != null || buffer != null || pendingRecords.isNotEmpty()) kick.trySend(Unit)
     }
 
     fun close() {
@@ -128,6 +152,22 @@ class SharedScriptSession(
         refreshOthers()
         persist()
         kick.trySend(Unit)
+    }
+
+    /** Changes story data (lists, entries, links, comments, scene details): shown at once, sent soon. */
+    fun changeStory(changes: List<RecordChange>) {
+        if (changes.isEmpty()) return
+        pendingRecords += PendingRecords(newEditId(), changes)
+        refreshStory()
+        updatePending()
+        persist()
+        kick.trySend(Unit)
+    }
+
+    private fun refreshStory() {
+        var s = serverStory
+        for (p in pendingRecords) for (c in p.changes) s = s.apply(c, selfId, selfName, now())
+        _story.value = s
     }
 
     /** The cursor moved without typing: tells the others after a moment. */
@@ -170,6 +210,30 @@ class SharedScriptSession(
                 } else {
                     // Others got there first: fetch their changes (which rewrites ours) and send again.
                     catchUp()
+                }
+            }
+            // Story changes never wait on the version; the poll brings them back in order.
+            for (p in pendingRecords.toList()) {
+                if (p.editId in recordsSent) continue
+                try {
+                    server.sendScriptRecords(scriptId, p.editId, version, p.changes)
+                    recordsSent += p.editId
+                    failures = 0
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: ScriptUnavailable) {
+                    unavailable()
+                    return
+                } catch (_: IllegalArgumentException) {
+                    // The server refused it (too big...): drop it rather than retry forever.
+                    pendingRecords.removeAll { it.editId == p.editId }
+                    refreshStory()
+                    persist()
+                } catch (_: Exception) {
+                    _status.value = Status.OFFLINE
+                    delay(backoffMs(++failures))
+                    kick.trySend(Unit)
+                    break
                 }
             }
             updatePending()
@@ -231,12 +295,25 @@ class SharedScriptSession(
     }
 
     private fun apply(e: ScriptEdit) {
+        if (e.records.isNotEmpty()) {
+            for (c in e.records) serverStory = serverStory.apply(c, e.userId, e.userName, e.atMs)
+            pendingRecords.removeAll { it.editId == e.editId }
+            recordsSent -= e.editId
+            refreshStory()
+        }
+        val edited = e.op
+        if (edited == null) {
+            version = e.version
+            updatePending()
+            persist()
+            return
+        }
         val mine = sent
         if (mine != null && mine.editId == e.editId) {
             confirm(mine, e.version)
             return
         }
-        var op = e.op
+        var op: TextOperation = edited
         if (mine != null) {
             val (m2, op2) = TextOperation.transform(mine.op, op)
             sent = Sent(mine.editId, m2)
@@ -247,9 +324,9 @@ class SharedScriptSession(
             buffer = b2
             op = op3
         }
-        serverText = e.op.apply(serverText)
+        serverText = edited.apply(serverText)
         version = e.version
-        remember(e.version, e.op)
+        remember(e.version, edited)
         cursor = op.transformIndex(cursor)
         _text.value = op.apply(_text.value)
         _remote.tryEmit(RemoteChange(op, e.userName))
@@ -260,6 +337,9 @@ class SharedScriptSession(
     private suspend fun reload() {
         val doc = server.sharedScript(scriptId)
         val old = _text.value
+        serverStory = Story(doc.records.associateBy { it.id })
+        recordsSent.clear()
+        refreshStory()
         if (sent != null || buffer != null) onConflict(old)
         version = doc.version
         serverText = doc.text
@@ -305,11 +385,11 @@ class SharedScriptSession(
     // ---- Keeping ----
 
     private fun persist() = save(
-        SharedScriptState(version, serverText, _text.value, sent?.editId, sent?.op?.let(::encode)),
+        SharedScriptState(version, serverText, _text.value, sent?.editId, sent?.op?.let(::encode), serverStory.records, pendingRecords.toList()),
     )
 
     private fun updatePending() {
-        _pending.value = sent != null || buffer != null
+        _pending.value = sent != null || buffer != null || pendingRecords.isNotEmpty()
     }
 
     companion object {
@@ -333,6 +413,6 @@ class SharedScriptSession(
         )
 
         /** Where a script just shared or opened from the server starts. */
-        fun fresh(doc: SharedScriptDoc) = SharedScriptState(doc.version, doc.text, doc.text)
+        fun fresh(doc: SharedScriptDoc) = SharedScriptState(doc.version, doc.text, doc.text, records = doc.records.associateBy { it.id })
     }
 }

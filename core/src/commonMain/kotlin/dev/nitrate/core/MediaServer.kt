@@ -307,7 +307,7 @@ interface MediaServer {
     suspend fun sharedScripts(): List<dev.nitrate.core.writing.SharedScriptInfo> = unsupported()
 
     /** Shares [text] as a new script owned by this user, with [members] invited. */
-    suspend fun createSharedScript(text: String, members: List<String>): dev.nitrate.core.writing.SharedScriptDoc = unsupported()
+    suspend fun createSharedScript(text: String, members: List<String>, records: List<dev.nitrate.core.writing.story.RecordChange> = emptyList()): dev.nitrate.core.writing.SharedScriptDoc = unsupported()
 
     /** A shared script's text now; throws [dev.nitrate.core.writing.ScriptUnavailable] when it's not shared with this user. */
     suspend fun sharedScript(id: String): dev.nitrate.core.writing.SharedScriptDoc = unsupported()
@@ -329,6 +329,15 @@ interface MediaServer {
      * happened since [seen]. Throws [dev.nitrate.core.writing.ScriptTooFarBehind] when those changes are gone.
      */
     suspend fun scriptEdits(id: String, after: Long, seen: Long?, waitMs: Int): dev.nitrate.core.writing.ScriptEditsPage = unsupported()
+
+    /** Sends story data changes (they never wait on the version: each field takes the latest value). */
+    suspend fun sendScriptRecords(id: String, editId: String, baseVersion: Long, records: List<dev.nitrate.core.writing.story.RecordChange>): dev.nitrate.core.writing.ScriptEditResult = unsupported()
+
+    /** The full history of a shared script's changes from [from] on, oldest first. */
+    suspend fun scriptLog(id: String, from: Long, limit: Int = 2_000): List<dev.nitrate.core.writing.ScriptEdit> = unsupported()
+
+    /** A shared script as it was at [version] (text and story data). */
+    suspend fun scriptAt(id: String, version: Long): dev.nitrate.core.writing.SharedScriptDoc = unsupported()
 
     /** Says where this user's cursor is in a shared script. */
     suspend fun sendScriptPresence(id: String, cursor: Int, version: Long): Unit = unsupported()
