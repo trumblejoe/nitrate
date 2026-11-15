@@ -152,7 +152,7 @@ class ScreenshotTest {
         c.sharedWriting.open("shared-1")
     }) { actions -> WritingScreen(actions, onBack = {}) }
 
-    private fun storyContext() = dev.nitrate.mobile.ui.StoryContext(
+    private fun storyContext() = dev.nitrate.android.writing.StoryContext(
         text = dev.nitrate.testing.SampleStory.text, scenes = dev.nitrate.testing.SampleStory.scenes, story = dev.nitrate.testing.SampleStory.story,
         selfId = "user-1", selfName = "joe", people = emptyList(), changeStory = {}, applyText = {}, openInScript = {}, history = null,
     )

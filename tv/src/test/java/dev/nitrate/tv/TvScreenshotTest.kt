@@ -43,6 +43,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.width
@@ -184,6 +185,26 @@ class TvScreenshotTest {
     @Test fun shareScript() = shoot("tv-share-script", setup = { c -> c.writing.account = c.server.currentAccountKey; c.refreshCompanionForTests() }) { c ->
         val id = androidx.compose.runtime.produceState<String?>(null) { value = c.writing.create("Title: Night Shift\n\nINT. DINER - NIGHT") }.value
         if (id != null) dev.nitrate.tv.plugins.writing.SharePanel(c.sharedWriting, id, onMessage = {}, onDone = {}, modifier = Modifier.fillMaxSize().padding(40.dp))
+    }
+
+    private fun storyContext() = dev.nitrate.android.writing.StoryContext(
+        text = dev.nitrate.testing.SampleStory.text, scenes = dev.nitrate.testing.SampleStory.scenes, story = dev.nitrate.testing.SampleStory.story,
+        selfId = "user-1", selfName = "joe", people = listOf(dev.nitrate.core.writing.UserRef("user-1", "joe"), dev.nitrate.core.writing.UserRef("user-2", "sam")),
+        changeStory = {}, applyText = {}, openInScript = {}, history = null,
+    )
+
+    @Test fun storyScenes() = shoot("tv-story-scenes") {
+        dev.nitrate.tv.plugins.writing.StoryTvPanel(storyContext(), dev.nitrate.tv.plugins.writing.StoryTvTab.SCENES, onBack = {}, modifier = Modifier.fillMaxSize().padding(40.dp))
+    }
+
+    @Test fun storyMap() = shoot("tv-story-map") {
+        dev.nitrate.tv.plugins.writing.StoryTvPanel(storyContext(), dev.nitrate.tv.plugins.writing.StoryTvTab.MAP, onBack = {}, modifier = Modifier.fillMaxSize().padding(40.dp))
+    }
+
+    @Test fun storyEntry() = shoot("tv-story-entry", act = {
+        compose.onNodeWithText("SAM").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+    }) {
+        dev.nitrate.tv.plugins.writing.StoryTvPanel(storyContext(), dev.nitrate.tv.plugins.writing.StoryTvTab.LISTS, onBack = {}, modifier = Modifier.fillMaxSize().padding(40.dp))
     }
 
     @Test fun licenses() = shoot("tv-licenses") { _ -> dev.nitrate.tv.ui.settings.LicensesScreen() }

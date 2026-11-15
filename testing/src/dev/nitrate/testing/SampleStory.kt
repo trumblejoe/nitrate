@@ -44,7 +44,8 @@ object SampleStory {
 
     val story: Story by lazy {
         var s = Story()
-        fun put(c: dev.nitrate.core.writing.story.RecordChange, who: String, at: Long) { s = s.apply(c, who, who, at) }
+        val names = mapOf("user-1" to "joe", "user-2" to "sam")
+        fun put(c: dev.nitrate.core.writing.story.RecordChange, who: String, at: Long) { s = s.apply(c, who, names[who], at) }
         val sam = Story.detectedId(Story.CHARACTERS, "SAM")
         val jo = Story.detectedId(Story.CHARACTERS, "JO")
         put(Story.setEntry(sam, Story.CHARACTERS, "SAM", "Runs the diner's night shift. Hasn't left town in twenty years."), "user-2", 1_700_000_000_000)

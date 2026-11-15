@@ -117,6 +117,23 @@ class SharedWriting(
     fun storyFor(localId: String, session: SharedScriptSession?, scope: CoroutineScope): ScriptStory =
         session?.let(::SharedStory) ?: LocalStory(store, localId, scope, server.userId, selfName)
 
+    /** Who can be given scenes in a script: this user, and the others it's shared with. */
+    suspend fun writers(localId: String, selfName: String?): List<UserRef> {
+        val me = listOfNotNull(server.userId?.let { UserRef(it, selfName ?: "Me") })
+        val info = if (store.link(localId) != null) runCatching { info(localId) }.getOrNull() else null
+        return me + (info?.let { i -> (listOf(i.owner) + i.members).filter { it.id != server.userId } }.orEmpty())
+    }
+
+    /** A shared script's history for the story screens; null for an unshared one. */
+    fun history(localId: String): StoryHistory? {
+        if (store.link(localId) == null) return null
+        return object : StoryHistory {
+            override suspend fun log() = this@SharedWriting.log(localId)
+            override suspend fun textAt(version: Long) = at(localId, version)?.text.orEmpty()
+            override suspend fun recordAt(version: Long, id: String) = at(localId, version)?.records?.firstOrNull { it.id == id }
+        }
+    }
+
     // ---- History (shared scripts) ----
 
     /** Every change made to a shared script, oldest first. */

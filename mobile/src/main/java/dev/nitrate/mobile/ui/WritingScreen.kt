@@ -199,7 +199,7 @@ fun WritingScreen(
     }
     val history = remember(docId, linkedId) {
         docId?.takeIf { linkedId != null }?.let { id ->
-            object : StoryHistory {
+            object : dev.nitrate.android.writing.StoryHistory {
                 override suspend fun log() = shared.log(id)
                 override suspend fun textAt(version: Long) = shared.at(id, version)?.text.orEmpty()
                 override suspend fun recordAt(version: Long, id2: String) = shared.at(id, version)?.records?.firstOrNull { it.id == id2 }
@@ -210,7 +210,7 @@ fun WritingScreen(
         tab = StoryTab.SCRIPT
         value = value.copy(selection = TextRange(scene.start))
     }
-    val storyCtx = StoryContext(
+    val storyCtx = dev.nitrate.android.writing.StoryContext(
         text = value.text, scenes = scenes, story = story, selfId = actions.server.userId, selfName = account?.name ?: "Me",
         people = people, changeStory = { scriptStory?.change(it) }, applyText = ::applyOp, openInScript = ::showScene, history = history,
     )
@@ -431,7 +431,7 @@ private enum class StoryTab(val label: String) { SCRIPT("Script"), SCENES("Scene
 
 /** A comment on the line at the cursor, kept on its scene with the line quoted. */
 @Composable
-private fun LineCommentDialog(ctx: StoryContext, cursor: Int, onDismiss: () -> Unit) {
+private fun LineCommentDialog(ctx: dev.nitrate.android.writing.StoryContext, cursor: Int, onDismiss: () -> Unit) {
     val scene = ctx.scenes.lastOrNull { it.start <= cursor && it.id != null } ?: return onDismiss()
     val lineStart = ctx.text.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)).let { if (it < 0 || cursor == 0) 0 else it + 1 }
     val lineEnd = ctx.text.indexOf('\n', cursor).let { if (it < 0) ctx.text.length else it }

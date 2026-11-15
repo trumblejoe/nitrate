@@ -30,7 +30,8 @@ object WritingUi : PlayerPanel, ScreenPlugin {
     @Composable
     private fun Editor(context: PluginContext, playback: PlaybackControls?, modifier: Modifier) {
         val settings by context.store.settings(pluginId, WritingSettings()).collectAsState(WritingSettings())
-        WritingEditor(context.container.writing, settings.backupToServer, playback, modifier, shared = context.container.sharedWriting)
+        val account by context.container.account.collectAsState()
+        WritingEditor(context.container.writing, settings.backupToServer, playback, modifier, shared = context.container.sharedWriting, selfName = account?.name)
     }
 
     @Composable

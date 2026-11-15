@@ -70,11 +70,12 @@ import dev.nitrate.core.writing.TransferServer
 import dev.nitrate.android.writing.lanAddress
 import dev.nitrate.core.writing.WritingDoc
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.produceState
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
-private enum class Mode { EDIT, DOCUMENTS, HELP, SHARE }
+private enum class Mode { EDIT, DOCUMENTS, HELP, SHARE, SCENES, LISTS, MAP, ACTIVITY }
 
 private val ELEMENT_KEYS = mapOf(
     Key.One to Element.SCENE_HEADING,
@@ -99,8 +100,10 @@ fun WritingEditor(
     backup: Boolean,
     playback: PlaybackControls?,
     modifier: Modifier = Modifier,
-    /** Shared screenplays (Companion plugin), when the app has them. */
+    /** Shared screenplays (Companion plugin), when the app has them; also each script's story. */
     shared: dev.nitrate.android.writing.SharedWriting? = null,
+    /** This user's name, on their comments and changes. */
+    selfName: String? = null,
 ) {
     val docs by store.docs.collectAsState()
     var docId by remember { mutableStateOf<String?>(null) }
@@ -169,6 +172,45 @@ fun WritingEditor(
     fun change(v: TextFieldValue) {
         value = v
         session?.edit(v.text, v.selection.start)
+    }
+
+    fun applyOp(op: dev.nitrate.core.writing.TextOperation) {
+        val sel = value.selection
+        val t = op.apply(value.text)
+        change(TextFieldValue(t, TextRange(op.transformIndex(sel.start).coerceIn(0, t.length), op.transformIndex(sel.end).coerceIn(0, t.length))))
+    }
+
+    // ---- Story: scenes, lists, map, activity ----
+    val scriptStory = remember(docId, session) { docId?.let { id -> shared?.storyFor(id, session, scope) } }
+    val story by (scriptStory?.story ?: kotlinx.coroutines.flow.MutableStateFlow(dev.nitrate.core.writing.story.Story())).collectAsState()
+    val scenes = remember(value.text) { dev.nitrate.core.writing.story.Outline.scenes(value.text) }
+    LaunchedEffect(value.text) {
+        delay(1_500)
+        dev.nitrate.core.writing.story.Outline.addIds(value.text, skipAt = value.selection.start)?.let(::applyOp)
+    }
+    val people by produceState(emptyList<dev.nitrate.core.writing.UserRef>(), docId, linkedId) {
+        this.value = docId?.let { id -> shared?.let { s -> runCatching { s.writers(id, selfName) }.getOrNull() } }.orEmpty()
+    }
+    val history = remember(docId, linkedId) { docId?.let { id -> shared?.history(id) } }
+    val storyCtx = dev.nitrate.android.writing.StoryContext(
+        text = value.text, scenes = scenes, story = story, selfId = shared?.userId, selfName = selfName ?: "Me", people = people,
+        changeStory = { scriptStory?.change(it) }, applyText = ::applyOp,
+        openInScript = { scene -> mode = Mode.EDIT; value = value.copy(selection = TextRange(scene.start)); runCatching { editorFocus.requestFocus() } },
+        history = history,
+    )
+    var whoWrote by remember(docId) { mutableStateOf(false) }
+    var authorship by remember(docId) { mutableStateOf<Pair<String, dev.nitrate.core.writing.story.Attribution>?>(null) }
+    LaunchedEffect(whoWrote, docId) {
+        while (whoWrote && docId != null) {
+            authorship = runCatching { shared?.authorship(docId!!) }.getOrNull()
+            delay(15_000)
+        }
+        if (!whoWrote) authorship = null
+    }
+    val writers = remember(authorship, value.text) {
+        authorship?.let { (base, a) ->
+            if (base == value.text) a else runCatching { a.apply(dev.nitrate.core.writing.TextOperation.diff(base, value.text), shared?.userId.orEmpty(), base) }.getOrNull()
+        }
     }
 
     // Autosave shortly after typing stops; back up less often.
@@ -247,8 +289,8 @@ fun WritingEditor(
     val transferState by transfer.state.collectAsState()
 
     val colors = MaterialTheme.colorScheme
-    val highlight = remember(colors, others) {
-        FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant, others.map { it.cursor }, colors.primary.copy(alpha = 0.55f))
+    val highlight = remember(colors, others, writers) {
+        FountainHighlight(colors.primary, colors.secondary, colors.onSurfaceVariant, others.map { it.cursor }, colors.primary.copy(alpha = 0.55f), writers)
     }
 
     Column(modifier.background(colors.surface).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -269,6 +311,14 @@ fun WritingEditor(
                 )
             }
             OutlinedButton(onClick = { mode = if (mode == Mode.DOCUMENTS) Mode.EDIT else Mode.DOCUMENTS }) { Text("Documents") }
+            // The script's story: one press each, and again (or Back) for the script.
+            listOf(Mode.SCENES to "Scenes", Mode.LISTS to "Lists", Mode.MAP to "Map").forEach { (m, label) ->
+                OutlinedButton(onClick = { mode = if (mode == m) Mode.EDIT else m }) { Text(if (mode == m) "Script" else label) }
+            }
+            if (history != null) {
+                OutlinedButton(onClick = { mode = if (mode == Mode.ACTIVITY) Mode.EDIT else Mode.ACTIVITY }) { Text(if (mode == Mode.ACTIVITY) "Script" else "Activity") }
+                OutlinedButton(onClick = { whoWrote = !whoWrote }) { Text(if (whoWrote) "Who wrote: on" else "Who wrote") }
+            }
             if (sharedOn) OutlinedButton(onClick = { mode = if (mode == Mode.SHARE) Mode.EDIT else Mode.SHARE }) { Text(if (linkedId != null) "Sharing" else "Share") }
             OutlinedButton(onClick = { mode = if (mode == Mode.HELP) Mode.EDIT else Mode.HELP }) { Text("Keys") }
         }
@@ -324,6 +374,12 @@ fun WritingEditor(
                 }) else null,
             )
             Mode.HELP -> Help(playback != null, Modifier.weight(1f))
+            Mode.SCENES, Mode.LISTS, Mode.MAP, Mode.ACTIVITY -> StoryTvPanel(
+                storyCtx,
+                when (mode) { Mode.SCENES -> StoryTvTab.SCENES; Mode.LISTS -> StoryTvTab.LISTS; Mode.MAP -> StoryTvTab.MAP; else -> StoryTvTab.ACTIVITY },
+                onBack = { mode = Mode.EDIT },
+                modifier = Modifier.weight(1f),
+            )
             Mode.SHARE -> if (shared != null && docId != null) SharePanel(
                 shared, docId!!, onMessage = { status = it }, onDone = { mode = Mode.EDIT; runCatching { editorFocus.requestFocus() } },
                 modifier = Modifier.weight(1f),
@@ -433,13 +489,27 @@ private class FountainHighlight(
     /** Where the others writing in a shared script are. */
     private val cursors: List<Int> = emptyList(),
     private val cursorColor: Color = muted,
+    /** Who wrote what ("who wrote this"), or null. */
+    private val writers: dev.nitrate.core.writing.story.Attribution? = null,
 ) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
-        val elements = Fountain.classify(text.text)
+        // Scene ids are hidden: the editor shows the script without them.
+        val hidden = dev.nitrate.core.writing.story.Outline.Hidden(text.text)
+        val shown = hidden.shown
+        val elements = Fountain.classify(shown)
         val styled = buildAnnotatedString {
-            append(text.text)
+            append(shown)
+            writers?.takeIf { it.length == text.text.length }?.let { w ->
+                var at = 0
+                for (r in w.runs()) {
+                    val a = hidden.toShown(at)
+                    val b = hidden.toShown(at + r.length)
+                    if (a < b) addStyle(SpanStyle(background = Color(dev.nitrate.core.writing.story.StoryColors.writer(r.userId)).copy(alpha = 0.25f)), a, b)
+                    at += r.length
+                }
+            }
             var offset = 0
-            for ((i, line) in text.text.split('\n').withIndex()) {
+            for ((i, line) in shown.split('\n').withIndex()) {
                 val style = when (elements.getOrNull(i)) {
                     Element.SCENE_HEADING -> SpanStyle(color = heading, fontWeight = FontWeight.Bold)
                     Element.CHARACTER -> SpanStyle(color = character, fontWeight = FontWeight.Bold)
@@ -453,12 +523,16 @@ private class FountainHighlight(
                 offset += line.length + 1
             }
             // Others' cursors: the character they're at is marked (the one before, at the end of a line).
-            for (c in cursors) {
-                val at = if (c < text.length && text.text[c] != '\n') c else c - 1
-                if (at in text.text.indices) addStyle(SpanStyle(background = cursorColor), at, at + 1)
+            for (original in cursors) {
+                val c = hidden.toShown(original)
+                val at = if (c < shown.length && shown[c] != '\n') c else c - 1
+                if (at in shown.indices) addStyle(SpanStyle(background = cursorColor), at, at + 1)
             }
         }
-        return TransformedText(styled, OffsetMapping.Identity)
+        return TransformedText(styled, object : OffsetMapping {
+            override fun originalToTransformed(offset: Int) = hidden.toShown(offset)
+            override fun transformedToOriginal(offset: Int) = hidden.toOriginal(offset)
+        })
     }
 }
 
