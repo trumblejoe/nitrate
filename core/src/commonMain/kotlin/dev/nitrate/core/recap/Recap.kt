@@ -32,8 +32,8 @@ data class Recap(
     val then: List<String> = emptyList(),
 )
 
-/** Choices for "Recap after a break", in days (0: never). */
-val RECAP_CHOICES = listOf(0 to "Never", 3 to "3 days", 7 to "1 week", 14 to "2 weeks", 30 to "1 month")
+/** Choices for "Recap after a break of at least", in days (0: never). */
+val RECAP_CHOICES = listOf(0 to "Never", 8 to "8 days", 14 to "2 weeks", 30 to "1 month", 182 to "6 months", 365 to "1 year")
 
 object Recaps {
     /** How many watched titles a recap shows. */
@@ -47,7 +47,7 @@ object Recaps {
 
     private const val DAY_MS = 24 * 60 * 60_000L
 
-    /** Whether a recap is due: the setting is on and the last watch is at least that long ago. */
+    /** Whether a recap is due: the setting is on and the last watch is that long ago or longer (to the millisecond). */
     fun due(prefs: DisplayPrefs, lastWatchedMs: Long?, nowMs: Long): Boolean =
         prefs.recapAfterDays > 0 && lastWatchedMs != null && nowMs - lastWatchedMs >= prefs.recapAfterDays * DAY_MS
 

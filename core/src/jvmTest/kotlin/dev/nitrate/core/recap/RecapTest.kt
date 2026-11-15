@@ -37,6 +37,8 @@ class RecapTest {
         val episodes = listOf(ep(1, 1, 3), ep(1, 2))
         assertNull(Recaps.forSeries(show, episodes, episodes[1], prefs, now))
         assertTrue(Recaps.forSeries(show, episodes, episodes[1], prefs.copy(recapAfterDays = 3), now) != null)
+        // Exactly the break counts.
+        assertTrue(Recaps.forSeries(show, listOf(ep(1, 1, 14), ep(1, 2)), ep(1, 2), prefs, now) != null)
         assertNull(Recaps.forSeries(show, episodes, episodes[1], prefs.copy(recapAfterDays = 0), now))
         assertNull(Recaps.forSeries(show, listOf(ep(1, 1), ep(1, 2)), ep(1, 1), prefs, now))
     }
@@ -63,6 +65,16 @@ class RecapTest {
         assertEquals("s1-e3", recap.next.id)
         assertEquals(listOf("s1-e4"), recap.then)
         assertEquals("7 weeks ago", recap.since)
+    }
+
+    @Test fun dueAtExactlyTheBreakOrLonger() {
+        val p = DisplayPrefs(recapAfterDays = 8)
+        assertTrue(Recaps.due(p, now - 8 * day, now))
+        assertTrue(Recaps.due(p, now - 9 * day, now))
+        org.junit.Assert.assertFalse(Recaps.due(p, now - 8 * day + 1, now))
+        org.junit.Assert.assertFalse(Recaps.due(p.copy(recapAfterDays = 0), now - 400 * day, now))
+        assertEquals(listOf("Never", "8 days", "2 weeks", "1 month", "6 months", "1 year"), RECAP_CHOICES.map { it.second })
+        assertEquals(14, DisplayPrefs().recapAfterDays)
     }
 
     @Test fun sinceReadsNaturally() {

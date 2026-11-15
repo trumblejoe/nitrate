@@ -260,7 +260,7 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
         // Cycles Never → 3 days → 1 week → 2 weeks → 1 month.
         val choices = dev.nitrate.core.recap.RECAP_CHOICES
         val i = choices.indexOfFirst { it.first == prefs.recapAfterDays }.coerceAtLeast(0)
-        Choice("\"Last time\" recap after a break of", choices[i].second) { update { it.copy(recapAfterDays = choices[(i + 1) % choices.size].first) } }
+        Choice("\"Last time\" recap after a break of at least", choices[i].second) { update { it.copy(recapAfterDays = choices[(i + 1) % choices.size].first) } }
     }
     item(key = "titles") {
         Choice("Titles under cards", prefs.cardTitles.label) { update { it.copy(cardTitles = CardTitles.entries[(it.cardTitles.ordinal + 1) % CardTitles.entries.size]) } }
