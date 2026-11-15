@@ -363,6 +363,20 @@ interface MediaServer {
     /** The Nitrate Companion plugin on this server, or null when it isn't installed. */
     suspend fun companion(): dev.nitrate.core.companion.CompanionInfo? = null
 
+    /** The household's channels this user can watch (Companion feature "channels"); admins see all. */
+    suspend fun houseChannels(): List<dev.nitrate.core.channels.HouseChannel> = unsupported()
+
+    /** Every channel's programs between [fromMs] and [toMs]. */
+    suspend fun channelGuide(fromMs: Long, toMs: Long): List<dev.nitrate.core.channels.ChannelGuide> = unsupported()
+
+    /** Tuning in: what's on now (to play from its start) and what follows, in order, skipping what this user can't watch. */
+    suspend fun tuneChannel(channelId: String, count: Int = dev.nitrate.core.channels.Channels.TUNE_COUNT): List<dev.nitrate.core.channels.ChannelProgram> = unsupported()
+
+    /** Saves a channel (admins); a new one when its id is empty. [startOver]: every show from its beginning. */
+    suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean = false): dev.nitrate.core.channels.HouseChannel = unsupported()
+
+    suspend fun deleteChannel(channelId: String): Unit = unsupported()
+
     /**
      * Chat messages in a watch-together group after [after] (-1: the recent ones), waiting up to
      * [waitMs] for one when there are none (long polling). Throws [dev.nitrate.core.companion.ChatForbidden]

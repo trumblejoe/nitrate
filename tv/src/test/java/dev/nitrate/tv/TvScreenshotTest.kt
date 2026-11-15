@@ -176,6 +176,14 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.login.SsoPanel(c.server, "http://192.168.1.20:8096", dev.nitrate.core.model.SsoProvider("Home ID"), {}, {})
     }
 
+    @Test fun channels() = shoot("tv-channels") { c ->
+        dev.nitrate.tv.ui.channels.ChannelsScreen(c.server, admin = true, onPlayQueue = {}, onEdit = {})
+    }
+
+    @Test fun channelEditor() = shoot("tv-channel-editor") { c ->
+        dev.nitrate.tv.ui.channels.ChannelEditorScreen(c.server, "c1") {}
+    }
+
     @Test fun chat() = shoot("tv-chat") { c ->
         val chat = androidx.compose.runtime.remember {
             dev.nitrate.core.companion.GroupChat(c.server, kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined)) { "user-1" }.also { it.follow("g1") }

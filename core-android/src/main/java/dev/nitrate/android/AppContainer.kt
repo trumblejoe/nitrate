@@ -428,7 +428,7 @@ class AppContainer(
     private val pluginStore = PluginStore(appContext)
 
     val plugins = PluginRegistry(
-        all = listOf(PreviousEpisodePlugin, WritingPlugin),
+        all = listOf(PreviousEpisodePlugin, WritingPlugin, dev.nitrate.core.channels.ChannelsPlugin),
         host = PluginHost(server, pluginStore),
     )
 

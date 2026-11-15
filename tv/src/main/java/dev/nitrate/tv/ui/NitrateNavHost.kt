@@ -85,6 +85,8 @@ import kotlinx.serialization.Serializable
 @Serializable object ServerAdminRoute
 @Serializable object LibraryHealthRoute
 @Serializable object WatchTogetherRoute
+@Serializable object ChannelsRoute
+@Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ProfilesRoute
 @Serializable data class SearchRoute(val query: String = "", val voice: Boolean = false)
 @Serializable data class PersonRoute(val personId: String, val name: String, val studio: String? = null, val year: Int? = null)
@@ -139,7 +141,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     val fromHome: androidx.navigation.NavOptionsBuilder.() -> Unit = { popUpTo(HomeRoute); launchSingleTop = true }
     // A long press on "Switch user" in the menu: switch from right there.
     var quickSwitch by remember { mutableStateOf(false) }
-    val menuCatalog = remember(libraries, customPages, nav) {
+    // The household's channels: the server's Companion plugin has them and the Channels plugin is on.
+    val companion by container.companion.collectAsState()
+    val channelsOn = companion?.features?.contains(dev.nitrate.core.channels.ChannelsPlugin.FEATURE) == true &&
+        dev.nitrate.core.channels.ChannelsPlugin.id in enabledIds
+    val menuCatalog = remember(libraries, customPages, nav, channelsOn) {
         dev.nitrate.tv.ui.home.menuCatalog(
             libraries, customPages,
             dev.nitrate.tv.ui.home.MenuActions(
@@ -154,6 +160,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onPage = { id -> nav.navigate(CustomPageRoute(id), fromHome) },
                 onPages = { nav.navigate(PagesRoute, fromHome) },
                 onTogether = { nav.navigate(WatchTogetherRoute, fromHome) },
+                onChannels = if (channelsOn) ({ nav.navigate(ChannelsRoute, fromHome) }) else null,
                 onSettings = { nav.navigate(SettingsHubRoute, fromHome) },
                 onProfiles = { nav.navigate(ProfilesRoute) },
                 onQuickSwitch = { quickSwitch = true },
@@ -344,6 +351,20 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<PersonRoute> { entry ->
             val route = entry.toRoute<PersonRoute>()
             dev.nitrate.tv.ui.search.PersonScreen(container.server, dev.nitrate.core.model.Person(route.personId, route.name), onOpen = nav::openItem, studio = route.studio, year = route.year)
+        }
+        composable<ChannelsRoute> {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.CHANNELS, overlay = false) {
+                dev.nitrate.tv.ui.channels.ChannelsScreen(
+                    container.server,
+                    admin = account?.isAdmin == true,
+                    onPlayQueue = { ids -> nav.playQueue(ids) },
+                    onEdit = { id -> nav.navigate(ChannelEditorRoute(id.orEmpty())) },
+                )
+            }
+        }
+        composable<ChannelEditorRoute> { entry ->
+            val id = entry.toRoute<ChannelEditorRoute>().channelId.ifEmpty { null }
+            dev.nitrate.tv.ui.channels.ChannelEditorScreen(container.server, id) { nav.popBackStack() }
         }
         composable<WatchTogetherRoute> {
             dev.nitrate.tv.ui.together.WatchTogetherScreen(container.syncPlay, account?.name?.let { "$it's group" } ?: "Movie night", chat = container.chat)

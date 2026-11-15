@@ -1071,6 +1071,13 @@ class JellyfinClient(
     // ---- Nitrate Companion (implemented in JellyfinCompanion.kt) ----
 
     private val companionApi = JellyfinCompanion(this)
+    private val channelsApi = JellyfinChannels(this)
+
+    override suspend fun houseChannels() = channelsApi.list()
+    override suspend fun channelGuide(fromMs: Long, toMs: Long) = channelsApi.guide(fromMs, toMs)
+    override suspend fun tuneChannel(channelId: String, count: Int) = channelsApi.tune(channelId, count)
+    override suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean) = channelsApi.save(channel, startOver)
+    override suspend fun deleteChannel(channelId: String) = channelsApi.delete(channelId)
     override suspend fun companion() = companionApi.info()
     override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int) = companionApi.messages(groupId, after, waitMs)
     override suspend fun sendChat(groupId: String, kind: dev.nitrate.core.companion.ChatKind, text: String, positionMs: Long?) =

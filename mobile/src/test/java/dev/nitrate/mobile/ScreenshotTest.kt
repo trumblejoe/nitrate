@@ -163,6 +163,10 @@ class ScreenshotTest {
 
     @Test fun libraryHealth() = shoot("phone-library-health", setup = { c -> c.checkLibraryHealth(null) }) { dev.nitrate.mobile.ui.LibraryHealthScreen(it) }
 
+    @Test fun channels() = shoot("phone-channels") { dev.nitrate.mobile.ui.ChannelsScreen(it) }
+
+    @Test fun channelEditor() = shoot("phone-channel-editor") { dev.nitrate.mobile.ui.ChannelEditorScreen(it, "c1") }
+
     @Test fun licenses() = shoot("phone-licenses") { dev.nitrate.mobile.ui.LicensesScreen() }
 
     @Test fun serverAddresses() = shoot("phone-servers") { dev.nitrate.mobile.ui.ServersScreen(it) }

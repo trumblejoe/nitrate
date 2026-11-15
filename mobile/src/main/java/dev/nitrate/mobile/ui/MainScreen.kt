@@ -1,5 +1,8 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
@@ -111,6 +114,25 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
 }
 
 @Composable
+private fun ChannelsEntry(actions: AppActions) {
+    val companion by actions.container.companion.collectAsState()
+    val enabled by actions.container.plugins.enabledIds.collectAsState(emptySet())
+    if (companion?.features?.contains(dev.nitrate.core.channels.ChannelsPlugin.FEATURE) != true || dev.nitrate.core.channels.ChannelsPlugin.id !in enabled) return
+    Row(
+        Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .pressable({ actions.nav.navigate(ChannelsRoute) }).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Channels", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Your library as TV channels, watched on demand", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("›", style = MaterialTheme.typography.headlineSmall, color = accentColor())
+    }
+}
+
+@Composable
 private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
     // Last seen libraries at once (if any), then the server's current list.
     val cache = actions.container.libraryCache
@@ -135,6 +157,8 @@ private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
                     Text("Library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
                 }
             }
+            // The household's channels, when the server has them and the plugin is on.
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { ChannelsEntry(actions) }
             items(result.getOrThrow(), key = { it.id }) { view ->
                 MediaCard(view, actions.server.cardImage(view, CardShape.WIDE), CardShape.WIDE, onClick = { actions.open(view) }, title = view.name, sharedKey = "lib-${view.id}")
             }

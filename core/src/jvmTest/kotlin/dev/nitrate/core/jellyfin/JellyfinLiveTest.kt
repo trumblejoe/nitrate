@@ -448,6 +448,45 @@ class JellyfinLiveTest {
     }
 
     @Test
+    fun `makes a channel and tunes in`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        assumeTrue("No Companion channels on this server", client.companion()?.features?.contains("channels") == true)
+        val show = client.queryItems(dev.nitrate.core.pages.ItemQuery(types = listOf(dev.nitrate.core.model.ItemKind.SERIES))).firstOrNull()
+        assumeTrue("Needs a show", show != null)
+        val made = client.saveChannel(
+            dev.nitrate.core.channels.HouseChannel(
+                name = "Live test channel", number = 99,
+                sources = listOf(dev.nitrate.core.channels.ChannelSource(dev.nitrate.core.channels.SourceKind.SERIES, show!!.id, show.name)),
+                alignMinutes = 15,
+                blocks = listOf(dev.nitrate.core.channels.ChannelBlock("Late", (0..6).toList(), 23 * 60, 60, listOf(dev.nitrate.core.channels.ChannelSource(dev.nitrate.core.channels.SourceKind.SERIES, show.id, show.name, shuffle = true)))),
+            ),
+        )
+        try {
+            assertTrue(made.id.isNotEmpty())
+            assertEquals("Late", made.blocks.single().name)
+            assertTrue(client.houseChannels().any { it.id == made.id })
+            val now = System.currentTimeMillis()
+            val guide = client.channelGuide(now, now + 6 * 3_600_000L).single { it.channel.id == made.id }
+            assertTrue(guide.programs.isNotEmpty())
+            val tuned = client.tuneChannel(made.id, 5)
+            assertTrue(tuned.isNotEmpty())
+            assertEquals(guide.programs.first { it.endMs > now }.itemId, tuned.first().itemId)
+            // Each queued title is a real item.
+            assertEquals(tuned.first().itemId, client.getItem(tuned.first().itemId).id)
+            val renamed = client.saveChannel(made.copy(name = "Renamed"), startOver = true)
+            assertEquals("Renamed", renamed.name)
+            val bad = runCatching { client.saveChannel(made.copy(alignMinutes = 7)) }
+            println("Refused: ${bad.exceptionOrNull()?.message}")
+            assertTrue(bad.exceptionOrNull()?.message.orEmpty().contains("minute"))
+        } finally {
+            client.deleteChannel(made.id)
+        }
+        assertTrue(client.houseChannels().none { it.id == made.id })
+    }
+
+    @Test
     fun `switches between saved accounts`() = runBlocking {
         assumeTrue("Set JELLYFIN_URL to run", url != null)
         val user = System.getenv("JELLYFIN_USER") ?: "nitrate"

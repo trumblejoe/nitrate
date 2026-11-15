@@ -10,6 +10,13 @@ Features:
   chat of the TV it's next to without playing the video itself.
 - **Shared screenplays**: the owner invites people on the same server, and everyone writes in
   the script at once, seeing each other's cursors. Only the owner and invited people can open it.
+- **Single sign-on**: sign in to the Nitrate apps with your OpenID Connect identity provider
+  (Authentik, Authelia, Keycloak, Pocket ID...). Only existing Jellyfin users can sign in. Phones
+  open the sign-in page in the browser; TVs show a QR code to finish on a phone.
+- **Channels**: TV channels made from your library (shows, movies, collections, playlists,
+  libraries; time slots like Saturday-morning cartoons), granted to everyone or chosen people.
+  Everyone sees the same guide, but nothing is streamed unless someone watches: tuning in plays
+  what's on from its beginning, then the channel in order.
 
 ## Install
 
@@ -23,9 +30,33 @@ server's `plugins/Nitrate Companion_<version>` folder).
 
 Jellyfin 12.4 or later (built against Jellyfin's 12.4 libraries, .NET 10).
 
+## Single sign-on setup
+
+In the identity provider, make an OpenID Connect client (confidential with a secret, or public:
+PKCE is always used) with the redirect address `https://<your server>/Nitrate/Sso/Callback`. Then
+in Jellyfin: **Dashboard → Plugins → Nitrate Companion**, switch on single sign-on and fill in the
+issuer address, client id and secret. The settings page shows the exact redirect address; set a
+public server address there if Jellyfin sits behind a reverse proxy.
+
+People are matched to Jellyfin users by the user name claim (`preferred_username` unless changed),
+then by a verified email that is a Jellyfin user name, then by links an admin writes
+(`subject, email or user name = Jellyfin user`, one per line). A required group can keep everyone
+else out. The id token's signature (the provider's published keys, or the client secret for HMAC),
+issuer, audience, expiry and nonce are checked.
+
 ## API
 
-All calls need a signed-in user (the usual Jellyfin `Authorization` header). JSON is PascalCase,
+The sign-in calls are open (used before signing in):
+
+| Call | What |
+| --- | --- |
+| `GET /Nitrate/Sso` | `{Enabled, Name}`: whether sign-in with the provider is offered, and its name. |
+| `POST /Nitrate/Sso/Start` | `{DeviceId, DeviceName, App, AppVersion}` → `{Code, Secret, Url, ExpiresInMs}`. Show the code and URL (or open it); keep the secret. Lapses after 10 minutes. |
+| `GET /Nitrate/Sso/Login/{code}` | The browser page: shows the device and code to confirm, then goes to the provider. |
+| `GET /Nitrate/Sso/Callback` | Where the provider returns. |
+| `POST /Nitrate/Sso/Poll` | `{Code, Secret}` → `{State: Waiting|Done|Failed|Expired, Message, AccessToken, UserId, UserName}`. Done gives a Jellyfin token for the device, once. |
+
+All other calls need a signed-in user (the usual Jellyfin `Authorization` header). JSON is PascalCase,
 like Jellyfin's own.
 
 | Call | What |
@@ -49,6 +80,22 @@ Shared scripts:
 | `POST /Nitrate/Scripts/{id}/Presence` | `{Cursor, Version}`: where the caller's cursor is. |
 | `GET /Nitrate/Scripts/{id}/Log?from=V&limit=N` | The full history of changes from version `V` (each with who, when, and for text changes the scene it was in). |
 | `GET /Nitrate/Scripts/{id}/At?version=V` | `{Version, Text, Records}`: the script and its story data as they were, rebuilt from the history. |
+
+Channels (everyone sees the channels granted to them; admins see and change all):
+
+| Call | What |
+| --- | --- |
+| `GET /Nitrate/Channels` | The caller's channels: `{Id, Name, Number, Sources, Mix, AlignMinutes, Blocks, Everyone, Users}` (`Users` only for admins). |
+| `GET /Nitrate/Channels/Guide?fromMs=&toMs=` | Each channel with its programs then: `{Channel, Programs: [{ItemId, Start, End, Title, Subtitle, Kind, Block, Available}]}`. `Available` is false for titles the caller may not watch (parental controls, library access). |
+| `GET /Nitrate/Channels/{id}/Tune?count=N` | Tuning in: the program on now and the ones after it, in order, skipping what the caller can't watch. Apps play them as a queue, each from its start. |
+| `POST /Nitrate/Channels` · `POST /Nitrate/Channels/{id}?startOver=` · `DELETE /Nitrate/Channels/{id}` | Admins make, change and delete channels. A change keeps what's on now and each show's place (`startOver=true`: every show from its first episode). |
+
+A source is `{Kind: Series|Item|Collection|Playlist|Library, Id, Name, Shuffle}`; `Mix` is `Rotate` (one from each in
+turn), `Sequential` or `Shuffle`; `AlignMinutes` starts programs on 5/10/15/30/60-minute marks (0: back to back); a
+block is `{Name, Days (0 = Sunday), StartMinute, EndMinute, Sources, Mix}` in the server's time zone. The schedule is
+made a few days ahead when someone opens the guide or tunes in, and kept in `data/nitrate-companion/channels` (one
+JSON file per channel), so everyone sees the same guide. Nothing is ever streamed by the plugin: it reads titles and
+running times from Jellyfin's database only.
 
 A change can also (or instead) carry `Records`: story data changes (`{Id, Type, Set: {field: value or null}, Delete}`)
 for the apps' scene details, lists, entries, links and comments. These never wait on the version (each field takes

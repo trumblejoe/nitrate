@@ -71,6 +71,8 @@ import kotlinx.serialization.Serializable
 /** Admin: the whole server (tasks, activity, devices, users). */
 @Serializable object ServerAdminRoute
 @Serializable object LibraryHealthRoute
+@Serializable object ChannelsRoute
+@Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ServerAddressesRoute
 @Serializable object LicensesRoute
 
@@ -256,6 +258,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }
+            screen<ChannelsRoute> { ChannelsScreen(actions) }
+            screen<ChannelEditorRoute> { entry -> ChannelEditorScreen(actions, entry.toRoute<ChannelEditorRoute>().channelId.ifEmpty { null }) }
             screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<LicensesRoute> { LicensesScreen() }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }

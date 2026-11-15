@@ -257,7 +257,31 @@ class FakeServer : MediaServer {
         )
     }
 
-    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts"))
+    val houseChannels = mutableListOf(
+        dev.nitrate.core.channels.HouseChannel(
+            "c1", "Comfort TV", 3,
+            listOf(dev.nitrate.core.channels.ChannelSource(dev.nitrate.core.channels.SourceKind.SERIES, "series-1", "The Long Night"), dev.nitrate.core.channels.ChannelSource(dev.nitrate.core.channels.SourceKind.ITEM, "m1", "Northern Lights", shuffle = true)),
+            blocks = listOf(dev.nitrate.core.channels.ChannelBlock("Saturday cartoons", listOf(6), 480, 600, listOf(dev.nitrate.core.channels.ChannelSource(dev.nitrate.core.channels.SourceKind.SERIES, "series-1", "The Long Night")))),
+        ),
+        dev.nitrate.core.channels.HouseChannel("c2", "Movie Night", 7, listOf(dev.nitrate.core.channels.ChannelSource(dev.nitrate.core.channels.SourceKind.LIBRARY, "lib-movies", "Movies")), everyone = false, users = listOf("user-1")),
+    )
+    override suspend fun houseChannels() = houseChannels.toList()
+    override suspend fun channelGuide(fromMs: Long, toMs: Long) = houseChannels.mapIndexed { c, ch ->
+        val now = System.currentTimeMillis()
+        val base = now - now % (30 * 60_000L) - c * 15 * 60_000L
+        val titles = if (c == 0) listOf("The Long Night" to "S1 E3 · Embers", "Northern Lights" to "2019", "The Long Night" to "S1 E4 · Thaw", "Northern Lights" to "2019", "The Long Night" to "S1 E5 · Ice")
+        else listOf("Northern Lights" to "2019", "Harbour" to "2021", "Glass Coast" to "2018")
+        val lengths = if (c == 0) listOf(30, 60, 30, 60, 30) else listOf(105, 95, 120)
+        var t = base
+        dev.nitrate.core.channels.ChannelGuide(ch, titles.mapIndexed { i, (title, sub) ->
+            val start = t
+            t += lengths[i] * 60_000L
+            dev.nitrate.core.channels.ChannelProgram("ep-$i", start, t, title, sub, if (sub.startsWith("S")) "Episode" else "Movie", null, i != 3)
+        })
+    }
+    override suspend fun tuneChannel(channelId: String, count: Int) = channelGuide(0, 0).first { it.channel.id == channelId }.programs
+    override suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean) = channel
+    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels"))
 
     /** People to share scripts with, and one script someone shared (its text, at version 3). */
     val people = listOf(dev.nitrate.core.writing.UserRef("user-2", "sam"), dev.nitrate.core.writing.UserRef("user-3", "jo"), dev.nitrate.core.writing.UserRef("user-4", "alex"))

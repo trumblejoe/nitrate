@@ -10,6 +10,7 @@ object MenuStops {
     const val HOME = "home"
     const val PAGES = "pages"
     const val TOGETHER = "together"
+    const val CHANNELS = "channels"
     const val SETTINGS = "settings"
     const val PROFILES = "profiles"
 
@@ -21,7 +22,7 @@ object MenuStops {
 
     /** The menu before the user changes it: Search, Home, each library, pinned pages, then the rest. */
     fun defaults(libraryIds: List<String>, pinnedPageIds: List<String>): List<String> =
-        listOf(SEARCH, HOME) + libraryIds.map(::library) + pinnedPageIds.map(::page) + listOf(PAGES, TOGETHER, SETTINGS, PROFILES)
+        listOf(SEARCH, HOME) + libraryIds.map(::library) + pinnedPageIds.map(::page) + listOf(CHANNELS, PAGES, TOGETHER, SETTINGS, PROFILES)
 
     /**
      * What to show: the saved slots (or [defaults]) without stops that no longer exist (a removed
