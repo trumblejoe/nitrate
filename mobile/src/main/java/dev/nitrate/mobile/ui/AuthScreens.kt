@@ -136,9 +136,11 @@ fun LoginScreen(actions: AppActions, serverUrl: String, serverName: String, onLo
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var quickConnect by remember { mutableStateOf(false) }
+    var sso by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val users by produceState(emptyList<ServerUser>(), serverUrl) { value = actions.server.publicUsers(serverUrl) }
     val quickConnectAvailable by produceState(false, serverUrl) { value = actions.server.quickConnectEnabled(serverUrl) }
+    val provider by produceState<dev.nitrate.core.model.SsoProvider?>(null, serverUrl) { value = actions.server.ssoProvider(serverUrl) }
 
     fun signIn() {
         if (username.isBlank() || busy) return
@@ -156,10 +158,18 @@ fun LoginScreen(actions: AppActions, serverUrl: String, serverName: String, onLo
         QuickConnect(actions, serverUrl, onLoggedIn) { quickConnect = false }
         return
     }
+    provider?.takeIf { sso }?.let {
+        SingleSignOn(actions, serverUrl, it, onLoggedIn) { sso = false }
+        return
+    }
 
     FormPage {
         Text("Sign in", style = MaterialTheme.typography.headlineMedium)
         Text(serverName, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        provider?.let { p ->
+            Button(onClick = { sso = true }, modifier = Modifier.fillMaxWidth()) { Text("Sign in with ${p.name}") }
+            Text("Or with your Jellyfin password:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (users.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(users, key = { it.id }) { user ->
@@ -222,6 +232,53 @@ private fun QuickConnect(actions: AppActions, serverUrl: String, onLoggedIn: () 
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (error != null) Button(onClick = { attempt++ }) { Text("Try again") }
+            TextButton(onClick = onCancel) { Text("Use password instead") }
+        }
+    }
+}
+
+/**
+ * Single sign-on: opens the server's sign-in page in the browser (confirm the code, sign in with
+ * the identity provider) and signs in here once that's done.
+ */
+@Composable
+private fun SingleSignOn(actions: AppActions, serverUrl: String, provider: dev.nitrate.core.model.SsoProvider, onLoggedIn: () -> Unit, onCancel: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var request by remember { mutableStateOf<dev.nitrate.core.model.SsoRequest?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var attempt by remember { mutableStateOf(0) }
+    fun open(url: String) = runCatching {
+        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+    }.onFailure { error = "No browser to open the sign-in page in." }
+    LaunchedEffect(attempt) {
+        error = null
+        request = null
+        runCatching {
+            val started = actions.server.startSso(serverUrl)
+            request = started
+            open(started.url)
+            while (true) {
+                delay(2_000)
+                when (val status = runCatching { actions.server.pollSso(serverUrl, started) }.getOrElse { dev.nitrate.core.model.SsoStatus.Waiting }) {
+                    dev.nitrate.core.model.SsoStatus.Waiting -> Unit
+                    dev.nitrate.core.model.SsoStatus.Done -> return@runCatching
+                    is dev.nitrate.core.model.SsoStatus.Failed -> error(status.message)
+                }
+            }
+        }.onSuccess { onLoggedIn() }.onFailure { error = it.message ?: "Sign-in failed" }
+    }
+    FormPage {
+        Text("Sign in with ${provider.name}", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Finish signing in in your browser, then come back here. The page shows this code:",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(request?.code ?: "…", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 4.sp)
+        if (error == null) Text("Waiting for you to sign in…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (error != null) Button(onClick = { attempt++ }) { Text("Try again") }
+            else request?.let { r -> OutlinedButton(onClick = { open(r.url) }) { Text("Open the page again") } }
             TextButton(onClick = onCancel) { Text("Use password instead") }
         }
     }

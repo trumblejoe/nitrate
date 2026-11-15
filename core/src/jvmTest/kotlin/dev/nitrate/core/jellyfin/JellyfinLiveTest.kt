@@ -416,6 +416,37 @@ class JellyfinLiveTest {
         assertTrue(wrong.isFailure)
     }
 
+    /**
+     * Needs the Companion plugin set up with an identity provider that signs the browser straight
+     * in as JELLYFIN_USER (a test provider); skipped otherwise.
+     */
+    @Test
+    fun `signs in with the identity provider`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val user = System.getenv("JELLYFIN_USER") ?: "nitrate"
+        val tv = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-sso-tv", "SSO TV"), object : SessionStorage {
+            override suspend fun load(): StoredSession? = null
+            override suspend fun save(session: StoredSession) {}
+            override suspend fun clear() {}
+        }, { caps() }, settings)
+        val provider = tv.ssoProvider(url!!)
+        assumeTrue("No single sign-on on this server", provider != null)
+        val request = tv.startSso(url)
+        assertEquals(dev.nitrate.core.model.SsoStatus.Waiting, tv.pollSso(url, request))
+        // The person, in a browser: the confirmation page, then on to the provider and back.
+        val browser = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.ALWAYS).build()
+        fun open(address: String) = browser.send(java.net.http.HttpRequest.newBuilder(java.net.URI(address)).build(), java.net.http.HttpResponse.BodyHandlers.ofString()).body()
+        val page = open(request.url)
+        assertTrue(page, page.contains(request.code))
+        val go = Regex("href=\"([^\"]+/Go/[^\"]+)\"").find(page)!!.groupValues[1]
+        val back = open(go)
+        assertTrue(back, back.contains("Signed in"))
+        assertEquals(dev.nitrate.core.model.SsoStatus.Done, tv.pollSso(url, request))
+        assertEquals(user, tv.account().name)
+        // Collected once.
+        assertTrue(tv.pollSso(url, request) is dev.nitrate.core.model.SsoStatus.Failed)
+    }
+
     @Test
     fun `switches between saved accounts`() = runBlocking {
         assumeTrue("Set JELLYFIN_URL to run", url != null)

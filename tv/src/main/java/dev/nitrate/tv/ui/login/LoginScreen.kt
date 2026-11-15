@@ -44,6 +44,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import dev.nitrate.core.model.InvalidCredentialsException
 import dev.nitrate.core.model.ServerUser
+import dev.nitrate.core.model.SsoProvider
+import dev.nitrate.core.model.SsoStatus
+import dev.nitrate.tv.ui.components.QrCode
 
 private const val QUICK_CONNECT_POLL_MS = 3_000L
 
@@ -59,11 +62,13 @@ fun LoginScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var quickConnect by remember { mutableStateOf(false) }
+    var sso by remember { mutableStateOf(false) }
     val passwordFocus = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
 
     val users by produceState(emptyList<ServerUser>(), serverUrl) { value = repository.publicUsers(serverUrl) }
     val quickConnectAvailable by produceState(false, serverUrl) { value = repository.quickConnectEnabled(serverUrl) }
+    val provider by produceState<SsoProvider?>(null, serverUrl) { value = repository.ssoProvider(serverUrl) }
 
     fun signIn() {
         if (username.isBlank() || busy) return
@@ -79,6 +84,11 @@ fun LoginScreen(
         }
     }
 
+    if (sso && provider != null) {
+        SsoPanel(repository, serverUrl, provider!!, onLoggedIn, onCancel = { sso = false })
+        return
+    }
+
     if (quickConnect) {
         QuickConnectPanel(repository, serverUrl, onLoggedIn, onCancel = { quickConnect = false })
         return
@@ -89,8 +99,9 @@ fun LoginScreen(
             Text("Sign in", style = MaterialTheme.typography.displaySmall)
             Text(serverName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-            if (quickConnectAvailable) {
-                Button(onClick = { quickConnect = true }) { Text("Sign in with Quick Connect") }
+            if (provider != null || quickConnectAvailable) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                provider?.let { Button(onClick = { sso = true }) { Text("Sign in with ${it.name}") } }
+                if (quickConnectAvailable) Button(onClick = { quickConnect = true }) { Text("Sign in with Quick Connect") }
             }
 
             if (users.isNotEmpty()) {
@@ -197,3 +208,67 @@ private fun QuickConnectPanel(
         }
     }
 }
+
+/**
+ * Single sign-on: shows a QR code (and the address and code) to finish signing in with the
+ * server's identity provider on a phone, and signs in once that's done.
+ */
+@Composable
+internal fun SsoPanel(
+    repository: MediaServer,
+    serverUrl: String,
+    provider: SsoProvider,
+    onLoggedIn: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    var request by remember { mutableStateOf<dev.nitrate.core.model.SsoRequest?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var attempt by remember { mutableStateOf(0) }
+    val cancelFocus = remember { FocusRequester() }
+
+    LaunchedEffect(attempt) {
+        error = null
+        request = null
+        runCatching {
+            val started = repository.startSso(serverUrl)
+            request = started
+            while (true) {
+                delay(SSO_POLL_MS)
+                when (val status = runCatching { repository.pollSso(serverUrl, started) }.getOrElse { SsoStatus.Waiting }) {
+                    SsoStatus.Waiting -> Unit
+                    SsoStatus.Done -> return@runCatching
+                    is SsoStatus.Failed -> error(status.message)
+                }
+            }
+        }.onSuccess { onLoggedIn() }
+            .onFailure { error = it.message ?: "Sign-in failed" }
+    }
+    LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
+
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Row(horizontalArrangement = Arrangement.spacedBy(48.dp), verticalAlignment = Alignment.CenterVertically) {
+            request?.let { QrCode(it.url, size = 260.dp) }
+            Column(Modifier.width(560.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Sign in with ${provider.name}", style = MaterialTheme.typography.displaySmall)
+                Text(
+                    "Scan the code with your phone's camera, check the code below matches, and sign in there. " +
+                        "Or open this address on any device:",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                request?.let {
+                    Text(it.url, style = MaterialTheme.typography.titleMedium)
+                    Text(it.code, fontSize = 56.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 6.sp)
+                } ?: Text("…", fontSize = 56.sp)
+                if (error == null) Text("Waiting for you to sign in…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (error != null) Button(onClick = { attempt++ }) { Text("Try again") }
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus)) { Text("Other ways to sign in") }
+                }
+            }
+        }
+    }
+}
+
+private const val SSO_POLL_MS = 2_000L

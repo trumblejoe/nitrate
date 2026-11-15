@@ -125,6 +125,21 @@ internal data class EditsOutDto(val edits: List<EditOutDto> = emptyList(), val v
 @Serializable
 internal data class PresencePostDto(val cursor: Int, val version: Long)
 
+@Serializable
+internal data class SsoInfoDto(val enabled: Boolean = false, val name: String = "")
+
+@Serializable
+internal data class SsoStartDto(val deviceId: String, val deviceName: String, val app: String, val appVersion: String)
+
+@Serializable
+internal data class SsoStartedDto(val code: String, val secret: String, val url: String, val expiresInMs: Long = 600_000)
+
+@Serializable
+internal data class SsoPollPostDto(val code: String, val secret: String)
+
+@Serializable
+internal data class SsoPollDto(val state: String = "Failed", val message: String? = null, val accessToken: String? = null, val userId: String? = null, val userName: String? = null)
+
 /**
  * Calls to the Nitrate Companion server plugin (companion/ in this repository): not Jellyfin's
  * own API, so it isn't in the OpenAPI contract test; its README lists the calls.

@@ -26,6 +26,27 @@ data class ServerUser(val id: String, val name: String, val hasPassword: Boolean
 /** A pending Quick Connect request: show [code] to the user; poll with [secret]. */
 data class QuickConnectRequest(val code: String, val secret: String)
 
+/** The server's identity provider, offered by the Nitrate Companion plugin: "Sign in with [name]". */
+data class SsoProvider(val name: String)
+
+/**
+ * A started single sign-on: show [code] and [url] (a QR code on TV) or open [url] in the
+ * browser; poll with [secret]. Lapses after [expiresInMs].
+ */
+data class SsoRequest(val code: String, val secret: String, val url: String, val expiresInMs: Long)
+
+/** Where a single sign-on is. */
+sealed interface SsoStatus {
+    /** Not finished in the browser yet. */
+    data object Waiting : SsoStatus
+
+    /** Signed in: this device now uses the account. */
+    data object Done : SsoStatus
+
+    /** Refused or lapsed; [message] says why. */
+    data class Failed(val message: String, val expired: Boolean = false) : SsoStatus
+}
+
 /** The server rejected a username/password. */
 class InvalidCredentialsException : Exception("Wrong username or password")
 

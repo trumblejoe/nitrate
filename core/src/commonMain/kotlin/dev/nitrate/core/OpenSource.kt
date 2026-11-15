@@ -28,5 +28,6 @@ object OpenSource {
         OpenSourceComponent("Ktor", APACHE, "Apache-2.0.txt", "https://github.com/ktorio/ktor"),
         OpenSourceComponent("OkHttp and Okio", APACHE, "Apache-2.0.txt", "https://github.com/square/okhttp"),
         OpenSourceComponent("Coil", APACHE, "Apache-2.0.txt", "https://github.com/coil-kt/coil"),
+        OpenSourceComponent("ZXing (QR codes, TV only)", APACHE, "Apache-2.0.txt", "https://github.com/zxing/zxing"),
     )
 }

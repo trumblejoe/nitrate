@@ -429,6 +429,47 @@ class JellyfinClient(
     override suspend fun quickConnectApproved(secret: String): Boolean =
         get("QuickConnect", "Connect", query = mapOf("secret" to secret)).decode<QuickConnectResultDto>().authenticated
 
+    // ---- Single sign-on (Nitrate Companion) ----
+
+    override suspend fun ssoProvider(serverUrl: String): dev.nitrate.core.model.SsoProvider? = runCatching {
+        selectServer(serverUrl)
+        get("Nitrate", "Sso").decode<SsoInfoDto>().takeIf { it.enabled }?.let { dev.nitrate.core.model.SsoProvider(it.name) }
+    }.getOrNull()
+
+    override suspend fun startSso(serverUrl: String): dev.nitrate.core.model.SsoRequest {
+        selectServer(serverUrl)
+        val started = try {
+            post<SsoStartDto>("Nitrate", "Sso", "Start", body = SsoStartDto(identity.deviceId, identity.deviceName, identity.clientName, identity.version)).decode<SsoStartedDto>()
+        } catch (e: ClientRequestException) {
+            error(e.response.bodyAsText().trim('"').ifBlank { "Single sign-on isn't available on this server." })
+        } catch (e: io.ktor.client.plugins.ServerResponseException) {
+            error(e.response.bodyAsText().trim('"').ifBlank { "Single sign-on isn't available on this server." })
+        }
+        return dev.nitrate.core.model.SsoRequest(started.code, started.secret, started.url, started.expiresInMs)
+    }
+
+    override suspend fun pollSso(serverUrl: String, request: dev.nitrate.core.model.SsoRequest): dev.nitrate.core.model.SsoStatus {
+        selectServer(serverUrl)
+        val poll = post<SsoPollPostDto>("Nitrate", "Sso", "Poll", body = SsoPollPostDto(request.code, request.secret)).decode<SsoPollDto>()
+        return when (poll.state) {
+            "Waiting" -> dev.nitrate.core.model.SsoStatus.Waiting
+            "Done" -> {
+                val token = requireNotNull(poll.accessToken) { "Server returned no access token" }
+                // Read the account with its new token, as a password sign-in returns it.
+                token(token)
+                val me = get("Users", "Me").decode<UserDto>()
+                finishLogin(AuthenticationResultDto(me, token))
+                dev.nitrate.core.model.SsoStatus.Done
+            }
+            "Expired" -> dev.nitrate.core.model.SsoStatus.Failed(poll.message ?: "This sign-in has lapsed. Start again.", expired = true)
+            else -> dev.nitrate.core.model.SsoStatus.Failed(poll.message ?: "The sign-in was refused.")
+        }
+    }
+
+    private fun token(value: String) {
+        token = value
+    }
+
     // ---- Live TV ----
 
     private val liveTv = JellyfinLiveTv(this)

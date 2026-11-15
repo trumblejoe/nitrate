@@ -59,6 +59,10 @@ class FakeServer : MediaServer {
     override suspend fun startQuickConnect(serverUrl: String) = QuickConnectRequest("482913", "s")
     override suspend fun quickConnectApproved(secret: String) = false
     override suspend fun finishQuickConnect(serverUrl: String, secret: String) = Unit
+    override suspend fun ssoProvider(serverUrl: String) = dev.nitrate.core.model.SsoProvider("Home ID")
+    override suspend fun startSso(serverUrl: String) =
+        dev.nitrate.core.model.SsoRequest("K4Q8-RUT2", "s", "http://192.168.1.20:8096/Nitrate/Sso/Login/K4Q8RUT2", 600_000)
+    override suspend fun pollSso(serverUrl: String, request: dev.nitrate.core.model.SsoRequest) = dev.nitrate.core.model.SsoStatus.Waiting
     override suspend fun logout() = Unit
     /** Per-user storage, kept in memory: display-preferences id → its custom prefs. */
     val customPrefs = mutableMapOf<String, Map<String, String>>()

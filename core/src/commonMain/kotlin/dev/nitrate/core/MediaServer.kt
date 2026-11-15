@@ -75,6 +75,15 @@ interface MediaServer {
     suspend fun startQuickConnect(serverUrl: String): QuickConnectRequest
     suspend fun quickConnectApproved(secret: String): Boolean
     suspend fun finishQuickConnect(serverUrl: String, secret: String)
+
+    /** The identity provider the server offers sign-in with (Nitrate Companion), or null. */
+    suspend fun ssoProvider(serverUrl: String): dev.nitrate.core.model.SsoProvider? = null
+
+    /** Starts signing in with the identity provider. */
+    suspend fun startSso(serverUrl: String): dev.nitrate.core.model.SsoRequest = unsupported()
+
+    /** Checks a started sign-in; once it's [dev.nitrate.core.model.SsoStatus.Done] this device is signed in. */
+    suspend fun pollSso(serverUrl: String, request: dev.nitrate.core.model.SsoRequest): dev.nitrate.core.model.SsoStatus = unsupported()
     /** Signs out of the current account and forgets it here (other saved accounts stay). */
     suspend fun logout()
 
