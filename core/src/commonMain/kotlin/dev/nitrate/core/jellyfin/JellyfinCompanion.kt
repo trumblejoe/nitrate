@@ -6,6 +6,19 @@ import dev.nitrate.core.companion.ChatMessage
 import dev.nitrate.core.companion.ChatPage
 import dev.nitrate.core.companion.ChatRejected
 import dev.nitrate.core.companion.CompanionInfo
+import dev.nitrate.core.writing.NotScriptOwner
+import dev.nitrate.core.writing.ScriptEdit
+import dev.nitrate.core.writing.ScriptEditResult
+import dev.nitrate.core.writing.ScriptEditsPage
+import dev.nitrate.core.writing.ScriptPresence
+import dev.nitrate.core.writing.ScriptTooFarBehind
+import dev.nitrate.core.writing.ScriptUnavailable
+import dev.nitrate.core.writing.SharedScriptDoc
+import dev.nitrate.core.writing.SharedScriptInfo
+import dev.nitrate.core.writing.TextOperation
+import dev.nitrate.core.writing.UserRef
+import io.ktor.client.request.delete
+import io.ktor.client.request.put
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
@@ -40,6 +53,46 @@ internal data class ChatPostDto(val text: String, val kind: String, val position
 
 @Serializable
 internal data class ProblemDto(val detail: String? = null)
+
+@Serializable
+internal data class UserRefDto(val id: String, val name: String = "")
+
+@Serializable
+internal data class ScriptInfoDto(
+    val id: String,
+    val title: String = "Untitled",
+    val owner: UserRefDto,
+    val members: List<UserRefDto> = emptyList(),
+    val version: Long = 0,
+    val updatedAt: String? = null,
+)
+
+@Serializable
+internal data class ScriptDocDto(val info: ScriptInfoDto, val text: String = "", val version: Long = 0)
+
+@Serializable
+internal data class ScriptCreateDto(val text: String, val members: List<String>)
+
+@Serializable
+internal data class ScriptMembersDto(val members: List<String>)
+
+@Serializable
+internal data class EditPostDto(val editId: String, val baseVersion: Long, val ops: kotlinx.serialization.json.JsonArray, val cursor: Int?)
+
+@Serializable
+internal data class EditResultDto(val accepted: Boolean, val version: Long)
+
+@Serializable
+internal data class EditOutDto(val version: Long, val editId: String, val userId: String, val userName: String = "", val ops: kotlinx.serialization.json.JsonArray)
+
+@Serializable
+internal data class PresenceOutDto(val userId: String, val userName: String = "", val cursor: Int, val version: Long)
+
+@Serializable
+internal data class EditsOutDto(val edits: List<EditOutDto> = emptyList(), val version: Long, val presence: List<PresenceOutDto> = emptyList(), val stamp: Long = 0)
+
+@Serializable
+internal data class PresencePostDto(val cursor: Int, val version: Long)
 
 /**
  * Calls to the Nitrate Companion server plugin (companion/ in this repository): not Jellyfin's
@@ -92,6 +145,101 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
         }
         return JellyfinJson.decodeFromString<ChatMessageDto>(response.bodyAsText()).toModel()
     }
+
+    // ---- Shared scripts ----
+
+    suspend fun sharingUsers(name: String?): List<UserRef> =
+        call { client.get("Nitrate", "Users", query = mapOf("name" to name)) }.decode<List<UserRefDto>>().map { it.toModel() }
+
+    suspend fun sharedScripts(): List<SharedScriptInfo> =
+        call { client.get("Nitrate", "Scripts") }.decode<List<ScriptInfoDto>>().map { it.toModel() }
+
+    suspend fun createSharedScript(text: String, members: List<String>): SharedScriptDoc =
+        call { client.http.post(client.url("Nitrate", "Scripts")) { json(ScriptCreateDto(text, members)) } }.decode<ScriptDocDto>().toModel()
+
+    suspend fun sharedScript(id: String): SharedScriptDoc =
+        call { client.get("Nitrate", "Scripts", id) }.decode<ScriptDocDto>().toModel()
+
+    suspend fun setScriptMembers(id: String, members: List<String>): SharedScriptInfo =
+        call { client.http.put(client.url("Nitrate", "Scripts", id, "Members")) { json(ScriptMembersDto(members)) } }.decode<ScriptInfoDto>().toModel()
+
+    suspend fun leaveSharedScript(id: String) {
+        call { client.http.post(client.url("Nitrate", "Scripts", id, "Leave")) { with(client) { auth() } } }
+    }
+
+    suspend fun deleteSharedScript(id: String) {
+        call { client.http.delete(client.url("Nitrate", "Scripts", id)) { with(client) { auth() } } }
+    }
+
+    suspend fun sendScriptEdit(id: String, editId: String, baseVersion: Long, op: TextOperation, cursor: Int?): ScriptEditResult {
+        val body = EditPostDto(editId, baseVersion, opsToJson(op), cursor)
+        val dto = call { client.http.post(client.url("Nitrate", "Scripts", id, "Edits")) { json(body) } }.decode<EditResultDto>()
+        return ScriptEditResult(dto.accepted, dto.version)
+    }
+
+    suspend fun scriptEdits(id: String, after: Long, seen: Long?, waitMs: Int): ScriptEditsPage {
+        val dto = call {
+            client.http.get(client.url("Nitrate", "Scripts", id, "Edits", query = mapOf("after" to after, "seen" to seen, "waitMs" to waitMs))) {
+                with(client) { auth() }
+                timeout {
+                    requestTimeoutMillis = waitMs + 15_000L
+                    socketTimeoutMillis = waitMs + 15_000L
+                }
+            }
+        }.decode<EditsOutDto>()
+        return ScriptEditsPage(
+            edits = dto.edits.map { ScriptEdit(it.version, it.editId, normalizeId(it.userId), it.userName, opsFromJson(it.ops)) },
+            version = dto.version,
+            presence = dto.presence.map { ScriptPresence(normalizeId(it.userId), it.userName, it.cursor, it.version) },
+            stamp = dto.stamp,
+        )
+    }
+
+    suspend fun sendScriptPresence(id: String, cursor: Int, version: Long) {
+        call { client.http.post(client.url("Nitrate", "Scripts", id, "Presence")) { json(PresencePostDto(cursor, version)) } }
+    }
+
+    private inline fun <reified T> io.ktor.client.request.HttpRequestBuilder.json(body: T) {
+        with(client) { auth() }
+        contentType(ContentType.Application.Json)
+        setBody(body)
+    }
+
+    private suspend inline fun <reified T> io.ktor.client.statement.HttpResponse.decode(): T = JellyfinJson.decodeFromString(bodyAsText())
+
+    /** Turns the plugin's refusals into what they mean. */
+    private suspend fun call(block: suspend () -> io.ktor.client.statement.HttpResponse): io.ktor.client.statement.HttpResponse = try {
+        block()
+    } catch (e: ClientRequestException) {
+        val why = runCatching { JellyfinJson.decodeFromString<ProblemDto>(e.response.bodyAsText()).detail }.getOrNull()
+        throw when (e.response.status) {
+            HttpStatusCode.NotFound -> ScriptUnavailable()
+            HttpStatusCode.Forbidden -> NotScriptOwner(why ?: "Only the script's owner can do that.")
+            HttpStatusCode.Gone -> ScriptTooFarBehind()
+            HttpStatusCode.BadRequest -> IllegalArgumentException(why ?: "The server refused that change.")
+            else -> e
+        }
+    }
+
+    private fun opsToJson(op: TextOperation) = kotlinx.serialization.json.JsonArray(
+        TextOperation.toWire(op).map { if (it is String) kotlinx.serialization.json.JsonPrimitive(it) else kotlinx.serialization.json.JsonPrimitive(it as Int) },
+    )
+
+    private fun opsFromJson(ops: kotlinx.serialization.json.JsonArray) = TextOperation.fromWire(
+        ops.map { e ->
+            val p = e as kotlinx.serialization.json.JsonPrimitive
+            if (p.isString) p.content else p.content.toInt()
+        },
+    )
+
+    private fun UserRefDto.toModel() = UserRef(normalizeId(id), name)
+
+    private fun ScriptInfoDto.toModel() = SharedScriptInfo(
+        id = normalizeId(id), title = title, owner = owner.toModel(), members = members.map { it.toModel() }, version = version,
+        updatedAtMs = updatedAt?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() } ?: 0L,
+    )
+
+    private fun ScriptDocDto.toModel() = SharedScriptDoc(info.toModel(), text, version)
 
     private fun ChatMessageDto.toModel() = ChatMessage(
         seq = seq,

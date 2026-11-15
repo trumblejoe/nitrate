@@ -17,6 +17,9 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeout
+import dev.nitrate.core.writing.SharedScriptSession
+import dev.nitrate.core.writing.ScriptUnavailable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -674,5 +677,48 @@ class JellyfinLiveTest {
         }
         val gone = runCatching { phone.chatMessages(tv.syncPlayGroups().firstOrNull()?.id ?: "00000000-0000-0000-0000-000000000000", -1, 0) }.exceptionOrNull()
         assertTrue("$gone", gone is dev.nitrate.core.companion.ChatForbidden)
+    }
+
+    @Test
+    fun `two people write in a shared script at once`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        fun device(id: String) = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", id, id), MemorySessionStorage(), { caps() }, settings)
+        val owner = device("nitrate-live-script-owner")
+        owner.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        assumeTrue("The Nitrate Companion plugin with shared scripts isn't installed", owner.companion()?.features?.contains("scripts") == true)
+        assumeTrue("Needs an admin to make a second user", owner.account().isAdmin)
+        // A second writer, made once on this test server.
+        val writerName = "nitrate-writer"
+        val writerUser = owner.users().firstOrNull { it.name == writerName } ?: owner.createUser(writerName, "writer-pw")
+        val writer = device("nitrate-live-script-writer")
+        writer.login(url, writerName, "writer-pw")
+
+        assertTrue(owner.sharingUsers().any { it.id == writerUser.id })
+        val doc = owner.createSharedScript("Title: Night Shift\n\nINT. DINER - NIGHT\n\nSam waits.", listOf(writerUser.id))
+        val id = doc.info.id
+        try {
+            assertEquals("Night Shift", doc.info.title)
+            assertTrue(writer.sharedScripts().any { it.id == id })
+            fun session(client: JellyfinClient, who: String) = SharedScriptSession(client, this, id, SharedScriptSession.fresh(doc), {}, {}) { "$who-" + java.util.UUID.randomUUID() }
+            val a = session(owner, "owner").also { it.start() }
+            val b = session(writer, "writer").also { it.start() }
+            delay(500)
+            a.edit(a.text.value + " Rain on the glass.", a.text.value.length + 19)
+            b.edit(b.text.value.replace("NIGHT", "LATE NIGHT"), 20)
+            val expected = "Title: Night Shift\n\nINT. DINER - LATE NIGHT\n\nSam waits. Rain on the glass."
+            withTimeout(15_000) {
+                while (a.text.value != expected || b.text.value != expected || a.pending.value || b.pending.value) delay(100)
+            }
+            assertEquals(expected, writer.sharedScript(id).text)
+            a.close(); b.close()
+
+            // Someone who wasn't invited can't open it; once removed, the writer can't either.
+            owner.setScriptMembers(id, emptyList())
+            assertTrue(runCatching { writer.sharedScript(id) }.exceptionOrNull() is ScriptUnavailable)
+            assertTrue(runCatching { writer.deleteSharedScript(id) }.exceptionOrNull() is ScriptUnavailable)
+        } finally {
+            owner.deleteSharedScript(id)
+        }
+        assertTrue(owner.sharedScripts().none { it.id == id })
     }
 }

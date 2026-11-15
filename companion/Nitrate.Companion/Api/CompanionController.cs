@@ -58,6 +58,8 @@ public class CompanionController : ControllerBase
             features.Add("chat");
         }
 
+        features.Add("scripts");
+
         return new CompanionInfo(typeof(Plugin).Assembly.GetName().Version?.ToString(3) ?? "0", features);
     }
 

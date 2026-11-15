@@ -300,6 +300,39 @@ interface MediaServer {
     /** Groups this user can join. */
     // ---- Nitrate Companion (server plugin) ----
 
+    /** People a script can be shared with; [name] finds one exactly (including hidden accounts). */
+    suspend fun sharingUsers(name: String? = null): List<dev.nitrate.core.writing.UserRef> = unsupported()
+
+    /** Scripts shared with or by this user. */
+    suspend fun sharedScripts(): List<dev.nitrate.core.writing.SharedScriptInfo> = unsupported()
+
+    /** Shares [text] as a new script owned by this user, with [members] invited. */
+    suspend fun createSharedScript(text: String, members: List<String>): dev.nitrate.core.writing.SharedScriptDoc = unsupported()
+
+    /** A shared script's text now; throws [dev.nitrate.core.writing.ScriptUnavailable] when it's not shared with this user. */
+    suspend fun sharedScript(id: String): dev.nitrate.core.writing.SharedScriptDoc = unsupported()
+
+    /** Sets who a script is shared with (its owner only). */
+    suspend fun setScriptMembers(id: String, members: List<String>): dev.nitrate.core.writing.SharedScriptInfo = unsupported()
+
+    /** Stops sharing a script with this user (they keep their own copy). */
+    suspend fun leaveSharedScript(id: String): Unit = unsupported()
+
+    /** Deletes a shared script for everyone (its owner only; everyone keeps their own copy). */
+    suspend fun deleteSharedScript(id: String): Unit = unsupported()
+
+    /** Sends a change made on [baseVersion]; taken only when that's still the latest version. */
+    suspend fun sendScriptEdit(id: String, editId: String, baseVersion: Long, op: dev.nitrate.core.writing.TextOperation, cursor: Int?): dev.nitrate.core.writing.ScriptEditResult = unsupported()
+
+    /**
+     * Changes after [after] and who else is here, waiting up to [waitMs] when nothing has
+     * happened since [seen]. Throws [dev.nitrate.core.writing.ScriptTooFarBehind] when those changes are gone.
+     */
+    suspend fun scriptEdits(id: String, after: Long, seen: Long?, waitMs: Int): dev.nitrate.core.writing.ScriptEditsPage = unsupported()
+
+    /** Says where this user's cursor is in a shared script. */
+    suspend fun sendScriptPresence(id: String, cursor: Int, version: Long): Unit = unsupported()
+
     /** The Nitrate Companion plugin on this server, or null when it isn't installed. */
     suspend fun companion(): dev.nitrate.core.companion.CompanionInfo? = null
 

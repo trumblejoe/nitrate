@@ -1034,6 +1034,17 @@ class JellyfinClient(
     override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int) = companionApi.messages(groupId, after, waitMs)
     override suspend fun sendChat(groupId: String, kind: dev.nitrate.core.companion.ChatKind, text: String, positionMs: Long?) =
         companionApi.send(groupId, kind, text, positionMs)
+    override suspend fun sharingUsers(name: String?) = companionApi.sharingUsers(name)
+    override suspend fun sharedScripts() = companionApi.sharedScripts()
+    override suspend fun createSharedScript(text: String, members: List<String>) = companionApi.createSharedScript(text, members)
+    override suspend fun sharedScript(id: String) = companionApi.sharedScript(id)
+    override suspend fun setScriptMembers(id: String, members: List<String>) = companionApi.setScriptMembers(id, members)
+    override suspend fun leaveSharedScript(id: String) = companionApi.leaveSharedScript(id)
+    override suspend fun deleteSharedScript(id: String) = companionApi.deleteSharedScript(id)
+    override suspend fun sendScriptEdit(id: String, editId: String, baseVersion: Long, op: dev.nitrate.core.writing.TextOperation, cursor: Int?) =
+        companionApi.sendScriptEdit(id, editId, baseVersion, op, cursor)
+    override suspend fun scriptEdits(id: String, after: Long, seen: Long?, waitMs: Int) = companionApi.scriptEdits(id, after, seen, waitMs)
+    override suspend fun sendScriptPresence(id: String, cursor: Int, version: Long) = companionApi.sendScriptPresence(id, cursor, version)
 
     // ---- SyncPlay ----
 

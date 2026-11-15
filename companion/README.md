@@ -8,6 +8,8 @@ Features:
 - **Chat during watch-together** (SyncPlay): text and quick reactions, stamped with the time in the
   movie. Anyone watching in the group can chat, from any of their devices, so a phone can join the
   chat of the TV it's next to without playing the video itself.
+- **Shared screenplays**: the owner invites people on the same server, and everyone writes in
+  the script at once, seeing each other's cursors. Only the owner and invited people can open it.
 
 ## Install
 
@@ -31,6 +33,23 @@ like Jellyfin's own.
 | `GET /Nitrate/Companion` | `{Version, Features}`; apps use it to tell the plugin is there. |
 | `GET /Nitrate/Chat/{groupId}/Messages?after=N&waitMs=M` | Messages after `N` (-1: the recent ones), waiting up to `M` ms (at most 30 s) for one: long polling. `{Messages, Latest}`. |
 | `POST /Nitrate/Chat/{groupId}/Messages` | `{Text, Kind: Text|Reaction, PositionMs}`; 400 for an empty, too long (500) or not-one-emoji reaction, 429 when sending too fast. |
+
+Shared scripts:
+
+| Call | What |
+| --- | --- |
+| `GET /Nitrate/Users?name=` | People a script can be shared with (`{Id, Name}`), or the one named exactly. The list can be turned off in the plugin's settings (`ListUsersForSharing`). |
+| `GET /Nitrate/Scripts` | Scripts the caller owns or was invited to. |
+| `POST /Nitrate/Scripts` | `{Text, Members}`: shares a new script, owned by the caller. |
+| `GET /Nitrate/Scripts/{id}` | `{Info, Text, Version}`. 404 when it isn't shared with the caller. |
+| `PUT /Nitrate/Scripts/{id}/Members` | `{Members}` (the owner only, else 403). |
+| `POST /Nitrate/Scripts/{id}/Leave` · `DELETE /Nitrate/Scripts/{id}` | A member stops sharing; the owner deletes it for everyone (each app keeps its own copy). |
+| `POST /Nitrate/Scripts/{id}/Edits` | `{EditId, BaseVersion, Ops, Cursor}` → `{Accepted, Version}`. Taken only when `BaseVersion` is the latest: otherwise the app catches up, rebases its change and sends it again (same `EditId` is never applied twice). `Ops` walks the whole text: a positive number keeps, a negative deletes, a string inserts (UTF-16 lengths). |
+| `GET /Nitrate/Scripts/{id}/Edits?after=V&seen=S&waitMs=M` | Changes after `V` and others' cursors; waits for something new (long polling). 410 when those changes are no longer kept (the last 2000): load the script again. |
+| `POST /Nitrate/Scripts/{id}/Presence` | `{Cursor, Version}`: where the caller's cursor is. |
+
+Shared scripts are kept in the server's data folder (`data/nitrate-companion/scripts`, one JSON
+file each), so they survive restarts and plugin updates.
 
 Only people watching in the SyncPlay group (on any of their devices) may read or write its chat
 (otherwise 403). Chat lives in the server's memory: a day after its last message, or when the
