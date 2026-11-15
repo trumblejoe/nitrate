@@ -61,7 +61,7 @@ class RecapTest {
         val items = listOf(ep(1, 1, 60), ep(1, 2, 50), ep(1, 3), ep(1, 4))
         assertNull(Recaps.forPlaylist(list, items, prefs, now))
         val recap = Recaps.forPlaylist(list, items, prefs.copy(recapPlaylists = setOf("pl")), now)!!
-        assertEquals("2 of 4 watched · next: S1 E3 · Episode 3", recap.where)
+        assertEquals("Next: S1 E3 · Episode 3", recap.where)
         assertEquals("s1-e3", recap.next.id)
         assertEquals(listOf("s1-e4"), recap.then)
         assertEquals("7 weeks ago", recap.since)

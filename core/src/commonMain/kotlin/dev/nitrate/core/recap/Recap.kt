@@ -18,7 +18,7 @@ data class RecapClip(val item: MediaItem, val startMs: Long, val endMs: Long)
 data class Recap(
     /** "The Night Reel" or the playlist's name. */
     val title: String,
-    /** "You're on S2 E5" (never how many are left) or, for a playlist, "6 of 12 watched · next: Thor". */
+    /** "You're on S2 E5" or, for a playlist, "Next: Thor" (never how many are left). */
     val where: String,
     /** "3 weeks ago". */
     val since: String,
@@ -107,7 +107,8 @@ object Recaps {
         val watched = items.take(nextIndex)
         val lastMs = watched.mapNotNull { it.user.lastPlayedMs }.maxOrNull()
         if (!due(prefs, lastMs, nowMs)) return null
-        val where = "$nextIndex of ${items.size} watched · next: ${label(next)}"
+        // Never how many are left (or watched out of how many): only what's next.
+        val where = "Next: ${label(next)}"
         return Recap(playlist.name, where, Recaps.since(lastMs!!, nowMs), watched.takeLast(CARDS), clip(watched.last(), segments), next, items.drop(nextIndex + 1).map { it.id })
     }
 
