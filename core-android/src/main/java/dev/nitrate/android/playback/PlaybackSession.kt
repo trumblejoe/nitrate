@@ -470,11 +470,46 @@ class PlaybackSession(
     }
 
     /** Starts (or restarts) playback, cancelling a start still waiting on the server. */
-    private fun restart(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false, before: (suspend () -> Unit)? = null) {
+    private fun restart(
+        startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false,
+        sourceId: String? = null, before: (suspend () -> Unit)? = null,
+    ) {
         startJob?.cancel()
         startJob = scope.launch {
             before?.invoke()
-            start(startMs, forceTranscode, audioIndex, subtitleIndex, useMemory)
+            start(startMs, forceTranscode, audioIndex, subtitleIndex, useMemory, sourceId)
+        }
+    }
+
+    /**
+     * True while this item converts because Nitrate asked for it after direct play failed (not
+     * because the server decided), so track changes keep converting and the fixer can offer a retry.
+     */
+    @Volatile private var forcedTranscode = false
+
+    /** Why the current item doesn't play as it is here, and what would fix it. */
+    suspend fun diagnosis(caps: dev.nitrate.core.playback.DeviceCapabilities): dev.nitrate.core.playback.PlaybackDiagnosis? {
+        val p = _plan.value ?: return null
+        if (localProgress != null) return null
+        return dev.nitrate.core.playback.PlaybackDoctor.diagnose(p, caps, settings.current(), forcedTranscode)
+    }
+
+    /** Applies a fix from [diagnosis] and asks the server again from the same spot. */
+    fun applyFix(fix: dev.nitrate.core.playback.PlaybackFix) {
+        val p = _plan.value ?: return
+        val at = exo.currentPosition
+        log("Fix: ${fix.label}")
+        when (fix) {
+            is dev.nitrate.core.playback.PlaybackFix.UseAudio -> { forcedTranscode = false; selectTrack(StreamKind.AUDIO, fix.index) }
+            is dev.nitrate.core.playback.PlaybackFix.UseSubtitle -> { forcedTranscode = false; selectTrack(StreamKind.SUBTITLE, fix.index) }
+            is dev.nitrate.core.playback.PlaybackFix.UseVersion -> {
+                _item.value?.let { VersionChoices.set(it.id, fix.versionId) }
+                restart(at, forceTranscode = false, sourceId = fix.versionId)
+            }
+            is dev.nitrate.core.playback.PlaybackFix.Retry ->
+                restart(at, forceTranscode = false, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex)
+            is dev.nitrate.core.playback.PlaybackFix.Change ->
+                restart(at, forceTranscode = false, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex, before = { settings.update(fix.change::apply) })
         }
     }
 
@@ -487,8 +522,9 @@ class PlaybackSession(
         _error.value = null
     }
 
-    private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false) {
+    private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false, sourceId: String? = null) {
         val current = _item.value ?: return
+        forcedTranscode = forceTranscode
         // A show's remembered languages, matched to this episode's streams.
         var audio = audioIndex
         var subtitle = subtitleIndex
@@ -514,7 +550,7 @@ class PlaybackSession(
                 audioIndex = audioIndex,
                 subtitleIndex = subtitleIndex,
                 // The same version on a track change; otherwise the one chosen on the details page, if any.
-                mediaSourceId = _plan.value?.takeIf { it.itemId == current.id }?.mediaSourceId ?: VersionChoices[current.id],
+                mediaSourceId = sourceId ?: _plan.value?.takeIf { it.itemId == current.id }?.mediaSourceId ?: VersionChoices[current.id],
             )
         }.onSuccess { p ->
             // The plan this replaces (a track change): stopped now that the new one exists, so the
@@ -569,7 +605,9 @@ class PlaybackSession(
         } else {
             // The current stream plays on until the new one is ready (start() then stops it on the server).
             val at = exo.currentPosition
-            restart(at, forceTranscode = p.method == PlayMethod.TRANSCODE, audioIndex = updated.audioIndex, subtitleIndex = updated.subtitleIndex)
+            // Converting stays on only when Nitrate forced it; otherwise the server decides afresh
+            // (a new track, like text subtitles instead of burned-in ones, may play as it is).
+            restart(at, forceTranscode = forcedTranscode, audioIndex = updated.audioIndex, subtitleIndex = updated.subtitleIndex)
         }
     }
 
@@ -656,7 +694,7 @@ class PlaybackSession(
             val added = source?.streams?.filter { it.kind == StreamKind.SUBTITLE && it.index !in before }
                 ?.let { list -> list.firstOrNull { it.language.equals(language, ignoreCase = true) } ?: list.firstOrNull() }
             // A new playback session (the server's new subtitle list); start() stops the old one.
-            start(at, forceTranscode = p.method == PlayMethod.TRANSCODE, audioIndex = p.audioIndex, subtitleIndex = added?.index ?: p.subtitleIndex)
+            start(at, forceTranscode = forcedTranscode, audioIndex = p.audioIndex, subtitleIndex = added?.index ?: p.subtitleIndex)
         }
     }
 

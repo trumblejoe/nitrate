@@ -51,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -171,6 +172,10 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) RoundAction(Icons.Default.Add, "Add to", onClick = { adding = true })
                         if (adding) AddToListDialog(actions, item) { adding = false }
                         if (account?.isAdmin == true) RoundAction(Icons.Default.Edit, "Manage", onClick = { actions.nav.navigate(ManageItemRoute(item.id)) })
+                        // How it would play here, why, and fixes before pressing play.
+                        var checking by remember { mutableStateOf(false) }
+                        if (item.isPlayable && !music) RoundAction(Icons.Default.Info, "How it plays", onClick = { checking = true })
+                        if (checking) CheckPlaybackDialog(actions, item) { checking = false }
                     }
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
                     item.overview?.takeIf { prefs.overview && !prefs.isSpoiler(item) }?.let { ExpandableText(it) }

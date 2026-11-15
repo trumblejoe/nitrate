@@ -84,6 +84,9 @@ fun DetailsScreen(
     onPlayQueue: (List<MediaItem>) -> Unit = {},
     /** Opens everything from a studio or a year: (title, studio, year). */
     onBrowse: (String, String?, Int?) -> Unit = { _, _, _ -> },
+    /** How an item would play here and why (the fixer); null shows the server's raw decision. */
+    checkPlayback: (suspend (MediaItem) -> dev.nitrate.core.playback.PlaybackDiagnosis)? = null,
+    applyPlaybackFix: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit = { _, _ -> },
 ) {
     val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
     val vm = viewModel(key = "details-$itemId") {
@@ -120,7 +123,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix)
             }
 
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -297,6 +300,8 @@ private fun Header(
     onPlayQueue: (List<MediaItem>) -> Unit,
     onOpen: (MediaItem) -> Unit,
     onBrowse: (String, String?, Int?) -> Unit,
+    checkPlayback: (suspend (MediaItem) -> dev.nitrate.core.playback.PlaybackDiagnosis)?,
+    applyPlaybackFix: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit,
 ) {
     // Music pages have more buttons in a row.
     val wideHeader = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
@@ -376,7 +381,10 @@ private fun Header(
             if (item.isPlayable) {
                 var showInfo by remember { mutableStateOf(false) }
                 OutlinedButton(onClick = { showInfo = true }) { Text("Playback info") }
-                if (showInfo) PlaybackDecisionDialog(repository, item) { showInfo = false }
+                if (showInfo) {
+                    if (checkPlayback != null) CheckPlaybackDialog(item, checkPlayback, applyPlaybackFix) { showInfo = false }
+                    else PlaybackDecisionDialog(repository, item) { showInfo = false }
+                }
             }
             if (item.isPlayable || item.kind == ItemKind.SERIES) {
                 var adding by remember { mutableStateOf(false) }
@@ -470,6 +478,30 @@ private fun PlaybackDecisionDialog(repository: MediaServer, item: MediaItem, onD
             else -> PlaybackInfoPanel(p.getOrThrow(), videoDecoder = null, audioDecoder = null, modifier = Modifier.focusable())
         }
     }
+}
+
+/** How the item would play on this TV, why, and fixes that can be made before playing. */
+@Composable
+private fun CheckPlaybackDialog(
+    item: MediaItem,
+    check: suspend (MediaItem) -> dev.nitrate.core.playback.PlaybackDiagnosis,
+    apply: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Asked again after each fix, so the dialog shows what the fix changed.
+    var round by remember { mutableStateOf(0) }
+    val result by produceState<Result<dev.nitrate.core.playback.PlaybackDiagnosis>?>(null, item.id, round) {
+        value = null
+        value = runCatching { check(item) }
+    }
+    val scope = rememberCoroutineScope()
+    dev.nitrate.tv.ui.player.PlaybackFixDialog(
+        diagnosis = result?.getOrNull(),
+        error = result?.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
+        onFix = { fix -> scope.launch { apply(item, fix); round++ } },
+        onDismiss = onDismiss,
+        canApply = { it is dev.nitrate.core.playback.PlaybackFix.Change || it is dev.nitrate.core.playback.PlaybackFix.UseVersion },
+    )
 }
 
 /** "Version: Auto" — picks which copy of the title plays (4K, 1080p...), or the best for this TV. */

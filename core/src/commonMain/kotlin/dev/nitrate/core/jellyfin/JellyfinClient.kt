@@ -14,6 +14,7 @@ import dev.nitrate.core.model.MediaSource
 import dev.nitrate.core.model.Person
 import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.PlaybackPlan
+import dev.nitrate.core.model.VersionOption
 import dev.nitrate.core.model.QuickConnectRequest
 import dev.nitrate.core.model.SavedAccount
 import dev.nitrate.core.model.RemoteUserData
@@ -947,6 +948,9 @@ class JellyfinClient(
             subtitleIndex = chosenSubtitle,
             externalSubtitles = external,
             transcodeReasons = transcodingUrl?.let(::transcodeReasons).orEmpty(),
+            versions = info.mediaSources.mapNotNull { m ->
+                VersionOption(m.id ?: return@mapNotNull null, m.name, m.supportsDirectPlay && directPlay, m.supportsDirectStream && directStream, m.bitrate)
+            },
         )
     }
 

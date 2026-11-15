@@ -77,9 +77,14 @@ data class PlaybackPlan(
     val externalSubtitles: List<ExternalSubtitle>,
     /** The server's reasons for transcoding, e.g. VideoCodecNotSupported. */
     val transcodeReasons: List<String>,
+    /** Every version of the item and how each would play here (one entry when there's only one). */
+    val versions: List<VersionOption> = emptyList(),
 ) {
     val mediaSourceId get() = source.id
 }
+
+/** One version of an item as the server offered it to this device. */
+data class VersionOption(val id: String, val name: String?, val directPlay: Boolean, val directStream: Boolean, val bitrate: Int? = null)
 
 /** A user's state for one item on the server, with when it was last played (epoch ms). */
 data class RemoteUserData(val played: Boolean, val positionMs: Long, val lastPlayedMs: Long?)

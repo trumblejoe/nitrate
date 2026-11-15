@@ -94,7 +94,7 @@ private const val SEEK_BACK_MS = 10_000L
 private const val SEEK_FORWARD_MS = 30_000L
 
 
-private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS }
+private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX }
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -116,6 +116,8 @@ fun PlayerScreen(
     syncPlay: dev.nitrate.core.syncplay.SyncPlayController? = null,
     /** Sends a playback report for this session to the server; returns the saved file's name. */
     sendLog: (suspend (PlaybackSession) -> Result<String>)? = null,
+    /** What this TV reports, for "Why converting?" (left out: no fixer). */
+    capabilities: dev.nitrate.core.playback.DeviceCapabilities? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
@@ -277,7 +279,10 @@ fun PlayerScreen(
                     player.seekTo(if (duration > 0) target.coerceAtMost(duration) else target)
                 },
                 onOpen = { panel = it },
-                extraButtons = listOfNotNull(("Chapters" to { panel = Panel.CHAPTERS }).takeIf { (item?.chapters?.size ?: 0) > 1 }) +
+                extraButtons = listOfNotNull(
+                    ("Chapters" to { panel = Panel.CHAPTERS }).takeIf { (item?.chapters?.size ?: 0) > 1 },
+                    ("Why converting?" to { panel = Panel.FIX }).takeIf { capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
+                ) +
                     panels.map { it.panelLabel to { togglePanel(it) } } +
                     listOfNotNull(sendLog?.let { send ->
                         "Send log" to {
@@ -324,6 +329,17 @@ fun PlayerScreen(
     if (p != null && panel == Panel.MORE) {
         PlayerMoreDialog(repository, playbackSettings, session, sleepAt, sleepAtEndState.value,
             onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDismiss = { panel = Panel.NONE }, syncPlay = syncPlay)
+    }
+    if (panel == Panel.FIX && capabilities != null) {
+        val diagnosis by androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackDiagnosis?>(null, plan) {
+            value = session.diagnosis(capabilities)
+        }
+        PlaybackFixDialog(
+            diagnosis = diagnosis,
+            error = null,
+            onFix = { fix -> session.applyFix(fix); panel = Panel.NONE },
+            onDismiss = { panel = Panel.NONE },
+        )
     }
     item?.takeIf { panel == Panel.CHAPTERS && it.chapters.size > 1 }?.let { current ->
         ChapterDialog(current, repository, player.currentPosition, onSeek = { player.seekTo(it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })

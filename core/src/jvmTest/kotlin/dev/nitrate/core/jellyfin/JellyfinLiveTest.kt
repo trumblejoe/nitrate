@@ -114,6 +114,10 @@ class JellyfinLiveTest {
         val direct = client.resolvePlayback(item.id, isAudio = false, startMs = 0, forceTranscode = false, audioIndex = null, subtitleIndex = null, mediaSourceId = null)
         println("Direct: ${direct.method} ${direct.url}")
         assertEquals(PlayMethod.DIRECT_PLAY, direct.method)
+        // Every version, with how it would play, for the playback fixer.
+        assertTrue(direct.versions.any { it.id == direct.mediaSourceId && it.directPlay })
+        assertEquals(dev.nitrate.core.playback.PlaybackQuality.ORIGINAL,
+            dev.nitrate.core.playback.PlaybackDoctor.diagnose(direct, dev.nitrate.core.playback.caps(), dev.nitrate.core.playback.PlaybackSettings()).quality)
         assertEquals(200, raw.get(direct.url) { header("Range", "bytes=0-1023") }.status.value.let { if (it == 206) 200 else it })
         direct.externalSubtitles.forEach { assertTrue(raw.get(it.url).bodyAsText().isNotBlank()) }
 

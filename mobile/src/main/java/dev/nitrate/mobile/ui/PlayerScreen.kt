@@ -99,7 +99,7 @@ import dev.nitrate.core.playback.PlaybackMoments
 import kotlinx.coroutines.delay
 import dev.nitrate.mobile.platform.VideoSurface
 
-private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS }
+private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX }
 
 @Composable
 fun PlayerScreen(
@@ -357,6 +357,17 @@ fun PlayerScreen(
             onPlayedElsewhere = { dialog = PlayerDialog.NONE; onExit() },
             onDismiss = { dialog = PlayerDialog.NONE },
         )
+        dialog == PlayerDialog.FIX -> {
+            val diagnosis by androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackDiagnosis?>(null, p) {
+                value = session.diagnosis(actions.container.capabilities)
+            }
+            PlaybackFixDialog(
+                diagnosis = diagnosis,
+                error = null,
+                onFix = { fix -> session.applyFix(fix); dialog = PlayerDialog.NONE },
+                onDismiss = { dialog = PlayerDialog.NONE },
+            )
+        }
         dialog == PlayerDialog.INFO -> AlertDialog(
             onDismissRequest = { dialog = PlayerDialog.NONE },
             title = { Text("Playback info") },
@@ -369,6 +380,9 @@ fun PlayerScreen(
                         }
                     }
                     logMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor(), modifier = Modifier.padding(top = 10.dp)) }
+                    if (p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY && !local) {
+                        androidx.compose.material3.OutlinedButton(onClick = { dialog = PlayerDialog.FIX }, modifier = Modifier.padding(top = 12.dp)) { Text("Why converting? Fix it") }
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { dialog = PlayerDialog.NONE }) { Text("Close") } },

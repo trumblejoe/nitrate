@@ -156,6 +156,24 @@ class AppContainer(
     suspend fun sendPlaybackReport(session: dev.nitrate.android.playback.PlaybackSession? = null): Result<String> =
         runCatching { server.sendClientLog(playbackReport(session)) }
 
+    /** How [itemId] would play on this device and why, before playing it (details page). */
+    suspend fun checkPlayback(itemId: String, isAudio: Boolean = false): dev.nitrate.core.playback.PlaybackDiagnosis {
+        val plan = server.resolvePlayback(
+            itemId = itemId, isAudio = isAudio, startMs = 0, forceTranscode = false,
+            audioIndex = null, subtitleIndex = null, mediaSourceId = dev.nitrate.android.playback.VersionChoices[itemId],
+        )
+        return dev.nitrate.core.playback.PlaybackDoctor.diagnose(plan, capabilities, playbackSettings.current())
+    }
+
+    /** Applies a fix found by [checkPlayback] (settings and versions; tracks are chosen in the player). */
+    suspend fun applyPlaybackFix(itemId: String, fix: dev.nitrate.core.playback.PlaybackFix) {
+        when (fix) {
+            is dev.nitrate.core.playback.PlaybackFix.Change -> playbackSettings.update(fix.change::apply)
+            is dev.nitrate.core.playback.PlaybackFix.UseVersion -> dev.nitrate.android.playback.VersionChoices.set(itemId, fix.versionId)
+            else -> Unit
+        }
+    }
+
 
     /**
      * Times typical requests from this device to the server (see [MediaServer.speedCheck]),
