@@ -45,7 +45,7 @@ class StoryTest {
     @Test fun headingsGetMarkersOnceAndDoublesAreDropped() {
         val text = "INT. ROOM - DAY\n\nAction.\n\nEXT. YARD - DAY [[scene:x1x1x1]] [[scene:y2y2y2]]\n"
         var n = 0
-        val op = Outline.addIds(text) { "id${n++}aaaa" }!!
+        val op = Outline.addIds(text, makeId = { "id${n++}aaaa" })!!
         val done = op.apply(text)
         assertEquals("INT. ROOM - DAY [[scene:id0aaaa]]\n\nAction.\n\nEXT. YARD - DAY [[scene:x1x1x1]]\n", done)
         assertNull(Outline.addIds(done))
@@ -186,5 +186,47 @@ class StoryTest {
         val grouped = Activities.group(listOf(act(1, "ann", 0, "s1"), act(2, "ann", 60_000, "s1"), act(3, "bob", 70_000, "s1"), act(4, "ann", 80_000, "s2"), act(5, "ann", 3_600_000, "s2")))
         assertEquals(listOf(5L to 5L, 4L to 4L, 3L to 3L, 1L to 2L), grouped.map { it.fromVersion to it.toVersion })
         assertEquals(2, grouped.last().count)
+    }
+
+    @Test fun markersAreHiddenInTheEditorWithOffsetsMappedBothWays() {
+        val text = "INT. A [[scene:abcd]]\n\nOne.\n\nINT. B [[scene:efgh]]\nTwo."
+        val h = Outline.Hidden(text)
+        assertEquals("INT. A\n\nOne.\n\nINT. B\nTwo.", h.shown)
+        for (i in 0..h.shown.length) {
+            val o = h.toOriginal(i)
+            assertEquals(i, h.toShown(o))
+            // The same character either way (cursors never land inside a marker).
+            assertEquals(h.shown.substring(i), Outline.stripMarkers(text.substring(o)))
+        }
+        assertEquals(6, h.toOriginal(6)) // the end of "INT. A" stays before the marker
+        assertEquals(6, h.toShown(text.indexOf("[[scene:abcd]]") + 3))
+        assertEquals(listOf("INT. A\n\nOne.\n\nINT. B\nTwo."), listOf(dev.nitrate.core.writing.ExportFormat.FOUNTAIN.bytes(text).decodeToString()))
+        assertEquals(4, dev.nitrate.core.writing.Fountain.wordCount("INT. A [[scene:abcd]]\nOne two"))
+        // A heading still being typed isn't marked yet.
+        assertNull(Outline.addIds("INT. KITCH", skipAt = 10))
+    }
+
+    @Test fun historyReadsAsWhoDidWhatAndRebuildsAuthorship() {
+        val text0 = "INT. A [[scene:aaaa]]\n\nOne."
+        val op1 = TextOperation.diff(text0, "INT. A [[scene:aaaa]]\n\nOne. Two.")
+        val sam = Story.detectedId(Story.CHARACTERS, "SAM")
+        val log = listOf(
+            dev.nitrate.core.writing.ScriptEdit(1, "e1", "u2", "bob", op1, atMs = 1_000, sceneId = "aaaa"),
+            dev.nitrate.core.writing.ScriptEdit(2, "e2", "u2", "bob", null, listOf(Story.setEntry(sam, Story.CHARACTERS, "SAM", "Cook")), atMs = 2_000),
+            dev.nitrate.core.writing.ScriptEdit(3, "e3", "u1", "ann", null, listOf(Story.comment("c1", "entry:$sam", "Older?", "ann")), atMs = 3_000),
+        )
+        var story = Story()
+        log.forEach { e -> e.records.forEach { story = story.apply(it, e.userId, e.userName, e.atMs) } }
+        val scenes = Outline.scenes(op1.apply(text0))
+        val acts = History.activities(log, story, scenes)
+        assertEquals(listOf("ann commented on SAM", "bob edited SAM", "bob edited INT. A"), acts.map { "${it.userName} ${it.kind.verb} ${it.targetName}" })
+        val (text, who) = History.attribution(text0, "u1", log)
+        assertEquals(op1.apply(text0), text)
+        assertEquals("u2", who.at(text.indexOf("Two")))
+        assertEquals("u1", who.at(0))
+        assertEquals(1, History.of(sam, log).size)
+        val before = story.records.getValue(sam).copy(fields = mapOf("list" to Story.CHARACTERS, "name" to "SAM"))
+        val back = History.restore(story.records[sam], before, sam, RecordTypes.ENTRY)
+        assertEquals(mapOf("list" to Story.CHARACTERS, "name" to "SAM", "notes" to null), back.set)
     }
 }

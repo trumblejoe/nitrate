@@ -87,7 +87,7 @@ class AppContainer(
     val writing by lazy { WritingStore(appContext, server).also { it.account = server.currentAccountKey } }
 
     /** Shared screenplays (Companion plugin): links scripts here to shared ones, per account. */
-    val sharedWriting by lazy { dev.nitrate.android.writing.SharedWriting(writing, server, companion) }
+    val sharedWriting by lazy { dev.nitrate.android.writing.SharedWriting(writing, server, companion) { account.value?.name } }
 
     /** App-specific storage: removed with the app, no storage permission needed. */
     private val downloadDir by lazy { File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "downloads") }

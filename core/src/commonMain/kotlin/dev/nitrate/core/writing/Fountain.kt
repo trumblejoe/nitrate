@@ -85,7 +85,7 @@ object Fountain {
         return count / 55.0
     }
 
-    fun wordCount(text: String) = text.split(Regex("\\s+")).count { w -> w.any { it.isLetterOrDigit() } }
+    fun wordCount(text: String) = dev.nitrate.core.writing.story.Outline.stripMarkers(text).split(Regex("\\s+")).count { w -> w.any { it.isLetterOrDigit() } }
 
     /** Rewrites one line as [element], for the element shortcuts. */
     fun convertLine(line: String, element: Element): String {

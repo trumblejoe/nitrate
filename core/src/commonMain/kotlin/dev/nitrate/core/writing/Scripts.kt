@@ -29,7 +29,8 @@ enum class ExportFormat(val extension: String, val mime: String) {
     ;
 
     fun bytes(text: String): ByteArray = when (this) {
-        FOUNTAIN -> text.encodeToByteArray()
-        FADE_IN -> FadeIn.export(text)
+        // Scene ids are Nitrate's own bookkeeping: never in a file for other apps.
+        FOUNTAIN -> dev.nitrate.core.writing.story.Outline.stripMarkers(text).encodeToByteArray()
+        FADE_IN -> FadeIn.export(dev.nitrate.core.writing.story.Outline.stripMarkers(text))
     }
 }

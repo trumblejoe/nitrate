@@ -17,7 +17,7 @@ import java.io.File
 import java.util.UUID
 
 @Serializable
-private data class BackupEntry(val text: String, val modifiedMs: Long)
+private data class BackupEntry(val text: String, val modifiedMs: Long, val story: Map<String, dev.nitrate.core.writing.story.StoryRecord>? = null)
 
 /**
  * A script here that is also a shared script: which one, on which account ("serverUrl|userId"),
@@ -39,6 +39,21 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     val docs: StateFlow<List<WritingDoc>> = _docs
 
     private fun file(id: String) = File(dir, "$id.fountain")
+
+    /** Each script's story data (scene details, lists, links, comments), kept with it. */
+    private val storyDir = File(dir, "story").apply { mkdirs() }
+    private fun storyFile(id: String) = File(storyDir, "$id.json")
+
+    /** A script's own story data (a shared script's lives in its link while shared). */
+    suspend fun readStory(id: String): Map<String, dev.nitrate.core.writing.story.StoryRecord> = withContext(Dispatchers.IO) {
+        runCatching { json.decodeFromString<Map<String, dev.nitrate.core.writing.story.StoryRecord>>(storyFile(id).readText()) }.getOrDefault(emptyMap())
+    }
+
+    suspend fun saveStory(id: String, records: Map<String, dev.nitrate.core.writing.story.StoryRecord>) = withContext(Dispatchers.IO) {
+        val temp = File(storyDir, "$id.json.tmp")
+        temp.writeText(json.encodeToString(records))
+        temp.renameTo(storyFile(id))
+    }
 
     /** Links to shared scripts, one file per linked script (never backed up: they're per account). */
     private val linkDir = File(dir, "shared").apply { mkdirs() }
@@ -87,8 +102,13 @@ class WritingStore(context: Context, private val repository: MediaServer) {
         _docs.value = scan()
     }
 
-    /** Makes a script here plain again (it stays, as this user's own copy). */
+    /** Makes a script here plain again (it stays, as this user's own copy, with its story data). */
     suspend fun unlink(id: String) = withContext(Dispatchers.IO) {
+        link(id)?.let { l ->
+            var story = dev.nitrate.core.writing.story.Story(l.state.records)
+            l.state.pendingRecords.forEach { p -> p.changes.forEach { story = story.apply(it, null, null, System.currentTimeMillis()) } }
+            saveStory(id, story.records)
+        }
         linkFile(id).delete()
         _docs.value = scan()
     }
@@ -109,7 +129,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     }
 
     suspend fun delete(id: String, backup: Boolean) {
-        withContext(Dispatchers.IO) { file(id).delete(); linkFile(id).delete() }
+        withContext(Dispatchers.IO) { file(id).delete(); linkFile(id).delete(); storyFile(id).delete() }
         _docs.value = scan()
         if (backup) {
             backupLock.withLock { withContext(Dispatchers.IO) { pending().let { setPending(it.copy(upload = it.upload - id, delete = it.delete + id)) } } }
@@ -134,7 +154,11 @@ class WritingStore(context: Context, private val repository: MediaServer) {
             val current = repository.loadCustomPrefs(PREFS_ID)
             val uploads = withContext(Dispatchers.IO) {
                 queued.upload.mapNotNull { id ->
-                    file(id).takeIf { it.exists() }?.let { f -> id to json.encodeToString(BackupEntry(f.readText(), f.lastModified())) }
+                    file(id).takeIf { it.exists() }?.let { f ->
+                        // A shared script's story is backed up as it stands here, like its text.
+                        val story = link(id)?.state?.records ?: readStory(id)
+                        id to json.encodeToString(BackupEntry(f.readText(), f.lastModified(), story.takeIf { it.isNotEmpty() }))
+                    }
                 }.toMap()
             }
             repository.saveCustomPrefs(current - queued.delete + uploads, PREFS_ID)
@@ -159,6 +183,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
                 if (!local.exists() || local.lastModified() < entry.modifiedMs) {
                     local.writeText(entry.text)
                     local.setLastModified(entry.modifiedMs)
+                    entry.story?.let { if (link(id) == null) saveStory(id, it) }
                     restored++
                 }
             }

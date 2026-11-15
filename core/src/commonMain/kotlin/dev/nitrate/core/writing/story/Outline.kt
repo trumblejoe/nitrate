@@ -74,12 +74,14 @@ object Outline {
      * The change that gives every heading without a marker one, and drops extra markers (two
      * writers marking the same new heading at once keep the first). Null when nothing's needed.
      */
-    fun addIds(text: String, makeId: () -> String = { newId() }): TextOperation? {
+    fun addIds(text: String, makeId: () -> String = { newId() }, skipAt: Int? = null): TextOperation? {
         val lines = text.split('\n')
         val elements = Fountain.classify(text)
         var changed = false
+        // The line being typed on is left alone (it may not be finished).
+        val skipLine = skipAt?.let { at -> text.substring(0, at.coerceIn(0, text.length)).count { it == '\n' } }
         val out = lines.mapIndexed { i, line ->
-            if (elements[i] != Element.SCENE_HEADING) return@mapIndexed line
+            if (elements[i] != Element.SCENE_HEADING || i == skipLine) return@mapIndexed line
             val markers = MARKER.findAll(line).toList()
             when {
                 markers.isEmpty() -> { changed = true; "${line.trimEnd()} [[scene:${makeId()}]]" }
@@ -92,6 +94,33 @@ object Outline {
             }
         }
         return if (changed) TextOperation.diff(text, out.joinToString("\n")) else null
+    }
+
+    /**
+     * The text as the editor shows it: markers taken out, with offsets mapped both ways (a
+     * cursor never lands inside a hidden marker).
+     */
+    class Hidden(val original: String) {
+        private val ranges = markerRanges(original)
+        val shown: String = if (ranges.isEmpty()) original else stripMarkers(original)
+
+        fun toShown(offset: Int): Int {
+            var removed = 0
+            for (r in ranges) {
+                if (offset <= r.first) break
+                removed += minOf(offset, r.last + 1) - r.first
+            }
+            return offset - removed
+        }
+
+        fun toOriginal(offset: Int): Int {
+            var at = offset
+            for (r in ranges) {
+                // A marker sits at the end of its heading: a cursor there goes before it.
+                if (r.first < at) at += r.last + 1 - r.first else break
+            }
+            return at
+        }
     }
 
     /** The text without scene markers, for exports and word counts. */

@@ -27,6 +27,8 @@ class SharedWriting(
     private val store: WritingStore,
     private val server: MediaServer,
     private val companion: StateFlow<CompanionInfo?>,
+    /** This user's name, shown on their story changes before the server confirms them. */
+    private val selfName: () -> String? = { null },
 ) {
     /** Keeps what sessions save, outliving any one screen. */
     private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -54,7 +56,9 @@ class SharedWriting(
 
     /** Shares a script from here with [members]; it stays linked to the shared one. */
     suspend fun share(localId: String, members: List<String>): SharedScriptInfo {
-        val doc = server.createSharedScript(store.read(localId), members)
+        // The script's story data goes with it, as the owner's.
+        val records = store.readStory(localId).values.filter { !it.deleted }.map { dev.nitrate.core.writing.story.RecordChange(it.id, it.type, it.fields) }
+        val doc = server.createSharedScript(store.read(localId), members, records)
         store.saveLink(localId, SharedLink(doc.info.id, account(), SharedScriptSession.fresh(doc)))
         return doc.info
     }
@@ -103,7 +107,43 @@ class SharedWriting(
             save = { state -> saveSoon(localId, link.copy(state = state)) },
             onConflict = { text -> io.launch { store.create(text) } },
             newEditId = { UUID.randomUUID().toString() },
+            selfId = server.userId.orEmpty(),
+            selfName = selfName().orEmpty(),
+            now = { System.currentTimeMillis() },
         )
+    }
+
+    /** A script's story: the live session's when shared, else the one kept on the device. */
+    fun storyFor(localId: String, session: SharedScriptSession?, scope: CoroutineScope): ScriptStory =
+        session?.let(::SharedStory) ?: LocalStory(store, localId, scope, server.userId, selfName)
+
+    // ---- History (shared scripts) ----
+
+    /** Every change made to a shared script, oldest first. */
+    suspend fun log(localId: String): List<dev.nitrate.core.writing.ScriptEdit> {
+        val link = store.link(localId) ?: return emptyList()
+        val all = mutableListOf<dev.nitrate.core.writing.ScriptEdit>()
+        var from = 1L
+        while (true) {
+            val page = server.scriptLog(link.sharedId, from)
+            if (page.isEmpty()) break
+            all += page
+            from = page.last().version + 1
+            if (page.size < 2_000) break
+        }
+        return all
+    }
+
+    /** A shared script as it was at [version]. */
+    suspend fun at(localId: String, version: Long): dev.nitrate.core.writing.SharedScriptDoc? =
+        store.link(localId)?.let { server.scriptAt(it.sharedId, version) }
+
+    /** Who wrote each part of a shared script (the text as the server has it, and the runs). */
+    suspend fun authorship(localId: String): Pair<String, dev.nitrate.core.writing.story.Attribution>? {
+        val link = store.link(localId) ?: return null
+        val owner = list().firstOrNull { it.id == link.sharedId }?.owner?.id ?: return null
+        val start = server.scriptAt(link.sharedId, 0).text
+        return dev.nitrate.core.writing.story.History.attribution(start, owner, log(localId))
     }
 
     /** Keeps the latest state, written a moment after typing stops (each write replaces the one before). */
