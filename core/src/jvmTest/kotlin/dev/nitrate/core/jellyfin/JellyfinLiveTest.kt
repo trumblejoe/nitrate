@@ -516,17 +516,19 @@ class JellyfinLiveTest {
             // Only the real person sees it, and accepts.
             val incoming = quiet.partners().incoming.single()
             assertEquals(show.name, incoming.seriesName)
+            assertEquals(listOf(me.userId ?: ""), listOf(incoming.fromId))
             quiet.acceptPartner(incoming.id)
-            val partner = me.partners().partners.single { it.userName == name }
-            assertEquals(listOf(show.id), partner.shows.map { it.seriesId })
+            val group = me.partners().groups.single { g -> g.others.any { it.name == name } }
+            assertEquals(show.id, group.seriesId)
             me.cancelPartnerRequest(toNobody.id)
             // Their progress, then an episode watched together counts for them.
             assertTrue(me.partnerProgress(show.id).single().watched.isEmpty())
-            assertEquals(listOf(quietUser.id), me.watchedTogether(episode.id, listOf(quietUser.id)))
+            assertEquals(listOf(quietUser.id), me.watchedTogether(episode.id, group.id))
             assertTrue(quiet.getItem(episode.id).user.played)
             assertEquals(setOf(episode.id), me.partnerProgress(show.id).single().watched)
-            me.endPartnership(partner.id)
-            assertTrue(me.partners().partners.none { it.userName == name })
+            me.leaveGroup(group.id)
+            assertTrue(me.partners().groups.none { it.id == group.id })
+            assertTrue(quiet.partners().groups.isEmpty())
         } finally {
             me.deleteUser(quietUser.id)
         }

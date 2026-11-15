@@ -1081,15 +1081,13 @@ class JellyfinClient(
     override suspend fun setPrivacy(private: Boolean) = partnersApi.setPrivacy(private)
     override suspend fun partnerPeople() = partnersApi.people()
     override suspend fun partners() = partnersApi.list()
-    override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String) = partnersApi.ask(toUserId, toName, seriesId, seriesName)
+    override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?) = partnersApi.ask(toUserId, toName, seriesId, seriesName, groupId)
     override suspend fun acceptPartner(requestId: String) = partnersApi.accept(requestId)
     override suspend fun declinePartner(requestId: String) = partnersApi.decline(requestId)
     override suspend fun cancelPartnerRequest(requestId: String) = partnersApi.cancel(requestId)
-    override suspend fun addPartnerShow(partnershipId: String, seriesId: String, name: String) = partnersApi.addShow(partnershipId, seriesId, name)
-    override suspend fun removePartnerShow(partnershipId: String, seriesId: String) = partnersApi.removeShow(partnershipId, seriesId)
-    override suspend fun endPartnership(partnershipId: String) = partnersApi.end(partnershipId)
+    override suspend fun leaveGroup(groupId: String) = partnersApi.leave(groupId)
     override suspend fun partnerProgress(seriesId: String) = partnersApi.progress(seriesId)
-    override suspend fun watchedTogether(itemId: String, partnerIds: List<String>) = partnersApi.together(itemId, partnerIds)
+    override suspend fun watchedTogether(itemId: String, groupId: String) = partnersApi.together(itemId, groupId)
 
     /**
      * "Up next together": for each show watched with a partner, the next episode someone hasn't
@@ -1097,12 +1095,12 @@ class JellyfinClient(
      */
     private suspend fun upNextTogether(): List<MediaItem> = coroutineScope {
         if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyList()
-        val shows = partners().partners.flatMap { it.shows }.map { it.seriesId }.distinct()
+        val shows = partners().groups.map { it.seriesId }.distinct()
         shows.map { id ->
             async {
-                runCatching { dev.nitrate.core.partners.WatchPartners.nextTogether(allEpisodes(id), partnerProgress(id)) }.getOrNull()
+                runCatching { dev.nitrate.core.partners.WatchPartners.nextPerGroup(allEpisodes(id), partnerProgress(id)) }.getOrDefault(emptyList())
             }
-        }.mapNotNull { it.await() }
+        }.flatMap { it.await() }.distinctBy { it.id }
     }
 
     override suspend fun houseChannels() = channelsApi.list()

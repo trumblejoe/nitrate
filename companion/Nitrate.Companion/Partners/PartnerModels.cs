@@ -2,36 +2,23 @@ using System.Text.Json;
 
 namespace Nitrate.Companion.Partners;
 
-/// <summary>A show two partners watch together.</summary>
-public class SharedShow
-{
-    /// <summary>Gets or sets the series.</summary>
-    public Guid SeriesId { get; set; }
-
-    /// <summary>Gets or sets its name when it was added.</summary>
-    public string Name { get; set; } = string.Empty;
-
-    /// <summary>Gets or sets who added it.</summary>
-    public Guid AddedBy { get; set; }
-}
-
-/// <summary>Two people who keep shows in step.</summary>
-public class Partnership
+/// <summary>People who watch one show together and see each other's progress in it.</summary>
+public class WatchGroup
 {
     /// <summary>Gets or sets its id.</summary>
     public Guid Id { get; set; }
 
-    /// <summary>Gets or sets the two people (order doesn't matter).</summary>
-    public List<Guid> Users { get; set; } = new();
+    /// <summary>Gets or sets the show.</summary>
+    public Guid SeriesId { get; set; }
 
-    /// <summary>Gets or sets the shows they watch together.</summary>
-    public List<SharedShow> Shows { get; set; } = new();
+    /// <summary>Gets or sets the show's name.</summary>
+    public string SeriesName { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets who's in it (two or more).</summary>
+    public List<Guid> Members { get; set; } = new();
 
     /// <summary>Gets or sets since when.</summary>
     public DateTimeOffset Since { get; set; }
-
-    /// <summary>The other person.</summary>
-    public Guid Other(Guid me) => Users[0] == me ? Users[1] : Users[0];
 }
 
 /// <summary>A request to watch a show together, waiting for the other person.</summary>
@@ -49,6 +36,9 @@ public class PartnerRequest
     /// <summary>Gets or sets what the asker chose or typed, shown back to them.</summary>
     public string ToLabel { get; set; } = string.Empty;
 
+    /// <summary>Gets or sets the group it invites to (empty: a new group with the asker).</summary>
+    public Guid GroupId { get; set; }
+
     /// <summary>Gets or sets the show.</summary>
     public Guid SeriesId { get; set; }
 
@@ -62,14 +52,14 @@ public class PartnerRequest
     public bool Declined { get; set; }
 }
 
-/// <summary>Everything kept: who made themselves private, partnerships and open requests.</summary>
+/// <summary>Everything kept: who made themselves private, watch groups and open requests.</summary>
 public class PartnerState
 {
     /// <summary>Gets or sets the people who made themselves private (admins can also mark people in the plugin's settings).</summary>
     public List<Guid> SelfPrivate { get; set; } = new();
 
-    /// <summary>Gets or sets the partnerships.</summary>
-    public List<Partnership> Partnerships { get; set; } = new();
+    /// <summary>Gets or sets the watch groups.</summary>
+    public List<WatchGroup> Groups { get; set; } = new();
 
     /// <summary>Gets or sets the open requests.</summary>
     public List<PartnerRequest> Requests { get; set; } = new();

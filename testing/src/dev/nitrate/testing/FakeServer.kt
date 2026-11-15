@@ -284,15 +284,23 @@ class FakeServer : MediaServer {
     override suspend fun tuneChannel(channelId: String, count: Int) = channelGuide(0, 0).first { it.channel.id == channelId }.programs
     override suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean) = channel
     var partnerInfo = dev.nitrate.core.partners.PartnersInfo(
-        partners = listOf(dev.nitrate.core.partners.WatchPartner("pt1", "user-2", "Sam", listOf(dev.nitrate.core.partners.PartnerShow("series-1", "The Night Reel")), 0)),
-        incoming = listOf(dev.nitrate.core.partners.IncomingRequest("rq1", "user-3", "Kim", "series-1", "The Night Reel", 0)),
-        outgoing = listOf(dev.nitrate.core.partners.OutgoingRequest("rq2", "lee", "series-1", "The Night Reel", 0)),
+        groups = listOf(
+            dev.nitrate.core.partners.WatchGroup("g1", "series-1", "The Night Reel", listOf(dev.nitrate.core.writing.UserRef("user-2", "Will")), 0),
+            dev.nitrate.core.partners.WatchGroup("g2", "series-1", "The Night Reel", listOf(dev.nitrate.core.writing.UserRef("user-4", "Frank"), dev.nitrate.core.writing.UserRef("user-5", "Tommy"), dev.nitrate.core.writing.UserRef("user-6", "Jane")), 0),
+        ),
+        incoming = listOf(dev.nitrate.core.partners.IncomingRequest("rq1", "user-3", "Jessica", "series-1", "The Night Reel", "g9", listOf("Jessica", "Lee"), 0)),
+        outgoing = listOf(dev.nitrate.core.partners.OutgoingRequest("rq2", "kim", "series-1", "The Night Reel", null, 0)),
     )
     override suspend fun partners() = partnerInfo
     override suspend fun privacy() = dev.nitrate.core.partners.Privacy(isPrivate = false, byAdmin = false)
-    override suspend fun partnerPeople() = listOf(dev.nitrate.core.writing.UserRef("user-2", "Sam"), dev.nitrate.core.writing.UserRef("user-3", "Kim"))
+    override suspend fun partnerPeople() = listOf(dev.nitrate.core.writing.UserRef("user-2", "Will"), dev.nitrate.core.writing.UserRef("user-3", "Jessica"))
     override suspend fun partnerProgress(seriesId: String) =
-        if (seriesId == "series-1") listOf(dev.nitrate.core.partners.PartnerProgress("user-2", "Sam", emptySet(), "S1 E1", null)) else emptyList()
+        if (seriesId == "series-1") listOf(
+            dev.nitrate.core.partners.PartnerProgress("g1", "user-2", "Will", emptySet(), "S1 E1", null),
+            dev.nitrate.core.partners.PartnerProgress("g2", "user-4", "Frank", emptySet(), "S2 E3", null),
+            dev.nitrate.core.partners.PartnerProgress("g2", "user-5", "Tommy", emptySet(), "S2 E1", null),
+            dev.nitrate.core.partners.PartnerProgress("g2", "user-6", "Jane", emptySet(), null, null),
+        ) else emptyList()
     override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners"))
 
     /** People to share scripts with, and one script someone shared (its text, at version 3). */

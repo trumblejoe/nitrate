@@ -13,17 +13,17 @@ public record PrivacyOut(bool Private, bool ByAdmin);
 /// <summary>Make the caller private, or not.</summary>
 public record PrivacyPut(bool Private);
 
-/// <summary>The caller's partners and requests.</summary>
-public record PartnersOut(IReadOnlyList<PartnerView> Partners, IReadOnlyList<IncomingView> Incoming, IReadOnlyList<OutgoingView> Outgoing);
+/// <summary>The caller's watch groups and invites.</summary>
+public record PartnersOut(IReadOnlyList<GroupView> Groups, IReadOnlyList<IncomingView> Incoming, IReadOnlyList<OutgoingView> Outgoing);
 
-/// <summary>A request: to someone the caller can see (<paramref name="ToUserId"/>), or to an exact user name.</summary>
-public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, string SeriesName);
+/// <summary>
+/// An invite: to someone the caller can see (<paramref name="ToUserId"/>) or an exact user name,
+/// into one of the caller's groups (<paramref name="GroupId"/>) or a new one for the show.
+/// </summary>
+public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, string SeriesName, Guid? GroupId = null);
 
-/// <summary>A show to add to a partnership.</summary>
-public record ShowPost(Guid SeriesId, string Name);
-
-/// <summary>An episode watched together, and with whom.</summary>
-public record TogetherPost(Guid ItemId, IReadOnlyList<Guid> PartnerIds);
+/// <summary>An episode watched together with a group.</summary>
+public record TogetherPost(Guid ItemId, Guid GroupId);
 
 /// <summary>Who an episode was marked watched for.</summary>
 public record TogetherOut(IReadOnlyList<Guid> MarkedFor);
@@ -68,18 +68,18 @@ public class PartnersController : ControllerBase
     public ActionResult<IReadOnlyList<UserRef>> People() =>
         Run<IReadOnlyList<UserRef>>(me => _partners.VisibleTo(me).Select(u => new UserRef(u.Id, u.Name)).ToList());
 
-    /// <summary>The caller's partners, requests to answer, and requests waiting.</summary>
+    /// <summary>The caller's groups, invites to answer, and invites waiting.</summary>
     [HttpGet("Partners")]
-    public ActionResult<PartnersOut> List() => Run(me => new PartnersOut(_partners.Partners(me), _partners.Incoming(me), _partners.Outgoing(me)));
+    public ActionResult<PartnersOut> List() => Run(me => new PartnersOut(_partners.Groups(me), _partners.Incoming(me), _partners.Outgoing(me)));
 
-    /// <summary>Asks someone to watch a show together. Always answers "sent".</summary>
+    /// <summary>Invites someone to watch a show together. Always answers "sent".</summary>
     [HttpPost("Partners/Requests")]
     public ActionResult<OutgoingView> Ask([FromBody] PartnerRequestPost body) =>
-        Run(me => _partners.Request(me, body.ToUserId, body.ToName, body.SeriesId, body.SeriesName ?? string.Empty));
+        Run(me => _partners.Request(me, body.ToUserId, body.ToName, body.SeriesId, body.SeriesName ?? string.Empty, body.GroupId));
 
-    /// <summary>Says yes to a request.</summary>
+    /// <summary>Says yes to an invite.</summary>
     [HttpPost("Partners/Requests/{id}/Accept")]
-    public ActionResult<PartnerView> Accept([FromRoute] Guid id) => Run(me => _partners.Accept(me, id));
+    public ActionResult<GroupView> Accept([FromRoute] Guid id) => Run(me => _partners.Accept(me, id));
 
     /// <summary>Says no to a request (the asker isn't told).</summary>
     [HttpPost("Partners/Requests/{id}/Decline")]
@@ -89,26 +89,18 @@ public class PartnersController : ControllerBase
     [HttpDelete("Partners/Requests/{id}")]
     public ActionResult Cancel([FromRoute] Guid id) => Done(me => _partners.Cancel(me, id));
 
-    /// <summary>Adds a show to a partnership.</summary>
-    [HttpPost("Partners/{id}/Shows")]
-    public ActionResult<PartnerView> AddShow([FromRoute] Guid id, [FromBody] ShowPost body) => Run(me => _partners.AddShow(me, id, body.SeriesId, body.Name ?? string.Empty));
+    /// <summary>Leaves a watch group (a group left with one person ends).</summary>
+    [HttpDelete("Partners/Groups/{id}")]
+    public ActionResult Leave([FromRoute] Guid id) => Done(me => _partners.Leave(me, id));
 
-    /// <summary>Stops watching a show together.</summary>
-    [HttpDelete("Partners/{id}/Shows/{seriesId}")]
-    public ActionResult<PartnerView> RemoveShow([FromRoute] Guid id, [FromRoute] Guid seriesId) => Run(me => _partners.RemoveShow(me, id, seriesId));
-
-    /// <summary>Ends a partnership.</summary>
-    [HttpDelete("Partners/{id}")]
-    public ActionResult End([FromRoute] Guid id) => Done(me => _partners.End(me, id));
-
-    /// <summary>Where the caller's partners on a show are.</summary>
+    /// <summary>Where the other members of the caller's groups on a show are.</summary>
     [HttpGet("Partners/Progress")]
     public ActionResult<IReadOnlyList<PartnerProgressView>> Progress([FromQuery] Guid seriesId) => Run(me => _partners.Progress(me, seriesId));
 
-    /// <summary>Marks an episode watched for the partners who watched it with the caller.</summary>
+    /// <summary>Marks an episode watched for the rest of the group the caller watched it with.</summary>
     [HttpPost("Partners/Together")]
     public ActionResult<TogetherOut> Together([FromBody] TogetherPost body) =>
-        Run(me => new TogetherOut(_partners.MarkTogether(me, body.ItemId, body.PartnerIds ?? Array.Empty<Guid>())));
+        Run(me => new TogetherOut(_partners.MarkTogether(me, body.ItemId, body.GroupId)));
 
     private Guid? Me()
     {

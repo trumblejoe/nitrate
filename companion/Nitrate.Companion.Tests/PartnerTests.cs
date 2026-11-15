@@ -116,22 +116,22 @@ public class PartnerTests
     }
 
     [Fact]
-    public void AcceptingMakesPartnersAndAPrivatePersonCanSayYes()
+    public void AcceptingMakesAGroupAndAPrivatePersonCanSayYes()
     {
         var hub = Hub();
         hub.Request(Joe, null, "Quiet", Bear, "The Bear");
-        var view = hub.Accept(Hidden, hub.Incoming(Hidden).Single().Id);
-        Assert.Equal("joe", view.UserName);
+        var incoming = hub.Incoming(Hidden).Single();
+        Assert.Equal(new[] { "joe" }, incoming.WillSee);
+        var view = hub.Accept(Hidden, incoming.Id);
+        Assert.Equal("joe", view.Others.Single().Name);
         // Now Joe knows them, and only Joe.
-        Assert.Equal("quiet", hub.Partners(Joe).Single().UserName);
-        Assert.Empty(hub.Partners(Sam));
+        Assert.Equal("quiet", hub.Groups(Joe).Single().Others.Single().Name);
+        Assert.Empty(hub.Groups(Sam));
         Assert.DoesNotContain(hub.VisibleTo(Sam), u => u.Id == Hidden);
         Assert.Empty(hub.Outgoing(Joe));
-        // A second show joins the same partnership.
-        var other = Guid.NewGuid();
-        hub.AddShow(Hidden, view.Id, other, "Slow Horses");
-        Assert.Equal(2, hub.Partners(Joe).Single().Shows.Count);
-        Assert.Throws<PartnerException>(() => hub.Request(Joe, Hidden, null, Bear, "The Bear"));
+        // Joe can now ask them by id (they share a group), e.g. for another show.
+        hub.Request(Joe, Hidden, null, Guid.NewGuid(), "Slow Horses");
+        Assert.Single(hub.Incoming(Hidden));
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class PartnerTests
         var incoming = hub.Incoming(Joe).Single();
         Assert.Equal("quiet", incoming.FromName);
         hub.Accept(Joe, incoming.Id);
-        Assert.Single(hub.Partners(Hidden));
+        Assert.Single(hub.Groups(Hidden));
     }
 
     [Fact]
@@ -157,25 +157,61 @@ public class PartnerTests
         Assert.Empty(hub.Incoming(Sam));
     }
 
+    private Guid Pair(PartnerHub hub, Guid a, Guid b) =>
+        hub.Accept(b, hub.Incoming(b).Single(i => i.FromId == a && i.GroupId is null).Id).Id;
+
     [Fact]
-    public void ProgressAndWatchingTogetherOnlyForSharedShows()
+    public void SeparateGroupsOnTheSameShowStaySeparate()
     {
         var hub = Hub();
         hub.Request(Joe, Sam, null, Bear, "The Bear");
-        var p = hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
-        _watch.Played.Add((Sam, Ep1));
-        var progress = hub.Progress(Joe, Bear).Single();
-        Assert.Equal("sam", progress.UserName);
-        Assert.Equal("S1 E1", progress.Last);
-        Assert.Equal(Ep2, progress.NextId);
-        // Kid isn't Joe's partner: not marked even if asked.
-        Assert.Equal(new[] { Sam }, hub.MarkTogether(Joe, Ep2, new[] { Sam, Kid }));
-        Assert.Contains((Sam, Ep2), _watch.Played);
-        Assert.DoesNotContain((Kid, Ep2), _watch.Played);
-        // After the show leaves the partnership, nothing.
-        hub.RemoveShow(Sam, p.Id, Bear);
+        var withSam = Pair(hub, Joe, Sam);
+        hub.Request(Joe, Kid, null, Bear, "The Bear");
+        var withKid = Pair(hub, Joe, Kid);
+        Assert.Equal(2, hub.Groups(Joe).Count);
+        // Joe sees both, each under its own group; Sam and Kid don't see each other.
+        var progress = hub.Progress(Joe, Bear);
+        Assert.Equal(new[] { (withSam, Sam), (withKid, Kid) }, progress.Select(p => (p.GroupId, p.UserId)).OrderBy(x => x.Item2 == Kid));
+        Assert.Equal(new[] { Joe }, hub.Progress(Sam, Bear).Select(p => p.UserId));
+        // Watching with Sam's group marks Sam only.
+        Assert.Equal(new[] { Sam }, hub.MarkTogether(Joe, Ep1, withSam));
+        Assert.Contains((Sam, Ep1), _watch.Played);
+        Assert.DoesNotContain((Kid, Ep1), _watch.Played);
+    }
+
+    [Fact]
+    public void AnyMemberInvitesAndEveryoneSeesEveryone()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        var group = Pair(hub, Joe, Sam);
+        // Sam (a member) brings Kid in; Kid sees who will know them.
+        hub.Request(Sam, Kid, null, Guid.Empty, string.Empty, group);
+        var invite = hub.Incoming(Kid).Single();
+        Assert.Equal(group, invite.GroupId);
+        Assert.Equal(new[] { "joe", "sam" }, invite.WillSee.OrderBy(x => x));
+        hub.Accept(Kid, invite.Id);
+        Assert.Equal(new[] { "joe", "sam" }, hub.Groups(Kid).Single().Others.Select(o => o.Name).OrderBy(x => x));
+        Assert.Equal(new[] { Joe, Sam }, hub.Progress(Kid, Bear).Select(p => p.UserId).OrderBy(x => x == Sam));
+        // Watching together marks everyone else in the group.
+        Assert.Equal(2, hub.MarkTogether(Kid, Ep1, group).Count);
+        // Someone outside it can't invite into it.
+        Assert.Equal(PartnerError.NotFound, Assert.Throws<PartnerException>(() => hub.Request(Hidden, Joe, null, Guid.Empty, string.Empty, group)).Error);
+        Assert.Throws<PartnerException>(() => hub.Request(Joe, Kid, null, Guid.Empty, string.Empty, group));
+    }
+
+    [Fact]
+    public void LeavingEndsAPairAndItsInvites()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        var group = Pair(hub, Joe, Sam);
+        hub.Request(Sam, Kid, null, Guid.Empty, string.Empty, group);
+        hub.Leave(Sam, group);
+        Assert.Empty(hub.Groups(Joe));
+        Assert.Empty(hub.Incoming(Kid));
         Assert.Empty(hub.Progress(Joe, Bear));
-        Assert.Empty(hub.MarkTogether(Joe, Ep1, new[] { Sam }));
+        Assert.Empty(hub.MarkTogether(Joe, Ep1, group));
     }
 
     [Fact]
@@ -184,8 +220,11 @@ public class PartnerTests
         var hub = Hub();
         hub.SetPrivate(Kid, true);
         hub.Request(Joe, Sam, null, Bear, "The Bear");
+        Pair(hub, Joe, Sam);
+        hub.Request(Joe, null, "kid", Bear, "The Bear");
         var again = Hub();
         Assert.True(again.IsPrivate(Kid));
-        Assert.Single(again.Incoming(Sam));
+        Assert.Single(again.Groups(Sam));
+        Assert.Single(again.Incoming(Kid));
     }
 }

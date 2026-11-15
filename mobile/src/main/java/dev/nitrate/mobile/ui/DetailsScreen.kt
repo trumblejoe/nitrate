@@ -162,10 +162,12 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                             modifier = if (artistId != null) Modifier.pressable({ actions.nav.navigate(DetailsRoute(artistId)) }) else Modifier,
                         )
                     }
-                    if (partnerProgress.isNotEmpty()) Text(
-                        "Watching with " + partnerProgress.joinToString(" · ") { "${it.userName} (${it.last ?: "not started"})" },
-                        style = MaterialTheme.typography.labelLarge, color = accentColor(),
-                    )
+                    partnerProgress.groupBy { it.groupId }.values.forEach { group ->
+                        Text(
+                            "Watching with " + group.joinToString(", ") { "${it.userName} (${it.last ?: "not started"})" },
+                            style = MaterialTheme.typography.labelLarge, color = accentColor(),
+                        )
+                    }
                     if (!music) PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
                     if (item.versions.size > 1) VersionChooser(item)
                     // Wraps onto a second line when there are more actions than fit (a movie with a trailer, for an admin).

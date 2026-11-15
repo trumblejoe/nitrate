@@ -411,10 +411,12 @@ private fun Header(
             if (watchWith != null && item.kind == ItemKind.SERIES) OutlinedButton(onClick = { watchWith(item) }) { Text("Watch with…") }
         }
         val partners = dev.nitrate.tv.ui.partners.LocalPartnerProgress.current
-        if (partners.isNotEmpty()) Text(
-            "Watching with " + partners.joinToString(" · ") { "${it.userName} (${it.last ?: "not started"})" },
-            style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-        )
+        partners.groupBy { it.groupId }.values.forEach { group ->
+            Text(
+                "Watching with " + group.joinToString(", ") { "${it.userName} (${it.last ?: "not started"})" },
+                style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+            )
+        }
         // More like it, by studio or year.
         val studio = item.studios.firstOrNull()
         val year = item.productionYear

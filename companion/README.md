@@ -13,8 +13,9 @@ Features:
 - **Single sign-on**: sign in to the Nitrate apps with your OpenID Connect identity provider
   (Authentik, Authelia, Keycloak, Pocket ID...). Only existing Jellyfin users can sign in. Phones
   open the sign-in page in the browser; TVs show a QR code to finish on a phone.
-- **Watch partners**: two people keep a show in step. Requests need the other person's approval;
-  episodes watched together count for both. Accounts can be kept private (by an admin in the
+- **Watch partners**: watch groups per show (a pair is a group of two; one show can have several
+  groups) whose members all see each other's progress. Any member invites; the invited person
+  accepts after seeing who'd learn their name. Episodes watched together count for the group. Accounts can be kept private (by an admin in the
   plugin's settings, or by their owner): never listed or findable by name, and a request to a
   private name looks exactly like one to nobody until its owner accepts.
 - **Channels**: TV channels made from your library (shows, movies, collections, playlists,
@@ -107,12 +108,12 @@ Watch partners and privacy:
 | --- | --- |
 | `GET /Nitrate/Privacy` · `PUT /Nitrate/Privacy` | `{Private, ByAdmin}`; `{Private}` makes the caller private or not (an admin's choice still holds). |
 | `GET /Nitrate/Partners/People` | People the caller can ask: enabled, not private, not themselves. |
-| `GET /Nitrate/Partners` | `{Partners, Incoming, Outgoing}`. Outgoing requests always show as waiting until accepted or lapsed (14 days), even when declined or sent to no one. |
-| `POST /Nitrate/Partners/Requests` | `{ToUserId or ToName, SeriesId, SeriesName}`: always answers with the waiting request. |
-| `POST /Nitrate/Partners/Requests/{id}/Accept` · `/Decline` · `DELETE /Nitrate/Partners/Requests/{id}` | The other person answers; the asker withdraws. |
-| `POST /Nitrate/Partners/{id}/Shows` · `DELETE /Nitrate/Partners/{id}/Shows/{seriesId}` · `DELETE /Nitrate/Partners/{id}` | Either partner adds or removes a show, or ends the partnership. |
-| `GET /Nitrate/Partners/Progress?seriesId=` | Each partner on that show: `{UserId, UserName, Watched, Last, NextId}`. |
-| `POST /Nitrate/Partners/Together` | `{ItemId, PartnerIds}`: marks the episode watched for those who are the caller's partners on its show. |
+| `GET /Nitrate/Partners` | `{Groups, Incoming, Outgoing}`. Incoming invites list `WillSee` (who learns the caller's name by accepting). Outgoing invites always show as waiting until accepted or lapsed (14 days), even when declined or sent to no one. |
+| `POST /Nitrate/Partners/Requests` | `{ToUserId or ToName, SeriesId, SeriesName, GroupId?}`: into one of the caller's groups, or a new one for the show. Always answers with the waiting invite. |
+| `POST /Nitrate/Partners/Requests/{id}/Accept` · `/Decline` · `DELETE /Nitrate/Partners/Requests/{id}` | The invited person answers; the inviter withdraws. |
+| `DELETE /Nitrate/Partners/Groups/{id}` | Leaves a group (a group left with one person ends). |
+| `GET /Nitrate/Partners/Progress?seriesId=` | Each other member of the caller's groups on that show: `{GroupId, UserId, UserName, Watched, Last, NextId}`. |
+| `POST /Nitrate/Partners/Together` | `{ItemId, GroupId}`: marks the episode watched for the rest of that group (only a member, only an episode of the group's show). |
 
 The script-sharing list (`GET /Nitrate/Users`) and its exact-name lookup leave private accounts out too. Partners are kept in
 `data/nitrate-companion/partners.json`.

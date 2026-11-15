@@ -24,8 +24,8 @@ class WatchPartnersTest {
     private fun ep(n: Int, played: Boolean = false, season: Int = 1) =
         MediaItem("e$season-$n", "Episode $n", ItemKind.EPISODE, seriesId = "bear", seasonNumber = season, indexNumber = n, user = UserState(played = played))
 
-    private val sam = PartnerProgress("sam", "Sam", setOf("e1-1", "e1-2"), "S1 E2", "e1-3")
-    private val kim = PartnerProgress("kim", "Kim", setOf("e1-1"), "S1 E1", "e1-2")
+    private val sam = PartnerProgress("g1", "sam", "Sam", setOf("e1-1", "e1-2"), "S1 E2", "e1-3")
+    private val kim = PartnerProgress("g2", "kim", "Kim", setOf("e1-1"), "S1 E1", "e1-2")
 
     @Test fun whoIsBehindAndHowTheyAreNamed() {
         assertEquals(listOf("Kim"), WatchPartners.behind(ep(2), listOf(sam, kim)).map { it.userName })
@@ -46,7 +46,9 @@ class WatchPartnersTest {
         val episodes = listOf(ep(0, season = 0), ep(1, true), ep(2, true), ep(3))
         assertEquals("e1-2", WatchPartners.nextTogether(episodes, listOf(sam, kim))?.id)
         assertEquals("e1-3", WatchPartners.nextTogether(episodes, listOf(sam))?.id)
-        assertNull(WatchPartners.nextTogether(listOf(ep(1, true)), listOf(PartnerProgress("x", "X", setOf("e1-1"), null, null))))
+        assertNull(WatchPartners.nextTogether(listOf(ep(1, true)), listOf(PartnerProgress("g", "x", "X", setOf("e1-1"), null, null))))
+        // Per group: Sam's group is next at 3, Kim's at 2.
+        assertEquals(listOf("e1-3", "e1-2"), WatchPartners.nextPerGroup(episodes, listOf(sam, kim)).map { it.id })
     }
 
     /** A server with partners on "bear", whose episodes' watched state the test changes. */
@@ -54,13 +56,13 @@ class WatchPartnersTest {
         var episodes = listOf(MediaItem("e1-1", "1", ItemKind.EPISODE, seriesId = "bear", seasonNumber = 1, indexNumber = 1, user = UserState(played = true)),
             MediaItem("e1-2", "2", ItemKind.EPISODE, seriesId = "bear", seasonNumber = 1, indexNumber = 2),
             MediaItem("e1-3", "3", ItemKind.EPISODE, seriesId = "bear", seasonNumber = 1, indexNumber = 3))
-        val marked = mutableListOf<Pair<String, List<String>>>()
+        val marked = mutableListOf<Pair<String, String>>()
         val server: MediaServer = Proxy.newProxyInstance(MediaServer::class.java.classLoader, arrayOf(MediaServer::class.java)) { _, m, args ->
             when (m.name) {
                 "companion" -> CompanionInfo("0.1", setOf("partners"))
                 "partnerProgress" -> progress
                 "allEpisodes" -> episodes
-                "watchedTogether" -> { @Suppress("UNCHECKED_CAST") marked += (args[0] as String) to (args[1] as List<String>); args[1] }
+                "watchedTogether" -> { marked += (args[0] as String) to (args[1] as String); listOf("x") }
                 else -> throw UnsupportedOperationException(m.name)
             }
         } as MediaServer
@@ -91,11 +93,24 @@ class WatchPartnersTest {
         // Episode 2 and 3 finished: both count for Kim; episode 1 (seen before) doesn't.
         fake.episodes = fake.episodes.map { it.copy(user = UserState(played = true)) }
         assertEquals(2, plugin.settle(fake.server))
-        assertEquals(listOf("e1-2" to listOf("kim"), "e1-3" to listOf("kim")), fake.marked)
+        assertEquals(listOf("e1-2" to "g2", "e1-3" to "g2"), fake.marked)
         assertEquals(0, plugin.settle(fake.server))
         // After a few hours it asks again.
         now += WatchPartners.TOGETHER_MS + 1
         assertTrue(plugin.beforePlay(MediaItem("e1-4", "4", ItemKind.EPISODE, seriesId = "bear"), host) is GuardDecision.Ask)
+    }
+
+    @Test fun eachGroupIsItsOwnChoice() = runBlocking {
+        val will = PartnerProgress("gw", "will", "Will", emptySet(), null, null)
+        val frank = PartnerProgress("gf", "frank", "Frank", setOf("e1-2"), "S1 E2", null)
+        val tommy = PartnerProgress("gf", "tommy", "Tommy", emptySet(), null, null)
+        val fake = Server(listOf(will, frank, tommy))
+        val plugin = WatchPartnersPlugin(TogetherSessions { 0 }) { 0 }
+        val ask = plugin.beforePlay(fake.episodes[1], PluginHost(fake.server, store)) as GuardDecision.Ask
+        assertEquals("Will and Tommy haven't seen this yet", ask.title)
+        assertEquals(listOf("Watching with Will", "Watching with Frank and Tommy", "Just me", "Cancel"), ask.choices.map { it.label })
+        (ask.choices[1].action as GuardAction.RunThenPlay).run()
+        assertEquals("gf", plugin.sessions.active("bear")?.groupId)
     }
 
     @Test fun noPartnersNoQuestion() = runBlocking {
