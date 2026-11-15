@@ -197,7 +197,7 @@ class AppContainer(
     suspend fun recapBefore(item: dev.nitrate.core.model.MediaItem, playlist: dev.nitrate.core.model.MediaItem? = null): dev.nitrate.core.recap.Recap? {
         val user = server.userId ?: return null
         val prefs = displaySettings.prefs(user).first()
-        if (prefs.recapAfterDays <= 0) return null
+        if ((if (playlist != null) prefs.playlistRecapAfterDays else prefs.recapAfterDays) <= 0) return null
         return kotlinx.coroutines.withTimeoutOrNull(2_500) {
             dev.nitrate.core.recap.Recaps.before(server, item, prefs, System.currentTimeMillis(), playlist)
         }.also { pendingRecap = it }

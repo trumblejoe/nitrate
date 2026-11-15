@@ -48,8 +48,10 @@ object Recaps {
     private const val DAY_MS = 24 * 60 * 60_000L
 
     /** Whether a recap is due: the setting is on and the last watch is that long ago or longer (to the millisecond). */
-    fun due(prefs: DisplayPrefs, lastWatchedMs: Long?, nowMs: Long): Boolean =
-        prefs.recapAfterDays > 0 && lastWatchedMs != null && nowMs - lastWatchedMs >= prefs.recapAfterDays * DAY_MS
+    fun due(prefs: DisplayPrefs, lastWatchedMs: Long?, nowMs: Long, playlist: Boolean = false): Boolean {
+        val days = if (playlist) prefs.playlistRecapAfterDays else prefs.recapAfterDays
+        return days > 0 && lastWatchedMs != null && nowMs - lastWatchedMs >= days * DAY_MS
+    }
 
     /**
      * The ending of [item] before its credits: the server's credits marker (a media segment), else a
@@ -106,7 +108,7 @@ object Recaps {
         val next = items[nextIndex]
         val watched = items.take(nextIndex)
         val lastMs = watched.mapNotNull { it.user.lastPlayedMs }.maxOrNull()
-        if (!due(prefs, lastMs, nowMs)) return null
+        if (!due(prefs, lastMs, nowMs, playlist = true)) return null
         // Never how many are left (or watched out of how many): only what's next.
         val where = "Next: ${label(next)}"
         return Recap(playlist.name, where, Recaps.since(lastMs!!, nowMs), watched.takeLast(CARDS), clip(watched.last(), segments), next, items.drop(nextIndex + 1).map { it.id })
@@ -120,13 +122,14 @@ object Recaps {
      * next item of a playlist marked in story order ([playlist]). Reads the server; never throws.
      */
     suspend fun before(server: MediaServer, item: MediaItem, prefs: DisplayPrefs, nowMs: Long, playlist: MediaItem? = null): Recap? = runCatching {
-        if (prefs.recapAfterDays <= 0) return@runCatching null
         if (playlist != null) {
+            if (prefs.playlistRecapAfterDays <= 0) return@runCatching null
             if (playlist.id !in prefs.recapPlaylists) return@runCatching null
             val items = server.playlistItems(playlist.id)
             val base = forPlaylist(playlist, items, prefs, nowMs) ?: return@runCatching null
             return@runCatching base.copy(clip = base.clip?.let { withSegments(server, it) })
         }
+        if (prefs.recapAfterDays <= 0) return@runCatching null
         val seriesId = item.seriesId ?: return@runCatching null
         if (item.kind != ItemKind.EPISODE) return@runCatching null
         val episodes = server.allEpisodes(seriesId)

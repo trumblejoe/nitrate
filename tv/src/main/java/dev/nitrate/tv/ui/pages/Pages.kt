@@ -204,10 +204,16 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Display", style = MaterialTheme.typography.displaySmall)
                 Text("In this TV's display profile (Settings → Display profile). Spoiler hiding is the same on every device.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("\"Last time\" recap after a break of at least", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+                Text("Shows: \"Last time\" recap after a break of at least", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     dev.nitrate.core.recap.RECAP_CHOICES.forEach { (days, label) ->
                         FilterChip(selected = prefs.recapAfterDays == days, onClick = { update { it.copy(recapAfterDays = days) } }) { Text(label) }
+                    }
+                }
+                Text("Playlists in story order: recap after a break of at least", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    dev.nitrate.core.recap.RECAP_CHOICES.forEach { (days, label) ->
+                        FilterChip(selected = prefs.playlistRecapAfterDays == days, onClick = { update { it.copy(playlistRecapAfterDays = days) } }) { Text(label) }
                     }
                 }
                 Text("Accent colour", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))

@@ -62,6 +62,11 @@ class RecapTest {
         assertNull(Recaps.forPlaylist(list, items, prefs, now))
         val recap = Recaps.forPlaylist(list, items, prefs.copy(recapPlaylists = setOf("pl")), now)!!
         assertEquals("Next: S1 E3 · Episode 3", recap.where)
+        // Playlists have their own break: shows' setting doesn't count for them.
+        val marked = prefs.copy(recapPlaylists = setOf("pl"))
+        assertNull(Recaps.forPlaylist(list, items, marked.copy(playlistRecapAfterDays = 0), now))
+        assertNull(Recaps.forPlaylist(list, items, marked.copy(playlistRecapAfterDays = 365), now))
+        assertTrue(Recaps.forPlaylist(list, items, marked.copy(recapAfterDays = 0), now) != null)
         assertEquals("s1-e3", recap.next.id)
         assertEquals(listOf("s1-e4"), recap.then)
         assertEquals("7 weeks ago", recap.since)

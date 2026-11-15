@@ -36,6 +36,8 @@ data class DisplayPrefs(
     val themeMusic: Boolean? = null,
     /** "Last time" recap before resuming after this many days away; 0: never. */
     val recapAfterDays: Int = 14,
+    /** The same for playlists marked in story order, set separately; 0: never. */
+    val playlistRecapAfterDays: Int = 14,
     /** Playlists marked "in story order", which get a recap too (shared on every device, like spoiler hiding). */
     val recapPlaylists: Set<String> = emptySet(),
     val accent: AccentMode = AccentMode.ARTWORK,
