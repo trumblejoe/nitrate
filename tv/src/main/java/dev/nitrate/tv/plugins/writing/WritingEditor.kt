@@ -301,8 +301,8 @@ fun WritingEditor(
                     session == null -> ""
                     sessionStatus == dev.nitrate.core.writing.SharedScriptSession.Status.OFFLINE -> " · Shared: offline, changes kept"
                     others.isNotEmpty() -> " · With " + others.joinToString { it.userName }
-                    sessionPending -> " · Shared: sending…"
-                    else -> " · Shared"
+                    sessionPending -> " · Sending…"
+                    else -> docs.firstOrNull { it.id == docId }?.let { " · " + it.placeLabel }.orEmpty()
                 }
                 Text(
                     "%d words · ~%.1f pages%s%s".format(Fountain.wordCount(value.text), Fountain.estimatePages(value.text), sharedNote, if (status.isNotEmpty()) " · $status" else ""),
@@ -362,6 +362,14 @@ fun WritingEditor(
                         if (id == docId) open(store.docs.value.firstOrNull()?.id ?: store.create())
                     }
                 },
+                onMove = { id, to ->
+                    scope.launch {
+                        runCatching { shared?.move(id, to) }
+                            .onSuccess { status = if (to == null) "Kept on this TV only" else "Moved"; if (to != null && id == docId) open(store.docs.value.firstOrNull()?.id ?: store.create()) }
+                            .onFailure { status = "Couldn't: ${it.message}" }
+                    }
+                },
+                moveTargets = { runCatching { shared?.syncOptions() }.getOrNull().orEmpty().filter { it.account.key != shared?.accountKey } },
                 onExport = ::exportNow,
                 onImport = ::importNow,
                 transfer = transferState,
@@ -395,6 +403,9 @@ private fun Documents(
     onOpen: (String) -> Unit,
     onNew: () -> Unit,
     onDelete: (String) -> Unit,
+    /** Moves a script to another account's server, or (null) keeps it on this TV only. */
+    onMove: (String, String?) -> Unit = { _, _ -> },
+    moveTargets: suspend () -> List<dev.nitrate.android.writing.SharedWriting.SyncOption> = { emptyList() },
     onExport: (ExportFormat) -> Unit,
     onImport: () -> Unit,
     transfer: TransferServer.State,
@@ -427,7 +438,8 @@ private fun Documents(
             },
             trailingContent = { Switch(checked = transfer.running, onCheckedChange = null) },
         )
-        Text("Long-press a document to delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Long-press a document to move or delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val targets by produceState(emptyList<dev.nitrate.android.writing.SharedWriting.SyncOption>(), confirmDelete) { this.value = moveTargets() }
         LazyColumn(Modifier.fillMaxSize()) {
             sharedWithYou?.let { content -> item(key = "shared-with-you") { Column { content() } } }
             items(docs, key = { it.id }) { doc ->
@@ -437,8 +449,28 @@ private fun Documents(
                     onClick = { if (confirming) { onDelete(doc.id); confirmDelete = null } else onOpen(doc.id) },
                     onLongClick = { confirmDelete = doc.id },
                     headlineContent = { Text(if (confirming) "Select again to delete “${doc.title}”" else doc.title) },
-                    supportingContent = { Text((if (doc.sharedId != null) "Shared · " else "") + format.format(Date(doc.modifiedMs))) },
+                    supportingContent = { Text(doc.placeLabel + " · " + format.format(Date(doc.modifiedMs))) },
                 )
+                // Long-pressed: where else it can go (someone else's script stays theirs).
+                if (confirming && doc.ownerName == null) {
+                    targets.forEach { o ->
+                        ListItem(
+                            selected = false,
+                            onClick = { onMove(doc.id, o.account.key); confirmDelete = null },
+                            headlineContent = { Text("Move to ${o.account.serverName} (${o.account.userName})") },
+                            supportingContent = { Text("Becomes that account's script, synced there when it's in use" + if (doc.isShared) "; sharing here stops" else "") },
+                            modifier = Modifier.padding(start = 24.dp),
+                        )
+                    }
+                    if (doc.sharedId != null) ListItem(
+                        selected = false,
+                        onClick = { onMove(doc.id, null); confirmDelete = null },
+                        headlineContent = { Text("Keep on this TV only") },
+                        supportingContent = { Text("Removed from the server; its history stays on the server copy until then") },
+                        modifier = Modifier.padding(start = 24.dp),
+                    )
+                    ListItem(selected = false, onClick = { confirmDelete = null }, headlineContent = { Text("Cancel") }, modifier = Modifier.padding(start = 24.dp))
+                }
             }
         }
     }

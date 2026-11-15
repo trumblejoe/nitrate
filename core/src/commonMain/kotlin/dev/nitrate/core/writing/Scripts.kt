@@ -1,7 +1,28 @@
 package dev.nitrate.core.writing
 
-/** A saved screenplay; [sharedId] when it's also a shared script (for the signed-in account). */
-data class WritingDoc(val id: String, val title: String, val modifiedMs: Long, val sharedId: String? = null)
+/**
+ * A saved screenplay. [sharedId] when it's synced with the signed-in account's server (privately,
+ * or shared with [sharedWith]); [ownerName] when someone else owns it and shared it.
+ */
+data class WritingDoc(
+    val id: String,
+    val title: String,
+    val modifiedMs: Long,
+    val sharedId: String? = null,
+    val sharedWith: List<String> = emptyList(),
+    val ownerName: String? = null,
+) {
+    /** Others write in it too (shared by or with this user). */
+    val isShared get() = sharedId != null && (sharedWith.isNotEmpty() || ownerName != null)
+
+    /** Where it lives, for document lists: someone's, shared, synced, or only here. */
+    val placeLabel: String get() = when {
+        ownerName != null -> "From $ownerName"
+        isShared -> "Shared with " + sharedWith.joinToString()
+        sharedId != null -> "Synced"
+        else -> "On this device"
+    }
+}
 
 object Scripts {
     /** The Title: from the title page, else the first line with text. */

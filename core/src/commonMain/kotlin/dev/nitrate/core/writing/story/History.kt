@@ -1,6 +1,7 @@
 package dev.nitrate.core.writing.story
 
 import dev.nitrate.core.writing.ScriptEdit
+import dev.nitrate.core.writing.TextOperation
 
 /** Turns a shared script's history into what writers read: who did what, to which scene or entry, when. */
 object History {
@@ -44,6 +45,30 @@ object History {
     fun nameOf(ref: String, story: Story, sceneNames: Map<String, String>): String = when (val r = Ref.parse(ref)) {
         null -> ref
         else -> if (r.kind == Ref.Kind.SCENE) sceneNames[r.id] ?: "a scene" else story.entry(r.id)?.name ?: story.records[r.id]?.get("name") ?: "an entry"
+    }
+
+    /** The scene a text change landed in: the marker on the heading at or before where it starts (as the server works it out). */
+    fun sceneAt(text: String, op: TextOperation): String? {
+        val first = op.parts.firstOrNull()
+        val pos = (if (first is TextOperation.Retain) first.n else 0).coerceAtMost(text.length)
+        val lineEnd = text.indexOf('\n', pos).let { if (it < 0) text.length else it }
+        if (lineEnd == 0) return null
+        val marker = text.lastIndexOf("[[scene:", lineEnd - 1)
+        if (marker < 0) return null
+        val close = text.indexOf("]]", marker)
+        return if (close < 0) null else text.substring(marker + 8, close)
+    }
+
+    /** A script and its story data as they were at [version], from where the history starts. */
+    fun replay(start: LocalHistoryStart, log: List<ScriptEdit>, version: Long): Pair<String, Story> {
+        var text = start.text
+        var story = Story(start.records)
+        for (e in log) {
+            if (e.version > version) break
+            e.op?.let { text = it.apply(text) }
+            e.records.forEach { story = story.apply(it, e.userId, e.userName, e.atMs) }
+        }
+        return text to story
     }
 
     /** Every change to one record, newest first: (version, who, when, the change). */

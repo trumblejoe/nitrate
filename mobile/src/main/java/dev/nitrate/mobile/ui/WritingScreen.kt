@@ -50,6 +50,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Tab
 import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.produceState
@@ -304,8 +305,8 @@ fun WritingScreen(
                     session == null -> ""
                     sessionStatus == dev.nitrate.core.writing.SharedScriptSession.Status.OFFLINE -> " · Shared: offline, changes kept"
                     others.isNotEmpty() -> " · With " + others.joinToString { it.userName }
-                    sessionPending -> " · Shared: sending…"
-                    else -> " · Shared"
+                    sessionPending -> " · Sending…"
+                    else -> docs.firstOrNull { it.id == docId }?.let { " · " + it.placeLabel }.orEmpty()
                 }
                 Text(
                     "%d words · ~%.1f pages%s%s".format(Fountain.wordCount(value.text), Fountain.estimatePages(value.text), sharedNote, if (status.isNotEmpty()) " · $status" else ""),
@@ -352,11 +353,12 @@ fun WritingScreen(
                 }
                 items(docs, key = { it.id }) { doc ->
                     var confirm by remember { mutableStateOf(false) }
+                    var actions by remember { mutableStateOf(false) }
                     ListItem(
                         modifier = Modifier.clickable { open(doc.id) },
                         headlineContent = { Text(doc.title) },
                         supportingContent = {
-                            Text((if (doc.sharedId != null) "Shared · " else "") + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(doc.modifiedMs)))
+                            Text(doc.placeLabel + " · " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(doc.modifiedMs)))
                         },
                         trailingContent = {
                             if (confirm) {
@@ -366,8 +368,11 @@ fun WritingScreen(
                                         if (doc.id == docId) open(store.docs.value.firstOrNull()?.id ?: store.create())
                                     }
                                 }) { Text("Delete", color = colors.error) }
-                            } else {
-                                IconButton(onClick = { confirm = true }) { Icon(Icons.Default.Delete, "Delete") }
+                            } else androidx.compose.foundation.layout.Box {
+                                IconButton(onClick = { actions = true }) { Icon(Icons.Default.MoreVert, "Script actions") }
+                                ScriptActionsMenu(actions, doc, shared, onDismiss = { actions = false }, onDelete = { confirm = true }, onMessage = { status = it }) { moved ->
+                                    if (moved && doc.id == docId) scope.launch { open(store.docs.value.firstOrNull()?.id ?: store.create()) }
+                                }
                             }
                         },
                     )
@@ -423,6 +428,71 @@ fun WritingScreen(
                     },
             )
         }
+    }
+}
+
+/**
+ * A script's actions in the documents list: move it to another account's server (it's then that
+ * account's, and synced there when that account is in use), keep it on this device only, delete.
+ */
+@Composable
+private fun ScriptActionsMenu(
+    expanded: Boolean,
+    doc: dev.nitrate.core.writing.WritingDoc,
+    shared: dev.nitrate.android.writing.SharedWriting,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit,
+    onMessage: (String) -> Unit,
+    onMoved: (Boolean) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val options by produceState(emptyList<dev.nitrate.android.writing.SharedWriting.SyncOption>(), expanded) {
+        if (expanded) this.value = runCatching { shared.syncOptions() }.getOrDefault(emptyList())
+    }
+    var confirmMove by remember { mutableStateOf<dev.nitrate.android.writing.SharedWriting.SyncOption?>(null) }
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        // Someone else's script can't be moved (it's theirs); the owner's shared one stops being shared.
+        if (doc.ownerName == null) {
+            options.filter { it.account.key != shared.accountKey }.forEach { o ->
+                DropdownMenuItem(
+                    text = { Text("Move to ${o.account.serverName} (${o.account.userName})") },
+                    onClick = { onDismiss(); confirmMove = o },
+                )
+            }
+            if (doc.sharedId != null) DropdownMenuItem(text = { Text("Keep on this device only") }, onClick = {
+                onDismiss()
+                scope.launch {
+                    runCatching { shared.move(doc.id, null) }
+                        .onSuccess { onMessage("Kept on this device only") }
+                        .onFailure { onMessage("Couldn't: ${it.message}") }
+                }
+            })
+        }
+        DropdownMenuItem(text = { Text("Delete…") }, onClick = { onDismiss(); onDelete() })
+    }
+    confirmMove?.let { o ->
+        AlertDialog(
+            onDismissRequest = { confirmMove = null },
+            title = { Text("Move to ${o.account.serverName}?") },
+            text = {
+                Text(
+                    "“${doc.title}” becomes ${o.account.userName}'s script and is synced with ${o.account.serverName} the next time that account is in use" +
+                        (if (doc.sharedId != null) ". It's removed from this server, with its history here" else "") +
+                        (if (doc.isShared) ", and the others stop writing in it (they keep their copies)." else "."),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmMove = null
+                    scope.launch {
+                        runCatching { shared.move(doc.id, o.account.key) }
+                            .onSuccess { onMessage("Moved to ${o.account.serverName}"); onMoved(true) }
+                            .onFailure { onMessage("Couldn't move: ${it.message}") }
+                    }
+                }) { Text("Move") }
+            },
+            dismissButton = { TextButton(onClick = { confirmMove = null }) { Text("Cancel") } },
+        )
     }
 }
 

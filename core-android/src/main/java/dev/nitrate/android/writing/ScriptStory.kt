@@ -40,6 +40,9 @@ class LocalStory(
         val now = System.currentTimeMillis()
         changes.forEach { s = s.apply(it, selfId, selfName(), now) }
         state.value = s
-        scope.launch { store.saveStory(localId, s.records) }
+        scope.launch {
+            store.saveStory(localId, s.records)
+            store.recordStory(localId, changes)
+        }
     }
 }

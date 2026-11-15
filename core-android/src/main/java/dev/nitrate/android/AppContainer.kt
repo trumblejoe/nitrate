@@ -14,6 +14,9 @@ import dev.nitrate.android.storage.SessionStore
 import dev.nitrate.android.storage.ProfileStore
 import dev.nitrate.core.model.SessionState
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
 import dev.nitrate.core.events.ServerEvent
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
@@ -84,7 +87,12 @@ class AppContainer(
 
     val settingsSync = SettingsSync(server, displaySettings)
 
-    val writing by lazy { WritingStore(appContext, server).also { it.account = server.currentAccountKey } }
+    val writing by lazy {
+        WritingStore(appContext, server).also { store ->
+            store.account = server.currentAccountKey
+            store.author = { server.userId.orEmpty() to (account.value?.name ?: "Me") }
+        }
+    }
 
     /** Shared screenplays (Companion plugin): links scripts here to shared ones, per account. */
     val sharedWriting by lazy { dev.nitrate.android.writing.SharedWriting(writing, server, companion) { account.value?.name } }
@@ -149,8 +157,29 @@ class AppContainer(
     @androidx.annotation.VisibleForTesting
     suspend fun refreshCompanionForTests() = refreshCompanion()
 
+    private var scriptSyncJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Keeps this profile's scripts in step with its server (Companion plugin): after sign-in, a
+     * few seconds after scripts change here, and every few minutes for ones made elsewhere.
+     */
+    private fun syncScripts() {
+        scriptSyncJob?.cancel()
+        scriptSyncJob = networkScope.launch {
+            launch {
+                @OptIn(kotlinx.coroutines.FlowPreview::class)
+                writing.docs.map { docs -> docs.map { it.id to it.sharedId }.toSet() }.distinctUntilChanged().drop(1).debounce(3_000).collect { runCatching { sharedWriting.autoSync() } }
+            }
+            while (true) {
+                runCatching { sharedWriting.autoSync() }
+                kotlinx.coroutines.delay(5 * 60_000L)
+            }
+        }
+    }
+
     private suspend fun refreshCompanion() {
         companionState.value = runCatching { server.companion() }.getOrNull()
+        if (companionState.value?.features?.contains("scripts") == true) syncScripts()
         chat
     }
 
@@ -359,6 +388,7 @@ class AppContainer(
         chatOnlyGroup.value = null
         companionState.value = null
         writing.account = null
+        scriptSyncJob?.cancel()
     }
 
     /** Free space where downloads are saved. */

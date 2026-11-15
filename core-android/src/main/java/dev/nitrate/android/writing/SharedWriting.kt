@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 /**
@@ -42,6 +43,9 @@ class SharedWriting(
     /** The signed-in user, to tell the owner from the invited. */
     val userId: String? get() = server.userId
 
+    /** The signed-in account ("serverUrl|userId"). */
+    val accountKey: String? get() = server.currentAccountKey
+
     suspend fun people(): List<UserRef> = server.sharingUsers().filter { it.id != server.userId }
 
     suspend fun findPerson(name: String): UserRef? = server.sharingUsers(name).firstOrNull()
@@ -54,13 +58,92 @@ class SharedWriting(
         return list().firstOrNull { it.id == link.sharedId }
     }
 
-    /** Shares a script from here with [members]; it stays linked to the shared one. */
+    /**
+     * Shares a script with [members]: one already synced just gets them invited; one only on
+     * this device is put on the server first (as this user's, with its story data).
+     */
     suspend fun share(localId: String, members: List<String>): SharedScriptInfo {
-        // The script's story data goes with it, as the owner's.
+        store.link(localId)?.let { link ->
+            return server.setScriptMembers(link.sharedId, members).also { info -> remember(localId, info) }
+        }
         val records = store.readStory(localId).values.filter { !it.deleted }.map { dev.nitrate.core.writing.story.RecordChange(it.id, it.type, it.fields) }
         val doc = server.createSharedScript(store.read(localId), members, records)
-        store.saveLink(localId, SharedLink(doc.info.id, account(), SharedScriptSession.fresh(doc)))
+        store.setDeviceOnly(localId, false)
+        store.saveLink(localId, SharedLink(doc.info.id, account(), SharedScriptSession.fresh(doc), doc.info.members.map { it.name }))
         return doc.info
+    }
+
+    /** Keeps a link's names (who else writes in it, whose it is) as the server last said. */
+    private suspend fun remember(localId: String, info: SharedScriptInfo) {
+        val link = store.link(localId) ?: return
+        val members = (listOf(info.owner) + info.members).filter { it.id != server.userId }.map { it.name }
+        val ownerName = info.owner.name.takeIf { info.owner.id != server.userId }
+        val shownMembers = if (ownerName != null) members - ownerName else members
+        if (link.members != shownMembers || link.ownerName != ownerName) store.saveLink(localId, link.copy(members = shownMembers, ownerName = ownerName))
+    }
+
+    // ---- Syncing this profile's scripts with its server ----
+
+    /** One account signed in here, and whether this device syncs its scripts with its server. */
+    data class SyncOption(val account: dev.nitrate.core.model.SavedAccount, val primary: Boolean, val on: Boolean)
+
+    private val syncLock = kotlinx.coroutines.sync.Mutex()
+
+    /** Every account here with its sync choice: on by default only on the Primary server. */
+    suspend fun syncOptions(): List<SyncOption> = server.servers().flatMap { s ->
+        s.accounts.map { a -> SyncOption(a, s.primary, store.syncChoice(a.key) ?: s.primary) }
+    }
+
+    fun setSync(accountKey: String, on: Boolean) = store.setSyncChoice(accountKey, on)
+
+    /** Whether the signed-in account's scripts sync (its choice, else whether its server is the Primary one). */
+    suspend fun syncOn(): Boolean {
+        val key = server.currentAccountKey ?: return false
+        return store.syncChoice(key) ?: server.servers().firstOrNull { s -> s.accounts.any { it.key == key } }?.primary ?: false
+    }
+
+    /**
+     * Brings this profile's scripts and its server together (with the Companion plugin, when
+     * this account syncs): scripts only here are put on the server, privately; this user's
+     * scripts made on other devices are brought here; names of who else writes in each are
+     * refreshed; and a script the server no longer has for this user stays here as their own.
+     * Changes themselves sync live while a script is open (see [session]).
+     */
+    suspend fun autoSync(): Unit = syncLock.withLock {
+        if (!isAvailable || server.currentAccountKey == null) return@withLock
+        val remote = runCatching { list() }.getOrNull() ?: return@withLock
+        val byId = remote.associateBy { it.id }
+        for ((localId, link) in store.links()) {
+            val info = byId[link.sharedId]
+            if (info == null) lost(localId) else remember(localId, info)
+        }
+        if (!syncOn()) return@withLock
+        for (doc in store.docs.value) {
+            if (doc.sharedId != null || store.isDeviceOnly(doc.id)) continue
+            runCatching { share(doc.id, emptyList()) }
+        }
+        val linked = store.links().values.map { it.sharedId }.toSet()
+        remote.filter { it.owner.id == server.userId && it.id !in linked }.forEach { runCatching { open(it.id) } }
+    }
+
+    /**
+     * Moves a script to another of this device's accounts ([toAccount]), or keeps it on this
+     * device only (null). Its server copy here is removed (the owner's only; sharing stops); the
+     * other account's server gets it the next time that account is in use and syncs.
+     */
+    suspend fun move(localId: String, toAccount: String?) {
+        val link = store.link(localId)
+        if (link != null) {
+            val info = runCatching { info(localId) }.getOrNull()
+            if (info != null && !info.isOwner(server.userId)) error("Only the script's owner can move it.")
+            server.deleteSharedScript(link.sharedId)
+            store.unlink(localId)
+        }
+        if (toAccount == null) store.setDeviceOnly(localId, true)
+        else {
+            store.setDeviceOnly(localId, false)
+            store.setOwner(localId, toAccount)
+        }
     }
 
     /** The script here for a shared one, made (from the server's text) the first time it's opened. */
@@ -69,6 +152,7 @@ class SharedWriting(
         val doc = server.sharedScript(sharedId)
         val localId = store.create(doc.text)
         store.saveLink(localId, SharedLink(sharedId, account(), SharedScriptSession.fresh(doc)))
+        remember(localId, doc.info)
         return localId
     }
 
@@ -82,11 +166,10 @@ class SharedWriting(
         store.unlink(localId)
     }
 
-    /** Stops sharing it for everyone (owner); everyone keeps their own copy. */
+    /** Stops sharing it with others (owner): everyone keeps their own copy; it stays synced as this user's. */
     suspend fun stopSharing(localId: String) {
         val link = store.link(localId) ?: return
-        server.deleteSharedScript(link.sharedId)
-        store.unlink(localId)
+        server.setScriptMembers(link.sharedId, emptyList()).also { remember(localId, it) }
     }
 
     /** Called when the server says it's no longer shared with this user: it stays as their own. */
@@ -124,9 +207,9 @@ class SharedWriting(
         return me + (info?.let { i -> (listOf(i.owner) + i.members).filter { it.id != server.userId } }.orEmpty())
     }
 
-    /** A shared script's history for the story screens; null for an unshared one. */
-    fun history(localId: String): StoryHistory? {
-        if (store.link(localId) == null) return null
+    /** A script's history for the story screens: the server's when synced, else the one kept on this device. */
+    fun history(localId: String): StoryHistory {
+        if (store.link(localId) == null) return localHistory(localId)
         return object : StoryHistory {
             override suspend fun log() = this@SharedWriting.log(localId)
             override suspend fun textAt(version: Long) = at(localId, version)?.text.orEmpty()
@@ -155,9 +238,23 @@ class SharedWriting(
     suspend fun at(localId: String, version: Long): dev.nitrate.core.writing.SharedScriptDoc? =
         store.link(localId)?.let { server.scriptAt(it.sharedId, version) }
 
-    /** Who wrote each part of a shared script (the text as the server has it, and the runs). */
+    /** The history this device kept of a script that isn't synced. */
+    private fun localHistory(localId: String) = object : StoryHistory {
+        override suspend fun log() = store.localLog(localId).map { it.toScriptEdit() }
+        override suspend fun textAt(version: Long) = replay(version)?.first.orEmpty()
+        override suspend fun recordAt(version: Long, id: String) = replay(version)?.second?.records?.get(id)
+        private suspend fun replay(version: Long): Pair<String, dev.nitrate.core.writing.story.Story>? {
+            val start = store.historyStart(localId) ?: return null
+            return dev.nitrate.core.writing.story.History.replay(start, log(), version)
+        }
+    }
+
+    /** Who wrote each part of a script: from the server's history when synced, else this device's. */
     suspend fun authorship(localId: String): Pair<String, dev.nitrate.core.writing.story.Attribution>? {
-        val link = store.link(localId) ?: return null
+        val link = store.link(localId) ?: run {
+            val start = store.historyStart(localId) ?: return null
+            return dev.nitrate.core.writing.story.History.attribution(start.text, start.authorId, store.localLog(localId).map { it.toScriptEdit() })
+        }
         val owner = list().firstOrNull { it.id == link.sharedId }?.owner?.id ?: return null
         val start = server.scriptAt(link.sharedId, 0).text
         return dev.nitrate.core.writing.story.History.attribution(start, owner, log(localId))

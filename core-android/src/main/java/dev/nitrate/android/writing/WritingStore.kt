@@ -24,7 +24,15 @@ private data class BackupEntry(val text: String, val modifiedMs: Long, val story
  * and what the shared-script session keeps between runs.
  */
 @Serializable
-data class SharedLink(val sharedId: String, val account: String, val state: dev.nitrate.core.writing.SharedScriptState)
+data class SharedLink(
+    val sharedId: String,
+    val account: String,
+    val state: dev.nitrate.core.writing.SharedScriptState,
+    /** Who else writes in it (names), as last heard from the server. */
+    val members: List<String> = emptyList(),
+    /** The owner's name when it's someone else's script shared with this user. */
+    val ownerName: String? = null,
+)
 
 /**
  * Screenplays saved as Fountain files in the app's private storage, one file per document.
@@ -35,7 +43,8 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     private val dir = File(context.filesDir, "writing").apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
     private val backupLock = Mutex()
-    private val _docs = MutableStateFlow(scan())
+    private val _docs = MutableStateFlow<List<WritingDoc>>(emptyList())
+    /** The signed-in profile's scripts (each script belongs to the account that made it). */
     val docs: StateFlow<List<WritingDoc>> = _docs
 
     private fun file(id: String) = File(dir, "$id.fountain")
@@ -59,9 +68,116 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     private val linkDir = File(dir, "shared").apply { mkdirs() }
     private fun linkFile(id: String) = File(linkDir, "$id.json")
 
-    /** The account whose shared scripts show as shared ([WritingDoc.sharedId]). */
+    /**
+     * The signed-in account ("serverUrl|userId"): only its scripts are listed. Scripts from
+     * before scripts had owners become the first signed-in account's.
+     */
     @Volatile var account: String? = null
-        set(value) { field = value; _docs.value = scan() }
+        set(value) {
+            field = value
+            if (value != null) claimUnowned(value)
+            _docs.value = scan()
+        }
+
+    /** Who's writing here (user id, name), for the history kept on the device. */
+    @Volatile var author: () -> Pair<String, String> = { "" to "" }
+
+    // ---- Owners ----
+
+    private val ownersFile = File(dir, "owners.json")
+    private var owners: MutableMap<String, String> = runCatching { json.decodeFromString<Map<String, String>>(ownersFile.readText()) }.getOrDefault(emptyMap()).toMutableMap()
+
+    private fun saveOwners() = synchronized(this) {
+        val temp = File(dir, "owners.json.tmp")
+        temp.writeText(json.encodeToString(owners.toMap()))
+        temp.renameTo(ownersFile)
+    }
+
+    fun ownerOf(id: String): String? = synchronized(this) { owners[id] }
+
+    private fun claimUnowned(account: String) = synchronized(this) {
+        val unowned = dir.listFiles { f -> f.extension == "fountain" }.orEmpty().map { it.nameWithoutExtension }.filter { it !in owners }
+        if (unowned.isNotEmpty()) {
+            unowned.forEach { owners[it] = account }
+            saveOwners()
+        }
+    }
+
+    /** Gives a script to another account (moving it to that account's server). */
+    suspend fun setOwner(id: String, account: String) = withContext(Dispatchers.IO) {
+        synchronized(this@WritingStore) { owners[id] = account; saveOwners() }
+        _docs.value = scan()
+    }
+
+    // ---- Sync choices (device-only) ----
+
+    private val syncFile = File(dir, "sync.json")
+
+    @Serializable
+    private data class SyncChoices(val accounts: Map<String, Boolean> = emptyMap(), val deviceOnly: Set<String> = emptySet())
+
+    private fun syncChoices(): SyncChoices = runCatching { json.decodeFromString<SyncChoices>(syncFile.readText()) }.getOrDefault(SyncChoices())
+    private fun saveSyncChoices(c: SyncChoices) = synchronized(this) { syncFile.writeText(json.encodeToString(c)) }
+
+    /** This device's choice for syncing [account]'s scripts (null: not chosen, so the default applies). */
+    fun syncChoice(account: String): Boolean? = syncChoices().accounts[account]
+
+    fun setSyncChoice(account: String, on: Boolean) = saveSyncChoices(syncChoices().let { it.copy(accounts = it.accounts + (account to on)) })
+
+    /** Scripts kept on this device only (never synced, whatever the account's choice). */
+    fun isDeviceOnly(id: String) = id in syncChoices().deviceOnly
+
+    fun setDeviceOnly(id: String, deviceOnly: Boolean) = saveSyncChoices(syncChoices().let { it.copy(deviceOnly = if (deviceOnly) it.deviceOnly + id else it.deviceOnly - id) })
+
+    // ---- History kept on the device (scripts not synced with a server) ----
+
+    private val historyDir = File(dir, "history").apply { mkdirs() }
+    private fun logFile(id: String) = File(historyDir, "$id.log")
+    private fun startFile(id: String) = File(historyDir, "$id.start.json")
+
+    /** Where this device's history of a script starts (made with the first change). */
+    suspend fun historyStart(id: String): dev.nitrate.core.writing.story.LocalHistoryStart? = withContext(Dispatchers.IO) {
+        runCatching { json.decodeFromString<dev.nitrate.core.writing.story.LocalHistoryStart>(startFile(id).readText()) }.getOrNull()
+    }
+
+    /** This device's history of a script, oldest first. */
+    suspend fun localLog(id: String): List<dev.nitrate.core.writing.story.LocalEdit> = withContext(Dispatchers.IO) {
+        logFile(id).takeIf { it.exists() }?.readLines().orEmpty().mapNotNull { line ->
+            runCatching { json.decodeFromString<dev.nitrate.core.writing.story.LocalEdit>(line) }.getOrNull()
+        }
+    }
+
+    /** Adds a change to the device's history (text from [before] to [after], and/or story changes). */
+    private suspend fun record(id: String, before: String?, after: String?, changes: List<dev.nitrate.core.writing.story.RecordChange>) = withContext(Dispatchers.IO) {
+        if (link(id) != null) return@withContext // a synced script's history is the server's
+        val (userId, userName) = author()
+        val now = System.currentTimeMillis()
+        if (!startFile(id).exists()) {
+            startFile(id).writeText(json.encodeToString(dev.nitrate.core.writing.story.LocalHistoryStart(before ?: read(id), readStory(id), now, userId)))
+        }
+        val next = (logFile(id).takeIf { it.exists() }?.useLines { it.count() } ?: 0) + 1L
+        val edit = when {
+            before != null && after != null -> dev.nitrate.core.writing.story.LocalEdit.text(next, userId, userName, now, before, after)?.copy(records = changes)
+            changes.isNotEmpty() -> dev.nitrate.core.writing.story.LocalEdit(next, userId, userName, now, records = changes)
+            else -> null
+        } ?: return@withContext
+        logFile(id).appendText(json.encodeToString(edit) + "\n")
+        if (next > MAX_LOCAL_EDITS) compact(id)
+    }
+
+    /** Story changes made on the device, for its history. */
+    suspend fun recordStory(id: String, changes: List<dev.nitrate.core.writing.story.RecordChange>) = record(id, null, null, changes)
+
+    /** Folds the oldest changes into the start, so the history stays a reasonable size. */
+    private fun compact(id: String) {
+        val log = logFile(id).readLines().mapNotNull { runCatching { json.decodeFromString<dev.nitrate.core.writing.story.LocalEdit>(it) }.getOrNull() }
+        val start = runCatching { json.decodeFromString<dev.nitrate.core.writing.story.LocalHistoryStart>(startFile(id).readText()) }.getOrNull() ?: return
+        val drop = log.size - MAX_LOCAL_EDITS / 2
+        if (drop <= 0) return
+        val (text, story) = dev.nitrate.core.writing.story.History.replay(start, log.map { it.toScriptEdit() }, log[drop - 1].version)
+        startFile(id).writeText(json.encodeToString(start.copy(text = text, records = story.records, atMs = log[drop - 1].atMs)))
+        logFile(id).writeText(log.drop(drop).joinToString("") { json.encodeToString(it) + "\n" })
+    }
 
     // Backups that haven't reached the server yet (offline, server down). Survive restarts.
     private val pendingFile = File(dir, "pending-backup.json")
@@ -76,10 +192,20 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     /** Number of scripts waiting to be backed up. */
     val pendingCount: Int get() = pending().let { it.upload.size + it.delete.size }
 
+    init {
+        _docs.value = scan()
+    }
+
     private fun scan(): List<WritingDoc> {
         val links = links()
+        val current = account
+        val owned = synchronized(this) { owners.toMap() }
         return dir.listFiles { f -> f.extension == "fountain" }.orEmpty()
-            .map { WritingDoc(it.nameWithoutExtension, Scripts.titleOf(it.readText()), it.lastModified(), links[it.nameWithoutExtension]?.sharedId) }
+            .filter { f -> owned[f.nameWithoutExtension] == current }
+            .map { f ->
+                val link = links[f.nameWithoutExtension]
+                WritingDoc(f.nameWithoutExtension, Scripts.titleOf(f.readText()), f.lastModified(), link?.sharedId, link?.members.orEmpty(), link?.ownerName)
+            }
             .sortedByDescending { it.modifiedMs }
     }
 
@@ -119,17 +245,23 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     suspend fun create(text: String = ""): String = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         file(id).writeText(text)
+        account?.let { a -> synchronized(this@WritingStore) { owners[id] = a; saveOwners() } }
         _docs.value = scan()
         id
     }
 
     suspend fun save(id: String, text: String) = withContext(Dispatchers.IO) {
+        val before = file(id).takeIf { it.exists() }?.readText()
         file(id).writeText(text)
+        if (before != null && before != text) record(id, before, text, emptyList())
         _docs.value = scan()
     }
 
     suspend fun delete(id: String, backup: Boolean) {
-        withContext(Dispatchers.IO) { file(id).delete(); linkFile(id).delete(); storyFile(id).delete() }
+        withContext(Dispatchers.IO) {
+            file(id).delete(); linkFile(id).delete(); storyFile(id).delete(); logFile(id).delete(); startFile(id).delete()
+            synchronized(this@WritingStore) { if (owners.remove(id) != null) saveOwners() }
+        }
         _docs.value = scan()
         if (backup) {
             backupLock.withLock { withContext(Dispatchers.IO) { pending().let { setPending(it.copy(upload = it.upload - id, delete = it.delete + id)) } } }
@@ -148,8 +280,10 @@ class WritingStore(context: Context, private val repository: MediaServer) {
      * waiting; on failure (e.g. offline) everything stays queued for the next attempt.
      */
     suspend fun flushPending(): Boolean = backupLock.withLock {
-        val queued = withContext(Dispatchers.IO) { pending() }
-        if (queued.upload.isEmpty() && queued.delete.isEmpty()) return@withLock true
+        // Each account's backup holds only its own scripts; others' wait for their account.
+        val mine = account
+        val queued = withContext(Dispatchers.IO) { pending() }.let { p -> p.copy(upload = p.upload.filter { ownerOf(it) == mine || ownerOf(it) == null }.toSet()) }
+        if (queued.upload.isEmpty() && queued.delete.isEmpty()) return@withLock pendingCount == 0
         val ok = runCatching {
             val current = repository.loadCustomPrefs(PREFS_ID)
             val uploads = withContext(Dispatchers.IO) {
@@ -180,7 +314,11 @@ class WritingStore(context: Context, private val repository: MediaServer) {
                 if (id in deletedHere) continue
                 val entry = runCatching { json.decodeFromString<BackupEntry>(raw) }.getOrNull() ?: continue
                 val local = file(id)
+                // Someone else's script on this device keeps its owner; a backup never takes it.
+                val owner = ownerOf(id)
+                if (owner != null && owner != account) continue
                 if (!local.exists() || local.lastModified() < entry.modifiedMs) {
+                    account?.let { a -> synchronized(this@WritingStore) { owners[id] = a; saveOwners() } }
                     local.writeText(entry.text)
                     local.setLastModified(entry.modifiedMs)
                     entry.story?.let { if (link(id) == null) saveStory(id, it) }
@@ -205,6 +343,8 @@ class WritingStore(context: Context, private val repository: MediaServer) {
 
     companion object {
         const val PREFS_ID = "nitrate-writing"
+        /** Changes kept in a device's history of one script before the oldest are folded in. */
+        const val MAX_LOCAL_EDITS = 20_000
 
     }
 }

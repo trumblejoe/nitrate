@@ -62,7 +62,8 @@ fun ShareScriptDialog(shared: SharedWriting, localId: String, onMessage: (String
             busy = false
         }
     }
-    val current = info
+    // Synced but with nobody invited yet: still "not shared" here.
+    val current = info?.takeIf { it.members.isNotEmpty() || !it.isOwner(shared.userId) }
     val isOwner = current == null || current.isOwner(shared.userId)
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -113,7 +114,7 @@ fun ShareScriptDialog(shared: SharedWriting, localId: String, onMessage: (String
                             if (confirmStop) {
                                 TextButton(onClick = {
                                     act { shared.stopSharing(localId); onMessage("Stopped sharing. Everyone keeps their own copy."); onDismiss() }
-                                }) { Text("Stop sharing for everyone? Tap to confirm", color = MaterialTheme.colorScheme.error) }
+                                }) { Text("Stop sharing with everyone? Tap to confirm", color = MaterialTheme.colorScheme.error) }
                             } else {
                                 TextButton(onClick = { confirmStop = true }) { Text("Stop sharing…", color = MaterialTheme.colorScheme.error) }
                             }

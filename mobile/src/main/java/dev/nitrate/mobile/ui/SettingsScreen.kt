@@ -215,6 +215,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                     scope.launch { store.update(WritingPlugin.id, WritingSettings()) { it.copy(backupToServer = v) } }
                 }
             }
+            item { ScriptSyncSettings(actions) }
         }
     }
 }
@@ -543,3 +544,35 @@ private fun MissingEpisodesToggle(actions: AppActions) {
         scope.launch { if (runCatching { actions.server.setShowMissingEpisodes(next) }.isFailure) on = !next }
     }
 }
+
+/**
+ * Which accounts' scripts sync with their server (Nitrate Companion plugin). On this device only;
+ * by default just the Primary server's. A new server never gets scripts until it's switched on.
+ */
+@Composable
+private fun ScriptSyncSettings(actions: AppActions) {
+    val shared = actions.container.sharedWriting
+    var refresh by remember { mutableStateOf(0) }
+    val options by androidx.compose.runtime.produceState(emptyList<dev.nitrate.android.writing.SharedWriting.SyncOption>(), refresh) {
+        value = runCatching { shared.syncOptions() }.getOrDefault(emptyList())
+    }
+    val available by shared.available.collectAsState(false)
+    val syncScope = rememberCoroutineScope()
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("Sync scripts with", style = MaterialTheme.typography.titleSmall)
+        Text(
+            if (available) "Your scripts stay in step on all your devices, with the full history of changes. Off: they stay on this device (history kept here)."
+            else "Needs the Nitrate Companion plugin on the server. Until then, scripts and their history stay on this device.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    options.forEach { o ->
+        Toggle("${o.account.serverName} · ${o.account.userName}", if (o.primary) "Primary server" else "Another server", o.on) { v ->
+            shared.setSync(o.account.key, v)
+            refresh++
+            syncScope.launch { runCatching { shared.autoSync() } }
+        }
+    }
+}
+

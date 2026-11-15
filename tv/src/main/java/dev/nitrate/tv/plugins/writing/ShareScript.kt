@@ -63,7 +63,8 @@ internal fun SharePanel(shared: SharedWriting, localId: String, onMessage: (Stri
             busy = false
         }
     }
-    val current = info
+    // Synced but with nobody invited yet: still "not shared" here.
+    val current = info?.takeIf { it.members.isNotEmpty() || !it.isOwner(shared.userId) }
     val isOwner = current == null || current.isOwner(shared.userId)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(if (current == null) "Share this script" else "Shared script", style = MaterialTheme.typography.titleLarge)

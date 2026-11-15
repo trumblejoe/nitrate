@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -51,6 +52,31 @@ object WritingUi : PlayerPanel, ScreenPlugin {
             supportingContent = { Text("Keeps a copy of each script in your Jellyfin account, so another device or a reset one can restore it") },
             trailingContent = { Switch(checked = s.backupToServer, onCheckedChange = null) },
         )
+        // Which accounts' scripts sync with their server (this TV only; Primary by default).
+        val shared = context.container.sharedWriting
+        var refresh by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+        val options by androidx.compose.runtime.produceState(emptyList<dev.nitrate.android.writing.SharedWriting.SyncOption>(), refresh) {
+            value = runCatching { shared.syncOptions() }.getOrDefault(emptyList())
+        }
+        val available by shared.available.collectAsState(false)
+        Text(
+            if (available) "Sync scripts with: they stay in step on all your devices, with the full history. Off: they stay on this TV, history kept here."
+            else "Syncing scripts needs the Nitrate Companion plugin on the server; until then scripts and their history stay on this TV.",
+            style = androidx.tv.material3.MaterialTheme.typography.bodySmall,
+        )
+        options.forEach { o ->
+            ListItem(
+                selected = false,
+                onClick = {
+                    shared.setSync(o.account.key, !o.on)
+                    refresh++
+                    scope.launch { runCatching { shared.autoSync() } }
+                },
+                headlineContent = { Text("Sync scripts with ${o.account.serverName} · ${o.account.userName}") },
+                supportingContent = { Text(if (o.primary) "Primary server" else "Another server") },
+                trailingContent = { Switch(checked = o.on, onCheckedChange = null) },
+            )
+        }
     }
 }
 
