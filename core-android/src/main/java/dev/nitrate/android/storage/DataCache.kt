@@ -41,6 +41,22 @@ class DataCache(context: Context) {
         }
     }
 
+    /** Plain text under [key] (already per account), for the Jellyfin client's own remembered rows. */
+    val text = object : dev.nitrate.core.cache.TextCache {
+        override suspend fun get(key: String): String? = withContext(Dispatchers.IO) { file("", key).takeIf { it.exists() }?.let { runCatching { it.readText() }.getOrNull() } }
+        override suspend fun put(key: String, value: String) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    dir.mkdirs()
+                    val f = file("", key)
+                    val tmp = File(dir, f.name + ".tmp")
+                    tmp.writeText(value)
+                    tmp.renameTo(f)
+                }
+            }
+        }
+    }
+
     /** A page's rows (see [dev.nitrate.android.viewmodel.RowsViewModel]). */
     suspend fun read(account: String, pageKey: String): CachedPage? = read(account, "rows/$pageKey", CachedPage.serializer())
 

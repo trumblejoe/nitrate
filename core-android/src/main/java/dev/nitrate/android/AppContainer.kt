@@ -65,6 +65,9 @@ class AppContainer(
     /** Probed once: decoder lists don't change while the app runs. */
     val capabilities: DeviceCapabilities by lazy { DeviceProbe.probe(appContext) }
 
+    /** Each page's rows as last loaded, so pages open with them while fresh ones load. */
+    val dataCache: dev.nitrate.android.storage.DataCache by lazy { dev.nitrate.android.storage.DataCache(appContext) }
+
     val server: MediaServer = serverOverride ?: JellyfinClient(
         // Pages ask for all their rows at once; OkHttp would otherwise send 5 at a time per server.
         engine = OkHttp.create {
@@ -76,6 +79,7 @@ class AppContainer(
         sessionStorage = SessionStore(appContext),
         capabilities = { capabilities },
         playbackSettings = playbackSettings,
+        textCache = dataCache.text,
     )
 
     val settingsSync = SettingsSync(server, displaySettings)
@@ -152,8 +156,6 @@ class AppContainer(
     suspend fun sendPlaybackReport(session: dev.nitrate.android.playback.PlaybackSession? = null): Result<String> =
         runCatching { server.sendClientLog(playbackReport(session)) }
 
-    /** Each page's rows as last loaded, so pages open with them while fresh ones load. */
-    val dataCache by lazy { dev.nitrate.android.storage.DataCache(appContext) }
 
     /**
      * Times typical requests from this device to the server (see [MediaServer.speedCheck]),

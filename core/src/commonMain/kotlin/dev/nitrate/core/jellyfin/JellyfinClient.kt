@@ -119,6 +119,8 @@ class JellyfinClient(
     private val sessionStorage: SessionStorage,
     private val capabilities: () -> DeviceCapabilities,
     private val playbackSettings: PlaybackSettingsRepository,
+    /** Keeps slow-to-make rows ("Because you watched") between app runs. */
+    private val textCache: dev.nitrate.core.cache.TextCache? = null,
 ) : MediaServer {
     internal val http = HttpClient(engine) {
         expectSuccess = true
@@ -575,7 +577,7 @@ class JellyfinClient(
      * Home's rows as independent jobs, all started at once: the library list (My Media, and the
      * "Latest in…" rows that need it), Continue Watching, Next Up and "Because you watched".
      */
-    private fun homeJobs(): List<dev.nitrate.core.rows.RowJob> {
+    private fun homeJobs(fresh: Boolean = false): List<dev.nitrate.core.rows.RowJob> {
         val views = kotlinx.coroutines.CompletableDeferred<List<MediaItem>>()
         return listOf(
             dev.nitrate.core.rows.RowJob("My Media") {
@@ -596,15 +598,44 @@ class JellyfinClient(
                 coroutineScope {
                     views.await()
                         .filter { it.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null) }
-                        .map { view -> view to async { latest(view.id) } }
+                        .map { view -> view to async { latestIn(view) } }
                         .mapNotNull { (view, items) -> items.await().takeIf { it.isNotEmpty() }?.let { MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay()) } }
                 }
             },
-            dev.nitrate.core.rows.RowJob("Because you watched") {
-                dev.nitrate.core.rows.BecauseYouWatched.rows(recentlyWatched(), ::similar)
-            },
+            dev.nitrate.core.rows.RowJob("Because you watched") { becauseYouWatched(fresh) },
         )
     }
+
+    @kotlinx.serialization.Serializable
+    private data class SavedRows(val savedAtMs: Long, val rows: List<MediaRow>)
+
+    private var savedBecause: SavedRows? = null
+
+    /**
+     * "Because you watched" rows. They're the slowest thing on Home for a large library (sorting
+     * everything played by date, then asking for similar titles several times) and barely change
+     * hour to hour, so they're remembered for [BECAUSE_TTL_MS], on the device, unless [fresh].
+     */
+    @OptIn(ExperimentalTime::class)
+    private suspend fun becauseYouWatched(fresh: Boolean): List<MediaRow> {
+        val key = "because/${accountKey ?: "$baseUrl|$userId"}"
+        val now = Clock.System.now().toEpochMilliseconds()
+        if (!fresh) {
+            val known = savedBecause?.takeIf { savedBecauseKey == key }
+                ?: textCache?.get(key)
+                    ?.let { runCatching { JellyfinJson.decodeFromString(SavedRows.serializer(), it) }.getOrNull() }
+                    ?.also { savedBecause = it; savedBecauseKey = key }
+            if (known != null && now - known.savedAtMs in 0 until BECAUSE_TTL_MS) return known.rows
+        }
+        val rows = dev.nitrate.core.rows.BecauseYouWatched.rows(recentlyWatched(), ::similar)
+        val saved = SavedRows(now, rows)
+        savedBecause = saved
+        savedBecauseKey = key
+        runCatching { textCache?.put(key, JellyfinJson.encodeToString(SavedRows.serializer(), saved)) }
+        return rows
+    }
+
+    private var savedBecauseKey: String? = null
 
     override fun homeRowsProgress(): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(homeJobs())
 
@@ -623,6 +654,17 @@ class JellyfinClient(
             "limit" to 20,
         ),
     )
+
+    /**
+     * What's new in a library, as a plain sorted lookup where possible: films by when they were
+     * added, shows by when they last got an episode. Jellyfin's own "latest" groups new episodes
+     * into their shows across the whole library, which is slow on large libraries.
+     */
+    private suspend fun latestIn(view: MediaItem): List<MediaItem> = when (view.collection) {
+        CollectionKind.MOVIES -> query(view.id, "Movie", "DateCreated")
+        CollectionKind.TV_SHOWS -> query(view.id, "Series", "DateLastContentAdded")
+        else -> latest(view.id)
+    }
 
     private suspend fun latest(parentId: String): List<MediaItem> =
         get("Items", "Latest", query = mapOf("parentId" to parentId, "fields" to ROW_FIELDS, "limit" to ROW_LIMIT))
@@ -643,7 +685,7 @@ class JellyfinClient(
             CollectionKind.TV_SHOWS -> {
                 add("continue_watching", "Continue Watching", WIDE_DEFAULT) { resumeItems(id, "Episode") }
                 add("next_up", "Next Up", WIDE_DEFAULT) { items("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS)) }
-                add("recently_added", "Recently Added") { latest(id) }
+                add("recently_added", "Recently Added") { query(id, "Series", "DateLastContentAdded") }
                 add("recently_released", "Recently Aired", WIDE_DEFAULT) { query(id, "Episode", "PremiereDate", maxPremiere = now) }
                 add("top_unwatched", "Top Unwatched") { query(id, "Series", "CommunityRating", filters = "IsUnplayed") }
                 add("favorites", "Favorites") { query(id, "Series", "SortName", "Ascending", filters = "IsFavorite") }
@@ -1175,7 +1217,7 @@ class JellyfinClient(
         val parts = mutableListOf<dev.nitrate.core.rows.RowTiming>()
         val home = step(S.HOME, "Home page", "Loading every row of Home, all at once as Nitrate does; each part timed on its own", 2, { "$rowCount rows" }) {
             parts.clear()
-            rowCount = dev.nitrate.core.rows.ProgressiveRows.run(homeJobs()) { t -> parts += t }.last().rows.size
+            rowCount = dev.nitrate.core.rows.ProgressiveRows.run(homeJobs(fresh = true)) { t -> parts += t }.last().rows.size
         }
         if (parts.isNotEmpty()) {
             val withParts = home.copy(parts = parts.sortedByDescending { it.ms }.map { it.name to it.ms })
@@ -1432,6 +1474,8 @@ class JellyfinClient(
         const val ROW_LIMIT = 24
         const val ROW_FIELDS = "Overview,PrimaryImageAspectRatio,Genres"
         const val PROBE_TIMEOUT_MS = 5_000L
+        /** How long "Because you watched" is reused before it's worked out again. */
+        const val BECAUSE_TTL_MS = 6 * 60 * 60 * 1000L
         /** A home server answers in well under a second; away from home this is what startup waits for it. */
         const val LOCAL_PROBE_TIMEOUT_MS = 1_200L
 
