@@ -16,6 +16,8 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -636,5 +638,41 @@ class JellyfinLiveTest {
         val name = client.sendClientLog(dev.nitrate.core.playback.PlaybackReport("Nitrate", "test", "now", caps(), dev.nitrate.core.playback.PlaybackSettings()).render())
         println("Client log saved as $name")
         assertTrue(name.isNotBlank())
+    }
+
+    @Test
+    fun `chats in a watch-together group through the companion plugin`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        fun device(id: String) = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", id, id), MemorySessionStorage(), { caps() }, settings)
+        val tv = device("nitrate-live-chat-tv")
+        tv.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val info = tv.companion()
+        assumeTrue("The Nitrate Companion plugin isn't installed", info?.chat == true)
+        // The phone signs in as the same user but doesn't join: it chats for the TV.
+        val phone = device("nitrate-live-chat-phone")
+        phone.login(url, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+
+        tv.syncPlayCreate("Nitrate chat test")
+        try {
+            val group = tv.syncPlayGroups().first { it.name == "Nitrate chat test" }
+            assertTrue(tv.chatMessages(group.id, -1, 0).messages.isEmpty())
+            val waiting = async(Dispatchers.IO) { phone.chatMessages(group.id, 0, 10_000) }
+            delay(500)
+            val sent = tv.sendChat(group.id, dev.nitrate.core.companion.ChatKind.TEXT, "hello from the couch", 61_000)
+            val page = waiting.await()
+            assertEquals(listOf("hello from the couch"), page.messages.map { it.text })
+            assertEquals(61_000L, page.messages.single().positionMs)
+            assertEquals(tv.userId, sent.userId)
+            assertTrue(sent.sentAtMs > 0)
+
+            val reaction = phone.sendChat(group.id, dev.nitrate.core.companion.ChatKind.REACTION, "😂", null)
+            assertEquals(dev.nitrate.core.companion.ChatKind.REACTION, reaction.kind)
+            val rejected = runCatching { phone.sendChat(group.id, dev.nitrate.core.companion.ChatKind.REACTION, "not an emoji", null) }.exceptionOrNull()
+            assertTrue("$rejected", rejected is dev.nitrate.core.companion.ChatRejected)
+        } finally {
+            tv.syncPlayLeave()
+        }
+        val gone = runCatching { phone.chatMessages(tv.syncPlayGroups().firstOrNull()?.id ?: "00000000-0000-0000-0000-000000000000", -1, 0) }.exceptionOrNull()
+        assertTrue("$gone", gone is dev.nitrate.core.companion.ChatForbidden)
     }
 }

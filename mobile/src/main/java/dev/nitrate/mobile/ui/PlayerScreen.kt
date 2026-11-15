@@ -46,6 +46,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -99,7 +100,7 @@ import dev.nitrate.core.playback.PlaybackMoments
 import kotlinx.coroutines.delay
 import dev.nitrate.mobile.platform.VideoSurface
 
-private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX }
+private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX, CHAT }
 
 @Composable
 fun PlayerScreen(
@@ -140,6 +141,9 @@ fun PlayerScreen(
                 }
             }
     }
+    // Watch-together chat, while this device watches in a group (Companion plugin on the server).
+    val syncGroup = actions.container.syncPlay.group.collectAsState().value
+    val chatGroup = actions.container.chat.groupId.collectAsState().value?.takeIf { !local && syncGroup != null && it == syncGroup.id }
     if (local) {
         LaunchedEffect(session) {
             val record = downloads.find(itemId)
@@ -315,6 +319,7 @@ fun PlayerScreen(
                 if ((item?.chapters?.size ?: 0) > 1) TextButton(onClick = { dialog = PlayerDialog.CHAPTERS }) { Text("Chapters", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.AUDIO }, enabled = plan != null) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.SUBTITLES }, enabled = plan != null) { Text("Subtitles", color = Color.White) }
+                if (chatGroup != null) IconButton(onClick = { dialog = PlayerDialog.CHAT }) { Icon(Icons.Default.Email, "Chat", tint = Color.White) }
                 IconButton(onClick = { dialog = PlayerDialog.INFO }, enabled = plan != null) { Icon(Icons.Default.Info, "Playback info", tint = Color.White) }
                 IconButton(onClick = { dialog = PlayerDialog.MORE }, enabled = plan != null) { Icon(Icons.Default.MoreVert, "More", tint = Color.White) }
             }
@@ -339,6 +344,7 @@ fun PlayerScreen(
             )
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.Center).padding(24.dp)) }
+        if (chatGroup != null && dialog != PlayerDialog.CHAT) ChatToasts(actions.container.chat, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
     }
 
     val p = plan
@@ -357,6 +363,7 @@ fun PlayerScreen(
             onPlayedElsewhere = { dialog = PlayerDialog.NONE; onExit() },
             onDismiss = { dialog = PlayerDialog.NONE },
         )
+        dialog == PlayerDialog.CHAT -> ChatSheet(actions.container.chat, "Chat" + (syncGroup?.name?.let { " · $it" } ?: ""), positionMs = { session.player.currentPosition }) { dialog = PlayerDialog.NONE }
         dialog == PlayerDialog.FIX -> {
             val diagnosis by androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackDiagnosis?>(null, p) {
                 value = session.diagnosis(actions.container.capabilities)

@@ -327,7 +327,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             dev.nitrate.tv.ui.search.PersonScreen(container.server, dev.nitrate.core.model.Person(route.personId, route.name), onOpen = nav::openItem, studio = route.studio, year = route.year)
         }
         composable<WatchTogetherRoute> {
-            dev.nitrate.tv.ui.together.WatchTogetherScreen(container.syncPlay, account?.name?.let { "$it's group" } ?: "Movie night")
+            dev.nitrate.tv.ui.together.WatchTogetherScreen(container.syncPlay, account?.name?.let { "$it's group" } ?: "Movie night", chat = container.chat)
         }
         composable<PluginsRoute> { PluginsScreen(container.plugins, TV_PLUGIN_UI, pluginContext) }
         composable<PluginScreenRoute> { entry ->
@@ -378,6 +378,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 syncPlay = container.syncPlay,
                 sendLog = { session -> container.sendPlaybackReport(session) },
                 capabilities = container.capabilities,
+                chat = container.chat,
                 onEnded = {
                     val next = route.queue.split(',').filter(String::isNotBlank)
                     if (next.isEmpty()) {

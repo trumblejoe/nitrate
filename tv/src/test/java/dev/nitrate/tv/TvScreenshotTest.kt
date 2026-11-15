@@ -171,6 +171,16 @@ class TvScreenshotTest {
         androidx.compose.runtime.LaunchedEffect(Unit) { first.requestFocus() }
     }
 
+    @Test fun chat() = shoot("tv-chat") { c ->
+        val chat = androidx.compose.runtime.remember {
+            dev.nitrate.core.companion.GroupChat(c.server, kotlinx.coroutines.CoroutineScope(Dispatchers.Unconfined)) { "user-1" }.also { it.follow("g1") }
+        }
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxSize().background(androidx.compose.ui.graphics.Color.Black))
+            dev.nitrate.tv.ui.together.ChatPanel(chat, "Movie night", positionMs = { 0L })
+        }
+    }
+
     @Test fun licenses() = shoot("tv-licenses") { _ -> dev.nitrate.tv.ui.settings.LicensesScreen() }
 
     @Test fun servers() = shoot("tv-servers", act = {

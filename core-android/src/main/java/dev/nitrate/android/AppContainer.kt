@@ -114,6 +114,39 @@ class AppContainer(
         dev.nitrate.core.syncplay.SyncPlayController(server, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate))
     }
 
+    private val companionState = MutableStateFlow<dev.nitrate.core.companion.CompanionInfo?>(null)
+
+    /** The Nitrate Companion server plugin, when the server has it (null until known or without it). */
+    val companion: StateFlow<dev.nitrate.core.companion.CompanionInfo?> = companionState
+
+    /** A group whose chat this device follows without watching in it (a phone beside the TV). */
+    private val chatOnlyGroup = MutableStateFlow<String?>(null)
+
+    /**
+     * Watch-together chat (needs the Companion plugin): follows this device's group, or the group
+     * picked with [chatAlongside] when this device isn't watching itself.
+     */
+    val chat by lazy {
+        dev.nitrate.core.companion.GroupChat(server, networkScope) { server.userId }.also { chat ->
+            networkScope.launch {
+                kotlinx.coroutines.flow.combine(syncPlay.group, companionState, chatOnlyGroup) { group, companion, alongside ->
+                    if (companion?.chat == true) group?.id ?: alongside else null
+                }.collect { chat.follow(it) }
+            }
+        }
+    }
+
+    /** Chats in [groupId] without playing (null stops); this device's own group comes first. */
+    fun chatAlongside(groupId: String?) {
+        chat
+        chatOnlyGroup.value = groupId
+    }
+
+    private suspend fun refreshCompanion() {
+        companionState.value = runCatching { server.companion() }.getOrNull()
+        chat
+    }
+
     /** Per-show audio and subtitle languages, for the signed-in user. */
     val trackMemory by lazy { displaySettings.trackMemory { server.userId } }
 
@@ -213,6 +246,7 @@ class AppContainer(
         remote.start()
         // Not waited for: Home shouldn't wait on the account details (admin tools appear when they arrive).
         networkScope.launch { refreshAccount() }
+        networkScope.launch { refreshCompanion() }
         watchNetwork()
     }
 
@@ -314,6 +348,8 @@ class AppContainer(
         if (syncPlay.inGroup) syncPlay.leave()
         remote.stop()
         accountState.value = null
+        chatOnlyGroup.value = null
+        companionState.value = null
     }
 
     /** Free space where downloads are saved. */

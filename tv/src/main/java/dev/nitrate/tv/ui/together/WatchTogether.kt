@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -43,10 +44,22 @@ private fun GroupState.label() = when (this) {
 
 /** Watch together as a page, from Home. */
 @Composable
-fun WatchTogetherScreen(syncPlay: SyncPlayController, defaultName: String) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 58.dp, vertical = 32.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Watch together", style = MaterialTheme.typography.headlineMedium)
-        Column(Modifier.width(720.dp)) { WatchTogetherPanel(syncPlay, defaultName) }
+fun WatchTogetherScreen(syncPlay: SyncPlayController, defaultName: String, chat: dev.nitrate.core.companion.GroupChat? = null) {
+    val group by syncPlay.group.collectAsState()
+    val chatGroup = chat?.groupId?.collectAsState()?.value
+    androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.weight(1f).fillMaxHeight().padding(horizontal = 58.dp, vertical = 32.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text("Watch together", style = MaterialTheme.typography.headlineMedium)
+            Column(Modifier.width(720.dp)) { WatchTogetherPanel(syncPlay, defaultName) }
+        }
+        // While choosing what to watch: the group's chat (with the Companion plugin on the server).
+        val current = group
+        if (chat != null && current != null && chatGroup == current.id) {
+            ChatPanel(chat, current.name, positionMs = { null }, autoFocus = false)
+        }
     }
 }
 

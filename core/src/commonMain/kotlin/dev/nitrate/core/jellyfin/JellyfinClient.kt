@@ -1027,6 +1027,14 @@ class JellyfinClient(
 
     override fun events(): Flow<ServerEvent> = socketEvents { token != null }
 
+    // ---- Nitrate Companion (implemented in JellyfinCompanion.kt) ----
+
+    private val companionApi = JellyfinCompanion(this)
+    override suspend fun companion() = companionApi.info()
+    override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int) = companionApi.messages(groupId, after, waitMs)
+    override suspend fun sendChat(groupId: String, kind: dev.nitrate.core.companion.ChatKind, text: String, positionMs: Long?) =
+        companionApi.send(groupId, kind, text, positionMs)
+
     // ---- SyncPlay ----
 
     override suspend fun syncPlayGroups(): List<SyncPlayGroup> =

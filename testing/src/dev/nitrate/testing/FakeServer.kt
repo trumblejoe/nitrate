@@ -222,6 +222,25 @@ class FakeServer : MediaServer {
         dev.nitrate.core.model.SavedAccount("cabin|joe", "https://cabin.example.net", "Cabin", "user-9", "Joe", null),
     )
     override val currentAccountKey: String? get() = "home|joe"
+    /** A watch-together chat already under way; later requests wait (as the server's long poll would). */
+    val chat = mutableListOf(
+        dev.nitrate.core.companion.ChatMessage(1, "user-2", "sam", dev.nitrate.core.companion.ChatKind.TEXT, "Here we go. Popcorn ready?", 0, 0),
+        dev.nitrate.core.companion.ChatMessage(2, "user-1", "nitrate", dev.nitrate.core.companion.ChatKind.REACTION, "🍿", 12_000, 0),
+        dev.nitrate.core.companion.ChatMessage(3, "user-2", "sam", dev.nitrate.core.companion.ChatKind.TEXT, "This score is unreal", 754_000, 0),
+        dev.nitrate.core.companion.ChatMessage(4, "user-3", "jo", dev.nitrate.core.companion.ChatKind.REACTION, "😱", 3_721_000, 0),
+    )
+
+    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT))
+
+    override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int): dev.nitrate.core.companion.ChatPage {
+        val page = chat.filter { it.seq > after }
+        if (page.isEmpty() && waitMs > 0) kotlinx.coroutines.awaitCancellation()
+        return dev.nitrate.core.companion.ChatPage(if (after < 0) chat.toList() else page, chat.lastOrNull()?.seq ?: 0)
+    }
+
+    override suspend fun sendChat(groupId: String, kind: dev.nitrate.core.companion.ChatKind, text: String, positionMs: Long?) =
+        dev.nitrate.core.companion.ChatMessage((chat.lastOrNull()?.seq ?: 0) + 1, "user-1", "nitrate", kind, text, positionMs, 0).also { chat += it }
+
     override suspend fun syncPlayGroups() = listOf(
         dev.nitrate.core.syncplay.SyncPlayGroup("g1", "Friday movie night", dev.nitrate.core.syncplay.GroupState.PAUSED, listOf("Sam", "Alex")),
         dev.nitrate.core.syncplay.SyncPlayGroup("g2", "Kids' cartoons", dev.nitrate.core.syncplay.GroupState.PLAYING, listOf("Kids")),

@@ -112,7 +112,7 @@ fun PlayerMoreSheet(
                 })
                 MorePage.PLAY_ON -> PlayOn(actions, session, onPlayed = onPlayedElsewhere)
                 MorePage.TOGETHER -> Column(Modifier.verticalScroll(rememberScrollState())) {
-                    WatchTogetherPanel(actions.container.syncPlay, defaultGroupName(actions))
+                    WatchTogetherPanel(actions, defaultGroupName(actions))
                 }
             }
         },

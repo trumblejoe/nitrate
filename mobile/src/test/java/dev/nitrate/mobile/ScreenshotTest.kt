@@ -134,6 +134,16 @@ class ScreenshotTest {
 
     @Test fun connect() = shoot("phone-connect") { ConnectScreen(it) { _, _ -> } }
 
+    @Test fun chat() = shoot("phone-chat") { actions ->
+        val chat = androidx.compose.runtime.remember {
+            dev.nitrate.core.companion.GroupChat(actions.server, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)) { "user-1" }.also { it.follow("g1") }
+        }
+        androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(20.dp)) {
+            androidx.compose.material3.Text("Chat · Movie night", style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
+            dev.nitrate.mobile.ui.ChatContent(chat, positionMs = { 0L })
+        }
+    }
+
     @Test fun licenses() = shoot("phone-licenses") { dev.nitrate.mobile.ui.LicensesScreen() }
 
     @Test fun serverAddresses() = shoot("phone-servers") { dev.nitrate.mobile.ui.ServersScreen(it) }
@@ -198,7 +208,7 @@ class ScreenshotTest {
 
     /** The panel without its dialog: a dialog focuses the name field, whose blinking cursor never lets the test settle. */
     @Test fun watchTogether() = shoot("phone-watch-together") {
-        androidx.compose.foundation.layout.Box(Modifier.padding(24.dp)) { dev.nitrate.mobile.ui.WatchTogetherPanel(it.container.syncPlay, "Joe's group") }
+        androidx.compose.foundation.layout.Box(Modifier.padding(24.dp)) { dev.nitrate.mobile.ui.WatchTogetherPanel(it, "Joe's group") }
     }
 
     @Test fun watchTogetherInGroup() = shoot("phone-watch-together-group", setup = { c ->

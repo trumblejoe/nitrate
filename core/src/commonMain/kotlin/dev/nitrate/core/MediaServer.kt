@@ -298,6 +298,21 @@ interface MediaServer {
 
     // ---- SyncPlay (watch together) ----
     /** Groups this user can join. */
+    // ---- Nitrate Companion (server plugin) ----
+
+    /** The Nitrate Companion plugin on this server, or null when it isn't installed. */
+    suspend fun companion(): dev.nitrate.core.companion.CompanionInfo? = null
+
+    /**
+     * Chat messages in a watch-together group after [after] (-1: the recent ones), waiting up to
+     * [waitMs] for one when there are none (long polling). Throws [dev.nitrate.core.companion.ChatForbidden]
+     * when this user isn't watching in the group.
+     */
+    suspend fun chatMessages(groupId: String, after: Long, waitMs: Int): dev.nitrate.core.companion.ChatPage = unsupported()
+
+    /** Sends a message to a group's chat; throws [dev.nitrate.core.companion.ChatRejected] with the reason. */
+    suspend fun sendChat(groupId: String, kind: dev.nitrate.core.companion.ChatKind, text: String, positionMs: Long?): dev.nitrate.core.companion.ChatMessage = unsupported()
+
     suspend fun syncPlayGroups(): List<dev.nitrate.core.syncplay.SyncPlayGroup> = unsupported()
     suspend fun syncPlayCreate(name: String): Unit = unsupported()
     suspend fun syncPlayJoin(groupId: String): Unit = unsupported()

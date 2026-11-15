@@ -46,14 +46,34 @@ internal fun GroupState.label() = when (this) {
  * in the group plays, pauses or seeks happens for everyone.
  */
 @Composable
-fun WatchTogetherPanel(syncPlay: SyncPlayController, defaultName: String) {
+fun WatchTogetherPanel(actions: AppActions, defaultName: String) {
+    val syncPlay = actions.container.syncPlay
     val group by syncPlay.group.collectAsState()
+    val companion by actions.container.companion.collectAsState()
+    val account by actions.container.account.collectAsState()
     val current = group
-    if (current != null) InGroup(syncPlay, current) else FindGroup(syncPlay, defaultName)
+    // Chat needs the Nitrate Companion plugin on the server.
+    var chatting by remember { mutableStateOf<SyncPlayGroup?>(null) }
+    val canChat = companion?.chat == true
+    if (current != null) InGroup(syncPlay, current, onChat = { chatting = current }.takeIf { canChat })
+    else {
+        // A phone beside the TV: chats for this account's devices in the group, without playing.
+        val alongside: (SyncPlayGroup) -> Unit = { g ->
+            actions.container.chatAlongside(g.id)
+            chatting = g
+        }
+        FindGroup(syncPlay, defaultName, myName = account?.name, onChatAlongside = alongside.takeIf { canChat })
+    }
+    chatting?.let { g ->
+        ChatSheet(actions.container.chat, "Chat · ${g.name}", positionMs = { null }) {
+            if (current == null) actions.container.chatAlongside(null)
+            chatting = null
+        }
+    }
 }
 
 @Composable
-private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup) {
+private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup, onChat: (() -> Unit)?) {
     val scope = rememberCoroutineScope()
     val queue by syncPlay.queue.collectAsState()
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -71,12 +91,15 @@ private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        OutlinedButton(onClick = { scope.launch { syncPlay.leave() } }) { Text("Leave group") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            onChat?.let { Button(onClick = it) { Text("Chat") } }
+            OutlinedButton(onClick = { scope.launch { syncPlay.leave() } }) { Text("Leave group") }
+        }
     }
 }
 
 @Composable
-private fun FindGroup(syncPlay: SyncPlayController, defaultName: String) {
+private fun FindGroup(syncPlay: SyncPlayController, defaultName: String, myName: String?, onChatAlongside: ((SyncPlayGroup) -> Unit)?) {
     val scope = rememberCoroutineScope()
     var refresh by remember { mutableIntStateOf(0) }
     var name by remember { mutableStateOf(defaultName) }
@@ -111,12 +134,19 @@ private fun FindGroup(syncPlay: SyncPlayController, defaultName: String) {
             )
             list.isNullOrEmpty() -> Text("No groups right now. Start one, then join it from the other devices.")
             else -> list.forEach { g ->
+                // Already watching in it on another device (the TV): chat from here without playing.
+                val mine = myName != null && g.participants.any { it.equals(myName, ignoreCase = true) }
                 ListItem(
                     modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { act { syncPlay.join(g.id) } },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { Text(g.name) },
                     supportingContent = { Text("${g.participants.distinct().joinToString()} · ${g.state.label()}") },
-                    trailingContent = { Text("Join", color = accentColor()) },
+                    trailingContent = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (mine && onChatAlongside != null) TextButton(onClick = { onChatAlongside(g) }) { Text("Chat") }
+                            Text("Join", color = accentColor())
+                        }
+                    },
                 )
             }
         }
@@ -130,7 +160,7 @@ fun WatchTogetherDialog(actions: AppActions, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Watch together") },
-        text = { Column(Modifier.fillMaxWidth()) { WatchTogetherPanel(actions.container.syncPlay, defaultName = defaultGroupName(actions)) } },
+        text = { Column(Modifier.fillMaxWidth()) { WatchTogetherPanel(actions, defaultName = defaultGroupName(actions)) } },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
 }

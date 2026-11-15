@@ -94,7 +94,7 @@ private const val SEEK_BACK_MS = 10_000L
 private const val SEEK_FORWARD_MS = 30_000L
 
 
-private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX }
+private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX, CHAT }
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -118,6 +118,8 @@ fun PlayerScreen(
     sendLog: (suspend (PlaybackSession) -> Result<String>)? = null,
     /** What this TV reports, for "Why converting?" (left out: no fixer). */
     capabilities: dev.nitrate.core.playback.DeviceCapabilities? = null,
+    /** Watch-together chat (Companion plugin), shown while this TV is in a group. */
+    chat: dev.nitrate.core.companion.GroupChat? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
@@ -155,6 +157,9 @@ fun PlayerScreen(
     var logMessage by remember { mutableStateOf<String?>(null) }
     val logScope = rememberCoroutineScope()
     LaunchedEffect(logMessage) { if (logMessage != null) { kotlinx.coroutines.delay(12_000); logMessage = null } }
+    // Chat is there while this TV watches in a group and the server has the Companion plugin.
+    val syncGroup = syncPlay?.group?.collectAsState()?.value
+    val chatGroup = chat?.groupId?.collectAsState()?.value?.takeIf { syncGroup != null && it == syncGroup.id }
     val videoDecoder by session.videoDecoder.collectAsState()
     val audioDecoder by session.audioDecoder.collectAsState()
 
@@ -282,6 +287,7 @@ fun PlayerScreen(
                 extraButtons = listOfNotNull(
                     ("Chapters" to { panel = Panel.CHAPTERS }).takeIf { (item?.chapters?.size ?: 0) > 1 },
                     ("Why converting?" to { panel = Panel.FIX }).takeIf { capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
+                    ("Chat" to { panel = Panel.CHAT }).takeIf { chatGroup != null },
                 ) +
                     panels.map { it.panelLabel to { togglePanel(it) } } +
                     listOfNotNull(sendLog?.let { send ->
@@ -297,6 +303,14 @@ fun PlayerScreen(
                         }
                     }),
             )
+        }
+
+        if (chat != null && chatGroup != null) {
+            // Pop-ups from the others, out of the way of the controls and any open chat panel.
+            if (panel != Panel.CHAT) ChatToastsSlot(chat, Modifier.align(Alignment.CenterStart).padding(start = 32.dp))
+            if (panel == Panel.CHAT) {
+                dev.nitrate.tv.ui.together.ChatPanel(chat, syncGroup?.name, positionMs = { player.currentPosition }, modifier = Modifier.align(Alignment.TopEnd))
+            }
         }
 
         if (panel == Panel.INFO && p != null) {
@@ -438,6 +452,10 @@ private fun formatTime(ms: Long): String {
 
 
 /** The title's chapters with their pictures; the one playing is focused, OK jumps there. */
+@Composable
+private fun ChatToastsSlot(chat: dev.nitrate.core.companion.GroupChat, modifier: Modifier) =
+    dev.nitrate.tv.ui.together.ChatToasts(chat, modifier)
+
 @Composable
 private fun ChapterDialog(item: dev.nitrate.core.model.MediaItem, server: dev.nitrate.core.MediaServer, positionMs: Long, onSeek: (Long) -> Unit, onDismiss: () -> Unit) {
     val focus = remember { FocusRequester() }
