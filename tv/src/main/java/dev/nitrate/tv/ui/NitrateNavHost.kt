@@ -86,6 +86,7 @@ import kotlinx.serialization.Serializable
 @Serializable object LibraryHealthRoute
 @Serializable object WatchTogetherRoute
 @Serializable object ChannelsRoute
+@Serializable object WatchPartnersRoute
 @Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ProfilesRoute
 @Serializable data class SearchRoute(val query: String = "", val voice: Boolean = false)
@@ -145,6 +146,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     val companion by container.companion.collectAsState()
     val channelsOn = companion?.features?.contains(dev.nitrate.core.channels.ChannelsPlugin.FEATURE) == true &&
         dev.nitrate.core.channels.ChannelsPlugin.id in enabledIds
+    // Watch partners: the server's Companion plugin has them and the plugin is on.
+    val partnersOn = companion?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) == true &&
+        dev.nitrate.core.partners.WatchPartnersPlugin.ID in enabledIds
     val menuCatalog = remember(libraries, customPages, nav, channelsOn) {
         dev.nitrate.tv.ui.home.menuCatalog(
             libraries, customPages,
@@ -231,6 +235,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onDispose { container.themeMusic.hide(themeId) }
             }
             val route = entry.toRoute<DetailsRoute>()
+            var watchWith by remember { mutableStateOf<dev.nitrate.core.model.MediaItem?>(null) }
+            androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.partners.LocalWatchWith provides (if (partnersOn) ({ s -> watchWith = s }) else null)) {
             DetailsScreen(
                 repository = container.server,
                 itemId = route.itemId,
@@ -243,7 +249,13 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onBrowse = { title, studio, year -> nav.navigate(PersonRoute("", title, studio, year)) },
                 checkPlayback = { item -> container.checkPlayback(item.id, item.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO) },
                 applyPlaybackFix = { item, fix -> container.applyPlaybackFix(item.id, fix) },
+                watchPartners = partnersOn,
             )
+            }
+            watchWith?.let { s -> dev.nitrate.tv.ui.partners.WatchWithDialog(container, s) { watchWith = null } }
+        }
+        composable<WatchPartnersRoute> {
+            dev.nitrate.tv.ui.partners.WatchPartnersScreen(container) { id -> nav.navigate(DetailsRoute(id)) }
         }
         composable<SettingsHubRoute> {
             val signOut: () -> Unit = {
@@ -263,6 +275,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     dev.nitrate.tv.ui.settings.SettingsLink("Server speed check", "Is slowness the network, the server or this TV? Times it and shows you") { nav.navigate(SpeedCheckRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Device backup", "This TV's settings on your server; restore another device's") { nav.navigate(DeviceBackupRoute) },
                 ) +
+                    (if (partnersOn) listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Watch partners", "Shows you watch with someone, requests, and keeping your account private") { nav.navigate(WatchPartnersRoute) },
+                    ) else emptyList()) +
                     (if (account?.isAdmin == true) listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Library health", "Missing artwork and details, duplicates, missing episodes, what this TV always converts") { nav.navigate(LibraryHealthRoute) },
@@ -405,6 +420,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<PlayerRoute> { entry ->
             LaunchedEffect(Unit) { container.themeMusic.stop() }
+            // Leaving the player: what was watched with partners counts for them too.
+            androidx.compose.runtime.DisposableEffect(Unit) { onDispose { container.settleTogether() } }
             val route = entry.toRoute<PlayerRoute>()
             PlayerScreen(
                 repository = container.server,
@@ -443,6 +460,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     PlaybackGateDialog(gate)
     dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)
     dev.nitrate.tv.ui.settings.BackupPrompt(container.backups)
+    if (partnersOn) dev.nitrate.tv.ui.partners.PartnerRequestPrompt(container)
     LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.
     var message by remember { mutableStateOf<Pair<String, String>?>(null) }

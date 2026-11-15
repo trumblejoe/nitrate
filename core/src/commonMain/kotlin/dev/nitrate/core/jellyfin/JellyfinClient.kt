@@ -633,6 +633,9 @@ class JellyfinClient(
             dev.nitrate.core.rows.RowJob("Next Up") {
                 items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
             },
+            dev.nitrate.core.rows.RowJob("Up next together") {
+                upNextTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/up_next_together", "Up next together", it, WIDE_DEFAULT)) }
+            },
             dev.nitrate.core.rows.RowJob("Upcoming") {
                 upcomingEpisodes().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/upcoming", "Upcoming", it, WIDE_DEFAULT)) }
             },
@@ -1072,6 +1075,35 @@ class JellyfinClient(
 
     private val companionApi = JellyfinCompanion(this)
     private val channelsApi = JellyfinChannels(this)
+    private val partnersApi = JellyfinPartners(this)
+
+    override suspend fun privacy() = partnersApi.privacy()
+    override suspend fun setPrivacy(private: Boolean) = partnersApi.setPrivacy(private)
+    override suspend fun partnerPeople() = partnersApi.people()
+    override suspend fun partners() = partnersApi.list()
+    override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String) = partnersApi.ask(toUserId, toName, seriesId, seriesName)
+    override suspend fun acceptPartner(requestId: String) = partnersApi.accept(requestId)
+    override suspend fun declinePartner(requestId: String) = partnersApi.decline(requestId)
+    override suspend fun cancelPartnerRequest(requestId: String) = partnersApi.cancel(requestId)
+    override suspend fun addPartnerShow(partnershipId: String, seriesId: String, name: String) = partnersApi.addShow(partnershipId, seriesId, name)
+    override suspend fun removePartnerShow(partnershipId: String, seriesId: String) = partnersApi.removeShow(partnershipId, seriesId)
+    override suspend fun endPartnership(partnershipId: String) = partnersApi.end(partnershipId)
+    override suspend fun partnerProgress(seriesId: String) = partnersApi.progress(seriesId)
+    override suspend fun watchedTogether(itemId: String, partnerIds: List<String>) = partnersApi.together(itemId, partnerIds)
+
+    /**
+     * "Up next together": for each show watched with a partner, the next episode someone hasn't
+     * seen. Nothing without the Companion plugin's partners.
+     */
+    private suspend fun upNextTogether(): List<MediaItem> = coroutineScope {
+        if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyList()
+        val shows = partners().partners.flatMap { it.shows }.map { it.seriesId }.distinct()
+        shows.map { id ->
+            async {
+                runCatching { dev.nitrate.core.partners.WatchPartners.nextTogether(allEpisodes(id), partnerProgress(id)) }.getOrNull()
+            }
+        }.mapNotNull { it.await() }
+    }
 
     override suspend fun houseChannels() = channelsApi.list()
     override suspend fun channelGuide(fromMs: Long, toMs: Long) = channelsApi.guide(fromMs, toMs)

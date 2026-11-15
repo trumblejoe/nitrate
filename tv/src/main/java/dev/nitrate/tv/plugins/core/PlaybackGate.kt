@@ -66,6 +66,10 @@ class PlaybackGate(
                     action.itemIds.forEach { id -> runCatching { registry.host.server.setPlayed(id, true) } }
                     start(item, fromStart)
                 }
+                is GuardAction.RunThenPlay -> {
+                    runCatching { action.run() }
+                    start(item, fromStart)
+                }
             }
         }
     }

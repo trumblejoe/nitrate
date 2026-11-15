@@ -389,6 +389,14 @@ class TvScreenshotTest {
         c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(hideSpoilers = true))
     }) { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "m1", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }
 
+    @Test fun watchPartners() = shoot("tv-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { c ->
+        dev.nitrate.tv.ui.partners.WatchPartnersScreen(c) {}
+    }
+
+    @Test fun partnerRequest() = shoot("tv-partner-request", setup = { c -> c.refreshCompanionForTests() }) { c ->
+        dev.nitrate.tv.ui.partners.PartnerRequestPrompt(c)
+    }
+
     @Test fun album() = shoot("tv-album") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "al1", null, onPlay = { _, _ -> }, onOpen = {}) }
 
     @Test fun liveTv() = shoot("tv-live-tv") { c ->

@@ -49,4 +49,12 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets the address the provider sends people back to (empty: the one the app used).</summary>
     public string SsoPublicUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the accounts an admin keeps private: never listed to others or findable by name
+    /// (people can also make themselves private in Nitrate).
+    /// </summary>
+#pragma warning disable CA1819 // Jellyfin's XML settings need an array.
+    public string[] PrivateUserIds { get; set; } = Array.Empty<string>();
+#pragma warning restore CA1819
 }

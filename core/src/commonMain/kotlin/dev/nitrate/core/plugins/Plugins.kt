@@ -42,6 +42,9 @@ sealed interface GuardAction {
     data object Cancel : GuardAction
     data class PlayInstead(val item: MediaItem) : GuardAction
 
+    /** Runs [run] (a plugin's own step, e.g. noting who's watching), then plays the original item. */
+    class RunThenPlay(val run: suspend () -> Unit) : GuardAction
+
     /** Marks [itemIds] watched, then plays the original item. */
     data class MarkWatchedThenPlay(val itemIds: List<String>) : GuardAction
 }

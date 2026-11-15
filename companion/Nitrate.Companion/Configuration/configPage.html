@@ -26,6 +26,15 @@
                     <div class="fieldDescription">Off: people invite others by typing an exact user name.</div>
                 </div>
 
+                <h3>Private accounts</h3>
+                <div class="fieldDescription" style="margin-bottom:1em">
+                    Private accounts never appear in the Nitrate apps' lists of people (watch partners, sharing a script) and
+                    can't be found by typing their name. Others can still send them a watch-partner request by exact user name;
+                    it always reads "sent", and they only learn the account exists if its owner accepts. People can also make
+                    themselves private in Nitrate.
+                </div>
+                <div id="PrivateUsers" style="margin-bottom:2em"></div>
+
                 <h3>Single sign-on (OpenID Connect)</h3>
                 <div class="fieldDescription" style="margin-bottom:1em">
                     Lets people sign in to the Nitrate apps with your identity provider. Only existing Jellyfin users can sign in:
@@ -99,7 +108,28 @@
                     checks.forEach(function (k) { page.querySelector('#' + k).checked = !!config[k]; });
                     texts.forEach(function (k) { page.querySelector('#' + k).value = config[k] || ''; });
                     redirect();
-                    Dashboard.hideLoadingMsg();
+                    var chosen = config.PrivateUserIds || [];
+                    ApiClient.getUsers().then(function (users) {
+                        var box = page.querySelector('#PrivateUsers');
+                        box.innerHTML = '';
+                        users.forEach(function (u) {
+                            var label = document.createElement('label');
+                            label.className = 'emby-checkbox-label';
+                            label.style.display = 'block';
+                            var input = document.createElement('input');
+                            input.type = 'checkbox';
+                            input.setAttribute('is', 'emby-checkbox');
+                            input.className = 'privateUser';
+                            input.dataset.id = u.Id;
+                            input.checked = chosen.some(function (c) { return c.replace(/-/g, '').toLowerCase() === u.Id.replace(/-/g, '').toLowerCase(); });
+                            var span = document.createElement('span');
+                            span.textContent = u.Name;
+                            label.appendChild(input);
+                            label.appendChild(span);
+                            box.appendChild(label);
+                        });
+                        Dashboard.hideLoadingMsg();
+                    });
                 });
             });
             page.querySelector('#SsoPublicUrl').addEventListener('input', redirect);
@@ -108,6 +138,8 @@
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     checks.forEach(function (k) { config[k] = page.querySelector('#' + k).checked; });
                     texts.forEach(function (k) { config[k] = page.querySelector('#' + k).value; });
+                    config.PrivateUserIds = Array.prototype.filter.call(page.querySelectorAll('.privateUser'), function (i) { return i.checked; })
+                        .map(function (i) { return i.dataset.id; });
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                         Dashboard.processPluginConfigurationUpdateResult(result);
                     });

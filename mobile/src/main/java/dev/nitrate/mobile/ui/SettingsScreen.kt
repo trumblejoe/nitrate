@@ -130,6 +130,14 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         item { NewEpisodesToggle(actions) }
         header("Watch together", "Play in step with people on other devices (SyncPlay).")
         item { WatchTogetherRow(actions) }
+        item {
+            if (partnersAvailable(actions)) ListItem(
+                modifier = Modifier.clickable { actions.nav.navigate(WatchPartnersRoute) },
+                headlineContent = { Text("Watch partners") },
+                supportingContent = { Text("Shows you watch with someone, requests, and keeping your account private") },
+                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
         header("Control a device", "Play, pause, seek and change volume on your TV or another app.")
         item { RemoteTargets(actions) }
 

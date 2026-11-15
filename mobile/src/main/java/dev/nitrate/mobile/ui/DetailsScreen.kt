@@ -38,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -104,7 +105,11 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
     val bg = MaterialTheme.colorScheme.background
     val prefs = LocalDisplayPrefs.current
     val account by actions.container.account.collectAsState()
+    // Watch partners on this show: spoiler hiding goes by whoever is furthest behind.
+    val showId = if (item.kind == ItemKind.SERIES) item.id else item.seriesId
+    val partnerProgress = rememberPartnerProgress(actions, showId)
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalPartnerProgress provides partnerProgress) {
     TintedBackdrop(tint, strength = 0.32f) {
         LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomInset(40.dp))) {
             item(key = "hero") {
@@ -157,6 +162,10 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                             modifier = if (artistId != null) Modifier.pressable({ actions.nav.navigate(DetailsRoute(artistId)) }) else Modifier,
                         )
                     }
+                    if (partnerProgress.isNotEmpty()) Text(
+                        "Watching with " + partnerProgress.joinToString(" · ") { "${it.userName} (${it.last ?: "not started"})" },
+                        style = MaterialTheme.typography.labelLarge, color = accentColor(),
+                    )
                     if (!music) PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
                     if (item.versions.size > 1) VersionChooser(item)
                     // Wraps onto a second line when there are more actions than fit (a movie with a trailer, for an admin).
@@ -177,13 +186,17 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         // How it would play here, why, and fixes before pressing play.
                         var checking by remember { mutableStateOf(false) }
                         if (item.isPlayable && !music) RoundAction(Icons.Default.Info, "How it plays", onClick = { checking = true })
+                        // Watch partners: ask someone to keep this show in step with you.
+                        var watchWith by remember { mutableStateOf(false) }
+                        if (item.kind == ItemKind.SERIES && partnersAvailable(actions)) RoundAction(Icons.Default.Face, "Watch with", onClick = { watchWith = true })
+                        if (watchWith) WatchWithDialog(actions, item) { watchWith = false }
                         if (checking) CheckPlaybackDialog(actions, item) { checking = false }
                     }
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
                     item.overview?.takeIf { prefs.overview }?.let { overview ->
                         // Spoiler hiding: unwatched movies and episodes keep their description until asked for.
                         var revealed by remember(item.id) { mutableStateOf(false) }
-                        if (!prefs.hidesDescription(item) || revealed) ExpandableText(overview)
+                        if (!descriptionHidden(item) || revealed) ExpandableText(overview)
                         else Text(
                             "Plot hidden · Show",
                             style = MaterialTheme.typography.bodyMedium, color = accentColor(),
@@ -349,6 +362,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
         ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
     }
 }
+}
 
 
 /** The big Play (or Resume) button, with progress and "From start" when part-watched. */
@@ -400,7 +414,7 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 Modifier.width(148.dp).aspectRatio(16f / 9f).sharedArtwork("ep-${episode.id}").clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp)),
             ) {
-                val spoiler = LocalDisplayPrefs.current.isSpoiler(episode)
+                val spoiler = spoilerStill(episode)
                 actions.server.cardImage(episode, CardShape.WIDE, 240)?.let {
                     AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().then(if (spoiler) Modifier.blur(16.dp) else Modifier))
                 }
@@ -427,7 +441,7 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 else episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
             }
         }
-        episode.overview?.takeIf { LocalDisplayPrefs.current.let { p -> p.overview && !p.hidesDescription(episode) } }?.let {
+        episode.overview?.takeIf { LocalDisplayPrefs.current.overview && !descriptionHidden(episode) }?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
         }
     }

@@ -69,43 +69,43 @@ public class ScriptsController : ControllerBase
     private const string UserIdClaim = "Jellyfin-UserId";
     private readonly ScriptHub _scripts;
     private readonly IUserManager _users;
+    private readonly Partners.PartnerHub _partners;
 
     /// <summary>Initializes a new instance of the <see cref="ScriptsController"/> class.</summary>
-    public ScriptsController(ScriptHub scripts, IUserManager users)
+    public ScriptsController(ScriptHub scripts, IUserManager users, Partners.PartnerHub partners)
     {
         _scripts = scripts;
         _users = users;
+        _partners = partners;
     }
 
-    /// <summary>People on this server a script can be shared with (enabled accounts), or the one named exactly.</summary>
+    /// <summary>
+    /// People on this server the caller can see (enabled, not private), or the one named exactly.
+    /// Private accounts are never listed or found, so they look the same as no account at all.
+    /// </summary>
     [HttpGet("Users")]
     public ActionResult<IReadOnlyList<UserRef>> Users([FromQuery] string? name = null)
     {
-        if (Me() is null)
+        if (Me() is not { } me)
         {
             return Forbid();
         }
 
         if (!string.IsNullOrWhiteSpace(name))
         {
-            var exact = _users.GetUserByName(name.Trim());
-            return exact is null || exact.HasPermission(PermissionKind.IsDisabled)
-                ? new List<UserRef>()
-                : new List<UserRef> { new(exact.Id, exact.Username) };
+            return _partners.FindVisible(name) is { } u && u.Id != me
+                ? new List<UserRef> { new(u.Id, u.Name) }
+                : new List<UserRef>();
         }
 
-        // Names only, of enabled accounts (Jellyfin hides most accounts from its login screen by
-        // default, so that can't be the test). Admins can turn the list off: invite by name then.
+        // Names only (Jellyfin hides most accounts from its login screen by default, so that can't
+        // be the test). Admins can turn the list off: invite by name then.
         if (Plugin.Instance?.Configuration.ListUsersForSharing == false)
         {
             return new List<UserRef>();
         }
 
-        return _users.GetUsers()
-            .Where(u => !u.HasPermission(PermissionKind.IsDisabled))
-            .Select(u => new UserRef(u.Id, u.Username))
-            .OrderBy(u => u.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return _partners.VisibleTo(me).Select(u => new UserRef(u.Id, u.Name)).ToList();
     }
 
     /// <summary>Scripts shared with or by the caller.</summary>

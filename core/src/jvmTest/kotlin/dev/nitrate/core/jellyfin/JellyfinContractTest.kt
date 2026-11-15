@@ -386,6 +386,8 @@ class JellyfinContractTest {
 
     private fun check(method: HttpMethod, url: Url, body: String?): List<String> {
         val where = "${method.value} ${url.encodedPath}"
+        // The Nitrate Companion plugin's calls aren't Jellyfin's API (see JellyfinCompanion.kt).
+        if (url.encodedPath.startsWith("/Nitrate/")) return emptyList()
         val template = template(url, method) ?: template(url) ?: return listOf("$where: no such path")
         val op = paths[template]!!.jsonObject[method.value.lowercase()]?.jsonObject ?: return listOf("$where: no ${method.value} on $template")
         val params = op["parameters"]?.jsonArray.orEmpty().map { it.jsonObject }.filter { it["in"]?.jsonPrimitive?.content == "query" }

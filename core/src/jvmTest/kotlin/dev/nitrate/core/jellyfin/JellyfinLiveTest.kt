@@ -487,6 +487,52 @@ class JellyfinLiveTest {
     }
 
     @Test
+    fun `watch partners keep a private account private until it accepts`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        fun device(id: String) = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", id, id), object : SessionStorage {
+            override suspend fun load(): StoredSession? = null
+            override suspend fun save(session: StoredSession) {}
+            override suspend fun clear() {}
+        }, { caps() }, settings)
+        val me = device("nitrate-partners-a").also { it.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty()) }
+        assumeTrue("No Companion partners on this server", me.companion()?.features?.contains("partners") == true)
+        val show = me.queryItems(dev.nitrate.core.pages.ItemQuery(types = listOf(dev.nitrate.core.model.ItemKind.SERIES))).firstOrNull()
+        assumeTrue("Needs a show", show != null)
+        val episode = me.allEpisodes(show!!.id).first { (it.seasonNumber ?: 0) > 0 }
+        val name = "nitrate-quiet-${System.currentTimeMillis() % 100000}"
+        val quietUser = me.createUser(name, "pw-q")
+        try {
+            val quiet = device("nitrate-partners-b").also { it.login(url!!, name, "pw-q") }
+            assertTrue(me.partnerPeople().any { it.name == name })
+            assertTrue(quiet.setPrivacy(true).isPrivate)
+            // Private: not listed, not found by name for sharing either.
+            assertTrue(me.partnerPeople().none { it.name == name })
+            assertTrue(me.sharingUsers(name).isEmpty())
+            // A request by name reads the same as one to nobody.
+            val toQuiet = me.askPartner(null, name, show.id, show.name)
+            val toNobody = me.askPartner(null, "nobody-${System.nanoTime()}", show.id, show.name)
+            assertEquals(name, toQuiet.to)
+            assertEquals(2, me.partners().outgoing.size)
+            // Only the real person sees it, and accepts.
+            val incoming = quiet.partners().incoming.single()
+            assertEquals(show.name, incoming.seriesName)
+            quiet.acceptPartner(incoming.id)
+            val partner = me.partners().partners.single { it.userName == name }
+            assertEquals(listOf(show.id), partner.shows.map { it.seriesId })
+            me.cancelPartnerRequest(toNobody.id)
+            // Their progress, then an episode watched together counts for them.
+            assertTrue(me.partnerProgress(show.id).single().watched.isEmpty())
+            assertEquals(listOf(quietUser.id), me.watchedTogether(episode.id, listOf(quietUser.id)))
+            assertTrue(quiet.getItem(episode.id).user.played)
+            assertEquals(setOf(episode.id), me.partnerProgress(show.id).single().watched)
+            me.endPartnership(partner.id)
+            assertTrue(me.partners().partners.none { it.userName == name })
+        } finally {
+            me.deleteUser(quietUser.id)
+        }
+    }
+
+    @Test
     fun `switches between saved accounts`() = runBlocking {
         assumeTrue("Set JELLYFIN_URL to run", url != null)
         val user = System.getenv("JELLYFIN_USER") ?: "nitrate"

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MediaBrowser.Common.Configuration;
 using Nitrate.Companion.Channels;
 using Nitrate.Companion.Chat;
+using Nitrate.Companion.Partners;
 using Nitrate.Companion.Scripts;
 using Nitrate.Companion.Sso;
 using MediaBrowser.Controller.Devices;
@@ -27,6 +28,11 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton(sp => new ChannelHub(
             new FileChannelStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "channels")),
             new JellyfinChannelLibrary(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>()),
+            sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddSingleton(sp => new PartnerHub(
+            new FilePartnerStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "partners.json")),
+            new JellyfinPartnerDirectory(sp.GetRequiredService<IUserManager>()),
+            new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>()),
             sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new SsoService(
             () => SsoSettings.From(Plugin.Instance?.Configuration),

@@ -60,6 +60,7 @@ public class CompanionController : ControllerBase
 
         features.Add("scripts");
         features.Add("channels");
+        features.Add("partners");
         if (Sso.SsoSettings.From(Plugin.Instance?.Configuration).Ready)
         {
             features.Add("sso");

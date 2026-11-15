@@ -13,6 +13,10 @@ Features:
 - **Single sign-on**: sign in to the Nitrate apps with your OpenID Connect identity provider
   (Authentik, Authelia, Keycloak, Pocket ID...). Only existing Jellyfin users can sign in. Phones
   open the sign-in page in the browser; TVs show a QR code to finish on a phone.
+- **Watch partners**: two people keep a show in step. Requests need the other person's approval;
+  episodes watched together count for both. Accounts can be kept private (by an admin in the
+  plugin's settings, or by their owner): never listed or findable by name, and a request to a
+  private name looks exactly like one to nobody until its owner accepts.
 - **Channels**: TV channels made from your library (shows, movies, collections, playlists,
   libraries; time slots like Saturday-morning cartoons), granted to everyone or chosen people.
   Everyone sees the same guide, but nothing is streamed unless someone watches: tuning in plays
@@ -96,6 +100,22 @@ block is `{Name, Days (0 = Sunday), StartMinute, EndMinute, Sources, Mix}` in th
 made a few days ahead when someone opens the guide or tunes in, and kept in `data/nitrate-companion/channels` (one
 JSON file per channel), so everyone sees the same guide. Nothing is ever streamed by the plugin: it reads titles and
 running times from Jellyfin's database only.
+
+Watch partners and privacy:
+
+| Call | What |
+| --- | --- |
+| `GET /Nitrate/Privacy` · `PUT /Nitrate/Privacy` | `{Private, ByAdmin}`; `{Private}` makes the caller private or not (an admin's choice still holds). |
+| `GET /Nitrate/Partners/People` | People the caller can ask: enabled, not private, not themselves. |
+| `GET /Nitrate/Partners` | `{Partners, Incoming, Outgoing}`. Outgoing requests always show as waiting until accepted or lapsed (14 days), even when declined or sent to no one. |
+| `POST /Nitrate/Partners/Requests` | `{ToUserId or ToName, SeriesId, SeriesName}`: always answers with the waiting request. |
+| `POST /Nitrate/Partners/Requests/{id}/Accept` · `/Decline` · `DELETE /Nitrate/Partners/Requests/{id}` | The other person answers; the asker withdraws. |
+| `POST /Nitrate/Partners/{id}/Shows` · `DELETE /Nitrate/Partners/{id}/Shows/{seriesId}` · `DELETE /Nitrate/Partners/{id}` | Either partner adds or removes a show, or ends the partnership. |
+| `GET /Nitrate/Partners/Progress?seriesId=` | Each partner on that show: `{UserId, UserName, Watched, Last, NextId}`. |
+| `POST /Nitrate/Partners/Together` | `{ItemId, PartnerIds}`: marks the episode watched for those who are the caller's partners on its show. |
+
+The script-sharing list (`GET /Nitrate/Users`) and its exact-name lookup leave private accounts out too. Partners are kept in
+`data/nitrate-companion/partners.json`.
 
 A change can also (or instead) carry `Records`: story data changes (`{Id, Type, Set: {field: value or null}, Delete}`)
 for the apps' scene details, lists, entries, links and comments. These never wait on the version (each field takes

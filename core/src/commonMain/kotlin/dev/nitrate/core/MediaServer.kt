@@ -363,6 +363,34 @@ interface MediaServer {
     /** The Nitrate Companion plugin on this server, or null when it isn't installed. */
     suspend fun companion(): dev.nitrate.core.companion.CompanionInfo? = null
 
+    /** Whether this user is private (Companion feature "partners"). */
+    suspend fun privacy(): dev.nitrate.core.partners.Privacy = unsupported()
+
+    /** Makes this user private, or not (an admin's choice still holds). */
+    suspend fun setPrivacy(private: Boolean): dev.nitrate.core.partners.Privacy = unsupported()
+
+    /** People this user can ask to be watch partners: not private, not themselves. */
+    suspend fun partnerPeople(): List<dev.nitrate.core.writing.UserRef> = unsupported()
+
+    /** Watch partners, requests to answer and requests waiting. */
+    suspend fun partners(): dev.nitrate.core.partners.PartnersInfo = unsupported()
+
+    /** Asks someone to watch a show together: a listed person by id, or anyone by exact user name. Always "sent". */
+    suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String): dev.nitrate.core.partners.OutgoingRequest = unsupported()
+
+    suspend fun acceptPartner(requestId: String): dev.nitrate.core.partners.WatchPartner = unsupported()
+    suspend fun declinePartner(requestId: String): Unit = unsupported()
+    suspend fun cancelPartnerRequest(requestId: String): Unit = unsupported()
+    suspend fun addPartnerShow(partnershipId: String, seriesId: String, name: String): dev.nitrate.core.partners.WatchPartner = unsupported()
+    suspend fun removePartnerShow(partnershipId: String, seriesId: String): dev.nitrate.core.partners.WatchPartner = unsupported()
+    suspend fun endPartnership(partnershipId: String): Unit = unsupported()
+
+    /** Where this user's partners on a show are (empty: none, or no Companion plugin). */
+    suspend fun partnerProgress(seriesId: String): List<dev.nitrate.core.partners.PartnerProgress> = emptyList()
+
+    /** Marks an episode watched for partners who watched it with this user; returns who it counted for. */
+    suspend fun watchedTogether(itemId: String, partnerIds: List<String>): List<String> = unsupported()
+
     /** The household's channels this user can watch (Companion feature "channels"); admins see all. */
     suspend fun houseChannels(): List<dev.nitrate.core.channels.HouseChannel> = unsupported()
 

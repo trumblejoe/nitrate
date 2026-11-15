@@ -72,6 +72,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ServerAdminRoute
 @Serializable object LibraryHealthRoute
 @Serializable object ChannelsRoute
+@Serializable object WatchPartnersRoute
 @Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ServerAddressesRoute
 @Serializable object LicensesRoute
@@ -186,6 +187,10 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                             action.itemIds.forEach { runCatching { container.server.setPlayed(it, true) } }
                             nav.navigate(playerRoute(item.id, fromStart))
                         }
+                        is GuardAction.RunThenPlay -> {
+                            runCatching { action.run() }
+                            nav.navigate(playerRoute(item.id, fromStart))
+                        }
                     }
                 }
             }
@@ -259,6 +264,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }
             screen<ChannelsRoute> { ChannelsScreen(actions) }
+            screen<WatchPartnersRoute> { WatchPartnersScreen(actions) }
             screen<ChannelEditorRoute> { entry -> ChannelEditorScreen(actions, entry.toRoute<ChannelEditorRoute>().channelId.ifEmpty { null }) }
             screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<LicensesRoute> { LicensesScreen() }
@@ -274,6 +280,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<PlayerRoute> { entry ->
                 val route = entry.toRoute<PlayerRoute>()
                 androidx.compose.runtime.LaunchedEffect(Unit) { actions.container.themeMusic.stop() }
+                // Leaving the player: what was watched with partners counts for them too.
+                androidx.compose.runtime.DisposableEffect(Unit) { onDispose { actions.container.settleTogether() } }
                 PlayerScreen(
                     actions = actions,
                     itemId = route.itemId,
@@ -347,6 +355,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
 
         UpdatePrompt(container.updater)
         BackupPrompt(container.backups)
+        PartnerRequestPrompt(actions)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }
 
         pending?.let { (ask, answer) ->

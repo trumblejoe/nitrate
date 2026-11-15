@@ -180,7 +180,55 @@ class AppContainer(
     private suspend fun refreshCompanion() {
         companionState.value = runCatching { server.companion() }.getOrNull()
         if (companionState.value?.features?.contains("scripts") == true) syncScripts()
+        if (companionState.value?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) == true) {
+            refreshPartners()
+            followTogether()
+        }
         chat
+    }
+
+    /** Watching shows with partners (see [dev.nitrate.core.partners.WatchPartnersPlugin]). */
+    val watchPartners = dev.nitrate.core.partners.WatchPartnersPlugin(dev.nitrate.core.partners.TogetherSessions(System::currentTimeMillis), System::currentTimeMillis)
+
+    private val partnersState = MutableStateFlow<dev.nitrate.core.partners.PartnersInfo?>(null)
+
+    /** This user's watch partners and requests (null until known, or without the Companion plugin). */
+    val partners: StateFlow<dev.nitrate.core.partners.PartnersInfo?> = partnersState
+
+    /** Requests to answer, shown when the app opens until answered or put off ("Later" hides them until next time). */
+    val partnerRequestsLater = MutableStateFlow(emptySet<String>())
+
+    suspend fun refreshPartners() {
+        runCatching { server.partners() }.onSuccess { partnersState.value = it }
+    }
+
+    /** After leaving a player: counts what was just watched with partners (in case no live update came). */
+    fun settleTogether() {
+        if (watchPartners.sessions.all().isEmpty()) return
+        networkScope.launch {
+            kotlinx.coroutines.delay(2_000)
+            runCatching { watchPartners.settle(server) }
+        }
+    }
+
+    /** Stops watching [seriesId] with partners. */
+    fun stopTogether(seriesId: String) = watchPartners.sessions.stop(seriesId)
+
+    private var followingTogether = false
+
+    /** Once the user's watched state changes, counts episodes watched with partners for them too. */
+    private fun followTogether() {
+        if (followingTogether) return
+        followingTogether = true
+        networkScope.launch {
+            remote.events.filter { it is ServerEvent.UserDataChanged }.collect {
+                if (watchPartners.sessions.all().isNotEmpty()) {
+                    // Let the server finish saving the stop first.
+                    kotlinx.coroutines.delay(1_500)
+                    runCatching { watchPartners.settle(server) }
+                }
+            }
+        }
     }
 
     /** Theme music behind details pages (each app's details screens ask for it; players stop it). */
@@ -428,7 +476,7 @@ class AppContainer(
     private val pluginStore = PluginStore(appContext)
 
     val plugins = PluginRegistry(
-        all = listOf(PreviousEpisodePlugin, WritingPlugin, dev.nitrate.core.channels.ChannelsPlugin),
+        all = listOf(PreviousEpisodePlugin, watchPartners, WritingPlugin, dev.nitrate.core.channels.ChannelsPlugin),
         host = PluginHost(server, pluginStore),
     )
 

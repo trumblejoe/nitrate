@@ -88,6 +88,8 @@ fun DetailsScreen(
     /** How an item would play here and why (the fixer); null shows the server's raw decision. */
     checkPlayback: (suspend (MediaItem) -> dev.nitrate.core.playback.PlaybackDiagnosis)? = null,
     applyPlaybackFix: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit = { _, _ -> },
+    /** The server has watch partners (Companion plugin): shows partners' progress and "Watch with…". */
+    watchPartners: Boolean = false,
 ) {
     val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
     val vm = viewModel(key = "details-$itemId") {
@@ -116,6 +118,13 @@ fun DetailsScreen(
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(item.id, state.tracks.isEmpty()) { runCatching { playFocus.requestFocus() } }
 
+    // Watch partners on this show: spoiler hiding goes by whoever is furthest behind.
+    val showId = if (item.kind == ItemKind.SERIES) item.id else item.seriesId
+    val partnerProgress by androidx.compose.runtime.produceState(emptyList<dev.nitrate.core.partners.PartnerProgress>(), showId, watchPartners, state.episodes) {
+        value = if (watchPartners && showId != null) runCatching { repository.partnerProgress(showId) }.getOrDefault(emptyList()) else emptyList()
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.partners.LocalPartnerProgress provides partnerProgress) {
     Box(Modifier.fillMaxSize()) {
         Backdrop(repository.backdropUrl(item), Modifier.fillMaxSize())
 
@@ -155,7 +164,7 @@ fun DetailsScreen(
                         val ep = focusedEpisode?.takeIf { f -> state.episodes.any { it.id == f.id } }
                         val prefs = LocalDisplayPrefs.current
                         Text(
-                            ep?.overview?.takeIf { prefs.overview && !prefs.hidesDescription(ep) }.orEmpty(),
+                            ep?.overview?.takeIf { prefs.overview && !dev.nitrate.tv.ui.partners.descriptionHidden(ep) }.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -287,6 +296,7 @@ fun DetailsScreen(
         }
     }
 }
+}
 
 @Composable
 private fun Header(
@@ -324,7 +334,7 @@ private fun Header(
         item.overview?.takeIf { prefs.overview }?.let { overview ->
             // Spoiler hiding: unwatched movies and episodes keep their description until asked for.
             var revealed by remember(item.id) { mutableStateOf(false) }
-            if (!prefs.hidesDescription(item) || revealed) Text(overview, style = MaterialTheme.typography.bodyLarge, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            if (!dev.nitrate.tv.ui.partners.descriptionHidden(item) || revealed) Text(overview, style = MaterialTheme.typography.bodyLarge, maxLines = 4, overflow = TextOverflow.Ellipsis)
             else OutlinedButton(onClick = { revealed = true }) { Text("Plot hidden · Show") }
         }
         Spacer(Modifier.height(4.dp))
@@ -397,7 +407,14 @@ private fun Header(
                 if (adding) dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect) { adding = false }
             }
             if (onManage != null) OutlinedButton(onClick = { onManage(item.id) }) { Text("Manage") }
+            val watchWith = dev.nitrate.tv.ui.partners.LocalWatchWith.current
+            if (watchWith != null && item.kind == ItemKind.SERIES) OutlinedButton(onClick = { watchWith(item) }) { Text("Watch with…") }
         }
+        val partners = dev.nitrate.tv.ui.partners.LocalPartnerProgress.current
+        if (partners.isNotEmpty()) Text(
+            "Watching with " + partners.joinToString(" · ") { "${it.userName} (${it.last ?: "not started"})" },
+            style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+        )
         // More like it, by studio or year.
         val studio = item.studios.firstOrNull()
         val year = item.productionYear

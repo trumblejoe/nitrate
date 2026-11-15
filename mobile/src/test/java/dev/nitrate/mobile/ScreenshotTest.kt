@@ -167,6 +167,13 @@ class ScreenshotTest {
 
     @Test fun channelEditor() = shoot("phone-channel-editor") { dev.nitrate.mobile.ui.ChannelEditorScreen(it, "c1") }
 
+    @Test fun watchPartners() = shoot("phone-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { dev.nitrate.mobile.ui.WatchPartnersScreen(it) }
+
+    @Test fun seriesWithPartner() = shoot("phone-series-partner", setup = { c ->
+        c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true))
+        c.refreshCompanionForTests()
+    }) { DetailsScreen(it, "series-1", null) }
+
     @Test fun licenses() = shoot("phone-licenses") { dev.nitrate.mobile.ui.LicensesScreen() }
 
     @Test fun serverAddresses() = shoot("phone-servers") { dev.nitrate.mobile.ui.ServersScreen(it) }

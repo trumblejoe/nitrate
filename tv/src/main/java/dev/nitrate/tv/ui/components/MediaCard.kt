@@ -80,7 +80,7 @@ fun MediaCard(
                         imageUrl,
                         contentDescription = item.name,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().then(if (prefs.isSpoiler(item)) Modifier.blur(20.dp) else Modifier),
+                        modifier = Modifier.fillMaxSize().then(if (dev.nitrate.tv.ui.partners.spoilerStill(item)) Modifier.blur(20.dp) else Modifier),
                     )
                 } else {
                     Text(
