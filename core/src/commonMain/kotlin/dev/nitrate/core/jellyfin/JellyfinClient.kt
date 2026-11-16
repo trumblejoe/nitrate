@@ -560,6 +560,13 @@ class JellyfinClient(
         (favourites.await() + watching.await()).toSet()
     }
 
+    override suspend fun watchedSeries(): Set<String> =
+        // A show's user data counts its watched episodes, so one light list covers every show.
+        get("Items", query = mapOf("userId" to userId, "includeItemTypes" to "Series", "recursive" to true, "enableImages" to false))
+            .decode<QueryResultDto<ItemDto>>().items
+            .filter { it.userData?.let { u -> u.played || (u.playedPercentage ?: 0.0) > 0 } == true }
+            .map { normalizeId(it.id) }.toSet()
+
     override suspend fun authorizeQuickConnect(code: String) {
         val ok = try {
             post<Unit>("QuickConnect", "Authorize", query = mapOf("code" to code.trim())).bodyAsText().trim()

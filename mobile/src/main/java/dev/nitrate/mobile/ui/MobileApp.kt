@@ -332,7 +332,10 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             } == true
             if (signedIn && !busy) {
                 openItem.value = null
-                nav.navigate(DetailsRoute(id))
+                // A new season opens its show with that season selected.
+                val item = runCatching { container.server.getItem(id) }.getOrNull()
+                val series = item?.seriesId
+                if (item?.kind == ItemKind.SEASON && series != null) nav.navigate(DetailsRoute(series, seasonId = item.id)) else nav.navigate(DetailsRoute(id))
             }
         }
         // Watch together: the group started something while no player was open.

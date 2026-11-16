@@ -221,6 +221,7 @@ class FakeServer : MediaServer {
     var recent: List<MediaItem> = emptyList()
     override suspend fun recentEpisodes(limit: Int) = recent
     override suspend fun followedSeries() = setOf("series-1")
+    override suspend fun watchedSeries() = setOf("series-1")
     override suspend fun savedAccounts() = listOf(
         dev.nitrate.core.model.SavedAccount("home|joe", "http://192.168.1.20:8096", "Home", "user-1", "Joe", null),
         dev.nitrate.core.model.SavedAccount("home|sam", "http://192.168.1.20:8096", "Home", "user-2", "Sam", null),

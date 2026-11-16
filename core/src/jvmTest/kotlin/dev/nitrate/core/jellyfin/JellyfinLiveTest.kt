@@ -615,6 +615,17 @@ class JellyfinLiveTest {
         } finally {
             client.setFavorite(series, false)
         }
+        // Watching one episode makes the show one "watched before", for new-season alerts.
+        val episode = recent.first { it.seriesId == series && !it.user.played }
+        assertTrue(series !in client.watchedSeries())
+        client.setPlayed(episode.id, true)
+        try {
+            assertTrue(series in client.watchedSeries())
+            val seasons = dev.nitrate.core.notifications.NewSeasons.alerts(recent, client.watchedSeries(), sinceMs = 0)
+            println("Season alerts: ${seasons.map { it.title + ": " + it.text }}")
+        } finally {
+            client.setPlayed(episode.id, false)
+        }
     }
 
     @Test

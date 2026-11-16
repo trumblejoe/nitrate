@@ -136,6 +136,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         }
         section(open, "Notifications") {
             item { NewEpisodesToggle(actions) }
+            item { NewSeasonsToggle(actions) }
         }
         section(open, "Watch together", "Play in step with people on other devices (SyncPlay).") {
             item { WatchTogetherRow(actions) }
@@ -422,6 +423,23 @@ private fun NewEpisodesToggle(actions: AppActions) {
         val needsAsk = want && android.os.Build.VERSION.SDK_INT >= 33 &&
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
         if (needsAsk) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS) else scope.launch { notifier.setEnabled(want) }
+    }
+}
+
+/** New seasons of shows followed or watched before; asks for notification permission like [NewEpisodesToggle]. */
+@Composable
+private fun NewSeasonsToggle(actions: AppActions) {
+    val notifier = actions.container.newEpisodes
+    val scope = rememberCoroutineScope()
+    val on by notifier.seasonsEnabled.collectAsState(false)
+    val permission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) scope.launch { notifier.setSeasonsEnabled(true) }
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Toggle("New seasons", "When a show you follow or have watched before starts a new season", on) { want ->
+        val needsAsk = want && android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (needsAsk) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS) else scope.launch { notifier.setSeasonsEnabled(want) }
     }
 }
 

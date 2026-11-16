@@ -311,6 +311,9 @@ interface MediaServer {
     /** Series this user follows: favourites, and shows they're partway through (Next Up). */
     suspend fun followedSeries(): Set<String> = unsupported()
 
+    /** Series this user has watched any of (an episode or more). */
+    suspend fun watchedSeries(): Set<String> = unsupported()
+
     /** Signs in another device that shows a Quick Connect [code], as this user. */
     suspend fun authorizeQuickConnect(code: String): Unit = unsupported()
 
