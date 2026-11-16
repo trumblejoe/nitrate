@@ -137,7 +137,8 @@ fun ShowcaseRow(
             .focusable(),
     ) {
         if (active || alwaysExpanded) {
-            Expanded(row, item, current, artwork, display, repository)
+            // Full Showcase has no thumbnail strip: the picture is the whole screen.
+            Expanded(row, item, current, artwork, display, repository, strip = !alwaysExpanded)
         } else {
             Collapsed(row, item, artwork, display)
         }
@@ -186,8 +187,11 @@ private fun Expanded(
     artwork: String?,
     display: RowDisplay,
     repository: MediaServer,
+    strip: Boolean = true,
 ) {
     val options = display.showcase
+    // Room for the strip below the text, or just a margin without it.
+    val bottom = if (strip) 150.dp else 72.dp
     Box(Modifier.fillMaxSize()) {
         Backdrop(artwork, Modifier.fillMaxSize())
 
@@ -198,7 +202,7 @@ private fun Expanded(
         )
 
         Column(
-            Modifier.align(Alignment.BottomStart).padding(start = RowPadding, bottom = 150.dp).fillMaxWidth(0.5f),
+            Modifier.align(Alignment.BottomStart).padding(start = RowPadding, bottom = bottom).fillMaxWidth(0.5f),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             TitleOrLogo(item, if (options.showLogo) repository.logoUrl(item) else null)
@@ -216,10 +220,10 @@ private fun Expanded(
             "${index + 1} / ${row.items.size}",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = RowPadding, bottom = 150.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = RowPadding, bottom = bottom),
         )
 
-        Filmstrip(row, index, repository, Modifier.align(Alignment.BottomStart).padding(bottom = 36.dp))
+        if (strip) Filmstrip(row, index, repository, Modifier.align(Alignment.BottomStart).padding(bottom = 36.dp))
     }
 }
 
