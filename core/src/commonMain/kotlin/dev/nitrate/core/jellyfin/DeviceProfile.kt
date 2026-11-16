@@ -89,8 +89,14 @@ object JellyfinDeviceProfile {
 
         // Text formats the player renders itself; image formats (PGS, VobSub) work embedded in MKV
         // but must be burned in when transcoding.
+        // Styled subtitles shown exactly: the server draws them into the picture (libass), fonts and all.
+        val exact = settings.subtitleStyle.styled == dev.nitrate.core.playback.StyledSubtitles.EXACT
         val subtitles = buildList {
             for (format in listOf("srt", "subrip", "vtt", "webvtt", "ass", "ssa", "ttml")) {
+                if (exact && dev.nitrate.core.playback.isStyledSubtitle(format)) {
+                    add(SubtitleProfileDto(format, "Encode"))
+                    continue
+                }
                 add(SubtitleProfileDto(format, "External"))
                 add(SubtitleProfileDto(format, "Embed"))
             }

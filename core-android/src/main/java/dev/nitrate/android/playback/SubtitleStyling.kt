@@ -12,7 +12,7 @@ import dev.nitrate.core.playback.SubtitleStyle
 
 /** Applies the user's subtitle look to a player view (both apps). */
 @OptIn(UnstableApi::class)
-fun PlayerView.applySubtitleStyle(style: SubtitleStyle) {
+fun PlayerView.applySubtitleStyle(style: SubtitleStyle, styledTrack: Boolean = false) {
     val view = subtitleView ?: return
     val background = when (style.background) {
         SubtitleBackground.NONE -> Color.TRANSPARENT
@@ -27,6 +27,8 @@ fun PlayerView.applySubtitleStyle(style: SubtitleStyle) {
     view.setStyle(CaptionStyleCompat(style.textColor.toInt(), background, Color.TRANSPARENT, edge, Color.BLACK, null))
     view.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * style.scale)
     view.setBottomPaddingFraction(style.bottomMargin)
-    view.setApplyEmbeddedStyles(style.useFileStyles)
-    view.setApplyEmbeddedFontSizes(style.useFileStyles)
+    // An ASS/SSA track keeps its own colours, sizes and positions unless the user wants their style.
+    val fileStyles = styledTrack && style.styled != dev.nitrate.core.playback.StyledSubtitles.MINE
+    view.setApplyEmbeddedStyles(fileStyles)
+    view.setApplyEmbeddedFontSizes(fileStyles)
 }

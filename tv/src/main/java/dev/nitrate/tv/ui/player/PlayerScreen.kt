@@ -267,7 +267,7 @@ fun PlayerScreen(
                 }
             },
             update = {
-                it.applySubtitleStyle(settingsNow.subtitleStyle)
+                it.applySubtitleStyle(settingsNow.subtitleStyle, plan?.styledSubtitle == true)
                 it.showCover(item?.takeIf { i -> i.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { i -> repository.imageUrl(i, dev.nitrate.core.model.ImageKind.PRIMARY, 720) })
             },
             modifier = Modifier.fillMaxSize(),

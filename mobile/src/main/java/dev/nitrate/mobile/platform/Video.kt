@@ -76,6 +76,8 @@ fun VideoSurface(
     gestures: PlayerGestures? = null,
     fill: Boolean = false,
     subtitleStyle: dev.nitrate.core.playback.SubtitleStyle = dev.nitrate.core.playback.SubtitleStyle(),
+    /** The subtitle showing is ASS/SSA, with its own styling. */
+    styledSubtitle: Boolean = false,
     /** Hide the player's own controls (e.g. in picture-in-picture). */
     hideControls: Boolean = false,
     /** Shown instead of a picture (music). */
@@ -94,7 +96,7 @@ fun VideoSurface(
         },
         update = { view ->
             view.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
-            view.applySubtitleStyle(subtitleStyle)
+            view.applySubtitleStyle(subtitleStyle, styledSubtitle)
             view.showCover(coverUrl)
             view.useController = !hideControls
         },

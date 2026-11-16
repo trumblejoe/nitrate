@@ -81,6 +81,10 @@ data class PlaybackPlan(
     val versions: List<VersionOption> = emptyList(),
 ) {
     val mediaSourceId get() = source.id
+
+    /** The selected subtitle carries its own styling (ASS/SSA). */
+    val styledSubtitle: Boolean
+        get() = source.streams.any { it.kind == StreamKind.SUBTITLE && it.index == subtitleIndex && dev.nitrate.core.playback.isStyledSubtitle(it.codec) }
 }
 
 /** One version of an item as the server offered it to this device. */

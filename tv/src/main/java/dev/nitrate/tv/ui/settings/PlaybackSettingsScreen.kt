@@ -156,8 +156,10 @@ fun PlaybackSettingsScreen(
             }
         }
         item {
-            ToggleRow("Use the file's own styles", settings.subtitleStyle.useFileStyles, "Colours and positions from ASS/SSA subtitles") { v ->
-                update { it.copy(subtitleStyle = it.subtitleStyle.copy(useFileStyles = v)) }
+            val styled = settings.subtitleStyle.styled
+            ChoiceRow("Styled subtitles (ASS/SSA)", styled.label, styled.detail) {
+                val all = dev.nitrate.core.playback.StyledSubtitles.entries
+                update { it.copy(subtitleStyle = it.subtitleStyle.copy(styled = all[(styled.ordinal + 1) % all.size])) }
             }
         }
 

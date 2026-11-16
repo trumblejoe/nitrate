@@ -12,14 +12,25 @@ data class SubtitleStyle(
     val edge: SubtitleEdge = SubtitleEdge.OUTLINE,
     /** Distance from the bottom, as a fraction of the picture height. */
     val bottomMargin: Float = 0.08f,
-    /** Use colours and positions from the subtitle file (ASS/SSA styling) instead of these. */
-    val useFileStyles: Boolean = false,
+    /** How styled (ASS/SSA) subtitles look; other subtitles always use this style. */
+    val styled: StyledSubtitles = StyledSubtitles.FILE,
 ) {
     companion object {
         val COLORS = listOf(0xFFFFFFFF to "White", 0xFFFFE680 to "Yellow", 0xFF9EE7FF to "Cyan", 0xFFB7F5B0 to "Green")
         val SCALES = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
     }
 }
+
+/** How ASS/SSA subtitles, which carry their own look, are shown. */
+@Serializable
+enum class StyledSubtitles(val label: String, val detail: String) {
+    FILE("As the file styles them", "Colours, sizes, positions and italics from the file; its fonts and effects aren't drawn"),
+    EXACT("Exactly, drawn by the server", "Fonts and effects too: the server converts the video while they're on"),
+    MINE("In my subtitle style", "Like any other subtitles"),
+}
+
+/** Whether a subtitle codec carries its own styling (ASS/SSA). */
+fun isStyledSubtitle(codec: String?): Boolean = codec?.lowercase() in setOf("ass", "ssa")
 
 @Serializable
 enum class SubtitleBackground(val label: String) { NONE("None"), SHADED("Shaded box"), SOLID("Black box") }

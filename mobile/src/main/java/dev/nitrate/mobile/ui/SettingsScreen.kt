@@ -557,10 +557,11 @@ private fun SubtitleStyleEditor(style: dev.nitrate.core.playback.SubtitleStyle, 
         }
         Text("Height from bottom", style = MaterialTheme.typography.titleSmall)
         androidx.compose.material3.Slider(value = style.bottomMargin, onValueChange = { onChange(style.copy(bottomMargin = it)) }, valueRange = 0f..0.3f)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Use the subtitle file's own styles (ASS/SSA)", modifier = Modifier.weight(1f))
-            Switch(checked = style.useFileStyles, onCheckedChange = { onChange(style.copy(useFileStyles = it)) })
+        Text("Styled subtitles (ASS/SSA)", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            dev.nitrate.core.playback.StyledSubtitles.entries.forEach { s -> FilterChip(selected = style.styled == s, onClick = { onChange(style.copy(styled = s)) }, label = { Text(s.label) }) }
         }
+        Text(style.styled.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -59,4 +59,16 @@ class JellyfinDeviceProfileTest {
         assertTrue("DOVIWithHDR10" in ranges)
         assertFalse("DOVI" in ranges)
     }
+
+    @Test
+    fun `styled subtitles shown exactly are drawn by the server`() {
+        fun methods(styled: dev.nitrate.core.playback.StyledSubtitles, format: String) =
+            JellyfinDeviceProfile.create(caps(), PlaybackSettings(subtitleStyle = dev.nitrate.core.playback.SubtitleStyle(styled = styled)))
+                .subtitleProfiles.filter { it.format == format }.map { it.method }.toSet()
+        assertEquals(setOf("External", "Embed"), methods(dev.nitrate.core.playback.StyledSubtitles.FILE, "ass"))
+        assertEquals(setOf("Encode"), methods(dev.nitrate.core.playback.StyledSubtitles.EXACT, "ass"))
+        assertEquals(setOf("Encode"), methods(dev.nitrate.core.playback.StyledSubtitles.EXACT, "ssa"))
+        // Plain subtitles are untouched.
+        assertEquals(setOf("External", "Embed"), methods(dev.nitrate.core.playback.StyledSubtitles.EXACT, "srt"))
+    }
 }

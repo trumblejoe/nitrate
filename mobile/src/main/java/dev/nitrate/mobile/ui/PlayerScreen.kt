@@ -312,6 +312,7 @@ fun PlayerScreen(
             gestures = gestures.takeIf { !inPip },
             fill = fill,
             subtitleStyle = playbackSettings.subtitleStyle,
+            styledSubtitle = plan?.styledSubtitle == true,
             hideControls = inPip,
             coverUrl = playingItem?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { actions.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 720) },
         )

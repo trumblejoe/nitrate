@@ -150,7 +150,7 @@ object DeviceBackups {
         Triple("Background", a.background.label, n.background.label),
         Triple("Edge", a.edge.label, n.edge.label),
         Triple("Height from the bottom", "${(a.bottomMargin * 100).toInt()}%", "${(n.bottomMargin * 100).toInt()}%"),
-        Triple("Use the file's own styles", onOff(a.useFileStyles), onOff(n.useFileStyles)),
+        Triple("Styled (ASS/SSA) subtitles", a.styled.label, n.styled.label),
     ).filter { it.second != it.third }
 
     private fun colour(argb: Long) = SubtitleStyle.COLORS.firstOrNull { it.first == argb }?.second ?: "#" + (argb and 0xFFFFFF).toString(16).padStart(6, '0').uppercase()
