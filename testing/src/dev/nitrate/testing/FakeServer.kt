@@ -72,10 +72,11 @@ class FakeServer : MediaServer {
     override suspend fun homeRows() = listOf(
         MediaRow("home/continue_watching", "Continue Watching", listOf(films[0], episode(2, 4, false).copy(user = UserState(playedPercentage = 60.0))), RowDisplay(RowStyle.WIDE, showTitles = true)),
         MediaRow("home/next_up", "Next Up", listOf(episode(2, 5, false)), RowDisplay(RowStyle.WIDE, showTitles = true)),
+        MediaRow("home/upcoming", "Upcoming", upcomingEpisodes(), RowDisplay(RowStyle.WIDE, showTitles = true)),
         MediaRow("home/latest/lib-movies", "Latest in Movies", films, RowDisplay()),
         MediaRow("home/latest/lib-shows", "Latest in Shows", listOf(series), RowDisplay()),
     )
-    override suspend fun libraryRows(library: MediaItem) = homeRows().drop(2)
+    override suspend fun libraryRows(library: MediaItem) = homeRows().drop(3)
     override suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean) =
         (if (startIndex == 0) films + films.map { it.copy(id = it.id + "b") } else emptyList()) to films.size * 2
     val album = MediaItem("al1", "Second Reel", ItemKind.MUSIC_ALBUM, productionYear = 2022, albumArtist = "The Projectionists", albumArtistId = "ar1", genres = listOf("Rock"),
@@ -221,6 +222,7 @@ class FakeServer : MediaServer {
     var recent: List<MediaItem> = emptyList()
     override suspend fun recentEpisodes(limit: Int) = recent
     override suspend fun followedSeries() = setOf("series-1")
+    override suspend fun upcomingEpisodes() = listOf(series.copy(note = dev.nitrate.core.model.AirDates.long(java.time.LocalDate.of(2026, 4, 20).toEpochDay() * 86_400_000L)))
     override suspend fun savedAccounts() = listOf(
         dev.nitrate.core.model.SavedAccount("home|joe", "http://192.168.1.20:8096", "Home", "user-1", "Joe", null),
         dev.nitrate.core.model.SavedAccount("home|sam", "http://192.168.1.20:8096", "Home", "user-2", "Sam", null),

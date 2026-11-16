@@ -1418,8 +1418,29 @@ class JellyfinClient(
 
     override fun audioStreamUrl(itemId: String): String = url("Audio", itemId, "stream", query = mapOf("static" to true))
 
-    override suspend fun upcomingEpisodes(): List<MediaItem> =
-        items("Shows", "Upcoming", query = mapOf("userId" to userId, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS))
+    /**
+     * Upcoming, for the shows the user is watching (an episode played in the last year, or a
+     * favourite): one card per show, the show itself, with its next air date.
+     */
+    override suspend fun upcomingEpisodes(): List<MediaItem> = coroutineScope {
+        val now = kotlin.time.Clock.System.now().toEpochMilliseconds()
+        val upcoming = async { items("Shows", "Upcoming", query = mapOf("userId" to userId, "limit" to 200)) }
+        val played = async {
+            items("Items", query = mapOf(
+                "userId" to userId, "includeItemTypes" to "Episode", "recursive" to true, "isPlayed" to true,
+                "sortBy" to "DatePlayed", "sortOrder" to "Descending", "limit" to 500, "enableImages" to false,
+            ))
+        }
+        val favourites = async {
+            items("Items", query = mapOf("userId" to userId, "includeItemTypes" to "Series", "recursive" to true, "isFavorite" to true, "enableImages" to false)).map { it.id }
+        }
+        val watching = dev.nitrate.core.rows.Upcoming.watching(played.await(), favourites.await(), now)
+        val coming = upcoming.await().filter { it.seriesId in watching }
+        val showIds = coming.mapNotNull { it.seriesId }.distinct()
+        if (showIds.isEmpty()) return@coroutineScope emptyList()
+        val shows = items("Items", query = mapOf("userId" to userId, "ids" to dashless(showIds), "fields" to ROW_FIELDS)).associateBy { it.id }
+        dev.nitrate.core.rows.Upcoming.row(coming, watching, shows, now).take(ROW_LIMIT)
+    }
 
     override fun chapterImageUrl(item: MediaItem, index: Int, maxWidth: Int): String? {
         val tag = item.chapters.getOrNull(index)?.imageTag ?: return null

@@ -54,6 +54,8 @@ data class MediaItem(
     val dateAddedMs: Long? = null,
     /** First air or release date (epoch ms), where known. */
     val premiereDateMs: Long? = null,
+    /** A line a row's card shows in place of its usual one (Upcoming: the next air date). */
+    val note: String? = null,
     /** Copies of this title the server has (4K, 1080p...), when there's more than one. */
     val versions: List<MediaVersion> = emptyList(),
     /** Files the title is split across (part 1, part 2...), when more than one. */

@@ -262,7 +262,7 @@ class TvScreenshotTest {
         // Middle rows have no bar; the last row has it at the bottom.
         press("down")
         compose.onNodeWithText("Search").assertDoesNotExist()
-        press("down", "down", "down")
+        press("down", "down", "down", "down")
         org.junit.Assert.assertTrue("Down from the last row reaches the bottom bar", focusedHasText("Home"))
         press("left")
     }

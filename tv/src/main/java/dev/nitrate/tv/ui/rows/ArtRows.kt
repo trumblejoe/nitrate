@@ -239,11 +239,11 @@ private fun DoubleBill(row: MediaRow, left: MediaItem, right: MediaItem, reposit
         Canvas(Modifier.fillMaxSize().zIndex(2f)) { drawBolt(accent, highlightRight = lit) }
         Column(Modifier.align(Alignment.TopStart).zIndex(2f).padding(22.dp).fillMaxWidth(0.5f)) {
             Text(left.displayTitle.uppercase(), color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(left.episodeLabel ?: left.productionYear?.toString().orEmpty(), color = Color.White.copy(alpha = 0.8f), fontSize = 22.sp)
+            Text(left.note ?: left.episodeLabel ?: left.productionYear?.toString().orEmpty(), color = Color.White.copy(alpha = 0.8f), fontSize = 22.sp)
         }
         Column(Modifier.align(Alignment.BottomEnd).zIndex(2f).padding(22.dp).fillMaxWidth(0.5f), horizontalAlignment = Alignment.End) {
             Text(right.displayTitle.uppercase(), color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(right.episodeLabel ?: right.productionYear?.toString().orEmpty(), color = Color.White.copy(alpha = 0.8f), fontSize = 22.sp)
+            Text(right.note ?: right.episodeLabel ?: right.productionYear?.toString().orEmpty(), color = Color.White.copy(alpha = 0.8f), fontSize = 22.sp)
         }
     }
 }
