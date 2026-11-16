@@ -71,6 +71,7 @@ object SpeedCheck {
     const val PING = "ping"
     const val SIGNED_IN = "me"
     const val LIBRARIES = "views"
+    const val LIBRARIES_NO_CHANNELS = "views_local"
     const val SEARCH = "search"
     const val HOME = "home"
     const val DOWNLOAD = "download"
@@ -81,6 +82,7 @@ object SpeedCheck {
         PING to (60L to 150L),
         SIGNED_IN to (150L to 400L),
         LIBRARIES to (200L to 500L),
+        LIBRARIES_NO_CHANNELS to (200L to 500L),
         SEARCH to (500L to 1500L),
         HOME to (1200L to 3000L),
         PARSE to (80L to 250L),
@@ -93,6 +95,17 @@ object SpeedCheck {
         steps.filter { it.error != null }.forEach { out += "${it.label} failed: ${it.error}" }
         val ping = med(PING)
         if (ping != null && ping > 150) out += "The network is slow: every request spends about $ping ms just reaching the server and back (a VPN, remote access or a weak connection). Pages make several requests, so this adds up."
+        val libraries = med(LIBRARIES)
+        if (libraries != null && libraries - (ping ?: 0) > 800) {
+            val work = libraries - (ping ?: 0)
+            val plain = med(LIBRARIES_NO_CHANNELS)
+            out += "The server takes about $work ms to list your libraries, a small request that should take a moment. " + when {
+                plain != null && plain * 2 < libraries && libraries - plain > 500 ->
+                    "Without plugin channels it takes $plain ms, so a server plugin that adds channels is what slows it: check Dashboard → Plugins. "
+                plain != null -> "It's no quicker without plugin channels ($plain ms), so it's the server's disk or processor, or a great many libraries or collections. "
+                else -> ""
+            } + "Nitrate starts Home's \"Latest\" rows from the list it saved last time, so they don't wait for it."
+        }
         val search = med(SEARCH)
         if (search != null && search - (ping ?: 0) > 700) out += "The server is slow at searching the library: about ${search - (ping ?: 0)} ms of work on the server for one search. That's the server's disk or processor, or a very large library."
         val parse = med(PARSE)

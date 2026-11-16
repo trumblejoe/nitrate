@@ -43,4 +43,16 @@ class SpeedCheckTest {
         assertEquals(Rating.FAILED, s.rating)
         assertEquals("Home page failed: timeout", SpeedCheck.findings(listOf(s)).first())
     }
+
+    @Test
+    fun `a slow library list says whether plugin channels are the cause`() {
+        val ping = step(SpeedCheck.PING, 120, 123, 110)
+        val plugins = SpeedCheck.findings(listOf(ping, step(SpeedCheck.LIBRARIES, 2727, 2718, 2903), step(SpeedCheck.LIBRARIES_NO_CHANNELS, 180, 170, 190)))
+        assertTrue(plugins.single().startsWith("The server takes about 2607 ms to list your libraries"), plugins.toString())
+        assertTrue("Dashboard → Plugins" in plugins.single())
+        val server = SpeedCheck.findings(listOf(ping, step(SpeedCheck.LIBRARIES, 2727, 2718, 2903), step(SpeedCheck.LIBRARIES_NO_CHANNELS, 2600, 2650, 2700)))
+        assertTrue("no quicker without plugin channels" in server.single(), server.toString())
+        // A quick list says nothing.
+        assertEquals(listOf("Everything is within normal speeds from this device."), SpeedCheck.findings(listOf(ping, step(SpeedCheck.LIBRARIES, 150, 160, 170))))
+    }
 }

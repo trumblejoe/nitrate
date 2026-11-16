@@ -12,7 +12,16 @@ import kotlin.time.TimeSource
 data class RowsProgress(val rows: List<MediaRow>, val complete: Boolean)
 
 /** One independent part of a page (a row, or a few rows from one source), named for timing. */
-class RowJob(val name: String, val load: suspend () -> List<MediaRow>)
+class RowJob(val name: String, val load: suspend () -> List<MediaRow>) {
+    /** Set by [showing]: a load that can show rows before it finishes. */
+    internal var showingLoad: (suspend (show: suspend (List<MediaRow>) -> Unit) -> List<MediaRow>)? = null
+
+    companion object {
+        /** A job that can [show] rows early (e.g. from what it knew last time), then return the final ones. */
+        fun showing(name: String, load: suspend (show: suspend (List<MediaRow>) -> Unit) -> List<MediaRow>): RowJob =
+            RowJob(name) { load {} }.also { it.showingLoad = load }
+    }
+}
 
 /** How long one [RowJob] took. */
 data class RowTiming(val name: String, val ms: Long, val failed: Boolean)
@@ -33,8 +42,18 @@ object ProgressiveRows {
         jobs.forEachIndexed { i, job ->
             launch {
                 val mark = TimeSource.Monotonic.markNow()
+                var shown = false
                 val rows = try {
-                    job.load()
+                    job.showingLoad?.invoke { early ->
+                        lock.withLock {
+                            if (results[i] == null || !shown) {
+                                if (!shown) onTimed(RowTiming("${job.name} (first shown)", mark.elapsedNow().inWholeMilliseconds, false))
+                                shown = true
+                                results[i] = early
+                                send(RowsProgress(results.filterNotNull().flatten(), complete = false))
+                            }
+                        }
+                    } ?: job.load()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

@@ -254,7 +254,7 @@ class JellyfinContractTest {
         client.showsMissingEpisodes()
         client.setShowMissingEpisodes(true)
         val speed = client.speedCheck()
-        assertEquals(7, speed.size)
+        assertEquals(8, speed.size)
         assertTrue(speed.joinToString { "${it.id}:${it.error}" }, speed.all { it.error == null })
         val group = client.syncPlayGroups().single()
         assertEquals(DASHED, group.id)

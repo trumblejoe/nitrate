@@ -91,6 +91,7 @@ import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -620,7 +621,20 @@ class JellyfinClient(
     private suspend fun items(vararg segments: String, query: Map<String, Any?>): List<MediaItem> =
         get(*segments, query = query).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }
 
-    override suspend fun views(): List<MediaItem> = items("UserViews", query = emptyMap())
+    override suspend fun views(): List<MediaItem> = items("UserViews", query = emptyMap()).also { v ->
+        knownViews = viewsKey() to v
+        runCatching { textCache?.put(viewsKey(), JellyfinJson.encodeToString(ListSerializer(MediaItem.serializer()), v)) }
+    }
+
+    private fun viewsKey() = "views/${accountKey ?: "$baseUrl|$userId"}"
+    private var knownViews: Pair<String, List<MediaItem>>? = null
+
+    /** The library list as last read (this run or a previous one), or null. */
+    private suspend fun lastViews(): List<MediaItem>? {
+        val key = viewsKey()
+        knownViews?.takeIf { it.first == key }?.let { return it.second }
+        return textCache?.get(key)?.let { runCatching { JellyfinJson.decodeFromString(ListSerializer(MediaItem.serializer()), it) }.getOrNull() }
+    }
 
     /**
      * Home's rows as independent jobs, all started at once: the library list (My Media, and the
@@ -643,12 +657,24 @@ class JellyfinClient(
             dev.nitrate.core.rows.RowJob("Up next together") {
                 upNextTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/up_next_together", "Up next together", it, WIDE_DEFAULT)) }
             },
-            dev.nitrate.core.rows.RowJob("Latest in each library") {
+            dev.nitrate.core.rows.RowJob.showing("Latest in each library") { show ->
                 coroutineScope {
-                    views.await()
-                        .filter { it.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null) }
-                        .map { view -> view to async { latestIn(view) } }
-                        .mapNotNull { (view, items) -> items.await().takeIf { it.isNotEmpty() }?.let { MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay()) } }
+                    fun wanted(view: MediaItem) = view.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null)
+                    // Some servers take seconds to list libraries: show the rows for the list from
+                    // last time straight away, then add (or drop) whatever the fresh list changes.
+                    val started = mutableMapOf<String, kotlinx.coroutines.Deferred<List<MediaItem>>>()
+                    fun start(view: MediaItem) = started.getOrPut(view.id) { async { latestIn(view) } }
+                    suspend fun rowsFor(list: List<MediaItem>) = list.mapNotNull { view ->
+                        start(view).await().takeIf { it.isNotEmpty() }?.let { MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay()) }
+                    }
+                    val known = lastViews()?.filter(::wanted)
+                    known?.forEach { start(it) }
+                    val fresh = async { try { views.await() } catch (e: Exception) { if (e is CancellationException || known == null) throw e; known } }
+                    if (known != null && !fresh.isCompleted) runCatching { show(rowsFor(known)) }
+                    val list = fresh.await().filter(::wanted)
+                    val ids = list.map { it.id }.toSet()
+                    started.filterKeys { it !in ids }.values.forEach { it.cancel() }
+                    rowsFor(list)
                 }
             },
             dev.nitrate.core.rows.RowJob("Because you watched") { becauseYouWatched(fresh) },
@@ -1310,6 +1336,10 @@ class JellyfinClient(
         step(S.PING, "Round trip", "Time to reach the server and back, with no work for it to do", 5) { http.get(url("System", "Ping")).bodyAsText() }
         step(S.SIGNED_IN, "Signed-in call", "A small request that checks your sign-in (your account)", 3) { get("Users", "Me").bodyAsText() }
         step(S.LIBRARIES, "Library list", "Your libraries, as the menu shows them", 3) { get("UserViews").bodyAsText() }
+        // The same list without plugin channels, which the server asks live: tells whether they're what's slow.
+        step(S.LIBRARIES_NO_CHANNELS, "Library list without plugin channels", "The same list, leaving out channels that server plugins add", 3) {
+            get("UserViews", query = mapOf("includeExternalContent" to false)).bodyAsText()
+        }
 
         var biggest = ""
         var total: Int? = null
