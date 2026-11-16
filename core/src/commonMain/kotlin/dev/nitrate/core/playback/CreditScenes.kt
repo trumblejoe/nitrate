@@ -214,7 +214,7 @@ class CreditSkipper(private val info: CreditScenesInfo, private val autoSkip: Bo
         const val WINDOW_MS = 5_000L
 
         fun message(action: Action): String = when (action) {
-            is Action.Skip -> if (action.afterCredits) "Skipped the credits: the scene after them" else "Skipped the credits: a scene during them"
+            is Action.Skip -> if (action.afterCredits) "Post-Credits Scene" else "Skipped the credits: a scene during them"
             is Action.Offer -> if (action.afterCredits) "There's a scene after the credits" else "There's a scene during the credits"
             is Action.HeadsUp -> when {
                 action.during && action.after -> "Stay for scenes during and after the credits"
