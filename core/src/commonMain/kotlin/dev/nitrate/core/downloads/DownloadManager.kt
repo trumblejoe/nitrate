@@ -300,6 +300,8 @@ class DownloadManager(
             // Originals resume where they stopped; a transcode is a new stream each time.
             val resumeFrom = if (spec == null && start.videoFile == videoFile) fileSize(Path(dir, videoFile)) else 0L
             fetch(url, Path(dir, videoFile), resumeFrom, progressOf = key, knownTotal = spec == null)
+            // A conversion arrives as a stream with no index: give it one, so it has a length and can seek.
+            if (spec != null) indexVideo(Path(dir, videoFile))
 
             val subtitles = downloadSubtitles(start, source, dir, transcoded = spec != null).filter { it.streamIndex != burned }
             val assFiles = downloadAssScripts(start, source, dir, subtitles, burned)
@@ -470,6 +472,22 @@ class DownloadManager(
 
     fun imagePath(record: DownloadRecord, poster: Boolean): String? =
         (if (poster) record.posterFile else record.backdropFile)?.let { Path(dirFor(record), it).toString() }
+
+    /**
+     * Downloads converted before they were indexed have no length and can't seek; this indexes
+     * one (once; quick, a single copy of the file) before it plays. Never stops it playing.
+     */
+    suspend fun makeSeekable(record: DownloadRecord) {
+        if (record.quality == DownloadQuality.ORIGINAL) return
+        val path = videoPath(record)?.let { Path(it) } ?: return
+        indexVideo(path)
+    }
+
+    private suspend fun indexVideo(path: Path) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching { Mp4Index.addIndex(path) }.onFailure { if (it is CancellationException) throw it }
+        }
+    }
 
     /**
      * Learns the server's audio and subtitle picks for a download saved before they were kept

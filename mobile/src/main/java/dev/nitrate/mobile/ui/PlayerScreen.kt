@@ -151,6 +151,8 @@ fun PlayerScreen(
         LaunchedEffect(session) {
             // Downloads saved before they kept the server's track picks learn them now (if it answers).
             val record = downloads.find(itemId)?.let { downloads.withServerDefaults(it) }
+            // Converted before downloads were indexed: give it a length and seeking first.
+            record?.let { downloads.makeSeekable(it) }
             val plan = record?.let(downloads::playbackPlan)
             if (record == null || plan == null) {
                 session.load(itemId, fromStart) // Deleted meanwhile: stream it instead.
