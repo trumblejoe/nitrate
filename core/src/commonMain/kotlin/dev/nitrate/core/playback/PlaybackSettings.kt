@@ -62,6 +62,8 @@ data class PlaybackSettings(
     val frameRateMatch: FrameRateMatch = FrameRateMatch.SEAMLESS,
     /** Evens out loud and quiet sound and lifts dialogue, for late nights. */
     val nightMode: Boolean = false,
+    /** Side-by-side and top-and-bottom 3D: one view in 2D, or both for a 3D screen. */
+    val threeD: ThreeDMode = ThreeDMode.TWO_D,
     /** How the writing pane shares the screen with the video (phones and tablets). */
     val writingSplit: WritingSplit = WritingSplit.AUTO,
 ) {

@@ -89,6 +89,7 @@ internal data class ItemDto(
     val locationType: String? = null,
     val premiereDate: String? = null,
     val partCount: Int? = null,
+    @kotlinx.serialization.SerialName("Video3DFormat") val video3DFormat: String? = null,
     val chapters: List<ChapterInfoDto>? = null,
     val remoteTrailers: List<MediaUrlDto>? = null,
     val localTrailerCount: Int? = null,

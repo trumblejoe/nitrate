@@ -96,6 +96,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
         premiereDateMs = premiereDate?.let(::parseDateMs),
         versions = mediaSources.orEmpty().takeIf { it.size > 1 }?.mapIndexedNotNull { i, s -> s.id?.let { MediaVersion(it, s.name?.takeIf { n -> n.isNotBlank() } ?: "Version ${i + 1}") } }.orEmpty(),
         partCount = partCount?.takeIf { it > 1 },
+        video3D = dev.nitrate.core.playback.Video3D.fromJellyfin(video3DFormat),
         chapters = chapters.orEmpty().map { Chapter(it.startPositionTicks.ticksToMs(), it.name.orEmpty(), it.imageTag) },
         remoteTrailers = remoteTrailers.orEmpty().mapNotNull { t -> t.url?.let { RemoteTrailer(it, t.name) } },
         localTrailerCount = localTrailerCount ?: 0,

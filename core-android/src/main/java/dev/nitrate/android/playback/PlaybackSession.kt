@@ -421,6 +421,7 @@ class PlaybackSession(
         // How styled subtitles are shown can change from the player's settings while playing.
         scope.launch {
             settings.settings.collect { s ->
+                threeDMode = s.threeD
                 playsProfile7 = runCatching { dev.nitrate.core.playback.CapabilityRules.playsDolbyVisionProfile7(capabilities(), s) }.getOrDefault(false)
                 val mode = s.subtitleStyle.styled
                 if (mode != styledMode) {
@@ -598,6 +599,7 @@ class PlaybackSession(
             .setSubtitleConfigurations(subtitles)
             .setMediaMetadata(metadata(title))
             .build()
+        applyThreeD()
         // Jellyfin's HLS playlists span the whole file, so every method seeks client-side.
         exo.setMediaItem(media, startMs)
         exo.prepare()
@@ -879,6 +881,32 @@ class PlaybackSession(
 
     /** The styled subtitle libass draws over the picture (in each app's player view), or null. */
     val assTrack: StateFlow<AssTrack?> = _assTrack
+    @Volatile private var threeDMode = dev.nitrate.core.playback.ThreeDMode.TWO_D
+    private var threeDApplied = false
+
+    /**
+     * Side-by-side or top-and-bottom 3D shown in 2D: one eye's view, stretched back to its shape,
+     * through Media3's video effects. Only 3D films go through them (they're SDR, and effects
+     * would get in the way of HDR and tunneling); the effects are taken off again afterwards.
+     */
+    private fun applyThreeD() {
+        val view = dev.nitrate.core.playback.ThreeD.view(_item.value?.video3D, threeDMode)
+        if (view == null) {
+            if (threeDApplied) { exo.setVideoEffects(emptyList()); threeDApplied = false }
+            return
+        }
+        runCatching {
+            exo.setVideoEffects(
+                listOf(
+                    androidx.media3.effect.Crop(view.left, view.right, view.bottom, view.top),
+                    androidx.media3.effect.ScaleAndRotateTransformation.Builder().setScale(view.scaleX, view.scaleY).build(),
+                ),
+            )
+            threeDApplied = true
+            log("3D (${_item.value?.video3D?.label}) shown in 2D: one eye's view")
+        }.onFailure { log("Couldn't show 3D in 2D: ${it.message}") }
+    }
+
     /** Read when each file is opened: profile 7 Dolby Vision plays as Dolby Vision (else its base layer). */
     @Volatile private var playsProfile7 = false
 

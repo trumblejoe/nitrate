@@ -139,6 +139,13 @@ fun PlaybackSettingsScreen(
                 "Video and sound go to the TV's hardware together. Some TVs need it for smooth playback or sync; others stutter with it. Takes effect the next time something plays.",
             ) { v -> update { it.copy(tunneling = v) } }
         }
+        item {
+            val t = settings.threeD
+            ChoiceRow("3D films", t.label, t.detail + ". Takes effect the next time something plays.") {
+                val all = dev.nitrate.core.playback.ThreeDMode.entries
+                update { it.copy(threeD = all[(t.ordinal + 1) % all.size]) }
+            }
+        }
         item { ToggleRow("Night mode", settings.nightMode, "Quieter loud parts and clearer dialogue. Sound normally sent untouched to a receiver is decoded on the TV while it's on (the receiver gets plain sound, no Atmos)") { v -> update { it.copy(nightMode = v) } } }
 
         section("Subtitles", "How subtitles look on this TV.")

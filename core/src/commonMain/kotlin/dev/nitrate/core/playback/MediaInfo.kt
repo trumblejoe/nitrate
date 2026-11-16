@@ -49,6 +49,7 @@ object MediaInfo {
         item?.let { i ->
             section("Title")
             line("${i.displayTitle}${i.episodeLabel?.let { " $it" }.orEmpty()} (${i.kind.name.lowercase()}, id ${i.id})")
+            i.video3D?.let { line(it.label) }
             line()
         }
 

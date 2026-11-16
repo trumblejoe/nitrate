@@ -60,6 +60,8 @@ data class MediaItem(
     val versions: List<MediaVersion> = emptyList(),
     /** Files the title is split across (part 1, part 2...), when more than one. */
     val partCount: Int? = null,
+    /** How a 3D film packs its two views (null: 2D). */
+    val video3D: dev.nitrate.core.playback.Video3D? = null,
     val chapters: List<Chapter> = emptyList(),
     /** Trailers on the web (YouTube...), as the server lists them. */
     val remoteTrailers: List<RemoteTrailer> = emptyList(),

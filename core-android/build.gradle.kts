@@ -36,6 +36,8 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     api(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+    // 3D films shown in 2D: one eye's view cropped and stretched back (only for those).
+    implementation(libs.media3.effect)
     api(libs.androidx.lifecycle.viewmodel.compose)
     // Drawing helpers shared by both apps' decorative row styles (paths and DrawScope only).
     implementation(platform(libs.compose.bom))
