@@ -187,7 +187,8 @@ fun PlaybackSettingsScreen(
         items(CapabilityRules.videoCodecs(capabilities, settings), key = { it.id }) { cap ->
             val c = capabilities.video[cap.id]
             val reported = c?.let {
-                "${it.maxWidth}×${it.maxHeight}" + (if (it.tenBit) ", 10-bit" else ", 8-bit") + (if (it.hardware) ", hardware" else ", software") + " (${it.decoderName})"
+                "${it.maxWidth}×${it.maxHeight}" + (if (it.tenBit) ", 10-bit" else ", 8-bit") + (if (it.hardware) ", hardware" else ", software") + " (${it.decoderName})" +
+                    (if (it.softwareTenBit) "; 10-bit in software up to 1080p" else "")
             }
             val limits = listOfNotNull(
                 settings.codecMaxHeight[cap.id]?.let { "limited to ${it}p" },

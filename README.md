@@ -98,7 +98,7 @@ Debug builds use the application IDs `dev.nitrate.tv.debug` and `dev.nitrate.app
 
 Release builds draw styled (ASS/SSA) subtitles with [libass](https://github.com/libass/libass) (ISC, with FreeType, HarfBuzz and FriBidi), in a layer over the picture with the file's own fonts, built by `tools/build-libass.sh` (needs the Android NDK and meson) and cached by `release.yml`; without it, those subtitles are drawn more simply by Media3. Details: `ass-renderer/README.md`.
 
-Release builds include an FFmpeg audio decoder for DTS, Dolby TrueHD, Dolby Digital (Plus) and ALAC, used only when a device can't decode them itself or pass them to the receiver. FFmpeg is built LGPL, audio-only, by `tools/build-ffmpeg.sh` (needs the Android NDK); `release.yml` builds and caches it. Without it, everything still builds and those formats are converted by the server. Details and licences: `ffmpeg-decoder/README.md`, and Settings → Open-source licences in the apps.
+Release builds include FFmpeg decoders for DTS, Dolby TrueHD, Dolby Digital (Plus) and ALAC, used only when a device can't decode them itself or pass them to the receiver, and for H.264 (including 10-bit "Hi10P"), MPEG-2, MPEG-4 Part 2 and VC-1 video up to 1080p when the device has no decoder for them (interlaced video is still converted by the server, which deinterlaces). FFmpeg is built LGPL, audio-only, by `tools/build-ffmpeg.sh` (needs the Android NDK); `release.yml` builds and caches it. Without it, everything still builds and those formats are converted by the server. Details and licences: `ffmpeg-decoder/README.md`, and Settings → Open-source licences in the apps.
 
 ## Releases
 

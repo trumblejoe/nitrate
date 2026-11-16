@@ -59,8 +59,13 @@ object JellyfinDeviceProfile {
         val ranges = CapabilityRules.allowedRangeTypes(caps, settings)
 
         val directPlay = buildList {
-            if (video.isNotEmpty()) {
-                add(DirectPlayProfileDto(DIRECT_PLAY_CONTAINERS, audio.joinToString(","), video.joinToString(","), "Video"))
+            // Codecs Media3 reads only from Matroska are direct played from MKV only.
+            val everywhere = video.filterNot { it in DeviceCapabilities.MATROSKA_ONLY_VIDEO }
+            if (everywhere.isNotEmpty()) {
+                add(DirectPlayProfileDto(DIRECT_PLAY_CONTAINERS, audio.joinToString(","), everywhere.joinToString(","), "Video"))
+            }
+            if (everywhere.size < video.size) {
+                add(DirectPlayProfileDto("mkv,webm", audio.joinToString(","), video.joinToString(","), "Video"))
             }
             add(DirectPlayProfileDto(AUDIO_CONTAINERS, audio.joinToString(","), null, "Audio"))
         }
@@ -73,17 +78,34 @@ object JellyfinDeviceProfile {
             TranscodingProfileDto("mp3", "Audio", "", "mp3", "http"),
         )
 
-        val codecProfiles = CapabilityRules.videoLimits(caps, settings).map { limit ->
-            CodecProfileDto(
-                type = "Video",
-                codec = limit.codec,
-                conditions = listOf(
-                    ProfileConditionDto("LessThanEqual", "Width", limit.maxWidth.toString()),
-                    ProfileConditionDto("LessThanEqual", "Height", limit.maxHeight.toString()),
-                    ProfileConditionDto("LessThanEqual", "VideoBitDepth", if (limit.tenBit) "10" else "8"),
-                    // Other ranges are tone-mapped by the server rather than shown with wrong colours.
-                    ProfileConditionDto("EqualsAny", "VideoRangeType", ranges.joinToString("|")),
+        val codecProfiles = CapabilityRules.videoLimits(caps, settings).flatMap { limit ->
+            listOfNotNull(
+                CodecProfileDto(
+                    type = "Video",
+                    codec = limit.codec,
+                    conditions = listOfNotNull(
+                        ProfileConditionDto("LessThanEqual", "Width", limit.maxWidth.toString()),
+                        ProfileConditionDto("LessThanEqual", "Height", limit.maxHeight.toString()),
+                        ProfileConditionDto("LessThanEqual", "VideoBitDepth", if (limit.tenBit) "10" else "8"),
+                        // Other ranges are tone-mapped by the server rather than shown with wrong colours.
+                        ProfileConditionDto("EqualsAny", "VideoRangeType", ranges.joinToString("|")),
+                        // Software decoding doesn't deinterlace; the server does when converting.
+                        ProfileConditionDto("NotEquals", "IsInterlaced", "true").takeIf { limit.progressiveOnly },
+                    ),
                 ),
+                // 10-bit only from the software decoder, which keeps to 1080p.
+                limit.tenBitMaxHeight?.let { h ->
+                    CodecProfileDto(
+                        type = "Video",
+                        codec = limit.codec,
+                        applyConditions = listOf(ProfileConditionDto("GreaterThanEqual", "VideoBitDepth", "9")),
+                        conditions = listOf(
+                            ProfileConditionDto("LessThanEqual", "Width", (h * 16 / 9).toString()),
+                            ProfileConditionDto("LessThanEqual", "Height", h.toString()),
+                            ProfileConditionDto("NotEquals", "IsInterlaced", "true"),
+                        ),
+                    )
+                },
             )
         }
 

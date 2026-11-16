@@ -9,6 +9,11 @@ data class VideoCodecCaps(
     val maxWidth: Int,
     val maxHeight: Int,
     val tenBit: Boolean,
+    /**
+     * Nitrate's own software decoder (FFmpeg) takes 10-bit where the device's decoders don't,
+     * up to [CapabilityRules.SOFTWARE_MAX_HEIGHT] (Hi10P H.264).
+     */
+    val softwareTenBit: Boolean = false,
 ) {
     companion object {
         /**
@@ -60,7 +65,14 @@ data class DeviceCapabilities(
             "vp8" to "video/x-vnd.on2.vp8",
             "mpeg2video" to "video/mpeg2",
             "mpeg4" to "video/mp4v-es",
+            "vc1" to "video/wvc1",
         )
+
+        /** What Nitrate's software video decoder is called in capabilities and reports. */
+        const val SOFTWARE_VIDEO_DECODER = "FFmpeg (software)"
+
+        /** Codecs Media3 only reads from Matroska (not MP4 or MPEG-TS), so they direct play from MKV only. */
+        val MATROSKA_ONLY_VIDEO = setOf("vc1")
 
         /** Server codec name to the MIME type decoders advertise. */
         val AUDIO_CODECS = linkedMapOf(

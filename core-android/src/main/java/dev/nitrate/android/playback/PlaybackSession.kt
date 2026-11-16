@@ -208,6 +208,16 @@ class PlaybackSession(
             .setDefaultRequestProperties(mapOf("Authorization" to server.authorizationHeader()))
         // Night mode sits in the audio path; it's off (passes audio through) until switched on.
         val renderers = object : DefaultRenderersFactory(context) {
+            // Nitrate's software video decoder, after the device's own: only for video it can't decode.
+            override fun buildVideoRenderers(
+                context: Context, extensionRendererMode: Int, mediaCodecSelector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+                enableDecoderFallback: Boolean, eventHandler: android.os.Handler, eventListener: androidx.media3.exoplayer.video.VideoRendererEventListener,
+                allowedVideoJoiningTimeMs: Long, out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>,
+            ) {
+                super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback, eventHandler, eventListener, allowedVideoJoiningTimeMs, out)
+                out += dev.nitrate.ffmpeg.FfmpegVideoRenderer(allowedVideoJoiningTimeMs, eventHandler, eventListener, 50)
+            }
+
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink {
                 val sink = DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(nightMode)).setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build()
@@ -429,7 +439,8 @@ class PlaybackSession(
         exo.addListener(listener)
         exo.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
-                _videoDecoder.value = name
+                // Nitrate's software decoder reads as such in the Info panel and reports.
+                _videoDecoder.value = if (name.startsWith("nitrate.ffmpeg.")) "${dev.nitrate.core.playback.DeviceCapabilities.SOFTWARE_VIDEO_DECODER} ${name.removePrefix("nitrate.ffmpeg.")}" else name
                 log("Video decoder $name (${initializationDurationMs}ms to start)")
             }
 

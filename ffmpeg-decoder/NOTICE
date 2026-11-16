@@ -4,3 +4,6 @@ Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
 
 The native library also includes FFmpeg (https://ffmpeg.org), licensed under the GNU Lesser
 General Public License version 2.1 or later: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+
+The software video decoder (src/main/java/dev/nitrate/ffmpeg and src/main/jni/ffmpeg_video_jni.cc)
+is Nitrate's own code.

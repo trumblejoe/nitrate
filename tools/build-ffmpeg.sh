@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds FFmpeg for Nitrate's audio decoder (ffmpeg-decoder): LGPL 2.1+ only (no --enable-gpl,
-# no non-free parts), audio decoders only, static libraries for armeabi-v7a and arm64-v8a, placed
+# Builds FFmpeg for Nitrate's software decoders (ffmpeg-decoder): LGPL 2.1+ only (no --enable-gpl,
+# no non-free parts), only the decoders below, static libraries for armeabi-v7a and arm64-v8a, placed
 # where ffmpeg-decoder/src/main/jni/CMakeLists.txt links them into libffmpegJNI.so.
 #
 #   tools/build-ffmpeg.sh [path to the Android NDK]
@@ -12,6 +12,9 @@ FFMPEG_BRANCH="release/6.0"
 # What Nitrate decodes in software when the device can't: Dolby Digital (Plus), DTS (core of
 # DTS-HD too), Dolby TrueHD (and MLP, its base), ALAC.
 DECODERS=(ac3 eac3 dca mlp truehd alac)
+# Video the device may have no decoder for, decoded in software up to 1080p: H.264 (10-bit
+# "Hi10P" included), MPEG-2, MPEG-4 Part 2, VC-1.
+DECODERS+=(h264 mpeg2video mpeg4 vc1)
 API=24
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,8 +35,8 @@ cd "$JNI/ffmpeg"
 
 OPTIONS=(
     --target-os=android --enable-static --disable-shared --disable-doc --disable-programs
-    --disable-everything --disable-avdevice --disable-avformat --disable-swscale --disable-postproc
-    --disable-avfilter --disable-symver --enable-swresample --disable-v4l2-m2m --disable-vulkan
+    --disable-everything --disable-avdevice --disable-avformat --disable-postproc
+    --disable-avfilter --disable-symver --enable-swresample --enable-swscale --disable-v4l2-m2m --disable-vulkan
     --extra-ldexeflags=-pie
 )
 for d in "${DECODERS[@]}"; do OPTIONS+=("--enable-decoder=$d"); done

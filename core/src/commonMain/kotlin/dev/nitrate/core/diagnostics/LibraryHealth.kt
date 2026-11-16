@@ -142,6 +142,7 @@ object LibraryHealth {
         "vp9" -> "VP9"
         "mpeg2video" -> "MPEG-2"
         "mpeg4" -> "MPEG-4"
+        "vc1" -> "VC-1"
         "truehd" -> "TrueHD"
         "dts" -> "DTS"
         "eac3" -> "Dolby Digital Plus"

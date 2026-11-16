@@ -1,5 +1,6 @@
-// Media3's FFmpeg audio decoder (the official extension's Java and JNI, Apache 2.0) over an FFmpeg
-// built LGPL and audio-only by tools/build-ffmpeg.sh. Without that build the module still compiles
+// Media3's FFmpeg audio decoder (the official extension's Java and JNI, Apache 2.0) and Nitrate's
+// own software video decoder (dev.nitrate.ffmpeg) over an FFmpeg built LGPL with only those
+// decoders by tools/build-ffmpeg.sh. Without that build the module still compiles
 // and simply reports itself unavailable, so the apps fall back to the server converting audio.
 plugins {
     alias(libs.plugins.android.library)

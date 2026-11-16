@@ -66,10 +66,14 @@ object DeviceProbe {
         runCatching { androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() && androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(mime) }.getOrDefault(false)
 
     @OptIn(UnstableApi::class)
+    private fun softwareVideo(mime: String): Boolean = runCatching { dev.nitrate.ffmpeg.FfmpegVideoDecoder.supports(mime) }.getOrDefault(false)
+
+    @OptIn(UnstableApi::class)
     fun probe(context: Context): DeviceCapabilities {
         val decoders = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filterNot { it.isEncoder }
 
         val video = DeviceCapabilities.VIDEO_CODECS.mapNotNull { (codec, mime) ->
+            val software = softwareVideo(mime)
             decoders.mapNotNull { info ->
                 val type = info.supportedTypes.firstOrNull { it.equals(mime, true) } ?: return@mapNotNull null
                 val caps = runCatching { info.getCapabilitiesForType(type) }.getOrNull() ?: return@mapNotNull null
@@ -87,8 +91,13 @@ object DeviceProbe {
                     maxHeight = v.supportedHeights.upper,
                     tenBit = caps.profileLevels.any { it.profile in TEN_BIT_PROFILES[mime].orEmpty() },
                 )
-            }.let(VideoCodecCaps::combine)?.let { codec to it }
-        }.toMap()
+            }.let(VideoCodecCaps::combine)
+                // The device's own decoders, with 10-bit from Nitrate's when they're 8-bit only (Hi10P H.264).
+                ?.let { if (software && !it.tenBit && codec == "h264") it.copy(softwareTenBit = true) else it }
+                // None of its own: Nitrate's software decoder, up to 1080p (10-bit for H.264).
+                ?: if (software) VideoCodecCaps(codec, mime, DeviceCapabilities.SOFTWARE_VIDEO_DECODER, hardware = false,
+                    maxWidth = 1920, maxHeight = 1080, tenBit = codec == "h264") else null
+        }.associateBy { it.codec }
 
         val passthrough = runCatching {
             AudioCapabilities.getCapabilities(context, AudioAttributes.DEFAULT, null)

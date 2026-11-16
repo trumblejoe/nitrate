@@ -240,6 +240,7 @@ object PlaybackDoctor {
         "vp8" -> "VP8"
         "mpeg2video" -> "MPEG-2"
         "mpeg4" -> "MPEG-4"
+        "vc1" -> "VC-1"
         "eac3" -> "Dolby Digital Plus"
         "ac3" -> "Dolby Digital"
         "truehd" -> "Dolby TrueHD"
@@ -340,6 +341,8 @@ object PlaybackDoctor {
                 fixes += PlaybackFix.Change(SettingsChange.AllowTenBit(codec), "Allow 10-bit $name", "It was turned off here because 10-bit $name failed.")
                 "10-bit $name is turned off in this device's Playback settings."
             }
+            codec != null && caps.video[codec]?.softwareTenBit == true && (video.height ?: 0) > CapabilityRules.SOFTWARE_MAX_HEIGHT ->
+                "This device decodes 10-bit $name only in software, which keeps to ${CapabilityRules.SOFTWARE_MAX_HEIGHT}p; this one is ${video.height}p, so the server converts it."
             codec != null && caps.video[codec]?.tenBit == false -> {
                 fixes += PlaybackFix.Change(SettingsChange.AllowTenBit(codec), "Try 10-bit $name", "Many devices play 10-bit without saying so. The playback test can check for sure.")
                 "This device doesn't report 10-bit $name, so the server converts the picture to 8-bit."

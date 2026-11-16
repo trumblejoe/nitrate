@@ -47,7 +47,16 @@ object CapabilityRules {
     const val SOFTWARE_MAX_HEIGHT = 1080
 
     /** Size and bit-depth limit for direct playing one video codec. */
-    data class VideoLimit(val codec: String, val maxWidth: Int, val maxHeight: Int, val tenBit: Boolean)
+    data class VideoLimit(
+        val codec: String,
+        val maxWidth: Int,
+        val maxHeight: Int,
+        val tenBit: Boolean,
+        /** 10-bit only up to this height (a software decoder takes it, the hardware doesn't). */
+        val tenBitMaxHeight: Int? = null,
+        /** Decoded in software, which doesn't deinterlace: interlaced video is left to the server. */
+        val progressiveOnly: Boolean = false,
+    )
 
     /** Limits for every allowed video codec, after per-codec and global caps. */
     fun videoLimits(caps: DeviceCapabilities, settings: PlaybackSettings): List<VideoLimit> {
@@ -59,11 +68,17 @@ object CapabilityRules {
             // Software decoding keeps up to 1080p; above that it stutters on TV boxes and phones.
             // "Always" for the codec lifts it (the user, or the playback test, knows better).
             val softCap = if (c != null && !c.hardware && settings.overrides[cap.id] != Override.ALWAYS) SOFTWARE_MAX_HEIGHT else Int.MAX_VALUE
+            val maxHeight = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight, settings.codecMaxHeight[cap.id] ?: Int.MAX_VALUE, softCap)
+            val tenBit = (c?.tenBit ?: true || cap.id in settings.tenBitAllowed) && cap.id !in settings.eightBitOnly
+            // The hardware is 8-bit only but Nitrate's software decoder takes 10-bit up to 1080p.
+            val softTenBit = !tenBit && c?.softwareTenBit == true && cap.id !in settings.eightBitOnly && maxHeight > 0
             VideoLimit(
                 codec = cap.id,
                 maxWidth = minOf(c?.maxWidth ?: maxOf(caps.displayWidth, 3840), userWidth, if (softCap < Int.MAX_VALUE) softCap * 16 / 9 else Int.MAX_VALUE),
-                maxHeight = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight, settings.codecMaxHeight[cap.id] ?: Int.MAX_VALUE, softCap),
-                tenBit = (c?.tenBit ?: true || cap.id in settings.tenBitAllowed) && cap.id !in settings.eightBitOnly,
+                maxHeight = maxHeight,
+                tenBit = tenBit || softTenBit,
+                tenBitMaxHeight = if (softTenBit) minOf(SOFTWARE_MAX_HEIGHT, maxHeight) else null,
+                progressiveOnly = c != null && !c.hardware && settings.overrides[cap.id] != Override.ALWAYS,
             )
         }
     }

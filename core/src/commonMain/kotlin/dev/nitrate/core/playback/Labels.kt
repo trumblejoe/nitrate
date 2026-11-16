@@ -9,6 +9,7 @@ fun capabilityLabel(id: String): String = when (id) {
     "vp8" -> "VP8"
     "mpeg2video" -> "MPEG-2"
     "mpeg4" -> "MPEG-4 Part 2"
+    "vc1" -> "VC-1"
     "aac" -> "AAC"
     "mp3" -> "MP3"
     "ac3" -> "Dolby Digital (AC-3)"

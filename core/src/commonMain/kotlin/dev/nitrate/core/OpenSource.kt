@@ -17,8 +17,9 @@ object OpenSource {
     val components = listOf(
         OpenSourceComponent(
             "FFmpeg", "GNU LGPL 2.1 or later", "LGPL-2.1.txt", "https://ffmpeg.org",
-            note = "Decodes DTS, Dolby TrueHD, Dolby Digital (Plus) and ALAC when the device can't. Built from FFmpeg " +
-                "release/6.0 with only those audio decoders and nothing GPL or non-free; it's a separate library " +
+            note = "Decodes DTS, Dolby TrueHD, Dolby Digital (Plus) and ALAC, and H.264 (including 10-bit), MPEG-2, " +
+                "MPEG-4 Part 2 and VC-1 video up to 1080p, when the device can't. Built from FFmpeg release/6.0 with only " +
+                "those decoders (plus libswscale and libswresample) and nothing GPL or non-free; it's a separate library " +
                 "(libffmpegJNI.so) the app loads at run time. Source: https://ffmpeg.org/download.html; build script and " +
                 "options: tools/build-ffmpeg.sh in https://github.com/trumblejoe/nitrate.",
         ),

@@ -49,7 +49,7 @@ data class ClipResult(
     val framesDropped: Int = 0,
 ) {
     val ok get() = outcome == Outcome.PASSED
-    val softwareDecoder get() = decoder?.let { it.startsWith("c2.android.") || it.startsWith("OMX.google.") } == true
+    val softwareDecoder get() = decoder?.let { it.startsWith("c2.android.") || it.startsWith("OMX.google.") || it.startsWith("nitrate.ffmpeg.") || it.startsWith(DeviceCapabilities.SOFTWARE_VIDEO_DECODER) } == true
 }
 
 /** One proposed settings change, explained in plain words. */

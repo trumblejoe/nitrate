@@ -26,7 +26,7 @@ project(libffmpegJNI C CXX)
 set(ffmpeg_location "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg")
 set(ffmpeg_binaries "${ffmpeg_location}/android-libs/${ANDROID_ABI}")
 
-foreach(ffmpeg_lib avutil swresample avcodec)
+foreach(ffmpeg_lib avutil swresample swscale avcodec)
     set(ffmpeg_lib_filename lib${ffmpeg_lib}.a)
     set(ffmpeg_lib_file_path ${ffmpeg_binaries}/${ffmpeg_lib_filename})
     add_library(
@@ -44,7 +44,9 @@ find_library(android_log_lib log)
 
 add_library(ffmpegJNI
             SHARED
-            ffmpeg_jni.cc)
+            ffmpeg_jni.cc
+            # Nitrate's software video decoder (not part of Media3's extension).
+            ffmpeg_video_jni.cc)
 
 set_target_properties(ffmpegJNI PROPERTIES
                       CXX_VISIBILITY_PRESET hidden
@@ -53,6 +55,7 @@ set_target_properties(ffmpegJNI PROPERTIES
 target_link_libraries(ffmpegJNI
                       PRIVATE android
                       PRIVATE swresample
+                      PRIVATE swscale
                       PRIVATE avcodec
                       PRIVATE avutil
                       PRIVATE ${android_log_lib})

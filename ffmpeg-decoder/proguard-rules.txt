@@ -9,3 +9,8 @@
 -keep, includedescriptorclasses class androidx.media3.decoder.ffmpeg.FfmpegAudioDecoder {
   private java.nio.ByteBuffer growOutputBuffer(androidx.media3.decoder.SimpleDecoderOutputBuffer, int);
 }
+
+# Nitrate's software video decoder: native methods keep their names.
+-keep,includedescriptorclasses class dev.nitrate.ffmpeg.** {
+    native <methods>;
+}

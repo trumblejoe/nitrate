@@ -66,7 +66,8 @@ data class PlaybackReport(
 
         section("What this device reports")
         caps.video.values.sortedBy { it.codec }.forEach { v ->
-            line("Video ${v.codec}: ${v.decoderName} (${if (v.hardware) "hardware" else "software"}), up to ${v.maxWidth}x${v.maxHeight}, ${if (v.tenBit) "10-bit" else "8-bit"}")
+            line("Video ${v.codec}: ${v.decoderName} (${if (v.hardware) "hardware" else "software"}), up to ${v.maxWidth}x${v.maxHeight}, ${if (v.tenBit) "10-bit" else "8-bit"}" +
+                if (v.softwareTenBit) ", plus 10-bit in software (FFmpeg) up to ${CapabilityRules.SOFTWARE_MAX_HEIGHT}p" else "")
         }
         caps.audio.values.sortedBy { it.codec }.forEach { a ->
             line("Audio ${a.codec}: decoder ${a.decoder ?: "none"}, passthrough ${if (a.passthrough) "yes" else "no"}")
