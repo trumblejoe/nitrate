@@ -296,6 +296,11 @@ fun PlayerScreen(
     }
 
     val playingItem by session.item.collectAsState()
+    // A song's lyrics, when the server has them; shown over the cover when asked for.
+    val lyrics by androidx.compose.runtime.produceState<dev.nitrate.core.music.Lyrics?>(null, playingItem?.id) {
+        value = playingItem?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { runCatching { actions.server.lyrics(it.id) }.getOrNull() }
+    }
+    var showLyrics by rememberSaveable { mutableStateOf(false) }
     PlayerLayout(
         writing = writing && canWrite,
         split = playbackSettings.writingSplit,
@@ -332,6 +337,7 @@ fun PlayerScreen(
             hideControls = inPip,
             coverUrl = playingItem?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { actions.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 720) },
         )
+        lyrics?.takeIf { showLyrics && !inPip }?.let { LyricsView(it, progress.positionMs, onSeek = { ms -> session.seekTo(ms) }) }
         GestureFeedbackView(feedback, onMiddle = { isBrightness -> setLevel(isBrightness, 0.5f) })
 
         // Top bar that shows and hides with the player's own controls.
@@ -348,6 +354,7 @@ fun PlayerScreen(
                 }
                 if (canWrite && !writing) IconButton(onClick = { writing = true }) { Icon(Icons.Default.Edit, "Write beside the video (Ctrl+E)", tint = Color.White) }
                 if ((item?.chapters?.size ?: 0) > 1) TextButton(onClick = { dialog = PlayerDialog.CHAPTERS }) { Text("Chapters", color = Color.White) }
+                if (lyrics != null) TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "Hide lyrics" else "Lyrics", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.AUDIO }, enabled = plan != null) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.SUBTITLES }, enabled = plan != null) { Text("Subtitles", color = Color.White) }
                 if (chatGroup != null) IconButton(onClick = { dialog = PlayerDialog.CHAT }) { Icon(Icons.Default.Email, "Chat", tint = Color.White) }

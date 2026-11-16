@@ -1299,6 +1299,20 @@ class JellyfinClient(
         built
     }
 
+    override suspend fun lyrics(itemId: String): dev.nitrate.core.music.Lyrics? {
+        // No lyrics: the server answers 404.
+        val response = try {
+            get("Audio", itemId.replace("-", ""), "Lyrics")
+        } catch (e: ClientRequestException) {
+            if (e.response.status.value == 404) return null else throw e
+        }
+        val dto = response.decode<LyricsDto>()
+        val lines = dto.lyrics.map { dev.nitrate.core.music.LyricLine(it.text.orEmpty(), it.start?.ticksToMs()) }
+        // Timed when the lines carry their times (12.4 often leaves IsSynced out), unless the server says otherwise.
+        val synced = dto.metadata?.isSynced != false && lines.filter { it.text.isNotBlank() }.let { l -> l.isNotEmpty() && l.all { it.startMs != null } }
+        return dev.nitrate.core.music.Lyrics(lines, synced).takeIf { !it.isEmpty }
+    }
+
     override suspend fun collectionsOf(itemId: String): List<MediaItem> = items("Items", itemId.replace("-", ""), "Collections", query = mapOf("fields" to ROW_FIELDS))
 
     override suspend fun collectionItems(collectionId: String): List<MediaItem> = items(

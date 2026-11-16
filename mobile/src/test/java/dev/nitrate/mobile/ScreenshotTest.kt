@@ -280,6 +280,21 @@ class ScreenshotTest {
         }
     }
 
+    /** Timed lyrics over a song's cover, the line being sung bright. */
+    @Test
+    fun lyrics() = shoot("phone-lyrics") { actions ->
+        val lyrics = dev.nitrate.core.music.Lyrics(
+            listOf("Lights go down", "The reel begins to turn", "Silver on the screen", "We hold our breath", "", "And the city fades to grain", "Frame by frame").mapIndexed { i, t ->
+                dev.nitrate.core.music.LyricLine(t, i * 4_000L)
+            },
+            synced = true,
+        )
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            AsyncImage(actions.server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            dev.nitrate.mobile.ui.LyricsView(lyrics, positionMs = 9_000, onSeek = {})
+        }
+    }
+
     /** The player's More sheet: speed, sleep timer, night mode, subtitle timing. */
     @Test
     fun playerMore() = shoot("phone-player-more") { actions ->

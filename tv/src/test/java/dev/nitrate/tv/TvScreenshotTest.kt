@@ -374,6 +374,20 @@ class TvScreenshotTest {
         }
     }
 
+    /** Timed lyrics beside a song's cover. */
+    @Test fun lyrics() = shoot("tv-lyrics") { c ->
+        val lyrics = dev.nitrate.core.music.Lyrics(
+            listOf("Lights go down", "The reel begins to turn", "Silver on the screen", "We hold our breath", "And the city fades to grain").mapIndexed { i, t ->
+                dev.nitrate.core.music.LyricLine(t, i * 4_000L)
+            },
+            synced = true,
+        )
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+            coil3.compose.AsyncImage(c.server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            dev.nitrate.tv.ui.player.LyricsView(lyrics, positionMs = 9_000, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd))
+        }
+    }
+
     @Test fun playerMore() = shoot("tv-player-more") { c ->
         val context = androidx.compose.ui.platform.LocalContext.current
         val session = androidx.compose.runtime.remember {

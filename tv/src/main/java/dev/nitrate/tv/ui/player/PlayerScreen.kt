@@ -190,6 +190,11 @@ fun PlayerScreen(
     val videoDecoder by session.videoDecoder.collectAsState()
     val audioDecoder by session.audioDecoder.collectAsState()
     val segments by session.segments.collectAsState()
+    // A song's lyrics, when the server has them; shown beside the cover when asked for.
+    val lyrics by androidx.compose.runtime.produceState<dev.nitrate.core.music.Lyrics?>(null, item?.id) {
+        value = item?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { runCatching { repository.lyrics(it.id) }.getOrNull() }
+    }
+    var showLyrics by remember { mutableStateOf(false) }
     // What follows: the next episode in viewing order, or the next film in its collection.
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
@@ -323,6 +328,8 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
+        lyrics?.takeIf { showLyrics }?.let { LyricsView(it, position, Modifier.align(Alignment.CenterEnd)) }
+
         val p = plan
         androidx.compose.animation.AnimatedVisibility(visible = controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
             Controls(
@@ -341,6 +348,7 @@ fun PlayerScreen(
                 onOpen = { panel = it },
                 extraButtons = listOfNotNull(
                     ("Chapters" to { panel = Panel.CHAPTERS }).takeIf { (item?.chapters?.size ?: 0) > 1 },
+                    ((if (showLyrics) "Hide lyrics" else "Lyrics") to { showLyrics = !showLyrics }).takeIf { lyrics != null },
                     ("Why converting?" to { panel = Panel.FIX }).takeIf { capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
                     ("Chat" to { panel = Panel.CHAT }).takeIf { chatGroup != null },
                 ) +

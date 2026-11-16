@@ -252,6 +252,15 @@ internal data class RemoteSubtitleDto(
     val aiTranslated: Boolean? = null,
 )
 
+@Serializable
+internal data class LyricsDto(val metadata: LyricMetadataDto? = null, val lyrics: List<LyricLineDto> = emptyList())
+
+@Serializable
+internal data class LyricMetadataDto(val isSynced: Boolean? = null)
+
+@Serializable
+internal data class LyricLineDto(val text: String? = null, val start: Long? = null)
+
 /** A command with arguments for another device (Sessions/{id}/Command). */
 @Serializable
 internal data class GeneralCommandDto(val name: String, val arguments: Map<String, String> = emptyMap())

@@ -1022,4 +1022,21 @@ class JellyfinLiveTest {
         println("After ${first.name} (${first.productionYear}) in ${saga.name}: ${next?.name} (${next?.productionYear})")
         assertTrue(next != null && (next.productionYear ?: 0) >= (first.productionYear ?: 0))
     }
+
+    @Test
+    fun `lyrics come timed or plain, and none is null`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val music = client.views().filter { it.collection == dev.nitrate.core.model.CollectionKind.MUSIC }
+        val songs = music.flatMap { lib -> client.albumArtists(lib.id, 0, 20).first }.flatMap { a -> client.artistAlbums(a.id) }.flatMap { client.albumTracks(it.id) }
+        assumeTrue("Needs songs", songs.isNotEmpty())
+        val found = songs.associate { it.name to runCatching { client.lyrics(it.id) } }
+        println("Lyrics: " + found.mapValues { (_, r) -> r.fold({ l -> l?.let { "${if (it.synced) "timed" else "plain"} ${it.lines.size}" } ?: "none" }, { "error ${it.message}" }) })
+        assertTrue("No request fails", found.values.all { it.isSuccess })
+        val timed = found.values.mapNotNull { it.getOrNull() }.firstOrNull { it.synced }
+        assumeTrue("Needs a song with an .lrc beside it", timed != null)
+        assertEquals(1_000L, timed!!.lines.first().startMs)
+        assertEquals(1, timed.currentIndex(5_000))
+    }
 }
