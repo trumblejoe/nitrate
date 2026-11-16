@@ -104,32 +104,35 @@ fun RowsPage(
             ) {
                 if (header != null) item(key = "page-header") { header() }
                 itemsIndexed(rows, key = { _, row -> row.key }) { _, row ->
-                    val display = overrides[row.key] ?: row.defaultDisplay
-                    val hidden = activeShowcase != null && activeShowcase != row.key
-                    if (display.style == RowStyle.SHOWCASE) {
-                        val active = activeShowcase == row.key
-                        ShowcaseRow(
-                            row = row,
-                            display = display,
-                            repository = repository,
-                            actions = actions,
-                            index = showcaseIndex[row.key] ?: 0,
-                            onIndexChange = { showcaseIndex[row.key] = it },
-                            active = active,
-                            onActiveChange = { isActive ->
-                                if (isActive) activeShowcase = row.key
-                                else if (activeShowcase == row.key) activeShowcase = null
-                            },
-                            modifier = Modifier.alpha(if (hidden) 0f else 1f)
-                                .then(if (active) Modifier.fillParentMaxHeight() else Modifier),
-                        )
-                    } else {
-                        Box(Modifier.alpha(if (hidden) 0f else 1f)) {
-                            when (display.style) {
-                                RowStyle.FILM_STRIP -> FilmStripRow(row, repository, actions, display.size)
-                                RowStyle.LIGHTNING -> LightningRow(row, repository, actions, display.size)
-                                RowStyle.CRESSIDA -> CressidaRow(row, repository, actions, display)
-                                else -> CardRow(row, display, repository, actions)
+                    // Rows added or removed by a reload slide and fade rather than jump.
+                    androidx.compose.foundation.layout.Box(Modifier.animateItem()) {
+                        val display = overrides[row.key] ?: row.defaultDisplay
+                        val hidden = activeShowcase != null && activeShowcase != row.key
+                        if (display.style == RowStyle.SHOWCASE) {
+                            val active = activeShowcase == row.key
+                            ShowcaseRow(
+                                row = row,
+                                display = display,
+                                repository = repository,
+                                actions = actions,
+                                index = showcaseIndex[row.key] ?: 0,
+                                onIndexChange = { showcaseIndex[row.key] = it },
+                                active = active,
+                                onActiveChange = { isActive ->
+                                    if (isActive) activeShowcase = row.key
+                                    else if (activeShowcase == row.key) activeShowcase = null
+                                },
+                                modifier = Modifier.alpha(if (hidden) 0f else 1f)
+                                    .then(if (active) Modifier.fillParentMaxHeight() else Modifier),
+                            )
+                        } else {
+                            Box(Modifier.alpha(if (hidden) 0f else 1f)) {
+                                when (display.style) {
+                                    RowStyle.FILM_STRIP -> FilmStripRow(row, repository, actions, display.size)
+                                    RowStyle.LIGHTNING -> LightningRow(row, repository, actions, display.size)
+                                    RowStyle.CRESSIDA -> CressidaRow(row, repository, actions, display)
+                                    else -> CardRow(row, display, repository, actions)
+                                }
                             }
                         }
                     }

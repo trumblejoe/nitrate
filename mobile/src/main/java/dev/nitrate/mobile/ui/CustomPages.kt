@@ -209,7 +209,7 @@ fun CustomPageScreen(actions: AppActions, pageId: String, editNow: Boolean) {
                             PillButton("Add rows", Icons.Default.Add, primary = true, onClick = { editing = true })
                         }
                     }
-                    items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) }
+                    items(s.rows, key = { it.key }) { row -> Box(Modifier.animateItem()) { CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) } }
                 }
             }
         }

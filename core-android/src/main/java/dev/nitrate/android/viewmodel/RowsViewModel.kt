@@ -88,13 +88,15 @@ class RowsViewModel(
     }
 
     init {
-        // Last time's rows straight away; fresh ones replace them as soon as they arrive.
-        if (cache != null) viewModelScope.launch {
-            val cached = cache.read(account, pageKey) ?: return@launch
-            if (builtIn.value == null && cached.builtIn.isNotEmpty()) builtIn.value = Result.success(cached.builtIn.map { it.copy(defaultDisplay = defaults(it)) })
-            if (custom.value.isEmpty()) custom.value = cached.custom
+        // Last time's rows straight away (read first, so the load knows they're on screen); the
+        // fresh page replaces them once it has arrived.
+        viewModelScope.launch {
+            cache?.read(account, pageKey)?.let { cached ->
+                if (builtIn.value == null && cached.builtIn.isNotEmpty()) builtIn.value = Result.success(cached.builtIn.map { it.copy(defaultDisplay = defaults(it)) })
+                if (custom.value.isEmpty()) custom.value = cached.custom
+            }
+            refresh()
         }
-        refresh()
         watchChanges()
         // Load custom rows whenever the page's custom entries change.
         viewModelScope.launch {
@@ -108,13 +110,37 @@ class RowsViewModel(
             viewModelScope.launch {
                 _refreshing.value = true
                 var finished: List<MediaRow>? = null
+                // Rows aren't shown one by one as they answer (the page would keep jumping): the
+                // whole page swaps in at the end, or once at the patience mark if that's long.
+                val reveal = dev.nitrate.core.rows.PageReveal
+                var latest: dev.nitrate.core.rows.RowsProgress? = null
+                var partialShown = false
+                fun showPartial(p: dev.nitrate.core.rows.RowsProgress) {
+                    builtIn.value = Result.success(reveal.partial(builtIn.value?.getOrNull(), p))
+                    partialShown = true
+                }
                 val outcome = runCatching {
-                    progressive().collect { p ->
-                        val fresh = p.rows.map { it.copy(defaultDisplay = defaults(it)) }
-                        fresh.forEach { knownTitles[it.key] = it.title }
-                        // Rows that have answered replace last time's in place; the rest stay until they answer.
-                        builtIn.value = Result.success(dev.nitrate.core.rows.ProgressiveRows.overlay(builtIn.value?.getOrNull(), p.copy(rows = fresh)))
-                        if (p.complete) finished = fresh
+                    kotlinx.coroutines.coroutineScope {
+                        val patience = launch {
+                            kotlinx.coroutines.delay(reveal.patienceMs(builtIn.value?.getOrNull()))
+                            latest?.let(::showPartial)
+                        }
+                        progressive().collect { raw ->
+                            val fresh = raw.rows.map { it.copy(defaultDisplay = defaults(it)) }
+                            fresh.forEach { knownTitles[it.key] = it.title }
+                            val p = raw.copy(rows = fresh)
+                            latest = p
+                            when {
+                                p.complete -> {
+                                    patience.cancel()
+                                    builtIn.value = Result.success(fresh)
+                                    finished = fresh
+                                }
+                                // Nothing had answered by the patience mark: show the first answer.
+                                patience.isCompleted && !partialShown -> showPartial(p)
+                            }
+                        }
+                        patience.cancel()
                     }
                 }
                 // Keep showing old rows if a background refresh fails.

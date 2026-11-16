@@ -48,12 +48,15 @@ class ProgressiveRowsTest {
     }
 
     @Test
-    fun overlayKeepsLastTimesRowsUntilTheyAnswer() {
-        val previous = listOf(row("a"), row("b"), row("c"))
+    fun aPartialRevealNeverMovesWhatsOnScreen() {
+        val shown = listOf(row("a"), row("b"), row("c"))
         val freshA = MediaRow("a", "A new", emptyList(), RowDisplay())
+        // "a" answered (changed) and "d" is new: "a" updates in place, "d" waits for the end.
         val partial = RowsProgress(listOf(freshA, row("d")), complete = false)
-        assertEquals(listOf("A new", "b", "c", "d"), ProgressiveRows.overlay(previous, partial).map { it.title })
-        val done = RowsProgress(listOf(freshA, row("c")), complete = true)
-        assertEquals(listOf("a", "c"), ProgressiveRows.overlay(previous, done).map { it.key })
+        assertEquals(listOf("A new", "b", "c"), PageReveal.partial(shown, partial).map { it.title })
+        // Nothing on screen yet: whatever has answered.
+        assertEquals(listOf("a", "d"), PageReveal.partial(null, partial.copy(rows = listOf(row("a"), row("d")))).map { it.key })
+        // A first load waits less than a refresh, which has last time's rows to show meanwhile.
+        assertTrue(PageReveal.patienceMs(null) < PageReveal.patienceMs(shown))
     }
 }

@@ -128,7 +128,10 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
                         // Room for the wordmark bar.
                         item(key = "top") { Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars).height(56.dp)) }
                         item(key = "pages") { PinnedPages(actions) }
-                        items(s.rows, key = { it.key }) { row -> CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) }
+                        items(s.rows, key = { it.key }) { row ->
+                            // Rows added or removed by a reload slide and fade rather than jump.
+                            Box(Modifier.animateItem()) { CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) }
+                        }
                         item(key = "edit") {
                             Box(Modifier.fillMaxWidth(), Alignment.Center) { PillButton("Edit Home", Icons.Default.Edit, primary = false, onClick = { editing = true }) }
                         }

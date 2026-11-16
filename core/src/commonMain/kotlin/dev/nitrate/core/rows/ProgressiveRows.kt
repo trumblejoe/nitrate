@@ -71,18 +71,31 @@ object ProgressiveRows {
             }
         }
     }
-
-    /**
-     * What to show while rows are still arriving, given what was shown before (e.g. last time's
-     * rows): rows that have answered replace their old selves in place, new ones are added at the
-     * end, and the rest stay until they answer. Once [progress] is complete it's shown as it is.
-     */
-    fun overlay(previous: List<MediaRow>?, progress: RowsProgress): List<MediaRow> {
-        if (progress.complete || previous.isNullOrEmpty()) return progress.rows
-        val fresh = progress.rows.associateBy { it.key }
-        val kept = previous.map { fresh[it.key] ?: it }
-        val known = previous.map { it.key }.toSet()
-        return kept + progress.rows.filter { it.key !in known }
-    }
 }
 
+/**
+ * When a loading page shows what has arrived, so it changes as few times as possible instead of
+ * popping rows in one by one: the whole page swaps in once everything has answered; if that takes
+ * longer than the patience, what has answered by then is shown once ([partial]), and the rest waits
+ * for the end.
+ */
+object PageReveal {
+    /** Nothing on screen yet: how long to gather rows before showing some. */
+    const val FIRST_PATIENCE_MS = 1_500L
+
+    /** Last time's rows on screen: how long before the rows that have answered replace them. */
+    const val REFRESH_PATIENCE_MS = 3_000L
+
+    fun patienceMs(shown: List<MediaRow>?): Long = if (shown.isNullOrEmpty()) FIRST_PATIENCE_MS else REFRESH_PATIENCE_MS
+
+    /**
+     * What to show once the patience runs out, given what's [shown] and what has answered: with
+     * nothing shown, the rows so far; otherwise the shown rows with each one that has answered
+     * replaced in place, and no row added or removed, so nothing on screen moves.
+     */
+    fun partial(shown: List<MediaRow>?, progress: RowsProgress): List<MediaRow> {
+        if (shown.isNullOrEmpty()) return progress.rows
+        val fresh = progress.rows.associateBy { it.key }
+        return shown.map { fresh[it.key] ?: it }
+    }
+}
