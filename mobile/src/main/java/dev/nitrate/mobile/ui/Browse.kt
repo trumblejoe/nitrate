@@ -130,10 +130,15 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
             else list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
         }.collect { last -> if (last >= state.items.size - 20) vm.loadMore() }
     }
+    // The title a letter jump landed on, outlined for a moment: in a grid it's often mid-row,
+    // after the previous letter's last titles.
+    var jumpedTo by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(jumpedTo) { if (jumpedTo != null) { kotlinx.coroutines.delay(1_800); jumpedTo = null } }
     fun jump(letter: String) {
         scope.launch {
             val index = vm.positionOf(letter) ?: return@launch
             if (options.view != BrowseView.LIST) grid.scrollToItem(index) else list.scrollToItem(index)
+            jumpedTo = vm.state.value.items.getOrNull(index)?.id
         }
     }
 
@@ -164,7 +169,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(state.items, key = { it.id }) { item ->
-                        Box {
+                        Box(if (item.id == jumpedTo) Modifier.border(2.dp, accentColor(), RoundedCornerShape(10.dp)) else Modifier) {
                             MediaCard(
                                 item = item,
                                 imageUrl = actions.server.cardImage(item, cardShape),
