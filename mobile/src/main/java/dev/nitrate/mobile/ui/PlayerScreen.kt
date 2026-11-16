@@ -27,6 +27,8 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.flow.map
 import dev.nitrate.core.writing.WritingPlugin
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -121,6 +123,14 @@ fun PlayerScreen(
     val downloads = actions.container.downloads
     var upNext by remember { mutableStateOf<MediaItem?>(null) }
     var upNextHidden by remember { mutableStateOf(false) }
+    // "Still watching?": asked instead of rolling on when nothing's been pressed for a while.
+    val still = actions.container.stillWatching
+    var stillAsk by remember { mutableStateOf<MediaItem?>(null) }
+    val askStill by actions.container.playbackSettings.settings.map { it.askStillWatching }.collectAsState(true)
+    val rollOn by rememberUpdatedState { next: MediaItem ->
+        if (askStill && still.shouldAsk()) stillAsk = next
+        else { still.rollingOn(next.id); onPlayNext?.invoke(next) }
+    }
     // At the end: roll into the next episode unless Up Next was dismissed.
     var sleepAtEndRef by remember { mutableStateOf(false) }
     val ended by rememberUpdatedState {
@@ -129,7 +139,7 @@ fun PlayerScreen(
             // "Sleep at the end of this": stop here, not on to the next episode or queue item.
             sleepAtEndRef -> onExit()
             // The next episode rolls on; the next film in a collection waits to be asked for.
-            next != null && onPlayNext != null && !upNextHidden && next.isEpisode -> onPlayNext(next)
+            next != null && onPlayNext != null && !upNextHidden && next.isEpisode -> rollOn(next)
             else -> onEnded()
         }
     }
@@ -301,6 +311,19 @@ fun PlayerScreen(
     }
 
     val playingItem by session.item.collectAsState()
+    // Started by itself (rolled on) or asked for; any touch or key after is a press.
+    LaunchedEffect(playingItem?.id) {
+        val i = playingItem ?: return@LaunchedEffect
+        if (clipEndMs == null) still.started(i.id, i.user.positionMs, i.user.played)
+    }
+    var lastPress by remember { mutableStateOf(0L) }
+    fun pressed() {
+        val i = playingItem ?: return
+        val now = System.currentTimeMillis()
+        if (now - lastPress < 2_000 || clipEndMs != null) return
+        lastPress = now
+        still.input(i.id, session.player.currentPosition, i.user.played)
+    }
     // A song's lyrics, when the server has them; shown over the cover when asked for.
     val lyrics by androidx.compose.runtime.produceState<dev.nitrate.core.music.Lyrics?>(null, playingItem?.id) {
         value = playingItem?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { runCatching { actions.server.lyrics(it.id) }.getOrNull() }
@@ -310,7 +333,17 @@ fun PlayerScreen(
         writing = writing && canWrite,
         split = playbackSettings.writingSplit,
         videoAspect = aspect?.toFloat(),
-        modifier = Modifier.focusRequester(keys).focusable().onPreviewKeyEvent { event ->
+        modifier = Modifier.focusRequester(keys).focusable()
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        pressed()
+                    }
+                }
+            }
+            .onPreviewKeyEvent { event ->
+            pressed()
             if (canWrite && event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.E) {
                 writing = !writing
                 true
@@ -375,10 +408,11 @@ fun PlayerScreen(
             else PlaybackMoments.upNextAtMs(progress.durationMs, segments))
             .let { at -> creditScenes?.upNextAt(at, progress.durationMs) ?: at }
         val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && progress.positionMs >= upNextAt && scrub == null
+        if (!inPip) SecondSubtitleLine(session, playbackSettings.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = if (controlsVisible) 76.dp else 20.dp, start = 24.dp, end = 24.dp))
         SkipButton(PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }) { session.seekTo(it.endMs) }
         if (showUpNext && next != null) {
             val remaining = ((progress.durationMs - progress.positionMs) / 1000).toInt()
-            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true })
+            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true }, onCountdownEnd = { rollOn(next) })
         }
         // Scenes in the credits: skipped to when the credits start (not in a watch-together group,
         // where a seek moves everyone), else offered; a heads-up when only the tags know of one.
@@ -398,6 +432,31 @@ fun PlayerScreen(
             }
         }) { creditAction = null }
         scrub?.let { s -> item?.let { TrickplayPreview(actions.server, it.id, trickplay, s.positionMs, s.x, s.barTop) } }
+
+        stillAsk?.let { next ->
+            val rewind = remember(next) { still.rewind() }
+            StillWatchingPrompt(
+                next = next,
+                rewind = rewind,
+                onKeepWatching = { stillAsk = null; still.clear(); onPlayNext?.invoke(next) },
+                onGoBack = {
+                    stillAsk = null
+                    actions.scope.launch {
+                        rewind?.let { actions.container.rewindStillWatching(it) }
+                        val back = rewind?.let { runCatching { actions.server.getItem(it.back.itemId) }.getOrNull() }
+                        if (back != null) onPlayNext?.invoke(back) else onExit()
+                    }
+                },
+                onStop = { stillAsk = null; still.clear(); onExit() },
+                onNoAnswer = {
+                    // Dozed off: put things back as they were at the last press, and stop.
+                    actions.scope.launch {
+                        rewind?.let { actions.container.rewindStillWatching(it) }
+                        onExit()
+                    }
+                },
+            )
+        }
 
         notice?.let {
             Text(

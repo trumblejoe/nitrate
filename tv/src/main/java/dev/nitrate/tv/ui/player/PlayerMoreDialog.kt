@@ -59,6 +59,7 @@ fun PlayerMoreDialog(
 ) {
     val speed by session.speed.collectAsState()
     val night by session.nightModeOn.collectAsState()
+    val voices by session.dialogueBoostOn.collectAsState()
     val offset by session.subtitleOffsetMs.collectAsState()
     val audioDelay by session.audioDelayMs.collectAsState()
     var searching by remember { mutableStateOf(false) }
@@ -81,6 +82,17 @@ fun PlayerMoreDialog(
                 return@Column
             }
             Text("Playback", style = MaterialTheme.typography.headlineSmall)
+            // Dual subtitles: another language at the top while the usual one stays below.
+            val plan by session.plan.collectAsState()
+            val second by session.secondSubtitle.collectAsState()
+            val seconds = plan?.let { dev.nitrate.core.playback.SecondSubtitles.choices(it.source, it.subtitleIndex) }.orEmpty()
+            if (seconds.isNotEmpty()) {
+                Text("Second subtitles (at the top)", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = second == null, onClick = { session.setSecondSubtitle(null) }) { Text("Off") }
+                    seconds.forEach { c -> FilterChip(selected = second?.index == c.index, onClick = { session.setSecondSubtitle(c.index) }) { Text(c.title + (c.detail?.let { " · $it" } ?: "")) } }
+                }
+            }
             Text("Speed", style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SPEEDS.forEachIndexed { i, s ->
@@ -102,6 +114,16 @@ fun PlayerMoreDialog(
                 headlineContent = { Text("Night mode") },
                 supportingContent = { Text("Quieter loud parts, clearer dialogue (sound for a receiver is decoded on the TV while on)") },
                 trailingContent = { Switch(checked = night, onCheckedChange = null) },
+            )
+            ListItem(
+                selected = false,
+                onClick = {
+                    session.setDialogueBoost(!voices)
+                    scope.launch { settings.update { it.copy(dialogueBoost = !voices) } }
+                },
+                headlineContent = { Text("Dialogue boost") },
+                supportingContent = { Text("Voices louder than music and effects (sound for a receiver is decoded on the TV while on)") },
+                trailingContent = { Switch(checked = voices, onCheckedChange = null) },
             )
             Text("Subtitle timing" + if (offset != 0L) " · ${if (offset > 0) "+" else ""}${offset / 1000.0}s" else "", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

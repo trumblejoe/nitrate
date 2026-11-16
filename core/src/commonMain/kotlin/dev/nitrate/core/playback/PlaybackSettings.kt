@@ -62,6 +62,13 @@ data class PlaybackSettings(
     val frameRateMatch: FrameRateMatch = FrameRateMatch.SEAMLESS,
     /** Evens out loud and quiet sound and lifts dialogue, for late nights. */
     val nightMode: Boolean = false,
+    /** Lifts voices over music and effects (decodes sound that would go to a receiver untouched). */
+    val dialogueBoost: Boolean = false,
+    /**
+     * After episodes keep playing on with nothing pressed, stop and ask "Still watching?"; with no
+     * answer, go back to where the last press was.
+     */
+    val askStillWatching: Boolean = true,
     /**
      * Dual-layer Dolby Vision (profile 7) on a device that decodes profile 8: rewrite its
      * metadata as profile 8.1 while playing, for Dolby Vision instead of HDR10.

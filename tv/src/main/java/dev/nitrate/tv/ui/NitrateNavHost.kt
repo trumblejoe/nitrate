@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui
 
+import kotlinx.coroutines.flow.map
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -494,6 +495,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 // Up Next (episodes, a film's collection) only outside queues and recap clips.
                 onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0) { next -> nav.popBackStack(); gate.play(next) } else null,
                 syncPlay = container.syncPlay,
+                stillWatching = container.stillWatching,
+                stillWatchingRewind = container::stillWatchingRewind,
                 sendLog = { session -> container.sendPlaybackReport(session) },
                 capabilities = container.capabilities,
                 chat = container.chat,
@@ -539,6 +542,34 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             is TvRequest.Open -> nav.navigate(DetailsRoute(request.itemId))
             is TvRequest.Play -> runCatching { container.server.getItem(request.itemId) }.getOrNull()?.let { gate.play(it) }
         }
+    }
+    // The ambient screensaver: after a while with nothing pressed, outside the player.
+    val ambientMinutes by remember(userId) {
+        userId?.let { id -> container.displaySettings.prefs(id).map { it.tvAmbientMinutes } } ?: kotlinx.coroutines.flow.flowOf(0)
+    }.collectAsState(0)
+    var ambient by remember { mutableStateOf<List<dev.nitrate.core.ambient.AmbientSlide>?>(null) }
+    val watching = currentEntry?.destination?.let { it.hasRoute(PlayerRoute::class) || it.hasRoute(RecapRoute::class) } == true
+    val signedInNow = currentEntry != null && nav.currentBackStack.value.any { it.destination.hasRoute(HomeRoute::class) }
+    LaunchedEffect(ambientMinutes, watching, signedInNow) {
+        if (!signedInNow || ambientMinutes == 0 || watching) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(10_000)
+            if (ambient != null || !dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) continue
+            val rows = runCatching { container.server.homeRows() }.getOrNull() ?: continue
+            val slides = dev.nitrate.core.ambient.Ambient.slides(rows) { container.server.backdropUrl(it) != null }
+            // Still nothing pressed while Home's rows were fetched.
+            if (slides.isNotEmpty() && dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) {
+                container.themeMusic.onAppHidden()
+                ambient = slides
+            }
+        }
+    }
+    ambient?.let { slides ->
+        dev.nitrate.tv.ui.ambient.AmbientScreen(
+            slides, container.server,
+            onOpen = { item -> dev.nitrate.tv.ui.ambient.TvIdle.press(); ambient = null; nav.navigate(DetailsRoute(item.id)) },
+            onDismiss = { dev.nitrate.tv.ui.ambient.TvIdle.press(); ambient = null },
+        )
     }
     // The home screen channel and Play Next row follow what's watched.
     val homeChannels = remember { dev.nitrate.tv.channels.HomeChannels(context, container.server) }

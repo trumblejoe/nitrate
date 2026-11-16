@@ -1088,4 +1088,24 @@ class JellyfinLiveTest {
         assertEquals(360_000L, skip.creditsStartMs)
         assertEquals(450_000L, skip.sceneStartMs)
     }
+
+    @Test
+    fun `a second subtitle comes as SRT and reads into lines`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val films = client.views().flatMap { client.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 50, false).first }.filter { it.kind == ItemKind.MOVIE || it.kind == ItemKind.SERIES }
+        val withSubs = films.filter { it.kind == ItemKind.MOVIE }.map { client.mediaSource(it.id) to it }
+            .firstOrNull { (source, _) -> dev.nitrate.core.playback.SecondSubtitles.choices(source, null).isNotEmpty() }
+        assumeTrue("Needs a film with a text subtitle", withSubs != null)
+        val (source, film) = withSubs!!
+        val choice = dev.nitrate.core.playback.SecondSubtitles.choices(source, null).first()
+        val text = java.net.URI(client.subtitleFileUrl(film.id, source, choice.index, "srt")).toURL().openConnection().apply {
+            setRequestProperty("Authorization", client.authorizationHeader())
+        }.getInputStream().readBytes().decodeToString()
+        val cues = dev.nitrate.core.playback.SecondSubtitles.parse(text)
+        println("${film.name} · ${choice.title}: ${cues.size} lines, first ${cues.firstOrNull()}")
+        assertTrue(cues.isNotEmpty())
+        assertTrue(dev.nitrate.core.playback.SecondSubtitles.at(cues, cues.first().startMs + 1) != null)
+    }
 }

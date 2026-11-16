@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.player
 
+import kotlinx.coroutines.flow.map
 import dev.nitrate.android.playback.applySubtitleStyle
 import dev.nitrate.android.playback.assSubtitles
 import dev.nitrate.android.playback.showCover
@@ -130,18 +131,27 @@ fun PlayerScreen(
     describedAudio: suspend () -> Boolean = { false },
     /** Plays the next episode, or the next film in a collection (null: nothing follows, e.g. in a queue). */
     onPlayNext: ((MediaItem) -> Unit)? = null,
+    /** "Still watching?" (episodes rolling on with nothing pressed), and putting things back. */
+    stillWatching: dev.nitrate.core.playback.StillWatching? = null,
+    stillWatchingRewind: ((dev.nitrate.core.playback.StillWatching.Rewind?, (MediaItem?) -> Unit) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
     val sleepAtEndState = remember { mutableStateOf(false) }
     var upNext by remember { mutableStateOf<MediaItem?>(null) }
     var upNextHidden by remember { mutableStateOf(false) }
+    var stillAsk by remember { mutableStateOf<MediaItem?>(null) }
+    val askStill by playbackSettings.settings.map { it.askStillWatching }.collectAsState(true)
+    val rollOn by rememberUpdatedState { next: MediaItem ->
+        if (askStill && stillWatching?.shouldAsk() == true) stillAsk = next
+        else { stillWatching?.rollingOn(next.id); onPlayNext?.invoke(next) }
+    }
     val ended by rememberUpdatedState {
         val next = upNext
         when {
             sleepAtEndState.value -> onExit()
             // The next episode rolls on; the next film in a collection waits to be asked for.
-            next != null && next.isEpisode && !upNextHidden && onPlayNext != null -> onPlayNext(next)
+            next != null && next.isEpisode && !upNextHidden && onPlayNext != null -> rollOn(next)
             else -> onEnded()
         }
     }
@@ -222,6 +232,20 @@ fun PlayerScreen(
     val playbackControls = session.controls
     val rootFocus = remember { FocusRequester() }
     val playPauseFocus = remember { FocusRequester() }
+
+    // Started by itself (rolled on) or asked for; any key after is a press.
+    LaunchedEffect(item?.id) {
+        val i = item ?: return@LaunchedEffect
+        if (clipEndMs == null) stillWatching?.started(i.id, i.user.positionMs, i.user.played)
+    }
+    var lastPress by remember { mutableLongStateOf(0L) }
+    fun pressed() {
+        val i = item ?: return
+        val now = System.currentTimeMillis()
+        if (now - lastPress < 2_000 || clipEndMs != null) return
+        lastPress = now
+        stillWatching?.input(i.id, player.currentPosition, i.user.played)
+    }
 
     fun touch() {
         lastInput = System.currentTimeMillis()
@@ -305,7 +329,7 @@ fun PlayerScreen(
         Modifier
             .weight(1f)
             .fillMaxHeight()
-            .onPreviewKeyEvent { touch(); false }
+            .onPreviewKeyEvent { touch(); pressed(); false }
             // While controls are hidden the root has focus; keys act directly on playback.
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyUp) return@onKeyEvent false
@@ -399,8 +423,27 @@ fun PlayerScreen(
             UpNextCard(
                 nextUp, repository, seconds = remaining.coerceIn(5, 15).takeIf { !film },
                 onPlay = { onPlayNext?.invoke(nextUp) },
+                onCountdownEnd = { rollOn(nextUp) },
                 onHide = { upNextHidden = true; runCatching { rootFocus.requestFocus() } },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) 220.dp else 48.dp),
+            )
+        }
+
+        SecondSubtitleLine(session, settingsNow.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp))
+
+        stillAsk?.let { next ->
+            val rewind = remember(next) { stillWatching?.rewind() }
+            StillWatchingDialog(
+                next = next,
+                rewind = rewind,
+                onKeepWatching = { stillAsk = null; stillWatching?.clear(); onPlayNext?.invoke(next) },
+                onGoBack = {
+                    stillAsk = null
+                    stillWatchingRewind?.invoke(rewind) { back -> if (back != null) onPlayNext?.invoke(back) else onExit() } ?: onExit()
+                },
+                onStop = { stillAsk = null; stillWatching?.clear(); onExit() },
+                // Dozed off: put things back as they were at the last press, and stop.
+                onNoAnswer = { stillWatchingRewind?.invoke(rewind) { onExit() } ?: onExit() },
             )
         }
 

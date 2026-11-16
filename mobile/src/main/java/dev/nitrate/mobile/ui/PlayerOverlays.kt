@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
@@ -148,7 +149,7 @@ fun BoxScope.SkipButton(segment: MediaSegment?, onSkip: (MediaSegment) -> Unit) 
  * for "Play now", since a film can have scenes during its credits.
  */
 @Composable
-fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit) {
+fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, onCountdownEnd: () -> Unit = onPlay) {
     var left by androidx.compose.runtime.remember(next.id) { mutableIntStateOf(seconds ?: 0) }
     LaunchedEffect(next.id) {
         if (seconds == null) return@LaunchedEffect
@@ -156,7 +157,7 @@ fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onP
             delay(1_000)
             left--
         }
-        onPlay()
+        onCountdownEnd()
     }
     val accent = accentColor()
     androidx.compose.animation.AnimatedVisibility(true, enter = slideInHorizontally { it } + fadeIn(), modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 88.dp)) {
@@ -271,5 +272,66 @@ fun BoxScope.CreditSceneBanner(action: dev.nitrate.core.playback.CreditSkipper.A
                 )
             }
         }
+    }
+}
+
+/**
+ * "Still watching?": episodes have played on with nothing pressed, so the next one waits. Keep
+ * watching, go back to where the last press was (undoing what played since), or stop. No answer
+ * for a while: back to the last press, and stop.
+ */
+@Composable
+fun StillWatchingPrompt(
+    next: MediaItem,
+    rewind: dev.nitrate.core.playback.StillWatching.Rewind?,
+    onKeepWatching: () -> Unit,
+    onGoBack: () -> Unit,
+    onStop: () -> Unit,
+    onNoAnswer: () -> Unit,
+) {
+    LaunchedEffect(next.id) {
+        delay(dev.nitrate.core.playback.StillWatching.PROMPT_MS)
+        onNoAnswer()
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Still watching?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Up next: ${next.displayTitle}" + (if (next.isEpisode) " · S${next.seasonNumber ?: "?"}:E${next.indexNumber ?: "?"}" else ""))
+                if (rewind != null) Text(
+                    "Nothing's been pressed since ${dev.nitrate.core.model.formatClock(rewind.back.positionMs)} into an earlier episode. " +
+                        "If you dozed off, go back there" + if (rewind.unwatch.isNotEmpty()) " and what played since is marked unwatched again." else ".",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onKeepWatching) { Text("Keep watching") } },
+        dismissButton = {
+            Row {
+                if (rewind != null) androidx.compose.material3.TextButton(onClick = onGoBack) { Text("Go back") }
+                androidx.compose.material3.TextButton(onClick = onStop) { Text("Stop") }
+            }
+        },
+    )
+}
+
+/** Dual subtitles: the second subtitle's current line, at the top of the picture. */
+@Composable
+fun SecondSubtitleLine(session: dev.nitrate.android.playback.PlaybackSession, scale: Float, modifier: Modifier = Modifier) {
+    val second by session.secondSubtitle.collectAsState()
+    val s = second ?: return
+    val line by produceState<String?>(null, s) {
+        while (true) {
+            value = dev.nitrate.core.playback.SecondSubtitles.at(s.cues, session.player.currentPosition)
+            delay(100)
+        }
+    }
+    line?.let {
+        Text(
+            it, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * scale),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = modifier.clip(RoundedCornerShape(6.dp)).background(Color(0x99000000)).padding(horizontal = 10.dp, vertical = 4.dp),
+        )
     }
 }

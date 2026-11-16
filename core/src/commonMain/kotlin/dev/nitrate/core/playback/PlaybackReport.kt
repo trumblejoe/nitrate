@@ -85,7 +85,7 @@ data class PlaybackReport(
         line("Audio: ${CapabilityRules.audioCodecs(caps, settings).filter { it.allowed }.joinToString(", ") { it.id }}")
         line("Ranges shown as they are: ${CapabilityRules.allowedRangeTypes(caps, settings).joinToString(", ")}")
         line("Max bitrate ${settings.maxBitrate / 1_000_000} Mbps, max resolution ${settings.maxResolution.label}, direct play ${settings.allowDirectPlay}, direct stream ${settings.allowDirectStream}")
-        line("Match frame rate: ${settings.frameRateMatch.label}. Tunneled playback ${if (settings.tunneling) "on" else "off"}, audio sync ${AudioSync.label(settings.audioDelayMs)}, night mode ${if (settings.nightMode) "on" else "off"}, 3D: ${settings.threeD.label}")
+        line("Match frame rate: ${settings.frameRateMatch.label}. Tunneled playback ${if (settings.tunneling) "on" else "off"}, audio sync ${AudioSync.label(settings.audioDelayMs)}, night mode ${if (settings.nightMode) "on" else "off"}, dialogue boost ${if (settings.dialogueBoost) "on" else "off"}, 3D: ${settings.threeD.label}")
         line("Dolby Vision profile 7 plays ${CapabilityRules.profile7(caps, settings).label}")
         if (settings.overrides.isNotEmpty()) line("Overrides: ${settings.overrides.entries.joinToString(", ") { "${it.key}=${it.value.label}" }}")
         if (settings.learnedFailures.isNotEmpty()) line("Learned failures: ${settings.learnedFailures.entries.joinToString(", ") { "${it.key} (${it.value.count}x, ${it.value.lastError})" }}")

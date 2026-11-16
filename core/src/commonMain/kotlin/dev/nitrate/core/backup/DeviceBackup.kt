@@ -113,6 +113,8 @@ object DeviceBackups {
         playback("Direct stream", onOff(a.allowDirectStream), onOff(n.allowDirectStream))
         playback("Avoid formats that failed before", onOff(a.useLearnedFailures), onOff(n.useLearnedFailures))
         playback("Night mode", onOff(a.nightMode), onOff(n.nightMode))
+        playback("Dialogue boost", onOff(a.dialogueBoost), onOff(n.dialogueBoost))
+        playback("Ask \"Still watching?\"", onOff(a.askStillWatching), onOff(n.askStillWatching))
         playback("Tunneled playback", onOff(a.tunneling), onOff(n.tunneling))
         playback("Match frame rate", a.frameRateMatch.label, n.frameRateMatch.label)
         playback("3D films", a.threeD.label, n.threeD.label)

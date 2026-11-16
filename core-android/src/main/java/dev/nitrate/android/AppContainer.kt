@@ -123,6 +123,27 @@ class AppContainer(
     val searchHistory by lazy { SearchHistoryStore(appContext) }
 
     /** The server's live connection: remote control and live updates. */
+    /** "Still watching?": episodes rolling on with nobody pressing anything (fed by the players). */
+    val stillWatching = dev.nitrate.core.playback.StillWatching(System::currentTimeMillis)
+
+    /**
+     * Puts things back as they were at the last press: that episode's resume point (a little
+     * earlier), and the episodes that played on by themselves since unwatched again.
+     */
+    suspend fun rewindStillWatching(rewind: dev.nitrate.core.playback.StillWatching.Rewind) {
+        rewind.unwatch.forEach { runCatching { server.setPlayed(it, false) } }
+        runCatching { server.saveUserData(rewind.back.itemId, rewind.back.positionMs, rewind.back.wasPlayed, System.currentTimeMillis()) }
+        stillWatching.clear()
+    }
+
+    /** [rewindStillWatching], then [then] with the title to resume (null: nothing to go back to), outliving the player. */
+    fun stillWatchingRewind(rewind: dev.nitrate.core.playback.StillWatching.Rewind?, then: (dev.nitrate.core.model.MediaItem?) -> Unit) {
+        networkScope.launch {
+            rewind?.let { rewindStillWatching(it) }
+            then(rewind?.let { runCatching { server.getItem(it.back.itemId) }.getOrNull() })
+        }
+    }
+
     val remote by lazy { RemoteControlHub(server, syncPlay, onItemsAdded = { newEpisodes.checkSoon() }) }
 
     /** Library or watch-state changes pushed by the server, for pages to reload. */

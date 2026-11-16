@@ -43,6 +43,12 @@ class MainActivity : ComponentActivity() {
         take(intent)
     }
 
+    /** Every press counts as the TV being used (the ambient screensaver waits for none). */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        dev.nitrate.tv.ui.ambient.TvIdle.press()
+        return super.dispatchKeyEvent(event)
+    }
+
     /** The remote's search (mic) button opens search, listening. */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_SEARCH) {

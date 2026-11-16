@@ -41,7 +41,7 @@ import kotlinx.coroutines.delay
  * credits). Takes focus on "Play now" when it appears; "Hide" (or Back) keeps watching.
  */
 @Composable
-fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier) {
+fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier, onCountdownEnd: () -> Unit = onPlay) {
     var left by remember(next.id) { mutableIntStateOf(seconds ?: 0) }
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(next.id) {
@@ -51,7 +51,7 @@ fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -
             delay(1_000)
             left--
         }
-        onPlay()
+        onCountdownEnd()
     }
     Row(
         modifier.width(560.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xE6101216)).padding(16.dp),

@@ -291,6 +291,16 @@ class ScreenshotTest {
         }
     }
 
+    /** "Still watching?" after episodes played on with nothing pressed. */
+    @Test
+    fun stillWatching() = shoot("phone-still-watching") { actions ->
+        dev.nitrate.mobile.ui.StillWatchingPrompt(
+            MediaItem("s2e6", "Episode title 6", ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 2, indexNumber = 6),
+            dev.nitrate.core.playback.StillWatching.Rewind(dev.nitrate.core.playback.StillWatching.Spot("s2e4", 1_410_000, 0, false), listOf("s2e5")),
+            {}, {}, {}, {},
+        )
+    }
+
     /** Easy mode: bigger everything, and only Home, Search, Library and Settings in the navigation. */
     @Test fun easyMode() = shoot("phone-easy-mode", setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(easyMode = true)) }) { actions ->
         dev.nitrate.mobile.ui.MainScreen(actions, startOnLibrary = true, onSignedOut = {})

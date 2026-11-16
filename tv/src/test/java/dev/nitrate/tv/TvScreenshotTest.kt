@@ -385,6 +385,14 @@ class TvScreenshotTest {
         }
     }
 
+    /** The ambient screensaver. */
+    @Test fun ambient() = shoot("tv-ambient") { c ->
+        dev.nitrate.tv.ui.ambient.AmbientScreen(
+            listOf(dev.nitrate.core.ambient.AmbientSlide(MediaItem("series-1", "The Night Reel", ItemKind.SERIES), "Up next", "The Night Reel", "S2 · E5")),
+            c.server, onOpen = {}, onDismiss = {},
+        )
+    }
+
     /** "Your year" on TV. */
     @Test fun stats() = shoot("tv-stats") { c -> dev.nitrate.tv.ui.settings.StatsScreen(c.server) }
 

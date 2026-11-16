@@ -63,6 +63,7 @@ fun PlayerMoreSheet(
     var page by remember { mutableStateOf(MorePage.MAIN) }
     val speed by session.speed.collectAsState()
     val night by session.nightModeOn.collectAsState()
+    val voices by session.dialogueBoostOn.collectAsState()
     val offset by session.subtitleOffsetMs.collectAsState()
     val audioDelay by session.audioDelayMs.collectAsState()
     val scope = rememberCoroutineScope()
@@ -81,6 +82,14 @@ fun PlayerMoreSheet(
         text = {
             when (page) {
                 MorePage.MAIN -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Dual subtitles: another language at the top while the usual one stays below.
+                    val plan by session.plan.collectAsState()
+                    val second by session.secondSubtitle.collectAsState()
+                    val seconds = plan?.let { dev.nitrate.core.playback.SecondSubtitles.choices(it.source, it.subtitleIndex) }.orEmpty()
+                    if (seconds.isNotEmpty()) Section("Second subtitles (at the top)") {
+                        FilterChip(selected = second == null, onClick = { session.setSecondSubtitle(null) }, label = { Text("Off") })
+                        seconds.forEach { c -> FilterChip(selected = second?.index == c.index, onClick = { session.setSecondSubtitle(c.index) }, label = { Text(c.title + (c.detail?.let { " · $it" } ?: "")) }) }
+                    }
                     Section("Speed") {
                         SPEEDS.forEach { s -> FilterChip(selected = speed == s, onClick = { session.setSpeed(s) }, label = { Text(if (s == 1f) "Normal" else "${s}×") }) }
                     }
@@ -95,6 +104,13 @@ fun PlayerMoreSheet(
                             Text("Quieter loud parts, clearer dialogue", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = night, onCheckedChange = { setNight(actions, session, it) })
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { setVoices(actions, session, !voices) }) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Dialogue boost", style = MaterialTheme.typography.bodyLarge)
+                            Text("Voices louder than music and effects", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = voices, onCheckedChange = { setVoices(actions, session, it) })
                     }
                     Section("Subtitle timing" + if (offset != 0L) " · ${if (offset > 0) "+" else ""}${offset / 1000.0}s" else "") {
                         listOf(-1000L, -250L, 250L, 1000L).forEach { d -> OutlinedButton(onClick = { session.setSubtitleOffset(offset + d) }) { Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d) / 1000.0}s") } }
@@ -131,6 +147,11 @@ fun PlayerMoreSheet(
 private fun setAudioDelay(actions: AppActions, session: PlaybackSession, ms: Int) {
     session.setAudioDelay(ms)
     actions.scope.launch { actions.container.playbackSettings.update { it.copy(audioDelayMs = session.audioDelayMs.value) } }
+}
+
+private fun setVoices(actions: AppActions, session: PlaybackSession, on: Boolean) {
+    session.setDialogueBoost(on)
+    actions.scope.launch { actions.container.playbackSettings.update { it.copy(dialogueBoost = on) } }
 }
 
 private fun setNight(actions: AppActions, session: PlaybackSession, on: Boolean) {

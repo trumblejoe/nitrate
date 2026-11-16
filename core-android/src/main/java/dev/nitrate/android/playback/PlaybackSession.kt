@@ -22,6 +22,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import dev.nitrate.core.model.ExternalSubtitle
 import dev.nitrate.core.playback.SubtitleShift
+import dev.nitrate.core.playback.trackName
 import dev.nitrate.core.playback.TrackMemory
 import dev.nitrate.core.playback.TrackMemoryStore
 import kotlinx.coroutines.withContext
@@ -98,6 +99,10 @@ class PlaybackSession(
     val subtitleOffsetMs: StateFlow<Long> = _subtitleOffsetMs
     private val _nightModeOn = MutableStateFlow(false)
     val nightModeOn: StateFlow<Boolean> = _nightModeOn
+    private val _dialogueBoostOn = MutableStateFlow(false)
+
+    /** Voices lifted over music and effects (decoded sound only). */
+    val dialogueBoostOn: StateFlow<Boolean> = _dialogueBoostOn
 
     /** Original text of retimed subtitles, so repeated changes shift from the original. */
     private val subtitleOriginals = mutableMapOf<Int, String>()
@@ -137,6 +142,13 @@ class PlaybackSession(
 
     /** Intro, credits... from the server, for skip buttons and Up Next timing. */
     val segments: StateFlow<List<MediaSegment>> = _segments
+    /** A second subtitle shown at the top of the picture with the usual one (dual subtitles). */
+    data class SecondSubtitle(val itemId: String, val index: Int, val label: String, val cues: List<dev.nitrate.core.playback.Cue>)
+
+    private val _secondSubtitle = MutableStateFlow<SecondSubtitle?>(null)
+    val secondSubtitle: StateFlow<SecondSubtitle?> = _secondSubtitle
+    private var secondJob: Job? = null
+
     private val _creditScenes = MutableStateFlow<dev.nitrate.core.playback.CreditScenesInfo?>(null)
 
     /** Scenes during and after this title's credits: where (to skip to them) or only that there are some. */
@@ -235,7 +247,7 @@ class PlaybackSession(
                     // Night mode only works on decoded sound: while it's on, encoded formats this
                     // device can decode aren't passed through, so the player decodes them instead.
                     override fun getFormatSupport(format: androidx.media3.common.Format): Int {
-                        if (nightMode.enabled && NightModeDecoding.decodeInstead(format)) return androidx.media3.exoplayer.audio.AudioSink.SINK_FORMAT_UNSUPPORTED
+                        if (nightMode.active && NightModeDecoding.decodeInstead(format)) return androidx.media3.exoplayer.audio.AudioSink.SINK_FORMAT_UNSUPPORTED
                         return super.getFormatSupport(format)
                     }
 
@@ -422,6 +434,7 @@ class PlaybackSession(
 
     init {
         scope.launch { setNightMode(settings.current().nightMode) }
+        scope.launch { setDialogueBoost(settings.current().dialogueBoost) }
         scope.launch { setAudioDelay(settings.current().audioDelayMs, resync = false) }
         scope.launch { setFrameRateMatch(settings.current().frameRateMatch) }
         // How styled subtitles are shown can change from the player's settings while playing.
@@ -629,10 +642,61 @@ class PlaybackSession(
 
     fun seekTo(positionMs: Long) = player.seekTo(positionMs.coerceAtLeast(0))
 
+    /**
+     * Shows subtitle stream [index] at the top as well as the usual one (null: off). Remembered
+     * for the show (or film) while the app runs, so the next episode shows the same language.
+     */
+    fun setSecondSubtitle(index: Int?) {
+        val p = _plan.value ?: return
+        val key = _item.value?.let { dev.nitrate.core.playback.TrackSelection.memoryKey(it) }
+        secondJob?.cancel()
+        if (index == null) {
+            _secondSubtitle.value = null
+            key?.let { secondMemory.remove(it) }
+            return
+        }
+        val stream = p.source.streams.firstOrNull { it.index == index } ?: return
+        key?.let { secondMemory[it] = stream.language to stream.title }
+        loadSecondSubtitle(p, index)
+    }
+
+    private fun loadSecondSubtitle(p: PlaybackPlan, index: Int) {
+        val label = p.source.trackName(index)
+        secondJob = scope.launch {
+            runCatching {
+                val text = withContext(Dispatchers.IO) {
+                    // A download's own subtitle file (SRT or WebVTT), else the server's copy as SRT.
+                    val local = p.externalSubtitles.firstOrNull { it.streamIndex == index }
+                        ?.takeIf { it.url.startsWith("/") && (it.mimeType.contains("subrip", true) || it.mimeType.contains("vtt", true)) }
+                    if (local != null) File(local.url).readText() else fetchText(server.subtitleFileUrl(p.itemId, p.source, index, "srt"))
+                }
+                val cues = dev.nitrate.core.playback.SecondSubtitles.parse(text)
+                log("Second subtitle $label: ${cues.size} lines")
+                _secondSubtitle.value = SecondSubtitle(p.itemId, index, label, cues)
+            }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                showNotice("Couldn't load the second subtitle: ${it.message}")
+            }
+        }
+    }
+
+    /** The same second language as last time for this show, when this file has it. */
+    private fun restoreSecondSubtitle(p: PlaybackPlan) {
+        val item = _item.value ?: return
+        val (language, title) = secondMemory[dev.nitrate.core.playback.TrackSelection.memoryKey(item)] ?: return
+        val choices = dev.nitrate.core.playback.SecondSubtitles.choices(p.source, p.subtitleIndex).map { c -> p.source.streams.first { it.index == c.index } }
+        val match = choices.firstOrNull { it.language == language && it.title == title } ?: choices.firstOrNull { it.language == language } ?: return
+        loadSecondSubtitle(p, match.index)
+    }
+
     private fun uriOf(url: String): Uri = if (url.startsWith("/")) Uri.fromFile(File(url)) else Uri.parse(url)
 
     private fun play(p: PlaybackPlan, startMs: Long, title: String, keepPaused: Boolean? = null) {
         _plan.value = p
+        if (_secondSubtitle.value?.itemId != p.itemId) {
+            _secondSubtitle.value = null
+            restoreSecondSubtitle(p)
+        }
         updateAss(p)
         selectionApplied = false
         _videoDecoder.value = null
@@ -723,6 +787,8 @@ class PlaybackSession(
 
     /** A new item: subtitle timing and its cached files belong to the old one. */
     private fun forgetItemState() {
+        secondJob?.cancel()
+        _secondSubtitle.value = null
         retimeJob?.cancel()
         assJob?.cancel()
         _assTrack.value = null
@@ -866,14 +932,26 @@ class PlaybackSession(
     }
 
     fun setNightMode(on: Boolean) {
-        val changed = nightMode.enabled != on
+        val wasActive = nightMode.active
         _nightModeOn.value = on
         nightMode.enabled = on
+        redecideAudio(wasActive, "Night mode", on)
+    }
+
+    fun setDialogueBoost(on: Boolean) {
+        val wasActive = nightMode.active
+        _dialogueBoostOn.value = on
+        nightMode.dialogueBoost = on
+        redecideAudio(wasActive, "Dialogue boost", on)
+    }
+
+    private fun redecideAudio(wasActive: Boolean, what: String, on: Boolean) {
+        val changed = wasActive != nightMode.active
         // Sound passed through to a receiver can't be evened out: switching the audio off and on
         // makes the player choose again, decoding it here while night mode is on (and passing it
         // through again once it's off).
         if (changed && exo.playbackState != Player.STATE_IDLE && exo.audioFormat?.sampleMimeType?.let { it != MimeTypes.AUDIO_RAW && NightModeDecoding.decodeInstead(exo.audioFormat!!) } == true) {
-            log("Night mode ${if (on) "on: decoding the sound here" else "off: passing the sound through again"}")
+            log("$what ${if (on) "on: decoding the sound here" else "off: passing the sound through again"}")
             val params = exo.trackSelectionParameters
             exo.trackSelectionParameters = params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
             exo.trackSelectionParameters = params
@@ -1133,6 +1211,9 @@ class PlaybackSession(
     }
 
     private companion object {
+        /** Second subtitle language per show (or film), for this app run. */
+        private val secondMemory = java.util.concurrent.ConcurrentHashMap<String, Pair<String?, String?>>()
+
         const val PROGRESS_INTERVAL_MS = 10_000L
         const val NOTICE_MS = 8_000L
 

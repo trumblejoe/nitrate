@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,5 +51,25 @@ fun CreditSceneBanner(action: CreditSkipper.Action, onAct: (CreditSkipper.Action
             Spacer(Modifier.width(18.dp))
             Button(onClick = { onAct(action); onDone() }, modifier = Modifier.focusRequester(focus)) { Text(button) }
         }
+    }
+}
+
+/** Dual subtitles: the second subtitle's current line, at the top of the picture. */
+@Composable
+fun SecondSubtitleLine(session: dev.nitrate.android.playback.PlaybackSession, scale: Float, modifier: Modifier = Modifier) {
+    val second by session.secondSubtitle.collectAsState()
+    val s = second ?: return
+    val line by androidx.compose.runtime.produceState<String?>(null, s) {
+        while (true) {
+            value = dev.nitrate.core.playback.SecondSubtitles.at(s.cues, session.player.currentPosition)
+            delay(100)
+        }
+    }
+    line?.let {
+        Text(
+            it, color = Color.White, style = MaterialTheme.typography.headlineSmall.copy(fontSize = MaterialTheme.typography.headlineSmall.fontSize * scale),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x99000000)).padding(horizontal = 14.dp, vertical = 6.dp),
+        )
     }
 }

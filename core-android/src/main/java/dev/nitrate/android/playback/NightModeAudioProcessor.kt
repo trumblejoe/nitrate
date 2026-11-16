@@ -12,6 +12,7 @@ import kotlin.math.exp
 import kotlin.math.pow
 
 /**
+ * Dialogue boost ([dialogueBoost], core [dev.nitrate.core.playback.DialogueBoost]) and night mode.
  * Night mode: lifts the centre (dialogue) channel of surround tracks, then evens out loud and
  * quiet passages with a compressor and makeup gain, and a limiter so peaks never clip. Works on
  * decoded PCM only, so it has no effect when audio is passed through to a receiver.
@@ -20,6 +21,15 @@ import kotlin.math.pow
 class NightModeAudioProcessor : BaseAudioProcessor() {
     @Volatile
     var enabled: Boolean = false
+
+    /** Voices lifted over music and effects. */
+    @Volatile
+    var dialogueBoost: Boolean = false
+
+    /** Either is on: the sound has to be decoded here. */
+    val active: Boolean get() = enabled || dialogueBoost
+
+    private var boost: dev.nitrate.core.playback.DialogueBoost? = null
 
     private var channels = 2
     private var float = false
@@ -37,6 +47,7 @@ class NightModeAudioProcessor : BaseAudioProcessor() {
         attack = exp(-1f / (ATTACK_S * rate))
         release = exp(-1f / (RELEASE_S * rate))
         envelope = 0f
+        boost = dev.nitrate.core.playback.DialogueBoost(inputAudioFormat.sampleRate, channels)
         return inputAudioFormat
     }
 
@@ -44,7 +55,9 @@ class NightModeAudioProcessor : BaseAudioProcessor() {
         val size = inputBuffer.remaining()
         if (size == 0) return
         val out = replaceOutputBuffer(size)
-        if (!enabled) {
+        val night = enabled
+        val voices = if (dialogueBoost) boost else null
+        if (!night && voices == null) {
             out.put(inputBuffer)
             out.flip()
             return
@@ -55,6 +68,11 @@ class NightModeAudioProcessor : BaseAudioProcessor() {
         val frames = size / (bytesPerSample * channels)
         repeat(frames) {
             for (c in 0 until channels) frame[c] = if (float) input.float else input.short / 32768f
+            voices?.process(frame)
+            if (!night) {
+                for (c in 0 until channels) if (float) out.putFloat(frame[c]) else out.putShort((frame[c] * 32767f).toInt().toShort())
+                return@repeat
+            }
             // 5.1 and 7.1 put the centre (dialogue) channel third.
             if (channels >= 6) frame[CENTER] *= CENTER_BOOST
             val peak = frame.maxOf { abs(it) }
@@ -73,6 +91,7 @@ class NightModeAudioProcessor : BaseAudioProcessor() {
 
     override fun onFlush() {
         envelope = 0f
+        boost?.reset()
     }
 
     private companion object {

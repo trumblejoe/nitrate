@@ -219,6 +219,12 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
                         FilterChip(selected = prefs.playlistRecapAfterDays == days, onClick = { update { it.copy(playlistRecapAfterDays = days) } }) { Text(label) }
                     }
                 }
+                Text("Ambient screensaver: artwork from your library, the time and what's next, when nothing's pressed", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    dev.nitrate.core.ambient.Ambient.CHOICES.forEach { m ->
+                        FilterChip(selected = prefs.tvAmbientMinutes == m, onClick = { update { it.copy(tvAmbientMinutes = m) } }) { Text(if (m == 0) "Off" else "$m min") }
+                    }
+                }
                 Text("Accent colour", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     AccentMode.entries.forEachIndexed { i, m ->

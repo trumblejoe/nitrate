@@ -45,6 +45,8 @@ data class DisplayPrefs(
      * it's offered. Off: only offered.
      */
     val creditScenes: Boolean = true,
+    /** TV: minutes with nothing pressed (outside the player) before the ambient screensaver (0: never). */
+    val tvAmbientMinutes: Int = dev.nitrate.core.ambient.Ambient.DEFAULT_MINUTES,
     /**
      * Easy mode: bigger text and touch targets, only the essential menu stops and player
      * controls, and a confirmation before anything is deleted or signed out.
