@@ -1,0 +1,25 @@
+The Dolby Vision converter (libdoviJNI.so) includes the Rust standard library and these Rust
+crates, each used under the MIT License (each is also offered under other licences, listed in
+brackets): anyhow (or Apache-2.0), bitstream-io (or Apache-2.0), bitvec, bitvec_helpers, crc and
+crc-catalog (or Apache-2.0), equivalent (or Apache-2.0), funty, hashbrown (or Apache-2.0),
+indexmap (or Apache-2.0), itoa (or Apache-2.0), libc (or Apache-2.0), memchr (or Unlicense),
+no_std_io2 (or Apache-2.0), radium, serde, serde_core and serde_json (or Apache-2.0), tap,
+tinyvec (or Zlib, Apache-2.0), wyz, zmij. The Rust standard library is © The Rust Project
+Developers (MIT or Apache-2.0). Each crate's copyright notice is in its source on crates.io.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

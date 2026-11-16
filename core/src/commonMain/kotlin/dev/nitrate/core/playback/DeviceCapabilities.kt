@@ -46,6 +46,8 @@ data class DeviceCapabilities(
     val model: String,
     /** Dolby Vision profiles a decoder advertises (5 = dvhe.05, 8 = dvhe.08, ...). */
     val dolbyVisionProfiles: Set<Int> = emptySet(),
+    /** This app can rewrite profile 7 metadata as profile 8.1 while playing (libdovi built in). */
+    val dolbyVisionConverter: Boolean = false,
     /**
      * Lossless and object audio the device (or the receiver behind it) takes untouched, as named in
      * [PASSTHROUGH_EXTRAS]: DTS-HD MA (and DTS:X in it), DTS:X Profile 2, Dolby Atmos in E-AC-3.

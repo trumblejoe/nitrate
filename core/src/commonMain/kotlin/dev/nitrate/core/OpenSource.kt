@@ -42,6 +42,12 @@ object OpenSource {
                 "https://github.com/fribidi/fribidi/releases (1.0.16); build script: tools/build-libass.sh in " +
                 "https://github.com/trumblejoe/nitrate.",
         ),
+        OpenSourceComponent(
+            "libdovi (dovi_tool's dolby_vision)", "MIT License", "MIT-libdovi.txt", "https://github.com/quietvoid/dovi_tool",
+            note = "Rewrites UHD Blu-ray Dolby Vision (profile 7) metadata as profile 8.1 while it plays. libdovi 3.4.0 in a " +
+                "separate library (libdoviJNI.so); build script: tools/build-libdovi.sh in https://github.com/trumblejoe/nitrate.",
+        ),
+        OpenSourceComponent("Rust standard library and crates (in libdoviJNI.so)", "MIT License", "MIT-Rust.txt", "https://crates.io"),
         OpenSourceComponent("AndroidX Media3 (ExoPlayer, FFmpeg extension)", APACHE, "Apache-2.0.txt", "https://github.com/androidx/media"),
         OpenSourceComponent("AndroidX and Jetpack Compose", APACHE, "Apache-2.0.txt", "https://developer.android.com/jetpack/androidx"),
         OpenSourceComponent("Kotlin, kotlinx.coroutines, kotlinx.serialization, kotlinx-io", APACHE, "Apache-2.0.txt", "https://github.com/JetBrains/kotlin"),

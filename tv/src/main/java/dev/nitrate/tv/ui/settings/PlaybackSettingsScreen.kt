@@ -140,6 +140,13 @@ fun PlaybackSettingsScreen(
             ) { v -> update { it.copy(tunneling = v) } }
         }
         item {
+            val how = CapabilityRules.profile7(capabilities, settings)
+            ToggleRow(
+                "Dolby Vision profile 7 as 8.1", settings.convertProfile7,
+                "UHD Blu-ray Dolby Vision (profile 7) is converted to profile 8.1 while it plays, so this TV shows it as Dolby Vision rather than HDR10. Now plays ${how.label}.",
+            ) { v -> update { it.copy(convertProfile7 = v) } }
+        }
+        item {
             val t = settings.threeD
             ChoiceRow("3D films", t.label, t.detail + ". Takes effect the next time something plays.") {
                 val all = dev.nitrate.core.playback.ThreeDMode.entries

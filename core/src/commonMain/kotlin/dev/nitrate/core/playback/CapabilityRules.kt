@@ -31,7 +31,7 @@ object CapabilityRules {
      * Jellyfin video range types that can be shown without tone mapping. Dolby Vision and HDR10+
      * files with an HDR10/HLG base layer play as that base layer when the enhanced format is off.
      * Dual-layer Dolby Vision (profile 7, from UHD Blu-ray: "DOVIWithEL") plays as its HDR10 base
-     * layer too, unless the device decodes profile 7 itself (see [playsDolbyVisionProfile7]).
+     * layer too, or as Dolby Vision where [profile7] allows.
      */
     fun allowedRangeTypes(caps: DeviceCapabilities, settings: PlaybackSettings): List<String> {
         val allowed = hdrFormats(caps, settings).filter { it.allowed }.map { it.id.removePrefix("range:") }.toSet()
@@ -39,7 +39,7 @@ object CapabilityRules {
             add("SDR")
             add("DOVIWithSDR")
             if ("HDR10" in allowed) addAll(listOf("HDR10", "DOVIWithHDR10", "HDR10Plus", "DOVIWithHDR10Plus", "DOVIWithEL", "DOVIWithELHDR10Plus"))
-            if (playsDolbyVisionProfile7(caps, settings)) addAll(listOf("DOVIWithEL", "DOVIWithELHDR10Plus"))
+            if (profile7(caps, settings) != Profile7Playback.BASE_LAYER) addAll(listOf("DOVIWithEL", "DOVIWithELHDR10Plus"))
             if ("HDR10Plus" in allowed) add("HDR10Plus")
             if ("HLG" in allowed) addAll(listOf("HLG", "DOVIWithHLG"))
             if ("DOVI" in allowed) addAll(listOf("DOVI", "DOVIWithHDR10", "DOVIWithHLG", "DOVIWithHDR10Plus"))
@@ -47,11 +47,18 @@ object CapabilityRules {
     }
 
     /**
-     * Whether dual-layer Dolby Vision (profile 7) plays as Dolby Vision here: a decoder takes
-     * profile 7 and Dolby Vision is allowed. Otherwise the player shows its HDR10 base layer.
+     * How dual-layer Dolby Vision (profile 7) plays here: as itself where a decoder takes profile 7,
+     * else rewritten as profile 8.1 where a decoder takes profile 8 (and the setting allows), else
+     * its HDR10 base layer. Dolby Vision must be allowed for either of the first two.
      */
-    fun playsDolbyVisionProfile7(caps: DeviceCapabilities, settings: PlaybackSettings): Boolean =
-        7 in caps.dolbyVisionProfiles && hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
+    fun profile7(caps: DeviceCapabilities, settings: PlaybackSettings): Profile7Playback {
+        val dolbyVision = hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
+        return when {
+            dolbyVision && 7 in caps.dolbyVisionProfiles -> Profile7Playback.DOLBY_VISION
+            dolbyVision && 8 in caps.dolbyVisionProfiles && caps.dolbyVisionConverter && settings.convertProfile7 -> Profile7Playback.AS_PROFILE_8
+            else -> Profile7Playback.BASE_LAYER
+        }
+    }
 
     /** The tallest video a software-only decoder is trusted with. */
     const val SOFTWARE_MAX_HEIGHT = 1080
@@ -112,4 +119,11 @@ object CapabilityRules {
             streams.firstOrNull { it.index == plan.audioIndex }?.codec?.lowercase()
         }
     }
+}
+
+/** How dual-layer Dolby Vision (profile 7) is played: see [CapabilityRules.profile7]. */
+enum class Profile7Playback(val label: String) {
+    DOLBY_VISION("as Dolby Vision (profile 7)"),
+    AS_PROFILE_8("as Dolby Vision, converted to profile 8.1 while playing"),
+    BASE_LAYER("as HDR10 (its base layer)"),
 }

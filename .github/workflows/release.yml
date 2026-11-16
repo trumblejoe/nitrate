@@ -66,6 +66,19 @@ jobs:
           tools/build-libass.sh "$ANDROID_HOME/ndk/27.0.12077973"
       - name: Check libass
         run: test -f ass-renderer/src/main/jni/libass/android-libs/arm64-v8a/lib/libass.a
+      # libdovi (Rust, MIT) for Dolby Vision profile 7 as 8.1; see dovi-converter/README.md.
+      # Built once and cached until tools/build-libdovi.sh changes.
+      - name: libdovi cache
+        id: libdovi
+        uses: actions/cache@v4
+        with:
+          path: dovi-converter/src/main/jni/libdovi/android-libs
+          key: libdovi-${{ hashFiles('tools/build-libdovi.sh') }}
+      - name: Build libdovi
+        if: steps.libdovi.outputs.cache-hit != 'true'
+        run: tools/build-libdovi.sh "$ANDROID_HOME/ndk/27.0.12077973"
+      - name: Check libdovi
+        run: test -f dovi-converter/src/main/jni/libdovi/android-libs/arm64-v8a/libdovi.a
 
       - name: Signing key
         env:

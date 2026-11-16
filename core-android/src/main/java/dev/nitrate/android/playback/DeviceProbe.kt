@@ -148,6 +148,7 @@ object DeviceProbe {
             displayHeight = mode?.physicalHeight ?: 1080,
             model = "${Build.MANUFACTURER} ${Build.MODEL}",
             dolbyVisionProfiles = dolbyVision,
+            dolbyVisionConverter = dev.nitrate.dovi.RpuConverter.isAvailable,
             passthroughExtras = buildSet {
                 if (passthrough?.supportsEncoding(C.ENCODING_DTS_HD) == true) add(DeviceCapabilities.DTS_HD)
                 if (passthrough?.supportsEncoding(C.ENCODING_DTS_UHD_P2) == true) add(DeviceCapabilities.DTS_X_P2)

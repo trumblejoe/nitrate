@@ -193,6 +193,11 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }
             item { Toggle("Night mode", "Quieter loud parts and clearer dialogue (sound normally passed through is decoded here while it's on)", playback.nightMode) { v -> updatePlayback { it.copy(nightMode = v) } } }
             item {
+                Toggle("Dolby Vision profile 7 as 8.1", "UHD Blu-ray Dolby Vision is converted while it plays, for Dolby Vision instead of HDR10 on devices that take profile 8", playback.convertProfile7) { v ->
+                    updatePlayback { it.copy(convertProfile7 = v) }
+                }
+            }
+            item {
                 Toggle("Show 3D films in 2D", "Side-by-side and top-and-bottom 3D shows one eye's view at its proper shape. Off: both views as recorded, for a 3D screen", playback.threeD == dev.nitrate.core.playback.ThreeDMode.TWO_D) { v ->
                     updatePlayback { it.copy(threeD = if (v) dev.nitrate.core.playback.ThreeDMode.TWO_D else dev.nitrate.core.playback.ThreeDMode.AS_FILE) }
                 }

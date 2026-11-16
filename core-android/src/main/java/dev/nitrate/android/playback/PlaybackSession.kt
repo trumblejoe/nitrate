@@ -250,10 +250,10 @@ class PlaybackSession(
             .setRenderersFactory(renderers)
             // DefaultDataSource sends http(s) through the authorised source and reads downloaded
             // files (file://) and their subtitles itself; the http source alone can't open files.
-            // Dual-layer Dolby Vision (profile 7) plays as its HDR10 base layer unless this device
-            // plays profile 7 as Dolby Vision.
+            // Dual-layer Dolby Vision (profile 7): as it is, rewritten as profile 8.1, or its HDR10
+            // base layer, by what this device decodes.
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(context, DolbyVisionBaseLayer({ !playsProfile7 }))
+                DefaultMediaSourceFactory(context, DolbyVisionProfile7({ profile7 }, onFailures = { n -> log("Dolby Vision: $n frames' metadata couldn't be converted (shown as HDR10)") }))
                     .setDataSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, http)),
             )
             .build()
@@ -422,7 +422,7 @@ class PlaybackSession(
         scope.launch {
             settings.settings.collect { s ->
                 threeDMode = s.threeD
-                playsProfile7 = runCatching { dev.nitrate.core.playback.CapabilityRules.playsDolbyVisionProfile7(capabilities(), s) }.getOrDefault(false)
+                profile7 = runCatching { dev.nitrate.core.playback.CapabilityRules.profile7(capabilities(), s) }.getOrDefault(dev.nitrate.core.playback.Profile7Playback.BASE_LAYER)
                 val mode = s.subtitleStyle.styled
                 if (mode != styledMode) {
                     styledMode = mode
@@ -907,8 +907,8 @@ class PlaybackSession(
         }.onFailure { log("Couldn't show 3D in 2D: ${it.message}") }
     }
 
-    /** Read when each file is opened: profile 7 Dolby Vision plays as Dolby Vision (else its base layer). */
-    @Volatile private var playsProfile7 = false
+    /** Read when each file is opened: how dual-layer Dolby Vision (profile 7) plays. */
+    @Volatile private var profile7 = dev.nitrate.core.playback.Profile7Playback.BASE_LAYER
 
     @Volatile private var styledMode = dev.nitrate.core.playback.StyledSubtitles.FILE
     private var assJob: Job? = null
