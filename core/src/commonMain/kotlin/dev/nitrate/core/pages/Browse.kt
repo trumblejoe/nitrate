@@ -2,6 +2,7 @@ package dev.nitrate.core.pages
 
 import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.ItemKind
+import dev.nitrate.core.model.MediaItem
 import kotlinx.serialization.Serializable
 
 /** How a library's full list is shown: a grid of posters or of artwork, or a list with details. */
@@ -114,6 +115,26 @@ object Browse {
         if (letter == "#") null else query.copy(nameBefore = letter, nameFrom = null)
 
     /** Which letter the item at the top of the list belongs to, for highlighting the A–Z bar. */
+    /** The letter [item] files under: by the server's sort name when known, else its name. */
+    fun letterOf(item: MediaItem): String = letterOf(item.sortName ?: item.name)
+
+    /**
+     * Where [letter]'s first title is in [items] (sorted by name, [descending] or not), starting
+     * from the server's count [estimate] and moving to the edge of the letter's titles. The count
+     * alone can land inside or after the letter when the server counts differently than it sorts.
+     * Returns `items.size` when every loaded title comes before the letter.
+     */
+    fun firstOfLetter(items: List<MediaItem>, letter: String, estimate: Int, descending: Boolean): Int {
+        val target = LETTERS.indexOf(letter)
+        fun rank(i: Int) = LETTERS.indexOf(letterOf(items[i]))
+        // Titles at or past the letter, in list order.
+        fun reached(i: Int) = if (descending) rank(i) <= target else rank(i) >= target
+        var i = estimate.coerceIn(0, items.size)
+        while (i > 0 && reached(i - 1)) i--
+        while (i < items.size && !reached(i)) i++
+        return i
+    }
+
     fun letterOf(name: String): String {
         val first = name.trim().removePrefix("The ").removePrefix("An ").removePrefix("A ").firstOrNull()?.uppercaseChar() ?: return "#"
         return if (first in 'A'..'Z') first.toString() else "#"

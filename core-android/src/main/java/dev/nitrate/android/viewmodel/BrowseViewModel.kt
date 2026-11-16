@@ -105,20 +105,32 @@ class BrowseViewModel(
         val query = options.query(library.id, library.collection)
         val before = Browse.before(query, letter)?.let { runCatching { server.queryPage(it, 0, 0).second }.getOrNull() ?: return null } ?: 0
         // Descending name order puts the letter's items after everything greater.
-        val index = if (options.descending) {
+        val estimate = if (options.descending) {
             val total = _state.value.total.takeIf { it >= 0 } ?: return null
             val upTo = Browse.LETTERS.getOrNull(Browse.LETTERS.indexOf(letter) + 1)?.let { next ->
                 runCatching { server.queryPage(Browse.before(query, next)!!, 0, 0).second }.getOrNull()
             } ?: total
             total - upTo
         } else before
+        loadThrough(estimate)
+        // The server's count is a starting point: check the titles themselves, so the jump lands
+        // on the letter's first title even where the server counts differently than it sorts.
+        var index = Browse.firstOfLetter(_state.value.items, letter, estimate, options.descending)
+        while (index >= _state.value.items.size && !_state.value.complete && _state.value.error == null) {
+            loadThrough(index)
+            index = Browse.firstOfLetter(_state.value.items, letter, index, options.descending)
+        }
+        return index.takeIf { it < _state.value.items.size }
+    }
+
+    /** Loads pages until the list holds [index] (or there's no more). */
+    private suspend fun loadThrough(index: Int) {
         while (_state.value.items.size <= index && !_state.value.complete && _state.value.error == null) {
             loading?.join()
             if (_state.value.items.size > index || _state.value.complete) break
             loadMore()
             loading?.join()
         }
-        return index.takeIf { it < _state.value.items.size }
     }
 
     private companion object {

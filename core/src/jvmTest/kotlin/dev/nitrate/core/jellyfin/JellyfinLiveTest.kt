@@ -628,6 +628,7 @@ class JellyfinLiveTest {
         val (all, total) = client.queryPage(query, 0, 100)
         println("Movies: $total ${all.map { it.name }}")
         assertEquals(all.size, total)
+        assertTrue("sort names come back for A–Z jumps", all.all { !it.sortName.isNullOrBlank() })
         // Sorted by name without leading articles ("The Brave..." under B), as the A–Z bar shows it.
         val letters = all.map { dev.nitrate.core.pages.Browse.letterOf(it.name) }
         assertEquals(letters, letters.sortedBy { if (it == "#") "" else it })
@@ -639,6 +640,7 @@ class JellyfinLiveTest {
             val start = client.queryPage(dev.nitrate.core.pages.Browse.before(query, letter)!!, 0, 0).second
             println("$letter starts at $start")
             assertEquals(dev.nitrate.core.pages.Browse.letterOf(all[start].name), letter)
+            assertEquals(start, dev.nitrate.core.pages.Browse.firstOfLetter(all, letter, start, descending = false))
         }
         val unwatched = client.queryPage(options.copy(watched = dev.nitrate.core.pages.WatchFilter.WATCHED).query(library.id, library.collection), 0, 100).second
         println("Watched: $unwatched of $total")

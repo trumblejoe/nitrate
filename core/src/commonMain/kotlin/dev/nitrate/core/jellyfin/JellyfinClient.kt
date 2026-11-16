@@ -1205,7 +1205,7 @@ class JellyfinClient(
         if (page.isEmpty()) return emptyList<MediaItem>() to matching.size
         val items = get(
             "Items",
-            query = mapOf("ids" to page.joinToString(","), "userId" to userId, "fields" to "Overview,PrimaryImageAspectRatio,Genres", "enableTotalRecordCount" to false),
+            query = mapOf("ids" to page.joinToString(","), "userId" to userId, "fields" to "Overview,PrimaryImageAspectRatio,Genres,SortName", "enableTotalRecordCount" to false),
         ).decode<QueryResultDto<ItemDto>>().items.associateBy { normalizeId(it.id) }
         return page.mapNotNull { items[it]?.toMediaItem() } to matching.size
     }
@@ -1703,7 +1703,8 @@ internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
         "sortBy" to if (q.sort == QuerySort.RANDOM) sort else "$sort,SortName",
         "sortOrder" to if (q.descending) "Descending,Ascending" else "Ascending,Ascending",
         "limit" to q.limit,
-        "fields" to "Overview,PrimaryImageAspectRatio,Genres",
+        // SortName lets A–Z jumps check where each letter really starts.
+        "fields" to "Overview,PrimaryImageAspectRatio,Genres,SortName",
         "enableTotalRecordCount" to false,
     )
 }

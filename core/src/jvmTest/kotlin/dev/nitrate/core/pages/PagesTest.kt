@@ -69,4 +69,20 @@ class PagesTest {
         assertEquals(listOf("TrueHD", "7.1"), QualityBadges.of(720, 480, "SDR", listOf(QualityBadges.AudioInfo("truehd", null, null, 8))))
         assertEquals(emptyList<String>(), QualityBadges.of(null, null, null, emptyList()))
     }
+
+    @Test fun letterJumpFindsTheLettersFirstTitle() {
+        // Server sort names: articles dropped, so "The Brave" files under B.
+        val titles = listOf("alpha", "arc", "brave", "bright", "bus", "cue", "dawn").map { MediaItem(it, it.uppercase(), ItemKind.MOVIE, sortName = it) }
+        // A count that lands on the letter's last title, past it, or short of it all end at "brave".
+        for (estimate in listOf(2, 4, 5, 6, 0, 1)) assertEquals("from $estimate", 2, Browse.firstOfLetter(titles, "B", estimate, descending = false))
+        // A letter with no titles: the next title after where it would be.
+        assertEquals(5, Browse.firstOfLetter(titles, "C", 3, descending = false))
+        assertEquals(6, Browse.firstOfLetter(titles, "D", 0, descending = false))
+        assertEquals(titles.size, Browse.firstOfLetter(titles, "Z", 3, descending = false))
+        // Z to A: B's first title is the alphabetically last B.
+        val reversed = titles.reversed()
+        for (estimate in listOf(0, 2, 4, 6)) assertEquals("desc from $estimate", 2, Browse.firstOfLetter(reversed, "B", estimate, descending = true))
+        // Without sort names, the name decides (leading "The" ignored).
+        assertEquals(1, Browse.firstOfLetter(listOf(MediaItem("1", "Arc", ItemKind.MOVIE), MediaItem("2", "The Brave", ItemKind.MOVIE)), "B", 2, descending = false))
+    }
 }

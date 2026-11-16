@@ -12,6 +12,8 @@ data class MediaItem(
     val id: String,
     val name: String,
     val kind: ItemKind,
+    /** The server's sort name (lowercase, articles dropped), when the query asked for it. */
+    val sortName: String? = null,
     val mediaKind: MediaKind? = null,
     val overview: String? = null,
     val tagline: String? = null,

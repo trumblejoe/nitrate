@@ -45,6 +45,7 @@ internal data class ThemeMediaDto(val items: List<ItemDto> = emptyList(), val ow
 internal data class ItemDto(
     val id: String,
     val name: String? = null,
+    val sortName: String? = null,
     val dateCreated: String? = null,
     val playlistItemId: String? = null,
     val album: String? = null,

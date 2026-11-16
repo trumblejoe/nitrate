@@ -36,6 +36,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
     return MediaItem(
         id = normalizeId(id),
         name = name.orEmpty(),
+        sortName = sortName,
         dateAddedMs = dateCreated?.let(::parseDateMs),
         playlistEntryId = playlistItemId,
         album = album,
