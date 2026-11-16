@@ -170,6 +170,15 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                     trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
                 )
             }
+            item {
+                val companion by actions.container.companion.collectAsState()
+                if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(DiaryRoute) },
+                    headlineContent = { Text("Watch diary") },
+                    supportingContent = { Text("Every film and episode you finish, with your ratings and notes; export for Letterboxd") },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
         }
         section(open, "Control a device", "Play, pause, seek and change volume on your TV or another app.") {
             item { RemoteTargets(actions) }

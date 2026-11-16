@@ -336,7 +336,24 @@ class FakeServer : MediaServer {
         val next = eps.first { !it.user.played }
         return dev.nitrate.core.recap.Recaps.forSeries(series, eps, next, dev.nitrate.core.pages.DisplayPrefs(recapAfterDays = 14), now)!!
     }
-    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners"))
+    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners", "diary", "lines"))
+
+    /** A few weeks of watching, for the diary. */
+    val diaryEntries = mutableListOf(
+        dev.nitrate.core.diary.DiaryEntry("d1", "m1", ItemKind.MOVIE, "Silver Screen", null, null, null, null, 2021, 7_200_000, listOf("Drama"), 1_793_000_000_000, 9, "The ending got me.", false),
+        dev.nitrate.core.diary.DiaryEntry("d2", "s2e5", ItemKind.EPISODE, "Episode title 5", "series-1", "The Night Reel", 2, 5, 2024, 2_700_000, listOf("Mystery"), 1_792_700_000_000, 7, null, false),
+        dev.nitrate.core.diary.DiaryEntry("d3", "s2e4", ItemKind.EPISODE, "Episode title 4", "series-1", "The Night Reel", 2, 4, 2024, 2_700_000, listOf("Mystery"), 1_792_600_000_000, null, null, false),
+        dev.nitrate.core.diary.DiaryEntry("d4", "m1", ItemKind.MOVIE, "Silver Screen", null, null, null, null, 2021, 7_200_000, listOf("Drama"), 1_790_000_000_000, 8, null, false),
+        dev.nitrate.core.diary.DiaryEntry("d5", "m3", ItemKind.MOVIE, "Gate Weave", null, null, null, null, 2024, 6_300_000, listOf("Science Fiction"), 1_789_500_000_000, 6, "Gorgeous, a little long.", true),
+    )
+
+    override suspend fun diary(fromMs: Long?, toMs: Long?) =
+        diaryEntries.filter { (fromMs == null || it.watchedAtMs >= fromMs) && (toMs == null || it.watchedAtMs < toMs) }.sortedByDescending { it.watchedAtMs }
+
+    override suspend fun searchLines(query: String, limit: Int) = listOf(
+        dev.nitrate.core.lines.SpokenLine("m1", ItemKind.MOVIE, "Silver Screen", null, null, null, null, 2021, 5_415_000, 5_418_000, "We're going to need a bigger boat.", "eng", "Nobody crosses the river after dark.", "Says who?"),
+        dev.nitrate.core.lines.SpokenLine("s2e5", ItemKind.EPISODE, "Episode title 5", "series-1", "The Night Reel", 2, 5, 2024, 1_262_000, 1_265_000, "If we need a bigger boat, we build one.", "eng", null, "Then start sawing."),
+    ).filter { query.isNotBlank() }
 
     /** People to share scripts with, and one script someone shared (its text, at version 3). */
     val people = listOf(dev.nitrate.core.writing.UserRef("user-2", "sam"), dev.nitrate.core.writing.UserRef("user-3", "jo"), dev.nitrate.core.writing.UserRef("user-4", "alex"))

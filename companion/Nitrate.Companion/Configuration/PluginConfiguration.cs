@@ -5,6 +5,15 @@ namespace Nitrate.Companion.Configuration;
 /// <summary>The plugin's settings (none yet that need changing).</summary>
 public class PluginConfiguration : BasePluginConfiguration
 {
+    /// <summary>
+    /// Gets or sets a value indicating whether subtitles are indexed nightly so people can search
+    /// what's said in films and episodes.
+    /// </summary>
+    public bool EnableLines { get; set; } = true;
+
+    /// <summary>Gets or sets a value indicating whether each user's watches are kept in a diary.</summary>
+    public bool EnableDiary { get; set; } = true;
+
     /// <summary>Gets or sets a value indicating whether chat in watch-together sessions is on.</summary>
     public bool EnableChat { get; set; } = true;
 

@@ -379,6 +379,20 @@ interface MediaServer {
     suspend fun companion(): dev.nitrate.core.companion.CompanionInfo? = null
 
     /** Whether this user is private (Companion feature "partners"). */
+    /** The user's watch diary between two moments (either open), newest first (Companion feature `diary`). */
+    suspend fun diary(fromMs: Long? = null, toMs: Long? = null): List<dev.nitrate.core.diary.DiaryEntry> = unsupported()
+
+    /** Adds a watch by hand. */
+    suspend fun logWatch(itemId: String, watchedAtMs: Long? = null, rating: Int? = null, note: String? = null): dev.nitrate.core.diary.DiaryEntry = unsupported()
+
+    /** Changes a diary entry: rating (null keeps, 0 clears), note (null keeps, "" clears), date (null keeps). */
+    suspend fun editDiary(id: String, rating: Int? = null, note: String? = null, watchedAtMs: Long? = null): dev.nitrate.core.diary.DiaryEntry = unsupported()
+
+    suspend fun deleteDiary(id: String): Unit = unsupported()
+
+    /** Lines said in films and episodes the user can see (Companion feature `lines`). */
+    suspend fun searchLines(query: String, limit: Int = 40): List<dev.nitrate.core.lines.SpokenLine> = emptyList()
+
     suspend fun privacy(): dev.nitrate.core.partners.Privacy = unsupported()
 
     /** Makes this user private, or not (an admin's choice still holds). */

@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -93,6 +94,16 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
         loading = false
     }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    // "Search what people say" (Companion plugin): lines said in films and episodes.
+    val companion by actions.container.companion.collectAsState()
+    val linesOn = companion?.features?.contains(dev.nitrate.core.lines.SpokenLines.FEATURE) == true
+    var lines by remember { mutableStateOf<List<dev.nitrate.core.lines.SpokenLine>>(emptyList()) }
+    LaunchedEffect(query, linesOn) {
+        lines = emptyList()
+        if (!linesOn || query.trim().length < dev.nitrate.core.lines.SpokenLines.MIN_QUERY) return@LaunchedEffect
+        delay(300)
+        lines = try { actions.server.searchLines(query) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyList() }
+    }
 
     fun openFromResults(item: MediaItem, key: String) {
         scope.launch { history.add(query) }
@@ -129,8 +140,24 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
                 }
                 results?.isFailure == true -> item { Text("Couldn't search: ${results?.exceptionOrNull()?.message}", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = ScreenPadding)) }
                 r == null -> Unit
-                r.isEmpty -> item { Text("Nothing matches “$query”.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding)) }
+                r.isEmpty && lines.isEmpty() -> item { Text("Nothing matches “$query”.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding)) }
                 else -> {
+                    // Lines said, first when the search reads like a quote.
+                    val quoteFirst = dev.nitrate.core.lines.SpokenLines.looksLikeQuote(query)
+                    fun saidIn() {
+                        if (lines.isNotEmpty()) {
+                            item { SectionHeader("Said in…", Modifier.padding(bottom = 0.dp)) }
+                            items(lines, key = { "line-${it.itemId}-${it.startMs}" }) { line ->
+                                SaidInResult(line) {
+                                    scope.launch { history.add(query) }
+                                    actions.scope.launch {
+                                        runCatching { actions.server.getItem(line.itemId) }.getOrNull()?.let { actions.playFrom(it, dev.nitrate.core.lines.SpokenLines.startAt(line)) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (quoteFirst) saidIn()
                     if (r.movies.isNotEmpty()) item { PosterResults("Movies", r.movies, actions, ::openFromResults) }
                     if (r.shows.isNotEmpty()) item { PosterResults("Shows", r.shows, actions, ::openFromResults) }
                     if (r.people.isNotEmpty()) item { PeopleResults(r.people, actions) { scope.launch { history.add(query) } } }
@@ -139,6 +166,7 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
                         item { SectionHeader("Episodes", Modifier.padding(bottom = 0.dp)) }
                         items(r.episodes.take(20), key = { "ep-${it.id}" }) { ep -> EpisodeResult(ep, actions) { openFromResults(ep, "search-${ep.id}") } }
                     }
+                    if (!quoteFirst) saidIn()
                 }
             }
         }
@@ -267,5 +295,27 @@ fun PersonScreen(actions: AppActions, personId: String, name: String, studio: St
                 }
             }
         }
+    }
+}
+
+/** A line someone says: the words, the lines either side, and where (tap: play from just before it). */
+@Composable
+private fun SaidInResult(line: dev.nitrate.core.lines.SpokenLine, onPlay: () -> Unit) {
+    val accent = accentColor()
+    Row(
+        Modifier.padding(horizontal = ScreenPadding).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .pressable(onPlay).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            line.before?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+            Text("“${line.text}”", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            line.after?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+            Text(
+                listOfNotNull(line.title, line.where, dev.nitrate.core.model.formatClock(line.startMs)).joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium, color = accent, modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        Icon(Icons.Default.PlayArrow, "Play from here", tint = accent, modifier = Modifier.padding(start = 10.dp))
     }
 }

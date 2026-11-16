@@ -1122,6 +1122,13 @@ class JellyfinClient(
     private val companionApi = JellyfinCompanion(this)
     private val channelsApi = JellyfinChannels(this)
     private val partnersApi = JellyfinPartners(this)
+    private val diaryApi = JellyfinDiary(this)
+
+    override suspend fun diary(fromMs: Long?, toMs: Long?) = diaryApi.diary(fromMs, toMs)
+    override suspend fun logWatch(itemId: String, watchedAtMs: Long?, rating: Int?, note: String?) = diaryApi.log(itemId, watchedAtMs, rating, note)
+    override suspend fun editDiary(id: String, rating: Int?, note: String?, watchedAtMs: Long?) = diaryApi.edit(id, rating, note, watchedAtMs)
+    override suspend fun deleteDiary(id: String) = diaryApi.delete(id)
+    override suspend fun searchLines(query: String, limit: Int) = diaryApi.searchLines(query, limit)
 
     override suspend fun privacy() = partnersApi.privacy()
     override suspend fun setPrivacy(private: Boolean) = partnersApi.setPrivacy(private)

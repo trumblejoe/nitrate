@@ -1108,4 +1108,26 @@ class JellyfinLiveTest {
         assertTrue(cues.isNotEmpty())
         assertTrue(dev.nitrate.core.playback.SecondSubtitles.at(cues, cues.first().startMs + 1) != null)
     }
+
+    @Test
+    fun `the diary and spoken lines from the Companion plugin`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val features = client.companion()?.features.orEmpty()
+        assumeTrue("Needs the Companion plugin with the diary and lines", "diary" in features && "lines" in features)
+        val film = client.views().flatMap { client.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 5, false).first }.first { it.kind == ItemKind.MOVIE }
+        val logged = client.logWatch(film.id, 1_700_000_000_000, rating = 7, note = "Live test")
+        assertEquals(film.id, logged.itemId)
+        assertTrue(logged.logged)
+        val edited = client.editDiary(logged.id, rating = 0, note = "")
+        assertEquals(null, edited.rating)
+        assertTrue(client.diary(1_699_000_000_000, 1_701_000_000_000).any { it.id == logged.id })
+        client.deleteDiary(logged.id)
+        assertTrue(client.diary().none { it.id == logged.id })
+        val lines = client.searchLines("need a bigger")
+        println("Lines: " + lines.map { "${it.title} ${it.startMs}: ${it.text}" })
+        assumeTrue("Needs a film whose subtitles say it", lines.isNotEmpty())
+        assertTrue(lines.first().text.contains("bigger", ignoreCase = true))
+    }
 }

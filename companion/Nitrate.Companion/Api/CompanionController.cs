@@ -61,6 +61,15 @@ public class CompanionController : ControllerBase
         features.Add("scripts");
         features.Add("channels");
         features.Add("partners");
+        if (Plugin.Instance?.Configuration.EnableDiary ?? true)
+        {
+            features.Add("diary");
+        }
+
+        if (Plugin.Instance?.Configuration.EnableLines ?? true)
+        {
+            features.Add("lines");
+        }
         if (Sso.SsoSettings.From(Plugin.Instance?.Configuration).Ready)
         {
             features.Add("sso");

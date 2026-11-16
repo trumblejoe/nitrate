@@ -62,6 +62,9 @@ fun SearchScreen(
     startWithVoice: Boolean = false,
     onOpen: (MediaItem) -> Unit,
     onPerson: (Person) -> Unit,
+    /** "Search what people say" (Companion plugin): lines said, played from just before. */
+    linesOn: Boolean = false,
+    onPlayLine: (dev.nitrate.core.lines.SpokenLine) -> Unit = {},
 ) {
     var query by remember { mutableStateOf(initialQuery) }
     var results by retained<SearchResults?>("search-results") { null }
@@ -99,6 +102,14 @@ fun SearchScreen(
         results = try { repository.search(q).also { resultsFor = q } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results }
         searching = false
     }
+    var lines by remember { mutableStateOf<List<dev.nitrate.core.lines.SpokenLine>>(emptyList()) }
+    LaunchedEffect(query, linesOn) {
+        lines = emptyList()
+        val q = query.trim()
+        if (!linesOn || q.length < dev.nitrate.core.lines.SpokenLines.MIN_QUERY) return@LaunchedEffect
+        delay(350)
+        lines = try { repository.searchLines(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyList() }
+    }
     LaunchedEffect(Unit) {
         if (startWithVoice && voiceAvailable) listen() else runCatching { field.requestFocus() }
     }
@@ -128,7 +139,7 @@ fun SearchScreen(
                         recent.take(6).forEach { r -> FilterChip(selected = false, onClick = { query = r }) { Text(r) } }
                     }
                     searching && results == null -> Text("Searching…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    results?.isEmpty == true -> Text("Nothing found for “${query.trim()}”.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    results?.isEmpty == true && lines.isEmpty() -> Text("Nothing found for “${query.trim()}”.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -154,10 +165,24 @@ fun SearchScreen(
                 }
             }
         }
+        // Lines said, first when the search reads like a quote.
+        val quoteFirst = dev.nitrate.core.lines.SpokenLines.looksLikeQuote(query)
+        fun saidIn() {
+            if (lines.isNotEmpty()) item(key = "lines") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Said in…", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = PagePadding))
+                    LazyRow(contentPadding = PaddingValues(horizontal = PagePadding), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        items(lines, key = { "${it.itemId}-${it.startMs}" }) { line -> SaidInCard(line) { scope.launch { history.add(query) }; onPlayLine(line) } }
+                    }
+                }
+            }
+        }
+        if (quoteFirst) saidIn()
         row("Movies", r.movies)
         row("Shows", r.shows)
         row("Episodes", r.episodes, wide = true)
         row("Collections", r.collections)
+        if (!quoteFirst) saidIn()
         if (r.people.isNotEmpty()) item(key = "people") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("People", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = PagePadding))
@@ -194,6 +219,22 @@ fun PersonScreen(repository: MediaServer, person: Person, onOpen: (MediaItem) ->
                     MediaCard(item = item, imageUrl = repository.imageUrl(item, ImageKind.PRIMARY, 360), width = 140.dp, aspectRatio = 2f / 3f, title = item.name, subtitle = item.productionYear?.toString(), onClick = { onOpen(item) })
                 }
             }
+        }
+    }
+}
+
+/** A line someone says (OK: play from just before it). */
+@Composable
+private fun SaidInCard(line: dev.nitrate.core.lines.SpokenLine, onPlay: () -> Unit) {
+    androidx.tv.material3.Card(onClick = onPlay, modifier = Modifier.width(420.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            line.before?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+            Text("“${line.text}”", style = MaterialTheme.typography.titleMedium, maxLines = 3)
+            line.after?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+            Text(
+                listOfNotNull(line.title, line.where, dev.nitrate.core.model.formatClock(line.startMs)).joinToString(" · "),
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp), maxLines = 1,
+            )
         }
     }
 }

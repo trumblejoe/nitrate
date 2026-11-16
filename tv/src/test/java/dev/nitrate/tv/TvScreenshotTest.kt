@@ -385,6 +385,14 @@ class TvScreenshotTest {
         }
     }
 
+    /** The watch diary on TV. */
+    @Test fun diary() = shoot("tv-diary") { c -> dev.nitrate.tv.ui.settings.DiaryScreen(c.server) }
+
+    /** Search finds what people say too. */
+    @Test fun saidIn() = shoot("tv-search-said-in") { c ->
+        dev.nitrate.tv.ui.search.SearchScreen(c.server, c.searchHistory, initialQuery = "need a bigger boat", onOpen = {}, onPerson = {}, linesOn = true)
+    }
+
     /** The ambient screensaver. */
     @Test fun ambient() = shoot("tv-ambient") { c ->
         dev.nitrate.tv.ui.ambient.AmbientScreen(

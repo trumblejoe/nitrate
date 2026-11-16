@@ -38,14 +38,15 @@ import dev.nitrate.core.plugins.PluginRegistry
 class PlaybackGate(
     private val registry: PluginRegistry,
     private val scope: CoroutineScope,
-    private val start: (item: MediaItem, fromStart: Boolean) -> Unit,
+    private val start: (item: MediaItem, fromStart: Boolean, startMs: Long?) -> Unit,
 ) {
     internal var pending by mutableStateOf<Pair<GuardDecision.Ask, CompletableDeferred<GuardAction>>?>(null)
         private set
     var checking by mutableStateOf(false)
         private set
 
-    fun play(item: MediaItem, fromStart: Boolean = false) {
+    /** Plays [item] (from the start, resuming, or from [startMs]) once the guards agree. */
+    fun play(item: MediaItem, fromStart: Boolean = false, startMs: Long? = null) {
         if (checking) return
         scope.launch {
             checking = true
@@ -59,16 +60,16 @@ class PlaybackGate(
                 checking = false
             }
             when (action) {
-                GuardAction.PlayAnyway -> start(item, fromStart)
+                GuardAction.PlayAnyway -> start(item, fromStart, startMs)
                 GuardAction.Cancel -> Unit
-                is GuardAction.PlayInstead -> start(action.item, false)
+                is GuardAction.PlayInstead -> start(action.item, false, null)
                 is GuardAction.MarkWatchedThenPlay -> {
                     action.itemIds.forEach { id -> runCatching { registry.host.server.setPlayed(id, true) } }
-                    start(item, fromStart)
+                    start(item, fromStart, startMs)
                 }
                 is GuardAction.RunThenPlay -> {
                     runCatching { action.run() }
-                    start(item, fromStart)
+                    start(item, fromStart, startMs)
                 }
             }
         }
@@ -80,7 +81,7 @@ class PlaybackGate(
 }
 
 @Composable
-fun rememberPlaybackGate(registry: PluginRegistry, start: (MediaItem, Boolean) -> Unit): PlaybackGate {
+fun rememberPlaybackGate(registry: PluginRegistry, start: (MediaItem, Boolean, Long?) -> Unit): PlaybackGate {
     val scope = rememberCoroutineScope()
     return remember(registry) { PlaybackGate(registry, scope, start) }
 }

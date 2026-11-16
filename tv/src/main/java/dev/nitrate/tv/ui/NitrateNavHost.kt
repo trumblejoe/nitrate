@@ -84,6 +84,7 @@ import kotlinx.serialization.Serializable
 @Serializable object DisplayProfilesRoute
 @Serializable object SpeedCheckRoute
 @Serializable object StatsRoute
+@Serializable object DiaryRoute
 @Serializable object ServerSettingsRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
@@ -141,9 +142,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     val account by container.account.collectAsState()
     // Every "play this item" goes through plugin guards first; queues (playlists) don't.
     // Resuming after a break: the "Last time" recap first, when one is due.
-    val gate = rememberPlaybackGate(container.plugins) { item, fromStart ->
+    val gate = rememberPlaybackGate(container.plugins) { item, fromStart, startMs ->
         scope.launch {
-            if (!fromStart && container.recapBefore(item) != null) nav.navigate(RecapRoute) else nav.navigate(PlayerRoute(item.id, fromStart))
+            if (startMs != null) nav.navigate(PlayerRoute(item.id, fromStart = false, startMs = startMs))
+            else if (!fromStart && container.recapBefore(item) != null) nav.navigate(RecapRoute) else nav.navigate(PlayerRoute(item.id, fromStart))
         }
     }
     // The TV screens of plugins that are switched on.
@@ -300,6 +302,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     dev.nitrate.tv.ui.settings.SettingsLink("Display", "What's shown about items, in this TV's display profile") { nav.navigate(DisplaySettingsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Display profile", "Which profile this TV uses; new, rename, import a radial menu") { nav.navigate(DisplayProfilesRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Your year", "What you've watched and listened to: top shows, genres and artists") { nav.navigate(StatsRoute) },
+                ) + (if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) listOf(
+                    dev.nitrate.tv.ui.settings.SettingsLink("Watch diary", "Every film and episode you finish, with your ratings and notes") { nav.navigate(DiaryRoute) },
+                ) else emptyList()) + listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Check for updates", "Nitrate ${container.updater.versionName}") { container.updater.check() },
                     dev.nitrate.tv.ui.settings.SettingsLink("Plugins", "Built-in extras, on or off") { nav.navigate(PluginsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Server speed check", "Is slowness the network, the server or this TV? Times it and shows you") { nav.navigate(SpeedCheckRoute) },
@@ -372,6 +377,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
         composable<SpeedCheckRoute> { dev.nitrate.tv.ui.settings.SpeedCheckScreen(container) }
         composable<StatsRoute> { dev.nitrate.tv.ui.settings.StatsScreen(container.server) }
+        composable<DiaryRoute> { dev.nitrate.tv.ui.settings.DiaryScreen(container.server) }
         composable<ServerSettingsRoute> { dev.nitrate.tv.ui.settings.ServerSettingsScreen(container) }
         composable<DisplayProfilesRoute> { dev.nitrate.tv.ui.settings.DisplayProfilesScreen(container) }
         composable<DeviceBackupRoute> { dev.nitrate.tv.ui.settings.DeviceBackupScreen(container.backups) }
@@ -409,6 +415,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 startWithVoice = route.voice,
                 onOpen = nav::openItem,
                 onPerson = { p -> nav.navigate(PersonRoute(p.id, p.name)) },
+                linesOn = companion?.features?.contains(dev.nitrate.core.lines.SpokenLines.FEATURE) == true,
+                onPlayLine = { line ->
+                    scope.launch {
+                        runCatching { container.server.getItem(line.itemId) }.getOrNull()?.let { gate.play(it, startMs = dev.nitrate.core.lines.SpokenLines.startAt(line)) }
+                    }
+                },
             )
         }
         composable<PersonRoute> { entry ->

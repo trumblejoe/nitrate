@@ -573,6 +573,10 @@ class DownloadManager(
                     edit(r.key) { it.copy(item = it.item.copy(user = it.item.user.copy(played = remote.played, positionMs = remote.positionMs)), pendingSync = false) }
                 } else {
                     server.saveUserData(r.itemId, r.item.user.positionMs, r.item.user.played, localAt)
+                    // Finished offline: into the watch diary too (the server only records playback it saw).
+                    if (r.item.user.played && r.item.user.positionMs == 0L && localAt > 0) runCatching {
+                        if (server.companion()?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) server.logWatch(r.itemId, localAt)
+                    }
                     edit(r.key) { it.copy(pendingSync = false) }
                 }
                 synced++

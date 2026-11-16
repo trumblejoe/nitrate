@@ -46,7 +46,16 @@ private val MONTHS = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N
 /** "Your year": what you watched and listened to, from your server's record. */
 @Composable
 fun StatsScreen(actions: AppActions) {
-    val history by produceState<Result<List<MediaItem>>?>(null) { value = runCatching { actions.server.watchHistory() } }
+    // With the watch diary (Companion plugin), every watch counts on its own date.
+    var fromDiary by remember { mutableStateOf<Long?>(null) }
+    val history by produceState<Result<List<MediaItem>>?>(null) {
+        value = runCatching {
+            val record = actions.server.watchHistory()
+            val diary = if (actions.server.companion()?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) runCatching { actions.server.diary() }.getOrNull() else null
+            fromDiary = diary?.minOfOrNull { it.watchedAtMs }
+            diary?.takeIf { it.isNotEmpty() }?.let { dev.nitrate.core.diary.Diary.asHistory(it, record) } ?: record
+        }
+    }
     val offset = remember { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong() }
     val list = history?.getOrNull()
     val years = remember(list) { list?.let { WatchStatsBuilder.years(it, offset) }.orEmpty() }
@@ -72,7 +81,8 @@ fun StatsScreen(actions: AppActions) {
                 }
                 StatsBody(stats)
                 Text(
-                    "From your server's record of what you finished. It keeps only the last time you watched each title, so a title counts in that year; time counts every play.",
+                    fromDiary?.let { "From your watch diary, which counts every watch on its own date (since ${java.text.DateFormat.getDateInstance().format(java.util.Date(it))}; before that, your server's record of the last time you watched each title)." }
+                        ?: "From your server's record of what you finished. It keeps only the last time you watched each title, so a title counts in that year; time counts every play.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

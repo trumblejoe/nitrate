@@ -25,6 +25,12 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IScriptStorage>(sp =>
             new FileScriptStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "scripts")));
         serviceCollection.AddSingleton<ScriptHub>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Diary.DiaryHub(
+            new Nitrate.Companion.Diary.FileDiaryStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "diary")),
+            sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddHostedService<Nitrate.Companion.Diary.DiaryRecorder>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Lines.LineIndex(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "lines.db")));
         serviceCollection.AddSingleton(sp => new ChannelHub(
             new FileChannelStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "channels")),
             new JellyfinChannelLibrary(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>()),

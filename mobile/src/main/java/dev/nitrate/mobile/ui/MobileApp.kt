@@ -60,6 +60,7 @@ import kotlinx.serialization.Serializable
 @Serializable object OfflineRoute
 @Serializable object MainRoute
 @Serializable object StatsRoute
+@Serializable object DiaryRoute
 @Serializable data class LibraryRoute(val libraryId: String)
 /** [artKey] names the card it was opened from, so its artwork can morph into the page. */
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null)
@@ -102,8 +103,13 @@ class AppActions(
     val nav: NavController,
     /** Outlives screens: for work started from a tap, like finding a show's next episode. */
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    /** Plays from a moment (a line found by "search what people say"), with plugin checks. */
+    private val playAt: ((MediaItem, Long) -> Unit)? = null,
     val play: (MediaItem, Boolean) -> Unit,
 ) {
+    /** Plays [item] from [startMs] (falls back to resuming). */
+    fun playFrom(item: MediaItem, startMs: Long) = playAt?.invoke(item, startMs) ?: play(item, false)
+
     val server get() = container.server
 
     /** Where tapping an item goes. Seasons open their series with that season selected. */
@@ -182,8 +188,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             if (recap != null) nav.navigate(RecapRoute) else nav.navigate(playerRoute(target.id, fromStart))
         }
 
-        val actions = remember(nav) {
-            AppActions(container, nav, appScope) { item, fromStart ->
+        // A plugin's checks, then play: from the start, resuming, or from [startMs].
+        fun guarded(item: dev.nitrate.core.model.MediaItem, fromStart: Boolean, startMs: Long?) {
                 scope.launch {
                     val action = container.plugins.checkBeforePlay(item) { ask ->
                         val answer = CompletableDeferred<GuardAction>()
@@ -191,7 +197,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                         answer.await().also { pending = null }
                     }
                     when (action) {
-                        GuardAction.PlayAnyway -> go(item, fromStart)
+                        GuardAction.PlayAnyway -> if (startMs != null) nav.navigate(playerRoute(item.id, false).copy(startMs = startMs)) else go(item, fromStart)
                         GuardAction.Cancel -> Unit
                         is GuardAction.PlayInstead -> nav.navigate(playerRoute(action.item.id, false))
                         is GuardAction.MarkWatchedThenPlay -> {
@@ -200,11 +206,14 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                         }
                         is GuardAction.RunThenPlay -> {
                             runCatching { action.run() }
-                            go(item, fromStart)
+                            if (startMs != null) nav.navigate(playerRoute(item.id, false).copy(startMs = startMs)) else go(item, fromStart)
                         }
                     }
                 }
-            }
+        }
+
+        val actions = remember(nav) {
+            AppActions(container, nav, appScope, playAt = { item, ms -> guarded(item, false, ms) }) { item, fromStart -> guarded(item, fromStart, null) }
         }
 
         // The user is known only after sign-in, so their display choices (accent, true black) apply here.
@@ -282,6 +291,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<LicensesRoute> { LicensesScreen() }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
             screen<StatsRoute> { StatsScreen(actions) }
+            screen<DiaryRoute> { DiaryScreen(actions) }
             screen<CustomPageRoute> { entry ->
                 val route = entry.toRoute<CustomPageRoute>()
                 CustomPageScreen(actions, route.pageId, route.editNow)

@@ -301,6 +301,12 @@ class ScreenshotTest {
         )
     }
 
+    /** The watch diary. */
+    @Test fun diary() = shoot("phone-diary") { actions -> dev.nitrate.mobile.ui.DiaryScreen(actions) }
+
+    /** Search finds what people say too. */
+    @Test fun saidIn() = shoot("phone-search-said-in", setup = { c -> c.refreshCompanionForTests() }) { actions -> dev.nitrate.mobile.ui.SearchScreen(actions, initialQuery = "need a bigger boat", autoFocus = false) }
+
     /** Easy mode: bigger everything, and only Home, Search, Library and Settings in the navigation. */
     @Test fun easyMode() = shoot("phone-easy-mode", setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(easyMode = true)) }) { actions ->
         dev.nitrate.mobile.ui.MainScreen(actions, startOnLibrary = true, onSignedOut = {})
