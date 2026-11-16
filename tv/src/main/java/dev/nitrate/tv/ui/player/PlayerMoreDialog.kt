@@ -100,7 +100,7 @@ fun PlayerMoreDialog(
                     scope.launch { settings.update { it.copy(nightMode = !night) } }
                 },
                 headlineContent = { Text("Night mode") },
-                supportingContent = { Text("Quieter loud parts, clearer dialogue (when this TV decodes the audio, not with passthrough)") },
+                supportingContent = { Text("Quieter loud parts, clearer dialogue (sound for a receiver is decoded on the TV while on)") },
                 trailingContent = { Switch(checked = night, onCheckedChange = null) },
             )
             Text("Subtitle timing" + if (offset != 0L) " · ${if (offset > 0) "+" else ""}${offset / 1000.0}s" else "", style = MaterialTheme.typography.titleSmall)

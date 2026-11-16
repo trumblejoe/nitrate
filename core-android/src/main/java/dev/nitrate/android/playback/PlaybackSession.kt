@@ -210,6 +210,16 @@ class PlaybackSession(
                 // Audio sync: the player follows the audio clock, so moving the clock moves the
                 // picture against the sound (decoded or passed through to a receiver alike).
                 return object : androidx.media3.exoplayer.audio.ForwardingAudioSink(sink) {
+                    // Night mode only works on decoded sound: while it's on, encoded formats this
+                    // device can decode aren't passed through, so the player decodes them instead.
+                    override fun getFormatSupport(format: androidx.media3.common.Format): Int {
+                        if (nightMode.enabled && NightModeDecoding.decodeInstead(format)) return androidx.media3.exoplayer.audio.AudioSink.SINK_FORMAT_UNSUPPORTED
+                        return super.getFormatSupport(format)
+                    }
+
+                    override fun supportsFormat(format: androidx.media3.common.Format): Boolean =
+                        getFormatSupport(format) != androidx.media3.exoplayer.audio.AudioSink.SINK_FORMAT_UNSUPPORTED
+
                     override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
                         val position = super.getCurrentPositionUs(sourceEnded)
                         if (position == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET) return position
@@ -756,8 +766,18 @@ class PlaybackSession(
     }
 
     fun setNightMode(on: Boolean) {
+        val changed = nightMode.enabled != on
         _nightModeOn.value = on
         nightMode.enabled = on
+        // Sound passed through to a receiver can't be evened out: switching the audio off and on
+        // makes the player choose again, decoding it here while night mode is on (and passing it
+        // through again once it's off).
+        if (changed && exo.playbackState != Player.STATE_IDLE && exo.audioFormat?.sampleMimeType?.let { it != MimeTypes.AUDIO_RAW && NightModeDecoding.decodeInstead(exo.audioFormat!!) } == true) {
+            log("Night mode ${if (on) "on: decoding the sound here" else "off: passing the sound through again"}")
+            val params = exo.trackSelectionParameters
+            exo.trackSelectionParameters = params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+            exo.trackSelectionParameters = params
+        }
     }
 
     /**
@@ -924,5 +944,21 @@ class PlaybackSession(
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
             PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
         )
+    }
+}
+
+/** Which encoded audio night mode decodes on the device instead of passing it through. */
+internal object NightModeDecoding {
+    private val known = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /** An encoded (not PCM) format this device can decode itself, with its own decoder or FFmpeg. */
+    fun decodeInstead(format: androidx.media3.common.Format): Boolean {
+        val mime = format.sampleMimeType ?: return false
+        if (mime == MimeTypes.AUDIO_RAW || !MimeTypes.isAudio(mime)) return false
+        return known.getOrPut(mime) {
+            val device = runCatching { androidx.media3.exoplayer.mediacodec.MediaCodecUtil.getDecoderInfos(mime, false, false).isNotEmpty() }.getOrDefault(false)
+            val ffmpeg = runCatching { androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable() && androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat(mime) }.getOrDefault(false)
+            device || ffmpeg
+        }
     }
 }

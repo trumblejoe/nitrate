@@ -139,7 +139,7 @@ fun PlaybackSettingsScreen(
                 "Video and sound go to the TV's hardware together. Some TVs need it for smooth playback or sync; others stutter with it. Takes effect the next time something plays.",
             ) { v -> update { it.copy(tunneling = v) } }
         }
-        item { ToggleRow("Night mode", settings.nightMode, "Quieter loud parts and clearer dialogue when the TV decodes the audio (not with passthrough)") { v -> update { it.copy(nightMode = v) } } }
+        item { ToggleRow("Night mode", settings.nightMode, "Quieter loud parts and clearer dialogue. Sound normally sent untouched to a receiver is decoded on the TV while it's on (the receiver gets plain sound, no Atmos)") { v -> update { it.copy(nightMode = v) } } }
 
         section("Subtitles", "How subtitles look on this TV.")
         item {
