@@ -197,6 +197,9 @@ internal data class PlaybackStartDto(
     val playMethod: String,
     val repeatMode: String = "RepeatNone",
     val playbackOrder: String = "Default",
+    /** What's playing, so the dashboard shows it and (with Remember selections on) the server keeps it for the title. -1: no subtitles. */
+    val audioStreamIndex: Int? = null,
+    val subtitleStreamIndex: Int? = null,
 )
 
 @Serializable

@@ -669,6 +669,9 @@ class PlaybackSession(
         if (clientSide || localProgress != null) {
             _plan.value = updated
             applySelection(updated)
+            // Tell the server straight away (same session): the dashboard shows it, and with
+            // Remember selections on, the server keeps it for this title.
+            if (!quiet && localProgress == null) scope.launch { server.reportProgress(updated, exo.currentPosition, isPaused = !exo.isPlaying) }
         } else {
             // The current stream plays on until the new one is ready (start() then stops it on the server).
             val at = exo.currentPosition

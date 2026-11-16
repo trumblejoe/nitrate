@@ -21,7 +21,9 @@ class ServerSettingsTest {
         assertEquals("Japanese (jpn)", value("Preferred audio language").value)
         assertEquals("Smart", value("Subtitle mode").value)
         assertEquals(SettingReach.APPLIES, value("Subtitle mode").reach)
-        assertEquals(SettingReach.JELLYFIN_APPS, value("Remember audio selections").reach)
+        // The server keeps the tracks Nitrate reports for each title, so it applies here too.
+        assertEquals(SettingReach.APPLIES, value("Remember audio selections").reach)
+        assertEquals(SettingReach.JELLYFIN_APPS, value("Play the next episode automatically").reach)
         assertEquals("No", value("Video can be converted").value)
         assertEquals("8 Mbps", value("Bitrate limit away from home").value)
         // Library ids are named.

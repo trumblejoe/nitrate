@@ -41,10 +41,8 @@ internal object JellyfinServerSettings {
                 ServerSetting("Preferred subtitle language", language(config.text("SubtitleLanguagePreference")), APPLIES,
                     "Which subtitles start, by the subtitle mode below."),
                 ServerSetting("Subtitle mode", subtitleModeLabel(subtitleMode), APPLIES, subtitleModeNote(subtitleMode)),
-                ServerSetting("Remember audio selections", onOff(config.flag("RememberAudioSelections")), JELLYFIN_APPS,
-                    "Nitrate remembers your picks itself, per show or film, on all your devices."),
-                ServerSetting("Remember subtitle selections", onOff(config.flag("RememberSubtitleSelections")), JELLYFIN_APPS,
-                    "Nitrate remembers your picks itself, per show or film, on all your devices."),
+                ServerSetting("Remember audio selections", onOff(config.flag("RememberAudioSelections")), APPLIES, REMEMBER_NOTE),
+                ServerSetting("Remember subtitle selections", onOff(config.flag("RememberSubtitleSelections")), APPLIES, REMEMBER_NOTE),
             ),
         )
         val bitrate = policy.text("RemoteClientBitrateLimit")?.toLongOrNull()
@@ -106,6 +104,10 @@ internal object JellyfinServerSettings {
         }
         return ServerSettings(listOfNotNull(languages, playback, home, account, server))
     }
+
+    /** What Jellyfin's remembering does, next to Nitrate's own. */
+    private const val REMEMBER_NOTE = "The server keeps your last pick for each title (by track number) and offers it next time, in any app. " +
+        "Nitrate's own picks come first: per show, so the next episode follows, matched by language and track name."
 
     private fun subtitleModeLabel(mode: String?) = when (mode) {
         "Default" -> "Default"

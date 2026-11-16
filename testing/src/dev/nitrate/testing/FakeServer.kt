@@ -361,7 +361,7 @@ class FakeServer : MediaServer {
                 listOf(
                     dev.nitrate.core.account.ServerSetting("Preferred audio language", "Japanese (jpn)", dev.nitrate.core.account.SettingReach.APPLIES, "The audio a title starts with when you haven't picked one for that show or film."),
                     dev.nitrate.core.account.ServerSetting("Subtitle mode", "Smart", dev.nitrate.core.account.SettingReach.APPLIES, "Subtitles in your preferred language start when the audio isn't in your preferred audio language."),
-                    dev.nitrate.core.account.ServerSetting("Remember audio selections", "On", dev.nitrate.core.account.SettingReach.JELLYFIN_APPS, "Nitrate remembers your picks itself, per show or film, on all your devices."),
+                    dev.nitrate.core.account.ServerSetting("Play the next episode automatically", "On", dev.nitrate.core.account.SettingReach.JELLYFIN_APPS, "Nitrate's Up Next card works either way."),
                 ),
             ),
             dev.nitrate.core.account.ServerSettingsGroup(

@@ -641,6 +641,32 @@ class JellyfinLiveTest {
     }
 
     @Test
+    fun `the tracks played are reported and the server keeps them for the title`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-tracks", "Tracks"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        // A title with more than one audio track and a subtitle.
+        val title = client.recentEpisodes(100).firstOrNull { e ->
+            val s = client.mediaSource(e.id).streams
+            s.count { it.kind == dev.nitrate.core.model.StreamKind.AUDIO } > 1 && s.any { it.kind == dev.nitrate.core.model.StreamKind.SUBTITLE }
+        }
+        assumeTrue("No episode with several tracks on this server", title != null)
+        val streams = client.mediaSource(title!!.id).streams
+        val before = client.resolvePlayback(title.id, false, 0, false, null, null, null)
+        val audio = streams.first { it.kind == dev.nitrate.core.model.StreamKind.AUDIO && it.index != before.audioIndex }.index
+        val subtitle = streams.first { it.kind == dev.nitrate.core.model.StreamKind.SUBTITLE && it.index != before.subtitleIndex }.index
+        val plan = client.resolvePlayback(title.id, false, 0, false, audio, subtitle, null)
+        client.reportStart(plan, 0)
+        client.reportProgress(plan, 5_000, isPaused = false)
+        client.reportStopped(plan, 5_000)
+        kotlinx.coroutines.delay(1_500)
+        // With Remember selections on (the test account has it), the server now offers them for this title.
+        val after = client.resolvePlayback(title.id, false, 0, false, null, null, null)
+        println("Before ${before.audioIndex}/${before.subtitleIndex}, played $audio/$subtitle, after ${after.audioIndex}/${after.subtitleIndex}")
+        assertEquals(audio to subtitle, after.audioIndex to after.subtitleIndex)
+    }
+
+    @Test
     fun `browses a library with filters and A to Z`() = runBlocking {
         assumeTrue("Set JELLYFIN_URL to run", url != null)
         val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-browse", "Browse"), MemorySessionStorage(), { caps() }, settings)

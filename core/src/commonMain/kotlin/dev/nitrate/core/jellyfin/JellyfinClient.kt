@@ -1650,7 +1650,10 @@ class JellyfinClient(
             ?.split(',')?.filter(String::isNotBlank).orEmpty()
 
     private fun startInfo(plan: PlaybackPlan, positionMs: Long, isPaused: Boolean) =
-        PlaybackStartDto(plan.itemId, plan.playSessionId, plan.mediaSourceId, positionMs.msToTicks(), isPaused = isPaused, playMethod = plan.method.wire())
+        PlaybackStartDto(
+            plan.itemId, plan.playSessionId, plan.mediaSourceId, positionMs.msToTicks(), isPaused = isPaused, playMethod = plan.method.wire(),
+            audioStreamIndex = plan.audioIndex, subtitleStreamIndex = plan.subtitleIndex,
+        )
 
     override suspend fun reportStart(plan: PlaybackPlan, positionMs: Long) {
         runCatching { post<PlaybackStartDto>("Sessions", "Playing", body = startInfo(plan, positionMs, false)) }
