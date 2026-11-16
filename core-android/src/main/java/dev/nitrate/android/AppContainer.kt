@@ -110,7 +110,14 @@ class AppContainer(
             root = Path(downloadDir.path),
             scheduler = WorkManagerScheduler(appContext),
             trackMemory = trackMemory,
+            describedAudio = ::prefersDescribedAudio,
         )
+    }
+
+    /** The signed-in user's audio-description preference (a display setting, so it follows them). */
+    suspend fun prefersDescribedAudio(): Boolean {
+        val user = server.userId ?: return false
+        return runCatching { displaySettings.prefs(user).first().describedAudio }.getOrDefault(false)
     }
 
     val searchHistory by lazy { SearchHistoryStore(appContext) }
@@ -308,7 +315,7 @@ class AppContainer(
     suspend fun trackSetup(item: MediaItem): dev.nitrate.core.playback.TrackSetup {
         val source = server.mediaSource(item.id)
         val choice = runCatching { trackMemory.get(dev.nitrate.core.playback.TrackSelection.memoryKey(item)) }.getOrNull()
-        val (audio, subtitle) = dev.nitrate.core.playback.TrackSelection.initial(source, choice)
+        val (audio, subtitle) = dev.nitrate.core.playback.TrackSelection.initial(source, choice, prefersDescribedAudio())
         return dev.nitrate.core.playback.TrackSetup(source, audio, subtitle)
     }
 

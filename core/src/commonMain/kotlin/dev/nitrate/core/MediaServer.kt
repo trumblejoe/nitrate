@@ -250,10 +250,19 @@ interface MediaServer {
     /** Tells the server this app can be controlled (play, pause, seek, messages) from elsewhere. */
     suspend fun reportCapabilities(): Unit = Unit
 
-    /** Starts [itemIds] on another client, from [startMs]. */
-    suspend fun playOn(sessionId: String, itemIds: List<String>, startMs: Long): Unit = unsupported()
+    /** Starts [itemIds] on another client, from [startMs], with these tracks and version when given. */
+    suspend fun playOn(
+        sessionId: String, itemIds: List<String>, startMs: Long,
+        audioIndex: Int? = null, subtitleIndex: Int? = null, mediaSourceId: String? = null,
+    ): Unit = unsupported()
     suspend fun seekSession(sessionId: String, positionMs: Long): Unit = unsupported()
     suspend fun sendGeneralCommand(sessionId: String, command: GeneralCommand): Unit = unsupported()
+
+    /** The signed-in user's sessions on other devices that can be controlled from here (any account type). */
+    suspend fun controllableSessions(): List<ServerSession> = unsupported()
+
+    /** Switches the audio or subtitles (-1: off) playing on another device. */
+    suspend fun setSessionTrack(sessionId: String, kind: dev.nitrate.core.model.StreamKind, index: Int): Unit = unsupported()
 
     /** This app's device id on the server, to leave it out of "play on" lists. */
     val deviceId: String? get() = null
@@ -442,6 +451,16 @@ interface MediaServer {
 
     /** A collection's (box set's) items. */
     suspend fun collectionItems(collectionId: String): List<MediaItem> = unsupported()
+
+    /** The collections (box sets) [itemId] is in. */
+    suspend fun collectionsOf(itemId: String): List<MediaItem> = emptyList()
+
+    /** The film after [current] in its saga ("Next in collection"), if any. */
+    suspend fun nextInCollection(current: MediaItem): MediaItem? {
+        if (current.kind != dev.nitrate.core.model.ItemKind.MOVIE) return null
+        val sagas = collectionsOf(current.id).take(5).map { collectionItems(it.id) }
+        return dev.nitrate.core.playback.NextInCollection.next(current, sagas)
+    }
 
     /** Genres in a library (or all libraries), for building rows. */
     suspend fun genres(libraryId: String?): List<String> = unsupported()

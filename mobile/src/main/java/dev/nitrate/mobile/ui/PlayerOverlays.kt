@@ -144,12 +144,14 @@ fun BoxScope.SkipButton(segment: MediaSegment?, onSkip: (MediaSegment) -> Unit) 
 
 /**
  * The next episode's card with a countdown ring; plays it when the ring completes.
- * [seconds] counts down from when the card appears.
+ * [seconds] counts down from when the card appears; null (the next film in a collection) waits
+ * for "Play now", since a film can have scenes during its credits.
  */
 @Composable
-fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int, onPlay: () -> Unit, onHide: () -> Unit) {
-    var left by androidx.compose.runtime.remember(next.id) { mutableIntStateOf(seconds) }
+fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit) {
+    var left by androidx.compose.runtime.remember(next.id) { mutableIntStateOf(seconds ?: 0) }
     LaunchedEffect(next.id) {
+        if (seconds == null) return@LaunchedEffect
         while (left > 0) {
             delay(1_000)
             left--
@@ -170,13 +172,13 @@ fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int, onPl
                 Canvas(Modifier.size(46.dp)) {
                     val stroke = 4.dp.toPx()
                     drawCircle(Color.White.copy(alpha = 0.25f), style = Stroke(stroke))
-                    drawArc(accent, -90f, 360f * left / seconds, false, style = Stroke(stroke, cap = StrokeCap.Round))
+                    if (seconds != null) drawArc(accent, -90f, 360f * left / seconds, false, style = Stroke(stroke, cap = StrokeCap.Round))
                 }
                 Icon(Icons.Default.PlayArrow, "Play now", tint = Color.White)
             }
             Column(Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("UP NEXT · ${left}s", color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Text(next.episodeLabel ?: next.name, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(if (seconds == null) "NEXT IN THE COLLECTION" else "UP NEXT · ${left}s", color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(next.episodeLabel ?: (next.name + (next.productionYear?.let { " ($it)" } ?: "")), color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                     Text("Play now", color = contentOn(accent), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
                         modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(accent).pressable(onPlay).padding(horizontal = 12.dp, vertical = 6.dp))

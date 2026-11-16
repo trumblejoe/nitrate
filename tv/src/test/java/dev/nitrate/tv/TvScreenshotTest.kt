@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import dev.nitrate.core.model.ItemKind
+import dev.nitrate.core.model.MediaItem
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -356,6 +358,20 @@ class TvScreenshotTest {
 
     @Test fun displaySettings() = shoot("tv-display-settings", { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(criticRating = false, hideSpoilers = true)) }) { c ->
         DisplaySettingsScreen(c)
+    }
+
+    /** Up Next on TV: the next episode with its countdown, and the next film in a collection without. */
+    @Test fun upNext() = shoot("tv-up-next") { c ->
+        androidx.compose.foundation.layout.Column(
+            Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black).padding(48.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(24.dp),
+        ) {
+            dev.nitrate.tv.ui.player.UpNextCard(
+                MediaItem("s2e5", "Episode title 5", ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 2, indexNumber = 5),
+                c.server, seconds = 12, onPlay = {}, onHide = {},
+            )
+            dev.nitrate.tv.ui.player.UpNextCard(MediaItem("m3", "Gate Weave", ItemKind.MOVIE, productionYear = 2024), c.server, seconds = null, onPlay = {}, onHide = {})
+        }
     }
 
     @Test fun playerMore() = shoot("tv-player-more") { c ->

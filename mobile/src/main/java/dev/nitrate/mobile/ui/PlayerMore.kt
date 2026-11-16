@@ -210,9 +210,7 @@ private fun SubtitleSearch(actions: AppActions, session: PlaybackSession, onDone
 private fun PlayOn(actions: AppActions, session: PlaybackSession, onPlayed: () -> Unit) {
     val item by session.item.collectAsState()
     val scope = rememberCoroutineScope()
-    val targets by produceState<Result<List<ServerSession>>?>(null) {
-        value = runCatching { actions.server.sessions().filter { it.supportsMediaControl && it.deviceId != actions.server.deviceId } }
-    }
+    val targets = rememberRemoteDevices(actions)
     val list = targets?.getOrNull()
     when {
         targets == null -> CircularProgressIndicator()
@@ -222,8 +220,11 @@ private fun PlayOn(actions: AppActions, session: PlaybackSession, onPlayed: () -
                 MenuRow(t.deviceName ?: t.client ?: "Device", listOfNotNull(t.userName, t.client).joinToString(" · ")) {
                     val id = item?.id ?: return@MenuRow
                     val at = session.player.currentPosition
+                    // Carries on there with the same audio, subtitles and version as here.
+                    val plan = session.plan.value
                     scope.launch {
-                        runCatching { actions.server.playOn(t.id, listOf(id), at) }.onSuccess { onPlayed() }
+                        runCatching { actions.server.playOn(t.id, listOf(id), at, plan?.audioIndex, plan?.subtitleIndex, plan?.mediaSourceId) }
+                            .onSuccess { onPlayed(); actions.nav.navigate(RemoteRoute(t.id)) }
                     }
                 }
             }

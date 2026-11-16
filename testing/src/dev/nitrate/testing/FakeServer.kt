@@ -217,6 +217,13 @@ class FakeServer : MediaServer {
         dev.nitrate.core.admin.ServerSession("s1", "Joe", "Nitrate TV", "Living room TV", "d1", films[0], 2_100_000, false, "DirectPlay", "192.168.1.30", null, true, true),
         dev.nitrate.core.admin.ServerSession("s2", "Sam", "Jellyfin Web", "Firefox", "d2", null, null, false, null, "192.168.1.44", null, true, false),
     )
+    /** The user's own controllable devices: the living-room TV, playing a film. */
+    override suspend fun controllableSessions() = listOf(
+        dev.nitrate.core.admin.ServerSession("s1", "Joe", "Nitrate TV", "Living room TV", "d1", films[0], 2_100_000, false, "DirectPlay", "192.168.1.30", null, true, true, audioIndex = 1, subtitleIndex = -1, volume = 60),
+        dev.nitrate.core.admin.ServerSession("s3", "Joe", "Nitrate TV", "Bedroom TV", "d3", null, null, false, null, "192.168.1.31", null, true, true),
+    )
+    override val deviceId: String? get() = "fake-phone"
+
     /** What [recentEpisodes] returns; tests add to it. */
     var recent: List<MediaItem> = emptyList()
     override suspend fun recentEpisodes(limit: Int) = recent

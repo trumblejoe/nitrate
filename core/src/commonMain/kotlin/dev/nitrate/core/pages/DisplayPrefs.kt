@@ -34,6 +34,11 @@ data class DisplayPrefs(
     val hideSpoilers: Boolean = false,
     /** Theme music on details pages; null: the device's default (on for TV, off for phones). */
     val themeMusic: Boolean? = null,
+    /**
+     * Start with the audio-described track (a narrator describing what's on screen) when a title
+     * has one in its language; off: avoid it when it would otherwise start. A pick for a show wins.
+     */
+    val describedAudio: Boolean = false,
     /** "Last time" recap before resuming after this many days away; 0: never. */
     val recapAfterDays: Int = 14,
     /** The same for playlists marked in story order, set separately; 0: never. */

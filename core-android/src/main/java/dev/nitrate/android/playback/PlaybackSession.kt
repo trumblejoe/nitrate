@@ -73,6 +73,8 @@ class PlaybackSession(
     private val onEnded: () -> Unit,
     /** Remembers audio and subtitle languages per show (null: don't). */
     private val trackMemory: TrackMemoryStore? = null,
+    /** The user's audio-description preference (DisplayPrefs.describedAudio), read when each title starts. */
+    private val describedAudio: suspend () -> Boolean = { false },
     /** What this device reports it can play (probed once per app run). */
     private val capabilities: () -> dev.nitrate.core.playback.DeviceCapabilities = { DeviceProbe.cached(context) },
 ) {
@@ -490,7 +492,17 @@ class PlaybackSession(
     /** The rest of a title split across several files, played on when each part ends. */
     private var remainingParts: List<MediaItem> = emptyList()
 
-    fun load(itemId: String, fromStart: Boolean, startMs: Long? = null) = load(itemId, fromStart, startMs, nextPart = false)
+    /**
+     * Plays [itemId]. [audioIndex]/[subtitleIndex] (-1: subtitles off) are picks made elsewhere, e.g.
+     * on a phone that sent this here; without them the show's remembered tracks apply.
+     */
+    fun load(itemId: String, fromStart: Boolean, startMs: Long? = null, audioIndex: Int? = null, subtitleIndex: Int? = null) {
+        requestedTracks = (audioIndex to subtitleIndex).takeIf { audioIndex != null || subtitleIndex != null }
+        load(itemId, fromStart, startMs, nextPart = false)
+    }
+
+    /** Tracks asked for by whoever started this (another device), used once. */
+    private var requestedTracks: Pair<Int?, Int?>? = null
 
     /** A recap clip: nothing is reported to the server (watch history and resume points stay as they were). */
     private var quiet = false
@@ -535,7 +547,11 @@ class PlaybackSession(
             runCatching { server.getItem(itemId) }
                 .onSuccess {
                     _item.value = it
-                    start(startMs ?: if (fromStart) 0L else it.user.positionMs, forceTranscode = false, useMemory = true)
+                    val asked = requestedTracks.also { requestedTracks = null }
+                    start(
+                        startMs ?: if (fromStart) 0L else it.user.positionMs, forceTranscode = false,
+                        audioIndex = asked?.first, subtitleIndex = asked?.second, useMemory = asked == null,
+                    )
                     loadExtras(it.id)
                     if (!nextPart && (it.partCount ?: 1) > 1) {
                         remainingParts = runCatching { server.additionalParts(it.id) }.getOrDefault(emptyList())
@@ -557,8 +573,15 @@ class PlaybackSession(
     fun loadLocal(item: MediaItem, plan: PlaybackPlan, startMs: Long, onProgress: suspend (positionMs: Long, durationMs: Long, ended: Boolean) -> Unit) {
         localProgress = onProgress
         _item.value = item
-        // The show's remembered languages win over the download's defaults, as when streaming.
-        scope.launch { play(withRememberedLanguages(item, plan), startMs, item.name) }
+        // The show's remembered languages win over the download's defaults, as when streaming; the
+        // audio-description preference applies when nothing was picked.
+        scope.launch {
+            val remembered = withRememberedLanguages(item, plan)
+            val want = runCatching { describedAudio() }.getOrDefault(false)
+            val picked = remembered.audioIndex != plan.audioIndex
+            val audio = if (picked) remembered.audioIndex else dev.nitrate.core.playback.AudioDescription.apply(remembered.source, remembered.audioIndex, want)
+            play(remembered.copy(audioIndex = audio), startMs, item.name)
+        }
         // Skip markers still work offline if the server answers; thumbnails need it anyway.
         loadExtras(item.id, thumbnails = false)
         progressJob?.cancel()
@@ -686,12 +709,21 @@ class PlaybackSession(
         // What the user picked for this show (matched to this episode's streams) or this title.
         var audio = audioIndex
         var subtitle = subtitleIndex
-        if (useMemory && trackMemory != null && audio == null && subtitle == null) {
-            trackMemory.get(dev.nitrate.core.playback.TrackSelection.memoryKey(current))?.let { choice ->
-                runCatching { server.mediaSource(current.id) }.getOrNull()?.let { src ->
+        if (useMemory && audio == null && subtitle == null) {
+            val choice = runCatching { trackMemory?.get(dev.nitrate.core.playback.TrackSelection.memoryKey(current)) }.getOrNull()
+            val wantDescribed = runCatching { describedAudio() }.getOrDefault(false)
+            // The file's tracks are only needed for a remembered pick or the audio-description choice
+            // (which also steers away from a described track the server would start with).
+            runCatching { server.mediaSource(current.id) }.getOrNull()?.let { src ->
+                if (choice != null) {
                     val (a, sub) = TrackMemory.pick(src.streams, choice)
                     audio = a
                     subtitle = sub
+                }
+                if (audio == null) {
+                    val serverPick = src.defaultAudioIndex.takeIf { src.defaultsKnown }
+                    dev.nitrate.core.playback.AudioDescription.apply(src, serverPick, wantDescribed)
+                        ?.takeIf { it != serverPick }?.let { audio = it; log("Audio description ${if (wantDescribed) "on" else "off"}: audio #$it") }
                 }
             }
         }

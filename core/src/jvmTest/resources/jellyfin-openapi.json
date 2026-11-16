@@ -1965,6 +1965,74 @@
     ],
     "type": "string"
    },
+   "GeneralCommand": {
+    "additionalProperties": false,
+    "properties": {
+     "Arguments": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object"
+     },
+     "ControllingUserId": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "Name": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/GeneralCommandType"
+       }
+      ],
+      "enum": [
+       "MoveUp",
+       "MoveDown",
+       "MoveLeft",
+       "MoveRight",
+       "PageUp",
+       "PageDown",
+       "PreviousLetter",
+       "NextLetter",
+       "ToggleOsd",
+       "ToggleContextMenu",
+       "Select",
+       "Back",
+       "TakeScreenshot",
+       "SendKey",
+       "SendString",
+       "GoHome",
+       "GoToSettings",
+       "VolumeUp",
+       "VolumeDown",
+       "Mute",
+       "Unmute",
+       "ToggleMute",
+       "SetVolume",
+       "SetAudioStreamIndex",
+       "SetSubtitleStreamIndex",
+       "ToggleFullscreen",
+       "DisplayContent",
+       "GoToSearch",
+       "DisplayMessage",
+       "SetRepeatMode",
+       "ChannelUp",
+       "ChannelDown",
+       "Guide",
+       "ToggleStats",
+       "PlayMediaSource",
+       "PlayTrailers",
+       "SetShuffleQueue",
+       "PlayState",
+       "PlayNext",
+       "ToggleOsdMenu",
+       "Play",
+       "SetMaxStreamingBitrate",
+       "SetPlaybackOrder"
+      ]
+     }
+    },
+    "type": "object"
+   },
    "GeneralCommandType": {
     "enum": [
      "MoveUp",
@@ -2541,6 +2609,117 @@
      "None"
     ],
     "type": "string"
+   },
+   "LyricDto": {
+    "additionalProperties": false,
+    "properties": {
+     "Lyrics": {
+      "items": {
+       "$ref": "#/components/schemas/LyricLine"
+      },
+      "type": "array"
+     },
+     "Metadata": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/LyricMetadata"
+       }
+      ]
+     }
+    },
+    "type": "object"
+   },
+   "LyricLine": {
+    "additionalProperties": false,
+    "properties": {
+     "Cues": {
+      "items": {
+       "$ref": "#/components/schemas/LyricLineCue"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "Start": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Text": {
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "LyricLineCue": {
+    "additionalProperties": false,
+    "properties": {
+     "End": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "EndPosition": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "Position": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "Start": {
+      "format": "int64",
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "LyricMetadata": {
+    "additionalProperties": false,
+    "properties": {
+     "Album": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Artist": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Author": {
+      "nullable": true,
+      "type": "string"
+     },
+     "By": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Creator": {
+      "nullable": true,
+      "type": "string"
+     },
+     "IsSynced": {
+      "nullable": true,
+      "type": "boolean"
+     },
+     "Length": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Offset": {
+      "format": "int64",
+      "nullable": true,
+      "type": "integer"
+     },
+     "Title": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Version": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
    },
    "MediaAttachment": {
     "additionalProperties": false,
@@ -7018,6 +7197,290 @@
     ]
    }
   },
+  "/Audio/{itemId}/Lyrics": {
+   "delete": {
+    "operationId": "DeleteLyrics",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LyricManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Lyric"
+    ]
+   },
+   "get": {
+    "operationId": "GetLyrics",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LyricDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/LyricDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/LyricDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Lyric"
+    ]
+   },
+   "post": {
+    "operationId": "UploadLyrics",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fileName",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "text/plain": {
+       "schema": {
+        "format": "binary",
+        "type": "string"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LyricDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/LyricDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/LyricDto"
+        }
+       }
+      }
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "LyricManagement",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Lyric"
+    ]
+   }
+  },
   "/Audio/{itemId}/stream": {
    "get": {
     "operationId": "GetAudioStream",
@@ -10399,6 +10862,129 @@
     ],
     "tags": [
      "ItemUpdate"
+    ]
+   }
+  },
+  "/Items/{itemId}/Collections": {
+   "get": {
+    "operationId": "GetItemCollections",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "startIndex",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "fields",
+      "schema": {
+       "items": {
+        "$ref": "#/components/schemas/ItemFields"
+       },
+       "type": "array"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
     ]
    }
   },
@@ -17104,6 +17690,89 @@
        }
       }
      }
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Session"
+    ]
+   }
+  },
+  "/Sessions/{sessionId}/Command": {
+   "post": {
+    "operationId": "SendFullGeneralCommand",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "sessionId",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/GeneralCommand"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/GeneralCommand"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/GeneralCommand"
+         }
+        ]
+       }
+      }
+     },
+     "required": true
     },
     "responses": {
      "204": {},

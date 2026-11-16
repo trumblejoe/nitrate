@@ -124,6 +124,13 @@ data class ServerSession(
     val lastActivity: String?,
     val supportsRemoteControl: Boolean,
     val supportsMediaControl: Boolean,
+    /** Whose session it is (dashed id). */
+    val userId: String? = null,
+    /** The audio and subtitle streams playing there (-1: subtitles off), its volume (0–100). */
+    val audioIndex: Int? = null,
+    val subtitleIndex: Int? = null,
+    val volume: Int? = null,
+    val isMuted: Boolean = false,
 )
 
 /** An account on the server, with the permissions admins usually change. */

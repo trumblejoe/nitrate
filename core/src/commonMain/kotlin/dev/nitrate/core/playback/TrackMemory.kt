@@ -100,10 +100,11 @@ object TrackSelection {
      * What starts: what the user picked (for this show or title), then the server's picks from
      * their language settings, then the file's own flags. -1 is subtitles off.
      */
-    fun initial(source: dev.nitrate.core.model.MediaSource, choice: LanguageChoice?): Pair<Int?, Int> {
+    fun initial(source: dev.nitrate.core.model.MediaSource, choice: LanguageChoice?, describedAudio: Boolean = false): Pair<Int?, Int> {
         val (audio, subtitle) = dev.nitrate.core.downloads.DownloadTracks.pick(source)
         val (pickedAudio, pickedSubtitle) = choice?.let { TrackMemory.pick(source.streams, it) } ?: (null to null)
-        return (pickedAudio ?: audio) to (pickedSubtitle ?: subtitle)
+        // An audio picked for this show stays; otherwise the audio-description preference applies.
+        return (pickedAudio ?: AudioDescription.apply(source, audio, describedAudio)) to (pickedSubtitle ?: subtitle)
     }
 }
 

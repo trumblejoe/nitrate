@@ -101,7 +101,13 @@ sealed interface TvRequest {
 }
 
 /** [queue] is comma-separated item ids to play after [itemId]; [clipEndMs] >= 0: a recap clip from [startMs] to there, unreported. */
-@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1, val clipEndMs: Long = -1)
+/** [audioIndex]/[subtitleIndex]: tracks asked for by another device ([NO_TRACK]: not asked; subtitles -1 = off). */
+@Serializable data class PlayerRoute(
+    val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1, val clipEndMs: Long = -1,
+    val audioIndex: Int = NO_TRACK, val subtitleIndex: Int = NO_TRACK,
+)
+
+const val NO_TRACK = -2
 
 /** "Last time": the recap in [AppContainer.pendingRecap], before playing on. */
 @Serializable object RecapRoute
@@ -460,6 +466,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 remote = container.remote,
                 startMs = route.startMs.takeIf { it >= 0 },
                 clipEndMs = route.clipEndMs.takeIf { it >= 0 },
+                audioIndex = route.audioIndex.takeIf { it != NO_TRACK },
+                subtitleIndex = route.subtitleIndex.takeIf { it != NO_TRACK },
+                describedAudio = container::prefersDescribedAudio,
+                // Up Next (episodes, a film's collection) only outside queues and recap clips.
+                onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0) { next -> nav.popBackStack(); gate.play(next) } else null,
                 syncPlay = container.syncPlay,
                 sendLog = { session -> container.sendPlaybackReport(session) },
                 capabilities = container.capabilities,
@@ -526,7 +537,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         container.remote.events.collect { e ->
             when (e) {
                 is dev.nitrate.core.events.ServerEvent.Play -> e.itemIds.firstOrNull()?.let { first ->
-                    nav.navigate(PlayerRoute(first, fromStart = e.startMs == null, queue = e.itemIds.drop(1).joinToString(","), startMs = e.startMs ?: -1)) {
+                    nav.navigate(
+                        PlayerRoute(
+                            first, fromStart = e.startMs == null, queue = e.itemIds.drop(1).joinToString(","), startMs = e.startMs ?: -1,
+                            audioIndex = e.audioIndex ?: NO_TRACK, subtitleIndex = e.subtitleIndex ?: NO_TRACK,
+                        ),
+                    ) {
                         popUpTo<PlayerRoute> { inclusive = true }
                     }
                 }

@@ -288,7 +288,10 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
             ActivityEntry(o.long("Id") ?: 0, o.str("Name").orEmpty(), o.str("ShortOverview") ?: o.str("Overview"), o.str("Type"), o.str("Date").orEmpty(), o.str("Severity"))
         }
 
-    suspend fun sessions(): List<ServerSession> = json("Sessions", query = mapOf("activeWithinSeconds" to 960)).jsonArray.mapNotNull { e ->
+    /** Recent sessions; [controllableBy] (a user id) narrows them to ones that user may control. */
+    suspend fun sessions(controllableBy: String? = null): List<ServerSession> = json(
+        "Sessions", query = mapOf("activeWithinSeconds" to 960, "controllableByUserId" to controllableBy),
+    ).jsonArray.mapNotNull { e ->
         val o = e as? JsonObject ?: return@mapNotNull null
         val play = o["PlayState"] as? JsonObject
         ServerSession(
@@ -305,6 +308,11 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
             lastActivity = o.str("LastActivityDate"),
             supportsRemoteControl = o.bool("SupportsRemoteControl") == true,
             supportsMediaControl = o.bool("SupportsMediaControl") == true,
+            userId = o.str("UserId")?.let(::normalizeId),
+            audioIndex = play?.long("AudioStreamIndex")?.toInt(),
+            subtitleIndex = play?.long("SubtitleStreamIndex")?.toInt(),
+            volume = play?.long("VolumeLevel")?.toInt(),
+            isMuted = play?.bool("IsMuted") == true,
         )
     }
 

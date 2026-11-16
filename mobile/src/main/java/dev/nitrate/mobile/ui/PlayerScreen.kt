@@ -128,14 +128,18 @@ fun PlayerScreen(
         when {
             // "Sleep at the end of this": stop here, not on to the next episode or queue item.
             sleepAtEndRef -> onExit()
-            next != null && onPlayNext != null && !upNextHidden -> onPlayNext(next)
+            // The next episode rolls on; the next film in a collection waits to be asked for.
+            next != null && onPlayNext != null && !upNextHidden && next.isEpisode -> onPlayNext(next)
             else -> onEnded()
         }
     }
     var logMessage by remember { mutableStateOf<String?>(null) }
     val logScope = rememberCoroutineScope()
     val session = remember(itemId) {
-        PlaybackSession(context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() }, trackMemory = actions.container.trackMemory)
+        PlaybackSession(
+            context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() },
+            trackMemory = actions.container.trackMemory, describedAudio = actions.container::prefersDescribedAudio,
+        )
             .also {
                 if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)
                 else if (!local) {
@@ -240,7 +244,13 @@ fun PlayerScreen(
     // The next episode in viewing order: from the server, or from downloads when offline.
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
-        if (onPlayNext == null || !current.isEpisode) return@LaunchedEffect
+        if (onPlayNext == null) return@LaunchedEffect
+        if (current.kind == dev.nitrate.core.model.ItemKind.MOVIE) {
+            // A film in a saga: the next one, offered at the credits.
+            if (!local) upNext = runCatching { actions.server.nextInCollection(current) }.getOrNull()
+            return@LaunchedEffect
+        }
+        if (!current.isEpisode) return@LaunchedEffect
         upNext = (if (local) null else current.seriesId?.let { series -> runCatching { UpNext.after(current, actions.server.allEpisodes(series)) }.getOrNull() })
             ?: downloads.nextDownloaded(current)
     }
@@ -346,13 +356,15 @@ fun PlayerScreen(
             }
         }
 
-        val upNextAt = PlaybackMoments.upNextAtMs(progress.durationMs, segments)
         val next = upNext
+        val film = next != null && !next.isEpisode
+        val upNextAt = if (film) dev.nitrate.core.playback.NextInCollection.offerAtMs(progress.durationMs, segments, item?.chapters.orEmpty())
+            else PlaybackMoments.upNextAtMs(progress.durationMs, segments)
         val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && progress.positionMs >= upNextAt && scrub == null
         SkipButton(PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }) { session.seekTo(it.endMs) }
         if (showUpNext && next != null) {
             val remaining = ((progress.durationMs - progress.positionMs) / 1000).toInt()
-            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15), onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true })
+            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true })
         }
         scrub?.let { s -> item?.let { TrickplayPreview(actions.server, it.id, trickplay, s.positionMs, s.x, s.barTop) } }
 

@@ -47,7 +47,10 @@ import coil3.compose.AsyncImage
 import dev.nitrate.core.admin.GeneralCommand
 import dev.nitrate.core.admin.ServerSession
 import dev.nitrate.core.admin.SessionCommand
+import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.model.formatClock
+import dev.nitrate.core.playback.audioChoices
+import dev.nitrate.core.playback.subtitleChoices
 import dev.nitrate.mobile.platform.rememberArtworkColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -59,7 +62,7 @@ fun RemoteScreen(actions: AppActions, sessionId: String) {
     var tick by remember { mutableIntStateOf(0) }
     val session by produceState<ServerSession?>(null, tick) {
         while (true) {
-            value = runCatching { actions.server.sessions().firstOrNull { it.id == sessionId } }.getOrNull()
+            value = runCatching { actions.server.controllableSessions().firstOrNull { it.id == sessionId } }.getOrNull()
             delay(1_500)
         }
     }
@@ -118,6 +121,32 @@ fun RemoteScreen(actions: AppActions, sessionId: String) {
                 }
                 RemoteKey("+30") { send { actions.server.seekSession(sessionId, position + 30_000) } }
                 RemoteKey("⏭") { send { actions.server.sessionCommand(sessionId, SessionCommand.NEXT) } }
+            }
+            // The audio and subtitles playing there, each changeable from here.
+            np?.let { playing ->
+                val source by produceState<dev.nitrate.core.model.MediaSource?>(null, playing.id) {
+                    value = runCatching { actions.server.mediaSource(playing.id) }.getOrNull()
+                }
+                var picking by remember { mutableStateOf<StreamKind?>(null) }
+                source?.let { src ->
+                    val audio = src.audioChoices()
+                    val subs = src.subtitleChoices()
+                    if (audio.size > 1 || subs.size > 1) {
+                        Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (audio.size > 1) TrackPill("Audio", audio.firstOrNull { it.index == session?.audioIndex }?.title ?: "Default") { picking = StreamKind.AUDIO }
+                            if (subs.size > 1) TrackPill("Subtitles", subs.firstOrNull { it.index == (session?.subtitleIndex ?: -1) }?.title ?: "Off") { picking = StreamKind.SUBTITLE }
+                        }
+                    }
+                    picking?.let { kind ->
+                        val isAudio = kind == StreamKind.AUDIO
+                        TrackPicker(
+                            if (isAudio) "Audio" else "Subtitles",
+                            if (isAudio) audio else subs,
+                            if (isAudio) session?.audioIndex else session?.subtitleIndex ?: -1,
+                            onSelect = { index -> picking = null; send { actions.server.setSessionTrack(sessionId, kind, index) } },
+                        ) { picking = null }
+                    }
+                }
             }
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

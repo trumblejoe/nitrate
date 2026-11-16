@@ -198,6 +198,7 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
         Triple("Hide spoilers (blur unwatched episodes; hide descriptions of unwatched episodes and movies)", { p -> p.hideSpoilers }, { p, v -> p.copy(hideSpoilers = v) }),
         Triple("Theme music on details pages (quietly, when a title has some)", { p -> p.themeMusic ?: true }, { p, v -> p.copy(themeMusic = v) }),
         Triple("True black (OLED)", { p -> p.trueBlack }, { p, v -> p.copy(trueBlack = v) }),
+        Triple("Audio description (start with the described track when a title has one in its language)", { p -> p.describedAudio }, { p, v -> p.copy(describedAudio = v) }),
     )
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(PagePadding), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {

@@ -334,6 +334,12 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
             },
         )
     }
+    item(key = "described") {
+        Toggle(
+            "Audio description", "Start with the described track (a narrator for what's on screen) when a title has one in its language. Off: never start with one",
+            prefs.describedAudio,
+        ) { v -> update { it.copy(describedAudio = v) } }
+    }
     item(key = "black") { Toggle("True black", "Pure black backgrounds, for OLED screens", prefs.trueBlack) { v -> update { it.copy(trueBlack = v) } } }
     item(key = "recap") {
         // Cycles Never → 3 days → 1 week → 2 weeks → 1 month.
@@ -544,10 +550,7 @@ private fun WatchTogetherRow(actions: AppActions) {
 
 @Composable
 private fun RemoteTargets(actions: AppActions) {
-    val targets by androidx.compose.runtime.produceState<List<dev.nitrate.core.admin.ServerSession>?>(null) {
-        value = runCatching { actions.server.sessions().filter { it.supportsMediaControl && it.deviceId != actions.server.deviceId } }.getOrDefault(emptyList())
-    }
-    val list = targets
+    val list = rememberRemoteDevices(actions)?.let { it.getOrNull() ?: emptyList() }
     Column {
         when {
             list == null -> ListItem(headlineContent = { Text("Looking for devices…") })

@@ -79,6 +79,8 @@ class DownloadManager(
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     /** The user's track choices per show or title, for downloads asked for without picking. */
     private val trackMemory: dev.nitrate.core.playback.TrackMemoryStore? = null,
+    /** The user's audio-description preference (DisplayPrefs.describedAudio). */
+    private val describedAudio: suspend () -> Boolean = { false },
 ) {
     private val http = HttpClient(engine) {
         expectSuccess = true
@@ -280,11 +282,11 @@ class DownloadManager(
             // The tracks picked when it was asked for, else the show's (or title's) remembered
             // choice, the server's picks for this user, the file's flags.
             val (audioIndex, subtitleIndex) = if (start.audioIndex != null || start.subtitleIndex != null) {
-                val fallback = dev.nitrate.core.playback.TrackSelection.initial(source, null)
+                val fallback = dev.nitrate.core.playback.TrackSelection.initial(source, null, runCatching { describedAudio() }.getOrDefault(false))
                 (start.audioIndex ?: fallback.first) to (start.subtitleIndex ?: fallback.second)
             } else {
                 val choice = runCatching { trackMemory?.get(dev.nitrate.core.playback.TrackSelection.memoryKey(item)) }.getOrNull()
-                dev.nitrate.core.playback.TrackSelection.initial(source, choice)
+                dev.nitrate.core.playback.TrackSelection.initial(source, choice, runCatching { describedAudio() }.getOrDefault(false))
             }
             val audio = source.streams.firstOrNull { it.kind == StreamKind.AUDIO && it.index == audioIndex }
                 ?: source.streams.firstOrNull { it.kind == StreamKind.AUDIO && it.isDefault } ?: source.streams.firstOrNull { it.kind == StreamKind.AUDIO }

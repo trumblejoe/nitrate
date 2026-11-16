@@ -190,6 +190,11 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         // How it would play here, why, and fixes before pressing play.
                         var checking by remember { mutableStateOf(false) }
                         if (item.isPlayable && !music) RoundAction(Icons.Default.Info, "How it plays", onClick = { checking = true })
+                        // Send it to the TV (or another of your devices) and control it from here.
+                        var playingOn by remember { mutableStateOf(false) }
+                        val sendable = if (item.kind == ItemKind.SERIES) state.nextUp ?: state.episodes.firstOrNull() else item.takeIf { it.isPlayable }
+                        if (sendable != null) RoundAction(NitrateIcons.Tv, "Play on…", onClick = { playingOn = true })
+                        if (playingOn && sendable != null) PlayOnDialog(actions, sendable, sendable.user.positionMs, onDismiss = { playingOn = false })
                         // Watch partners: ask someone to keep this show in step with you.
                         var watchWith by remember { mutableStateOf(false) }
                         if (item.kind == ItemKind.SERIES && partnersAvailable(actions)) RoundAction(Icons.Default.Face, "Watch with", onClick = { watchWith = true })

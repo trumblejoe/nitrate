@@ -113,6 +113,9 @@ fun PlayerScreen(
     trackMemory: dev.nitrate.core.playback.TrackMemoryStore? = null,
     remote: dev.nitrate.android.remote.RemoteControlHub? = null,
     startMs: Long? = null,
+    /** Tracks another device asked for when it sent this here (null: the usual picks). */
+    audioIndex: Int? = null,
+    subtitleIndex: Int? = null,
     /** Watch together: follows this device's group when it's in one. */
     syncPlay: dev.nitrate.core.syncplay.SyncPlayController? = null,
     /** Sends a playback report for this session to the server; returns the saved file's name. */
@@ -123,19 +126,33 @@ fun PlayerScreen(
     chat: dev.nitrate.core.companion.GroupChat? = null,
     /** A recap clip: plays from [startMs] to here, unreported, then ends. */
     clipEndMs: Long? = null,
+    /** The user's audio-description preference. */
+    describedAudio: suspend () -> Boolean = { false },
+    /** Plays the next episode, or the next film in a collection (null: nothing follows, e.g. in a queue). */
+    onPlayNext: ((MediaItem) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
     val sleepAtEndState = remember { mutableStateOf(false) }
-    val ended by rememberUpdatedState(if (sleepAtEndState.value) onExit else onEnded)
+    var upNext by remember { mutableStateOf<MediaItem?>(null) }
+    var upNextHidden by remember { mutableStateOf(false) }
+    val ended by rememberUpdatedState {
+        val next = upNext
+        when {
+            sleepAtEndState.value -> onExit()
+            // The next episode rolls on; the next film in a collection waits to be asked for.
+            next != null && next.isEpisode && !upNextHidden && onPlayNext != null -> onPlayNext(next)
+            else -> onEnded()
+        }
+    }
     // Negotiation, track mapping, reporting and transcode fallback live in the shared session.
     val session = remember(itemId) {
-        PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory)
+        PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory, describedAudio = describedAudio)
             .also {
                 if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)
                 else {
                     syncPlay?.let(it::followGroup)
-                    it.load(itemId, fromStart, startMs)
+                    it.load(itemId, fromStart, startMs, audioIndex, subtitleIndex)
                 }
             }
     }
@@ -172,6 +189,20 @@ fun PlayerScreen(
     val chatGroup = chat?.groupId?.collectAsState()?.value?.takeIf { syncGroup != null && it == syncGroup.id }
     val videoDecoder by session.videoDecoder.collectAsState()
     val audioDecoder by session.audioDecoder.collectAsState()
+    val segments by session.segments.collectAsState()
+    // What follows: the next episode in viewing order, or the next film in its collection.
+    LaunchedEffect(item?.id) {
+        val current = item ?: return@LaunchedEffect
+        upNext = null
+        upNextHidden = false
+        if (onPlayNext == null || clipEndMs != null) return@LaunchedEffect
+        upNext = runCatching {
+            when {
+                current.isEpisode -> current.seriesId?.let { dev.nitrate.core.episodes.UpNext.after(current, repository.allEpisodes(it)) }
+                else -> repository.nextInCollection(current)
+            }
+        }.getOrNull()
+    }
 
     var controlsVisible by remember { mutableStateOf(true) }
     var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -220,8 +251,16 @@ fun PlayerScreen(
         }
     }
 
+    val nextUp = upNext
+    val film = nextUp != null && !nextUp.isEpisode
+    val upNextAt = if (film) dev.nitrate.core.playback.NextInCollection.offerAtMs(duration, segments, item?.chapters.orEmpty())
+        else dev.nitrate.core.playback.PlaybackMoments.upNextAtMs(duration, segments)
+    val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE &&
+        upNextAt != null && position >= upNextAt
+
     BackHandler {
         when {
+            showUpNext -> upNextHidden = true
             panel != Panel.NONE -> panel = Panel.NONE
             openPanel != null -> { openPanel = null; touch() }
             controlsVisible && player.isPlaying -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
@@ -327,6 +366,16 @@ fun PlayerScreen(
             if (panel == Panel.CHAT) {
                 dev.nitrate.tv.ui.together.ChatPanel(chat, syncGroup?.name, positionMs = { player.currentPosition }, modifier = Modifier.align(Alignment.TopEnd))
             }
+        }
+
+        if (showUpNext && nextUp != null) {
+            val remaining = ((duration - position) / 1000).toInt()
+            UpNextCard(
+                nextUp, repository, seconds = remaining.coerceIn(5, 15).takeIf { !film },
+                onPlay = { onPlayNext?.invoke(nextUp) },
+                onHide = { upNextHidden = true; runCatching { rootFocus.requestFocus() } },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) 220.dp else 48.dp),
+            )
         }
 
         if (panel == Panel.INFO && p != null) {

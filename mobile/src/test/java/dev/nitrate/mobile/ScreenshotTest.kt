@@ -257,6 +257,29 @@ class ScreenshotTest {
         }
     }
 
+    /** "Play on…" from a details page: the user's TVs, the playing one first. */
+    @Test
+    fun playOnDialog() = shoot("phone-play-on") { actions ->
+        dev.nitrate.mobile.ui.PlayOnDialog(actions, MediaItem("m2", "Silver Screen", ItemKind.MOVIE), 0, onDismiss = {})
+    }
+
+    /** Something playing on the TV while browsing: the bar above the navigation pill. */
+    @Test
+    fun playingElsewhere() = shoot("phone-playing-elsewhere") { actions ->
+        Box(Modifier.fillMaxSize()) {
+            dev.nitrate.mobile.ui.PlayingElsewhereBar(actions, Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(12.dp))
+        }
+    }
+
+    /** The next film in a collection: offered at the credits, no countdown. */
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun nextInCollection() = shoot("phone-next-in-collection") { actions ->
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            UpNextCard(MediaItem("m3", "Gate Weave", ItemKind.MOVIE, productionYear = 2024), actions.server, seconds = null, onPlay = {}, onHide = {})
+        }
+    }
+
     /** The player's More sheet: speed, sleep timer, night mode, subtitle timing. */
     @Test
     fun playerMore() = shoot("phone-player-more") { actions ->

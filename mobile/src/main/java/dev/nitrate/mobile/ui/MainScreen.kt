@@ -104,6 +104,8 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
             Tab.WRITING -> WritingScreen(actions, onBack = null, modifier = padded)
             Tab.SETTINGS -> SettingsScreen(actions, onSignedOut, padded)
         }
+        // Something playing on your TV (or another device): what, with a tap to its remote.
+        PlayingElsewhereBar(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = NavBarClearance - 8.dp))
         GlassNavBar(
             tabs = tabs.map { NavTab(it.label, it.icon) },
             selected = tabs.indexOf(tab),

@@ -1090,8 +1090,21 @@ class JellyfinClient(
         }
     }
 
-    override suspend fun playOn(sessionId: String, itemIds: List<String>, startMs: Long) {
-        post<Unit>("Sessions", sessionId, "Playing", query = mapOf("playCommand" to "PlayNow", "itemIds" to itemIds.joinToString(","), "startPositionTicks" to startMs.msToTicks()))
+    override suspend fun playOn(sessionId: String, itemIds: List<String>, startMs: Long, audioIndex: Int?, subtitleIndex: Int?, mediaSourceId: String?) {
+        post<Unit>(
+            "Sessions", sessionId, "Playing",
+            query = mapOf(
+                "playCommand" to "PlayNow", "itemIds" to dashless(itemIds), "startPositionTicks" to startMs.msToTicks(),
+                "audioStreamIndex" to audioIndex, "subtitleStreamIndex" to subtitleIndex, "mediaSourceId" to mediaSourceId,
+            ),
+        )
+    }
+
+    override suspend fun controllableSessions(): List<ServerSession> = admin.sessions(controllableBy = userId?.replace("-", ""))
+
+    override suspend fun setSessionTrack(sessionId: String, kind: dev.nitrate.core.model.StreamKind, index: Int) {
+        val name = if (kind == dev.nitrate.core.model.StreamKind.AUDIO) "SetAudioStreamIndex" else "SetSubtitleStreamIndex"
+        post<GeneralCommandDto>("Sessions", sessionId, "Command", body = GeneralCommandDto(name, mapOf("Index" to index.toString())))
     }
 
     override suspend fun seekSession(sessionId: String, positionMs: Long) {
@@ -1285,6 +1298,8 @@ class JellyfinClient(
         codecIndexes[key] = CodecIndex(built, now)
         built
     }
+
+    override suspend fun collectionsOf(itemId: String): List<MediaItem> = items("Items", itemId.replace("-", ""), "Collections", query = mapOf("fields" to ROW_FIELDS))
 
     override suspend fun collectionItems(collectionId: String): List<MediaItem> = items(
         "Items",

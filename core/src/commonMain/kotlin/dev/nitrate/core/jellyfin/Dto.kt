@@ -252,6 +252,10 @@ internal data class RemoteSubtitleDto(
     val aiTranslated: Boolean? = null,
 )
 
+/** A command with arguments for another device (Sessions/{id}/Command). */
+@Serializable
+internal data class GeneralCommandDto(val name: String, val arguments: Map<String, String> = emptyMap())
+
 @Serializable
 internal data class CapabilitiesDto(
     val playableMediaTypes: List<String>,

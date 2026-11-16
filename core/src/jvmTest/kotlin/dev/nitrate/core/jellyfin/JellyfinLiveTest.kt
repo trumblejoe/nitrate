@@ -300,6 +300,24 @@ class JellyfinLiveTest {
         }
         println("Events: $received")
         assertTrue(received.any { it == dev.nitrate.core.events.ServerEvent.Playstate("Pause", null) })
+        // "Play on…" from the phone: only the user's own controllable devices, and the TV gets
+        // the item with the phone's audio and subtitle picks.
+        val mine = phone.controllableSessions()
+        assertTrue("The TV is one of this user's controllable devices", mine.any { it.deviceId == "nitrate-live-tv" })
+        val film = phone.views().flatMap { phone.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 5, false).first }.first { it.kind == ItemKind.MOVIE }
+        phone.playOn(target.id, listOf(film.id), 12_000, audioIndex = 1, subtitleIndex = -1)
+        kotlinx.coroutines.withTimeout(10_000) { while (received.none { it is dev.nitrate.core.events.ServerEvent.Play }) kotlinx.coroutines.delay(100) }
+        val play = received.filterIsInstance<dev.nitrate.core.events.ServerEvent.Play>().last()
+        assertEquals(listOf(film.id), play.itemIds)
+        assertEquals(12_000L, play.startMs)
+        assertEquals(1, play.audioIndex)
+        assertEquals(-1, play.subtitleIndex)
+        // And the remote switches the subtitles there.
+        phone.setSessionTrack(target.id, dev.nitrate.core.model.StreamKind.SUBTITLE, 3)
+        kotlinx.coroutines.withTimeout(10_000) {
+            while (received.none { it is dev.nitrate.core.events.ServerEvent.General && it.name == "SetSubtitleStreamIndex" }) kotlinx.coroutines.delay(100)
+        }
+        assertEquals("3", received.filterIsInstance<dev.nitrate.core.events.ServerEvent.General>().last { it.name == "SetSubtitleStreamIndex" }.arguments["Index"])
         // Watch state changed elsewhere reaches this device (pages reload on it).
         val someItem = phone.views().flatMap { phone.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 5, false).first }.first { it.kind == ItemKind.MOVIE || it.kind == ItemKind.EPISODE }
         phone.setFavorite(someItem.id, true)
@@ -988,5 +1006,20 @@ class JellyfinLiveTest {
         assertEquals(before.map { it.tags }, movies.map { client.metadata(it.id).tags })
         // Theme music: the test library has none.
         assertTrue(client.themeMusicInfo(movies.first().id).songs.isEmpty())
+    }
+
+    @Test
+    fun `next in collection follows a saga in release order`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val saga = client.collections().firstOrNull { client.collectionItems(it.id).size >= 2 }
+        assumeTrue("Needs a collection of two or more films", saga != null)
+        val films = client.collectionItems(saga!!.id)
+        val first = films.minBy { it.productionYear ?: 0 }
+        assertTrue("The film knows its collection", client.collectionsOf(first.id).any { it.id == saga.id })
+        val next = client.nextInCollection(first)
+        println("After ${first.name} (${first.productionYear}) in ${saga.name}: ${next?.name} (${next?.productionYear})")
+        assertTrue(next != null && (next.productionYear ?: 0) >= (first.productionYear ?: 0))
     }
 }
