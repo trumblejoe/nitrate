@@ -174,7 +174,7 @@ class FakeServer : MediaServer {
             dev.nitrate.core.diagnostics.SpeedStep(S.SIGNED_IN, "Signed-in call", "A small request that checks your sign-in (your account)", listOf(260, 240, 250)),
             dev.nitrate.core.diagnostics.SpeedStep(S.LIBRARIES, "Library list", "Your libraries, as the menu shows them", listOf(320, 300, 310)),
             dev.nitrate.core.diagnostics.SpeedStep(S.SEARCH, "Library search", "Searching the whole library for 100 titles with details: the server's database at work", listOf(1800, 1650, 1700), extra = "18,402 items in the library"),
-            dev.nitrate.core.diagnostics.SpeedStep(S.HOME, "Home page", "Loading every row of Home, all at once as Nitrate does; each part timed on its own", listOf(4100, 3900), extra = "9 rows", parts = listOf("Because you watched" to 3800L, "Next Up" to 900L, "Latest in each library" to 650L, "Continue Watching" to 420L, "My Media" to 310L)),
+            dev.nitrate.core.diagnostics.SpeedStep(S.HOME, "Home page", "Loading every row of Home, all at once as Nitrate does; each part timed on its own", listOf(4100, 3900), extra = "9 rows", parts = listOf("Because you watched" to 3800L, "Next Up" to 900L, "Latest in each library" to 650L, "Continue Watching" to 420L)),
             dev.nitrate.core.diagnostics.SpeedStep(S.DOWNLOAD, "Download speed", "Downloading 2 MB from the server", listOf(700, 650), mbps = 24.6),
             dev.nitrate.core.diagnostics.SpeedStep(S.PARSE, "Reading on this device", "Turning the library search's answer (184 KB) into titles, here on this device", listOf(120, 110, 115)),
         ).onEach(onStep)

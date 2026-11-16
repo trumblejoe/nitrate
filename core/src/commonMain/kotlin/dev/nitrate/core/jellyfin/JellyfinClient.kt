@@ -637,17 +637,12 @@ class JellyfinClient(
     }
 
     /**
-     * Home's rows as independent jobs, all started at once: the library list (My Media, and the
-     * "Latest in…" rows that need it), Continue Watching, Next Up and "Because you watched".
+     * Home's rows as independent jobs, all started at once: Continue Watching, Next Up, "Latest
+     * in…" each library and "Because you watched". The libraries themselves aren't a Home row:
+     * each app lists them already (the phone's Libraries tab, the TV menu).
      */
     private fun homeJobs(fresh: Boolean = false): List<dev.nitrate.core.rows.RowJob> {
-        val views = kotlinx.coroutines.CompletableDeferred<List<MediaItem>>()
         return listOf(
-            dev.nitrate.core.rows.RowJob("My Media") {
-                val v = try { views() } catch (e: Exception) { views.completeExceptionally(e); throw e }
-                views.complete(v)
-                if (v.isEmpty()) emptyList() else listOf(MediaRow("home/my_media", "My Media", v, WIDE_DEFAULT))
-            },
             dev.nitrate.core.rows.RowJob("Continue Watching") {
                 resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT)) }
             },
@@ -669,7 +664,7 @@ class JellyfinClient(
                     }
                     val known = lastViews()?.filter(::wanted)
                     known?.forEach { start(it) }
-                    val fresh = async { try { views.await() } catch (e: Exception) { if (e is CancellationException || known == null) throw e; known } }
+                    val fresh = async { try { views() } catch (e: Exception) { if (e is CancellationException || known == null) throw e; known } }
                     if (known != null && !fresh.isCompleted) runCatching { show(rowsFor(known)) }
                     val list = fresh.await().filter(::wanted)
                     val ids = list.map { it.id }.toSet()
