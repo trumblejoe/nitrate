@@ -163,7 +163,7 @@ fun CardRow(row: MediaRow, style: RowStyle, server: MediaServer, onOpen: (MediaI
                     shape = shape,
                     width = width,
                     title = if (shape == CardShape.WIDE) item.displayTitle else null,
-                    subtitle = if (shape == CardShape.WIDE) item.note ?: item.episodeLabel ?: item.productionYear?.toString() else null,
+                    subtitle = if (shape == CardShape.WIDE) item.episodeLabel ?: item.productionYear?.toString() else null,
                     onClick = { onOpen(item) },
                 )
             }

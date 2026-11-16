@@ -88,7 +88,6 @@ enum class AccentMode(val label: String, val argb: Long?) {
 
 /** Year, age rating, runtime, ratings and quality badges for [item], each only if shown. */
 fun DisplayPrefs.facts(item: MediaItem): List<String> = buildList {
-    item.note?.let(::add)
     if (year) {
         val start = item.productionYear
         if (item.kind == ItemKind.SERIES) {

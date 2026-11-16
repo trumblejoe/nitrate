@@ -186,11 +186,11 @@ private fun DoubleBill(left: MediaItem, right: MediaItem, actions: AppActions, m
         Canvas(Modifier.fillMaxSize()) { drawBolt(accent) }
         Column(Modifier.align(Alignment.TopStart).padding(20.dp).fillMaxWidth(0.55f)) {
             Text(left.displayTitle.uppercase(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(listOfNotNull(left.note ?: left.episodeLabel ?: left.productionYear?.toString()).joinToString(), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+            Text(listOfNotNull(left.episodeLabel ?: left.productionYear?.toString()).joinToString(), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
         }
         Column(Modifier.align(Alignment.BottomEnd).padding(20.dp).fillMaxWidth(0.55f), horizontalAlignment = Alignment.End) {
             Text(right.displayTitle.uppercase(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(listOfNotNull(right.note ?: right.episodeLabel ?: right.productionYear?.toString()).joinToString(), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
+            Text(listOfNotNull(right.episodeLabel ?: right.productionYear?.toString()).joinToString(), color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
         }
     }
 }

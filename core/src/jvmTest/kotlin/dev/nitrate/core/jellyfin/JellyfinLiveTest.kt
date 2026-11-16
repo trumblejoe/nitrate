@@ -165,7 +165,6 @@ class JellyfinLiveTest {
         println("item: versions=${full1.versions.size} parts=${full1.partCount} chapters=${full1.chapters.size} trailers=${full1.localTrailerCount} extras=${full1.specialFeatureCount} studios=${full1.studios}")
         client.extras(film.id)
         client.additionalParts(film.id)
-        client.upcomingEpisodes()
         full1.productionYear?.let { y -> assertTrue(client.queryItems(dev.nitrate.core.pages.Browse.byYear(y)).any { it.id == film.id }) }
         val before = client.showsMissingEpisodes()
         client.setShowMissingEpisodes(!before)

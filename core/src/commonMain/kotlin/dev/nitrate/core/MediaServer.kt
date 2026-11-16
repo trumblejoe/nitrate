@@ -463,8 +463,6 @@ interface MediaServer {
     /** Trailers (files on the server) then extras: behind the scenes, deleted scenes, featurettes... */
     suspend fun extras(itemId: String): List<MediaItem> = emptyList()
 
-    /** Episodes of shows you follow that haven't aired yet, soonest first. */
-    suspend fun upcomingEpisodes(): List<MediaItem> = emptyList()
 
     /** A chapter's picture, or null if it has none. */
     fun chapterImageUrl(item: MediaItem, index: Int, maxWidth: Int = 480): String? = null

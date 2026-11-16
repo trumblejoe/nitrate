@@ -244,7 +244,6 @@ class JellyfinContractTest {
         client.searchHints("nitr")
         client.additionalParts(DASHED)
         client.extras(DASHED)
-        client.upcomingEpisodes()
         client.themeSongs(DASHED)
         client.themeMusicInfo(DASHED)
         client.healthScan(DASHED)

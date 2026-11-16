@@ -26,7 +26,6 @@ PATHS = [
     "/Videos/{itemId}/AdditionalParts",
     "/Items/{itemId}/LocalTrailers",
     "/Items/{itemId}/SpecialFeatures",
-    "/Shows/Upcoming",
     "/Items/Filters",
     "/Items/{itemId}/ThemeSongs",
     "/Videos/MergeVersions",

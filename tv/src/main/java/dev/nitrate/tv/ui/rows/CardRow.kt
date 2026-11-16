@@ -69,7 +69,6 @@ internal fun wideImage(repository: MediaServer, item: MediaItem): String? =
         ?: repository.backdropUrl(item, 640)
         ?: repository.imageUrl(item, ImageKind.PRIMARY, 360)
 
-private fun MediaItem.subtitleLine(): String? = note ?: (
+private fun MediaItem.subtitleLine(): String? =
     dev.nitrate.core.model.AirDates.status(this, System.currentTimeMillis())?.let { "S${seasonNumber ?: "?"}:E${indexNumber ?: "?"} · $it" }
         ?: if (seriesName != null) "S${seasonNumber ?: "?"}:E${indexNumber ?: "?"} · ${name.orEmpty()}" else productionYear?.toString()
-    )
