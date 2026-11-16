@@ -3,6 +3,10 @@ package dev.nitrate.mobile
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.click
@@ -79,4 +83,44 @@ class LetterJumpTest {
     @Test fun tList() = jump("T", dev.nitrate.core.pages.BrowseView.LIST)
     @Test fun mGrid() = jump("M", dev.nitrate.core.pages.BrowseView.GRID)
     @Test fun sList() = jump("S", dev.nitrate.core.pages.BrowseView.LIST)
+}
+
+/** Wherever a letter is touched on the strip, top or bottom of it, that's the letter jumped to. */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [35], qualifiers = "w411dp-h891dp-night-xxhdpi", application = android.app.Application::class)
+class AlphabetStripTest {
+    @get:Rule
+    val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun everyLetterMatchesWhereItIsDrawn() {
+        val picked = mutableListOf<String>()
+        compose.setContent {
+            NitrateTheme {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                    dev.nitrate.mobile.ui.AlphabetStrip(androidx.compose.ui.Modifier.fillMaxHeight().padding(vertical = 8.dp)) { picked += it }
+                }
+            }
+        }
+        compose.waitForIdle()
+        val centres = dev.nitrate.core.pages.Browse.LETTERS.associateWith { letter ->
+            compose.onAllNodes(hasText(letter), useUnmergedTree = true).fetchSemanticsNodes().single().boundsInRoot.center
+        }
+        val x = centres.values.first().x
+        val top = centres.values.minOf { it.y } - 10
+        val bottom = centres.values.maxOf { it.y } + 10
+        // Down the whole strip, gaps included (where a fingertip often lands): always the nearest letter.
+        var y = top
+        while (y <= bottom) {
+            val nearest = centres.minBy { kotlin.math.abs(it.value.y - y) }
+            // Within a few pixels of halfway between two letters could go either way (rounding).
+            val tie = centres.values.map { kotlin.math.abs(it.y - y) }.sorted().let { it[1] - it[0] < 16f }
+            if (!tie) {
+                picked.clear()
+                compose.onRoot().performTouchInput { click(androidx.compose.ui.geometry.Offset(x, y)) }
+                compose.waitForIdle()
+                assertEquals("touching y=$y, nearest ${nearest.key}", listOf(nearest.key), picked)
+            }
+            y += 4f
+        }
+    }
 }

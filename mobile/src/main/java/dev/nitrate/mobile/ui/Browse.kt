@@ -290,9 +290,12 @@ private fun SelectMark(on: Boolean, modifier: Modifier) {
     ) { if (on) Icon(Icons.Default.Check, "Selected", tint = Color.Black, modifier = Modifier.size(16.dp)) }
 }
 
-/** # and A–Z down the edge: tap or drag to jump. */
+/**
+ * # and A–Z down the edge: tap or drag to jump. Each letter has an equal slice of the strip and
+ * sits in the middle of it, so the slice a touch falls in is always the letter drawn there.
+ */
 @Composable
-private fun AlphabetStrip(modifier: Modifier, onLetter: (String) -> Unit) {
+internal fun AlphabetStrip(modifier: Modifier, onLetter: (String) -> Unit) {
     var height by remember { mutableStateOf(1) }
     var last by remember { mutableStateOf<String?>(null) }
     fun at(y: Float) {
@@ -308,10 +311,13 @@ private fun AlphabetStrip(modifier: Modifier, onLetter: (String) -> Unit) {
             .onSizeChanged { height = it.height.coerceAtLeast(1) }
             .pointerInput(Unit) { detectVerticalDragGestures(onDragEnd = { last = null }) { change, _ -> at(change.position.y) } }
             .pointerInput(Unit) { detectTapGestures { at(it.y); last = null } },
-        verticalArrangement = Arrangement.SpaceEvenly,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Browse.LETTERS.forEach { Text(it, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor()) }
+        Browse.LETTERS.forEach {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(it, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor())
+            }
+        }
     }
 }
 
