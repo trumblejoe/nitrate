@@ -1,5 +1,7 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.height
@@ -215,42 +217,71 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
 
         }
         section(open, "Plugins", "Built in; switch them on or off for this device.") {
+            // Each plugin with its own settings beneath it (shown while it's on).
             items(c.plugins.all, key = { it.id }) { plugin ->
-                Toggle(plugin.name, plugin.description, plugin.id in enabled) { on -> scope.launch { c.plugins.setEnabled(plugin.id, on) } }
-            }
-            if (PreviousEpisodePlugin.id in enabled) {
-                item {
-                    Choice(
-                        "Unwatched episode check",
-                        when (previous.scope) {
-                            Scope.PREVIOUS -> "The one before"
-                            Scope.SEASON -> "Whole season"
-                            Scope.SERIES -> "Whole series"
-                        },
-                    ) { scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(scope = Scope.entries[(it.scope.ordinal + 1) % Scope.entries.size]) } } }
-                }
-                item {
-                    Toggle("Include specials", "Specials placed before, during or after seasons count", previous.includeSpecials) { v ->
-                        scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(includeSpecials = v) } }
+                val on = plugin.id in enabled
+                PluginBlock(plugin.name, plugin.description, on, { v -> scope.launch { c.plugins.setEnabled(plugin.id, v) } }) {
+                    when (plugin.id) {
+                        PreviousEpisodePlugin.id -> {
+                            Choice(
+                                "Unwatched episode check",
+                                when (previous.scope) {
+                                    Scope.PREVIOUS -> "The one before"
+                                    Scope.SEASON -> "Whole season"
+                                    Scope.SERIES -> "Whole series"
+                                },
+                            ) { scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(scope = Scope.entries[(it.scope.ordinal + 1) % Scope.entries.size]) } } }
+                            Toggle("Include specials", "Specials placed before, during or after seasons count", previous.includeSpecials) { v ->
+                                scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(includeSpecials = v) } }
+                            }
+                            Toggle("Spot missing episodes", "Gaps in episode or season numbering", previous.detectGaps) { v ->
+                                scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(detectGaps = v) } }
+                            }
+                        }
+                        WritingPlugin.id -> {
+                            Toggle("Back up screenplays to the server", "Keeps a copy in your Jellyfin account for other devices", writing.backupToServer) { v ->
+                                scope.launch { store.update(WritingPlugin.id, WritingSettings()) { it.copy(backupToServer = v) } }
+                            }
+                            ScriptSyncSettings(actions)
+                        }
+                        dev.nitrate.core.partners.WatchPartnersPlugin.ID -> if (partnersAvailable(actions)) PluginLink("Watch partners", "Your groups, invites, and keeping your account private") {
+                            actions.nav.navigate(WatchPartnersRoute)
+                        } else PluginNote("Needs the Nitrate Companion plugin on your server.")
+                        dev.nitrate.core.channels.ChannelsPlugin.id -> {
+                            val companion by c.companion.collectAsState()
+                            if (companion?.features?.contains(dev.nitrate.core.channels.ChannelsPlugin.FEATURE) == true) PluginLink("Open Channels", "The guide; admins make and change channels there") {
+                                actions.nav.navigate(ChannelsRoute)
+                            } else PluginNote("Needs the Nitrate Companion plugin on your server.")
+                        }
+                        else -> Unit
                     }
                 }
-                item {
-                    Toggle("Spot missing episodes", "Gaps in episode or season numbering", previous.detectGaps) { v ->
-                        scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(detectGaps = v) } }
-                    }
-                }
-            }
-            if (WritingPlugin.id in enabled) {
-                item {
-                    Toggle("Back up screenplays to the server", "Keeps a copy in your Jellyfin account for other devices", writing.backupToServer) { v ->
-                        scope.launch { store.update(WritingPlugin.id, WritingSettings()) { it.copy(backupToServer = v) } }
-                    }
-                }
-                item { ScriptSyncSettings(actions) }
             }
         }
     }
 }
+
+/** A plugin: its switch, and its own settings indented beneath it while it's on. */
+@Composable
+private fun PluginBlock(name: String, description: String, on: Boolean, onToggle: (Boolean) -> Unit, settings: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Toggle(name, description, on, onToggle)
+        if (on) Column(Modifier.padding(start = 24.dp)) { settings() }
+    }
+}
+
+@Composable
+private fun PluginLink(title: String, detail: String, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
+        headlineContent = { Text(title) },
+        supportingContent = { Text(detail) },
+        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+    )
+}
+
+@Composable
+private fun PluginNote(text: String) = ListItem(headlineContent = { Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) })
 
 /** Toggles for what's shown about items, the look, and Home. */
 private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((DisplayPrefs) -> DisplayPrefs) -> Unit) {

@@ -385,6 +385,11 @@ class ScreenshotTest {
         c.displaySettings.savePrefs("user-1", DisplayPrefs(accent = AccentMode.TEAL, hideSpoilers = true, criticRating = false))
     }) { SettingsScreen(it, {}, initiallyOpen = listOf("Display")) }
 
+    @Test fun pluginSettings() = shoot("phone-settings-plugins", setup = { c ->
+        c.plugins.setEnabled(dev.nitrate.core.episodes.PreviousEpisodePlugin.id, true)
+        c.refreshCompanionForTests()
+    }) { SettingsScreen(it, {}, initiallyOpen = listOf("Plugins")) }
+
     @Test fun settingsFolded() = shoot("phone-settings") { SettingsScreen(it, {}) }
 
     @Test fun spoilerFree() = shoot("phone-series-spoilers", setup = { c ->
