@@ -62,4 +62,56 @@ class LocalPlaybackTest {
             session.release()
         }
     }
+
+    @Test fun downloadedStyledSubtitlesKeepTheirStyle() = styled(bom = false)
+
+    /** Jellyfin writes subtitles it extracts from a video with a byte-order mark first. */
+    @Test fun extractedStyledSubtitlesKeepTheirStyle() = styled(bom = true)
+
+    private fun styled(bom: Boolean) {
+        ActivityScenario.launch(ComponentActivity::class.java).onActivity { activity ->
+            val container = AppContainer(activity, "test", "0", serverOverride = FakeServer())
+            val session = PlaybackSession(activity, container.server, container.playbackSettings, "This device", onEnded = {})
+            val file = wav(File(activity.cacheDir, "styled.wav"))
+            val ass = File(activity.cacheDir, "sub-3.ass").apply {
+                writeText((if (bom) "\uFEFF" else "") +
+                    """
+                    [Script Info]
+                    ScriptType: v4.00+
+                    PlayResX: 640
+                    PlayResY: 360
+
+                    [V4+ Styles]
+                    Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+                    Style: Default,Arial,28,&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1
+
+                    [Events]
+                    Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+                    Dialogue: 0,0:00:00.00,0:00:00.90,Default,,0,0,0,,Styled line
+                    """.trimIndent(),
+                )
+            }
+            val streams = listOf(dev.nitrate.core.model.MediaStream(3, dev.nitrate.core.model.StreamKind.SUBTITLE, codec = "ass", language = "eng", isExternal = true, delivery = dev.nitrate.core.model.SubtitleDelivery.EXTERNAL))
+            val plan = PlaybackPlan(
+                itemId = "m2", url = file.absolutePath, method = PlayMethod.DIRECT_PLAY, playSessionId = null,
+                source = MediaSource("s2", "wav", null, streams), isHls = false, audioIndex = null, subtitleIndex = 3,
+                externalSubtitles = listOf(dev.nitrate.core.model.ExternalSubtitle(3, ass.absolutePath, "text/x-ssa", "eng", "English")),
+                transcodeReasons = emptyList(),
+            )
+            assertEquals(true, plan.styledSubtitle)
+            session.loadLocal(MediaItem("m2", "Downloaded", ItemKind.MOVIE), plan, 0) { _, _, _ -> }
+            val end = System.currentTimeMillis() + 10_000
+            var cues: List<androidx.media3.common.text.Cue> = emptyList()
+            while (System.currentTimeMillis() < end && session.error.value == null && cues.isEmpty()) {
+                ShadowLooper.idleMainLooper(20, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(10)
+                cues = session.player.currentCues.cues
+            }
+            println("EVENTS " + session.eventLog().joinToString(" | "))
+            val text = cues.firstOrNull()?.text as? android.text.Spanned
+            println("CUES " + cues.map { "${it.text} spans=" + ((it.text as? android.text.Spanned)?.let { t -> t.getSpans(0, t.length, Any::class.java).map { s -> s::class.simpleName } }) })
+            assertEquals("Styled line", text?.toString())
+            assertEquals(true, text!!.getSpans(0, text.length, android.text.style.ForegroundColorSpan::class.java).isNotEmpty())
+            session.release()
+        }
+    }
 }
