@@ -31,13 +31,24 @@ class PlaybackExtrasTest {
 
     @Test
     fun `language memory picks the same languages in the next episode`() {
-        val choice = TrackMemory.remember(streams, audioIndex = 3, subtitleIndex = 5, previous = null)
-        assertEquals(LanguageChoice("jpn", "eng"), choice)
+        val audio = TrackMemory.remember(StreamKind.AUDIO, streams, 3, previous = null)
+        val choice = TrackMemory.remember(StreamKind.SUBTITLE, streams, 5, audio)
+        assertEquals(LanguageChoice("jpn", "eng", version = TrackMemory.VERSION), choice)
         // Best audio in that language (most channels), full subtitles rather than forced.
         assertEquals(2 to 5, TrackMemory.pick(streams, choice))
-        assertEquals(1 to -1, TrackMemory.pick(streams, TrackMemory.remember(streams, 1, -1, choice)))
-        assertEquals(null to 4, TrackMemory.pick(streams, LanguageChoice(subtitleLanguage = "eng", subtitleForced = true)))
-        assertEquals(null to null, TrackMemory.pick(streams, LanguageChoice(audioLanguage = "fre")))
+        assertEquals(2 to -1, TrackMemory.pick(streams, TrackMemory.remember(StreamKind.SUBTITLE, streams, -1, choice)))
+        assertEquals(null to 4, TrackMemory.pick(streams, LanguageChoice(subtitleLanguage = "eng", subtitleForced = true, version = TrackMemory.VERSION)))
+        assertEquals(null to null, TrackMemory.pick(streams, LanguageChoice(audioLanguage = "fre", version = TrackMemory.VERSION)))
+    }
+
+    @Test
+    fun `changing one kind of track leaves the other to the server`() {
+        // Picking audio with subtitles off (the server's choice) doesn't pin subtitles off.
+        assertEquals(2 to null, TrackMemory.pick(streams, TrackMemory.remember(StreamKind.AUDIO, streams, 2, previous = null)))
+        // Picking subtitles doesn't pin the audio that happened to be playing.
+        assertEquals(null to 5, TrackMemory.pick(streams, TrackMemory.remember(StreamKind.SUBTITLE, streams, 5, previous = null)))
+        // Choices saved before this pinned both kinds, so they're left to the server.
+        assertEquals(null to null, TrackMemory.pick(streams, LanguageChoice("jpn", subtitlesOff = true)))
     }
 
     private fun event(json: String) = Json.parseToJsonElement(json).jsonObject.let { parseEvent(it["MessageType"].toString().trim('"'), it["Data"]) }

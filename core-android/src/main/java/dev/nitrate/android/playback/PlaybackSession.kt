@@ -625,7 +625,7 @@ class PlaybackSession(
             else -> false
         }
         val updated = if (kind == StreamKind.AUDIO) p.copy(audioIndex = index) else p.copy(subtitleIndex = index)
-        rememberLanguages(updated)
+        rememberLanguages(kind, index)
         // Each subtitle keeps its own timing.
         if (kind == StreamKind.SUBTITLE) _subtitleOffsetMs.value = subtitleOffsets[index] ?: 0
         // A downloaded file has only what's in it.
@@ -641,10 +641,12 @@ class PlaybackSession(
         }
     }
 
-    private fun rememberLanguages(p: PlaybackPlan) {
+    /** Remembers, for the show, only the kind of track the user just picked. */
+    private fun rememberLanguages(kind: StreamKind, index: Int) {
         val series = _item.value?.seriesId ?: return
         val memory = trackMemory ?: return
-        appScope.launch { memory.set(series, TrackMemory.remember(p.source.streams, p.audioIndex, p.subtitleIndex, memory.get(series))) }
+        val streams = _plan.value?.source?.streams ?: return
+        appScope.launch { memory.set(series, TrackMemory.remember(kind, streams, index, memory.get(series))) }
     }
 
     // ---- Speed, night mode, subtitle timing ----
