@@ -40,11 +40,11 @@ interface PlayerGestures {
     /** Double tap in the middle. */
     fun onTogglePlay()
 
-    /** Vertical swipe on the left half, as a fraction of the screen height (up is positive). */
+    /**
+     * Vertical swipe on the left half, as a fraction of the screen height (up is positive).
+     * The right half has no swipe: volume changed by accident too easily (the phone's buttons do it).
+     */
     fun onBrightness(delta: Float)
-
-    /** Vertical swipe on the right half. */
-    fun onVolume(delta: Float)
 
     /** Pinch out (true) to fill the screen, in (false) to fit. */
     fun onZoom(fill: Boolean)
@@ -98,7 +98,7 @@ fun VideoSurface(
 @OptIn(UnstableApi::class)
 @SuppressLint("ClickableViewAccessibility")
 private fun attachGestures(view: PlayerView, gestures: PlayerGestures) {
-    var swiping: Boolean? = null // true = brightness (left), false = volume (right)
+    var swiping = false // a brightness swipe (left half) is under way
     var lastY = 0f
     var scaling = false
     val scale = ScaleGestureDetector(view.context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -129,16 +129,18 @@ private fun attachGestures(view: PlayerView, gestures: PlayerGestures) {
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
             val start = e1 ?: return false
             if (scaling) return false
-            if (swiping == null) {
-                // Only clearly vertical swipes, away from the top and bottom edges (system gestures, seek bar).
+            if (!swiping) {
+                // Only clearly vertical swipes on the left half, away from the top and bottom edges
+                // (system gestures, seek bar).
                 val edge = view.height * 0.12f
                 if (kotlin.math.abs(dy) < kotlin.math.abs(dx) || start.y < edge || start.y > view.height - edge) return false
-                swiping = start.x < view.width / 2f
+                if (start.x >= view.width / 2f) return false
+                swiping = true
                 lastY = start.y
             }
             val delta = (lastY - e2.y) / view.height
             lastY = e2.y
-            if (swiping == true) gestures.onBrightness(delta) else gestures.onVolume(delta)
+            gestures.onBrightness(delta)
             return true
         }
     })
@@ -153,7 +155,7 @@ private fun attachGestures(view: PlayerView, gestures: PlayerGestures) {
                 pinchStartSpan = 0f
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                swiping = null
+                swiping = false
                 scaling = false
             }
         }
@@ -211,18 +213,6 @@ class BrightnessControl internal constructor(private val activity: Activity?) {
 }
 
 /** Media volume, as a 0..1 level. */
-class VolumeControl(context: Context) {
-    private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    private val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-    private var level = audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
-
-    fun adjust(delta: Float): Float {
-        level = (level + delta).coerceIn(0f, 1f)
-        audio.setStreamVolume(AudioManager.STREAM_MUSIC, (level * max).toInt(), 0)
-        return level
-    }
-}
-
 /**
  * Full screen while playing, and landscape unless [lockLandscape] is off (writing beside the
  * video can be done upright, with room for the keyboard). Restores everything afterwards.

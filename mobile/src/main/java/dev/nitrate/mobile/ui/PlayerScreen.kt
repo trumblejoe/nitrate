@@ -92,7 +92,6 @@ import dev.nitrate.mobile.platform.rememberPictureInPictureController
 import androidx.compose.material.icons.filled.MoreVert
 import dev.nitrate.mobile.platform.PlayerGestures
 import dev.nitrate.mobile.platform.Scrub
-import dev.nitrate.mobile.platform.VolumeControl
 import dev.nitrate.mobile.platform.rememberBrightnessControl
 import dev.nitrate.core.episodes.UpNext
 import dev.nitrate.core.model.MediaItem
@@ -230,7 +229,6 @@ fun PlayerScreen(
     var feedback by remember { mutableStateOf<GestureFeedback?>(null) }
     var feedbackAt by remember { mutableStateOf(0L) }
     val brightness = rememberBrightnessControl()
-    val volume = remember { VolumeControl(context) }
 
     // The next episode in viewing order: from the server, or from downloads when offline.
     LaunchedEffect(item?.id) {
@@ -258,7 +256,6 @@ fun PlayerScreen(
             }
             override fun onTogglePlay() = session.controls.togglePlay()
             override fun onBrightness(delta: Float) = show(GestureFeedback.Level(true, brightness.adjust(delta)))
-            override fun onVolume(delta: Float) = show(GestureFeedback.Level(false, volume.adjust(delta)))
             override fun onZoom(fill: Boolean) {
                 if (fill == fillState.value) return
                 fillState.value = fill
