@@ -67,7 +67,7 @@ class AppContainer(
     val playbackSettings = PlaybackSettingsStore(appContext)
 
     /** Probed once: decoder lists don't change while the app runs. */
-    val capabilities: DeviceCapabilities by lazy { DeviceProbe.probe(appContext) }
+    val capabilities: DeviceCapabilities by lazy { DeviceProbe.cached(appContext) }
 
     /** Each page's rows as last loaded, so pages open with them while fresh ones load. */
     val dataCache: dev.nitrate.android.storage.DataCache by lazy { dev.nitrate.android.storage.DataCache(appContext) }

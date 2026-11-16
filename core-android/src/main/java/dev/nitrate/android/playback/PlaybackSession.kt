@@ -73,6 +73,8 @@ class PlaybackSession(
     private val onEnded: () -> Unit,
     /** Remembers audio and subtitle languages per show (null: don't). */
     private val trackMemory: TrackMemoryStore? = null,
+    /** What this device reports it can play (probed once per app run). */
+    private val capabilities: () -> dev.nitrate.core.playback.DeviceCapabilities = { DeviceProbe.cached(context) },
 ) {
     private val appContext = context.applicationContext
     private val nightMode = NightModeAudioProcessor()
@@ -248,7 +250,12 @@ class PlaybackSession(
             .setRenderersFactory(renderers)
             // DefaultDataSource sends http(s) through the authorised source and reads downloaded
             // files (file://) and their subtitles itself; the http source alone can't open files.
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, http)))
+            // Dual-layer Dolby Vision (profile 7) plays as its HDR10 base layer unless this device
+            // plays profile 7 as Dolby Vision.
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(context, DolbyVisionBaseLayer({ !playsProfile7 }))
+                    .setDataSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, http)),
+            )
             .build()
     }
 
@@ -414,6 +421,7 @@ class PlaybackSession(
         // How styled subtitles are shown can change from the player's settings while playing.
         scope.launch {
             settings.settings.collect { s ->
+                playsProfile7 = runCatching { dev.nitrate.core.playback.CapabilityRules.playsDolbyVisionProfile7(capabilities(), s) }.getOrDefault(false)
                 val mode = s.subtitleStyle.styled
                 if (mode != styledMode) {
                     styledMode = mode
@@ -871,6 +879,9 @@ class PlaybackSession(
 
     /** The styled subtitle libass draws over the picture (in each app's player view), or null. */
     val assTrack: StateFlow<AssTrack?> = _assTrack
+    /** Read when each file is opened: profile 7 Dolby Vision plays as Dolby Vision (else its base layer). */
+    @Volatile private var playsProfile7 = false
+
     @Volatile private var styledMode = dev.nitrate.core.playback.StyledSubtitles.FILE
     private var assJob: Job? = null
 

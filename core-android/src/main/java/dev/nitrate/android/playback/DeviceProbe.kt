@@ -68,6 +68,11 @@ object DeviceProbe {
     @OptIn(UnstableApi::class)
     private fun softwareVideo(mime: String): Boolean = runCatching { dev.nitrate.ffmpeg.FfmpegVideoDecoder.supports(mime) }.getOrDefault(false)
 
+    @Volatile private var probed: DeviceCapabilities? = null
+
+    /** [probe], once per app run (the decoders and display don't change while it runs). */
+    fun cached(context: Context): DeviceCapabilities = probed ?: probe(context.applicationContext).also { probed = it }
+
     @OptIn(UnstableApi::class)
     fun probe(context: Context): DeviceCapabilities {
         val decoders = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filterNot { it.isEncoder }
