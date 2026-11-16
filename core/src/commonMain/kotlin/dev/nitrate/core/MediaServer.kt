@@ -311,6 +311,9 @@ interface MediaServer {
     /** Series this user follows: favourites, and shows they're partway through (Next Up). */
     suspend fun followedSeries(): Set<String> = unsupported()
 
+    /** The signed-in account's settings kept on the server (languages, permissions...), and the server's details. */
+    suspend fun serverSettings(): dev.nitrate.core.account.ServerSettings = unsupported()
+
     /** Series this user has watched any of (an episode or more). */
     suspend fun watchedSeries(): Set<String> = unsupported()
 

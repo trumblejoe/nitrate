@@ -241,6 +241,7 @@ class JellyfinContractTest {
         client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(DASHED, dev.nitrate.core.model.CollectionKind.TV_SHOWS), 0, 10)
         client.followedSeries()
         client.watchedSeries()
+        client.serverSettings()
         assertEquals("upload_nitrate.log", client.sendClientLog("Nitrate playback report"))
         client.searchHints("nitr")
         client.additionalParts(DASHED)

@@ -561,6 +561,14 @@ class JellyfinClient(
         (favourites.await() + watching.await()).toSet()
     }
 
+    override suspend fun serverSettings(): dev.nitrate.core.account.ServerSettings = coroutineScope {
+        val me = async { get("Users", "Me").decode<JsonObject>() }
+        val info = async { runCatching { get("System", "Info", "Public").decode<JsonObject>() }.getOrNull() }
+        // Hidden ones too: a library left out of My Media is missing from the usual list.
+        val libraries = async { runCatching { items("UserViews", query = mapOf("includeHidden" to true)).associate { it.id to it.name } }.getOrDefault(emptyMap()) }
+        JellyfinServerSettings.from(me.await(), info.await(), libraries.await())
+    }
+
     override suspend fun watchedSeries(): Set<String> =
         // A show's user data counts its watched episodes, so one light list covers every show.
         get("Items", query = mapOf("userId" to userId, "includeItemTypes" to "Series", "recursive" to true, "enableImages" to false))

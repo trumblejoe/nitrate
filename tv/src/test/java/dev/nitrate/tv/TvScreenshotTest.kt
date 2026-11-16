@@ -396,6 +396,8 @@ class TvScreenshotTest {
         )
     }
 
+    @Test fun serverSettings() = shoot("tv-server-settings") { c -> dev.nitrate.tv.ui.settings.ServerSettingsScreen(c) }
+
     @Test fun watchPartners() = shoot("tv-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { c ->
         dev.nitrate.tv.ui.partners.WatchPartnersScreen(c) {}
     }

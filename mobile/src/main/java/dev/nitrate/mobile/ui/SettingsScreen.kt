@@ -112,6 +112,8 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                 )
             }
 
+            item { ServerSettingsRow(actions) }
+
             item { QuickConnectRow(actions) }
 
             if (account?.isAdmin == true) {

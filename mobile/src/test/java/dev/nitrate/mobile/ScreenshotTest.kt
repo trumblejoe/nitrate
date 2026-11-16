@@ -159,6 +159,8 @@ class ScreenshotTest {
         c.pickTrack(film, c.trackSetup(film), dev.nitrate.core.model.StreamKind.SUBTITLE, 3)
     }) { dev.nitrate.mobile.ui.DownloadDialog(it, listOf(dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE, runtimeMs = 6_960_000)), "Nitrate") {} }
 
+    @Test fun serverSettings() = shoot("phone-server-settings") { dev.nitrate.mobile.ui.ServerSettingsDialog(it) {} }
+
     @Test fun connect() = shoot("phone-connect") { ConnectScreen(it) { _, _ -> } }
 
     @Test fun chat() = shoot("phone-chat") { actions ->

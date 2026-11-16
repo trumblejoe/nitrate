@@ -629,6 +629,18 @@ class JellyfinLiveTest {
     }
 
     @Test
+    fun `server-side settings read the account's languages and permissions`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-settings", "Settings"), MemorySessionStorage(), { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val text = client.serverSettings().render()
+        println(text)
+        assertTrue(text.contains("Preferred audio language: "))
+        assertTrue(text.contains("Subtitle mode: "))
+        assertTrue(text.contains("Jellyfin version: "))
+    }
+
+    @Test
     fun `browses a library with filters and A to Z`() = runBlocking {
         assumeTrue("Set JELLYFIN_URL to run", url != null)
         val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-browse", "Browse"), MemorySessionStorage(), { caps() }, settings)

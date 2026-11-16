@@ -354,6 +354,23 @@ class FakeServer : MediaServer {
     override fun logoUrl(item: MediaItem): String? = null
     override fun personImageUrl(person: Person): String? = null
     override fun authorizationHeader() = ""
+    override suspend fun serverSettings() = dev.nitrate.core.account.ServerSettings(
+        listOf(
+            dev.nitrate.core.account.ServerSettingsGroup(
+                "Languages and subtitles", "Jellyfin → your profile → Playback and Subtitles",
+                listOf(
+                    dev.nitrate.core.account.ServerSetting("Preferred audio language", "Japanese (jpn)", dev.nitrate.core.account.SettingReach.APPLIES, "The audio a title starts with when you haven't picked one for that show or film."),
+                    dev.nitrate.core.account.ServerSetting("Subtitle mode", "Smart", dev.nitrate.core.account.SettingReach.APPLIES, "Subtitles in your preferred language start when the audio isn't in your preferred audio language."),
+                    dev.nitrate.core.account.ServerSetting("Remember audio selections", "On", dev.nitrate.core.account.SettingReach.JELLYFIN_APPS, "Nitrate remembers your picks itself, per show or film, on all your devices."),
+                ),
+            ),
+            dev.nitrate.core.account.ServerSettingsGroup(
+                "Playback permissions", "Jellyfin dashboard → Users → you → Profile (your server's admin)",
+                listOf(dev.nitrate.core.account.ServerSetting("Bitrate limit away from home", "8 Mbps", dev.nitrate.core.account.SettingReach.APPLIES, "On top of this device's own limit in Playback settings.")),
+            ),
+        ),
+    )
+
     /** A typical file: English 5.1 and Japanese audio, full and signs-only ASS subtitles; the server picks English, subtitles off. */
     override suspend fun mediaSource(itemId: String) = dev.nitrate.core.model.MediaSource(
         "src-$itemId", "mkv", 12_000_000,
