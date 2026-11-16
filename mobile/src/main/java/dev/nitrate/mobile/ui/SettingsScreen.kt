@@ -192,6 +192,24 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             item { Toggle("Swipe for brightness and volume", "Up and down on the left of the video for brightness, on the right for volume", playback.swipeControls) { v -> updatePlayback { it.copy(swipeControls = v) } } }
             item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }
             item { Toggle("Night mode", "Quieter loud parts and clearer dialogue (when this device decodes the audio)", playback.nightMode) { v -> updatePlayback { it.copy(nightMode = v) } } }
+            item {
+                ListItem(
+                    headlineContent = { Text("Audio sync") },
+                    supportingContent = {
+                        Column {
+                            Text(dev.nitrate.core.playback.AudioSync.label(playback.audioDelayMs) + ". For Bluetooth headphones or a receiver that adds lag; also in the player's menu.")
+                            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                dev.nitrate.core.playback.AudioSync.STEPS.forEach { d ->
+                                    OutlinedButton(onClick = { updatePlayback { it.copy(audioDelayMs = dev.nitrate.core.playback.AudioSync.clamp(it.audioDelayMs + d)) } }) {
+                                        Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d)} ms")
+                                    }
+                                }
+                                if (playback.audioDelayMs != 0) androidx.compose.material3.TextButton(onClick = { updatePlayback { it.copy(audioDelayMs = 0) } }) { Text("Reset") }
+                            }
+                        }
+                    },
+                )
+            }
 
         }
         section(open, "Subtitles", "How subtitles look on this device.") {

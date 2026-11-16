@@ -119,6 +119,13 @@ fun PlaybackSettingsScreen(
             }
         }
 
+        item {
+            // Coarse steps here; the player's menu fine-tunes while you listen.
+            val steps = listOf(-300, -200, -100, -50, 0, 50, 100, 200, 300)
+            ChoiceRow("Audio sync", dev.nitrate.core.playback.AudioSync.label(settings.audioDelayMs), "For a soundbar or receiver that adds lag. Fine-tune in the player's menu.") {
+                update { it.copy(audioDelayMs = steps.firstOrNull { s -> s > it.audioDelayMs } ?: steps.first()) }
+            }
+        }
         item { ToggleRow("Night mode", settings.nightMode, "Quieter loud parts and clearer dialogue when the TV decodes the audio (not with passthrough)") { v -> update { it.copy(nightMode = v) } } }
 
         section("Subtitles", "How subtitles look on this TV.")

@@ -48,6 +48,11 @@ data class PlaybackSettings(
     val swipeControls: Boolean = true,
     /** Shrink the video into a corner window when leaving the app mid-playback (phones). */
     val pictureInPicture: Boolean = true,
+    /**
+     * Moves the sound against the picture, in milliseconds: positive plays it later, negative
+     * earlier (for Bluetooth headphones or a receiver that adds lag). Per device.
+     */
+    val audioDelayMs: Int = 0,
     /** Evens out loud and quiet sound and lifts dialogue, for late nights. */
     val nightMode: Boolean = false,
     /** How the writing pane shares the screen with the video (phones and tablets). */

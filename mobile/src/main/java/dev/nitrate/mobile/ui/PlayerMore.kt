@@ -64,6 +64,7 @@ fun PlayerMoreSheet(
     val speed by session.speed.collectAsState()
     val night by session.nightModeOn.collectAsState()
     val offset by session.subtitleOffsetMs.collectAsState()
+    val audioDelay by session.audioDelayMs.collectAsState()
     val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -99,6 +100,13 @@ fun PlayerMoreSheet(
                         listOf(-1000L, -250L, 250L, 1000L).forEach { d -> OutlinedButton(onClick = { session.setSubtitleOffset(offset + d) }) { Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d) / 1000.0}s") } }
                         if (offset != 0L) TextButton(onClick = { session.setSubtitleOffset(0) }) { Text("Reset") }
                     }
+                    // Remembered for this device (Bluetooth headphones, a receiver that adds lag).
+                    Section("Audio sync · " + dev.nitrate.core.playback.AudioSync.label(audioDelay)) {
+                        dev.nitrate.core.playback.AudioSync.STEPS.forEach { d ->
+                            OutlinedButton(onClick = { setAudioDelay(actions, session, audioDelay + d) }) { Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d)} ms") }
+                        }
+                        if (audioDelay != 0) TextButton(onClick = { setAudioDelay(actions, session, 0) }) { Text("Reset") }
+                    }
                     HorizontalDivider()
                     MenuRow("Find subtitles…", "Search subtitle sites through your server") { page = MorePage.SUBTITLES }
                     val group by actions.container.syncPlay.group.collectAsState()
@@ -118,6 +126,11 @@ fun PlayerMoreSheet(
         },
         confirmButton = { TextButton(onClick = { if (page == MorePage.MAIN) onDismiss() else page = MorePage.MAIN }) { Text(if (page == MorePage.MAIN) "Close" else "Back") } },
     )
+}
+
+private fun setAudioDelay(actions: AppActions, session: PlaybackSession, ms: Int) {
+    session.setAudioDelay(ms)
+    actions.scope.launch { actions.container.playbackSettings.update { it.copy(audioDelayMs = session.audioDelayMs.value) } }
 }
 
 private fun setNight(actions: AppActions, session: PlaybackSession, on: Boolean) {

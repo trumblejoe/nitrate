@@ -60,6 +60,7 @@ fun PlayerMoreDialog(
     val speed by session.speed.collectAsState()
     val night by session.nightModeOn.collectAsState()
     val offset by session.subtitleOffsetMs.collectAsState()
+    val audioDelay by session.audioDelayMs.collectAsState()
     var searching by remember { mutableStateOf(false) }
     var together by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -108,6 +109,18 @@ fun PlayerMoreDialog(
                     OutlinedButton(onClick = { session.setSubtitleOffset(offset + d) }) { Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d) / 1000.0}s") }
                 }
                 if (offset != 0L) OutlinedButton(onClick = { session.setSubtitleOffset(0) }) { Text("Reset") }
+            }
+            // Remembered for this TV (a soundbar or receiver that adds lag).
+            Text("Audio sync · " + dev.nitrate.core.playback.AudioSync.label(audioDelay), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                fun set(ms: Int) {
+                    session.setAudioDelay(ms)
+                    scope.launch { settings.update { it.copy(audioDelayMs = session.audioDelayMs.value) } }
+                }
+                dev.nitrate.core.playback.AudioSync.STEPS.forEach { d ->
+                    OutlinedButton(onClick = { set(audioDelay + d) }) { Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d)} ms") }
+                }
+                if (audioDelay != 0) OutlinedButton(onClick = { set(0) }) { Text("Reset") }
             }
             ListItem(selected = false, onClick = { searching = true }, headlineContent = { Text("Find subtitles…") },
                 supportingContent = { Text("Search subtitle sites through your server") })

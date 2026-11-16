@@ -77,6 +77,13 @@ class PlaybackSession(
     private val appContext = context.applicationContext
     private val nightMode = NightModeAudioProcessor()
 
+    /** Audio sync, read on the playback thread by the audio sink. */
+    @Volatile private var audioDelayUs = 0L
+    private val _audioDelayMs = MutableStateFlow(0)
+
+    /** How far the sound is moved against the picture (positive: later). */
+    val audioDelayMs: StateFlow<Int> = _audioDelayMs
+
     private val _speed = MutableStateFlow(1f)
 
     /** Playback speed, 0.5x to 2x. */
@@ -183,9 +190,19 @@ class PlaybackSession(
             .setDefaultRequestProperties(mapOf("Authorization" to server.authorizationHeader()))
         // Night mode sits in the audio path; it's off (passes audio through) until switched on.
         val renderers = object : DefaultRenderersFactory(context) {
-            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean) =
-                DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(nightMode)).setEnableFloatOutput(enableFloatOutput)
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink {
+                val sink = DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(nightMode)).setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build()
+                // Audio sync: the player follows the audio clock, so moving the clock moves the
+                // picture against the sound (decoded or passed through to a receiver alike).
+                return object : androidx.media3.exoplayer.audio.ForwardingAudioSink(sink) {
+                    override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+                        val position = super.getCurrentPositionUs(sourceEnded)
+                        if (position == androidx.media3.exoplayer.audio.AudioSink.CURRENT_POSITION_NOT_SET) return position
+                        return dev.nitrate.core.playback.AudioSync.shiftedPositionUs(position, audioDelayUs)
+                    }
+                }
+            }
         }.setEnableDecoderFallback(true)
             // FFmpeg (ffmpeg-decoder) only for audio the device has no decoder for.
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
@@ -354,6 +371,7 @@ class PlaybackSession(
 
     init {
         scope.launch { setNightMode(settings.current().nightMode) }
+        scope.launch { setAudioDelay(settings.current().audioDelayMs, resync = false) }
         scope.launch {
             while (isActive) {
                 _progress.value = Progress(exo.currentPosition, exo.duration.coerceAtLeast(0))
@@ -698,6 +716,17 @@ class PlaybackSession(
         }
         _speed.value = speed
         exo.setPlaybackSpeed(speed)
+    }
+
+    /**
+     * Moves the sound by [ms] against the picture (see [dev.nitrate.core.playback.AudioSync]).
+     * Applied at once by re-seeking where it is (the player won't step its clock back otherwise).
+     */
+    fun setAudioDelay(ms: Int, resync: Boolean = true) {
+        val clamped = dev.nitrate.core.playback.AudioSync.clamp(ms)
+        _audioDelayMs.value = clamped
+        audioDelayUs = clamped * 1000L
+        if (resync && exo.playbackState != Player.STATE_IDLE) exo.seekTo(exo.currentPosition)
     }
 
     fun setNightMode(on: Boolean) {
