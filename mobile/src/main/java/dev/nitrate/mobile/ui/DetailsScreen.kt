@@ -170,6 +170,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     }
                     if (!music) PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
                     if (item.versions.size > 1) VersionChooser(item)
+                    // The tracks Play starts with, and a way to change them (a show's page: its next episode).
+                    if (!music) (if (item.isPlayable) item else state.nextUp ?: state.episodes.firstOrNull())?.let { TrackLine(actions, it) }
                     // Wraps onto a second line when there are more actions than fit (a movie with a trailer, for an admin).
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)

@@ -66,6 +66,8 @@ import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import dev.nitrate.core.downloads.DownloadOption
 import dev.nitrate.core.downloads.DownloadQuality
+import dev.nitrate.core.playback.audioChoices
+import dev.nitrate.core.playback.subtitleChoices
 import dev.nitrate.core.downloads.DownloadRecord
 import dev.nitrate.core.downloads.DownloadSettings
 import dev.nitrate.core.downloads.DownloadSizing
@@ -397,6 +399,12 @@ fun DownloadDialog(actions: AppActions, items: List<MediaItem>, title: String, o
     var options by remember { mutableStateOf<Result<List<DownloadOption>>?>(null) }
     var chosen by remember { mutableStateOf<DownloadQuality?>(null) }
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    // Tracks: what it would start with (the show's or title's pick, else the server's), changeable
+    // here; a season shows its first episode's and passes the choice on as the show's languages.
+    var tracks by remember { mutableStateOf<dev.nitrate.core.playback.TrackSetup?>(null) }
+    var picking by remember { mutableStateOf<dev.nitrate.core.model.StreamKind?>(null) }
+    var burnIn by remember { mutableStateOf(false) }
+    LaunchedEffect(items) { tracks = runCatching { actions.container.trackSetup(items.first()) }.getOrNull() }
 
     LaunchedEffect(items, settings.hevc) {
         // Sizes from the first item; for a season they're scaled by total runtime.
@@ -442,6 +450,29 @@ fun DownloadDialog(actions: AppActions, items: List<MediaItem>, title: String, o
                         }
                     }
                 }
+                tracks?.takeIf { it.hasChoices }?.let { t ->
+                    Text("Tracks", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TrackPill("Audio", t.audioName) { picking = dev.nitrate.core.model.StreamKind.AUDIO }
+                        TrackPill("Subtitles", t.subtitleName) { picking = dev.nitrate.core.model.StreamKind.SUBTITLE }
+                    }
+                    if (!selected.isOriginal) {
+                        Text(
+                            "A smaller copy keeps only this audio.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
+                        )
+                        if (t.subtitleIndex >= 0) Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Burn-In Subtitles", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "Your server draws these subtitles into the picture, exactly as styled (fonts and effects too). They can't be turned off in this copy.",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            androidx.compose.material3.Switch(checked = burnIn, onCheckedChange = { burnIn = it })
+                        }
+                    }
+                }
                 if (settings.wifiOnly) {
                     Text("Starts when you're on Wi-Fi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 }
@@ -457,7 +488,12 @@ fun DownloadDialog(actions: AppActions, items: List<MediaItem>, title: String, o
                     // Closed once queued: closing first would cancel this scope.
                     scope.launch {
                         downloads.updateSettings { it.copy(quality = selected) }
-                        downloads.enqueue(items, selected, settings.hevc && !selected.isOriginal)
+                        val t = tracks
+                        val request = dev.nitrate.core.downloads.TrackRequest(
+                            audioIndex = t?.audioIndex, subtitleIndex = t?.subtitleIndex,
+                            burnIn = burnIn && !selected.isOriginal && (t?.subtitleIndex ?: -1) >= 0,
+                        )
+                        downloads.enqueue(items, selected, settings.hevc && !selected.isOriginal, request)
                         onDismiss()
                     }
                 },
@@ -465,4 +501,18 @@ fun DownloadDialog(actions: AppActions, items: List<MediaItem>, title: String, o
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+    picking?.let { kind ->
+        val t = tracks ?: return@let
+        val audio = kind == dev.nitrate.core.model.StreamKind.AUDIO
+        TrackPicker(
+            if (audio) "Audio" else "Subtitles",
+            if (audio) t.source.audioChoices() else t.source.subtitleChoices(),
+            if (audio) t.audioIndex else t.subtitleIndex,
+            onSelect = { index ->
+                picking = null
+                // Remembered for the show (or title), like a pick in the player.
+                scope.launch { tracks = actions.container.pickTrack(items.first(), t, kind, index) }
+            },
+        ) { picking = null }
+    }
 }

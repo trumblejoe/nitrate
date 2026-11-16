@@ -12,6 +12,9 @@ data class LanguageChoice(
     val subtitlesOff: Boolean = false,
     /** They picked a forced (signs and songs) track rather than full subtitles. */
     val subtitleForced: Boolean = false,
+    /** The picked tracks' titles ("Commentary", "Signs & Songs"), so the same kind is found again. */
+    val audioTitle: String? = null,
+    val subtitleTitle: String? = null,
     /**
      * 2: only what the user picked is set, the rest is left to the server's settings. Earlier
      * choices (0) also pinned whatever happened to be playing for the other kind, so they're ignored.
@@ -19,7 +22,10 @@ data class LanguageChoice(
     val version: Int = 0,
 )
 
-/** Where per-show track choices are kept (per user, synced). */
+/**
+ * Where track choices are kept (per user, synced): per show for episodes, per title for anything
+ * else ([TrackSelection.memoryKey]).
+ */
 interface TrackMemoryStore {
     suspend fun get(seriesId: String): LanguageChoice?
     suspend fun set(seriesId: String, choice: LanguageChoice)
@@ -36,10 +42,10 @@ object TrackMemory {
         val base = previous?.takeIf { it.version >= VERSION } ?: LanguageChoice(version = VERSION)
         val stream = streams.firstOrNull { it.kind == kind && it.index == index }
         return when (kind) {
-            StreamKind.AUDIO -> base.copy(audioLanguage = stream?.language ?: base.audioLanguage)
+            StreamKind.AUDIO -> base.copy(audioLanguage = stream?.language ?: base.audioLanguage, audioTitle = stream?.title)
             StreamKind.SUBTITLE ->
-                if (index == -1) base.copy(subtitleLanguage = null, subtitlesOff = true, subtitleForced = false)
-                else base.copy(subtitleLanguage = stream?.language, subtitlesOff = false, subtitleForced = stream?.isForced == true)
+                if (index == -1) base.copy(subtitleLanguage = null, subtitlesOff = true, subtitleForced = false, subtitleTitle = null)
+                else base.copy(subtitleLanguage = stream?.language, subtitlesOff = false, subtitleForced = stream?.isForced == true, subtitleTitle = stream?.title)
             else -> base
         }
     }
@@ -50,18 +56,60 @@ object TrackMemory {
      */
     fun pick(streams: List<MediaStream>, choice: LanguageChoice): Pair<Int?, Int?> {
         if (choice.version < VERSION) return null to null
-        val audio = choice.audioLanguage?.let { lang ->
-            val matches = streams.filter { it.kind == StreamKind.AUDIO && it.language.equals(lang, ignoreCase = true) }
-            (matches.firstOrNull { it.isDefault } ?: matches.maxByOrNull { it.channels ?: 0 })?.index
+        fun candidates(kind: StreamKind, language: String?, title: String?) = streams.filter { it.kind == kind }.let { all ->
+            when {
+                language != null -> all.filter { it.language.equals(language, ignoreCase = true) }
+                title != null -> all
+                else -> emptyList()
+            }
         }
+        val audio = candidates(StreamKind.AUDIO, choice.audioLanguage, choice.audioTitle).let { matches ->
+            sameTitle(matches, choice.audioTitle) ?: matches.firstOrNull { it.isDefault } ?: matches.maxByOrNull { it.channels ?: 0 }
+        }?.index
         val subtitle = when {
             choice.subtitlesOff -> -1
-            choice.subtitleLanguage == null -> null
-            else -> {
-                val matches = streams.filter { it.kind == StreamKind.SUBTITLE && it.language.equals(choice.subtitleLanguage, ignoreCase = true) }
-                (matches.firstOrNull { it.isForced == choice.subtitleForced } ?: matches.firstOrNull())?.index
-            }
+            choice.subtitleLanguage == null && choice.subtitleTitle == null -> null
+            else -> candidates(StreamKind.SUBTITLE, choice.subtitleLanguage, choice.subtitleTitle).let { matches ->
+                sameTitle(matches, choice.subtitleTitle) ?: matches.firstOrNull { it.isForced == choice.subtitleForced } ?: matches.firstOrNull()
+            }?.index
         }
         return audio to subtitle
     }
+
+    /**
+     * The stream whose title is [title], or shares its telling words ("Commentary", "Signs"), or
+     * null when none does (or there's no title to match).
+     */
+    private fun sameTitle(streams: List<MediaStream>, title: String?): MediaStream? {
+        title ?: return null
+        streams.firstOrNull { it.title.equals(title, ignoreCase = true) }?.let { return it }
+        val words = words(title)
+        if (words.isEmpty()) return null
+        return streams.map { it to (words intersect words(it.title.orEmpty())).size }.filter { it.second > 0 }.maxByOrNull { it.second }?.first
+    }
+
+    private fun words(text: String) = text.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 4 }.toSet()
+}
+
+/** Which audio and subtitles a title starts with, wherever it's played or downloaded from. */
+object TrackSelection {
+    /** Where choices are remembered: the show for an episode (so the next one follows), else the title. */
+    fun memoryKey(item: dev.nitrate.core.model.MediaItem): String = item.seriesId ?: item.id
+
+    /**
+     * What starts: what the user picked (for this show or title), then the server's picks from
+     * their language settings, then the file's own flags. -1 is subtitles off.
+     */
+    fun initial(source: dev.nitrate.core.model.MediaSource, choice: LanguageChoice?): Pair<Int?, Int> {
+        val (audio, subtitle) = dev.nitrate.core.downloads.DownloadTracks.pick(source)
+        val (pickedAudio, pickedSubtitle) = choice?.let { TrackMemory.pick(source.streams, it) } ?: (null to null)
+        return (pickedAudio ?: audio) to (pickedSubtitle ?: subtitle)
+    }
+}
+
+/** A title's file and the audio and subtitles it will start with (-1: subtitles off). */
+data class TrackSetup(val source: dev.nitrate.core.model.MediaSource, val audioIndex: Int?, val subtitleIndex: Int) {
+    val audioName: String get() = source.trackName(audioIndex)
+    val subtitleName: String get() = source.trackName(subtitleIndex)
+    val hasChoices: Boolean get() = source.streams.count { it.kind == StreamKind.AUDIO } > 1 || source.streams.any { it.kind == StreamKind.SUBTITLE }
 }

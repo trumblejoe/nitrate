@@ -42,6 +42,38 @@ class PlaybackExtrasTest {
     }
 
     @Test
+    fun `the same kind of track is found again by its title`() {
+        val episode1 = listOf(
+            MediaStream(1, StreamKind.AUDIO, language = "eng", title = "English 5.1", channels = 6, isDefault = true),
+            MediaStream(2, StreamKind.AUDIO, language = "eng", title = "Director's Commentary", channels = 2),
+            MediaStream(3, StreamKind.SUBTITLE, language = "eng", title = "Full"),
+            MediaStream(4, StreamKind.SUBTITLE, language = "eng", title = "Signs & Songs"),
+        )
+        // Next episode: same tracks in another order, titled a little differently.
+        val episode2 = listOf(
+            MediaStream(1, StreamKind.AUDIO, language = "eng", title = "Commentary with the cast", channels = 2),
+            MediaStream(2, StreamKind.AUDIO, language = "eng", title = "English 5.1", channels = 6, isDefault = true),
+            MediaStream(3, StreamKind.SUBTITLE, language = "eng", title = "Signs and Songs"),
+            MediaStream(4, StreamKind.SUBTITLE, language = "eng", title = "Full"),
+        )
+        val picked = TrackMemory.remember(StreamKind.SUBTITLE, episode1, 4, TrackMemory.remember(StreamKind.AUDIO, episode1, 2, null))
+        assertEquals(1 to 3, TrackMemory.pick(episode2, picked))
+        // No commentary in an episode: the best English track, not nothing.
+        assertEquals(2 to 3, TrackMemory.pick(episode2.filterNot { it.index == 1 }, picked))
+    }
+
+    @Test
+    fun `a title starts with the pick, then the server's, then the file's`() {
+        val source = dev.nitrate.core.model.MediaSource("s", "mkv", null, streams, defaultAudioIndex = 1, defaultSubtitleIndex = -1, defaultsKnown = true)
+        assertEquals(1 to -1, TrackSelection.initial(source, null))
+        val jpn = LanguageChoice(audioLanguage = "jpn", version = TrackMemory.VERSION)
+        // Audio picked, subtitles left to the server.
+        assertEquals(2 to -1, TrackSelection.initial(source, jpn))
+        assertEquals("series-1", TrackSelection.memoryKey(dev.nitrate.core.model.MediaItem("e", "Ep", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1")))
+        assertEquals("m", TrackSelection.memoryKey(dev.nitrate.core.model.MediaItem("m", "Film", dev.nitrate.core.model.ItemKind.MOVIE)))
+    }
+
+    @Test
     fun `changing one kind of track leaves the other to the server`() {
         // Picking audio with subtitles off (the server's choice) doesn't pin subtitles off.
         assertEquals(2 to null, TrackMemory.pick(streams, TrackMemory.remember(StreamKind.AUDIO, streams, 2, previous = null)))

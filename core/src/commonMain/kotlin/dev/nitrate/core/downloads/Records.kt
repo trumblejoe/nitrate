@@ -50,6 +50,13 @@ data class DownloadRecord(
     val watchedAtMs: Long? = null,
     /** Added by a [SmartRule]; removed by it once watched. Manual downloads are never removed. */
     val auto: Boolean = false,
+    /** Tracks picked when it was asked for (null: the show's remembered choice, else the server's picks). */
+    val audioIndex: Int? = null,
+    val subtitleIndex: Int? = null,
+    /** Have the server draw the subtitle into the picture (converted downloads only). */
+    val burnInSubtitles: Boolean = false,
+    /** The subtitle drawn into the picture, once downloaded. */
+    val burnedSubtitle: Int? = null,
 ) {
     val key get() = Key(serverUrl, userId, itemId)
 
@@ -90,3 +97,6 @@ data class DownloadsData(
     val settings: DownloadSettings = DownloadSettings(),
     val rules: List<SmartRule> = emptyList(),
 )
+
+/** Tracks picked in the download dialog. Indices only for a single title; [burnIn] for a converted download. */
+data class TrackRequest(val audioIndex: Int? = null, val subtitleIndex: Int? = null, val burnIn: Boolean = false)

@@ -77,6 +77,8 @@ class DownloadManager(
     private val root: Path,
     private val scheduler: DownloadScheduler,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** The user's track choices per show or title, for downloads asked for without picking. */
+    private val trackMemory: dev.nitrate.core.playback.TrackMemoryStore? = null,
 ) {
     private val http = HttpClient(engine) {
         expectSuccess = true
@@ -115,10 +117,14 @@ class DownloadManager(
     suspend fun options(item: MediaItem, hevc: Boolean): List<DownloadOption> =
         DownloadSizing.options(server.mediaSource(item.id), item.runtimeMs, hevc)
 
-    /** Queues [items] (movies or episodes) not already downloaded. Returns how many were added. */
-    suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean): Int = enqueue(items, quality, hevc, auto = false)
+    /**
+     * Queues [items] (movies or episodes) not already downloaded, with the [tracks] picked (exact
+     * tracks only for a single title). Returns how many were added.
+     */
+    suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean, tracks: TrackRequest? = null): Int =
+        enqueue(items, quality, hevc, auto = false, tracks = tracks)
 
-    private suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean, auto: Boolean): Int {
+    private suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean, auto: Boolean, tracks: TrackRequest? = null): Int {
         val user = server.userId ?: return 0
         val url = server.serverUrl ?: return 0
         val existing = mine(store.data.value).map { it.itemId }.toSet()
@@ -127,7 +133,11 @@ class DownloadManager(
         val created = now()
         store.update { data ->
             data.copy(records = data.records + fresh.mapIndexed { i, item ->
-                DownloadRecord(item.id, url, user, item, quality, hevc, createdAtMs = created + i, auto = auto)
+                DownloadRecord(
+                    item.id, url, user, item, quality, hevc, createdAtMs = created + i, auto = auto,
+                    audioIndex = tracks?.audioIndex?.takeIf { fresh.size == 1 }, subtitleIndex = tracks?.subtitleIndex?.takeIf { fresh.size == 1 },
+                    burnInSubtitles = tracks?.burnIn == true && !quality.isOriginal,
+                )
             })
         }
         scheduler.schedule(store.data.value.settings.wifiOnly)
@@ -267,19 +277,31 @@ class DownloadManager(
             val item = server.getItem(start.itemId).let { if (start.pendingSync) it.copy(user = start.item.user) else it }
             edit(key) { it.copy(item = item) }
             val source = server.mediaSource(start.itemId)
-            val audio = source.streams.firstOrNull { it.kind == StreamKind.AUDIO && it.isDefault } ?: source.streams.firstOrNull { it.kind == StreamKind.AUDIO }
+            // The tracks picked when it was asked for, else the show's (or title's) remembered
+            // choice, the server's picks for this user, the file's flags.
+            val (audioIndex, subtitleIndex) = if (start.audioIndex != null || start.subtitleIndex != null) {
+                val fallback = dev.nitrate.core.playback.TrackSelection.initial(source, null)
+                (start.audioIndex ?: fallback.first) to (start.subtitleIndex ?: fallback.second)
+            } else {
+                val choice = runCatching { trackMemory?.get(dev.nitrate.core.playback.TrackSelection.memoryKey(item)) }.getOrNull()
+                dev.nitrate.core.playback.TrackSelection.initial(source, choice)
+            }
+            val audio = source.streams.firstOrNull { it.kind == StreamKind.AUDIO && it.index == audioIndex }
+                ?: source.streams.firstOrNull { it.kind == StreamKind.AUDIO && it.isDefault } ?: source.streams.firstOrNull { it.kind == StreamKind.AUDIO }
             val spec = start.quality.spec(start.hevc)
+            // Burned in: the server draws it into the picture, fonts and all (only when converting).
+            val burned = subtitleIndex.takeIf { spec != null && start.burnInSubtitles && it >= 0 && source.streams.any { s -> s.kind == StreamKind.SUBTITLE && s.index == it } }
             val ext = if (spec == null) extension(source.container) else "mp4"
             val videoFile = "video.$ext"
             val estimate = start.quality.totalBitrate(start.hevc)?.let { DownloadSizing.estimate(it, item.runtimeMs) } ?: source.size
             edit(key) { it.copy(videoFile = videoFile, totalBytes = it.totalBytes ?: estimate) }
 
-            val url = server.downloadUrl(start.itemId, source, spec, audio?.index, sessionId = randomId())
+            val url = server.downloadUrl(start.itemId, source, spec, audio?.index, sessionId = randomId(), burnInSubtitle = burned)
             // Originals resume where they stopped; a transcode is a new stream each time.
             val resumeFrom = if (spec == null && start.videoFile == videoFile) fileSize(Path(dir, videoFile)) else 0L
             fetch(url, Path(dir, videoFile), resumeFrom, progressOf = key, knownTotal = spec == null)
 
-            val subtitles = downloadSubtitles(start, source, dir, transcoded = spec != null)
+            val subtitles = downloadSubtitles(start, source, dir, transcoded = spec != null).filter { it.streamIndex != burned }
             val poster = downloadImage(server.imageUrl(item, ImageKind.PRIMARY, 720), Path(dir, "poster.jpg"))
             val backdrop = downloadImage(server.backdropUrl(item), Path(dir, "backdrop.jpg"))
             val size = fileSize(Path(dir, videoFile))
@@ -288,8 +310,11 @@ class DownloadManager(
                     state = DownloadState.COMPLETED,
                     bytesDownloaded = size,
                     totalBytes = size,
-                    source = describe(source, spec, audio, subtitles),
+                    source = describe(source, spec, audio, subtitles, burned).copy(
+                        defaultAudioIndex = audio?.index, defaultSubtitleIndex = burned ?: subtitleIndex, defaultsKnown = true,
+                    ),
                     subtitles = subtitles,
+                    burnedSubtitle = burned,
                     posterFile = poster,
                     backdropFile = backdrop,
                     completedAtMs = now(),
@@ -374,11 +399,14 @@ class DownloadManager(
     }
 
     /** The downloaded file's streams: the original's, or what the transcode produced. */
-    private fun describe(source: MediaSource, spec: TranscodeSpec?, audio: MediaStream?, subtitles: List<LocalSubtitle>): MediaSource {
+    private fun describe(source: MediaSource, spec: TranscodeSpec?, audio: MediaStream?, subtitles: List<LocalSubtitle>, burned: Int? = null): MediaSource {
         val subtitleStreams = subtitles.map { s ->
             MediaStream(s.streamIndex, StreamKind.SUBTITLE, codec = s.codec, language = s.language, title = s.title, isDefault = s.isDefault,
                 isForced = s.isForced, isExternal = true, delivery = SubtitleDelivery.EXTERNAL)
-        }
+        } + listOfNotNull(
+            // Drawn into the picture: listed (and on), with nothing for the player to show itself.
+            source.streams.firstOrNull { it.index == burned }?.copy(delivery = SubtitleDelivery.ENCODE, deliveryUrl = null, isExternal = false),
+        )
         if (spec == null) {
             val embedded = source.streams.filterNot { it.kind == StreamKind.SUBTITLE && it.isExternal }
                 .map { if (it.kind == StreamKind.SUBTITLE) it.copy(delivery = SubtitleDelivery.EMBED, deliveryUrl = null) else it }

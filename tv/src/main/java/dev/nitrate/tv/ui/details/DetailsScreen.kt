@@ -2,6 +2,8 @@ package dev.nitrate.tv.ui.details
 
 import androidx.tv.material3.ListItem
 import kotlinx.coroutines.launch
+import dev.nitrate.core.playback.audioChoices
+import dev.nitrate.core.playback.subtitleChoices
 import androidx.compose.runtime.rememberCoroutineScope
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.core.pages.hidesDescription
@@ -90,6 +92,9 @@ fun DetailsScreen(
     applyPlaybackFix: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit = { _, _ -> },
     /** The server has watch partners (Companion plugin): shows partners' progress and "Watch with…". */
     watchPartners: Boolean = false,
+    /** The tracks a title will start with, and picking others (remembered like a pick in the player). */
+    trackSetup: (suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup)? = null,
+    pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
 ) {
     val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
     val vm = viewModel(key = "details-$itemId") {
@@ -133,7 +138,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack)
             }
 
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -313,6 +318,8 @@ private fun Header(
     onBrowse: (String, String?, Int?) -> Unit,
     checkPlayback: (suspend (MediaItem) -> dev.nitrate.core.playback.PlaybackDiagnosis)?,
     applyPlaybackFix: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit,
+    trackSetup: (suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup)? = null,
+    pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
 ) {
     // Music pages have more buttons in a row.
     val wideHeader = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
@@ -385,6 +392,7 @@ private fun Header(
                 Text(if (item.user.isFavorite) "Favorite ♥" else "Favorite ♡")
             }
             if (item.versions.size > 1) VersionButton(item)
+            if (trackSetup != null && playTarget != null && playTarget.isPlayable) TrackButtons(playTarget, trackSetup, pickTrack)
             val trailer = state.extras.firstOrNull { it.extraType == "Trailer" }
             if (trailer != null || item.remoteTrailers.isNotEmpty()) {
                 val context = androidx.compose.ui.platform.LocalContext.current
@@ -550,5 +558,37 @@ private fun VersionButton(item: MediaItem) {
             }
         }
         androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    }
+}
+
+/**
+ * "Audio: Japanese · 5.1" and "Subtitles: English": what Play starts with, each opening the
+ * player's track list; a pick is remembered for the show (or title), as in the player.
+ */
+@Composable
+private fun TrackButtons(
+    item: MediaItem,
+    trackSetup: suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup,
+    pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup,
+) {
+    var setup by remember(item.id) { mutableStateOf<dev.nitrate.core.playback.TrackSetup?>(null) }
+    androidx.compose.runtime.LaunchedEffect(item.id) { setup = runCatching { trackSetup(item) }.getOrNull() }
+    val s = setup?.takeIf { it.hasChoices } ?: return
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var picking by remember { mutableStateOf<dev.nitrate.core.model.StreamKind?>(null) }
+    OutlinedButton(onClick = { picking = dev.nitrate.core.model.StreamKind.AUDIO }) { Text("Audio: ${s.audioName}") }
+    OutlinedButton(onClick = { picking = dev.nitrate.core.model.StreamKind.SUBTITLE }) { Text("Subtitles: ${s.subtitleName}") }
+    picking?.let { kind ->
+        val audio = kind == dev.nitrate.core.model.StreamKind.AUDIO
+        dev.nitrate.tv.ui.player.TrackDialog(
+            if (audio) "Audio" else "Subtitles",
+            if (audio) s.source.audioChoices() else s.source.subtitleChoices(),
+            if (audio) s.audioIndex else s.subtitleIndex,
+            onSelect = { index ->
+                picking = null
+                scope.launch { setup = pickTrack(item, s, kind, index) }
+            },
+            onDismiss = { picking = null },
+        )
     }
 }

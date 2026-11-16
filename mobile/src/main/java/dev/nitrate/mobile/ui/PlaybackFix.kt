@@ -89,7 +89,7 @@ fun CheckPlaybackDialog(actions: AppActions, item: MediaItem, onDismiss: () -> U
     var round by remember { mutableIntStateOf(0) }
     val result by produceState<Result<PlaybackDiagnosis>?>(null, item.id, round) {
         value = null
-        value = runCatching { actions.container.checkPlayback(item.id, item.mediaKind == MediaKind.AUDIO) }
+        value = runCatching { actions.container.checkPlayback(item.id, item.mediaKind == MediaKind.AUDIO, item) }
     }
     val scope = rememberCoroutineScope()
     var info by remember { mutableStateOf(false) }

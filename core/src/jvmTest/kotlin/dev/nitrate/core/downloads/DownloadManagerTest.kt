@@ -135,6 +135,46 @@ class DownloadManagerTest {
     }
 
     @Test
+    fun `a converted download keeps the picked tracks and can burn in a subtitle`() = runBlocking {
+        signIn()
+        manager.enqueue(listOf(movie), DownloadQuality.LOW, hevc = false, TrackRequest(audioIndex = 1, subtitleIndex = 3, burnIn = true))
+        assertEquals(QueueResult.DONE, manager.runQueue())
+        val stream = requests.first { it.url.encodedPath.contains("/stream.mp4") }.url.parameters
+        assertEquals("1", stream["audioStreamIndex"])
+        assertEquals("3", stream["subtitleStreamIndex"])
+        assertEquals("Encode", stream["subtitleMethod"])
+        val r = record()
+        assertEquals(3, r.burnedSubtitle)
+        // The burned-in track isn't also saved as a file; the others are.
+        assertFalse(r.subtitles.any { it.streamIndex == 3 })
+        // It plays with that subtitle "on" (drawn in the picture, nothing for the player to show).
+        val plan = manager.playbackPlan(r)!!
+        assertEquals(3, plan.subtitleIndex)
+        assertEquals(SubtitleDelivery.ENCODE, plan.source.streams.single { it.index == 3 }.delivery)
+    }
+
+    @Test
+    fun `a download asked for without picking follows the show's or title's remembered choice`() = runBlocking {
+        signIn()
+        val memory = object : dev.nitrate.core.playback.TrackMemoryStore {
+            val saved = mutableMapOf<String, dev.nitrate.core.playback.LanguageChoice>(
+                ITEM_ID to dev.nitrate.core.playback.LanguageChoice(subtitleLanguage = "spa", version = dev.nitrate.core.playback.TrackMemory.VERSION),
+            )
+            override suspend fun get(seriesId: String) = saved[seriesId]
+            override suspend fun set(seriesId: String, choice: dev.nitrate.core.playback.LanguageChoice) { saved[seriesId] = choice }
+        }
+        val remembering = DownloadManager(server, MemoryDownloadStore(), engine, Path(root.path, "remembering"), object : DownloadScheduler {
+            override fun schedule(wifiOnly: Boolean) {}
+        }, now = { clock }, trackMemory = memory)
+        remembering.enqueue(listOf(movie), DownloadQuality.ORIGINAL, hevc = false)
+        assertEquals(QueueResult.DONE, remembering.runQueue())
+        val r = remembering.downloads.first().single()
+        // Spanish subtitles on, as remembered for this title; no subtitle burned into an original.
+        assertEquals(3, remembering.playbackPlan(r)!!.subtitleIndex)
+        assertNull(r.burnedSubtitle)
+    }
+
+    @Test
     fun `an interrupted original resumes with a range request`() = runBlocking {
         signIn()
         manager.enqueue(listOf(movie), DownloadQuality.ORIGINAL, hevc = false)

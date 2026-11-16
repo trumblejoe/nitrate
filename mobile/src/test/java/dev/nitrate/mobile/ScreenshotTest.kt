@@ -153,6 +153,12 @@ class ScreenshotTest {
         dev.nitrate.mobile.ui.MediaInfoDialog(dev.nitrate.core.playback.MediaInfo.render(dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE), source)) {}
     }
 
+    @Test fun downloadTracks() = shoot("phone-download-tracks", setup = { c ->
+        c.downloads.updateSettings { it.copy(quality = dev.nitrate.core.downloads.DownloadQuality.MEDIUM) }
+        val film = dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE)
+        c.pickTrack(film, c.trackSetup(film), dev.nitrate.core.model.StreamKind.SUBTITLE, 3)
+    }) { dev.nitrate.mobile.ui.DownloadDialog(it, listOf(dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE, runtimeMs = 6_960_000)), "Nitrate") {} }
+
     @Test fun connect() = shoot("phone-connect") { ConnectScreen(it) { _, _ -> } }
 
     @Test fun chat() = shoot("phone-chat") { actions ->

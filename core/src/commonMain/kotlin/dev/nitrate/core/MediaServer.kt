@@ -507,7 +507,8 @@ interface MediaServer {
      * MP4 transcode. [sessionId] must be new per download so the server doesn't reuse another
      * transcode. Requests need [authorizationHeader].
      */
-    fun downloadUrl(itemId: String, source: MediaSource, transcode: TranscodeSpec?, audioIndex: Int?, sessionId: String): String = unsupported()
+    /** [burnInSubtitle]: a subtitle stream for the server to draw into the picture (converted downloads). */
+    fun downloadUrl(itemId: String, source: MediaSource, transcode: TranscodeSpec?, audioIndex: Int?, sessionId: String, burnInSubtitle: Int? = null): String = unsupported()
 
     /** A subtitle stream (embedded or external) as a standalone file in [format]: srt, ass or vtt. */
     fun subtitleFileUrl(itemId: String, source: MediaSource, streamIndex: Int, format: String): String = unsupported()

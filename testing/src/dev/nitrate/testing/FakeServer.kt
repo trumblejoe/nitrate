@@ -354,6 +354,19 @@ class FakeServer : MediaServer {
     override fun logoUrl(item: MediaItem): String? = null
     override fun personImageUrl(person: Person): String? = null
     override fun authorizationHeader() = ""
+    /** A typical file: English 5.1 and Japanese audio, full and signs-only ASS subtitles; the server picks English, subtitles off. */
+    override suspend fun mediaSource(itemId: String) = dev.nitrate.core.model.MediaSource(
+        "src-$itemId", "mkv", 12_000_000,
+        listOf(
+            dev.nitrate.core.model.MediaStream(0, dev.nitrate.core.model.StreamKind.VIDEO, codec = "h264", width = 1920, height = 1080, bitDepth = 8, rangeType = "SDR"),
+            dev.nitrate.core.model.MediaStream(1, dev.nitrate.core.model.StreamKind.AUDIO, codec = "eac3", language = "eng", title = "English", channels = 6, channelLayout = "5.1", isDefault = true),
+            dev.nitrate.core.model.MediaStream(2, dev.nitrate.core.model.StreamKind.AUDIO, codec = "aac", language = "jpn", title = "Japanese", channels = 2, channelLayout = "stereo"),
+            dev.nitrate.core.model.MediaStream(3, dev.nitrate.core.model.StreamKind.SUBTITLE, codec = "ass", language = "eng", title = "Full"),
+            dev.nitrate.core.model.MediaStream(4, dev.nitrate.core.model.StreamKind.SUBTITLE, codec = "ass", language = "eng", title = "Signs & Songs", isForced = true),
+        ),
+        size = 3_200_000_000, defaultAudioIndex = 1, defaultSubtitleIndex = -1, defaultsKnown = true,
+    )
+
     override suspend fun resolvePlayback(itemId: String, isAudio: Boolean, startMs: Long, forceTranscode: Boolean, audioIndex: Int?, subtitleIndex: Int?, mediaSourceId: String?): PlaybackPlan =
         error("not used in screenshots")
     override suspend fun reportStart(plan: PlaybackPlan, positionMs: Long) = Unit

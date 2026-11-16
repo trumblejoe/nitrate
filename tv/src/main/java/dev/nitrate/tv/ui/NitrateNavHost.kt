@@ -255,7 +255,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 canCollect = account?.canManageCollections == true,
                 onPlayQueue = { items -> nav.playQueue(items.map { it.id }) },
                 onBrowse = { title, studio, year -> nav.navigate(PersonRoute("", title, studio, year)) },
-                checkPlayback = { item -> container.checkPlayback(item.id, item.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO) },
+                checkPlayback = { item -> container.checkPlayback(item.id, item.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO, item) },
+                trackSetup = { item -> container.trackSetup(item) },
+                pickTrack = { item, setup, kind, index -> container.pickTrack(item, setup, kind, index) },
                 applyPlaybackFix = { item, fix -> container.applyPlaybackFix(item.id, fix) },
                 watchPartners = partnersOn,
             )

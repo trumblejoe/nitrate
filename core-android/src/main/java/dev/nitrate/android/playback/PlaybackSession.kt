@@ -459,7 +459,7 @@ class PlaybackSession(
     }
 
     private suspend fun withRememberedLanguages(item: MediaItem, plan: PlaybackPlan): PlaybackPlan {
-        val series = item.seriesId ?: return plan
+        val series = dev.nitrate.core.playback.TrackSelection.memoryKey(item)
         val choice = runCatching { trackMemory?.get(series) }.getOrNull() ?: return plan
         val (audio, subtitle) = TrackMemory.pick(plan.source.streams, choice)
         return plan.copy(audioIndex = audio ?: plan.audioIndex, subtitleIndex = subtitle ?: plan.subtitleIndex)
@@ -591,12 +591,11 @@ class PlaybackSession(
     private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false, sourceId: String? = null) {
         val current = _item.value ?: return
         forcedTranscode = forceTranscode
-        // A show's remembered languages, matched to this episode's streams.
+        // What the user picked for this show (matched to this episode's streams) or this title.
         var audio = audioIndex
         var subtitle = subtitleIndex
-        val series = current.seriesId
-        if (useMemory && trackMemory != null && series != null && audio == null && subtitle == null) {
-            trackMemory.get(series)?.let { choice ->
+        if (useMemory && trackMemory != null && audio == null && subtitle == null) {
+            trackMemory.get(dev.nitrate.core.playback.TrackSelection.memoryKey(current))?.let { choice ->
                 runCatching { server.mediaSource(current.id) }.getOrNull()?.let { src ->
                     val (a, sub) = TrackMemory.pick(src.streams, choice)
                     audio = a
@@ -679,9 +678,9 @@ class PlaybackSession(
         }
     }
 
-    /** Remembers, for the show, only the kind of track the user just picked. */
+    /** Remembers, for the show (or this title), only the kind of track the user just picked. */
     private fun rememberLanguages(kind: StreamKind, index: Int) {
-        val series = _item.value?.seriesId ?: return
+        val series = _item.value?.let(dev.nitrate.core.playback.TrackSelection::memoryKey) ?: return
         val memory = trackMemory ?: return
         val streams = _plan.value?.source?.streams ?: return
         appScope.launch { memory.set(series, TrackMemory.remember(kind, streams, index, memory.get(series))) }

@@ -1587,7 +1587,7 @@ class JellyfinClient(
     override suspend fun mediaSource(itemId: String): MediaSource =
         get("Items", itemId).decode<ItemDto>().mediaSources?.firstOrNull()?.toMediaSource() ?: error("Item has no media")
 
-    override fun downloadUrl(itemId: String, source: MediaSource, transcode: TranscodeSpec?, audioIndex: Int?, sessionId: String): String {
+    override fun downloadUrl(itemId: String, source: MediaSource, transcode: TranscodeSpec?, audioIndex: Int?, sessionId: String, burnInSubtitle: Int?): String {
         // The original file, with range support so interrupted downloads resume. Honours the
         // user's "allow media downloading" permission on the server.
         if (transcode == null) return url("Items", itemId, "Download")
@@ -1606,6 +1606,9 @@ class JellyfinClient(
                 "maxWidth" to transcode.maxWidth,
                 "maxHeight" to transcode.maxHeight,
                 "audioStreamIndex" to audioIndex,
+                // Drawn into the picture by the server (libass for ASS: fonts and effects kept).
+                "subtitleStreamIndex" to burnInSubtitle,
+                "subtitleMethod" to burnInSubtitle?.let { "Encode" },
             ),
         )
     }

@@ -13,6 +13,7 @@ import dev.nitrate.android.storage.SearchHistoryStore
 import dev.nitrate.android.storage.SessionStore
 import dev.nitrate.android.storage.ProfileStore
 import dev.nitrate.core.model.SessionState
+import dev.nitrate.core.model.MediaItem
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.debounce
@@ -108,6 +109,7 @@ class AppContainer(
             engine = OkHttp.create(),
             root = Path(downloadDir.path),
             scheduler = WorkManagerScheduler(appContext),
+            trackMemory = trackMemory,
         )
     }
 
@@ -299,11 +301,30 @@ class AppContainer(
     suspend fun sendPlaybackReport(session: dev.nitrate.android.playback.PlaybackSession? = null): Result<String> =
         runCatching { server.sendClientLog(playbackReport(session)) }
 
-    /** How [itemId] would play on this device and why, before playing it (details page). */
-    suspend fun checkPlayback(itemId: String, isAudio: Boolean = false): dev.nitrate.core.playback.PlaybackDiagnosis {
+    /**
+     * The audio and subtitles [item] will start with (the user's pick for its show or itself, the
+     * server's picks, the file's flags), with its file, for a details page or download dialog.
+     */
+    suspend fun trackSetup(item: MediaItem): dev.nitrate.core.playback.TrackSetup {
+        val source = server.mediaSource(item.id)
+        val choice = runCatching { trackMemory.get(dev.nitrate.core.playback.TrackSelection.memoryKey(item)) }.getOrNull()
+        val (audio, subtitle) = dev.nitrate.core.playback.TrackSelection.initial(source, choice)
+        return dev.nitrate.core.playback.TrackSetup(source, audio, subtitle)
+    }
+
+    /** The user picked a track for [item] before playing: remembered for its show (or itself), as in the player. */
+    suspend fun pickTrack(item: MediaItem, setup: dev.nitrate.core.playback.TrackSetup, kind: dev.nitrate.core.model.StreamKind, index: Int): dev.nitrate.core.playback.TrackSetup {
+        val key = dev.nitrate.core.playback.TrackSelection.memoryKey(item)
+        trackMemory.set(key, dev.nitrate.core.playback.TrackMemory.remember(kind, setup.source.streams, index, trackMemory.get(key)))
+        return if (kind == dev.nitrate.core.model.StreamKind.AUDIO) setup.copy(audioIndex = index) else setup.copy(subtitleIndex = index)
+    }
+
+    /** How [itemId] would play on this device and why, before playing it (details page), with the tracks it would start with. */
+    suspend fun checkPlayback(itemId: String, isAudio: Boolean = false, item: MediaItem? = null): dev.nitrate.core.playback.PlaybackDiagnosis {
+        val tracks = item?.let { runCatching { trackSetup(it) }.getOrNull() }
         val plan = server.resolvePlayback(
             itemId = itemId, isAudio = isAudio, startMs = 0, forceTranscode = false,
-            audioIndex = null, subtitleIndex = null, mediaSourceId = dev.nitrate.android.playback.VersionChoices[itemId],
+            audioIndex = tracks?.audioIndex, subtitleIndex = tracks?.subtitleIndex, mediaSourceId = dev.nitrate.android.playback.VersionChoices[itemId],
         )
         return dev.nitrate.core.playback.PlaybackDoctor.diagnose(plan, capabilities, playbackSettings.current()).copy(plan = plan)
     }
