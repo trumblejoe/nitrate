@@ -1256,7 +1256,7 @@ class JellyfinClient(
             val (video, audio) = found.getOrPut(id) { mutableSetOf<VideoStreamInfo>() to mutableSetOf() }
             streams.orEmpty().forEach { st ->
                 when (st.type) {
-                    "Video" -> video += VideoStreamInfo(Codecs.normalize(st.codec), st.bitDepth, Codecs.rangeTags(st.videoRangeType))
+                    "Video" -> video += VideoStreamInfo(Codecs.normalize(st.codec), st.bitDepth, Codecs.rangeTags(st.videoRangeType, st.dvProfile))
                     "Audio" -> Codecs.normalize(st.codec)?.let { audio += it }
                 }
             }
@@ -1405,7 +1405,7 @@ class JellyfinClient(
 
     override suspend fun healthScan(libraryId: String?): dev.nitrate.core.diagnostics.HealthScan = coroutineScope {
         fun streams(s: List<MediaStreamDto>?) = StreamInfo(
-            s.orEmpty().filter { it.type == "Video" }.map { VideoStreamInfo(Codecs.normalize(it.codec), it.bitDepth, Codecs.rangeTags(it.videoRangeType)) }.toSet(),
+            s.orEmpty().filter { it.type == "Video" }.map { VideoStreamInfo(Codecs.normalize(it.codec), it.bitDepth, Codecs.rangeTags(it.videoRangeType, it.dvProfile)) }.toSet(),
             s.orEmpty().filter { it.type == "Audio" }.mapNotNull { Codecs.normalize(it.codec) }.toSet(),
         )
         suspend fun all(types: String, fields: String?, extra: Map<String, Any?> = emptyMap()): List<ItemDto> {

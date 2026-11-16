@@ -36,6 +36,8 @@ object Codecs {
     /**
      * Dynamic ranges offered. Dolby Vision files also count as their base layer (HDR10, HLG or
      * SDR), and HDR10+ files as HDR10, since that's what they play as without the extra layer.
+     * Dolby Vision is also offered by profile: 5 (streaming, no base layer), 7 (UHD Blu-ray, dual
+     * layer) and 8 (single layer over HDR10, HLG or SDR).
      */
     val RANGES = listOf(
         "sdr" to "SDR",
@@ -43,10 +45,29 @@ object Codecs {
         "hdr10plus" to "HDR10+",
         "hlg" to "HLG",
         "dovi" to "Dolby Vision",
+        "dovi5" to "DV profile 5",
+        "dovi7" to "DV profile 7",
+        "dovi8" to "DV profile 8",
     )
 
-    /** The range filters a stream of Jellyfin's [videoRangeType] counts under. */
-    fun rangeTags(videoRangeType: String?): Set<String> = when (videoRangeType) {
+    /**
+     * The range filters a stream counts under: from Jellyfin's [videoRangeType], plus its Dolby
+     * Vision profile ([dvProfile], else worked out from the range type: profile 7 is the one with
+     * an enhancement layer, profile 5 the one with no base layer).
+     */
+    fun rangeTags(videoRangeType: String?, dvProfile: Int? = null): Set<String> {
+        val tags = baseRangeTags(videoRangeType)
+        if ("dovi" !in tags) return tags
+        val profile = dvProfile?.takeIf { it > 0 } ?: when (videoRangeType) {
+            "DOVI" -> 5
+            "DOVIWithEL", "DOVIWithELHDR10Plus" -> 7
+            "DOVIWithHDR10", "DOVIWithHDR10Plus", "DOVIWithHLG", "DOVIWithSDR" -> 8
+            else -> null
+        }
+        return if (profile in setOf(5, 7, 8)) tags + "dovi$profile" else tags
+    }
+
+    private fun baseRangeTags(videoRangeType: String?): Set<String> = when (videoRangeType) {
         "SDR" -> setOf("sdr")
         "HDR10" -> setOf("hdr10")
         "HDR10Plus" -> setOf("hdr10plus", "hdr10")

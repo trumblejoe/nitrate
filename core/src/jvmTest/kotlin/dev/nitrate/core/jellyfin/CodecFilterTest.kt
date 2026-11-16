@@ -105,7 +105,19 @@ class CodecFilterTest {
         assertEquals("pcm", Codecs.normalize("pcm_s24le"))
         assertEquals("dts", Codecs.normalize("DCA"))
         assertEquals("hevc", Codecs.normalize("h265"))
-        assertEquals(setOf("dovi", "hdr10plus", "hdr10"), Codecs.rangeTags("DOVIWithELHDR10Plus"))
+        assertEquals(setOf("dovi", "dovi7", "hdr10plus", "hdr10"), Codecs.rangeTags("DOVIWithELHDR10Plus"))
+        // Dolby Vision by profile: the stream's own DvProfile when Jellyfin gives it, else from the range type.
+        assertEquals(setOf("dovi", "dovi7", "hdr10"), Codecs.rangeTags("DOVIWithEL"))
+        assertEquals(setOf("dovi", "dovi8", "hdr10"), Codecs.rangeTags("DOVIWithHDR10"))
+        assertEquals(setOf("dovi", "dovi7", "hdr10"), Codecs.rangeTags("DOVIWithHDR10", dvProfile = 7))
+        assertEquals(setOf("dovi", "dovi5"), Codecs.rangeTags("DOVI"))
+        assertEquals(setOf("dovi", "dovi8", "hlg"), Codecs.rangeTags("DOVIWithHLG"))
+        assertEquals(setOf("hdr10"), Codecs.rangeTags("HDR10", dvProfile = 0))
+        // UHD Blu-ray Dolby Vision alone: only profile 7 streams.
+        val p7 = dev.nitrate.core.pages.StreamInfo(setOf(dev.nitrate.core.pages.VideoStreamInfo("hevc", 10, Codecs.rangeTags("DOVIWithEL"))), setOf("truehd"))
+        val p8 = dev.nitrate.core.pages.StreamInfo(setOf(dev.nitrate.core.pages.VideoStreamInfo("hevc", 10, Codecs.rangeTags("DOVIWithHDR10"))), setOf("eac3"))
+        val onlyP7 = dev.nitrate.core.pages.ItemQuery(videoRanges = listOf("dovi7"))
+        assertTrue(Codecs.matches(p7, onlyP7) && !Codecs.matches(p8, onlyP7))
         // One stream must meet every video choice: a 10-bit H.264 and an 8-bit HEVC don't make "10-bit HEVC".
         val mixed = dev.nitrate.core.pages.StreamInfo(
             setOf(dev.nitrate.core.pages.VideoStreamInfo("h264", 10, setOf("sdr")), dev.nitrate.core.pages.VideoStreamInfo("hevc", 8, setOf("sdr"))),
