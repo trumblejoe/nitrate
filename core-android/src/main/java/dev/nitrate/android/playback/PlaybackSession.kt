@@ -372,6 +372,15 @@ class PlaybackSession(
     init {
         scope.launch { setNightMode(settings.current().nightMode) }
         scope.launch { setAudioDelay(settings.current().audioDelayMs, resync = false) }
+        // Tunneled playback, when the device's settings ask for it (the player picks it only
+        // when the device's decoders can tunnel this video and audio).
+        scope.launch {
+            val on = settings.current().tunneling
+            (exo.trackSelector as? androidx.media3.exoplayer.trackselection.DefaultTrackSelector)?.let { selector ->
+                selector.parameters = selector.buildUponParameters().setTunnelingEnabled(on).build()
+            }
+            if (on) log("Tunneled playback on")
+        }
         scope.launch {
             while (isActive) {
                 _progress.value = Progress(exo.currentPosition, exo.duration.coerceAtLeast(0))

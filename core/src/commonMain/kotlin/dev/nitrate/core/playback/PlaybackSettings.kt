@@ -53,6 +53,11 @@ data class PlaybackSettings(
      * earlier (for Bluetooth headphones or a receiver that adds lag). Per device.
      */
     val audioDelayMs: Int = 0,
+    /**
+     * Tunneled playback (TVs): the video and audio go straight to the hardware together, which some
+     * TVs need for smooth or in-sync playback; others misbehave with it, so it's off by default.
+     */
+    val tunneling: Boolean = false,
     /** Evens out loud and quiet sound and lifts dialogue, for late nights. */
     val nightMode: Boolean = false,
     /** How the writing pane shares the screen with the video (phones and tablets). */
