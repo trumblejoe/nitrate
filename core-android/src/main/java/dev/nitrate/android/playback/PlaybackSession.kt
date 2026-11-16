@@ -163,7 +163,9 @@ class PlaybackSession(
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         ExoPlayer.Builder(context)
             .setRenderersFactory(renderers)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(http))
+            // DefaultDataSource sends http(s) through the authorised source and reads downloaded
+            // files (file://) and their subtitles itself; the http source alone can't open files.
+            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, http)))
             .build()
     }
 
