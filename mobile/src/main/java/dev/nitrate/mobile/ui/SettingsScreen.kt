@@ -62,7 +62,7 @@ import dev.nitrate.core.writing.WritingSettings
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modifier = Modifier) {
+fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modifier = Modifier, initiallyOpen: List<String> = listOf("Account")) {
     val c = actions.container
     val scope = rememberCoroutineScope()
     val playback by c.playbackSettings.settings.collectAsState(PlaybackSettings())
@@ -75,163 +75,179 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
     val prefs = LocalDisplayPrefs.current
     val account by c.account.collectAsState()
 
+    // Each section folds away under its heading; Account starts open. Kept while the app runs.
+    val open = androidx.compose.runtime.saveable.rememberSaveable(saver = androidx.compose.runtime.saveable.listSaver(
+        save = { it.toList() }, restore = { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(it) } },
+    )) { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(initiallyOpen) } }
+
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
-        header("Account")
-        item {
-            ListItem(
-                headlineContent = { Text(actions.server.serverUrl ?: "Not signed in") },
-                supportingContent = { Text("Server") },
-                trailingContent = {
-                    OutlinedButton(onClick = { scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") }
-                },
-            )
-        }
-        item {
-            ListItem(
-                modifier = Modifier.clickable { actions.nav.navigate(ProfilesRoute) },
-                headlineContent = { Text("Switch account") },
-                supportingContent = { Text("Other users and servers, PINs for profiles") },
-                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-
-        item {
-            ListItem(
-                modifier = Modifier.clickable { actions.nav.navigate(ServerAddressesRoute) },
-                headlineContent = { Text("Servers") },
-                supportingContent = { Text("Local, VPN and remote addresses; add, switch and choose the primary") },
-                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-
-        item { QuickConnectRow(actions) }
-
-        if (account?.isAdmin == true) {
+        section(open, "Account") {
             item {
                 ListItem(
-                    modifier = Modifier.clickable { actions.nav.navigate(ServerAdminRoute) },
-                    headlineContent = { Text("Manage server") },
-                    supportingContent = { Text("Libraries, tasks, activity, devices and users") },
-                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                )
-            }
-            item {
-                ListItem(
-                    modifier = Modifier.clickable { actions.nav.navigate(LibraryHealthRoute) },
-                    headlineContent = { Text("Library health") },
-                    supportingContent = { Text("Missing artwork and details, duplicates, missing episodes, what this phone always converts") },
-                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                )
-            }
-        }
-
-        header("Notifications")
-        item { NewEpisodesToggle(actions) }
-        header("Watch together", "Play in step with people on other devices (SyncPlay).")
-        item { WatchTogetherRow(actions) }
-        item {
-            if (partnersAvailable(actions)) ListItem(
-                modifier = Modifier.clickable { actions.nav.navigate(WatchPartnersRoute) },
-                headlineContent = { Text("Watch partners") },
-                supportingContent = { Text("Shows you watch with someone, requests, and keeping your account private") },
-                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-        header("Control a device", "Play, pause, seek and change volume on your TV or another app.")
-        item { RemoteTargets(actions) }
-
-        header("Display", "In this device's display profile. Spoiler hiding, custom pages and series languages are the same on every device.")
-        item { DisplayProfileRow(actions) }
-        item { MissingEpisodesToggle(actions) }
-        displaySettings(prefs) { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
-
-        header("Playback", "Settings for this device; they aren't synced.")
-        item { DeviceReportRow(actions) }
-        item { SpeedCheckRow(actions) }
-        item {
-            Choice("Maximum bitrate", formatBitrate(playback.maxBitrate)) {
-                val list = PlaybackSettings.BITRATES
-                updatePlayback { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
-            }
-        }
-        item {
-            Choice("Maximum resolution", playback.maxResolution.label) {
-                updatePlayback { it.copy(maxResolution = MaxResolution.entries[(it.maxResolution.ordinal + 1) % MaxResolution.entries.size]) }
-            }
-        }
-        item { Toggle("Allow direct play", "Play files as they are when this device supports them", playback.allowDirectPlay) { v -> updatePlayback { it.copy(allowDirectPlay = v) } } }
-        item { Toggle("Allow direct stream", "Repackage without re-encoding when only the container is unsupported", playback.allowDirectStream) { v -> updatePlayback { it.copy(allowDirectStream = v) } } }
-        item { Toggle("Learn from failures", "Transcode formats that failed to direct play here", playback.useLearnedFailures) { v -> updatePlayback { it.copy(useLearnedFailures = v) } } }
-        if (playback.learnedFailures.isNotEmpty()) {
-            item {
-                ListItem(
-                    modifier = Modifier.clickable { scope.launch { c.playbackSettings.clearFailures() } },
-                    headlineContent = { Text("Forget ${playback.learnedFailures.size} learned failure(s)") },
-                    supportingContent = { Text(playback.learnedFailures.keys.joinToString { capabilityLabel(it) }) },
-                )
-            }
-        }
-
-        item { Toggle("Keep playing in the background", "Audio continues with the screen off or in another app", playback.backgroundAudio) { v -> updatePlayback { it.copy(backgroundAudio = v) } } }
-        item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }
-        item { Toggle("Night mode", "Quieter loud parts and clearer dialogue (when this device decodes the audio)", playback.nightMode) { v -> updatePlayback { it.copy(nightMode = v) } } }
-
-        header("Subtitles", "How subtitles look on this device.")
-        item { SubtitleStyleEditor(playback.subtitleStyle) { st -> updatePlayback { it.copy(subtitleStyle = st) } } }
-
-        header("Formats", "Tap to cycle Auto → Always → Never.")
-        items(CapabilityRules.videoCodecs(caps, playback) + CapabilityRules.hdrFormats(caps, playback) + CapabilityRules.audioCodecs(caps, playback), key = { it.id }) { cap ->
-            Capability(cap, playback, updatePlayback)
-        }
-
-        header("Device backup", "This device's playback and plugin settings, kept on your server so a new device can start the same way. No PINs; scripts have their own backup.")
-        item { DeviceBackupSection(c.backups) }
-
-        header("Updates", "New versions from Nitrate's releases. Android asks before installing.")
-        item { UpdatesSection(c.updater) }
-        item {
-            ListItem(
-                modifier = Modifier.clickable { actions.nav.navigate(LicensesRoute) },
-                headlineContent = { Text("Open-source licences") },
-                supportingContent = { Text("FFmpeg, Media3, Kotlin and the rest Nitrate is built with") },
-                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-
-        header("Plugins", "Built in; switch them on or off for this device.")
-        items(c.plugins.all, key = { it.id }) { plugin ->
-            Toggle(plugin.name, plugin.description, plugin.id in enabled) { on -> scope.launch { c.plugins.setEnabled(plugin.id, on) } }
-        }
-        if (PreviousEpisodePlugin.id in enabled) {
-            item {
-                Choice(
-                    "Unwatched episode check",
-                    when (previous.scope) {
-                        Scope.PREVIOUS -> "The one before"
-                        Scope.SEASON -> "Whole season"
-                        Scope.SERIES -> "Whole series"
+                    headlineContent = { Text(actions.server.serverUrl ?: "Not signed in") },
+                    supportingContent = { Text("Server") },
+                    trailingContent = {
+                        OutlinedButton(onClick = { scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") }
                     },
-                ) { scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(scope = Scope.entries[(it.scope.ordinal + 1) % Scope.entries.size]) } } }
+                )
             }
             item {
-                Toggle("Include specials", "Specials placed before, during or after seasons count", previous.includeSpecials) { v ->
-                    scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(includeSpecials = v) } }
+                ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(ProfilesRoute) },
+                    headlineContent = { Text("Switch account") },
+                    supportingContent = { Text("Other users and servers, PINs for profiles") },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+
+            item {
+                ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(ServerAddressesRoute) },
+                    headlineContent = { Text("Servers") },
+                    supportingContent = { Text("Local, VPN and remote addresses; add, switch and choose the primary") },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+
+            item { QuickConnectRow(actions) }
+
+            if (account?.isAdmin == true) {
+                item {
+                    ListItem(
+                        modifier = Modifier.clickable { actions.nav.navigate(ServerAdminRoute) },
+                        headlineContent = { Text("Manage server") },
+                        supportingContent = { Text("Libraries, tasks, activity, devices and users") },
+                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                    )
+                }
+                item {
+                    ListItem(
+                        modifier = Modifier.clickable { actions.nav.navigate(LibraryHealthRoute) },
+                        headlineContent = { Text("Library health") },
+                        supportingContent = { Text("Missing artwork and details, duplicates, missing episodes, what this phone always converts") },
+                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                    )
                 }
             }
+
+        }
+        section(open, "Notifications") {
+            item { NewEpisodesToggle(actions) }
+        }
+        section(open, "Watch together", "Play in step with people on other devices (SyncPlay).") {
+            item { WatchTogetherRow(actions) }
             item {
-                Toggle("Spot missing episodes", "Gaps in episode or season numbering", previous.detectGaps) { v ->
-                    scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(detectGaps = v) } }
-                }
+                if (partnersAvailable(actions)) ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(WatchPartnersRoute) },
+                    headlineContent = { Text("Watch partners") },
+                    supportingContent = { Text("Shows you watch with someone, requests, and keeping your account private") },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
             }
         }
-        if (WritingPlugin.id in enabled) {
+        section(open, "Control a device", "Play, pause, seek and change volume on your TV or another app.") {
+            item { RemoteTargets(actions) }
+
+        }
+        section(open, "Display", "In this device's display profile. Spoiler hiding, custom pages and series languages are the same on every device.") {
+            item { DisplayProfileRow(actions) }
+            item { MissingEpisodesToggle(actions) }
+            displaySettings(prefs) { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
+
+        }
+        section(open, "Playback", "Settings for this device; they aren't synced.") {
+            item { DeviceReportRow(actions) }
+            item { SpeedCheckRow(actions) }
             item {
-                Toggle("Back up scripts to the server", "Keeps a copy in your Jellyfin account for other devices", writing.backupToServer) { v ->
-                    scope.launch { store.update(WritingPlugin.id, WritingSettings()) { it.copy(backupToServer = v) } }
+                Choice("Maximum bitrate", formatBitrate(playback.maxBitrate)) {
+                    val list = PlaybackSettings.BITRATES
+                    updatePlayback { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
                 }
             }
-            item { ScriptSyncSettings(actions) }
+            item {
+                Choice("Maximum resolution", playback.maxResolution.label) {
+                    updatePlayback { it.copy(maxResolution = MaxResolution.entries[(it.maxResolution.ordinal + 1) % MaxResolution.entries.size]) }
+                }
+            }
+            item { Toggle("Allow direct play", "Play files as they are when this device supports them", playback.allowDirectPlay) { v -> updatePlayback { it.copy(allowDirectPlay = v) } } }
+            item { Toggle("Allow direct stream", "Repackage without re-encoding when only the container is unsupported", playback.allowDirectStream) { v -> updatePlayback { it.copy(allowDirectStream = v) } } }
+            item { Toggle("Learn from failures", "Transcode formats that failed to direct play here", playback.useLearnedFailures) { v -> updatePlayback { it.copy(useLearnedFailures = v) } } }
+            if (playback.learnedFailures.isNotEmpty()) {
+                item {
+                    ListItem(
+                        modifier = Modifier.clickable { scope.launch { c.playbackSettings.clearFailures() } },
+                        headlineContent = { Text("Forget ${playback.learnedFailures.size} learned failure(s)") },
+                        supportingContent = { Text(playback.learnedFailures.keys.joinToString { capabilityLabel(it) }) },
+                    )
+                }
+            }
+
+            item { Toggle("Keep playing in the background", "Audio continues with the screen off or in another app", playback.backgroundAudio) { v -> updatePlayback { it.copy(backgroundAudio = v) } } }
+            item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }
+            item { Toggle("Night mode", "Quieter loud parts and clearer dialogue (when this device decodes the audio)", playback.nightMode) { v -> updatePlayback { it.copy(nightMode = v) } } }
+
+        }
+        section(open, "Subtitles", "How subtitles look on this device.") {
+            item { SubtitleStyleEditor(playback.subtitleStyle) { st -> updatePlayback { it.copy(subtitleStyle = st) } } }
+
+        }
+        section(open, "Formats", "Tap to cycle Auto → Always → Never.") {
+            items(CapabilityRules.videoCodecs(caps, playback) + CapabilityRules.hdrFormats(caps, playback) + CapabilityRules.audioCodecs(caps, playback), key = { it.id }) { cap ->
+                Capability(cap, playback, updatePlayback)
+            }
+
+        }
+        section(open, "Device backup", "This device's playback and plugin settings, kept on your server so a new device can start the same way. No PINs; screenplays have their own backup.") {
+            item { DeviceBackupSection(c.backups) }
+
+        }
+        section(open, "Updates", "New versions from Nitrate's releases. Android asks before installing.") {
+            item { UpdatesSection(c.updater) }
+            item {
+                ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(LicensesRoute) },
+                    headlineContent = { Text("Open-source licences") },
+                    supportingContent = { Text("FFmpeg, Media3, Kotlin and the rest Nitrate is built with") },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+
+        }
+        section(open, "Plugins", "Built in; switch them on or off for this device.") {
+            items(c.plugins.all, key = { it.id }) { plugin ->
+                Toggle(plugin.name, plugin.description, plugin.id in enabled) { on -> scope.launch { c.plugins.setEnabled(plugin.id, on) } }
+            }
+            if (PreviousEpisodePlugin.id in enabled) {
+                item {
+                    Choice(
+                        "Unwatched episode check",
+                        when (previous.scope) {
+                            Scope.PREVIOUS -> "The one before"
+                            Scope.SEASON -> "Whole season"
+                            Scope.SERIES -> "Whole series"
+                        },
+                    ) { scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(scope = Scope.entries[(it.scope.ordinal + 1) % Scope.entries.size]) } } }
+                }
+                item {
+                    Toggle("Include specials", "Specials placed before, during or after seasons count", previous.includeSpecials) { v ->
+                        scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(includeSpecials = v) } }
+                    }
+                }
+                item {
+                    Toggle("Spot missing episodes", "Gaps in episode or season numbering", previous.detectGaps) { v ->
+                        scope.launch { store.update(PreviousEpisodePlugin.id, PreviousEpisodeSettings()) { it.copy(detectGaps = v) } }
+                    }
+                }
+            }
+            if (WritingPlugin.id in enabled) {
+                item {
+                    Toggle("Back up screenplays to the server", "Keeps a copy in your Jellyfin account for other devices", writing.backupToServer) { v ->
+                        scope.launch { store.update(WritingPlugin.id, WritingSettings()) { it.copy(backupToServer = v) } }
+                    }
+                }
+                item { ScriptSyncSettings(actions) }
+            }
         }
     }
 }
@@ -294,14 +310,22 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
     }
 }
 
-private fun LazyListScope.header(title: String, subtitle: String? = null) {
+/**
+ * A settings section that folds away under its heading (tap to open or close); [content] is only
+ * added while it's open.
+ */
+private fun LazyListScope.section(open: MutableList<String>, title: String, subtitle: String? = null, content: LazyListScope.() -> Unit) {
+    val isOpen = title in open
     item(key = "h-$title") {
         HorizontalDivider(Modifier.padding(top = 8.dp))
         ListItem(
+            modifier = Modifier.clickable { if (isOpen) open.remove(title) else open.add(title) },
             headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) },
-            supportingContent = subtitle?.let { { Text(it) } },
+            supportingContent = subtitle?.takeIf { isOpen }?.let { { Text(it) } },
+            trailingContent = { Text(if (isOpen) "▾" else "▸", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) },
         )
     }
+    if (isOpen) content()
 }
 
 @Composable

@@ -383,7 +383,9 @@ class ScreenshotTest {
 
     @Test fun displaySettings() = shoot("phone-display-settings", setup = { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(accent = AccentMode.TEAL, hideSpoilers = true, criticRating = false))
-    }) { SettingsScreen(it, {}) }
+    }) { SettingsScreen(it, {}, initiallyOpen = listOf("Display")) }
+
+    @Test fun settingsFolded() = shoot("phone-settings") { SettingsScreen(it, {}) }
 
     @Test fun spoilerFree() = shoot("phone-series-spoilers", setup = { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true, communityRating = false, overview = false))

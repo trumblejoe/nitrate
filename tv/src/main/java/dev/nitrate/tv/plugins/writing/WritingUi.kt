@@ -48,8 +48,8 @@ object WritingUi : PlayerPanel, ScreenPlugin {
         ListItem(
             selected = false,
             onClick = { scope.launch { context.store.update(pluginId, WritingSettings()) { it.copy(backupToServer = !it.backupToServer) } } },
-            headlineContent = { Text("Back up to your Jellyfin server") },
-            supportingContent = { Text("Keeps a copy of each script in your Jellyfin account, so another device or a reset one can restore it") },
+            headlineContent = { Text("Back up screenplays to the server") },
+            supportingContent = { Text("Keeps a copy of each screenplay in your Jellyfin account, so another device or a reset one can restore it") },
             trailingContent = { Switch(checked = s.backupToServer, onCheckedChange = null) },
         )
         // Which accounts' scripts sync with their server (this TV only; Primary by default).
