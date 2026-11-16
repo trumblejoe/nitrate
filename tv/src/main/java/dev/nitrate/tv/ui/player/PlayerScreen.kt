@@ -1,6 +1,7 @@
 package dev.nitrate.tv.ui.player
 
 import dev.nitrate.android.playback.applySubtitleStyle
+import dev.nitrate.android.playback.assSubtitles
 import dev.nitrate.android.playback.showCover
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -146,6 +147,8 @@ fun PlayerScreen(
         }
     }
     val settingsNow by playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+    val assTrack by session.assTrack.collectAsState()
+    val subtitleOffset by session.subtitleOffsetMs.collectAsState()
     // The TV's refresh rate follows the video's frame rate, as set in Playback settings.
     FrameRateMatcher(session, settingsNow.frameRateMatch)
     var sleepAt by remember { mutableStateOf<Long?>(null) }
@@ -270,6 +273,12 @@ fun PlayerScreen(
             },
             update = {
                 it.applySubtitleStyle(settingsNow.subtitleStyle, plan?.styledSubtitle == true)
+                // Styled subtitles drawn by libass in their own layer over the picture.
+                it.assSubtitles().apply {
+                    this.player = it.player
+                    offsetMs = subtitleOffset
+                    setTrack(assTrack)
+                }
                 it.showCover(item?.takeIf { i -> i.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { i -> repository.imageUrl(i, dev.nitrate.core.model.ImageKind.PRIMARY, 720) })
             },
             modifier = Modifier.fillMaxSize(),

@@ -302,6 +302,8 @@ class DownloadManager(
             fetch(url, Path(dir, videoFile), resumeFrom, progressOf = key, knownTotal = spec == null)
 
             val subtitles = downloadSubtitles(start, source, dir, transcoded = spec != null).filter { it.streamIndex != burned }
+            val assFiles = downloadAssScripts(start, source, dir, subtitles, burned)
+            val fontFiles = if (assFiles.isEmpty()) emptyList() else downloadFonts(start, source, dir)
             val poster = downloadImage(server.imageUrl(item, ImageKind.PRIMARY, 720), Path(dir, "poster.jpg"))
             val backdrop = downloadImage(server.backdropUrl(item), Path(dir, "backdrop.jpg"))
             val size = fileSize(Path(dir, videoFile))
@@ -315,6 +317,8 @@ class DownloadManager(
                     ),
                     subtitles = subtitles,
                     burnedSubtitle = burned,
+                    assFiles = assFiles,
+                    fontFiles = fontFiles,
                     posterFile = poster,
                     backdropFile = backdrop,
                     completedAtMs = now(),
@@ -393,6 +397,38 @@ class DownloadManager(
                 LocalSubtitle(s.index, file, format, s.language, s.title, s.isDefault, s.isForced)
             }
 
+    /**
+     * Every styled (ASS/SSA) subtitle as a whole script, so libass can draw it offline: the files
+     * already saved beside the video, plus ones embedded in an original (which the player could
+     * only show plainly).
+     */
+    private suspend fun downloadAssScripts(record: DownloadRecord, source: MediaSource, dir: Path, saved: List<LocalSubtitle>, burned: Int?): Map<Int, String> =
+        source.streams.filter { it.kind == StreamKind.SUBTITLE && dev.nitrate.core.playback.isStyledSubtitle(it.codec) && it.index != burned }
+            .mapNotNull { s ->
+                saved.firstOrNull { it.streamIndex == s.index && it.codec == "ass" }?.let { return@mapNotNull s.index to it.file }
+                val file = "ass-${s.index}.ass"
+                runCatching { fetch(server.subtitleFileUrl(record.itemId, source, s.index, "ass"), Path(dir, file)) }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrNull() ?: return@mapNotNull null
+                s.index to file
+            }.toMap()
+
+    /** The fonts the file carries (for its styled subtitles), in a folder of their own. */
+    private suspend fun downloadFonts(record: DownloadRecord, source: MediaSource, dir: Path): List<String> {
+        val fonts = source.attachments.filter { it.isFont }
+        if (fonts.isEmpty()) return emptyList()
+        SystemFileSystem.createDirectories(Path(dir, "fonts"))
+        val used = mutableSetOf<String>()
+        return fonts.mapNotNull { a ->
+            val name = fontFileName(a.fileName, a.index).let { n -> if (used.add(n)) n else "${a.index}-$n".also { used += it } }
+            val file = "fonts/$name"
+            runCatching { fetch(server.attachmentUrl(record.itemId, source, a.index), Path(dir, file)) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull() ?: return@mapNotNull null
+            file
+        }
+    }
+
     private suspend fun downloadImage(url: String?, file: Path): String? {
         url ?: return null
         return runCatching { fetch(url, file); file.name }.onFailure { if (it is CancellationException) throw it }.getOrNull()
@@ -459,6 +495,8 @@ class DownloadManager(
             ExternalSubtitle(s.streamIndex, Path(dir, s.file).toString(), mime, s.language, s.title ?: s.language ?: "Subtitle ${s.streamIndex}")
         }
         val (audioIndex, subtitleIndex) = DownloadTracks.pick(source)
+        val assScripts = record.assFiles.mapValues { (_, f) -> Path(dir, f).toString() }
+            .filterValues { SystemFileSystem.exists(Path(it)) }
         return PlaybackPlan(
             itemId = record.itemId,
             url = path,
@@ -470,6 +508,8 @@ class DownloadManager(
             subtitleIndex = subtitleIndex,
             externalSubtitles = subtitles,
             transcodeReasons = emptyList(),
+            assScripts = assScripts,
+            fontFiles = record.fontFiles.map { Path(dir, it).toString() },
         )
     }
 
@@ -526,7 +566,7 @@ class DownloadManager(
     }
 
     /** Space used by this user's downloads. */
-    fun bytesUsed(): Long = mine(store.data.value).sumOf { r -> listOfNotNull(r.videoFile, r.posterFile, r.backdropFile).plus(r.subtitles.map { it.file }).sumOf { fileSize(Path(dirFor(r), it)) } }
+    fun bytesUsed(): Long = mine(store.data.value).sumOf { r -> listOfNotNull(r.videoFile, r.posterFile, r.backdropFile).plus(r.subtitles.map { it.file }).plus(r.assFiles.values).plus(r.fontFiles).distinct().sumOf { fileSize(Path(dirFor(r), it)) } }
 
     // ---- Files ----
 
@@ -538,7 +578,9 @@ class DownloadManager(
 
     private fun deleteDir(dir: Path) {
         if (!SystemFileSystem.exists(dir)) return
-        SystemFileSystem.list(dir).forEach { SystemFileSystem.delete(it, mustExist = false) }
+        SystemFileSystem.list(dir).forEach {
+            if (SystemFileSystem.metadataOrNull(it)?.isDirectory == true) deleteDir(it) else SystemFileSystem.delete(it, mustExist = false)
+        }
         SystemFileSystem.delete(dir, mustExist = false)
     }
 
@@ -580,4 +622,10 @@ object DownloadTracks {
         }
         return audioIndex to subtitleIndex
     }
+}
+
+/** A safe file name for a font attachment: its own name without any folders or odd characters. */
+internal fun fontFileName(name: String?, index: Int): String {
+    val base = name?.substringAfterLast('/')?.substringAfterLast('\\')?.replace(Regex("[^A-Za-z0-9._ -]"), "_")?.trim('.', ' ')
+    return base?.takeIf { it.isNotEmpty() }?.take(100) ?: "font-$index.ttf"
 }

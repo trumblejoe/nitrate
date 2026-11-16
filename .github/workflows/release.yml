@@ -51,6 +51,21 @@ jobs:
         run: tools/build-ffmpeg.sh "$ANDROID_HOME/ndk/27.0.12077973"
       - name: Check FFmpeg
         run: test -f ffmpeg-decoder/src/main/jni/ffmpeg/android-libs/arm64-v8a/libavcodec.a
+      # libass for styled subtitles (ISC, with FreeType, HarfBuzz and FriBidi; see
+      # ass-renderer/README.md). Built once and cached until tools/build-libass.sh changes.
+      - name: libass cache
+        id: libass
+        uses: actions/cache@v4
+        with:
+          path: ass-renderer/src/main/jni/libass/android-libs
+          key: libass-${{ hashFiles('tools/build-libass.sh') }}
+      - name: Build libass
+        if: steps.libass.outputs.cache-hit != 'true'
+        run: |
+          pip install meson ninja
+          tools/build-libass.sh "$ANDROID_HOME/ndk/27.0.12077973"
+      - name: Check libass
+        run: test -f ass-renderer/src/main/jni/libass/android-libs/arm64-v8a/lib/libass.a
 
       - name: Signing key
         env:

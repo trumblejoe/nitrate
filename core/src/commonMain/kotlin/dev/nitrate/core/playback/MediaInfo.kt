@@ -20,7 +20,13 @@ data class PlayerTrack(
 )
 
 /** How subtitles are being drawn right now. */
-data class SubtitleDrawing(val mode: StyledSubtitles, val fileStyles: Boolean)
+data class SubtitleDrawing(
+    val mode: StyledSubtitles,
+    val fileStyles: Boolean,
+    /** Drawn by libass in its own layer (null: libass isn't in this build). */
+    val libass: Boolean? = false,
+    val fonts: Int = 0,
+)
 
 /**
  * Extended media information as plain text, for troubleshooting and copying: the file and every
@@ -86,6 +92,11 @@ object MediaInfo {
             section("Subtitle drawing")
             line("Styled (ASS/SSA) subtitles: ${d.mode.label}")
             line("The file's own styles: ${if (d.fileStyles) "shown" else "replaced by your subtitle style"}")
+            line("Drawn by: " + when (d.libass) {
+                true -> "libass, with ${d.fonts} of the file's fonts"
+                false -> "the player (Media3)"
+                null -> "the player (Media3; libass isn't in this build)"
+            })
             line()
         }
 

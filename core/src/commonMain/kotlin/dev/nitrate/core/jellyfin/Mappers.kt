@@ -176,6 +176,7 @@ internal fun MediaSourceDto.toMediaSource() = MediaSource(
     id = id, name = name, container = container, bitrate = bitrate, streams = mediaStreams.orEmpty().map { it.toMediaStream() }, size = size,
     // The server's picks from the user's language settings (no subtitle: off).
     defaultAudioIndex = defaultAudioStreamIndex, defaultSubtitleIndex = defaultSubtitleStreamIndex ?: -1, defaultsKnown = true,
+    attachments = mediaAttachments.orEmpty().map { dev.nitrate.core.model.MediaAttachment(it.index, it.fileName, it.mimeType) },
 )
 
 internal fun PlayMethod.wire() = when (this) {

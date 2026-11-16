@@ -186,7 +186,11 @@ class PlaybackSession(
         }
         return dev.nitrate.core.playback.MediaInfo.render(
             item = _item.value, source = p.source, plan = p, local = local, playerTracks = tracks,
-            subtitles = dev.nitrate.core.playback.SubtitleDrawing(styled, p.styledSubtitle && styled != dev.nitrate.core.playback.StyledSubtitles.MINE),
+            subtitles = dev.nitrate.core.playback.SubtitleDrawing(
+                styled, p.styledSubtitle && styled != dev.nitrate.core.playback.StyledSubtitles.MINE,
+                libass = if (!AssSubtitleView.isAvailable) null else _assTrack.value != null,
+                fonts = _assTrack.value?.fonts?.size ?: 0,
+            ),
             videoDecoder = _videoDecoder.value, audioDecoder = _audioDecoder.value, subtitleFiles = files,
         )
     }
@@ -397,6 +401,16 @@ class PlaybackSession(
         scope.launch { setNightMode(settings.current().nightMode) }
         scope.launch { setAudioDelay(settings.current().audioDelayMs, resync = false) }
         scope.launch { setFrameRateMatch(settings.current().frameRateMatch) }
+        // How styled subtitles are shown can change from the player's settings while playing.
+        scope.launch {
+            settings.settings.collect { s ->
+                val mode = s.subtitleStyle.styled
+                if (mode != styledMode) {
+                    styledMode = mode
+                    _plan.value?.let { applySelection(it); updateAss(it) }
+                }
+            }
+        }
         // Tunneled playback, when the device's settings ask for it (the player picks it only
         // when the device's decoders can tunnel this video and audio).
         scope.launch {
@@ -547,6 +561,7 @@ class PlaybackSession(
 
     private fun play(p: PlaybackPlan, startMs: Long, title: String, keepPaused: Boolean? = null) {
         _plan.value = p
+        updateAss(p)
         selectionApplied = false
         _videoDecoder.value = null
         _audioDecoder.value = null
@@ -636,6 +651,8 @@ class PlaybackSession(
     /** A new item: subtitle timing and its cached files belong to the old one. */
     private fun forgetItemState() {
         retimeJob?.cancel()
+        assJob?.cancel()
+        _assTrack.value = null
         subtitleOriginals.clear()
         subtitleOffsets.clear()
         _subtitleOffsetMs.value = 0
@@ -723,6 +740,7 @@ class PlaybackSession(
         if (clientSide || localProgress != null) {
             _plan.value = updated
             applySelection(updated)
+            updateAss(updated)
             // Tell the server straight away (same session): the dashboard shows it, and with
             // Remember selections on, the server keeps it for this title.
             if (!quiet && localProgress == null) scope.launch { server.reportProgress(updated, exo.currentPosition, isPaused = !exo.isPlaying) }
@@ -788,9 +806,15 @@ class PlaybackSession(
         val p = _plan.value ?: return
         val index = p.subtitleIndex.takeIf { it >= 0 } ?: run { showNotice("Turn on a subtitle first"); return }
         val stream = p.source.streams.firstOrNull { it.index == index } ?: return
+        // libass draws it: its layer just shows each moment that much later or earlier.
+        if (drawsWithLibass(p)) {
+            subtitleOffsets[index] = offsetMs
+            _subtitleOffsetMs.value = offsetMs
+            return
+        }
         val codec = stream.codec?.lowercase()
         if (codec !in setOf("srt", "subrip", "vtt", "webvtt")) {
-            showNotice("Timing can be changed for SRT and WebVTT subtitles only")
+            showNotice("Timing can be changed for SRT, WebVTT and (drawn by libass) ASS subtitles")
             return
         }
         val itemId = _item.value?.id ?: return
@@ -820,6 +844,73 @@ class PlaybackSession(
                 subtitleOffsets[index] = previous
                 if (_plan.value?.subtitleIndex == index) _subtitleOffsetMs.value = previous
                 showNotice("Couldn't retime subtitles: ${it.message}")
+            }
+        }
+    }
+
+    private fun fetchBytes(url: String): ByteArray {
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        connection.setRequestProperty("Authorization", server.authorizationHeader())
+        return connection.inputStream.use { it.readBytes() }
+    }
+
+    // ---- Styled subtitles with libass ----
+
+    private val _assTrack = MutableStateFlow<AssTrack?>(null)
+
+    /** The styled subtitle libass draws over the picture (in each app's player view), or null. */
+    val assTrack: StateFlow<AssTrack?> = _assTrack
+    @Volatile private var styledMode = dev.nitrate.core.playback.StyledSubtitles.FILE
+    private var assJob: Job? = null
+
+    /** Tracks libass couldn't load: Media3 shows those its simpler way. */
+    private val assFailed = mutableSetOf<String>()
+
+    private fun assKey(p: PlaybackPlan) = "${p.itemId}/${p.mediaSourceId}/${p.subtitleIndex}"
+
+    /** Whether libass draws [p]'s subtitle: ASS/SSA, shown as the file styles it, not burned in, and libass is built in. */
+    private fun drawsWithLibass(p: PlaybackPlan): Boolean {
+        if (!AssSubtitleView.isAvailable || styledMode != dev.nitrate.core.playback.StyledSubtitles.FILE) return false
+        val stream = p.source.streams.firstOrNull { it.kind == StreamKind.SUBTITLE && it.index == p.subtitleIndex } ?: return false
+        return dev.nitrate.core.playback.isStyledSubtitle(stream.codec) && stream.delivery != SubtitleDelivery.ENCODE && assKey(p) !in assFailed
+    }
+
+    /** Loads (or drops) the libass track for [p]: the whole script and its fonts, from the download or the server. */
+    private fun updateAss(p: PlaybackPlan) {
+        if (!drawsWithLibass(p)) {
+            assJob?.cancel()
+            _assTrack.value = null
+            return
+        }
+        val key = assKey(p)
+        if (_assTrack.value?.key == key) return
+        assJob?.cancel()
+        val itemId = p.itemId
+        val index = p.subtitleIndex
+        assJob = scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val local = p.assScripts[index]
+                        ?: p.externalSubtitles.firstOrNull { it.streamIndex == index && it.url.startsWith("/") && it.mimeType == MimeTypes.TEXT_SSA }?.url
+                    val script = local?.let { File(it).readBytes() } ?: fetchBytes(server.subtitleFileUrl(itemId, p.source, index, "ass"))
+                    val fonts = if (p.fontFiles.isNotEmpty()) {
+                        p.fontFiles.mapNotNull { path -> runCatching { File(path).name to File(path).readBytes() }.getOrNull() }
+                    } else if (localProgress == null) {
+                        p.source.attachments.filter { it.isFont }.mapNotNull { a ->
+                            runCatching { (a.fileName ?: "font-${a.index}") to fetchBytes(server.attachmentUrl(itemId, p.source, a.index)) }.getOrNull()
+                        }
+                    } else emptyList()
+                    AssTrack(key, script, fonts)
+                }
+            }.onSuccess { track ->
+                log("Styled subtitles drawn by libass (${track.script.size / 1024} KB, ${track.fonts.size} fonts)")
+                _assTrack.value = track
+            }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                log("libass couldn't load the subtitle (${e.message}): shown the simpler way")
+                assFailed += key
+                _assTrack.value = null
+                _plan.value?.let(::applySelection)
             }
         }
     }
@@ -889,7 +980,9 @@ class PlaybackSession(
         val textGroups = groups.filter { it.type == C.TRACK_TYPE_TEXT }
         val (sideLoaded, embeddedText) = textGroups.partition { g -> g.getTrackFormat(0).id?.contains("jf-") == true }
         val subtitle = streams.firstOrNull { it.index == plan.subtitleIndex && it.kind == StreamKind.SUBTITLE }
+        // Drawn by libass in its own layer: Media3 shows no text for it.
         val target = when {
+            drawsWithLibass(plan) -> null
             subtitle == null -> null
             subtitle.delivery == SubtitleDelivery.EXTERNAL ->
                 sideLoaded.firstOrNull { it.getTrackFormat(0).id?.endsWith("jf-${subtitle.index}") == true }

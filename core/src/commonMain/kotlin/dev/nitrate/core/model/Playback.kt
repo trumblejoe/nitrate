@@ -56,7 +56,18 @@ data class MediaSource(
     val defaultAudioIndex: Int? = null,
     val defaultSubtitleIndex: Int? = null,
     val defaultsKnown: Boolean = false,
+    /** Files carried inside the media file, such as the fonts styled subtitles use. */
+    val attachments: List<MediaAttachment> = emptyList(),
 )
+
+/** A file carried inside a media file (MKV attachments: fonts for ASS subtitles, covers...). */
+@Serializable
+data class MediaAttachment(val index: Int, val fileName: String?, val mimeType: String?) {
+    /** A font libass can use (TrueType, OpenType, collections). */
+    val isFont: Boolean
+        get() = mimeType?.lowercase()?.let { "font" in it || "truetype" in it || "opentype" in it } == true ||
+            fileName?.lowercase()?.let { it.endsWith(".ttf") || it.endsWith(".otf") || it.endsWith(".ttc") } == true
+}
 
 /** Mime type the players use for a text subtitle codec, or null for image formats (PGS, VobSub). */
 fun subtitleMimeType(codec: String?): String? = when (codec?.lowercase()) {
@@ -88,6 +99,10 @@ data class PlaybackPlan(
     val transcodeReasons: List<String>,
     /** Every version of the item and how each would play here (one entry when there's only one). */
     val versions: List<VersionOption> = emptyList(),
+    /** A download's saved ASS/SSA scripts (stream index → local path), for drawing them with libass offline. */
+    val assScripts: Map<Int, String> = emptyMap(),
+    /** A download's saved fonts (local paths), for those scripts. */
+    val fontFiles: List<String> = emptyList(),
 ) {
     val mediaSourceId get() = source.id
 

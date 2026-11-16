@@ -127,6 +127,9 @@ internal data class MediaStreamDto(
 )
 
 @Serializable
+internal data class MediaAttachmentDto(val index: Int = 0, val fileName: String? = null, val mimeType: String? = null)
+
+@Serializable
 internal data class MediaSourceDto(
     val id: String? = null,
     val name: String? = null,
@@ -135,6 +138,7 @@ internal data class MediaSourceDto(
     val size: Long? = null,
     val eTag: String? = null,
     val mediaStreams: List<MediaStreamDto>? = null,
+    val mediaAttachments: List<MediaAttachmentDto>? = null,
     val supportsDirectPlay: Boolean = false,
     val supportsDirectStream: Boolean = false,
     val transcodingUrl: String? = null,

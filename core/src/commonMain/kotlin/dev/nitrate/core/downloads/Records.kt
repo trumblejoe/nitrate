@@ -57,6 +57,12 @@ data class DownloadRecord(
     val burnInSubtitles: Boolean = false,
     /** The subtitle drawn into the picture, once downloaded. */
     val burnedSubtitle: Int? = null,
+    /**
+     * Styled (ASS/SSA) subtitles saved whole for libass (stream index → file), including ones
+     * embedded in an original, and the file's fonts (paths under the download's folder).
+     */
+    val assFiles: Map<Int, String> = emptyMap(),
+    val fontFiles: List<String> = emptyList(),
 ) {
     val key get() = Key(serverUrl, userId, itemId)
 

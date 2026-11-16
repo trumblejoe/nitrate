@@ -12,6 +12,7 @@ import dev.nitrate.core.playback.SwipeLevel
 import androidx.compose.runtime.remember
 import androidx.media3.ui.AspectRatioFrameLayout
 import dev.nitrate.android.playback.applySubtitleStyle
+import dev.nitrate.android.playback.assSubtitles
 import dev.nitrate.android.playback.showCover
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
@@ -78,6 +79,9 @@ fun VideoSurface(
     subtitleStyle: dev.nitrate.core.playback.SubtitleStyle = dev.nitrate.core.playback.SubtitleStyle(),
     /** The subtitle showing is ASS/SSA, with its own styling. */
     styledSubtitle: Boolean = false,
+    /** A styled subtitle libass draws in its own layer over the picture, and its timing. */
+    assTrack: dev.nitrate.android.playback.AssTrack? = null,
+    subtitleOffsetMs: Long = 0,
     /** Hide the player's own controls (e.g. in picture-in-picture). */
     hideControls: Boolean = false,
     /** Shown instead of a picture (music). */
@@ -97,6 +101,11 @@ fun VideoSurface(
         update = { view ->
             view.resizeMode = if (fill) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
             view.applySubtitleStyle(subtitleStyle, styledSubtitle)
+            view.assSubtitles().apply {
+                this.player = view.player
+                offsetMs = subtitleOffsetMs
+                setTrack(assTrack)
+            }
             view.showCover(coverUrl)
             view.useController = !hideControls
         },

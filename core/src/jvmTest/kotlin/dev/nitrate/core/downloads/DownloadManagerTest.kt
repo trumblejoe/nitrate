@@ -50,6 +50,7 @@ class DownloadManagerTest {
     /** Swaps in a failure for download requests. */
     private var failDownloads: (MockRequestHandleScope.() -> HttpResponseData)? = null
     private var showEpisodes = episodesJson(watched = setOf(1))
+    private var itemJson = ITEM
     private var remoteUserData = """{"Played":false,"PlaybackPositionTicks":0}"""
 
     private val engine = MockEngine { request ->
@@ -68,7 +69,9 @@ class DownloadManagerTest {
             } else {
                 respond(ByteReadChannel(transcoded), HttpStatusCode.OK)
             }
+            path.contains("/Subtitles/") && path.endsWith(".ass") -> respond("[Script Info]\nScriptType: v4.00+\n")
             path.contains("/Subtitles/") -> respond("1\n00:00:01,000 --> 00:00:02,000\nHi\n")
+            path.contains("/Attachments/") -> respond(ByteReadChannel(byteArrayOf(0, 1, 0, 0)))
             path.contains("/Images/") -> respond(ByteReadChannel(byteArrayOf(1, 2, 3)))
             path.endsWith("/UserData") && request.method.value == "POST" -> {
                 posted += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
@@ -76,7 +79,7 @@ class DownloadManagerTest {
             }
             path.endsWith("/UserData") -> respond(remoteUserData, headers = json)
             path.contains("/Shows/") -> respond(showEpisodes, headers = json)
-            path.contains("/Items/") -> respond(ITEM, headers = json)
+            path.contains("/Items/") -> respond(itemJson, headers = json)
             else -> respond("", HttpStatusCode.NotFound)
         }
     }
@@ -132,6 +135,27 @@ class DownloadManagerTest {
         val subs = r.source!!.streams.filter { it.kind == StreamKind.SUBTITLE }
         assertEquals(listOf(2 to SubtitleDelivery.EXTERNAL, 3 to SubtitleDelivery.EMBED, 4 to SubtitleDelivery.EMBED), subs.map { it.index to it.delivery }.sortedBy { it.first })
         assertNotNull(manager.imagePath(r, poster = true))
+    }
+
+    @Test
+    fun `styled subtitles are saved whole with the file's fonts so libass can draw them offline`() = runBlocking {
+        signIn()
+        itemJson = STYLED_ITEM
+        manager.enqueue(listOf(movie), DownloadQuality.ORIGINAL, hevc = false)
+        assertEquals(QueueResult.DONE, manager.runQueue())
+        val r = record()
+        // The embedded ASS track is fetched as a whole script; the plain one isn't.
+        assertEquals(mapOf(3 to "ass-3.ass"), r.assFiles)
+        // Fonts kept under their own (made safe) names; the cover picture isn't a font.
+        assertEquals(listOf("fonts/Fancy Font.ttf", "fonts/font-6.ttf"), r.fontFiles)
+        val plan = manager.playbackPlan(r)!!
+        assertTrue(File(plan.assScripts.getValue(3)).readText().startsWith("[Script Info]"))
+        assertEquals(2, plan.fontFiles.count { File(it).exists() })
+        assertTrue(manager.bytesUsed() > video.size)
+
+        // Removing it removes the fonts folder too.
+        manager.remove(r.itemId)
+        assertFalse(File(plan.fontFiles.first()).parentFile.exists())
     }
 
     @Test
@@ -352,5 +376,15 @@ class DownloadManagerTest {
             |{"Index":2,"Type":"Subtitle","Codec":"srt","IsExternal":true,"DeliveryMethod":"External","DeliveryUrl":"/x"},
             |{"Index":3,"Type":"Subtitle","Codec":"subrip","Language":"spa"},
             |{"Index":4,"Type":"Subtitle","Codec":"PGSSUB"}]}]}""".trimMargin()
+
+        val STYLED_ITEM = """{"Id":"aaaaaaaabbbbccccddddeeeeeeeeeeee","Name":"Movie","Type":"Movie","RunTimeTicks":600000000,
+            |"MediaSources":[{"Id":"src","Container":"mkv","Size":10000,"MediaStreams":[
+            |{"Index":0,"Type":"Video","Codec":"h264","Width":1920,"Height":1080},
+            |{"Index":1,"Type":"Audio","Codec":"aac","Channels":2,"IsDefault":true},
+            |{"Index":2,"Type":"Subtitle","Codec":"subrip","Language":"eng"},
+            |{"Index":3,"Type":"Subtitle","Codec":"ass","Language":"eng","Title":"Signs"}],
+            |"MediaAttachments":[{"Index":4,"FileName":"../Fancy Font.ttf","MimeType":"application/x-truetype-font"},
+            |{"Index":5,"FileName":"cover.jpg","MimeType":"image/jpeg"},
+            |{"Index":6,"MimeType":"font/otf"}]}]}""".trimMargin()
     }
 }

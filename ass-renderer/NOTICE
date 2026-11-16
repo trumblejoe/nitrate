@@ -1,0 +1,12 @@
+The native library libassJNI.so includes:
+
+- libass (https://github.com/libass/libass), ISC License, Copyright (C) 2006-2016 libass contributors.
+- FreeType (https://freetype.org), under the FreeType License (FTL). Portions of this software are
+  copyright (C) The FreeType Project (www.freetype.org). All rights reserved.
+- HarfBuzz (https://harfbuzz.github.io), under the "Old MIT" license.
+- GNU FriBidi (https://github.com/fribidi/fribidi), under the GNU Lesser General Public License
+  version 2.1 or later: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html. It is linked into
+  this separate shared library; its source is at https://github.com/fribidi/fribidi/releases and
+  tools/build-libass.sh rebuilds the library from source.
+
+The JNI bridge (src/main/jni/ass_jni.c) and the Kotlin wrapper are part of Nitrate.

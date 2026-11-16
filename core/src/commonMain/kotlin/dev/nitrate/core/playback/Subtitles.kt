@@ -24,8 +24,9 @@ data class SubtitleStyle(
 /** How ASS/SSA subtitles, which carry their own look, are shown. */
 @Serializable
 enum class StyledSubtitles(val label: String, val detail: String) {
-    FILE("As the file styles them", "Colours, sizes, positions and italics from the file; its fonts and effects aren't drawn"),
-    EXACT("Exactly, drawn by the server", "Fonts and effects too: the server converts the video while they're on"),
+    FILE("As the file styles them", "Exactly as styled, with the file's fonts, outlines, karaoke and effects, drawn on this device (libass)"),
+    SIMPLE("Simpler", "Colours, sizes and positions only, no file fonts or effects; lighter for slower devices"),
+    EXACT("Drawn into the picture by the server", "Exactly as styled, but the server converts the video while they're on"),
     MINE("In my subtitle style", "Like any other subtitles"),
 }
 

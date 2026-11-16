@@ -315,6 +315,8 @@ fun PlayerScreen(
             fill = fill,
             subtitleStyle = playbackSettings.subtitleStyle,
             styledSubtitle = plan?.styledSubtitle == true,
+            assTrack = session.assTrack.collectAsState().value,
+            subtitleOffsetMs = session.subtitleOffsetMs.collectAsState().value,
             hideControls = inPip,
             coverUrl = playingItem?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { actions.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 720) },
         )

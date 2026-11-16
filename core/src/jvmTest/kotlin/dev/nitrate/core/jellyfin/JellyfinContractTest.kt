@@ -305,6 +305,7 @@ class JellyfinContractTest {
             client.downloadUrl(DASHED, source, null, 1, "s1"),
             client.downloadUrl(DASHED, source, dev.nitrate.core.downloads.DownloadQuality.LOW.spec(hevc = true), 1, "s2"),
             client.downloadUrl(DASHED, source, dev.nitrate.core.downloads.DownloadQuality.LOW.spec(hevc = true), 1, "s3", burnInSubtitle = 3),
+            client.attachmentUrl(DASHED, source, 2),
             client.subtitleFileUrl(DASHED, source, 2, "srt"),
             client.trickplaySheetUrl(DASHED, trickplay, 3),
         )

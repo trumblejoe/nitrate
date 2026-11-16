@@ -516,6 +516,9 @@ interface MediaServer {
     /** A subtitle stream (embedded or external) as a standalone file in [format]: srt, ass or vtt. */
     fun subtitleFileUrl(itemId: String, source: MediaSource, streamIndex: Int, format: String): String = unsupported()
 
+    /** A file carried inside the media file (a font, for styled subtitles). */
+    fun attachmentUrl(itemId: String, source: MediaSource, index: Int): String = unsupported()
+
     /** Watched state and position as the server has it now. */
     suspend fun userData(itemId: String): RemoteUserData = unsupported()
 

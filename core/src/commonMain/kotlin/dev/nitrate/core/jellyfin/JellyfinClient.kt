@@ -1621,6 +1621,9 @@ class JellyfinClient(
         )
     }
 
+    override fun attachmentUrl(itemId: String, source: MediaSource, index: Int): String =
+        url("Videos", itemId, source.id ?: itemId, "Attachments", index.toString())
+
     override fun subtitleFileUrl(itemId: String, source: MediaSource, streamIndex: Int, format: String): String =
         url("Videos", itemId, source.id ?: itemId, "Subtitles", streamIndex.toString(), "Stream.$format")
 
