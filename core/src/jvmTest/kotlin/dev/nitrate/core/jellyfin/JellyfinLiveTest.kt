@@ -1055,4 +1055,37 @@ class JellyfinLiveTest {
         println("All time: ${stats.films} films, ${stats.episodes} episodes, ${stats.songs} songs, ${dev.nitrate.core.stats.WatchStatsBuilder.duration(stats.watchMinutes)}")
         assertTrue(stats.films >= 1)
     }
+
+    @Test
+    fun `credit scenes are found in the scrub thumbnails`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        // A film with thumbnails, credits from 6:00 to 7:30 and a scene after them, tagged as TMDb would.
+        val found = client.search("Night Lantern").movies.firstOrNull()
+        assumeTrue("Needs the credits test film", found != null)
+        val film = client.getItem(found!!.id)
+        assertTrue(dev.nitrate.core.playback.CreditScenes.TAG_AFTER in film.tags)
+        val info = client.trickplay(film.id, null)
+        assumeTrue("Needs its thumbnails", info != null)
+        val perSheet = info!!.tileColumns * info.tileRows
+        val frames = (0 until info.thumbnailCount).map { i ->
+            val sheet = javax.imageio.ImageIO.read(java.net.URI(client.trickplaySheetUrl(film.id, info, i / perSheet)).toURL().openConnection().apply {
+                setRequestProperty("Authorization", client.authorizationHeader())
+            }.getInputStream())
+            val x0 = (i % perSheet % info.tileColumns) * info.width
+            val y0 = (i % perSheet / info.tileColumns) * info.height
+            val luma = IntArray(48 * 27) { k ->
+                val p = sheet.getRGB(x0 + ((k % 48) * info.width + info.width / 2) / 48, y0 + ((k / 48) * info.height + info.height / 2) / 27)
+                (299 * ((p shr 16) and 0xFF) + 587 * ((p shr 8) and 0xFF) + 114 * (p and 0xFF)) / 1000
+            }
+            dev.nitrate.core.playback.FrameLuma(48, 27, luma)
+        }
+        val scenes = dev.nitrate.core.playback.CreditScenes.info(film.runtimeMs!!, film.tags, client.mediaSegments(film.id), film.chapters, frames, info.intervalMs)
+        println("Credit scenes: ${scenes.skips} ${scenes.certainty}; credits frames: " + frames.map { if (dev.nitrate.core.playback.CreditScenes.looksLikeCredits(it)) 'C' else '.' }.joinToString(""))
+        assertEquals(dev.nitrate.core.playback.CreditCertainty.CONFIRMED, scenes.certainty)
+        val skip = scenes.skips.single()
+        assertEquals(360_000L, skip.creditsStartMs)
+        assertEquals(450_000L, skip.sceneStartMs)
+    }
 }

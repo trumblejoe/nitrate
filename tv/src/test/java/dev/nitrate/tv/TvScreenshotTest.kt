@@ -374,6 +374,17 @@ class TvScreenshotTest {
         }
     }
 
+    /** Scenes in the credits: skipped to (with the way back), and a heads-up when only the tags know. */
+    @Test fun creditScene() = shoot("tv-credit-scene") { c ->
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+            coil3.compose.AsyncImage(c.server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            androidx.compose.foundation.layout.Column(Modifier.align(androidx.compose.ui.Alignment.BottomStart).padding(48.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+                dev.nitrate.tv.ui.player.CreditSceneBanner(dev.nitrate.core.playback.CreditSkipper.Action.HeadsUp(during = false, after = true), onAct = {}, onDone = {})
+                dev.nitrate.tv.ui.player.CreditSceneBanner(dev.nitrate.core.playback.CreditSkipper.Action.Skip(450_000, 360_000, afterCredits = true), onAct = {}, onDone = {})
+            }
+        }
+    }
+
     /** "Your year" on TV. */
     @Test fun stats() = shoot("tv-stats") { c -> dev.nitrate.tv.ui.settings.StatsScreen(c.server) }
 

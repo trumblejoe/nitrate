@@ -137,6 +137,10 @@ class PlaybackSession(
 
     /** Intro, credits... from the server, for skip buttons and Up Next timing. */
     val segments: StateFlow<List<MediaSegment>> = _segments
+    private val _creditScenes = MutableStateFlow<dev.nitrate.core.playback.CreditScenesInfo?>(null)
+
+    /** Scenes during and after this title's credits: where (to skip to them) or only that there are some. */
+    val creditScenes: StateFlow<dev.nitrate.core.playback.CreditScenesInfo?> = _creditScenes
     private val _trickplay = MutableStateFlow<TrickplayInfo?>(null)
 
     /** Scrubbing thumbnails, when the server has them. */
@@ -594,8 +598,33 @@ class PlaybackSession(
     }
 
     private fun loadExtras(itemId: String, thumbnails: Boolean = true) {
-        scope.launch { _segments.value = runCatching { server.mediaSegments(itemId) }.getOrDefault(emptyList()) }
+        _creditScenes.value = null
+        scope.launch {
+            _segments.value = runCatching { server.mediaSegments(itemId) }.getOrDefault(emptyList())
+            if (!quiet) runCatching { findCreditScenes(itemId, thumbnails) }.onFailure { log("Credit scenes: ${it.message}") }
+        }
         if (thumbnails) scope.launch { _trickplay.value = runCatching { server.trickplay(itemId, _plan.value?.mediaSourceId) }.getOrNull() }
+    }
+
+    /**
+     * Scenes in the credits: from the title's tags, the server's credit markers and the chapters
+     * first; then, for films (or anything tagged as having one) with no marker, from the scrub
+     * thumbnails of the last stretch.
+     */
+    private suspend fun findCreditScenes(itemId: String, thumbnails: Boolean) {
+        val item = _item.value?.takeIf { it.id == itemId } ?: return
+        val runtime = item.runtimeMs?.takeIf { it > 0 } ?: return
+        if (item.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO) return
+        val first = dev.nitrate.core.playback.CreditScenes.info(runtime, item.tags, _segments.value, item.chapters)
+        _creditScenes.value = first
+        if (first.skips.isNotEmpty() || !thumbnails) return
+        if (item.kind != dev.nitrate.core.model.ItemKind.MOVIE && !first.tagged) return
+        val info = server.trickplay(itemId, _plan.value?.mediaSourceId) ?: return
+        val frames = withContext(Dispatchers.IO) { CreditFrames.read(server, itemId, info, runtime) } ?: return
+        if (_item.value?.id != itemId) return
+        val read = dev.nitrate.core.playback.CreditScenes.info(runtime, item.tags, _segments.value, item.chapters, frames, info.intervalMs)
+        log("Credit scenes from thumbnails: ${read.skips} (${read.certainty})")
+        _creditScenes.value = read
     }
 
     fun seekTo(positionMs: Long) = player.seekTo(positionMs.coerceAtLeast(0))

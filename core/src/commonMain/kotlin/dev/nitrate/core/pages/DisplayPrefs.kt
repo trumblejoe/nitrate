@@ -40,6 +40,12 @@ data class DisplayPrefs(
      */
     val describedAudio: Boolean = false,
     /**
+     * Skip the credits to a scene during or after them, when Nitrate knows where it is (the
+     * server's credit markers, chapters, or thumbnails confirmed by the title's tags); otherwise
+     * it's offered. Off: only offered.
+     */
+    val creditScenes: Boolean = true,
+    /**
      * Easy mode: bigger text and touch targets, only the essential menu stops and player
      * controls, and a confirmation before anything is deleted or signed out.
      */

@@ -200,6 +200,7 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
         Triple("Theme music on details pages (quietly, when a title has some)", { p -> p.themeMusic ?: true }, { p, v -> p.copy(themeMusic = v) }),
         Triple("True black (OLED)", { p -> p.trueBlack }, { p, v -> p.copy(trueBlack = v) }),
         Triple("Audio description (start with the described track when a title has one in its language)", { p -> p.describedAudio }, { p, v -> p.copy(describedAudio = v) }),
+        Triple("Skip to after-credits scenes (jump past the credits to a scene during or after them)", { p -> p.creditScenes }, { p, v -> p.copy(creditScenes = v) }),
     )
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(PagePadding), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {

@@ -227,6 +227,7 @@ fun PlayerScreen(
     val audioDecoder by session.audioDecoder.collectAsState()
     val segments by session.segments.collectAsState()
     val trickplay by session.trickplay.collectAsState()
+    val creditScenes by session.creditScenes.collectAsState()
     val progress by session.progress.collectAsState()
     var controlsVisible by remember { mutableStateOf(true) }
     var dialog by remember { mutableStateOf(PlayerDialog.NONE) }
@@ -370,14 +371,32 @@ fun PlayerScreen(
 
         val next = upNext
         val film = next != null && !next.isEpisode
-        val upNextAt = if (film) dev.nitrate.core.playback.NextInCollection.offerAtMs(progress.durationMs, segments, item?.chapters.orEmpty())
-            else PlaybackMoments.upNextAtMs(progress.durationMs, segments)
+        val upNextAt = (if (film) dev.nitrate.core.playback.NextInCollection.offerAtMs(progress.durationMs, segments, item?.chapters.orEmpty())
+            else PlaybackMoments.upNextAtMs(progress.durationMs, segments))
+            .let { at -> creditScenes?.upNextAt(at, progress.durationMs) ?: at }
         val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && progress.positionMs >= upNextAt && scrub == null
         SkipButton(PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }) { session.seekTo(it.endMs) }
         if (showUpNext && next != null) {
             val remaining = ((progress.durationMs - progress.positionMs) / 1000).toInt()
             UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true })
         }
+        // Scenes in the credits: skipped to when the credits start (not in a watch-together group,
+        // where a seek moves everyone), else offered; a heads-up when only the tags know of one.
+        val autoSkip = LocalDisplayPrefs.current.creditScenes && syncGroup == null
+        val skipper = remember(creditScenes, autoSkip) { creditScenes?.let { dev.nitrate.core.playback.CreditSkipper(it, autoSkip) } }
+        var creditAction by remember(item?.id) { mutableStateOf<dev.nitrate.core.playback.CreditSkipper.Action?>(null) }
+        LaunchedEffect(skipper, progress.positionMs / 500) {
+            val a = skipper?.at(progress.positionMs) ?: return@LaunchedEffect
+            if (a is dev.nitrate.core.playback.CreditSkipper.Action.Skip) session.seekTo(a.toMs)
+            creditAction = a
+        }
+        CreditSceneBanner(creditAction.takeIf { scrub == null && !showUpNext }, onAct = { a ->
+            when (a) {
+                is dev.nitrate.core.playback.CreditSkipper.Action.Skip -> session.seekTo(a.backMs)
+                is dev.nitrate.core.playback.CreditSkipper.Action.Offer -> session.seekTo(a.toMs)
+                else -> Unit
+            }
+        }) { creditAction = null }
         scrub?.let { s -> item?.let { TrickplayPreview(actions.server, it.id, trickplay, s.positionMs, s.x, s.barTop) } }
 
         notice?.let {

@@ -366,6 +366,12 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
             prefs.describedAudio,
         ) { v -> update { it.copy(describedAudio = v) } }
     }
+    item(key = "credit_scenes") {
+        Toggle(
+            "Skip to after-credits scenes", "When a film has a scene during or after its credits and Nitrate knows where, jump to it when the credits start (\"Watch credits\" goes back). Off: just offer it",
+            prefs.creditScenes,
+        ) { v -> update { it.copy(creditScenes = v) } }
+    }
     item(key = "black") { Toggle("True black", "Pure black backgrounds, for OLED screens", prefs.trueBlack) { v -> update { it.copy(trueBlack = v) } } }
     item(key = "recap") {
         // Cycles Never → 3 days → 1 week → 2 weeks → 1 month.

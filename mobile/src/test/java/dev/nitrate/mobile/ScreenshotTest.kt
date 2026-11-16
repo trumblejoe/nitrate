@@ -49,6 +49,7 @@ import dev.nitrate.mobile.ui.GestureFeedback
 import dev.nitrate.mobile.ui.GestureFeedbackView
 import dev.nitrate.mobile.ui.TrickplayPreview
 import dev.nitrate.mobile.ui.UpNextCard
+import dev.nitrate.mobile.ui.CreditSceneBanner
 import dev.nitrate.core.model.TrickplayInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -277,6 +278,16 @@ class ScreenshotTest {
     fun nextInCollection() = shoot("phone-next-in-collection") { actions ->
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             UpNextCard(MediaItem("m3", "Gate Weave", ItemKind.MOVIE, productionYear = 2024), actions.server, seconds = null, onPlay = {}, onHide = {})
+        }
+    }
+
+    /** Skipped to the scene after the credits, with the way back. */
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun creditScene() = shoot("phone-credit-scene") { actions ->
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            AsyncImage(actions.server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            CreditSceneBanner(dev.nitrate.core.playback.CreditSkipper.Action.Skip(450_000, 360_000, afterCredits = true), onAct = {}, onDone = {})
         }
     }
 

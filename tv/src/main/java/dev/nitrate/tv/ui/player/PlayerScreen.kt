@@ -217,6 +217,7 @@ fun PlayerScreen(
     var duration by remember { mutableLongStateOf(0L) }
     var playing by remember { mutableStateOf(false) }
     var openPanel by remember { mutableStateOf<PlayerPanel?>(null) }
+    var creditAction by remember(item?.id) { mutableStateOf<dev.nitrate.core.playback.CreditSkipper.Action?>(null) }
     var panelFocused by remember { mutableStateOf(false) }
     val playbackControls = session.controls
     val rootFocus = remember { FocusRequester() }
@@ -245,7 +246,8 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(controlsVisible) {
-        if (controlsVisible) runCatching { playPauseFocus.requestFocus() }
+        // A credits-scene banner keeps focus on its button, so OK acts on it.
+        if (controlsVisible && creditAction == null) runCatching { playPauseFocus.requestFocus() }
     }
 
     fun togglePanel(target: PlayerPanel) {
@@ -259,14 +261,27 @@ fun PlayerScreen(
 
     val nextUp = upNext
     val film = nextUp != null && !nextUp.isEpisode
-    val upNextAt = if (film) dev.nitrate.core.playback.NextInCollection.offerAtMs(duration, segments, item?.chapters.orEmpty())
-        else dev.nitrate.core.playback.PlaybackMoments.upNextAtMs(duration, segments)
+    val creditScenes by session.creditScenes.collectAsState()
+    val upNextAt = (if (film) dev.nitrate.core.playback.NextInCollection.offerAtMs(duration, segments, item?.chapters.orEmpty())
+        else dev.nitrate.core.playback.PlaybackMoments.upNextAtMs(duration, segments))
+        .let { at -> creditScenes?.upNextAt(at, duration) ?: at }
+
+    // Scenes in the credits: skipped to when the credits start (not in a watch-together group,
+    // where a seek moves everyone), else offered; a heads-up when only the tags know of one.
+    val autoSkip = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.creditScenes && syncGroup == null
+    val skipper = remember(creditScenes, autoSkip) { creditScenes?.let { dev.nitrate.core.playback.CreditSkipper(it, autoSkip) } }
+    LaunchedEffect(skipper, position / 500) {
+        val a = skipper?.at(position) ?: return@LaunchedEffect
+        if (a is dev.nitrate.core.playback.CreditSkipper.Action.Skip) player.seekTo(a.toMs)
+        creditAction = a
+    }
     val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE &&
         upNextAt != null && position >= upNextAt
 
     BackHandler {
         when {
             showUpNext -> upNextHidden = true
+            creditAction != null -> { creditAction = null; runCatching { rootFocus.requestFocus() } }
             panel != Panel.NONE -> panel = Panel.NONE
             openPanel != null -> { openPanel = null; touch() }
             controlsVisible && player.isPlaying -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
@@ -386,6 +401,24 @@ fun PlayerScreen(
                 onPlay = { onPlayNext?.invoke(nextUp) },
                 onHide = { upNextHidden = true; runCatching { rootFocus.requestFocus() } },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) 220.dp else 48.dp),
+            )
+        }
+
+        creditAction?.takeIf { !showUpNext }?.let { a ->
+            CreditSceneBanner(
+                a,
+                onAct = { act ->
+                    when (act) {
+                        is dev.nitrate.core.playback.CreditSkipper.Action.Skip -> player.seekTo(act.backMs)
+                        is dev.nitrate.core.playback.CreditSkipper.Action.Offer -> player.seekTo(act.toMs)
+                        else -> Unit
+                    }
+                },
+                onDone = {
+                    creditAction = null
+                    if (!controlsVisible) runCatching { rootFocus.requestFocus() }
+                },
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) 220.dp else 48.dp),
             )
         }
 

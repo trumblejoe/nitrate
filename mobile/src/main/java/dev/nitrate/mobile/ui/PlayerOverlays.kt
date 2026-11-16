@@ -233,3 +233,43 @@ private fun rememberTrickplaySheet(server: MediaServer, url: String): ImageBitma
     }
     return state.value
 }
+
+/**
+ * A scene during or after the credits: "Skipped the credits" with "Watch credits" (undo), the
+ * scene offered with "Skip to it", or a heads-up to stay. Goes away by itself after a while.
+ */
+@Composable
+fun BoxScope.CreditSceneBanner(action: dev.nitrate.core.playback.CreditSkipper.Action?, onAct: (dev.nitrate.core.playback.CreditSkipper.Action) -> Unit, onDone: () -> Unit) {
+    LaunchedEffect(action) {
+        if (action == null) return@LaunchedEffect
+        delay(if (action is dev.nitrate.core.playback.CreditSkipper.Action.HeadsUp) 6_000 else 10_000)
+        onDone()
+    }
+    AnimatedVisibility(
+        action != null,
+        enter = slideInHorizontally { -it / 2 } + fadeIn(),
+        exit = slideOutHorizontally { -it / 2 } + fadeOut(),
+        modifier = Modifier.align(Alignment.BottomStart).padding(start = 32.dp, bottom = 96.dp),
+    ) {
+        val a = action ?: return@AnimatedVisibility
+        val button = when (a) {
+            is dev.nitrate.core.playback.CreditSkipper.Action.Skip -> "Watch credits"
+            is dev.nitrate.core.playback.CreditSkipper.Action.Offer -> "Skip to it"
+            is dev.nitrate.core.playback.CreditSkipper.Action.HeadsUp -> null
+        }
+        Row(
+            Modifier.clip(RoundedCornerShape(24.dp)).background(Color(0xE6101216)).border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
+                .padding(start = 18.dp, end = if (button != null) 6.dp else 18.dp, top = 6.dp, bottom = 6.dp).heightIn(min = 40.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(dev.nitrate.core.playback.CreditSkipper.message(a), color = Color.White, style = MaterialTheme.typography.labelLarge, maxLines = 2)
+            if (button != null) {
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    button, color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White).pressable({ onAct(a); onDone() }).padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+            }
+        }
+    }
+}
