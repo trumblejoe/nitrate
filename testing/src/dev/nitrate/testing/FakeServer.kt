@@ -224,6 +224,23 @@ class FakeServer : MediaServer {
     )
     override val deviceId: String? get() = "fake-phone"
 
+    /** A year of watching, for the stats screens. */
+    override suspend fun watchHistory(max: Int): List<MediaItem> {
+        fun at(month: Int, day: Int) = java.time.LocalDateTime.of(2026, month, day, 20, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        fun watched(item: MediaItem, month: Int, day: Int, plays: Int = 1, minutes: Int = 110, genres: List<String> = listOf("Drama")) =
+            item.copy(runtimeMs = minutes * 60_000L, genres = genres, user = item.user.copy(played = true, lastPlayedMs = at(month, day), playCount = plays))
+        return listOf(
+            watched(films[0], 1, 12, plays = 3, genres = listOf("Drama", "Mystery")), watched(films[1], 3, 2, genres = listOf("Science Fiction")),
+            watched(films[2], 7, 19, plays = 2, genres = listOf("Science Fiction")), watched(films[3], 11, 5, genres = listOf("Comedy")),
+        ) + (1..14).map { n ->
+            watched(MediaItem("e$n", "Episode $n", ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel"), 2 + n % 8, n, minutes = 45, genres = listOf("Mystery"))
+        } + (1..6).map { n ->
+            watched(MediaItem("x$n", "Episode $n", ItemKind.EPISODE, seriesId = "series-2", seriesName = "Gate Weave"), 9, n, minutes = 30, genres = listOf("Comedy"))
+        } + (1..5).map { n ->
+            watched(MediaItem("t$n", "Song $n", ItemKind.AUDIO, artists = listOf(if (n < 4) "Iris Out" else "The Projectionists")), 5, n, plays = 12 - n, minutes = 4)
+        }
+    }
+
     /** What [recentEpisodes] returns; tests add to it. */
     var recent: List<MediaItem> = emptyList()
     override suspend fun recentEpisodes(limit: Int) = recent

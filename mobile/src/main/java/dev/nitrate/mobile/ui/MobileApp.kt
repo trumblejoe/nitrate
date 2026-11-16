@@ -59,6 +59,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class LoginRoute(val serverUrl: String, val serverName: String)
 @Serializable object OfflineRoute
 @Serializable object MainRoute
+@Serializable object StatsRoute
 @Serializable data class LibraryRoute(val libraryId: String)
 /** [artKey] names the card it was opened from, so its artwork can morph into the page. */
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null)
@@ -280,6 +281,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<LicensesRoute> { LicensesScreen() }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
+            screen<StatsRoute> { StatsScreen(actions) }
             screen<CustomPageRoute> { entry ->
                 val route = entry.toRoute<CustomPageRoute>()
                 CustomPageScreen(actions, route.pageId, route.editNow)

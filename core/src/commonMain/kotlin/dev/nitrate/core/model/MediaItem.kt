@@ -110,6 +110,8 @@ data class UserState(
     val unplayedCount: Int? = null,
     /** When it was last played (watched to the end or not), if ever. */
     val lastPlayedMs: Long? = null,
+    /** How many times it's been played (the server counts each finish). */
+    val playCount: Int = 0,
 )
 
 /**

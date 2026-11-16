@@ -78,6 +78,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
             isFavorite = userData?.isFavorite == true,
             unplayedCount = userData?.unplayedItemCount,
             lastPlayedMs = userData?.lastPlayedDate?.let { runCatching { kotlin.time.Instant.parse(it).toEpochMilliseconds() }.getOrNull() },
+            playCount = userData?.playCount ?: 0,
         ),
         images = ItemImages(
             primary = imageTags?.get("Primary"),

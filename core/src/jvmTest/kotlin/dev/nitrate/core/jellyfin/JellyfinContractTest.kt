@@ -214,6 +214,7 @@ class JellyfinContractTest {
         client.setSessionTrack("s1", dev.nitrate.core.model.StreamKind.AUDIO, 2)
         client.collectionsOf(DASHED)
         client.lyrics(DASHED)
+        client.watchHistory(10)
         client.setSessionTrack("s1", dev.nitrate.core.model.StreamKind.SUBTITLE, -1)
         client.seekSession("s1", 90_000)
         for (g in dev.nitrate.core.admin.GeneralCommand.entries) client.sendGeneralCommand("s1", g)

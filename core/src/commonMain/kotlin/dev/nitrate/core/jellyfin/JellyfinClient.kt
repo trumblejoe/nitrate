@@ -1299,6 +1299,24 @@ class JellyfinClient(
         built
     }
 
+    override suspend fun watchHistory(max: Int): List<MediaItem> {
+        val page = 1_000
+        val out = mutableListOf<MediaItem>()
+        while (out.size < max) {
+            val got = items(
+                "Items",
+                query = mapOf(
+                    "recursive" to true, "includeItemTypes" to "Movie,Episode,Audio", "filters" to "IsPlayed",
+                    "sortBy" to "DatePlayed", "sortOrder" to "Descending", "fields" to "Genres",
+                    "startIndex" to out.size, "limit" to page, "enableImages" to false, "enableTotalRecordCount" to false,
+                ),
+            )
+            out += got
+            if (got.size < page) break
+        }
+        return out.take(max)
+    }
+
     override suspend fun lyrics(itemId: String): dev.nitrate.core.music.Lyrics? {
         // No lyrics: the server answers 404.
         val response = try {

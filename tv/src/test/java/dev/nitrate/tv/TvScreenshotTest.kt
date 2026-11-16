@@ -374,6 +374,9 @@ class TvScreenshotTest {
         }
     }
 
+    /** "Your year" on TV. */
+    @Test fun stats() = shoot("tv-stats") { c -> dev.nitrate.tv.ui.settings.StatsScreen(c.server) }
+
     /** Timed lyrics beside a song's cover. */
     @Test fun lyrics() = shoot("tv-lyrics") { c ->
         val lyrics = dev.nitrate.core.music.Lyrics(

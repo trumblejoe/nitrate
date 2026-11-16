@@ -280,6 +280,11 @@ class ScreenshotTest {
         }
     }
 
+    /** "Your year": totals, month by month, top shows, genres, rewatches and artists. */
+    @Test
+    @Config(qualifiers = "w411dp-h1600dp-night-xxhdpi")
+    fun stats() = shoot("phone-stats") { actions -> dev.nitrate.mobile.ui.StatsScreen(actions) }
+
     /** Timed lyrics over a song's cover, the line being sung bright. */
     @Test
     fun lyrics() = shoot("phone-lyrics") { actions ->

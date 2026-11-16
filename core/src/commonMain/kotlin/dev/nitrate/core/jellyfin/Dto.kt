@@ -33,6 +33,7 @@ internal data class UserDataDto(
     val isFavorite: Boolean = false,
     val unplayedItemCount: Int? = null,
     val lastPlayedDate: String? = null,
+    val playCount: Int? = null,
 )
 
 @Serializable

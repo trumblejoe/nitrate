@@ -151,6 +151,16 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                 )
             }
         }
+        section(open, "Your watching", "What you've watched and listened to, year by year.") {
+            item {
+                ListItem(
+                    modifier = Modifier.clickable { actions.nav.navigate(StatsRoute) },
+                    headlineContent = { Text("Your year") },
+                    supportingContent = { Text("Films, episodes and songs, top shows, genres and artists") },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+        }
         section(open, "Control a device", "Play, pause, seek and change volume on your TV or another app.") {
             item { RemoteTargets(actions) }
 

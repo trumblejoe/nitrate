@@ -81,6 +81,7 @@ import kotlinx.serialization.Serializable
 @Serializable object DeviceBackupRoute
 @Serializable object DisplayProfilesRoute
 @Serializable object SpeedCheckRoute
+@Serializable object StatsRoute
 @Serializable object ServerSettingsRoute
 @Serializable data class ManageItemRoute(val itemId: String)
 @Serializable object ServerAdminRoute
@@ -294,6 +295,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     dev.nitrate.tv.ui.settings.SettingsLink("Server-side settings", "Languages, subtitles and permissions set on your Jellyfin server, not on this TV") { nav.navigate(ServerSettingsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Display", "What's shown about items, in this TV's display profile") { nav.navigate(DisplaySettingsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Display profile", "Which profile this TV uses; new, rename, import a radial menu") { nav.navigate(DisplayProfilesRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Your year", "What you've watched and listened to: top shows, genres and artists") { nav.navigate(StatsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Check for updates", "Nitrate ${container.updater.versionName}") { container.updater.check() },
                     dev.nitrate.tv.ui.settings.SettingsLink("Plugins", "Built-in extras, on or off") { nav.navigate(PluginsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Server speed check", "Is slowness the network, the server or this TV? Times it and shows you") { nav.navigate(SpeedCheckRoute) },
@@ -349,6 +351,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
         composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
         composable<SpeedCheckRoute> { dev.nitrate.tv.ui.settings.SpeedCheckScreen(container) }
+        composable<StatsRoute> { dev.nitrate.tv.ui.settings.StatsScreen(container.server) }
         composable<ServerSettingsRoute> { dev.nitrate.tv.ui.settings.ServerSettingsScreen(container) }
         composable<DisplayProfilesRoute> { dev.nitrate.tv.ui.settings.DisplayProfilesScreen(container) }
         composable<DeviceBackupRoute> { dev.nitrate.tv.ui.settings.DeviceBackupScreen(container.backups) }

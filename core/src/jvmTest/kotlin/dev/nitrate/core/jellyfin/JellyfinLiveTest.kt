@@ -1039,4 +1039,20 @@ class JellyfinLiveTest {
         assertEquals(1_000L, timed!!.lines.first().startMs)
         assertEquals(1, timed.currentIndex(5_000))
     }
+
+    @Test
+    fun `watching stats from what's been finished`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        // Something finished just now, so there's a history to count.
+        val film = client.views().flatMap { client.libraryPage(it, dev.nitrate.core.LibrarySort.NAME, 0, 5, false).first }.first { it.kind == ItemKind.MOVIE }
+        client.setPlayed(film.id, true)
+        val history = client.watchHistory()
+        println("History: ${history.size} items, first ${history.firstOrNull()?.name} plays=${history.firstOrNull()?.user?.playCount} last=${history.firstOrNull()?.user?.lastPlayedMs}")
+        assertTrue(history.any { it.id == film.id && it.user.lastPlayedMs != null })
+        val stats = dev.nitrate.core.stats.WatchStatsBuilder.build(history, null)
+        println("All time: ${stats.films} films, ${stats.episodes} episodes, ${stats.songs} songs, ${dev.nitrate.core.stats.WatchStatsBuilder.duration(stats.watchMinutes)}")
+        assertTrue(stats.films >= 1)
+    }
 }
