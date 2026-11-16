@@ -229,6 +229,9 @@ fun PlayerScreen(
     var feedback by remember { mutableStateOf<GestureFeedback?>(null) }
     var feedbackAt by remember { mutableStateOf(0L) }
     val brightness = rememberBrightnessControl()
+    val volume = remember { dev.nitrate.mobile.platform.VolumeControl(context) }
+    val view = androidx.compose.ui.platform.LocalView.current
+    val swipesOn by rememberUpdatedState(playbackSettings.swipeControls)
 
     // The next episode in viewing order: from the server, or from downloads when offline.
     LaunchedEffect(item?.id) {
@@ -239,15 +242,27 @@ fun PlayerScreen(
     }
     // Gesture feedback fades shortly after the last change.
     LaunchedEffect(feedbackAt) {
-        delay(800)
+        // A level stays a little longer, so its "Set to 50%" can be reached.
+        delay(if (feedback is GestureFeedback.Level) 3_000 else 800)
         feedback = null
     }
     fun show(f: GestureFeedback) {
         feedback = f
         feedbackAt = System.nanoTime()
     }
+    // The swipe under way: its level follows the finger and rests at 50% for a stretch.
+    var drag by remember { mutableStateOf<dev.nitrate.core.playback.LevelDrag?>(null) }
+    fun setLevel(isBrightness: Boolean, level: Float) =
+        show(GestureFeedback.Level(isBrightness, if (isBrightness) brightness.set(level) else volume.set(level)))
     val gestures = remember(session) {
         object : PlayerGestures {
+            override val swipes: Boolean get() = swipesOn
+            override fun onSwipe(isBrightness: Boolean, delta: Float) {
+                val d = drag ?: dev.nitrate.core.playback.LevelDrag(if (isBrightness) brightness.level else volume.level).also { drag = it }
+                setLevel(isBrightness, d.move(delta))
+                if (d.reachedMiddle) view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+            }
+            override fun onSwipeEnd() { drag = null }
             override fun onSeek(deltaMs: Long) {
                 // Repeated taps on the same side add up: +10s, +20s...
                 val previous = (feedback as? GestureFeedback.Seek)?.totalMs?.takeIf { (it > 0) == (deltaMs > 0) } ?: 0L
@@ -255,7 +270,6 @@ fun PlayerScreen(
                 show(GestureFeedback.Seek(previous + deltaMs))
             }
             override fun onTogglePlay() = session.controls.togglePlay()
-            override fun onBrightness(delta: Float) = show(GestureFeedback.Level(true, brightness.adjust(delta)))
             override fun onZoom(fill: Boolean) {
                 if (fill == fillState.value) return
                 fillState.value = fill
@@ -301,7 +315,7 @@ fun PlayerScreen(
             hideControls = inPip,
             coverUrl = playingItem?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { actions.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 720) },
         )
-        GestureFeedbackView(feedback)
+        GestureFeedbackView(feedback, onMiddle = { isBrightness -> setLevel(isBrightness, 0.5f) })
 
         // Top bar that shows and hides with the player's own controls.
         AnimatedVisibility(controlsVisible && !inPip, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart)) {

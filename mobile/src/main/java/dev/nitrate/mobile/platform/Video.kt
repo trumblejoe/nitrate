@@ -8,6 +8,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import dev.nitrate.core.playback.SwipeLevel
 import androidx.compose.runtime.remember
 import androidx.media3.ui.AspectRatioFrameLayout
 import dev.nitrate.android.playback.applySubtitleStyle
@@ -40,11 +41,17 @@ interface PlayerGestures {
     /** Double tap in the middle. */
     fun onTogglePlay()
 
+    /** Whether brightness and volume swipes are on (the user can turn them off). */
+    val swipes: Boolean
+
     /**
-     * Vertical swipe on the left half, as a fraction of the screen height (up is positive).
-     * The right half has no swipe: volume changed by accident too easily (the phone's buttons do it).
+     * A deliberate vertical swipe on the left half (brightness) or right half (volume), as a
+     * fraction of the view's height (up is positive). Starts follow core `SwipeLevel`.
      */
-    fun onBrightness(delta: Float)
+    fun onSwipe(isBrightness: Boolean, delta: Float)
+
+    /** The finger left the screen after a swipe. */
+    fun onSwipeEnd()
 
     /** Pinch out (true) to fill the screen, in (false) to fit. */
     fun onZoom(fill: Boolean)
@@ -98,7 +105,10 @@ fun VideoSurface(
 @OptIn(UnstableApi::class)
 @SuppressLint("ClickableViewAccessibility")
 private fun attachGestures(view: PlayerView, gestures: PlayerGestures) {
-    var swiping = false // a brightness swipe (left half) is under way
+    var swiping = false
+    var brightnessSide = false
+    // This touch was a flick or went sideways: no swipe until the finger lifts.
+    var ruledOut = false
     var lastY = 0f
     var scaling = false
     val scale = ScaleGestureDetector(view.context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -130,17 +140,26 @@ private fun attachGestures(view: PlayerView, gestures: PlayerGestures) {
             val start = e1 ?: return false
             if (scaling) return false
             if (!swiping) {
-                // Only clearly vertical swipes on the left half, away from the top and bottom edges
-                // (system gestures, seek bar).
-                val edge = view.height * 0.12f
-                if (kotlin.math.abs(dy) < kotlin.math.abs(dx) || start.y < edge || start.y > view.height - edge) return false
-                if (start.x >= view.width / 2f) return false
+                // Only deliberate swipes: away from the edges, clearly upright, not a quick flick.
+                if (!gestures.swipes) return false
+                val w = view.width.toFloat()
+                val h = view.height.toFloat()
+                if (!SwipeLevel.canStart(start.x, start.y, w, h)) return false
+                if (ruledOut) return false
+                when (SwipeLevel.judge(e2.x - start.x, e2.y - start.y, h, e2.eventTime - start.downTime)) {
+                    SwipeLevel.Start.NOT_YET -> return false
+                    SwipeLevel.Start.NEVER -> { ruledOut = true; return false }
+                    SwipeLevel.Start.SWIPE -> Unit
+                }
                 swiping = true
-                lastY = start.y
+                brightnessSide = start.x < w / 2f
+                // Changes count from here, so the level doesn't jump by the distance it took to start.
+                lastY = e2.y
+                return true
             }
             val delta = (lastY - e2.y) / view.height
             lastY = e2.y
-            gestures.onBrightness(delta)
+            gestures.onSwipe(brightnessSide, delta)
             return true
         }
     })
@@ -155,7 +174,9 @@ private fun attachGestures(view: PlayerView, gestures: PlayerGestures) {
                 pinchStartSpan = 0f
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (swiping) gestures.onSwipeEnd()
                 swiping = false
+                ruledOut = false
                 scaling = false
             }
         }
@@ -200,9 +221,12 @@ class BrightnessControl internal constructor(private val activity: Activity?) {
         runCatching { Settings.System.getInt(it.contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f }.getOrNull()
     } ?: 0.5f
 
-    /** Changes brightness by [delta]; returns the new level. */
-    fun adjust(delta: Float): Float {
-        current = (current + delta).coerceIn(0.01f, 1f)
+    /** This window's brightness, 0..1. */
+    val level: Float get() = current
+
+    /** Sets this window's brightness (never fully dark); returns it. */
+    fun set(level: Float): Float {
+        current = level.coerceIn(0.01f, 1f)
         activity?.window?.let { w -> w.attributes = w.attributes.apply { screenBrightness = current } }
         return current
     }
@@ -213,6 +237,21 @@ class BrightnessControl internal constructor(private val activity: Activity?) {
 }
 
 /** Media volume, as a 0..1 level. */
+class VolumeControl(context: Context) {
+    private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+
+    /** The current level (read fresh: the volume buttons change it too). */
+    val level: Float get() = audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+
+    /** Sets the volume to the nearest step to [level]; returns the level it landed on. */
+    fun set(level: Float): Float {
+        val step = kotlin.math.round(level.coerceIn(0f, 1f) * max).toInt()
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, step, 0)
+        return step.toFloat() / max
+    }
+}
+
 /**
  * Full screen while playing, and landscape unless [lockLandscape] is off (writing beside the
  * video can be done upright, with room for the keyboard). Restores everything afterwards.

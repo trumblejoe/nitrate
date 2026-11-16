@@ -186,6 +186,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             }
 
             item { Toggle("Keep playing in the background", "Audio continues with the screen off or in another app", playback.backgroundAudio) { v -> updatePlayback { it.copy(backgroundAudio = v) } } }
+            item { Toggle("Swipe for brightness and volume", "Up and down on the left of the video for brightness, on the right for volume", playback.swipeControls) { v -> updatePlayback { it.copy(swipeControls = v) } } }
             item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }
             item { Toggle("Night mode", "Quieter loud parts and clearer dialogue (when this device decodes the audio)", playback.nightMode) { v -> updatePlayback { it.copy(nightMode = v) } } }
 

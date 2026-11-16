@@ -114,6 +114,7 @@ object DeviceBackups {
         playback("Avoid formats that failed before", onOff(a.useLearnedFailures), onOff(n.useLearnedFailures))
         playback("Night mode", onOff(a.nightMode), onOff(n.nightMode))
         playback("Picture-in-picture", onOff(a.pictureInPicture), onOff(n.pictureInPicture))
+        playback("Swipe for brightness and volume", onOff(a.swipeControls), onOff(n.swipeControls))
         playback("Keep playing in the background", onOff(a.backgroundAudio), onOff(n.backgroundAudio))
         playback("Writing pane split", a.writingSplit.label, n.writingSplit.label)
         subtitles(a.subtitleStyle, n.subtitleStyle).forEach { (s, f, t) -> add(Difference("Subtitles", s, f, t)) }

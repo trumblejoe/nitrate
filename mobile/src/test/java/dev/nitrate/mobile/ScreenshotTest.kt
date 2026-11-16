@@ -12,6 +12,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import dev.nitrate.android.AppContainer
 import dev.nitrate.testing.FakeServer
 import dev.nitrate.mobile.ui.AppActions
+import dev.nitrate.mobile.ui.GestureFeedbackView
 import dev.nitrate.mobile.ui.ConnectScreen
 import dev.nitrate.core.downloads.DownloadQuality
 import dev.nitrate.core.downloads.DownloadRecord
@@ -133,6 +134,13 @@ class ScreenshotTest {
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
         // Leaving any group stops its clock-sync loop, which would otherwise keep the next test busy.
         compose.runOnUiThread { container.syncPlay.handle(dev.nitrate.core.events.ServerEvent.SyncPlayGroupUpdate("", dev.nitrate.core.syncplay.SyncPlayUpdate.Left)) }
+    }
+
+    @Test @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun swipeLevel() = shoot("phone-swipe-level") {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF203040))) {
+            GestureFeedbackView(dev.nitrate.mobile.ui.GestureFeedback.Level(brightness = false, level = 0.73f))
+        }
     }
 
     @Test fun connect() = shoot("phone-connect") { ConnectScreen(it) { _, _ -> } }

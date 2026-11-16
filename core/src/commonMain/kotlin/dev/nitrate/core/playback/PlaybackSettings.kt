@@ -44,6 +44,8 @@ data class PlaybackSettings(
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
     /** Keep audio playing with the screen off or in another app (phones). */
     val backgroundAudio: Boolean = false,
+    /** Swipe up and down on the video for brightness (left) and volume (right) (phones). */
+    val swipeControls: Boolean = true,
     /** Shrink the video into a corner window when leaving the app mid-playback (phones). */
     val pictureInPicture: Boolean = true,
     /** Evens out loud and quiet sound and lifts dialogue, for late nights. */

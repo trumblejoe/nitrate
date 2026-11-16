@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -79,7 +80,7 @@ sealed interface GestureFeedback {
 }
 
 @Composable
-fun BoxScope.GestureFeedbackView(feedback: GestureFeedback?) {
+fun BoxScope.GestureFeedbackView(feedback: GestureFeedback?, onMiddle: (brightness: Boolean) -> Unit = {}) {
     when (feedback) {
         null -> Unit
         is GestureFeedback.Seek -> {
@@ -103,6 +104,13 @@ fun BoxScope.GestureFeedbackView(feedback: GestureFeedback?) {
                 Box(Modifier.fillMaxWidth(feedback.level).height(6.dp).background(accentColor()))
             }
             Text("${(feedback.level * 100).roundToInt()}%", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
+            // A big target back to the middle, for after an overshoot.
+            if (kotlin.math.abs(feedback.level - 0.5f) > 0.05f) {
+                androidx.compose.material3.FilledTonalButton(
+                    onClick = { onMiddle(feedback.brightness) },
+                    modifier = Modifier.padding(top = 12.dp).heightIn(min = 48.dp),
+                ) { Text("Set to 50%") }
+            }
         }
         is GestureFeedback.Zoom -> Text(
             if (feedback.fill) "Fill screen" else "Fit picture",
