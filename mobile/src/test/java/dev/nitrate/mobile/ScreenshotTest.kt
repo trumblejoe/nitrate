@@ -69,6 +69,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -389,6 +392,16 @@ class ScreenshotTest {
         c.plugins.setEnabled(dev.nitrate.core.episodes.PreviousEpisodePlugin.id, true)
         c.refreshCompanionForTests()
     }) { SettingsScreen(it, {}, initiallyOpen = listOf("Plugins")) }
+
+    /** Long-pressing a plot copies it; a tap still expands it. */
+    @Test fun longPressCopiesThePlot() {
+        shoot("phone-movie-copy") { DetailsScreen(it, "m2", null) }
+        val plot = "A projectionist discovers a reel that shouldn't exist."
+        compose.onNodeWithText(plot).performTouchInput { longClick() }
+        compose.waitForIdle()
+        val clip = compose.activity.getSystemService(android.content.ClipboardManager::class.java).primaryClip
+        org.junit.Assert.assertEquals(plot, clip?.getItemAt(0)?.text?.toString())
+    }
 
     @Test fun settingsFolded() = shoot("phone-settings") { SettingsScreen(it, {}) }
 

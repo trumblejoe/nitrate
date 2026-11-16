@@ -267,8 +267,8 @@ private fun ListRow(actions: AppActions, item: MediaItem, onClick: () -> Unit = 
             prefs.facts(item).takeIf { it.isNotEmpty() }?.let {
                 Text(it.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (prefs.overview) item.overview?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (prefs.overview && !descriptionHidden(item)) item.overview?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.copyOnLongPress(it, onClick))
             }
         }
         if (prefs.watchedMarks && item.user.played) Icon(Icons.Default.Check, "Watched", tint = accentColor())

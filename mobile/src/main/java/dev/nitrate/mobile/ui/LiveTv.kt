@@ -103,7 +103,7 @@ fun LiveTvScreen(actions: AppActions) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${time(p.startMs)} – ${time(p.endMs)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     p.episodeTitle?.let { Text(it, fontWeight = FontWeight.SemiBold) }
-                    p.overview?.takeIf { LocalDisplayPrefs.current.overview }?.let { Text(it) }
+                    p.overview?.takeIf { LocalDisplayPrefs.current.overview }?.let { Text(it, modifier = Modifier.copyOnLongPress(it)) }
                 }
             },
             confirmButton = { TextButton(onClick = { vm.toggleRecording(p); chosen = null }) { Text(if (p.timerId != null) "Don't record" else "Record") } },

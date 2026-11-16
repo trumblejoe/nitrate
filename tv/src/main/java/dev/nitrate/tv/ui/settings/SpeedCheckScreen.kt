@@ -54,6 +54,7 @@ fun SpeedCheckScreen(container: AppContainer, startNow: Boolean = false) {
     var running by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     fun run() {
         if (running) return
@@ -89,6 +90,11 @@ fun SpeedCheckScreen(container: AppContainer, startNow: Boolean = false) {
                             saved = "Saving…"
                             scope.launch { saved = container.sendSpeedReport(r).fold({ "Saved on your server as $it (Dashboard → Logs)" }, { "Couldn't save: ${it.message}" }) }
                         }) { Text("Save to server logs") }
+                        OutlinedButton(onClick = {
+                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Nitrate speed check", r.render()))
+                            saved = if (clipboard != null) "Copied the results to this TV's clipboard" else "This TV has no clipboard"
+                        }) { Text("Copy") }
                     }
                 }
                 saved?.let { Text(it, color = MaterialTheme.colorScheme.primary) }

@@ -59,6 +59,7 @@ fun SpeedCheckRow(actions: AppActions) {
 @Composable
 fun SpeedCheckDialog(actions: AppActions, startNow: Boolean = true, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val steps = remember { mutableStateListOf<SpeedStep>() }
     var report by remember { mutableStateOf<SpeedReport?>(null) }
     var running by remember { mutableStateOf(false) }
@@ -88,11 +89,17 @@ fun SpeedCheckDialog(actions: AppActions, startNow: Boolean = true, onDismiss: (
                 }
                 report?.let { r ->
                     item { Text("What it shows", style = MaterialTheme.typography.labelLarge, color = accentColor()) }
-                    items(r.findings) { f -> Text("•  $f", style = MaterialTheme.typography.bodyMedium) }
+                    items(r.findings) { f -> Text("•  $f", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.copyOnLongPress(f)) }
                     item { Text("Each step", style = MaterialTheme.typography.labelLarge, color = accentColor(), modifier = Modifier.padding(top = 8.dp)) }
                 }
                 items(steps, key = { it.id }) { s ->
-                    Column {
+                    // Long-press copies this step.
+                    val stepText = buildString {
+                        append("${s.label}: ${s.rating.label}\n${s.result}")
+                        listOfNotNull(s.detail, s.extra).joinToString(" · ").takeIf { it.isNotEmpty() }?.let { append("\n$it") }
+                        s.parts.forEach { (name, ms) -> append("\n  $name: $ms ms") }
+                    }
+                    Column(Modifier.fillMaxWidth().copyOnLongPress(stepText)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(s.label, style = MaterialTheme.typography.titleSmall)
                             Text(s.rating.label, color = ratingColor(s.rating), style = MaterialTheme.typography.titleSmall)
@@ -108,6 +115,7 @@ fun SpeedCheckDialog(actions: AppActions, startNow: Boolean = true, onDismiss: (
         confirmButton = {
             Row {
                 report?.let { r ->
+                    TextButton(onClick = { copyToClipboard(context, r.render(), "Nitrate speed check"); saved = "Copied the results" }) { Text("Copy") }
                     TextButton(onClick = {
                         saved = "Saving…"
                         scope.launch { saved = actions.container.sendSpeedReport(r).fold({ "Saved on your server as $it (Dashboard → Logs)" }, { "Couldn't save: ${it.message}" }) }

@@ -73,7 +73,7 @@ fun RecapScreen(actions: AppActions) {
                 }
             }
             item.overview?.takeIf { LocalDisplayPrefs.current.overview }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.copyOnLongPress(it))
             }
         }
         TextButton(onClick = ::playOn) { Text("Skip the recap") }

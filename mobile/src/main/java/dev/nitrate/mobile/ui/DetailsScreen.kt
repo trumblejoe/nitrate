@@ -404,7 +404,8 @@ private fun ExpandableText(text: String) {
         color = Color.White.copy(alpha = 0.85f),
         maxLines = if (expanded) Int.MAX_VALUE else 4,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.animateContentSize().pressable({ expanded = !expanded }),
+        // Tap: more or less; long-press: copy.
+        modifier = Modifier.animateContentSize().copyOnLongPress(text) { expanded = !expanded },
     )
 }
 
@@ -444,7 +445,8 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
             }
         }
         episode.overview?.takeIf { LocalDisplayPrefs.current.overview && !descriptionHidden(episode) }?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 8.dp).copyOnLongPress(it) { actions.open(episode, "ep-${episode.id}") })
         }
     }
 }

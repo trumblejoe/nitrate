@@ -2,6 +2,7 @@
 
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -206,4 +207,30 @@ fun RoundAction(icon: ImageVector, label: String, onClick: () -> Unit, active: B
         }
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
     }
+}
+
+// ---- Copying text ----
+
+/** Copies [text] to the clipboard; below Android 13 (which shows its own confirmation) says so with a toast. */
+fun copyToClipboard(context: android.content.Context, text: String, label: String = "Nitrate") {
+    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java) ?: return
+    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+    if (android.os.Build.VERSION.SDK_INT < 33) android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+}
+
+/** Long-press copies [text] (with a small buzz); a tap still does [onClick]. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.copyOnLongPress(text: String, onClick: (() -> Unit)? = null): Modifier {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    return this.combinedClickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onClick = { onClick?.invoke() },
+        onLongClick = {
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            copyToClipboard(context, text)
+        },
+    )
 }
