@@ -110,6 +110,20 @@ class PlaybackSession(
 
     /** A one-off message, e.g. "switched to transcoding"; cleared after a few seconds. */
     val notice: StateFlow<String?> = _notice
+    private val _videoFrameRate = MutableStateFlow<Float?>(null)
+
+    /** The playing video's frames per second, from the file or else the server's stream info. */
+    val videoFrameRate: StateFlow<Float?> = _videoFrameRate
+
+    /**
+     * How the player itself follows the frame rate: only seamlessly, or not at all (when the app
+     * switches the display mode itself, or the user turned it off).
+     */
+    fun setFrameRateMatch(match: dev.nitrate.core.playback.FrameRateMatch) {
+        exo.videoChangeFrameRateStrategy = if (match == dev.nitrate.core.playback.FrameRateMatch.SEAMLESS) C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
+        else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
+    }
+
     private val _videoDecoder = MutableStateFlow<String?>(null)
     val videoDecoder: StateFlow<String?> = _videoDecoder
     private val _audioDecoder = MutableStateFlow<String?>(null)
@@ -372,6 +386,7 @@ class PlaybackSession(
     init {
         scope.launch { setNightMode(settings.current().nightMode) }
         scope.launch { setAudioDelay(settings.current().audioDelayMs, resync = false) }
+        scope.launch { setFrameRateMatch(settings.current().frameRateMatch) }
         // Tunneled playback, when the device's settings ask for it (the player picks it only
         // when the device's decoders can tunnel this video and audio).
         scope.launch {
@@ -401,6 +416,8 @@ class PlaybackSession(
 
             override fun onVideoInputFormatChanged(e: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
                 log("Video in: ${format.sampleMimeType} ${format.codecs ?: ""} ${format.width}x${format.height} ${format.frameRate}fps ${format.colorInfo?.toLogString() ?: ""}")
+                val fromServer = _plan.value?.source?.streams?.firstOrNull { it.kind == StreamKind.VIDEO }?.frameRate
+                _videoFrameRate.value = format.frameRate.takeIf { it > 0 } ?: fromServer
             }
 
             override fun onAudioInputFormatChanged(e: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {

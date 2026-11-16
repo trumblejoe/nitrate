@@ -118,7 +118,7 @@ object MediaInfo {
         val parts = listOfNotNull(
             s.codec, s.profile,
             s.width?.let { w -> s.height?.let { h -> "${w}x$h" } },
-            s.bitDepth?.let { "$it-bit" }, s.rangeType,
+            s.bitDepth?.let { "$it-bit" }, s.rangeType, s.frameRate?.let { "${fps(it)} fps" },
             s.channelLayout?.let { l -> s.channels?.let { "$l ($it ch)" } ?: l } ?: s.channels?.let { "$it ch" },
             s.language, s.title?.let { "\"$it\"" },
             "default".takeIf { s.isDefault }, "forced".takeIf { s.isForced },
@@ -142,6 +142,14 @@ object MediaInfo {
             styles.take(5).forEach { add("  $it") }
             if (styles.size > 5) add("  …and ${styles.size - 5} more")
         }
+    }
+
+    /** 23.976, 25, 59.94: up to three decimals, no trailing zeros. */
+    private fun fps(rate: Float): String {
+        val thousandths = kotlin.math.round(rate * 1000).toLong()
+        val whole = thousandths / 1000
+        val frac = (thousandths % 1000).toString().padStart(3, '0').trimEnd('0')
+        return if (frac.isEmpty()) "$whole" else "$whole.$frac"
     }
 
     private fun size(bytes: Long): String = when {

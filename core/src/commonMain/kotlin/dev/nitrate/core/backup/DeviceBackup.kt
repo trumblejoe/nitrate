@@ -114,6 +114,7 @@ object DeviceBackups {
         playback("Avoid formats that failed before", onOff(a.useLearnedFailures), onOff(n.useLearnedFailures))
         playback("Night mode", onOff(a.nightMode), onOff(n.nightMode))
         playback("Tunneled playback", onOff(a.tunneling), onOff(n.tunneling))
+        playback("Match frame rate", a.frameRateMatch.label, n.frameRateMatch.label)
         playback("Audio sync", dev.nitrate.core.playback.AudioSync.label(a.audioDelayMs), dev.nitrate.core.playback.AudioSync.label(n.audioDelayMs))
         playback("Picture-in-picture", onOff(a.pictureInPicture), onOff(n.pictureInPicture))
         playback("Swipe for brightness and volume", onOff(a.swipeControls), onOff(n.swipeControls))

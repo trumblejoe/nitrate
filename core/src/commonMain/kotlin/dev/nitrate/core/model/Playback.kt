@@ -35,6 +35,8 @@ data class MediaStream(
     val bitDepth: Int? = null,
     /** Video range type as the server names it: SDR, HDR10, HLG, DOVI, DOVIWithHDR10, ... */
     val rangeType: String? = null,
+    /** Frames per second (video), e.g. 23.976. */
+    val frameRate: Float? = null,
 )
 
 @Serializable

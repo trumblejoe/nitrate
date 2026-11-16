@@ -169,6 +169,7 @@ internal fun MediaStreamDto.toMediaStream() = MediaStream(
     height = height,
     bitDepth = bitDepth,
     rangeType = videoRangeType,
+    frameRate = (realFrameRate ?: averageFrameRate)?.takeIf { it > 0 },
 )
 
 internal fun MediaSourceDto.toMediaSource() = MediaSource(

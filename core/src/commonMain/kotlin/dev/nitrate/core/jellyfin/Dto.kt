@@ -122,6 +122,8 @@ internal data class MediaStreamDto(
     val height: Int? = null,
     val bitDepth: Int? = null,
     val videoRangeType: String? = null,
+    val realFrameRate: Float? = null,
+    val averageFrameRate: Float? = null,
 )
 
 @Serializable

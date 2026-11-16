@@ -127,6 +127,13 @@ fun PlaybackSettingsScreen(
             }
         }
         item {
+            val m = settings.frameRateMatch
+            ChoiceRow("Match frame rate", m.label, m.detail) {
+                val all = dev.nitrate.core.playback.FrameRateMatch.entries
+                update { it.copy(frameRateMatch = all[(m.ordinal + 1) % all.size]) }
+            }
+        }
+        item {
             ToggleRow(
                 "Tunneled playback", settings.tunneling,
                 "Video and sound go to the TV's hardware together. Some TVs need it for smooth playback or sync; others stutter with it. Takes effect the next time something plays.",

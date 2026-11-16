@@ -146,6 +146,8 @@ fun PlayerScreen(
         }
     }
     val settingsNow by playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+    // The TV's refresh rate follows the video's frame rate, as set in Playback settings.
+    FrameRateMatcher(session, settingsNow.frameRateMatch)
     var sleepAt by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(sleepAt) {
         val at = sleepAt ?: return@LaunchedEffect

@@ -58,6 +58,8 @@ data class PlaybackSettings(
      * TVs need for smooth or in-sync playback; others misbehave with it, so it's off by default.
      */
     val tunneling: Boolean = false,
+    /** TVs: switch the refresh rate to the video's frame rate, so films don't judder. */
+    val frameRateMatch: FrameRateMatch = FrameRateMatch.SEAMLESS,
     /** Evens out loud and quiet sound and lifts dialogue, for late nights. */
     val nightMode: Boolean = false,
     /** How the writing pane shares the screen with the video (phones and tablets). */

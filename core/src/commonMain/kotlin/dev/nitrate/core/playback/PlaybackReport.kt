@@ -47,7 +47,7 @@ data class PlaybackReport(
                 val parts = listOfNotNull(
                     s.codec, s.profile,
                     s.width?.let { w -> s.height?.let { h -> "${w}x$h" } },
-                    s.bitDepth?.let { "$it-bit" }, s.rangeType,
+                    s.bitDepth?.let { "$it-bit" }, s.rangeType, s.frameRate?.let { "$it fps" },
                     s.channelLayout ?: s.channels?.let { "$it ch" },
                     s.language, s.delivery?.name?.lowercase(),
                     "default".takeIf { s.isDefault }, "forced".takeIf { s.isForced }, "external".takeIf { s.isExternal },
@@ -84,7 +84,7 @@ data class PlaybackReport(
         line("Audio: ${CapabilityRules.audioCodecs(caps, settings).filter { it.allowed }.joinToString(", ") { it.id }}")
         line("Ranges shown as they are: ${CapabilityRules.allowedRangeTypes(caps, settings).joinToString(", ")}")
         line("Max bitrate ${settings.maxBitrate / 1_000_000} Mbps, max resolution ${settings.maxResolution.label}, direct play ${settings.allowDirectPlay}, direct stream ${settings.allowDirectStream}")
-        line("Tunneled playback ${if (settings.tunneling) "on" else "off"}, audio sync ${AudioSync.label(settings.audioDelayMs)}, night mode ${if (settings.nightMode) "on" else "off"}")
+        line("Match frame rate: ${settings.frameRateMatch.label}. Tunneled playback ${if (settings.tunneling) "on" else "off"}, audio sync ${AudioSync.label(settings.audioDelayMs)}, night mode ${if (settings.nightMode) "on" else "off"}")
         if (settings.overrides.isNotEmpty()) line("Overrides: ${settings.overrides.entries.joinToString(", ") { "${it.key}=${it.value.label}" }}")
         if (settings.learnedFailures.isNotEmpty()) line("Learned failures: ${settings.learnedFailures.entries.joinToString(", ") { "${it.key} (${it.value.count}x, ${it.value.lastError})" }}")
         if (settings.codecMaxHeight.isNotEmpty()) line("Height limits: ${settings.codecMaxHeight}")
