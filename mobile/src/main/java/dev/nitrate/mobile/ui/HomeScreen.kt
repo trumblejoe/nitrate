@@ -18,6 +18,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -193,10 +195,15 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
     if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) {
         PrefetchAlongRow(cardState, row.items) { listOf(actions.server.rowCardImage(it, display.style)) }
     }
+    // Full Showcase is the whole screen, with its own header over the artwork.
+    if (display.style == RowStyle.FULL_SHOWCASE) {
+        FullShowcaseRow(row, display, actions, onDisplay)
+        return
+    }
     Column {
         SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(display, onDisplay) }
         when (display.style) {
-            RowStyle.SHOWCASE -> ShowcaseRow(row, actions)
+            RowStyle.SHOWCASE, RowStyle.FULL_SHOWCASE -> ShowcaseRow(row, actions)
             RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
             RowStyle.LIGHTNING -> LightningRow(row, actions)
             RowStyle.CRESSIDA -> CressidaRow(row, actions, display)
@@ -299,6 +306,82 @@ private fun ShowcaseRow(row: MediaRow, actions: AppActions) {
             itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                 val key = "${row.key}-${item.id}"
                 ShowcaseCard(item, actions, key, Modifier.width(cardWidth))
+            }
+        }
+    }
+}
+
+/**
+ * Full Showcase: the row fills the screen, one title at a time with its artwork as the whole
+ * background (the poster upright, the backdrop sideways); swipe sideways through the titles and
+ * scroll on to the next row. The row's name and style choice sit over the artwork.
+ */
+@Composable
+private fun FullShowcaseRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisplay: ((RowDisplay) -> Unit)?) {
+    if (row.items.isEmpty()) return
+    val server = actions.server
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val portrait = configuration.screenHeightDp >= configuration.screenWidthDp
+    val pager = androidx.compose.foundation.pager.rememberPagerState { row.items.size }
+    // The next titles' backgrounds (and logos) load before they're swiped in.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(pager.currentPage, row.items, portrait) {
+        ImagePrefetch.enqueue(context, row.items.drop(pager.currentPage + 1).take(2).flatMap { listOf(server.fullShowcaseImage(it, portrait), server.logoUrl(it)) })
+    }
+    Box(Modifier.fillMaxWidth().height(configuration.screenHeightDp.dp)) {
+        androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxSize(), key = { "$it:${row.items[it].id}" }) { page ->
+            FullShowcasePage(row.items[page], "${row.key}-${row.items[page].id}", display, actions, portrait)
+        }
+        Row(
+            Modifier.align(Alignment.TopStart).fillMaxWidth().windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.statusBars).padding(horizontal = ScreenPadding, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(row.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+            if (onDisplay != null) RowStylePicker(display, onDisplay)
+        }
+        Text(
+            "${pager.currentPage + 1} / ${row.items.size}",
+            style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.75f),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = ScreenPadding, bottom = 104.dp),
+        )
+    }
+}
+
+@Composable
+private fun FullShowcasePage(item: MediaItem, sharedKey: String, display: RowDisplay, actions: AppActions, portrait: Boolean) {
+    val server = actions.server
+    val prefs = LocalDisplayPrefs.current
+    val options = display.showcase
+    Box(Modifier.fillMaxSize().background(Color.Black).pressable({ actions.open(item, sharedKey) })) {
+        AsyncImage(
+            server.fullShowcaseImage(item, portrait),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey),
+        )
+        // Dark at the top for the row's name, and deep at the bottom for the title and buttons.
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x99000000), 0.18f to Color.Transparent, 0.45f to Color.Transparent, 1f to Color(0xF2000000))))
+        Column(
+            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = ScreenPadding, end = ScreenPadding, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            val logo = server.logoUrl(item)?.takeIf { prefs.logos && options.showLogo }
+            if (logo != null) {
+                AsyncImage(logo, item.displayTitle, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart, modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 96.dp))
+            } else {
+                Text(item.displayTitle, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            item.episodeLabel?.let { Text(it, color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.titleSmall) }
+            if (options.showDetails) {
+                val facts = prefs.facts(item).let { f -> if (options.showRatings) f else f.filterNot { it.startsWith("★") } }
+                if (facts.isNotEmpty()) Text(facts.take(5).joinToString("  ·  "), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (options.showOverview && prefs.overview && !descriptionHidden(item)) {
+                item.overview?.let { Text(it, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+                PillButton(if (item.kind == ItemKind.SERIES) "Watch" else if (item.user.positionMs > 0) "Resume" else "Play", Icons.Default.PlayArrow, primary = true, onClick = { actions.playOrOpen(item) })
+                PillButton("Details", null, primary = false, onClick = { actions.open(item, sharedKey) })
             }
         }
     }

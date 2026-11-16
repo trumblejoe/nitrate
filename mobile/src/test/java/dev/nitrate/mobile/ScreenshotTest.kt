@@ -315,6 +315,18 @@ class ScreenshotTest {
         }
     }
 
+    /** Full Showcase as the top row of Home: the whole screen is the first title. */
+    @Composable
+    private fun FullShowcase(a: AppActions) {
+        val rows = androidx.compose.runtime.produceState<List<dev.nitrate.core.rows.MediaRow>>(emptyList()) { value = a.server.homeRows() }.value
+        rows.firstOrNull { it.key.startsWith("home/latest/") }?.let { dev.nitrate.mobile.ui.CinematicRow(it, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE), a, onDisplay = {}) }
+    }
+
+    @Test fun fullShowcaseRow() = shoot("phone-row-full-showcase") { FullShowcase(it) }
+
+    @Test @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun fullShowcaseRowLandscape() = shoot("phone-row-full-showcase-land") { FullShowcase(it) }
+
     @Test fun showcaseRow() = shoot("phone-row-showcase") { StyledRow(it, dev.nitrate.core.rows.RowStyle.SHOWCASE) }
 
     @Test @Config(qualifiers = "w411dp-h1000dp-night-xxhdpi")

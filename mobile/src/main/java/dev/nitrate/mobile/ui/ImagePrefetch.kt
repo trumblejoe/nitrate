@@ -44,8 +44,9 @@ fun MediaServer.wideArtwork(item: MediaItem): String? =
     backdropUrl(item, 1280) ?: imageUrl(item, ImageKind.THUMB, 720) ?: imageUrl(item, maxHeight = 720)
 
 /** The picture a row card of [style] shows: the same address the card asks for, so it's ready. */
-fun MediaServer.rowCardImage(item: MediaItem, style: RowStyle): String? = when (style) {
+fun MediaServer.rowCardImage(item: MediaItem, style: RowStyle, portrait: Boolean = true): String? = when (style) {
     RowStyle.POSTER -> cardImage(item, CardShape.POSTER)
+    RowStyle.FULL_SHOWCASE -> fullShowcaseImage(item, portrait)
     RowStyle.WIDE -> cardImage(item, CardShape.WIDE)
     else -> wideArtwork(item)
 }
@@ -76,7 +77,9 @@ fun PrefetchRows(
     perRow: Int = 8,
 ) {
     val context = LocalContext.current
-    LaunchedEffect(state, rows, overrides) {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val portrait = configuration.screenHeightDp >= configuration.screenWidthDp
+    LaunchedEffect(state, rows, overrides, portrait) {
         val keys = rows.map { it.key }
         snapshotFlow { state.layoutInfo.visibleItemsInfo.lastOrNull { it.key in keys }?.key }
             .distinctUntilChanged()
@@ -84,8 +87,16 @@ fun PrefetchRows(
                 val last = keys.indexOf(lastKey)
                 rows.drop(last + 1).take(rowsAhead).forEach { row ->
                     val style = (overrides[row.key] ?: row.defaultDisplay).style
-                    ImagePrefetch.enqueue(context, row.items.take(perRow).map { server.rowCardImage(it, style) })
+                    ImagePrefetch.enqueue(context, row.items.take(perRow).map { server.rowCardImage(it, style, portrait) })
                 }
             }
     }
 }
+
+/**
+ * The background of a Full Showcase page, filling the screen: upright, the poster (an episode
+ * uses its show's backdrop, so an unwatched still never shows); sideways, the 1920px backdrop.
+ */
+fun MediaServer.fullShowcaseImage(item: MediaItem, portrait: Boolean): String? =
+    if (portrait && !item.isEpisode) imageUrl(item, ImageKind.PRIMARY, 1920) ?: backdropUrl(item, 1920)
+    else backdropUrl(item, 1920) ?: imageUrl(item, ImageKind.THUMB, 1080) ?: imageUrl(item, maxHeight = 1920)

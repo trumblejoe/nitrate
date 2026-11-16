@@ -150,7 +150,7 @@ fun RowSettingsDialog(
                         }
                     }
                 }
-                if (display.style == RowStyle.SHOWCASE) {
+                if (display.style == RowStyle.SHOWCASE || display.style == RowStyle.FULL_SHOWCASE) {
                     item { ToggleItem("Show logo", display.showcase.showLogo) { showcase { copy(showLogo = it) } } }
                     item { ToggleItem("Show details", display.showcase.showDetails) { showcase { copy(showDetails = it) } } }
                     item { ToggleItem("Show ratings", display.showcase.showRatings) { showcase { copy(showRatings = it) } } }

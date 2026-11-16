@@ -34,6 +34,7 @@ import dev.nitrate.core.MediaServer
 import dev.nitrate.core.rows.MediaRow
 import dev.nitrate.core.rows.RowDisplay
 import dev.nitrate.core.rows.RowStyle
+import dev.nitrate.core.rows.isShowcase
 import dev.nitrate.tv.ui.components.Backdrop
 import dev.nitrate.tv.ui.components.ItemMetaLine
 import dev.nitrate.core.model.MediaItem
@@ -108,8 +109,10 @@ fun RowsPage(
                     androidx.compose.foundation.layout.Box(Modifier.animateItem()) {
                         val display = overrides[row.key] ?: row.defaultDisplay
                         val hidden = activeShowcase != null && activeShowcase != row.key
-                        if (display.style == RowStyle.SHOWCASE) {
+                        if (display.style.isShowcase) {
                             val active = activeShowcase == row.key
+                            // Full Showcase fills the screen even before it has focus.
+                            val full = display.style == RowStyle.FULL_SHOWCASE
                             ShowcaseRow(
                                 row = row,
                                 display = display,
@@ -122,8 +125,9 @@ fun RowsPage(
                                     if (isActive) activeShowcase = row.key
                                     else if (activeShowcase == row.key) activeShowcase = null
                                 },
+                                alwaysExpanded = full,
                                 modifier = Modifier.alpha(if (hidden) 0f else 1f)
-                                    .then(if (active) Modifier.fillParentMaxHeight() else Modifier),
+                                    .then(if (active || full) Modifier.fillParentMaxHeight() else Modifier),
                             )
                         } else {
                             Box(Modifier.alpha(if (hidden) 0f else 1f)) {

@@ -331,6 +331,15 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
+    /** A Full Showcase row lower on the page fills the screen when scrolled to, before it has focus. */
+    @Test fun homeFullShowcase() = shoot("tv-home-full-showcase", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
+    }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
     @Test fun settingsHub() = shoot("tv-settings-hub") { _ ->
         dev.nitrate.tv.ui.settings.SettingsHubScreen(
             listOf("Playback" to "Formats, quality, tests and updates for this TV", "Display" to "What's shown about items; follows your account", "Check for updates" to "Nitrate 0.0.0-dev.18", "Plugins" to "Built-in extras, on or off", "Switch user" to "Other users and servers, profile PINs", "Sign out" to "http://jellyfin.local:8096")

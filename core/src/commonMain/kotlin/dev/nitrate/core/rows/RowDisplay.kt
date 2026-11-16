@@ -15,6 +15,9 @@ enum class RowStyle(val label: String) {
     /** Big artwork, one item at a time (TV: full screen while focused; phone: large swipeable cards). */
     SHOWCASE("Showcase"),
 
+    /** Showcase that always fills the whole screen: one title at a time, its artwork as the background. */
+    FULL_SHOWCASE("Full Showcase"),
+
     /** A tilted strip of film; the frame in the gate (focused, or centred on a phone) is named below it. */
     FILM_STRIP("Film strip"),
 
@@ -153,3 +156,6 @@ data class PlaylistPageView(
     /** Large header for the focused item over its backdrop. */
     val cinematic: Boolean = true,
 )
+
+/** Both showcase styles: one title at a time, with the showcase options. */
+val RowStyle.isShowcase: Boolean get() = this == RowStyle.SHOWCASE || this == RowStyle.FULL_SHOWCASE

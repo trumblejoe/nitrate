@@ -70,6 +70,8 @@ fun ShowcaseRow(
     onIndexChange: (Int) -> Unit,
     active: Boolean,
     onActiveChange: (Boolean) -> Unit,
+    /** Full Showcase: the full-screen view even without focus. */
+    alwaysExpanded: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val items = row.items
@@ -134,7 +136,7 @@ fun ShowcaseRow(
             }
             .focusable(),
     ) {
-        if (active) {
+        if (active || alwaysExpanded) {
             Expanded(row, item, current, artwork, display, repository)
         } else {
             Collapsed(row, item, artwork, display)

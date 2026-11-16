@@ -43,7 +43,7 @@ object ImagePrefetch {
 internal fun MediaServer.rowCardImages(item: MediaItem, display: RowDisplay): List<String?> = when (display.style) {
     RowStyle.POSTER -> listOf(imageUrl(item, ImageKind.PRIMARY, display.size.posterHeightDp * 2))
     RowStyle.WIDE -> listOf(wideImage(this, item))
-    RowStyle.SHOWCASE -> listOf(backdropUrls(item).firstOrNull() ?: backdropUrl(item), wideImage(this, item))
+    RowStyle.SHOWCASE, RowStyle.FULL_SHOWCASE -> listOf(backdropUrls(item).firstOrNull() ?: backdropUrl(item), wideImage(this, item))
     else -> listOf(artwork(item))
 }
 
