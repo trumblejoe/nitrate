@@ -197,6 +197,14 @@ fun PlaybackSettingsScreen(
                 .joinToString(", ").ifEmpty { null }
             CapabilityRow(cap, reported, emptyList(), settings, update)
         }
+        item(key = "passthrough-extras") {
+            // What the receiver takes as it is beyond the basic formats (sent automatically when it can).
+            val extras = dev.nitrate.core.playback.DeviceCapabilities.PASSTHROUGH_EXTRAS.joinToString("  ·  ") { e ->
+                "$e: " + if (e in capabilities.passthroughExtras) "passed through" else "no"
+            }
+            ListItem(selected = false, onClick = {}, headlineContent = { Text("Lossless and object audio") },
+                supportingContent = { Text("$extras. When not, DTS-HD goes out as its DTS core and Atmos in E-AC-3 as plain E-AC-3.") })
+        }
 
         if (updater != null) {
             section("Updates", "New versions from Nitrate's releases. Android asks before installing.")

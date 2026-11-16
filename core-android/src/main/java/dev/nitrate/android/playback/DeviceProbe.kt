@@ -134,6 +134,11 @@ object DeviceProbe {
             displayHeight = mode?.physicalHeight ?: 1080,
             model = "${Build.MANUFACTURER} ${Build.MODEL}",
             dolbyVisionProfiles = dolbyVision,
+            passthroughExtras = buildSet {
+                if (passthrough?.supportsEncoding(C.ENCODING_DTS_HD) == true) add(DeviceCapabilities.DTS_HD)
+                if (passthrough?.supportsEncoding(C.ENCODING_DTS_UHD_P2) == true) add(DeviceCapabilities.DTS_X_P2)
+                if (passthrough?.supportsEncoding(C.ENCODING_E_AC3_JOC) == true) add(DeviceCapabilities.ATMOS_EAC3)
+            },
         )
     }
 }

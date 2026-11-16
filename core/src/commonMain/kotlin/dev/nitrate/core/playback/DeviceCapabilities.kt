@@ -41,6 +41,12 @@ data class DeviceCapabilities(
     val model: String,
     /** Dolby Vision profiles a decoder advertises (5 = dvhe.05, 8 = dvhe.08, ...). */
     val dolbyVisionProfiles: Set<Int> = emptySet(),
+    /**
+     * Lossless and object audio the device (or the receiver behind it) takes untouched, as named in
+     * [PASSTHROUGH_EXTRAS]: DTS-HD MA (and DTS:X in it), DTS:X Profile 2, Dolby Atmos in E-AC-3.
+     * Media3 sends these as they are when listed, else the core (DTS) or plain E-AC-3.
+     */
+    val passthroughExtras: Set<String> = emptySet(),
 ) {
     companion object {
         const val DOLBY_VISION_MIME = "video/dolby-vision"
@@ -71,5 +77,11 @@ data class DeviceCapabilities(
         )
 
         val HDR_FORMATS = listOf("HDR10", "HDR10Plus", "HLG", "DOVI")
+
+        /** What [passthroughExtras] may hold. */
+        const val DTS_HD = "DTS-HD MA / DTS:X"
+        const val DTS_X_P2 = "DTS:X Profile 2"
+        const val ATMOS_EAC3 = "Dolby Atmos in E-AC-3"
+        val PASSTHROUGH_EXTRAS = listOf(DTS_HD, DTS_X_P2, ATMOS_EAC3)
     }
 }

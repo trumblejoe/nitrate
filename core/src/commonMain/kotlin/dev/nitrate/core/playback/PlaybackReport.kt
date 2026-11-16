@@ -71,6 +71,7 @@ data class PlaybackReport(
         caps.audio.values.sortedBy { it.codec }.forEach { a ->
             line("Audio ${a.codec}: decoder ${a.decoder ?: "none"}, passthrough ${if (a.passthrough) "yes" else "no"}")
         }
+        line("Also passed through untouched: ${caps.passthroughExtras.sorted().joinToString(", ").ifEmpty { "none (DTS-HD goes out as its DTS core, Atmos in E-AC-3 as plain E-AC-3)" }}")
         line("HDR on the display: ${caps.hdr.sorted().joinToString(", ").ifEmpty { "none" }}")
         if (caps.dolbyVisionProfiles.isNotEmpty()) line("Dolby Vision decoder profiles: ${caps.dolbyVisionProfiles.sorted().joinToString(", ")}")
         line()
