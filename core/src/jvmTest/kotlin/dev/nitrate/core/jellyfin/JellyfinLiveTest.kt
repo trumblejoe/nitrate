@@ -638,6 +638,10 @@ class JellyfinLiveTest {
         val query = options.query(library.id, library.collection)
         val (all, total) = client.queryPage(query, 0, 100)
         println("Movies: $total ${all.map { it.name }}")
+        // A file's details carry the server's audio and subtitle picks for this user (for downloads).
+        val details = client.mediaSource(all.first().id)
+        assertTrue(details.defaultsKnown)
+        assertTrue(details.defaultAudioIndex == null || details.streams.any { it.index == details.defaultAudioIndex })
         assertEquals(all.size, total)
         assertTrue("sort names come back for A–Z jumps", all.all { !it.sortName.isNullOrBlank() })
         // Sorted by name without leading articles ("The Brave..." under B), as the A–Z bar shows it.

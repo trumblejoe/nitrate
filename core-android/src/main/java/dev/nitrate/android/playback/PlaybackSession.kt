@@ -142,6 +142,34 @@ class PlaybackSession(
         events.addLast("${clock.format(java.util.Date())}  $message")
     }
 
+    /**
+     * Extended media information for what's playing: the file and its streams, the server's
+     * picks, what the player has and what's on, how subtitles are drawn ([styled] is the user's
+     * choice for ASS/SSA), and for a download what its saved ASS files hold.
+     */
+    suspend fun mediaInfo(styled: dev.nitrate.core.playback.StyledSubtitles): String {
+        val p = _plan.value ?: return "Nothing is playing yet."
+        val tracks = exo.currentTracks.groups.flatMap { g ->
+            val type = when (g.type) { C.TRACK_TYPE_VIDEO -> "video"; C.TRACK_TYPE_AUDIO -> "audio"; C.TRACK_TYPE_TEXT -> "subtitles"; else -> "other" }
+            (0 until g.length).map { i ->
+                val f = g.getTrackFormat(i)
+                dev.nitrate.core.playback.PlayerTrack(type, f.id, f.language, f.label, f.sampleMimeType, f.codecs, g.isTrackSelected(i), g.isTrackSupported(i))
+            }
+        }
+        val local = localProgress != null
+        val files = if (!local) emptyMap() else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            p.externalSubtitles.filter { it.mimeType == MimeTypes.TEXT_SSA }.associate { s ->
+                val file = File(s.url)
+                file.name to runCatching { dev.nitrate.core.playback.MediaInfo.aboutAss(file.readText()) }.getOrElse { listOf("Couldn't read it: ${it.message}") }
+            }
+        }
+        return dev.nitrate.core.playback.MediaInfo.render(
+            item = _item.value, source = p.source, plan = p, local = local, playerTracks = tracks,
+            subtitles = dev.nitrate.core.playback.SubtitleDrawing(styled, p.styledSubtitle && styled != dev.nitrate.core.playback.StyledSubtitles.MINE),
+            videoDecoder = _videoDecoder.value, audioDecoder = _audioDecoder.value, subtitleFiles = files,
+        )
+    }
+
     /** What the player did recently, oldest first. */
     fun eventLog(): List<String> = synchronized(events) { events.toList() }
 
@@ -430,11 +458,19 @@ class PlaybackSession(
         }
     }
 
+    private suspend fun withRememberedLanguages(item: MediaItem, plan: PlaybackPlan): PlaybackPlan {
+        val series = item.seriesId ?: return plan
+        val choice = runCatching { trackMemory?.get(series) }.getOrNull() ?: return plan
+        val (audio, subtitle) = TrackMemory.pick(plan.source.streams, choice)
+        return plan.copy(audioIndex = audio ?: plan.audioIndex, subtitleIndex = subtitle ?: plan.subtitleIndex)
+    }
+
     /** Plays a downloaded file from [plan] (local paths), reporting progress to [onProgress]. */
     fun loadLocal(item: MediaItem, plan: PlaybackPlan, startMs: Long, onProgress: suspend (positionMs: Long, durationMs: Long, ended: Boolean) -> Unit) {
         localProgress = onProgress
         _item.value = item
-        play(plan, startMs, item.name)
+        // The show's remembered languages win over the download's defaults, as when streaming.
+        scope.launch { play(withRememberedLanguages(item, plan), startMs, item.name) }
         // Skip markers still work offline if the server answers; thumbnails need it anyway.
         loadExtras(item.id, thumbnails = false)
         progressJob?.cancel()

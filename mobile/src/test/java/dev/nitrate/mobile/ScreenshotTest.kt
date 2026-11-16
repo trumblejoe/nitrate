@@ -143,6 +143,16 @@ class ScreenshotTest {
         }
     }
 
+    @Test fun mediaInfo() = shoot("phone-media-info") {
+        val streams = listOf(
+            dev.nitrate.core.model.MediaStream(0, dev.nitrate.core.model.StreamKind.VIDEO, codec = "hevc", profile = "Main 10", width = 3840, height = 2160, bitDepth = 10, rangeType = "HDR10"),
+            dev.nitrate.core.model.MediaStream(1, dev.nitrate.core.model.StreamKind.AUDIO, codec = "eac3", language = "jpn", title = "Japanese", channels = 6, channelLayout = "5.1"),
+            dev.nitrate.core.model.MediaStream(2, dev.nitrate.core.model.StreamKind.SUBTITLE, codec = "ass", language = "eng", title = "Full", isDefault = true),
+        )
+        val source = dev.nitrate.core.model.MediaSource("s", "mkv", 24_000_000, streams, size = 6_100_000_000, defaultAudioIndex = 1, defaultSubtitleIndex = 2, defaultsKnown = true)
+        dev.nitrate.mobile.ui.MediaInfoDialog(dev.nitrate.core.playback.MediaInfo.render(dev.nitrate.core.model.MediaItem("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE), source)) {}
+    }
+
     @Test fun connect() = shoot("phone-connect") { ConnectScreen(it) { _, _ -> } }
 
     @Test fun chat() = shoot("phone-chat") { actions ->

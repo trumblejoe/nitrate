@@ -305,7 +305,7 @@ class AppContainer(
             itemId = itemId, isAudio = isAudio, startMs = 0, forceTranscode = false,
             audioIndex = null, subtitleIndex = null, mediaSourceId = dev.nitrate.android.playback.VersionChoices[itemId],
         )
-        return dev.nitrate.core.playback.PlaybackDoctor.diagnose(plan, capabilities, playbackSettings.current())
+        return dev.nitrate.core.playback.PlaybackDoctor.diagnose(plan, capabilities, playbackSettings.current()).copy(plan = plan)
     }
 
     /** Applies a fix found by [checkPlayback] (settings and versions; tracks are chosen in the player). */

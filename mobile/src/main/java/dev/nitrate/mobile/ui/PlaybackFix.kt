@@ -13,6 +13,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,6 +38,8 @@ fun PlaybackFixDialog(
     onFix: (PlaybackFix) -> Unit,
     onDismiss: () -> Unit,
     canApply: (PlaybackFix) -> Boolean = { true },
+    /** Opens the extended media information, when there's a file to describe. */
+    onMediaInfo: (() -> Unit)? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -76,6 +79,7 @@ fun PlaybackFixDialog(
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { if (onMediaInfo != null && diagnosis != null) TextButton(onClick = onMediaInfo) { Text("Media info") } },
     )
 }
 
@@ -88,11 +92,18 @@ fun CheckPlaybackDialog(actions: AppActions, item: MediaItem, onDismiss: () -> U
         value = runCatching { actions.container.checkPlayback(item.id, item.mediaKind == MediaKind.AUDIO) }
     }
     val scope = rememberCoroutineScope()
+    var info by remember { mutableStateOf(false) }
+    val plan = result?.getOrNull()?.plan
+    if (info && plan != null) {
+        MediaInfoDialog(dev.nitrate.core.playback.MediaInfo.render(item, plan.source)) { info = false }
+        return
+    }
     PlaybackFixDialog(
         diagnosis = result?.getOrNull(),
         error = result?.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
         onFix = { fix -> scope.launch { actions.container.applyPlaybackFix(item.id, fix); round++ } },
         onDismiss = onDismiss,
         canApply = { it is PlaybackFix.Change || it is PlaybackFix.UseVersion },
+        onMediaInfo = { info = true }.takeIf { plan != null },
     )
 }

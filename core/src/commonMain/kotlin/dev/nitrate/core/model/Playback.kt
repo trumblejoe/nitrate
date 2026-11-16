@@ -47,6 +47,13 @@ data class MediaSource(
     val size: Long? = null,
     /** The version's name when a title has several ("4K", "Director's cut"...). */
     val name: String? = null,
+    /**
+     * The audio and subtitle streams the server picks for this user from their language settings
+     * (subtitle -1: off), when [defaultsKnown]. Downloads keep them so they play the same offline.
+     */
+    val defaultAudioIndex: Int? = null,
+    val defaultSubtitleIndex: Int? = null,
+    val defaultsKnown: Boolean = false,
 )
 
 /** Mime type the players use for a text subtitle codec, or null for image formats (PGS, VobSub). */

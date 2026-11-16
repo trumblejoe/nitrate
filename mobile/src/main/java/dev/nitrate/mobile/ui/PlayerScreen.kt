@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -99,7 +100,7 @@ import dev.nitrate.core.playback.PlaybackMoments
 import kotlinx.coroutines.delay
 import dev.nitrate.mobile.platform.VideoSurface
 
-private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX, CHAT }
+private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MEDIA_INFO, MORE, CHAPTERS, FIX, CHAT }
 
 @Composable
 fun PlayerScreen(
@@ -148,7 +149,8 @@ fun PlayerScreen(
     val chatGroup = actions.container.chat.groupId.collectAsState().value?.takeIf { !local && syncGroup != null && it == syncGroup.id }
     if (local) {
         LaunchedEffect(session) {
-            val record = downloads.find(itemId)
+            // Downloads saved before they kept the server's track picks learn them now (if it answers).
+            val record = downloads.find(itemId)?.let { downloads.withServerDefaults(it) }
             val plan = record?.let(downloads::playbackPlan)
             if (record == null || plan == null) {
                 session.load(itemId, fromStart) // Deleted meanwhile: stream it instead.
@@ -390,6 +392,10 @@ fun PlayerScreen(
                 onDismiss = { dialog = PlayerDialog.NONE },
             )
         }
+        dialog == PlayerDialog.MEDIA_INFO -> {
+            val text by androidx.compose.runtime.produceState<String?>(null, p) { value = session.mediaInfo(playbackSettings.subtitleStyle.styled) }
+            MediaInfoDialog(text) { dialog = PlayerDialog.INFO }
+        }
         dialog == PlayerDialog.INFO -> AlertDialog(
             onDismissRequest = { dialog = PlayerDialog.NONE },
             title = { Text("Playback info") },
@@ -402,6 +408,10 @@ fun PlayerScreen(
                         }
                     }
                     logMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor(), modifier = Modifier.padding(top = 10.dp)) }
+                    androidx.compose.material3.OutlinedButton(onClick = { dialog = PlayerDialog.MEDIA_INFO }, modifier = Modifier.padding(top = 12.dp)) {
+                        Icon(CopyIcon, null, modifier = Modifier.size(16.dp))
+                        Text("Media info", modifier = Modifier.padding(start = 8.dp))
+                    }
                     if (p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY && !local) {
                         androidx.compose.material3.OutlinedButton(onClick = { dialog = PlayerDialog.FIX }, modifier = Modifier.padding(top = 12.dp)) { Text("Why converting? Fix it") }
                     }

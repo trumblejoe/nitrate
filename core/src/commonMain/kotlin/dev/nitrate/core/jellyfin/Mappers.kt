@@ -171,7 +171,11 @@ internal fun MediaStreamDto.toMediaStream() = MediaStream(
     rangeType = videoRangeType,
 )
 
-internal fun MediaSourceDto.toMediaSource() = MediaSource(id = id, name = name, container = container, bitrate = bitrate, streams = mediaStreams.orEmpty().map { it.toMediaStream() }, size = size)
+internal fun MediaSourceDto.toMediaSource() = MediaSource(
+    id = id, name = name, container = container, bitrate = bitrate, streams = mediaStreams.orEmpty().map { it.toMediaStream() }, size = size,
+    // The server's picks from the user's language settings (no subtitle: off).
+    defaultAudioIndex = defaultAudioStreamIndex, defaultSubtitleIndex = defaultSubtitleStreamIndex ?: -1, defaultsKnown = true,
+)
 
 internal fun PlayMethod.wire() = when (this) {
     PlayMethod.DIRECT_PLAY -> "DirectPlay"

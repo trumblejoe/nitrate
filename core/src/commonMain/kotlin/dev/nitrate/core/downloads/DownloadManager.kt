@@ -393,7 +393,9 @@ class DownloadManager(
                 bitDepth = 8, rangeType = "SDR", profile = null, title = null),
             audio?.copy(codec = "aac", channels = spec.audioChannels, channelLayout = "stereo", title = listOfNotNull(audio.language, "AAC stereo").joinToString(" - ")),
         )
-        return MediaSource(source.id, "mp4", spec.videoBitrate + spec.audioBitrate, streams + subtitleStreams)
+        // The one audio kept is the one to play; the subtitle the server picks still applies.
+        return MediaSource(source.id, "mp4", spec.videoBitrate + spec.audioBitrate, streams + subtitleStreams,
+            defaultAudioIndex = audio?.index, defaultSubtitleIndex = source.defaultSubtitleIndex, defaultsKnown = source.defaultsKnown)
     }
 
     // ---- Offline playback ----
@@ -405,6 +407,20 @@ class DownloadManager(
     fun imagePath(record: DownloadRecord, poster: Boolean): String? =
         (if (poster) record.posterFile else record.backdropFile)?.let { Path(dirFor(record), it).toString() }
 
+    /**
+     * Learns the server's audio and subtitle picks for a download saved before they were kept
+     * (when the server answers quickly), so it starts like streaming would.
+     */
+    suspend fun withServerDefaults(record: DownloadRecord): DownloadRecord {
+        val source = record.source ?: return record
+        if (source.defaultsKnown) return record
+        val fresh = withTimeoutOrNull(2_500) { runCatching { server.mediaSource(record.itemId) }.getOrNull() } ?: return record
+        val audio = source.streams.filter { it.kind == StreamKind.AUDIO }.let { kept -> fresh.defaultAudioIndex?.takeIf { i -> kept.any { it.index == i } } ?: kept.singleOrNull()?.index }
+        val updated = source.copy(defaultAudioIndex = audio, defaultSubtitleIndex = fresh.defaultSubtitleIndex, defaultsKnown = true)
+        edit(record.key) { it.copy(source = updated) }
+        return record.copy(source = updated)
+    }
+
     /** Plays the local file; external subtitles come from the files saved beside it. */
     fun playbackPlan(record: DownloadRecord): PlaybackPlan? {
         val path = videoPath(record) ?: return null
@@ -414,8 +430,7 @@ class DownloadManager(
             val mime = subtitleMimeType(s.codec) ?: return@mapNotNull null
             ExternalSubtitle(s.streamIndex, Path(dir, s.file).toString(), mime, s.language, s.title ?: s.language ?: "Subtitle ${s.streamIndex}")
         }
-        val audio = source.streams.firstOrNull { it.kind == StreamKind.AUDIO && it.isDefault } ?: source.streams.firstOrNull { it.kind == StreamKind.AUDIO }
-        val subtitle = source.streams.firstOrNull { it.kind == StreamKind.SUBTITLE && it.isForced }
+        val (audioIndex, subtitleIndex) = DownloadTracks.pick(source)
         return PlaybackPlan(
             itemId = record.itemId,
             url = path,
@@ -423,8 +438,8 @@ class DownloadManager(
             playSessionId = null,
             source = source,
             isHls = false,
-            audioIndex = audio?.index,
-            subtitleIndex = subtitle?.index ?: -1,
+            audioIndex = audioIndex,
+            subtitleIndex = subtitleIndex,
             externalSubtitles = subtitles,
             transcodeReasons = emptyList(),
         )
@@ -516,5 +531,25 @@ class DownloadManager(
         const val SAVE_EVERY_MS = 3_000L
         const val PLAYED_FRACTION = 0.9
         const val MIN_RESUME_FRACTION = 0.05
+    }
+}
+
+/** Which audio and subtitle a download starts with. */
+object DownloadTracks {
+    /**
+     * The server's picks for this user when the download kept them (and they're in the file),
+     * else the audio marked default and any forced subtitle.
+     */
+    fun pick(source: MediaSource): Pair<Int?, Int> {
+        val audio = source.streams.filter { it.kind == StreamKind.AUDIO }
+        val subtitles = source.streams.filter { it.kind == StreamKind.SUBTITLE }
+        val audioIndex = source.defaultAudioIndex?.takeIf { i -> audio.any { it.index == i } }
+            ?: (audio.firstOrNull { it.isDefault } ?: audio.firstOrNull())?.index
+        val subtitleIndex = when {
+            source.defaultsKnown && source.defaultSubtitleIndex == -1 -> -1
+            source.defaultsKnown && subtitles.any { it.index == source.defaultSubtitleIndex } -> source.defaultSubtitleIndex!!
+            else -> subtitles.firstOrNull { it.isForced }?.index ?: -1
+        }
+        return audioIndex to subtitleIndex
     }
 }

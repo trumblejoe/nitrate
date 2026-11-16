@@ -14,6 +14,8 @@ import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.PlaybackPlan
 import dev.nitrate.testing.FakeServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -111,6 +113,12 @@ class LocalPlaybackTest {
             println("CUES " + cues.map { "${it.text} spans=" + ((it.text as? android.text.Spanned)?.let { t -> t.getSpans(0, t.length, Any::class.java).map { s -> s::class.simpleName } }) })
             assertEquals("Styled line", text?.toString())
             assertEquals(true, text!!.getSpans(0, text.length, android.text.style.ForegroundColorSpan::class.java).isNotEmpty())
+            // The media info shows the track on, its styles drawn, and what the saved file holds.
+            val info = runBlocking { session.mediaInfo(dev.nitrate.core.playback.StyledSubtitles.FILE) }
+            println("INFO\n$info")
+            assertTrue(info, "[on] subtitles" in info)
+            assertTrue(info, "The file's own styles: shown" in info)
+            assertTrue(info, "Styles: 1, lines of dialogue: 1" in info)
             session.release()
         }
     }
