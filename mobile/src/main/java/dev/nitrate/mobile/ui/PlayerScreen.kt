@@ -239,7 +239,10 @@ fun PlayerScreen(
     val brightness = rememberBrightnessControl()
     val volume = remember { dev.nitrate.mobile.platform.VolumeControl(context) }
     val view = androidx.compose.ui.platform.LocalView.current
-    val swipesOn by rememberUpdatedState(playbackSettings.swipeControls)
+    // Easy mode: no swipes or pinches, and only the essential buttons.
+    val easy = LocalDisplayPrefs.current.easyMode
+    val swipesOn by rememberUpdatedState(playbackSettings.swipeControls && !easy)
+    val easyNow by rememberUpdatedState(easy)
 
     // The next episode in viewing order: from the server, or from downloads when offline.
     LaunchedEffect(item?.id) {
@@ -285,6 +288,7 @@ fun PlayerScreen(
             }
             override fun onTogglePlay() = session.controls.togglePlay()
             override fun onZoom(fill: Boolean) {
+                if (easyNow) return
                 if (fill == fillState.value) return
                 fillState.value = fill
                 show(GestureFeedback.Zoom(fill))
@@ -335,6 +339,7 @@ fun PlayerScreen(
             assTrack = session.assTrack.collectAsState().value,
             subtitleOffsetMs = session.subtitleOffsetMs.collectAsState().value,
             hideControls = inPip,
+            simple = easy,
             coverUrl = playingItem?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { actions.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 720) },
         )
         lyrics?.takeIf { showLyrics && !inPip }?.let { LyricsView(it, progress.positionMs, onSeek = { ms -> session.seekTo(ms) }) }
@@ -352,14 +357,14 @@ fun PlayerScreen(
                     val sub = listOfNotNull(item?.episodeLabel, "Downloaded".takeIf { local }, plan?.method?.takeIf { it != PlayMethod.DIRECT_PLAY }?.let { if (it == PlayMethod.TRANSCODE) "Transcoding" else "Direct stream" })
                     if (sub.isNotEmpty()) Text(sub.joinToString(" · "), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                 }
-                if (canWrite && !writing) IconButton(onClick = { writing = true }) { Icon(Icons.Default.Edit, "Write beside the video (Ctrl+E)", tint = Color.White) }
-                if ((item?.chapters?.size ?: 0) > 1) TextButton(onClick = { dialog = PlayerDialog.CHAPTERS }) { Text("Chapters", color = Color.White) }
+                if (canWrite && !writing && !easy) IconButton(onClick = { writing = true }) { Icon(Icons.Default.Edit, "Write beside the video (Ctrl+E)", tint = Color.White) }
+                if ((item?.chapters?.size ?: 0) > 1 && !easy) TextButton(onClick = { dialog = PlayerDialog.CHAPTERS }) { Text("Chapters", color = Color.White) }
                 if (lyrics != null) TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "Hide lyrics" else "Lyrics", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.AUDIO }, enabled = plan != null) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.SUBTITLES }, enabled = plan != null) { Text("Subtitles", color = Color.White) }
-                if (chatGroup != null) IconButton(onClick = { dialog = PlayerDialog.CHAT }) { Icon(Icons.Default.Email, "Chat", tint = Color.White) }
-                IconButton(onClick = { dialog = PlayerDialog.INFO }, enabled = plan != null) { Icon(Icons.Default.Info, "Playback info", tint = Color.White) }
-                IconButton(onClick = { dialog = PlayerDialog.MORE }, enabled = plan != null) { Icon(Icons.Default.MoreVert, "More", tint = Color.White) }
+                if (chatGroup != null && !easy) IconButton(onClick = { dialog = PlayerDialog.CHAT }) { Icon(Icons.Default.Email, "Chat", tint = Color.White) }
+                if (!easy) IconButton(onClick = { dialog = PlayerDialog.INFO }, enabled = plan != null) { Icon(Icons.Default.Info, "Playback info", tint = Color.White) }
+                if (!easy) IconButton(onClick = { dialog = PlayerDialog.MORE }, enabled = plan != null) { Icon(Icons.Default.MoreVert, "More", tint = Color.White) }
             }
         }
 

@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -282,6 +283,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             dev.nitrate.tv.ui.partners.WatchPartnersScreen(container) { id -> nav.navigate(DetailsRoute(id)) }
         }
         composable<SettingsHubRoute> {
+            val easy = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.easyMode
+            var askSignOut by remember { mutableStateOf(false) }
             val signOut: () -> Unit = {
                 scope.launch {
                     container.signOut()
@@ -313,9 +316,25 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         dev.nitrate.tv.ui.settings.SettingsLink("Servers", "Local, VPN and remote addresses; add, switch and choose the primary") { nav.navigate(ServerAddressesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Switch user", "Other users and servers, profile PINs") { nav.navigate(ProfilesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Open-source licences", "FFmpeg, Media3, Kotlin and the rest Nitrate is built with") { nav.navigate(LicensesRoute) },
-                        dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl, signOut),
+                        dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl) { if (easy) askSignOut = true else signOut() },
                     ),
             )
+            // Easy mode asks first.
+            if (askSignOut) androidx.compose.ui.window.Dialog(onDismissRequest = { askSignOut = false }) {
+                val yes = remember { androidx.compose.ui.focus.FocusRequester() }
+                Column(
+                    Modifier.width(520.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(28.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+                ) {
+                    Text("Sign out?", style = MaterialTheme.typography.headlineSmall)
+                    Text("You'll need your password to sign in again.", style = MaterialTheme.typography.bodyLarge)
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                        androidx.tv.material3.Button(onClick = { askSignOut = false }, modifier = Modifier.focusRequester(yes)) { Text("Cancel") }
+                        androidx.tv.material3.OutlinedButton(onClick = { askSignOut = false; signOut() }) { Text("Sign out") }
+                    }
+                }
+                LaunchedEffect(Unit) { runCatching { yes.requestFocus() } }
+            }
         }
         composable<SettingsRoute> {
             PlaybackSettingsScreen(

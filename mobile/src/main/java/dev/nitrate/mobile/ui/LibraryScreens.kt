@@ -279,7 +279,17 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                             Row {
                                 IconButton(onClick = { change { server.movePlaylistItem(playlistId, entry, index - 1) } }, enabled = index > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
                                 IconButton(onClick = { change { server.movePlaylistItem(playlistId, entry, index + 1) } }, enabled = index < list.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, "Move down") }
-                                IconButton(onClick = { change { server.removeFromPlaylist(playlistId, listOf(entry)) } }) { Icon(Icons.Default.Close, "Remove") }
+                                // Easy mode asks first.
+                                var asking by remember { mutableStateOf(false) }
+                                val easy = LocalDisplayPrefs.current.easyMode
+                                IconButton(onClick = { if (easy) asking = true else change { server.removeFromPlaylist(playlistId, listOf(entry)) } }) { Icon(Icons.Default.Close, "Remove") }
+                                if (asking) androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { asking = false },
+                                    title = { Text("Remove from the playlist?") },
+                                    text = { Text(item.displayTitle) },
+                                    confirmButton = { androidx.compose.material3.TextButton(onClick = { asking = false; change { server.removeFromPlaylist(playlistId, listOf(entry)) } }) { Text("Remove") } },
+                                    dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = false }) { Text("Cancel") } },
+                                )
                             }
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -84,6 +84,8 @@ fun VideoSurface(
     subtitleOffsetMs: Long = 0,
     /** Hide the player's own controls (e.g. in picture-in-picture). */
     hideControls: Boolean = false,
+    /** Easy mode: just play/pause, skip back and forward, and the seek bar. */
+    simple: Boolean = false,
     /** Shown instead of a picture (music). */
     coverUrl: String? = null,
 ) {
@@ -108,6 +110,8 @@ fun VideoSurface(
             }
             view.showCover(coverUrl)
             view.useController = !hideControls
+            view.setShowPreviousButton(!simple)
+            view.setShowNextButton(!simple)
         },
         modifier = modifier,
     )

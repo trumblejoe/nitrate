@@ -512,11 +512,11 @@ class MenuCatalog(val entries: Map<String, NavEntry>, val defaults: List<String>
 
     /** The rail's or bar's stops as the user arranged them. */
     fun stops(prefs: dev.nitrate.core.pages.DisplayPrefs): List<NavEntry> =
-        MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, entries.keys, defaults)).mapNotNull(entries::get)
+        MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, entries.keys, defaults)).filter { !prefs.easyMode || MenuStops.essential(it) }.mapNotNull(entries::get)
 
-    /** The dial's spots as the user arranged them (null = empty). */
+    /** The dial's spots as the user arranged them (null = empty); Easy mode keeps only the essential ones. */
     fun dial(prefs: dev.nitrate.core.pages.DisplayPrefs): List<NavEntry?> =
-        MenuStops.arrange(prefs.tvDialStops, entries.keys, defaults).map { id -> id?.let(entries::get) }
+        MenuStops.arrange(prefs.tvDialStops, entries.keys, defaults).map { id -> id?.takeIf { !prefs.easyMode || MenuStops.essential(it) }?.let(entries::get) }
 }
 
 /** The menu's stops for these libraries and custom pages; [current] is underlined. */

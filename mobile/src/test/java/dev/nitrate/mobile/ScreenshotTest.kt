@@ -280,6 +280,11 @@ class ScreenshotTest {
         }
     }
 
+    /** Easy mode: bigger everything, and only Home, Search, Library and Settings in the navigation. */
+    @Test fun easyMode() = shoot("phone-easy-mode", setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(easyMode = true)) }) { actions ->
+        dev.nitrate.mobile.ui.MainScreen(actions, startOnLibrary = true, onSignedOut = {})
+    }
+
     /** "Your year": totals, month by month, top shows, genres, rewatches and artists. */
     @Test
     @Config(qualifiers = "w411dp-h1600dp-night-xxhdpi")

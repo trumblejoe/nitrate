@@ -73,7 +73,10 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 /** Bottom space tab screens leave for the floating navigation pill, which sits above the system navigation bar. */
 val NavBarClearance: Dp
-    @Composable get() = 96.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    @Composable get() = 96.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + LocalPlayingElsewhere.current
+
+/** Extra room above the navigation pill while the "Playing on…" bar shows there. */
+val LocalPlayingElsewhere = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
 /** [extra] below the last item of a full-screen list, plus room for the system navigation bar. */
 @Composable
@@ -89,11 +92,18 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
     // Null until read: until then the tab you were on stays (Writing would otherwise flick to Home).
     val enabled by actions.container.plugins.enabledIds.collectAsState<Set<String>, Set<String>?>(null)
     var tab by rememberSaveable { mutableStateOf(if (startOnLibrary) Tab.LIBRARIES else Tab.HOME) }
+    val easy = LocalDisplayPrefs.current.easyMode
+    val hasDownloads by actions.container.downloads.downloads.collectAsState(emptyList())
     val tabs = Tab.entries.filter { it != Tab.WRITING || enabled?.contains(WritingPlugin.id) ?: (tab == Tab.WRITING) }
+        // Easy mode: Home, Search, Library and Settings (Downloads only once there are some).
+        .filter { !easy || it in setOf(Tab.HOME, Tab.SEARCH, Tab.LIBRARIES, Tab.SETTINGS) || (it == Tab.DOWNLOADS && hasDownloads.isNotEmpty()) }
     if (tab !in tabs) tab = Tab.HOME
     // Back from another tab returns Home rather than leaving the app.
     BackHandler(enabled = tab != Tab.HOME) { tab = Tab.HOME }
 
+    var playingElsewhere by remember { mutableStateOf(false) }
+    val base = NavBarClearance
+    androidx.compose.runtime.CompositionLocalProvider(LocalPlayingElsewhere provides if (playingElsewhere) 72.dp else 0.dp) {
     Box(Modifier.fillMaxSize()) {
         val padded = Modifier.fillMaxSize().padding(bottom = NavBarClearance)
         when (tab) {
@@ -105,13 +115,14 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
             Tab.SETTINGS -> SettingsScreen(actions, onSignedOut, padded)
         }
         // Something playing on your TV (or another device): what, with a tap to its remote.
-        PlayingElsewhereBar(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = NavBarClearance - 8.dp))
+        PlayingElsewhereBar(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = base - 8.dp), onShown = { playingElsewhere = it })
         GlassNavBar(
             tabs = tabs.map { NavTab(it.label, it.icon) },
             selected = tabs.indexOf(tab),
             onSelect = { tab = tabs[it] },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+    }
     }
 }
 
@@ -143,6 +154,7 @@ private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
         if (fresh.isSuccess || value == null) value = fresh
     }
     val result = views
+    val easy = LocalDisplayPrefs.current.easyMode
     when {
         result == null -> Loading(modifier)
         result.isFailure -> ErrorMessage(result.exceptionOrNull()?.message ?: "Couldn't load libraries", modifier = modifier)
@@ -165,7 +177,7 @@ private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
                 MediaCard(view, actions.server.cardImage(view, CardShape.WIDE), CardShape.WIDE, onClick = { actions.open(view) }, title = view.name, sharedKey = "lib-${view.id}")
             }
             // Your own pages come after the libraries, out of the way.
-            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+            if (!easy) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Box(Modifier.padding(top = 12.dp).layout { measurable, constraints ->
                     // Run edge to edge like rows elsewhere (the grid adds its own side padding).
                     val extra = (ScreenPadding * 2).roundToPx()

@@ -20,7 +20,10 @@ val LocalDisplayPrefs = compositionLocalOf { DisplayPrefs() }
 fun ProvideDisplayPrefs(container: AppContainer, userId: String?, content: @Composable () -> Unit) {
     val flow = remember(userId) { userId?.let { container.displaySettings.prefs(it) } ?: flowOf(DisplayPrefs()) }
     val prefs by flow.collectAsState(DisplayPrefs())
-    CompositionLocalProvider(LocalDisplayPrefs provides prefs) { content() }
+    // Easy mode: everything a little bigger (touch targets too), text more so.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val scaled = if (prefs.easyMode) androidx.compose.ui.unit.Density(density.density * EASY_SCALE, density.fontScale * EASY_TEXT) else density
+    CompositionLocalProvider(LocalDisplayPrefs provides prefs, androidx.compose.ui.platform.LocalDensity provides scaled) { content() }
 }
 
 /** The fixed accent the user picked, or null to take it from artwork. */
@@ -28,3 +31,7 @@ val DisplayPrefs.fixedAccent: Color? get() = accent.argb?.let { Color(it) }
 
 /** True when [AccentMode] follows artwork. */
 val DisplayPrefs.tintFromArtwork: Boolean get() = accent == AccentMode.ARTWORK
+
+/** Easy mode's sizes: everything ×1.1, text ×1.15 on top. */
+private const val EASY_SCALE = 1.1f
+private const val EASY_TEXT = 1.15f

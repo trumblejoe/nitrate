@@ -90,7 +90,17 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                     headlineContent = { Text(actions.server.serverUrl ?: "Not signed in") },
                     supportingContent = { Text("Server") },
                     trailingContent = {
-                        OutlinedButton(onClick = { scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") }
+                        // Easy mode asks first.
+                        var asking by remember { mutableStateOf(false) }
+                        val easy = LocalDisplayPrefs.current.easyMode
+                        OutlinedButton(onClick = { if (easy) asking = true else scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") }
+                        if (asking) androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { asking = false },
+                            title = { Text("Sign out?") },
+                            text = { Text("You'll need your password to sign in again.") },
+                            confirmButton = { androidx.compose.material3.TextButton(onClick = { asking = false; scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") } },
+                            dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = false }) { Text("Cancel") } },
+                        )
                     },
                 )
             }
@@ -343,6 +353,12 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
                 }
             },
         )
+    }
+    item(key = "easy") {
+        Toggle(
+            "Easy mode", "Bigger text and buttons, only the essential tabs and player controls, and a question before anything is deleted or signed out",
+            prefs.easyMode,
+        ) { v -> update { it.copy(easyMode = v) } }
     }
     item(key = "described") {
         Toggle(

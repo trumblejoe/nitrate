@@ -126,7 +126,7 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
  * tap opens the remote. Sits above the navigation pill; nothing shows when nothing plays.
  */
 @Composable
-fun PlayingElsewhereBar(actions: AppActions, modifier: Modifier = Modifier) {
+fun PlayingElsewhereBar(actions: AppActions, modifier: Modifier = Modifier, onShown: (Boolean) -> Unit = {}) {
     var tick by remember { mutableIntStateOf(0) }
     val playing by produceState<ServerSession?>(null, tick) {
         while (true) {
@@ -134,11 +134,12 @@ fun PlayingElsewhereBar(actions: AppActions, modifier: Modifier = Modifier) {
             delay(if (value != null) 5_000 else 20_000)
         }
     }
+    androidx.compose.runtime.LaunchedEffect(playing?.nowPlaying != null) { onShown(playing?.nowPlaying != null) }
     val s = playing ?: return
     val item = s.nowPlaying ?: return
     val scope = rememberCoroutineScope()
     Row(
-        modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f))
+        modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .pressable({ actions.nav.navigate(RemoteRoute(s.id)) }).padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

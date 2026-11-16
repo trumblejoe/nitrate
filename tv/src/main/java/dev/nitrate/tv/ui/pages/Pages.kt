@@ -180,6 +180,7 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
         scope.launch { container.displaySettings.savePrefs(user, change(prefs)) }
     }
     val toggles: List<Triple<String, (DisplayPrefs) -> Boolean, (DisplayPrefs, Boolean) -> DisplayPrefs>> = listOf(
+        Triple("Easy mode (bigger text, only the essential menu stops and player buttons, a question before signing out)", { p -> p.easyMode }, { p, v -> p.copy(easyMode = v) }),
         Triple("Community rating", { p -> p.communityRating }, { p, v -> p.copy(communityRating = v) }),
         Triple("Critic rating", { p -> p.criticRating }, { p, v -> p.copy(criticRating = v) }),
         Triple("Age rating", { p -> p.officialRating }, { p, v -> p.copy(officialRating = v) }),

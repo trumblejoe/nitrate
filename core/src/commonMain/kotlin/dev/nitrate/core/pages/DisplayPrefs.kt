@@ -39,6 +39,11 @@ data class DisplayPrefs(
      * has one in its language; off: avoid it when it would otherwise start. A pick for a show wins.
      */
     val describedAudio: Boolean = false,
+    /**
+     * Easy mode: bigger text and touch targets, only the essential menu stops and player
+     * controls, and a confirmation before anything is deleted or signed out.
+     */
+    val easyMode: Boolean = false,
     /** "Last time" recap before resuming after this many days away; 0: never. */
     val recapAfterDays: Int = 14,
     /** The same for playlists marked in story order, set separately; 0: never. */

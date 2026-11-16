@@ -195,6 +195,7 @@ fun PlayerScreen(
         value = item?.takeIf { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO }?.let { runCatching { repository.lyrics(it.id) }.getOrNull() }
     }
     var showLyrics by remember { mutableStateOf(false) }
+    val easy = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.easyMode
     // What follows: the next episode in viewing order, or the next film in its collection.
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
@@ -346,7 +347,9 @@ fun PlayerScreen(
                     player.seekTo(if (duration > 0) target.coerceAtMost(duration) else target)
                 },
                 onOpen = { panel = it },
-                extraButtons = listOfNotNull(
+                // Easy mode: play/pause, the seek bar, audio and subtitles (and lyrics) only.
+                easy = easy,
+                extraButtons = if (easy) listOfNotNull(((if (showLyrics) "Hide lyrics" else "Lyrics") to { showLyrics = !showLyrics }).takeIf { lyrics != null }) else listOfNotNull(
                     ("Chapters" to { panel = Panel.CHAPTERS }).takeIf { (item?.chapters?.size ?: 0) > 1 },
                     ((if (showLyrics) "Hide lyrics" else "Lyrics") to { showLyrics = !showLyrics }).takeIf { lyrics != null },
                     ("Why converting?" to { panel = Panel.FIX }).takeIf { capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
@@ -450,6 +453,7 @@ private fun Controls(
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onOpen: (Panel) -> Unit,
+    easy: Boolean = false,
     extraButtons: List<Pair<String, () -> Unit>> = emptyList(),
 ) {
     Column(
@@ -468,8 +472,8 @@ private fun Controls(
             Button(onClick = onPlayPause, modifier = Modifier.focusRequester(playPauseFocus)) { Text(if (playing) "Pause" else "Play") }
             OutlinedButton(onClick = { onOpen(Panel.AUDIO) }, enabled = plan != null) { Text("Audio") }
             OutlinedButton(onClick = { onOpen(Panel.SUBTITLES) }, enabled = plan != null) { Text("Subtitles") }
-            OutlinedButton(onClick = { onOpen(Panel.INFO) }, enabled = plan != null) { Text("Info") }
-            OutlinedButton(onClick = { onOpen(Panel.MORE) }, enabled = plan != null) { Text("More") }
+            if (!easy) OutlinedButton(onClick = { onOpen(Panel.INFO) }, enabled = plan != null) { Text("Info") }
+            if (!easy) OutlinedButton(onClick = { onOpen(Panel.MORE) }, enabled = plan != null) { Text("More") }
             for ((label, action) in extraButtons) OutlinedButton(onClick = action) { Text(label) }
             plan?.takeIf { it.method != PlayMethod.DIRECT_PLAY }?.let {
                 Text(

@@ -15,6 +15,9 @@ object MenuStops {
     const val PROFILES = "profiles"
 
     fun library(id: String) = "library:$id"
+
+    /** The stops Easy mode keeps: Home, Search, the libraries, Settings and switching user. */
+    fun essential(id: String): Boolean = id in setOf(HOME, SEARCH, SETTINGS, PROFILES) || id.startsWith("library:")
     fun page(id: String) = "page:$id"
 
     /** Spots per ring on the dial. */

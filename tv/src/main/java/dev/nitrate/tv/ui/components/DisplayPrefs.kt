@@ -17,5 +17,8 @@ val LocalDisplayPrefs = compositionLocalOf { DisplayPrefs() }
 fun ProvideDisplayPrefs(container: AppContainer, userId: String?, content: @Composable () -> Unit) {
     val flow = remember(userId) { userId?.let { container.displaySettings.prefs(it) } ?: flowOf(DisplayPrefs()) }
     val prefs by flow.collectAsState(DisplayPrefs())
-    CompositionLocalProvider(LocalDisplayPrefs provides prefs) { content() }
+    // Easy mode: bigger text (layouts keep their size; TV screens are laid out for a fixed width).
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val scaled = if (prefs.easyMode) androidx.compose.ui.unit.Density(density.density, density.fontScale * 1.2f) else density
+    CompositionLocalProvider(LocalDisplayPrefs provides prefs, androidx.compose.ui.platform.LocalDensity provides scaled) { content() }
 }
