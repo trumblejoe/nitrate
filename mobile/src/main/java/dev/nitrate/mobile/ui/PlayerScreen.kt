@@ -434,6 +434,15 @@ fun PlayerScreen(
         }) { creditAction = null }
         scrub?.let { s -> item?.let { TrickplayPreview(actions.server, it.id, trickplay, s.positionMs, s.x, s.barTop) } }
 
+        // Upmixing is on and sound now goes somewhere new with more than two speakers: ask once.
+        val output by session.soundOutput.collectAsState()
+        var notNow by remember { mutableStateOf(setOf<String>()) }
+        output?.takeIf { playbackSettings.upmixStereo && dev.nitrate.core.playback.Speakers.shouldAsk(it, playbackSettings.speakerLayouts) && it.key !in notNow }?.let { o ->
+            SpeakersQuestion(o, onAnswer = { l ->
+                actions.scope.launch { actions.container.playbackSettings.update { it.copy(speakerLayouts = it.speakerLayouts + (o.key to l)) } }
+            }, onLater = { notNow = notNow + o.key })
+        }
+
         stillAsk?.let { next ->
             val rewind = remember(next) { still.rewind() }
             StillWatchingPrompt(

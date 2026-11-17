@@ -421,6 +421,11 @@ class TvScreenshotTest {
         }
     }
 
+    /** Asked once per new output with more than two speakers, while upmixing is on. */
+    @Test fun speakersQuestion() = shoot("tv-speakers-question") { _ ->
+        dev.nitrate.tv.ui.player.SpeakersQuestionDialog(dev.nitrate.core.playback.SoundOutput(dev.nitrate.core.playback.OutputKind.HDMI, "DENON-AVR", 8), onAnswer = {}, onLater = {})
+    }
+
     /** The ambient screensaver. */
     @Test fun ambient() = shoot("tv-ambient") { c ->
         dev.nitrate.tv.ui.ambient.AmbientScreen(

@@ -105,6 +105,9 @@ fun PlayerMoreSheet(
                         }
                         Switch(checked = night, onCheckedChange = { setNight(actions, session, it) })
                     }
+                    val playbackNow by actions.container.playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+                    val output by session.soundOutput.collectAsState()
+                    if (output?.stereoOnly == false) SpeakersSettings(playbackNow, output) { f -> actions.scope.launch { actions.container.playbackSettings.update(f) } }
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { setVoices(actions, session, !voices) }) {
                         Column(Modifier.weight(1f)) {
                             Text("Dialogue boost", style = MaterialTheme.typography.bodyLarge)

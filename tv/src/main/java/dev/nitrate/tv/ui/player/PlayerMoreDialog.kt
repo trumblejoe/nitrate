@@ -115,6 +115,9 @@ fun PlayerMoreDialog(
                 supportingContent = { Text("Quieter loud parts, clearer dialogue (sound for a receiver is decoded on the TV while on)") },
                 trailingContent = { Switch(checked = night, onCheckedChange = null) },
             )
+            val settingsNow by settings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+            val output by session.soundOutput.collectAsState()
+            if (output?.stereoOnly == false) SpeakersSettings(settingsNow, output) { f -> scope.launch { settings.update(f) } }
             ListItem(
                 selected = false,
                 onClick = {

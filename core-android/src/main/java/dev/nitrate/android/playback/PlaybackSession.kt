@@ -82,6 +82,30 @@ class PlaybackSession(
     private val appContext = context.applicationContext
     private val nightMode = NightModeAudioProcessor()
 
+    // Upmixing stereo to the speakers of the output in use (films and episodes only).
+    @Volatile private var upmixOn = false
+    @Volatile private var speakerLayouts: Map<String, dev.nitrate.core.playback.SpeakerLayout> = emptyMap()
+    private val upmix = UpmixAudioProcessor { upmixLayout() }
+
+    /** Where sound goes now (HDMI to a receiver, the TV, headphones...), as outputs come and go. */
+    val soundOutput: StateFlow<dev.nitrate.core.playback.SoundOutput?> = SoundOutputs.current(context)
+
+    private fun upmixLayout(): dev.nitrate.core.playback.SpeakerLayout? {
+        val output = soundOutput.value
+        val video = _item.value?.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO
+        return dev.nitrate.core.playback.Speakers.upmixTo(upmixOn, 2, video, output, speakerLayouts)
+            ?.let { dev.nitrate.core.playback.Speakers.layout(output, speakerLayouts) }
+    }
+
+    /** Stereo playing now would be upmixed differently: set the sound up again from here. */
+    private fun recheckUpmix(why: String) {
+        val format = exo.audioFormat ?: return
+        if (format.channelCount != 2 || _plan.value == null) return
+        if (upmixLayout() == upmix.active) return
+        log("Upmix ${upmixLayout()?.label ?: "off"} ($why): setting the sound up again")
+        _plan.value?.let { play(it, exo.currentPosition, _item.value?.name.orEmpty(), keepPaused = !exo.playWhenReady) }
+    }
+
     /** Audio sync, read on the playback thread by the audio sink. */
     @Volatile private var audioDelayUs = 0L
     private val _audioDelayMs = MutableStateFlow(0)
@@ -323,7 +347,7 @@ class PlaybackSession(
             }
 
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink {
-                val sink = DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(nightMode)).setEnableFloatOutput(enableFloatOutput)
+                val sink = DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(upmix, nightMode)).setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build()
                 // Audio sync: the player follows the audio clock, so moving the clock moves the
                 // picture against the sound (decoded or passed through to a receiver alike).
@@ -517,6 +541,13 @@ class PlaybackSession(
     }
 
     init {
+        // A soundbar turning on or off, headphones plugged in: upmix for the new output, or stop.
+        scope.launch {
+            soundOutput.collect { o ->
+                log("Sound output: ${o?.label ?: "unknown"}${o?.maxChannels?.let { " (up to $it channels)" } ?: ""}")
+                recheckUpmix("output changed")
+            }
+        }
         scope.launch { setNightMode(settings.current().nightMode) }
         scope.launch { setDialogueBoost(settings.current().dialogueBoost) }
         scope.launch { setAudioDelay(settings.current().audioDelayMs, resync = false) }
@@ -525,6 +556,10 @@ class PlaybackSession(
         scope.launch {
             settings.settings.collect { s ->
                 threeDMode = s.threeD
+                val upmixChanged = s.upmixStereo != upmixOn || s.speakerLayouts != speakerLayouts
+                upmixOn = s.upmixStereo
+                speakerLayouts = s.speakerLayouts
+                if (upmixChanged) recheckUpmix("settings")
                 profile7 = runCatching { dev.nitrate.core.playback.CapabilityRules.profile7(capabilities(), s) }.getOrDefault(dev.nitrate.core.playback.Profile7Playback.BASE_LAYER)
                 val mode = s.subtitleStyle.styled
                 if (mode != styledMode) {
@@ -585,7 +620,11 @@ class PlaybackSession(
                     (appContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager)
                         .getProperty(android.media.AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
                 }.getOrNull()
+                val output = soundOutput.value
+                val layout = dev.nitrate.core.playback.Speakers.layout(output, speakerLayouts)
                 _audioPath.value = _audioPath.value.copy(
+                    output = output?.let { it.label + (layout?.let { l -> " · speakers ${l.label}" } ?: "") },
+                    upmixedTo = upmix.active?.label,
                     delivery = if (decoded) dev.nitrate.core.playback.AudioDelivery.DECODED else dev.nitrate.core.playback.AudioDelivery.BITSTREAM,
                     outFormat = encodingName(config.encoding),
                     outChannels = Integer.bitCount(config.channelConfig).takeIf { it > 0 },

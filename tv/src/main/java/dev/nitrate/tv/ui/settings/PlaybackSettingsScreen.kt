@@ -153,6 +153,10 @@ fun PlaybackSettingsScreen(
                 update { it.copy(threeD = all[(t.ordinal + 1) % all.size]) }
             }
         }
+        item {
+            val output by dev.nitrate.android.playback.SoundOutputs.current(androidx.compose.ui.platform.LocalContext.current).collectAsState()
+            dev.nitrate.tv.ui.player.SpeakersSettings(settings, output, update)
+        }
         item { ToggleRow("Dialogue boost", settings.dialogueBoost, "Voices louder than music and effects. Sound normally sent untouched to a receiver is decoded on the TV while it's on") { v -> update { it.copy(dialogueBoost = v) } } }
         item { ToggleRow("Ask \"Still watching?\"", settings.askStillWatching, "After two episodes play on by themselves with nothing pressed, stop and ask. No answer: go back to where you last pressed something") { v -> update { it.copy(askStillWatching = v) } } }
         item { ToggleRow("Night mode", settings.nightMode, "Quieter loud parts and clearer dialogue. Sound normally sent untouched to a receiver is decoded on the TV while it's on (the receiver gets plain sound, no Atmos)") { v -> update { it.copy(nightMode = v) } } }

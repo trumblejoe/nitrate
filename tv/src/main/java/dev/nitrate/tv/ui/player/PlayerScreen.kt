@@ -174,6 +174,7 @@ fun PlayerScreen(
         }
     }
     val settingsNow by playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+    val speakerScope = androidx.compose.runtime.rememberCoroutineScope()
     val assTrack by session.assTrack.collectAsState()
     val subtitleOffset by session.subtitleOffsetMs.collectAsState()
     // The TV's refresh rate follows the video's frame rate, as set in Playback settings.
@@ -430,6 +431,15 @@ fun PlayerScreen(
         }
 
         SecondSubtitleLine(session, settingsNow.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp))
+
+        // Upmixing is on and sound now goes somewhere new with more than two speakers: ask once.
+        val output by session.soundOutput.collectAsState()
+        var notNow by remember { mutableStateOf(setOf<String>()) }
+        output?.takeIf { settingsNow.upmixStereo && dev.nitrate.core.playback.Speakers.shouldAsk(it, settingsNow.speakerLayouts) && it.key !in notNow }?.let { o ->
+            SpeakersQuestionDialog(o, onAnswer = { l ->
+                speakerScope.launch { playbackSettings.update { it.copy(speakerLayouts = it.speakerLayouts + (o.key to l)) } }
+            }, onLater = { notNow = notNow + o.key })
+        }
 
         stillAsk?.let { next ->
             val rewind = remember(next) { stillWatching?.rewind() }

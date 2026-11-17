@@ -23,6 +23,10 @@ data class AudioPath(
     val outRateHz: Int? = null,
     /** Android's own mixer rate: decoded sound is usually converted to this before it leaves. */
     val mixerRateHz: Int? = null,
+    /** Where it goes ("DENON-AVR (HDMI) · speakers 5.1"). */
+    val output: String? = null,
+    /** Stereo spread over the speakers here ("5.1"), or null. */
+    val upmixedTo: String? = null,
     /** Nitrate's sound processing switched on (night mode, dialogue boost). */
     val processing: List<String> = emptyList(),
 ) {
@@ -32,11 +36,12 @@ data class AudioPath(
         if (file.isNotEmpty()) add("Sound in file" to file.joinToString(" · "))
         when (delivery) {
             AudioDelivery.BITSTREAM -> add("Handling" to "Sent untouched for the TV or receiver to decode")
-            AudioDelivery.DECODED -> add("Handling" to "Decoded on this device" + if (processing.isNotEmpty()) " · ${processing.joinToString(", ")}" else "")
+            AudioDelivery.DECODED -> add("Handling" to listOfNotNull("Decoded on this device", upmixedTo?.let { "upmixed stereo → $it" }).plus(processing).joinToString(" · "))
             null -> Unit
         }
         val out = listOfNotNull(outFormat, channels(outChannels), rate(outRateHz))
         if (out.isNotEmpty()) add("Sound out" to out.joinToString(" · "))
+        output?.let { add("Output" to it) }
         if (delivery == AudioDelivery.DECODED && mixerRateHz != null && outRateHz != null && mixerRateHz != outRateHz) {
             add("Android mixer" to "${rate(mixerRateHz)} (converted to this unless the device sends audio directly)")
         }

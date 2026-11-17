@@ -301,6 +301,19 @@ class ScreenshotTest {
         )
     }
 
+    /** Upmix and the speakers of the output in use. */
+    @Test fun speakers() = shoot("phone-speakers") { _ ->
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            dev.nitrate.mobile.ui.SpeakersSettings(
+                dev.nitrate.core.playback.PlaybackSettings(
+                    upmixStereo = true,
+                    speakerLayouts = mapOf("HDMI:DENON-AVR" to dev.nitrate.core.playback.SpeakerLayout.FIVE_ONE, "HDMI:Living room soundbar" to dev.nitrate.core.playback.SpeakerLayout.THREE_ONE),
+                ),
+                dev.nitrate.core.playback.SoundOutput(dev.nitrate.core.playback.OutputKind.HDMI, "DENON-AVR", 8),
+            ) {}
+        }
+    }
+
     /** The watch diary. */
     @Test fun diary() = shoot("phone-diary") { actions -> dev.nitrate.mobile.ui.DiaryScreen(actions) }
 

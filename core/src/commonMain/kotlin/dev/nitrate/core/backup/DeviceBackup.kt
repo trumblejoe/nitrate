@@ -78,6 +78,7 @@ object DeviceBackups {
             codecMaxHeight = current.playback.codecMaxHeight,
             eightBitOnly = current.playback.eightBitOnly,
             tenBitAllowed = current.playback.tenBitAllowed,
+            speakerLayouts = current.playback.speakerLayouts,
         )
         return DeviceSettings(
             playback = playback,
@@ -114,6 +115,10 @@ object DeviceBackups {
         playback("Avoid formats that failed before", onOff(a.useLearnedFailures), onOff(n.useLearnedFailures))
         playback("Night mode", onOff(a.nightMode), onOff(n.nightMode))
         playback("Dialogue boost", onOff(a.dialogueBoost), onOff(n.dialogueBoost))
+        playback("Upmix stereo", onOff(a.upmixStereo), onOff(n.upmixStereo))
+        (a.speakerLayouts.keys + n.speakerLayouts.keys).sorted().forEach { k ->
+            hardware("Speakers on ${k.substringAfter(':').ifBlank { k.substringBefore(':') }}", a.speakerLayouts[k]?.label ?: "Not set", n.speakerLayouts[k]?.label ?: "Not set")
+        }
         playback("Ask \"Still watching?\"", onOff(a.askStillWatching), onOff(n.askStillWatching))
         playback("Tunneled playback", onOff(a.tunneling), onOff(n.tunneling))
         playback("Match frame rate", a.frameRateMatch.label, n.frameRateMatch.label)

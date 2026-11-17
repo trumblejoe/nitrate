@@ -9,7 +9,7 @@ class AudioPathTest {
     private fun rows(p: AudioPath) = p.rows().toMap()
 
     @Test fun hiResFlacStereoWarnsAboutUpmixing() {
-        val p = AudioPath("flac", 2, 96_000, 24, AudioDelivery.DECODED, "PCM float", 2, 96_000, 96_000, listOf("dialogue boost"))
+        val p = AudioPath("flac", 2, 96_000, 24, AudioDelivery.DECODED, "PCM float", 2, 96_000, 96_000, processing = listOf("dialogue boost"))
         val r = rows(p)
         assertEquals("FLAC · stereo · 96 kHz · 24-bit", r["Sound in file"])
         assertEquals("Decoded on this device · dialogue boost", r["Handling"])
