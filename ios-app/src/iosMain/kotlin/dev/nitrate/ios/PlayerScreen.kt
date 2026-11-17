@@ -44,7 +44,7 @@ import platform.Foundation.NSURL
  * and stop are reported so resume points and watched marks follow.
  */
 @Composable
-internal fun PlayerScreen(container: IosContainer, itemId: String, startMs: Long, onClose: () -> Unit) {
+internal fun PlayerScreen(container: dev.nitrate.android.AppContainer, itemId: String, startMs: Long, onClose: () -> Unit) {
     val server = container.server
     val player = remember { AVPlayer() }
     var plan by remember { mutableStateOf<PlaybackPlan?>(null) }

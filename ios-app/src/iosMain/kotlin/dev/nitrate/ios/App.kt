@@ -30,12 +30,12 @@ internal sealed interface Screen {
 }
 
 /** What the Swift app hosts: the whole app as one view controller. */
-fun MainViewController(): UIViewController = ComposeUIViewController { NitrateApp(IosContainer.shared) }
+fun MainViewController(): UIViewController = ComposeUIViewController { NitrateApp(IosApp.container) }
 
 internal val Accent = Color(0xFFE8A33D)
 
 @Composable
-internal fun NitrateApp(container: IosContainer) {
+internal fun NitrateApp(container: dev.nitrate.android.AppContainer) {
     setSingletonImageLoaderFactory { context ->
         ImageLoader.Builder(context).components { add(KtorNetworkFetcherFactory()) }.crossfade(true).build()
     }

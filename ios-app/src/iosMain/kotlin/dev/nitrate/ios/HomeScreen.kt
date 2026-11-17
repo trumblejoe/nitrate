@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 
 /** Home: the server's rows (continue watching, next up, latest…), each a strip of cards. */
 @Composable
-internal fun HomeScreen(container: IosContainer, nav: Nav, onSignedOut: () -> Unit) {
+internal fun HomeScreen(container: dev.nitrate.android.AppContainer, nav: Nav, onSignedOut: () -> Unit) {
     val server = container.server
     val scope = rememberCoroutineScope()
     var reload by remember { mutableIntStateOf(0) }
@@ -81,7 +81,7 @@ internal fun HomeScreen(container: IosContainer, nav: Nav, onSignedOut: () -> Un
 }
 
 @Composable
-private fun RowStrip(container: IosContainer, row: MediaRow, onOpen: (MediaItem) -> Unit) {
+private fun RowStrip(container: dev.nitrate.android.AppContainer, row: MediaRow, onOpen: (MediaItem) -> Unit) {
     // Episodes and things in progress read best as wide stills; everything else as posters.
     val wide = row.items.count { it.kind == ItemKind.EPISODE || it.user.positionMs > 0 } > row.items.size / 2
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -93,7 +93,7 @@ private fun RowStrip(container: IosContainer, row: MediaRow, onOpen: (MediaItem)
 }
 
 @Composable
-private fun Card(container: IosContainer, item: MediaItem, wide: Boolean, onClick: () -> Unit) {
+private fun Card(container: dev.nitrate.android.AppContainer, item: MediaItem, wide: Boolean, onClick: () -> Unit) {
     val width = if (wide) 240.dp else 120.dp
     Column(Modifier.width(width).clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         val image = if (wide) container.server.backdropUrl(item, 640) ?: container.server.imageUrl(item, ImageKind.THUMB)

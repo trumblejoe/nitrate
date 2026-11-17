@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 
 /** Find the server, then sign in with a password or Quick Connect. */
 @Composable
-internal fun ConnectScreen(container: IosContainer, onSignedIn: () -> Unit) {
+internal fun ConnectScreen(container: dev.nitrate.android.AppContainer, onSignedIn: () -> Unit) {
     val server = container.server
     val scope = rememberCoroutineScope()
     var address by remember { mutableStateOf("") }

@@ -52,7 +52,7 @@ import dev.nitrate.core.model.MediaItem
 
 /** A title: backdrop, facts, overview and Play; for a show, its seasons and episodes. */
 @Composable
-internal fun DetailsScreen(container: IosContainer, nav: Nav, itemId: String) {
+internal fun DetailsScreen(container: dev.nitrate.android.AppContainer, nav: Nav, itemId: String) {
     val server = container.server
     val item by produceState<Result<MediaItem>?>(null, itemId) { value = runCatching { server.getItem(itemId) } }
     val loaded = item?.getOrNull()
@@ -116,7 +116,7 @@ internal fun DetailsScreen(container: IosContainer, nav: Nav, itemId: String) {
 }
 
 @Composable
-private fun EpisodeRow(container: IosContainer, episode: MediaItem, onClick: () -> Unit) {
+private fun EpisodeRow(container: dev.nitrate.android.AppContainer, episode: MediaItem, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         AsyncImage(
             container.server.imageUrl(episode, ImageKind.PRIMARY, 240), null,

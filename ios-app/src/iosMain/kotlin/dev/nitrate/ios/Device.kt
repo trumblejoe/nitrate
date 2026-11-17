@@ -13,8 +13,9 @@ import platform.UIKit.UIScreen
 
 /** Who this device is to the server: a lasting id, its name and Nitrate's version. */
 internal fun iosIdentity(): ClientIdentity {
-    val id = Defaults.get(DEVICE_ID)
-        ?: (UIDevice.currentDevice.identifierForVendor?.UUIDString ?: NSUUID().UUIDString).also { Defaults.set(DEVICE_ID, it) }
+    val defaults = platform.Foundation.NSUserDefaults.standardUserDefaults
+    val id = defaults.stringForKey(DEVICE_ID)
+        ?: (UIDevice.currentDevice.identifierForVendor?.UUIDString ?: NSUUID().UUIDString).also { defaults.setObject(it, forKey = DEVICE_ID) }
     val version = NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "0"
     return ClientIdentity(clientName = "Nitrate", version = version, deviceId = id, deviceName = UIDevice.currentDevice.name)
 }

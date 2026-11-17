@@ -24,6 +24,7 @@ kotlin {
     sourceSets {
         iosMain.dependencies {
             implementation(project(":core"))
+            implementation(project(":app-core"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.ui)
