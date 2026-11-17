@@ -245,7 +245,7 @@ class TvScreenshotTest {
                 dev.nitrate.tv.ui.player.PlayerControls(
                     item, null, position = 1_260_000, duration = 2_700_000, playing = true, focus = focus,
                     onPlayPause = {}, onSeek = {},
-                    buttons = listOf("Audio", "Subtitles", "Info", "More", "Chapters").map { dev.nitrate.tv.ui.player.PlayerAction(it) {} },
+                    buttons = listOf("Audio", "Subtitles", "Info", "Chapters", "More").map { dev.nitrate.tv.ui.player.PlayerAction(it) {} },
                 )
             }
         }
