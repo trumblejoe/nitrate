@@ -30,6 +30,8 @@ data class MediaStream(
     val deliveryUrl: String? = null,
     val channels: Int? = null,
     val channelLayout: String? = null,
+    /** Audio sample rate in Hz. */
+    val sampleRate: Int? = null,
     val width: Int? = null,
     val height: Int? = null,
     val bitDepth: Int? = null,

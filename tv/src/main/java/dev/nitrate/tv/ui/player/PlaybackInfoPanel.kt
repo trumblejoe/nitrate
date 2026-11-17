@@ -19,8 +19,8 @@ import dev.nitrate.core.model.PlayMethod
 
 /** What the player is actually doing, and why: method, server reasons, streams and decoders. */
 @Composable
-fun PlaybackInfoPanel(plan: PlaybackPlan, videoDecoder: String?, audioDecoder: String?, modifier: Modifier = Modifier) {
-    val rows = plan.infoRows(videoDecoder, audioDecoder)
+fun PlaybackInfoPanel(plan: PlaybackPlan, videoDecoder: String?, audioDecoder: String?, modifier: Modifier = Modifier, audio: dev.nitrate.core.playback.AudioPath? = null) {
+    val rows = plan.infoRows(videoDecoder, audioDecoder) + audio?.rows().orEmpty()
     Column(
         modifier.width(560.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), RoundedCornerShape(14.dp)).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),

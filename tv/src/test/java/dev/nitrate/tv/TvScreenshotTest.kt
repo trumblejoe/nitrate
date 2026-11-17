@@ -393,6 +393,28 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.search.SearchScreen(c.server, c.searchHistory, initialQuery = "need a bigger boat", onOpen = {}, onPerson = {}, linesOn = true)
     }
 
+    /** Playback info with the sound's path (hi-res stereo FLAC going to a receiver). */
+    @Test fun playbackInfoAudio() = shoot("tv-playback-info-audio") { c ->
+        val plan = dev.nitrate.core.model.PlaybackPlan(
+            itemId = "m1", url = "", method = dev.nitrate.core.model.PlayMethod.DIRECT_PLAY, playSessionId = null,
+            source = dev.nitrate.core.model.MediaSource(
+                "s1", "mkv", null,
+                listOf(
+                    dev.nitrate.core.model.MediaStream(0, dev.nitrate.core.model.StreamKind.VIDEO, codec = "hevc", width = 1920, height = 1080, bitDepth = 10),
+                    dev.nitrate.core.model.MediaStream(1, dev.nitrate.core.model.StreamKind.AUDIO, codec = "flac", language = "jpn", channels = 2, channelLayout = "stereo", sampleRate = 96_000, bitDepth = 24),
+                ),
+            ),
+            isHls = false, audioIndex = 1, subtitleIndex = -1, externalSubtitles = emptyList(), transcodeReasons = emptyList(),
+        )
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+            dev.nitrate.tv.ui.player.PlaybackInfoPanel(
+                plan, "c2.android.hevc.decoder", "c2.android.flac.decoder",
+                Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(32.dp),
+                audio = dev.nitrate.core.playback.AudioPath("flac", 2, 96_000, 24, dev.nitrate.core.playback.AudioDelivery.DECODED, "PCM float", 2, 96_000, 96_000),
+            )
+        }
+    }
+
     /** The ambient screensaver. */
     @Test fun ambient() = shoot("tv-ambient") { c ->
         dev.nitrate.tv.ui.ambient.AmbientScreen(

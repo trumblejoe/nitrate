@@ -119,6 +119,7 @@ internal data class MediaStreamDto(
     val deliveryMethod: String? = null,
     val deliveryUrl: String? = null,
     val channels: Int? = null,
+    val sampleRate: Int? = null,
     val channelLayout: String? = null,
     val width: Int? = null,
     val height: Int? = null,

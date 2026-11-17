@@ -166,6 +166,7 @@ internal fun MediaStreamDto.toMediaStream() = MediaStream(
     },
     deliveryUrl = deliveryUrl,
     channels = channels,
+    sampleRate = sampleRate,
     channelLayout = channelLayout,
     width = width,
     height = height,

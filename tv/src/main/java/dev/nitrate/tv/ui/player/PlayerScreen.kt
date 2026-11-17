@@ -466,7 +466,7 @@ fun PlayerScreen(
         }
 
         if (panel == Panel.INFO && p != null) {
-            PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.TopEnd).padding(32.dp))
+            PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.TopEnd).padding(32.dp), audio = session.audioPath.collectAsState().value)
         }
 
         (logMessage ?: notice)?.let {

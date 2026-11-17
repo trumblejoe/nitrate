@@ -507,7 +507,8 @@ fun PlayerScreen(
             title = { Text("Playback info") },
             text = {
                 Column {
-                    p.infoRows(videoDecoder, audioDecoder).forEach { (label, value) ->
+                    val audioPath by session.audioPath.collectAsState()
+                    (p.infoRows(videoDecoder, audioDecoder) + audioPath.rows()).forEach { (label, value) ->
                         Row(Modifier.padding(vertical = 3.dp)) {
                             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(110.dp))
                             Text(value, style = MaterialTheme.typography.bodyMedium)

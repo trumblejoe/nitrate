@@ -133,6 +133,17 @@ class PlaybackSession(
         else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
     }
 
+    private val _audioPath = MutableStateFlow(dev.nitrate.core.playback.AudioPath())
+
+    /** The sound's path: the file's audio, how it's handled here, what goes to the TV or receiver. */
+    val audioPath: StateFlow<dev.nitrate.core.playback.AudioPath> = _audioPath
+
+    private fun updateProcessing() {
+        _audioPath.value = _audioPath.value.copy(
+            processing = listOfNotNull("dialogue boost".takeIf { nightMode.dialogueBoost }, "night mode".takeIf { nightMode.enabled }),
+        )
+    }
+
     private val _videoDecoder = MutableStateFlow<String?>(null)
     val videoDecoder: StateFlow<String?> = _videoDecoder
     private val _audioDecoder = MutableStateFlow<String?>(null)
@@ -485,6 +496,30 @@ class PlaybackSession(
 
             override fun onAudioInputFormatChanged(e: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
                 log("Audio in: ${format.sampleMimeType} ${format.codecs ?: ""} ${format.channelCount}ch ${format.sampleRate}Hz")
+                val stream = _plan.value?.let { p -> p.source.streams.firstOrNull { it.index == p.audioIndex } }
+                _audioPath.value = _audioPath.value.copy(
+                    inCodec = stream?.codec ?: format.sampleMimeType?.substringAfter('/'),
+                    inChannels = format.channelCount.takeIf { it > 0 } ?: stream?.channels,
+                    inRateHz = format.sampleRate.takeIf { it > 0 } ?: stream?.sampleRate,
+                    inBits = stream?.bitDepth,
+                )
+            }
+
+            override fun onAudioTrackInitialized(e: AnalyticsListener.EventTime, config: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig) {
+                val decoded = config.encoding in setOf(C.ENCODING_PCM_16BIT, C.ENCODING_PCM_FLOAT, C.ENCODING_PCM_24BIT, C.ENCODING_PCM_32BIT, C.ENCODING_PCM_8BIT)
+                val mixer = runCatching {
+                    (appContext.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager)
+                        .getProperty(android.media.AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
+                }.getOrNull()
+                _audioPath.value = _audioPath.value.copy(
+                    delivery = if (decoded) dev.nitrate.core.playback.AudioDelivery.DECODED else dev.nitrate.core.playback.AudioDelivery.BITSTREAM,
+                    outFormat = encodingName(config.encoding),
+                    outChannels = Integer.bitCount(config.channelConfig).takeIf { it > 0 },
+                    outRateHz = config.sampleRate,
+                    mixerRateHz = mixer,
+                )
+                updateProcessing()
+                log("Audio out: ${encodingName(config.encoding)} ${Integer.bitCount(config.channelConfig)}ch ${config.sampleRate}Hz${if (config.tunneling) " tunneled" else ""}${if (config.offload) " offloaded" else ""}; mixer ${mixer ?: "?"}Hz")
             }
 
             override fun onDroppedVideoFrames(e: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
@@ -787,6 +822,7 @@ class PlaybackSession(
 
     /** A new item: subtitle timing and its cached files belong to the old one. */
     private fun forgetItemState() {
+        _audioPath.value = dev.nitrate.core.playback.AudioPath()
         secondJob?.cancel()
         _secondSubtitle.value = null
         retimeJob?.cancel()
@@ -931,11 +967,29 @@ class PlaybackSession(
         if (resync && exo.playbackState != Player.STATE_IDLE) exo.seekTo(exo.currentPosition)
     }
 
+    private fun encodingName(encoding: Int): String = when (encoding) {
+        C.ENCODING_PCM_16BIT -> "PCM 16-bit"
+        C.ENCODING_PCM_24BIT -> "PCM 24-bit"
+        C.ENCODING_PCM_32BIT -> "PCM 32-bit"
+        C.ENCODING_PCM_FLOAT -> "PCM float"
+        C.ENCODING_PCM_8BIT -> "PCM 8-bit"
+        C.ENCODING_AC3 -> "Dolby Digital"
+        C.ENCODING_E_AC3 -> "Dolby Digital Plus"
+        C.ENCODING_E_AC3_JOC -> "Dolby Digital Plus (Atmos)"
+        C.ENCODING_AC4 -> "Dolby AC-4"
+        C.ENCODING_DOLBY_TRUEHD -> "Dolby TrueHD"
+        C.ENCODING_DTS -> "DTS"
+        C.ENCODING_DTS_HD -> "DTS-HD"
+        C.ENCODING_DTS_UHD_P2 -> "DTS:X"
+        else -> "Encoding $encoding"
+    }
+
     fun setNightMode(on: Boolean) {
         val wasActive = nightMode.active
         _nightModeOn.value = on
         nightMode.enabled = on
         redecideAudio(wasActive, "Night mode", on)
+        updateProcessing()
     }
 
     fun setDialogueBoost(on: Boolean) {
@@ -943,6 +997,7 @@ class PlaybackSession(
         _dialogueBoostOn.value = on
         nightMode.dialogueBoost = on
         redecideAudio(wasActive, "Dialogue boost", on)
+        updateProcessing()
     }
 
     private fun redecideAudio(wasActive: Boolean, what: String, on: Boolean) {
