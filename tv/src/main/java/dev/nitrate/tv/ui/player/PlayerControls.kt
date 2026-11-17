@@ -37,6 +37,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -102,6 +103,8 @@ internal fun PlayerControls(
     chapters: List<dev.nitrate.core.model.Chapter> = emptyList(),
     chapterImage: (Int) -> String? = { null },
     onChapter: (Long) -> Unit = {},
+    /** Told when the chapter pictures open (Down from the buttons) and close (Up, or focus leaves). */
+    onChaptersOpen: (Boolean) -> Unit = {},
 ) {
     Column(
         Modifier
@@ -129,22 +132,58 @@ internal fun PlayerControls(
                 )
             }
         }
-        if (chapters.size > 1) ChapterStrip(chapters, position, chapterImage, onChapter)
+        if (chapters.size > 1) ChapterStrip(chapters, position, chapterImage, onChapter, onChaptersOpen, onUp = focus::restore)
     }
 }
 
 /**
- * The chapters under the buttons, Down from them: a picture each (or a numbered placeholder when
- * the server has none), name and start time. Entering the strip lands on the chapter playing; OK
- * jumps to the focused one.
+ * The chapters under the buttons. Folded to one line ("▾ Chapters", the one playing) so the picture
+ * keeps the screen; Down onto it opens the pictures: a picture each (or a numbered placeholder when
+ * the server has none), name and start time, starting on the chapter playing. OK jumps to the
+ * focused one; Up (or focus leaving any other way) folds it again.
  */
 @Composable
-private fun ChapterStrip(chapters: List<dev.nitrate.core.model.Chapter>, position: Long, image: (Int) -> String?, onChapter: (Long) -> Unit) {
+private fun ChapterStrip(chapters: List<dev.nitrate.core.model.Chapter>, position: Long, image: (Int) -> String?, onChapter: (Long) -> Unit, onOpen: (Boolean) -> Unit, onUp: () -> Unit) {
     val now = dev.nitrate.core.playback.Chapters.current(chapters, position).coerceAtLeast(0)
+    var open by remember { mutableStateOf(false) }
+    // Set once focus is inside the open strip, so it folds only when focus really leaves.
+    var entered by remember { mutableStateOf(false) }
+    fun setOpen(value: Boolean) { open = value; entered = false; onOpen(value) }
+    if (!open) {
+        var focused by remember { mutableStateOf(false) }
+        Row(
+            Modifier
+                .onFocusChanged { focused = it.isFocused; if (it.isFocused) setOpen(true) }
+                .focusable()
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("▾  Chapters", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = if (focused) 1f else 0.75f))
+            Text(
+                "${now + 1} of ${chapters.size} · ${dev.nitrate.core.playback.Chapters.title(chapters, now)}",
+                style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.55f),
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+        return
+    }
     val nowFocus = remember { FocusRequester() }
     val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = now)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Chapters", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f))
+    androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { nowFocus.requestFocus() } }
+    Column(
+        Modifier
+            .onFocusChanged {
+                if (it.hasFocus) entered = true
+                else if (entered) setOpen(false)
+            }
+            // Up goes back to the button Down was pressed on, not whichever sits above the card.
+            .onPreviewKeyEvent { e ->
+                if (e.key == Key.DirectionUp && e.type == KeyEventType.KeyDown) { onUp(); true } else false
+            },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("▴  Chapters", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f))
         androidx.compose.foundation.lazy.LazyRow(
             state = list,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -214,7 +253,11 @@ private fun androidx.compose.foundation.layout.BoxScope.ChapterPlaceholder(index
 private val CHAPTER_WIDTH = 176.dp
 
 /** How far up overlays sit above the controls: higher when the chapter strip is shown. */
-internal fun controlsHeight(hasChapters: Boolean) = if (hasChapters) 400.dp else 220.dp
+internal fun controlsHeight(hasChapters: Boolean, chaptersOpen: Boolean) = when {
+    chaptersOpen -> 400.dp
+    hasChapters -> 250.dp
+    else -> 220.dp
+}
 
 /** One button in the player's row. */
 internal class PlayerAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)

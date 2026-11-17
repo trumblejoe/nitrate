@@ -228,6 +228,7 @@ fun PlayerScreen(
     var openPanel by remember { mutableStateOf<PlayerPanel?>(null) }
     var creditAction by remember(item?.id) { mutableStateOf<dev.nitrate.core.playback.CreditSkipper.Action?>(null) }
     var panelFocused by remember { mutableStateOf(false) }
+    var chaptersOpen by remember { mutableStateOf(false) }
     val playbackControls = session.controls
     val rootFocus = remember { FocusRequester() }
     val controlFocus = remember { ControlFocus() }
@@ -446,6 +447,7 @@ fun PlayerScreen(
                 chapters = if (easy) emptyList() else item?.chapters.orEmpty(),
                 chapterImage = { i -> item?.let { repository.chapterImageUrl(it, i, 320) } },
                 onChapter = { player.seekTo(it) },
+                onChaptersOpen = { chaptersOpen = it },
             )
         }
 
@@ -464,7 +466,7 @@ fun PlayerScreen(
                 onPlay = { onPlayNext?.invoke(nextUp) },
                 onCountdownEnd = { rollOn(nextUp) },
                 onHide = { upNextHidden = true; runCatching { rootFocus.requestFocus() } },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) controlsHeight(!easy && (item?.chapters?.size ?: 0) > 1) else 48.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) controlsHeight(!easy && (item?.chapters?.size ?: 0) > 1, chaptersOpen) else 48.dp),
             )
         }
 
@@ -515,7 +517,7 @@ fun PlayerScreen(
                     creditAction = null
                     if (!controlsVisible) runCatching { rootFocus.requestFocus() }
                 },
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) controlsHeight(!easy && (item?.chapters?.size ?: 0) > 1) else 48.dp),
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) controlsHeight(!easy && (item?.chapters?.size ?: 0) > 1, chaptersOpen) else 48.dp),
             )
         }
 

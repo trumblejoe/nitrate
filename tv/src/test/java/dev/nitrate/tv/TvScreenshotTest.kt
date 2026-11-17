@@ -259,6 +259,11 @@ class TvScreenshotTest {
     @Test fun playerControlsPlay() = playerControls("tv-player-controls-play")
     @Test fun playerControlsButton() = playerControls("tv-player-controls-audio", "right") { check(focusedHasText("Audio")) }
     @Test fun playerControlsSeek() = playerControls("tv-player-controls-seek", "up")
+    @Test fun playerControlsChaptersFolded() = playerControls("tv-player-controls-chapters-folded")
+    @Test fun playerControlsChaptersFoldBack() = playerControls("tv-player-controls-chapters-fold-back", "down", "up") {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Now"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasContentDescription("Pause")).fetchSemanticsNodes().isNotEmpty())
+    }
     @Test fun playerControlsChapters() = playerControls("tv-player-controls-chapters", "down") { check(focusedHasText("Now")) }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
