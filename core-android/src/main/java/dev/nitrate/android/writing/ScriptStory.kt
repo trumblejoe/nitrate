@@ -37,7 +37,7 @@ class LocalStory(
 
     override fun change(changes: List<RecordChange>) {
         var s = state.value
-        val now = System.currentTimeMillis()
+        val now = dev.nitrate.android.nowMs()
         changes.forEach { s = s.apply(it, selfId, selfName(), now) }
         state.value = s
         scope.launch {

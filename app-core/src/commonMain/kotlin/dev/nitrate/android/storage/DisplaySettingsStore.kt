@@ -1,11 +1,10 @@
 package dev.nitrate.android.storage
 
-import android.content.Context
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import dev.nitrate.core.pages.CustomPage
 import dev.nitrate.core.playback.LanguageChoice
 import dev.nitrate.core.playback.TrackMemoryStore
@@ -22,8 +21,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
-private val Context.displayDataStore by preferencesDataStore(name = "display_settings")
-
 /**
  * Per-user display settings: row overrides (row key to [RowDisplay]), page layouts and view
  * options, what's shown about items, custom pages and per-series languages.
@@ -35,7 +32,7 @@ private val Context.displayDataStore by preferencesDataStore(name = "display_set
  * saves into a new profile named after this device.
  */
 class DisplaySettingsStore(
-    private val context: Context,
+    private val store: DataStore<Preferences>,
     /** Which built-in profile this device starts on. */
     val deviceKind: DeviceKind = DeviceKind.PHONE,
     /** Name for a profile started by a change made on a built-in one. */
@@ -75,29 +72,29 @@ class DisplaySettingsStore(
         prefKey(userId, DisplayProfiles.scoped(activeId(prefs, userId), name))
 
     /** The user's own profiles (built-in ones are [DisplayProfiles.BUILT_IN]). */
-    fun profiles(userId: String): Flow<List<DisplayProfile>> = context.displayDataStore.data.map { customProfiles(it, userId) }
+    fun profiles(userId: String): Flow<List<DisplayProfile>> = store.data.map { customProfiles(it, userId) }
 
     /** The id of the profile this device uses. */
-    fun activeProfile(userId: String): Flow<String> = context.displayDataStore.data.map { activeId(it, userId) }
+    fun activeProfile(userId: String): Flow<String> = store.data.map { activeId(it, userId) }
 
     /** The name of the profile this device uses (for "applies to" labels on settings). */
-    fun activeProfileName(userId: String): Flow<String> = context.displayDataStore.data.map { prefs ->
+    fun activeProfileName(userId: String): Flow<String> = store.data.map { prefs ->
         val id = activeId(prefs, userId)
         (DisplayProfiles.BUILT_IN + customProfiles(prefs, userId)).firstOrNull { it.id == id }?.name ?: "?"
     }
 
     /** The profile this device uses for whoever [userId] says is signed in (re-read on every change). */
-    fun activeProfileOf(userId: () -> String?): Flow<String?> = context.displayDataStore.data.map { prefs -> userId()?.let { activeId(prefs, it) } }
+    fun activeProfileOf(userId: () -> String?): Flow<String?> = store.data.map { prefs -> userId()?.let { activeId(prefs, it) } }
 
     /** This device uses [profileId] from now on (only here). */
     suspend fun useProfile(userId: String, profileId: String) {
-        context.displayDataStore.edit { it[activeKey(userId)] = profileId }
+        store.edit { it[activeKey(userId)] = profileId }
     }
 
     /** Starts a profile called [name] as a copy of [from] (a built-in one starts from the defaults), and uses it here. */
     suspend fun createProfile(userId: String, name: String, from: String): String {
         val id = newId()
-        context.displayDataStore.edit { prefs ->
+        store.edit { prefs ->
             val copies = DisplayProfiles.copy(entries(prefs, userId), from, id)
             copies.forEach { (n, raw) -> prefs[prefKey(userId, n)] = raw }
             prefs[prefKey(userId, DisplayProfiles.PROFILES)] = DisplayProfiles.profilesJson(customProfiles(prefs, userId) + DisplayProfile(id, name.trim()))
@@ -108,7 +105,7 @@ class DisplaySettingsStore(
     }
 
     suspend fun renameProfile(userId: String, profileId: String, name: String) {
-        context.displayDataStore.edit { prefs ->
+        store.edit { prefs ->
             prefs[prefKey(userId, DisplayProfiles.PROFILES)] =
                 DisplayProfiles.profilesJson(customProfiles(prefs, userId).map { if (it.id == profileId) it.copy(name = name.trim()) else it })
         }
@@ -118,7 +115,7 @@ class DisplaySettingsStore(
     /** Deletes one of the user's profiles everywhere; devices using it go back to their built-in one. */
     suspend fun deleteProfile(userId: String, profileId: String) {
         if (DisplayProfiles.isBuiltIn(profileId)) return
-        context.displayDataStore.edit { prefs ->
+        store.edit { prefs ->
             entries(prefs, userId).keys.filter { it.startsWith(DisplayProfiles.prefix(profileId)) }.forEach { prefs.remove(prefKey(userId, it)) }
             val left = customProfiles(prefs, userId).filterNot { it.id == profileId }
             if (left.isEmpty()) prefs.remove(prefKey(userId, DisplayProfiles.PROFILES)) else prefs[prefKey(userId, DisplayProfiles.PROFILES)] = DisplayProfiles.profilesJson(left)
@@ -128,7 +125,7 @@ class DisplaySettingsStore(
     }
 
     /** What's shown about items in another profile (for importing its radial menu). */
-    fun prefsOf(userId: String, profileId: String): Flow<DisplayPrefs> = context.displayDataStore.data.map { prefs ->
+    fun prefsOf(userId: String, profileId: String): Flow<DisplayPrefs> = store.data.map { prefs ->
         prefs[prefKey(userId, DisplayProfiles.scoped(profileId, PREFS))]?.let { runCatching { json.decodeFromString<DisplayPrefs>(it) }.getOrNull() } ?: DisplayPrefs()
     }
 
@@ -147,7 +144,7 @@ class DisplaySettingsStore(
         return id
     }
 
-    private fun newId() = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
+    private fun newId() = kotlin.uuid.Uuid.random().toHexString().take(12)
 
     private fun entries(prefs: Preferences, userId: String): Map<String, String> {
         val prefix = prefix(userId)
@@ -157,7 +154,7 @@ class DisplaySettingsStore(
     /** Moves settings saved before profiles into "My settings" (once; nothing happens after that). */
     suspend fun migrateLocal(userId: String): Boolean {
         var migrated = false
-        context.displayDataStore.edit { prefs ->
+        store.edit { prefs ->
             val current = entries(prefs, userId)
             if (!DisplayProfiles.isLegacy(current)) return@edit
             val next = DisplayProfiles.migrate(current) { old -> sharedFromLegacy(old[PREFS]) }
@@ -176,10 +173,10 @@ class DisplaySettingsStore(
     // ---- Rows ----
 
     fun overrides(userId: String): Flow<Map<String, RowDisplay>> =
-        context.displayDataStore.data.map { prefs -> decodeRows(prefs[resolve(prefs, userId, ROWS)]) }
+        store.data.map { prefs -> decodeRows(prefs[resolve(prefs, userId, ROWS)]) }
 
     suspend fun save(userId: String, row: MediaRow, display: RowDisplay) {
-        context.displayDataStore.edit { prefs ->
+        store.edit { prefs ->
             val current = decodeRows(prefs[resolve(prefs, userId, ROWS)])
             val updated = if (display == row.defaultDisplay) current - row.key else current + (row.key to display)
             if (updated == current) return@edit
@@ -202,12 +199,12 @@ class DisplaySettingsStore(
 
     @PublishedApi
     internal fun rawFlow(userId: String, name: String): Flow<String?> =
-        context.displayDataStore.data.map { it[resolve(it, userId, name)] }
+        store.data.map { it[resolve(it, userId, name)] }
 
     @PublishedApi
     internal suspend fun saveRaw(userId: String, name: String, raw: String) {
         var changed = false
-        context.displayDataStore.edit { prefs ->
+        store.edit { prefs ->
             if (prefs[resolve(prefs, userId, name)] == raw) return@edit
             prefs[prefKey(userId, DisplayProfiles.scoped(writableProfile(prefs, userId, name), name))] = raw
             changed = true
@@ -235,7 +232,7 @@ class DisplaySettingsStore(
     }
 
     /** What to show about items (ratings, overviews, badges...); spoiler hiding is the same on every device. */
-    fun prefs(userId: String): Flow<DisplayPrefs> = context.displayDataStore.data.map { prefs ->
+    fun prefs(userId: String): Flow<DisplayPrefs> = store.data.map { prefs ->
         val own = prefs[resolve(prefs, userId, PREFS)]?.let { runCatching { json.decodeFromString<DisplayPrefs>(it) }.getOrNull() } ?: DisplayPrefs()
         val shared = prefs[prefKey(userId, DisplayProfiles.SHARED)]?.let { runCatching { json.decodeFromString<SharedPrefs>(it) }.getOrNull() }
         if (shared != null) own.copy(hideSpoilers = shared.hideSpoilers, recapPlaylists = shared.recapPlaylists) else own.copy(recapPlaylists = emptySet())
@@ -267,7 +264,7 @@ class DisplaySettingsStore(
     @PublishedApi
     internal suspend fun removeRaw(userId: String, name: String) {
         var changed = false
-        context.displayDataStore.edit { prefs ->
+        store.edit { prefs ->
             // Nothing stored here (e.g. on a built-in profile): nothing to remove.
             if (prefs[resolve(prefs, userId, name)] == null) return@edit
             prefs.remove(resolve(prefs, userId, name))
@@ -278,19 +275,19 @@ class DisplaySettingsStore(
 
     /** The last copy agreed with the server, for merging setting by setting ([SettingsSync]). */
     suspend fun syncBase(userId: String): Map<String, String>? =
-        context.displayDataStore.data.first()[stringPreferencesKey("base_$userId")]?.let { runCatching { json.decodeFromString<Map<String, String>>(it) }.getOrNull() }
+        store.data.first()[stringPreferencesKey("base_$userId")]?.let { runCatching { json.decodeFromString<Map<String, String>>(it) }.getOrNull() }
 
     suspend fun setSyncBase(userId: String, base: Map<String, String>) {
-        context.displayDataStore.edit { it[stringPreferencesKey("base_$userId")] = json.encodeToString(base) }
+        store.edit { it[stringPreferencesKey("base_$userId")] = json.encodeToString(base) }
     }
 
     /** All of a user's entries, name to JSON. */
-    suspend fun export(userId: String): Map<String, String> = entries(context.displayDataStore.data.first(), userId)
+    suspend fun export(userId: String): Map<String, String> = entries(store.data.first(), userId)
 
     /** Replaces a user's entries with [entries]. Does not trigger [onChanged]. */
     suspend fun import(userId: String, entries: Map<String, String>) {
         val prefix = prefix(userId)
-        context.displayDataStore.edit { prefs ->
+        store.edit { prefs ->
             prefs.asMap().keys.filter { it.name.startsWith(prefix) }.forEach { prefs.remove(it) }
             entries.forEach { (name, raw) -> prefs[prefKey(userId, name)] = raw }
         }

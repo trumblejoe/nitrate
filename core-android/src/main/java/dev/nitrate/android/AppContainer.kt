@@ -12,6 +12,12 @@ import dev.nitrate.android.storage.PluginStore
 import dev.nitrate.android.storage.SearchHistoryStore
 import dev.nitrate.android.storage.SessionStore
 import dev.nitrate.android.storage.ProfileStore
+import dev.nitrate.android.storage.playbackDataStore
+import dev.nitrate.android.storage.searchStore
+import dev.nitrate.android.storage.profilesDataStore
+import dev.nitrate.android.storage.pluginDataStore
+import dev.nitrate.android.storage.sessionDataStore
+import dev.nitrate.android.storage.backupDataStore
 import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.model.MediaItem
 import kotlinx.coroutines.flow.first
@@ -64,7 +70,7 @@ class AppContainer(
 
     val displaySettings = DisplaySettingsStore(appContext, deviceKind, androidIdentity(appContext, clientName, version).deviceName)
 
-    val playbackSettings = PlaybackSettingsStore(appContext)
+    val playbackSettings = PlaybackSettingsStore(appContext.playbackDataStore)
 
     /** Probed once: decoder lists don't change while the app runs. */
     val capabilities: DeviceCapabilities by lazy { DeviceProbe.cached(appContext) }
@@ -80,7 +86,7 @@ class AppContainer(
             }
         },
         identity = androidIdentity(appContext, clientName, version),
-        sessionStorage = SessionStore(appContext),
+        sessionStorage = SessionStore(appContext.sessionDataStore),
         capabilities = { capabilities },
         playbackSettings = playbackSettings,
         textCache = dataCache.text,
@@ -120,7 +126,7 @@ class AppContainer(
         return runCatching { displaySettings.prefs(user).first().describedAudio }.getOrDefault(false)
     }
 
-    val searchHistory by lazy { SearchHistoryStore(appContext) }
+    val searchHistory by lazy { SearchHistoryStore(appContext.searchStore) }
 
     /** The server's live connection: remote control and live updates. */
     /** "Still watching?": episodes rolling on with nobody pressing anything (fed by the players). */
@@ -418,7 +424,7 @@ class AppContainer(
     }
 
     /** PIN locks and "who's watching" for the accounts saved here. */
-    val profiles by lazy { ProfileStore(appContext) }
+    val profiles by lazy { ProfileStore(appContext.profilesDataStore) }
 
     /** After signing in or switching account: settings, account details and the live connection. */
     suspend fun onSignedIn() {
@@ -545,7 +551,7 @@ class AppContainer(
         val container: AppContainer
     }
 
-    private val pluginStore = PluginStore(appContext)
+    private val pluginStore = PluginStore(appContext.pluginDataStore)
 
     val plugins = PluginRegistry(
         all = listOf(PreviousEpisodePlugin, watchPartners, WritingPlugin, dev.nitrate.core.channels.ChannelsPlugin),
@@ -555,7 +561,7 @@ class AppContainer(
     /** This device's playback and plugin settings, backed up to the user's server and restorable on another device. */
     val backups by lazy {
         dev.nitrate.android.backup.DeviceBackupManager(
-            context = appContext,
+            store = appContext.backupDataStore,
             server = server,
             playback = playbackSettings,
             plugins = pluginStore,

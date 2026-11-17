@@ -27,6 +27,7 @@ android {
 
 dependencies {
     api(project(":core"))
+    api(project(":app-core"))
     // Software audio decoding for DTS / TrueHD / Dolby when the device can't (LGPL FFmpeg).
     api(project(":ffmpeg-decoder"))
     api(project(":ass-renderer"))

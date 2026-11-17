@@ -1,20 +1,24 @@
 package dev.nitrate.android.storage
 
-import android.content.Context
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import dev.nitrate.core.jellyfin.SessionStorage
 import dev.nitrate.core.jellyfin.StoredSession
 import kotlinx.coroutines.flow.first
-import org.json.JSONArray
-import org.json.JSONObject
-
-private val Context.dataStore by preferencesDataStore(name = "session")
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Every server and user signed in on this device, and which one is current. */
-class SessionStore(private val context: Context) : SessionStorage {
+class SessionStore(private val store: DataStore<Preferences>) : SessionStorage {
     private object Keys {
         val accounts = stringPreferencesKey("accounts")
         val current = stringPreferencesKey("current")
@@ -35,21 +39,22 @@ class SessionStore(private val context: Context) : SessionStorage {
             val user = this[Keys.userId] ?: return emptyList()
             return listOf(StoredSession(url, token, user, this[Keys.userName].orEmpty()))
         }
-        val array = JSONArray(json)
-        return (0 until array.length()).map { i ->
-            val o = array.getJSONObject(i)
+        val array = runCatching { Json.parseToJsonElement(json).jsonArray }.getOrNull() ?: return emptyList()
+        return array.mapNotNull { element ->
+            val o = element as? JsonObject ?: return@mapNotNull null
+            fun text(name: String) = o[name]?.jsonPrimitive?.contentOrNull.orEmpty()
             StoredSession(
-                serverUrl = o.getString("serverUrl"),
-                accessToken = o.getString("accessToken"),
-                userId = o.getString("userId"),
-                userName = o.optString("userName"),
-                serverName = o.optString("serverName"),
-                imageTag = o.optString("imageTag").ifBlank { null },
-                localUrl = o.optString("localUrl").ifBlank { null },
-                vpnUrl = o.optString("vpnUrl").ifBlank { null },
-                remoteUrl = o.optString("remoteUrl").ifBlank { null },
-                serverId = o.optString("serverId").ifBlank { null },
-                primary = o.optBoolean("primary", false),
+                serverUrl = text("serverUrl").ifEmpty { return@mapNotNull null },
+                accessToken = text("accessToken").ifEmpty { return@mapNotNull null },
+                userId = text("userId").ifEmpty { return@mapNotNull null },
+                userName = text("userName"),
+                serverName = text("serverName"),
+                imageTag = text("imageTag").ifBlank { null },
+                localUrl = text("localUrl").ifBlank { null },
+                vpnUrl = text("vpnUrl").ifBlank { null },
+                remoteUrl = text("remoteUrl").ifBlank { null },
+                serverId = text("serverId").ifBlank { null },
+                primary = o["primary"]?.jsonPrimitive?.booleanOrNull ?: false,
             )
         }
     }
@@ -59,21 +64,24 @@ class SessionStore(private val context: Context) : SessionStorage {
         this[Keys.current] ?: if (this[Keys.accounts] == null) sessions().firstOrNull()?.key else null
 
     private suspend fun write(sessions: List<StoredSession>, current: String?) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.accounts] = JSONArray(
+        store.edit { prefs ->
+            prefs[Keys.accounts] = JsonArray(
                 sessions.map { s ->
-                    JSONObject()
-                        .put("serverUrl", s.serverUrl)
-                        .put("accessToken", s.accessToken)
-                        .put("userId", s.userId)
-                        .put("userName", s.userName)
-                        .put("serverName", s.serverName)
-                        .put("imageTag", s.imageTag ?: "")
-                        .put("localUrl", s.localUrl ?: "")
-                        .put("vpnUrl", s.vpnUrl ?: "")
-                        .put("remoteUrl", s.remoteUrl ?: "")
-                        .put("serverId", s.serverId ?: "")
-                        .put("primary", s.primary)
+                    JsonObject(
+                        mapOf(
+                            "serverUrl" to JsonPrimitive(s.serverUrl),
+                            "accessToken" to JsonPrimitive(s.accessToken),
+                            "userId" to JsonPrimitive(s.userId),
+                            "userName" to JsonPrimitive(s.userName),
+                            "serverName" to JsonPrimitive(s.serverName),
+                            "imageTag" to JsonPrimitive(s.imageTag ?: ""),
+                            "localUrl" to JsonPrimitive(s.localUrl ?: ""),
+                            "vpnUrl" to JsonPrimitive(s.vpnUrl ?: ""),
+                            "remoteUrl" to JsonPrimitive(s.remoteUrl ?: ""),
+                            "serverId" to JsonPrimitive(s.serverId ?: ""),
+                            "primary" to JsonPrimitive(s.primary),
+                        ),
+                    )
                 },
             ).toString()
             if (current != null) prefs[Keys.current] = current else prefs.remove(Keys.current)
@@ -82,12 +90,12 @@ class SessionStore(private val context: Context) : SessionStorage {
     }
 
     override suspend fun load(): StoredSession? {
-        val prefs = context.dataStore.data.first()
+        val prefs = store.data.first()
         val current = prefs.currentKey() ?: return null
         return prefs.sessions().firstOrNull { it.key == current }
     }
 
-    override suspend fun all(): List<StoredSession> = context.dataStore.data.first().sessions()
+    override suspend fun all(): List<StoredSession> = store.data.first().sessions()
 
     override suspend fun save(session: StoredSession) {
         val sessions = all().filterNot { it.key == session.key } + session
@@ -95,7 +103,7 @@ class SessionStore(private val context: Context) : SessionStorage {
     }
 
     override suspend fun update(session: StoredSession) {
-        val prefs = context.dataStore.data.first()
+        val prefs = store.data.first()
         val sessions = prefs.sessions()
         if (sessions.none { it.key == session.key }) return
         // In place, and whichever account was current stays current.
@@ -109,12 +117,12 @@ class SessionStore(private val context: Context) : SessionStorage {
     }
 
     override suspend fun remove(key: String) {
-        val prefs = context.dataStore.data.first()
+        val prefs = store.data.first()
         val current = prefs.currentKey().takeIf { it != key }
         write(prefs.sessions().filterNot { it.key == key }, current)
     }
 
     override suspend fun clear() {
-        context.dataStore.data.first().currentKey()?.let { remove(it) }
+        store.data.first().currentKey()?.let { remove(it) }
     }
 }

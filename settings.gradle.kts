@@ -16,6 +16,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "Nitrate"
 include(":core")
+include(":app-core")
 include(":core-android")
 include(":tv")
 include(":mobile")

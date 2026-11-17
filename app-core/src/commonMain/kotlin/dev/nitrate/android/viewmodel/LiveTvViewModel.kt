@@ -1,5 +1,6 @@
 package dev.nitrate.android.viewmodel
 
+import dev.nitrate.android.nowMs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.nitrate.core.MediaServer
@@ -26,7 +27,7 @@ data class LiveTvState(
 )
 
 /** Channels with what's on, a guide window that can move later or earlier, recordings, scheduling. */
-class LiveTvViewModel(private val server: MediaServer, private val now: () -> Long = System::currentTimeMillis) : ViewModel() {
+class LiveTvViewModel(private val server: MediaServer, private val now: () -> Long = ::nowMs) : ViewModel() {
     private val _state = MutableStateFlow(LiveTvState(windowStartMs = Guide.windowStart(now()), nowMs = now()))
     val state: StateFlow<LiveTvState> = _state
 

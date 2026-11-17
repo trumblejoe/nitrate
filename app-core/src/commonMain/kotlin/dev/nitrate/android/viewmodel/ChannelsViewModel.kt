@@ -1,5 +1,6 @@
 package dev.nitrate.android.viewmodel
 
+import dev.nitrate.android.nowMs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.nitrate.core.MediaServer
@@ -28,7 +29,7 @@ data class ChannelsState(
  * in, which gives the program on now from its start and what follows in order, to play as a queue.
  * Nothing is streamed until the queue plays.
  */
-class ChannelsViewModel(private val server: MediaServer, private val now: () -> Long = System::currentTimeMillis) : ViewModel() {
+class ChannelsViewModel(private val server: MediaServer, private val now: () -> Long = ::nowMs) : ViewModel() {
     private val _state = MutableStateFlow(ChannelsState(windowStartMs = Guide.windowStart(now()), nowMs = now()))
     val state: StateFlow<ChannelsState> = _state
 

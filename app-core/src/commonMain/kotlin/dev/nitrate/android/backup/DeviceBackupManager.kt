@@ -1,10 +1,10 @@
 package dev.nitrate.android.backup
 
-import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import dev.nitrate.android.storage.PlaybackSettingsStore
 import dev.nitrate.android.storage.PluginStore
 import dev.nitrate.core.MediaServer
@@ -17,6 +17,7 @@ import dev.nitrate.core.backup.Difference
 import dev.nitrate.core.plugins.NitratePlugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -27,8 +28,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-
-private val Context.backupDataStore by preferencesDataStore(name = "device_backup")
 
 /** Offered after signing in on a device that hasn't backed up for this account yet. */
 data class SetupOffer(val accountKey: String, val backups: List<BackupSummary>)
@@ -50,7 +49,7 @@ data class RestorePreview(
  * backup before the user has answered the first "set this device up like…" question.
  */
 class DeviceBackupManager(
-    context: Context,
+    private val store: DataStore<Preferences>,
     private val server: MediaServer,
     private val playback: PlaybackSettingsStore,
     private val plugins: PluginStore,
@@ -61,7 +60,6 @@ class DeviceBackupManager(
     private val app: String,
     private val version: String,
 ) {
-    private val store = context.applicationContext.backupDataStore
     private val cloud = BackupCloud(server)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pushJob: Job? = null
@@ -194,13 +192,13 @@ class DeviceBackupManager(
         model = model(),
         app = app,
         appVersion = version,
-        savedAtMs = System.currentTimeMillis(),
+        savedAtMs = dev.nitrate.android.nowMs(),
         settings = currentSettings(),
     )
 
     private suspend fun isSettled(key: String) = key in store.data.first()[settledKey].orEmpty()
     private suspend fun settle(key: String) { store.edit { it[settledKey] = it[settledKey].orEmpty() + key } }
-    private suspend fun markSaved(key: String) { store.edit { it[savedKey(key)] = System.currentTimeMillis() } }
+    private suspend fun markSaved(key: String) { store.edit { it[savedKey(key)] = dev.nitrate.android.nowMs() } }
     private fun savedKey(account: String?) = longPreferencesKey("saved_${account.orEmpty()}")
 
     private companion object {
