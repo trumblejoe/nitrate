@@ -13,6 +13,8 @@ enum class SpeakerLayout(val label: String, val detail: String, val upmixChannel
     THREE_ONE("3.1", "Left, centre, right and a subwoofer (many soundbars)", 6),
     FIVE_ONE("5.1", "Front, centre, two surrounds and a subwoofer", 6),
     SEVEN_ONE("7.1", "Front, centre, side and back surrounds and a subwoofer", 8),
+    /** More than two speakers, but stereo stays stereo here (e.g. the receiver upmixes it itself). */
+    KEEP_STEREO("Keep it stereo", "Don't spread stereo here (e.g. the receiver does it itself)", null),
 }
 
 /** What a sound output is: its kind, the name its device gives, and the most channels it takes. */

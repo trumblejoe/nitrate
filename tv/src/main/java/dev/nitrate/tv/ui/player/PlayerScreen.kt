@@ -432,10 +432,11 @@ fun PlayerScreen(
 
         SecondSubtitleLine(session, settingsNow.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp))
 
-        // Upmixing is on and sound now goes somewhere new with more than two speakers: ask once.
+        // A stereo film or episode is playing on a new output with more than two speakers: ask once.
         val output by session.soundOutput.collectAsState()
         var notNow by remember { mutableStateOf(setOf<String>()) }
-        output?.takeIf { settingsNow.upmixStereo && dev.nitrate.core.playback.Speakers.shouldAsk(it, settingsNow.speakerLayouts) && it.key !in notNow }?.let { o ->
+        val stereoNow = session.audioPath.collectAsState().value.inChannels == 2 && session.item.collectAsState().value?.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO
+        output?.takeIf { stereoNow && settingsNow.upmixStereo && dev.nitrate.core.playback.Speakers.shouldAsk(it, settingsNow.speakerLayouts) && it.key !in notNow }?.let { o ->
             SpeakersQuestionDialog(o, onAnswer = { l ->
                 speakerScope.launch { playbackSettings.update { it.copy(speakerLayouts = it.speakerLayouts + (o.key to l)) } }
             }, onLater = { notNow = notNow + o.key })

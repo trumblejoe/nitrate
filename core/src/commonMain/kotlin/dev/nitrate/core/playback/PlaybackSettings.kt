@@ -64,8 +64,11 @@ data class PlaybackSettings(
     val nightMode: Boolean = false,
     /** Lifts voices over music and effects (decodes sound that would go to a receiver untouched). */
     val dialogueBoost: Boolean = false,
-    /** Stereo in films and episodes spread over the output's speakers (3.1, 5.1 or 7.1). */
-    val upmixStereo: Boolean = false,
+    /**
+     * Automatic (on): stereo films and episodes are spread over the output's speakers (3.1, 5.1
+     * or 7.1), as answered once per output. Off: always stereo.
+     */
+    val upmixStereo: Boolean = true,
     /** What speakers each sound output has, by [SoundOutput.key] (asked once per output). */
     val speakerLayouts: Map<String, SpeakerLayout> = emptyMap(),
     /**

@@ -49,8 +49,8 @@ fun SpeakersSettings(settings: PlaybackSettings, output: SoundOutput?, update: (
         ListItem(
             selected = false,
             onClick = { update { it.copy(upmixStereo = !it.upmixStereo) } },
-            headlineContent = { Text("Upmix stereo to surround") },
-            supportingContent = { Text("Films and episodes in stereo play on all your speakers: voices in the centre, ambience around you. Only on outputs with more than two speakers; music stays stereo") },
+            headlineContent = { Text("Upmix stereo: ${if (settings.upmixStereo) "Automatic" else "Off"}") },
+            supportingContent = { Text("Automatic: stereo films and episodes play on all the speakers you've said an output has (voices in the centre, ambience around you); asked once per output. Off: always stereo. Music stays stereo") },
             trailingContent = { Switch(checked = settings.upmixStereo, onCheckedChange = null) },
         )
         if (output != null) {
@@ -80,22 +80,27 @@ fun SpeakersQuestionDialog(output: SoundOutput, onAnswer: (SpeakerLayout) -> Uni
     val focus = remember { FocusRequester() }
     Dialog(onDismissRequest = onLater) {
         Column(
-            Modifier.width(720.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp)).padding(32.dp),
+            Modifier.width(1040.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp)).padding(32.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("What speakers are on ${output.label}?", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                Text("Stereo here can play on all your speakers", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = onLater) { Text("Later") }
             }
-            Text("So stereo can be spread over them. Asked once for this output; change it any time in Settings → Playback.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SpeakerLayout.entries.forEachIndexed { i, l ->
-                ListItem(
-                    selected = false,
-                    onClick = { onAnswer(l) },
-                    headlineContent = { Text(l.label) },
-                    supportingContent = { Text(l.detail) },
-                    modifier = if (i == SpeakerLayout.FIVE_ONE.ordinal) Modifier.focusRequester(focus) else Modifier,
-                )
+            Text("What's connected to ${output.label}? Asked once for this output; change it any time in Settings → Playback.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Two columns, so every answer fits on screen.
+            SpeakerLayout.entries.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    pair.forEach { l ->
+                        ListItem(
+                            selected = false,
+                            onClick = { onAnswer(l) },
+                            headlineContent = { Text(l.label) },
+                            supportingContent = { Text(l.detail, maxLines = 2) },
+                            modifier = Modifier.weight(1f).then(if (l == SpeakerLayout.FIVE_ONE) Modifier.focusRequester(focus) else Modifier),
+                        )
+                    }
+                }
             }
         }
     }

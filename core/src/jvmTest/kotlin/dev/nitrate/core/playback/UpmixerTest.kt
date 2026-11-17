@@ -78,6 +78,8 @@ class UpmixerTest {
         assertNull(Speakers.upmixTo(true, 2, true, tv, known), "the soundbar didn't come on: TV speakers")
         assertNull(Speakers.upmixTo(true, 2, true, SoundOutput(OutputKind.HDMI, "Other AVR", 8), known), "not asked yet")
         assertNull(Speakers.upmixTo(true, 2, true, denon, mapOf(denon.key to SpeakerLayout.STEREO_SUB)), "2.1")
+        assertNull(Speakers.upmixTo(true, 2, true, denon, mapOf(denon.key to SpeakerLayout.KEEP_STEREO)), "the receiver upmixes")
+        assertTrue(dev.nitrate.core.playback.PlaybackSettings().upmixStereo, "automatic by default")
         assertEquals(SpeakerLayout.STEREO, Speakers.layout(tv, known))
         assertTrue(Speakers.shouldAsk(SoundOutput(OutputKind.HDMI, "Other AVR", 8), known))
         assertTrue(!Speakers.shouldAsk(tv, known) && !Speakers.shouldAsk(denon, known))

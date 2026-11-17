@@ -39,9 +39,9 @@ fun SpeakersSettings(settings: PlaybackSettings, output: SoundOutput?, update: (
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth().clickable { update { it.copy(upmixStereo = !it.upmixStereo) } }, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Upmix stereo to surround", style = MaterialTheme.typography.bodyLarge)
+                Text("Upmix stereo: ${if (settings.upmixStereo) "Automatic" else "Off"}", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "Films and episodes in stereo play on all your speakers: voices in the centre, ambience around you. Only on outputs with more than two speakers; music stays stereo",
+                    "Automatic: stereo films and episodes play on all the speakers you've said an output has (voices in the centre, ambience around you); asked once per output. Off: always stereo. Music stays stereo",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -75,10 +75,10 @@ fun SpeakersSettings(settings: PlaybackSettings, output: SoundOutput?, update: (
 fun SpeakersQuestion(output: SoundOutput, onAnswer: (SpeakerLayout) -> Unit, onLater: () -> Unit) {
     AlertDialog(
         onDismissRequest = onLater,
-        title = { Text("What speakers are on ${output.label}?") },
+        title = { Text("Stereo here can play on all your speakers") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("So stereo can be spread over them. Asked once for this output; change it any time in Settings → Playback.", style = MaterialTheme.typography.bodySmall)
+                Text("What's connected to ${output.label}? Asked once for this output; change it any time in Settings → Playback.", style = MaterialTheme.typography.bodySmall)
                 SpeakerLayout.entries.forEach { l ->
                     Row(Modifier.fillMaxWidth().clickable { onAnswer(l) }.padding(vertical = 8.dp)) {
                         Text(l.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 14.dp))
