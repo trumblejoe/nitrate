@@ -86,4 +86,12 @@ class JellyfinDeviceProfileTest {
         // Media3 keeps MKV and MPEG-TS.
         assertTrue(JellyfinDeviceProfile.create(caps(), PlaybackSettings()).directPlayProfiles.any { "mkv" in it.container })
     }
+
+    @Test
+    fun `mpv takes the file as it is, styled and image subtitles included`() {
+        val p = JellyfinDeviceProfile.create(caps().copy(engine = dev.nitrate.core.playback.PlayerEngine.MPV), PlaybackSettings())
+        assertTrue("avi" in p.directPlayProfiles.first { it.type == "Video" }.container)
+        assertEquals(setOf("External", "Embed"), p.subtitleProfiles.filter { it.format == "ass" }.map { it.method }.toSet())
+        assertTrue(p.subtitleProfiles.any { it.format == "pgssub" && it.method == "Embed" })
+    }
 }

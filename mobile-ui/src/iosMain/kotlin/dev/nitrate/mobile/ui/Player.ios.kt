@@ -1,6 +1,7 @@
 package dev.nitrate.mobile.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -100,10 +101,17 @@ actual fun PlayerScreen(
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        UIKitViewController(
-            factory = { AVPlayerViewController().apply { player = session.player; showsPlaybackControls = true } },
-            modifier = Modifier.fillMaxSize(),
-        )
+        val engine by session.engine.collectAsState()
+        val mpv = session.mpv
+        if (engine == IosEngine.MPV && mpv != null) {
+            androidx.compose.ui.viewinterop.UIKitView(factory = { mpv.view() }, modifier = Modifier.fillMaxSize())
+            MpvControls(session, positionMs, durationMs)
+        } else {
+            UIKitViewController(
+                factory = { AVPlayerViewController().apply { player = session.player; showsPlaybackControls = true } },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         // Back, the title, and the track menus (Apple's own controls stay below).
         Row(
@@ -166,4 +174,59 @@ actual fun PlayerScreen(
         picking == StreamKind.AUDIO -> TrackPicker("Audio", p.audioChoices(), p.audioIndex, { session.selectTrack(StreamKind.AUDIO, it); picking = null }) { picking = null }
         else -> TrackPicker("Subtitles", p.subtitleChoices(), p.subtitleIndex, { session.selectTrack(StreamKind.SUBTITLE, it); picking = null }) { picking = null }
     }
+}
+
+/**
+ * mpv has no controls of its own: a tap shows these (play/pause, 10 seconds back and on, the
+ * timeline with times) and they fade after a few seconds.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.MpvControls(session: ApplePlayerSession, positionMs: Long, durationMs: Long) {
+    var shown by remember { mutableStateOf(true) }
+    var touchedAt by remember { mutableStateOf(0L) }
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    LaunchedEffect(shown, touchedAt) {
+        if (!shown) return@LaunchedEffect
+        kotlinx.coroutines.delay(4_000)
+        if (dragging == null) shown = false
+    }
+    fun touch() { shown = true; touchedAt = dev.nitrate.android.nowMs() }
+    Box(
+        Modifier.fillMaxSize().clickable(
+            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+            indication = null,
+        ) { if (shown) shown = false else touch() },
+    )
+    androidx.compose.animation.AnimatedVisibility(shown, modifier = Modifier.align(Alignment.Center)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { session.seekTo(positionMs - 10_000); touch() }) { Text("−10", color = Color.White, style = MaterialTheme.typography.titleLarge) }
+            TextButton(onClick = { session.togglePlay(); touch() }, modifier = Modifier.padding(horizontal = 24.dp)) {
+                Text(if (session.isPaused) "Play" else "Pause", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+            }
+            TextButton(onClick = { session.seekTo(positionMs + 10_000); touch() }) { Text("+10", color = Color.White, style = MaterialTheme.typography.titleLarge) }
+        }
+    }
+    androidx.compose.animation.AnimatedVisibility(shown, modifier = Modifier.align(Alignment.BottomCenter)) {
+        Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            val duration = durationMs.coerceAtLeast(1)
+            androidx.compose.material3.Slider(
+                value = dragging ?: (positionMs.toFloat() / duration),
+                onValueChange = { dragging = it; touch() },
+                onValueChangeFinished = { dragging?.let { session.seekTo((it * duration).toLong()) }; dragging = null },
+            )
+            Row {
+                Text(clockOf(dragging?.let { (it * duration).toLong() } ?: positionMs), color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                Text(clockOf(durationMs), color = Color.White, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+private fun clockOf(ms: Long): String {
+    val total = (ms / 1000).coerceAtLeast(0)
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    fun two(n: Long) = n.toString().padStart(2, '0')
+    return if (h > 0) "$h:${two(m)}:${two(s)}" else "$m:${two(s)}"
 }

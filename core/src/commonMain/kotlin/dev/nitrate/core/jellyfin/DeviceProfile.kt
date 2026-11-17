@@ -51,6 +51,7 @@ data class DeviceProfileDto(
 /** Builds the Jellyfin device profile from [CapabilityRules]. */
 object JellyfinDeviceProfile {
     private const val DIRECT_PLAY_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts"
+    private const val MPV_VIDEO_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts,avi,wmv,asf,flv,mpg,mpeg,vob,ogv,3gp"
     private const val AUDIO_CONTAINERS = "mp3,flac,m4a,mp4,aac,ogg,oga,opus,webm,wav,mka"
     private const val APPLE_VIDEO_CONTAINERS = "mp4,m4v,mov"
     private const val APPLE_AUDIO_CONTAINERS = "mp3,m4a,m4b,mp4,aac,flac,wav,aif,aiff"
@@ -65,10 +66,10 @@ object JellyfinDeviceProfile {
             DirectPlayProfileDto(APPLE_VIDEO_CONTAINERS, audio.joinToString(","), video.joinToString(","), "Video"),
             DirectPlayProfileDto(APPLE_AUDIO_CONTAINERS, audio.joinToString(","), null, "Audio"),
         ) else buildList {
-            // Codecs Media3 reads only from Matroska are direct played from MKV only.
-            val everywhere = video.filterNot { it in DeviceCapabilities.MATROSKA_ONLY_VIDEO }
+            // Codecs Media3 reads only from Matroska are direct played from MKV only (mpv reads them anywhere).
+            val everywhere = if (caps.engine == dev.nitrate.core.playback.PlayerEngine.MPV) video else video.filterNot { it in DeviceCapabilities.MATROSKA_ONLY_VIDEO }
             if (everywhere.isNotEmpty()) {
-                add(DirectPlayProfileDto(DIRECT_PLAY_CONTAINERS, audio.joinToString(","), everywhere.joinToString(","), "Video"))
+                add(DirectPlayProfileDto(if (caps.engine == dev.nitrate.core.playback.PlayerEngine.MPV) MPV_VIDEO_CONTAINERS else DIRECT_PLAY_CONTAINERS, audio.joinToString(","), everywhere.joinToString(","), "Video"))
             }
             if (everywhere.size < video.size) {
                 add(DirectPlayProfileDto("mkv,webm", audio.joinToString(","), video.joinToString(","), "Video"))
@@ -119,7 +120,8 @@ object JellyfinDeviceProfile {
         // Text formats the player renders itself; image formats (PGS, VobSub) work embedded in MKV
         // but must be burned in when transcoding.
         // Styled subtitles shown exactly: the server draws them into the picture (libass), fonts and all.
-        val exact = settings.subtitleStyle.styled == dev.nitrate.core.playback.StyledSubtitles.EXACT
+        // mpv draws styled subtitles exactly itself; the others may have the server draw them in.
+        val exact = settings.subtitleStyle.styled == dev.nitrate.core.playback.StyledSubtitles.EXACT && caps.engine != dev.nitrate.core.playback.PlayerEngine.MPV
         val subtitles = if (apple) appleSubtitles() else buildList {
             for (format in listOf("srt", "subrip", "vtt", "webvtt", "ass", "ssa", "ttml")) {
                 if (exact && dev.nitrate.core.playback.isStyledSubtitle(format)) {

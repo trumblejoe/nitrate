@@ -24,6 +24,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      name: ${{ steps.version.outputs.name }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -164,7 +167,7 @@ jobs:
           previous=$(git describe --tags --abbrev=0 --match "$match" HEAD^ 2>/dev/null || true)
           if [ -n "$previous" ]; then range="$previous..HEAD"; else range="-8"; fi
           changes=$(git log $range --no-merges --format='- %s' | head -12)
-          notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk · Jellyfin server plugin: nitrate-companion-$COMPANION_VERSION.zip
+          notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk · iPhone/iPad (unsigned, sideload with AltStore, SideStore or Sideloadly): nitrate-ios-$NAME.ipa, added a little later · Jellyfin server plugin: nitrate-companion-$COMPANION_VERSION.zip
 
           What's new:
           $changes
@@ -196,3 +199,44 @@ jobs:
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/nitrate-companion-$COMPANION_VERSION.zip"
           added=$(python3 tools/companion-manifest.py add repo/manifest.json "$COMPANION_VERSION" "12.4.0.0" companion.zip "$url" "$source_hash" "Built with $title")
           if [ "$added" = "added" ]; then gh release upload "$repo_tag" repo/manifest.json --clobber; fi
+
+  # The iPhone/iPad app: built on macOS after the release exists, and added to it as an unsigned
+  # .ipa (each person signs it when sideloading). Its checksum joins SHA256SUMS.
+  ios:
+    needs: release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Xcode
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+      - name: Kotlin framework
+        run: ./gradlew :ios-app:linkReleaseFrameworkIosArm64 --console=plain
+      - name: App
+        working-directory: iosApp
+        env:
+          NAME: ${{ needs.release.outputs.name }}
+        run: |
+          xcodegen generate
+          xcodebuild -project Nitrate.xcodeproj -scheme Nitrate -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            MARKETING_VERSION="$NAME" CURRENT_PROJECT_VERSION="$((1000 + GITHUB_RUN_NUMBER))" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+          NAME: ${{ needs.release.outputs.name }}
+        run: |
+          mkdir -p dist/Payload
+          cp -R iosApp/build/Build/Products/Release-iphoneos/Nitrate.app dist/Payload/
+          (cd dist && zip -qr "nitrate-ios-$NAME.ipa" Payload && rm -rf Payload)
+          gh release download "$TAG" --pattern SHA256SUMS --dir sums
+          (cd dist && shasum -a 256 "nitrate-ios-$NAME.ipa") >> sums/SHA256SUMS
+          gh release upload "$TAG" "dist/nitrate-ios-$NAME.ipa" sums/SHA256SUMS --clobber

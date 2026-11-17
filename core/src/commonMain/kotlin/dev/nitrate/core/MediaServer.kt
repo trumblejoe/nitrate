@@ -184,6 +184,7 @@ interface MediaServer {
     /**
      * Asks the server how to play [itemId] on this device. [forceTranscode] after a local decoder
      * failure; [audioIndex]/[subtitleIndex] pick streams (null lets the server choose, subtitle -1 is off).
+     * [deviceCaps] asks for another player than the device's usual one (iOS: mpv instead of Apple's).
      */
     suspend fun resolvePlayback(
         itemId: String,
@@ -193,6 +194,7 @@ interface MediaServer {
         audioIndex: Int? = null,
         subtitleIndex: Int? = null,
         mediaSourceId: String? = null,
+        deviceCaps: dev.nitrate.core.playback.DeviceCapabilities? = null,
     ): PlaybackPlan
     suspend fun reportStart(plan: PlaybackPlan, positionMs: Long)
     suspend fun reportProgress(plan: PlaybackPlan, positionMs: Long, isPaused: Boolean)

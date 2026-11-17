@@ -36,8 +36,13 @@ import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
 
+/** Which player shows the title. */
+enum class IosEngine { APPLE, MPV }
+
 /**
- * One title playing in Apple's player, with what the shared player screen needs: where it is,
+ * One title playing in Apple's player, or in mpv when the server would otherwise have to convert
+ * it for Apple's (styled or image subtitles, DTS/TrueHD, Hi10P, odd containers), with what the
+ * shared player screen needs: where it is,
  * the server's decision, the tracks (starting as the show's remembered pick or the server's,
  * changed by asking the server again from the same spot), skippable segments and scenes in the
  * credits. Start, progress (with the track indices) and stop are reported unless it's a recap clip.
@@ -63,6 +68,12 @@ class ApplePlayerSession(private val container: AppContainer, private val report
     val creditScenes: StateFlow<CreditScenesInfo?> = _creditScenes
     private val _ended = MutableStateFlow(false)
     val ended: StateFlow<Boolean> = _ended
+    private val _engine = MutableStateFlow(IosEngine.APPLE)
+    val engine: StateFlow<IosEngine> = _engine
+
+    /** mpv, once a title needs it (kept for the rest of this session's titles). */
+    var mpv: MpvPlayer? = null
+        private set
 
     private var tracks: TrackSetup? = null
     private var progressJob: Job? = null
@@ -87,10 +98,35 @@ class ApplePlayerSession(private val container: AppContainer, private val report
 
     private suspend fun play(itemId: String, startMs: Long, audioIndex: Int?, subtitleIndex: Int?) {
         val previous = _plan.value
-        val p = server.resolvePlayback(
-            itemId, isAudio = false, startMs = startMs, audioIndex = audioIndex, subtitleIndex = subtitleIndex,
-            mediaSourceId = dev.nitrate.android.playback.VersionChoices[itemId],
-        )
+        val version = dev.nitrate.android.playback.VersionChoices[itemId]
+        var p = server.resolvePlayback(itemId, isAudio = false, startMs = startMs, audioIndex = audioIndex, subtitleIndex = subtitleIndex, mediaSourceId = version)
+        // Apple's player would need the server to convert it: mpv plays the file as it is instead.
+        val factory = Mpv.factory
+        if (p.method == dev.nitrate.core.model.PlayMethod.TRANSCODE && factory != null) {
+            val forMpv = runCatching {
+                server.resolvePlayback(itemId, isAudio = false, startMs = startMs, audioIndex = audioIndex, subtitleIndex = subtitleIndex, mediaSourceId = version,
+                    deviceCaps = Mpv.capabilities(container.capabilities))
+            }.getOrNull()
+            if (forMpv != null && forMpv.method != dev.nitrate.core.model.PlayMethod.TRANSCODE) {
+                // The Apple play session the server opened is closed straight away.
+                server.reportStopped(p, startMs)
+                p = forMpv
+                player.pause()
+                player.replaceCurrentItemWithPlayerItem(null)
+                val m = mpv ?: factory.create().also { mpv = it }
+                m.load(
+                    p.url, server.authorizationHeader(), startMs / 1000.0,
+                    dev.nitrate.core.playback.MpvTracks.audioId(p, p.audioIndex) ?: -1,
+                    dev.nitrate.core.playback.MpvTracks.subtitleId(p, p.subtitleIndex),
+                    p.externalSubtitles.map { it.url },
+                )
+                _engine.value = IosEngine.MPV
+                started(p, previous, startMs)
+                return
+            }
+        }
+        mpv?.pause()
+        _engine.value = IosEngine.APPLE
         val url = NSURL.URLWithString(p.url) ?: error("The server gave an address the player can't open.")
         val headers = mapOf<Any?, Any?>("Authorization" to server.authorizationHeader())
         val asset = AVURLAsset(uRL = url, options = mapOf<Any?, Any?>(HEADER_FIELDS to headers))
@@ -100,6 +136,10 @@ class ApplePlayerSession(private val container: AppContainer, private val report
         player.replaceCurrentItemWithPlayerItem(playerItem)
         if (startMs > 0) player.seekToTime(CMTimeMakeWithSeconds(startMs / 1000.0, 600))
         player.play()
+        started(p, previous, startMs)
+    }
+
+    private suspend fun started(p: PlaybackPlan, previous: PlaybackPlan?, startMs: Long) {
         _plan.value = p
         _ended.value = false
         if (reported) {
@@ -110,21 +150,35 @@ class ApplePlayerSession(private val container: AppContainer, private val report
         followProgress()
     }
 
+    private val usingMpv get() = _engine.value == IosEngine.MPV
+
+    /** Where the title is now, in ms, in whichever player shows it. */
+    fun currentMs(): Long = if (usingMpv) ((mpv?.position() ?: 0.0) * 1000).toLong() else player.positionMs()
+
+    private fun paused(): Boolean = if (usingMpv) mpv?.isPaused() ?: true else player.rate == 0f
+
     private fun followProgress() {
         progressJob?.cancel()
         progressJob = scope.launch {
             var lastReport = 0L
             while (true) {
                 delay(250)
-                _positionMs.value = player.positionMs()
-                player.currentItem?.let { current ->
-                    val seconds = CMTimeGetSeconds(current.duration)
-                    if (!seconds.isNaN() && seconds > 0) _durationMs.value = (seconds * 1000).toLong()
+                _positionMs.value = currentMs()
+                if (usingMpv) {
+                    mpv?.let { m ->
+                        m.duration().takeIf { it > 0 }?.let { _durationMs.value = (it * 1000).toLong() }
+                        if (m.isEnded()) _ended.value = true
+                    }
+                } else {
+                    player.currentItem?.let { current ->
+                        val seconds = CMTimeGetSeconds(current.duration)
+                        if (!seconds.isNaN() && seconds > 0) _durationMs.value = (seconds * 1000).toLong()
+                    }
                 }
                 val now = dev.nitrate.android.nowMs()
                 if (reported && now - lastReport >= 10_000) {
                     lastReport = now
-                    _plan.value?.let { p -> runCatching { server.reportProgress(p, _positionMs.value, isPaused = player.rate == 0f) } }
+                    _plan.value?.let { p -> runCatching { server.reportProgress(p, _positionMs.value, isPaused = paused()) } }
                 }
                 if (_creditScenes.value == null && _durationMs.value > 0) updateCredits()
             }
@@ -139,13 +193,16 @@ class ApplePlayerSession(private val container: AppContainer, private val report
     }
 
     fun seekTo(ms: Long) {
-        player.seekToTime(CMTimeMakeWithSeconds(ms.coerceAtLeast(0) / 1000.0, 600))
+        if (usingMpv) mpv?.seek(ms.coerceAtLeast(0) / 1000.0) else player.seekToTime(CMTimeMakeWithSeconds(ms.coerceAtLeast(0) / 1000.0, 600))
         _positionMs.value = ms
     }
 
     fun togglePlay() {
-        if (player.rate == 0f) player.play() else player.pause()
+        if (usingMpv) mpv?.let { if (it.isPaused()) it.play() else it.pause() }
+        else if (player.rate == 0f) player.play() else player.pause()
     }
+
+    val isPaused: Boolean get() = paused()
 
     /** Picks a track: remembered for the show (or title), then the stream restarts from here with it. */
     override fun selectTrack(kind: StreamKind, index: Int) {
@@ -155,21 +212,30 @@ class ApplePlayerSession(private val container: AppContainer, private val report
             tracks?.let { setup -> tracks = runCatching { container.pickTrack(item, setup, kind, index) }.getOrNull() ?: setup }
             val audio = if (kind == StreamKind.AUDIO) index else p.audioIndex
             val subtitle = if (kind == StreamKind.SUBTITLE) index else p.subtitleIndex
-            runCatching { play(item.id, player.positionMs(), audio, subtitle) }.onFailure { _error.value = "Couldn't change the track: ${it.message}" }
+            val m = mpv
+            // mpv has a file's own tracks at hand: switch without restarting.
+            if (usingMpv && m != null && p.method == dev.nitrate.core.model.PlayMethod.DIRECT_PLAY) {
+                if (kind == StreamKind.AUDIO) dev.nitrate.core.playback.MpvTracks.audioId(p, index)?.let(m::setAudio) else m.setSubtitle(dev.nitrate.core.playback.MpvTracks.subtitleId(p, index))
+                _plan.value = p.copy(audioIndex = audio, subtitleIndex = subtitle)
+                if (reported) runCatching { server.reportProgress(_plan.value!!, currentMs(), isPaused = paused()) }
+                return@launch
+            }
+            runCatching { play(item.id, currentMs(), audio, subtitle) }.onFailure { _error.value = "Couldn't change the track: ${it.message}" }
         }
     }
 
     override fun handleRemote(command: String, seekMs: Long?) {
         when (command) {
-            "Pause", "Stop" -> player.pause()
-            "Unpause" -> player.play()
+            "Pause", "Stop" -> if (usingMpv) mpv?.pause() else player.pause()
+            "Unpause" -> if (usingMpv) mpv?.play() else player.play()
             "PlayPause" -> togglePlay()
             "Seek" -> seekMs?.let(::seekTo)
         }
     }
 
     fun release() {
-        if (reported) _plan.value?.let { server.reportStopped(it, player.positionMs()) }
+        if (reported) _plan.value?.let { server.reportStopped(it, currentMs()) }
+        mpv?.release()
         endObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
         player.pause()
         player.replaceCurrentItemWithPlayerItem(null)

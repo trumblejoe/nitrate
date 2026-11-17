@@ -46,6 +46,12 @@ enum class PlayerEngine {
      * drawn into the picture by the server.
      */
     APPLE,
+
+    /**
+     * mpv (libmpv on iOS): reads every container and codec FFmpeg does, draws ASS/SSA with libass
+     * and image subtitles itself; the server only sends the file.
+     */
+    MPV,
 }
 
 /** What the TV *claims* it can play. Real behaviour can differ; see the playback test. */

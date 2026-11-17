@@ -8,6 +8,8 @@ struct NitrateApp: App {
     init() {
         // Sound plays with the silent switch on, like any video app.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        // mpv plays what Apple's player can't (styled subtitles, DTS/TrueHD, Hi10P, MKV as it is).
+        MpvBridgeKt.useMpv(make: { NitrateMpvPlayer() })
     }
 
     var body: some Scene {

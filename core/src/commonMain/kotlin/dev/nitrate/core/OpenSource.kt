@@ -50,6 +50,14 @@ object OpenSource {
         OpenSourceComponent("Rust standard library and crates (in libdoviJNI.so)", "MIT License", "MIT-Rust.txt", "https://crates.io"),
         OpenSourceComponent("AndroidX Media3 (ExoPlayer, FFmpeg extension)", APACHE, "Apache-2.0.txt", "https://github.com/androidx/media"),
         OpenSourceComponent("AndroidX and Jetpack Compose", APACHE, "Apache-2.0.txt", "https://developer.android.com/jetpack/androidx"),
+        OpenSourceComponent(
+            "mpv, via MPVKit (iPhone and iPad)", "GNU LGPL 3.0 (the LGPL build)", "LGPL-3.0.txt", "https://github.com/mpvkit/MPVKit",
+            note = "The iPhone/iPad app only: plays what Apple's player can't (styled subtitles exactly, DTS and TrueHD, " +
+                "Hi10P, MKV and other containers as they are). MPVKit 1.1.0-n9.0.2's LGPL product, never its GPL one: " +
+                "libmpv with FFmpeg, libplacebo and libass (LGPL), MoltenVK (Apache 2.0), dav1d (BSD), FreeType, HarfBuzz, " +
+                "FriBidi, GnuTLS/Nettle (LGPL) and their own licences. Sources: https://github.com/mpvkit/MPVKit and the " +
+                "projects it builds; Nitrate's own source to rebuild the app with them: https://github.com/trumblejoe/nitrate.",
+        ),
         OpenSourceComponent("Kotlin, kotlinx.coroutines, kotlinx.serialization, kotlinx-io", APACHE, "Apache-2.0.txt", "https://github.com/JetBrains/kotlin"),
         OpenSourceComponent("Ktor", APACHE, "Apache-2.0.txt", "https://github.com/ktorio/ktor"),
         OpenSourceComponent("OkHttp and Okio", APACHE, "Apache-2.0.txt", "https://github.com/square/okhttp"),

@@ -12,11 +12,19 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     # The Kotlin framework: device or simulator build, from ios-app.
     KOTLIN_FRAMEWORK_DIR: "$(SRCROOT)/../ios-app/build/bin/iosArm64/releaseFramework"
+packages:
+  # libmpv and its LGPL FFmpeg (the "MPVKit" product; never MPVKit-GPL).
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit
+    exactVersion: 1.1.0-n9.0.2
 targets:
   Nitrate:
     type: application
     platform: iOS
     sources: [Nitrate]
+    dependencies:
+      - package: MPVKit
+        product: MPVKit
     scheme: {}
     info:
       path: Nitrate/Info.plist
