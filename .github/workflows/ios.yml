@@ -1,0 +1,43 @@
+name: iOS
+
+# Builds the iPhone/iPad app on macOS and packages an unsigned .ipa for sideloading
+# (AltStore, SideStore, Sideloadly sign it with the installer's own Apple ID).
+on:
+  push:
+    branches: [ios-app]
+  workflow_dispatch:
+
+jobs:
+  ipa:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Xcode
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+      - name: Kotlin framework
+        run: ./gradlew :ios-app:linkReleaseFrameworkIosArm64 --console=plain
+      - name: App
+        working-directory: iosApp
+        run: |
+          xcodegen generate
+          xcodebuild -project Nitrate.xcodeproj -scheme Nitrate -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            MARKETING_VERSION="0.0.0-dev.${GITHUB_RUN_NUMBER}" CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Package
+        run: |
+          mkdir -p dist/Payload
+          cp -R iosApp/build/Build/Products/Release-iphoneos/Nitrate.app dist/Payload/
+          (cd dist && zip -qr "nitrate-ios-dev.${GITHUB_RUN_NUMBER}.ipa" Payload && rm -rf Payload)
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nitrate-ios
+          path: dist/*.ipa

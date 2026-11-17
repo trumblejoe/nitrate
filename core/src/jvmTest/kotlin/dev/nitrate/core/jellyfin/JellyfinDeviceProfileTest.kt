@@ -71,4 +71,19 @@ class JellyfinDeviceProfileTest {
         // Plain subtitles are untouched.
         assertEquals(setOf("External", "Embed"), methods(dev.nitrate.core.playback.StyledSubtitles.EXACT, "srt"))
     }
+
+    @Test
+    fun `Apple's player gets MP4 and MOV, fragmented MP4 HLS and subtitles in HLS or burned in`() {
+        val p = JellyfinDeviceProfile.create(caps().copy(engine = dev.nitrate.core.playback.PlayerEngine.APPLE), PlaybackSettings())
+        val video = p.directPlayProfiles.first { it.type == "Video" }
+        assertEquals("mp4,m4v,mov", video.container)
+        assertFalse(p.directPlayProfiles.any { "mkv" in it.container })
+        assertEquals("mp4", p.transcodingProfiles.first { it.type == "Video" }.container)
+        assertEquals("hls", p.transcodingProfiles.first { it.type == "Video" }.protocol)
+        assertEquals(setOf("Hls", "Encode"), p.subtitleProfiles.filter { it.format == "srt" }.map { it.method }.toSet())
+        assertEquals(listOf("Encode"), p.subtitleProfiles.filter { it.format == "ass" }.map { it.method })
+        assertEquals(listOf("Encode"), p.subtitleProfiles.filter { it.format == "pgssub" }.map { it.method })
+        // Media3 keeps MKV and MPEG-TS.
+        assertTrue(JellyfinDeviceProfile.create(caps(), PlaybackSettings()).directPlayProfiles.any { "mkv" in it.container })
+    }
 }

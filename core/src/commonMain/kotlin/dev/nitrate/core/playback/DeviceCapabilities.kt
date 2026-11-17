@@ -35,6 +35,19 @@ data class AudioCodecCaps(val codec: String, val decoder: String?, val passthrou
     val supported get() = decoder != null || passthrough
 }
 
+/** The player a profile is built for; it decides containers and how subtitles arrive. */
+enum class PlayerEngine {
+    /** Android's Media3: MP4, MKV, WebM, MPEG-TS; text subtitles drawn here. */
+    MEDIA3,
+
+    /**
+     * Apple's AVPlayer: MP4/MOV only (MKV is remuxed by the server into HLS, which is cheap),
+     * HLS in fragmented MP4 so HEVC and HDR survive; subtitles only as WebVTT inside HLS, else
+     * drawn into the picture by the server.
+     */
+    APPLE,
+}
+
 /** What the TV *claims* it can play. Real behaviour can differ; see the playback test. */
 data class DeviceCapabilities(
     val video: Map<String, VideoCodecCaps>,
@@ -54,6 +67,8 @@ data class DeviceCapabilities(
      * Media3 sends these as they are when listed, else the core (DTS) or plain E-AC-3.
      */
     val passthroughExtras: Set<String> = emptySet(),
+    /** Which player plays the stream: Media3 (Android) or Apple's AVPlayer (iOS), which reads fewer containers. */
+    val engine: PlayerEngine = PlayerEngine.MEDIA3,
 ) {
     companion object {
         const val DOLBY_VISION_MIME = "video/dolby-vision"

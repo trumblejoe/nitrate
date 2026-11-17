@@ -52,13 +52,19 @@ data class DeviceProfileDto(
 object JellyfinDeviceProfile {
     private const val DIRECT_PLAY_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts"
     private const val AUDIO_CONTAINERS = "mp3,flac,m4a,mp4,aac,ogg,oga,opus,webm,wav,mka"
+    private const val APPLE_VIDEO_CONTAINERS = "mp4,m4v,mov"
+    private const val APPLE_AUDIO_CONTAINERS = "mp3,m4a,m4b,mp4,aac,flac,wav,aif,aiff"
 
     fun create(caps: DeviceCapabilities, settings: PlaybackSettings): DeviceProfileDto {
         val video = CapabilityRules.videoCodecs(caps, settings).filter { it.allowed }.map { it.id }
         val audio = CapabilityRules.audioCodecs(caps, settings).filter { it.allowed }.map { it.id } + listOf("pcm_s16le", "pcm_s24le")
         val ranges = CapabilityRules.allowedRangeTypes(caps, settings)
 
-        val directPlay = buildList {
+        val apple = caps.engine == dev.nitrate.core.playback.PlayerEngine.APPLE
+        val directPlay = if (apple) listOf(
+            DirectPlayProfileDto(APPLE_VIDEO_CONTAINERS, audio.joinToString(","), video.joinToString(","), "Video"),
+            DirectPlayProfileDto(APPLE_AUDIO_CONTAINERS, audio.joinToString(","), null, "Audio"),
+        ) else buildList {
             // Codecs Media3 reads only from Matroska are direct played from MKV only.
             val everywhere = video.filterNot { it in DeviceCapabilities.MATROSKA_ONLY_VIDEO }
             if (everywhere.isNotEmpty()) {
@@ -74,8 +80,9 @@ object JellyfinDeviceProfile {
         val transcodeVideo = listOfNotNull("hevc".takeIf { it in video }, "h264").joinToString(",")
         val transcodeAudio = listOf("aac", "ac3", "eac3").filter { it in audio }.ifEmpty { listOf("aac") }.joinToString(",")
         val transcoding = listOf(
-            TranscodingProfileDto("ts", "Video", transcodeVideo, transcodeAudio, "hls", minSegments = 1, breakOnNonKeyFrames = true),
-            TranscodingProfileDto("mp3", "Audio", "", "mp3", "http"),
+            // AVPlayer takes HEVC and HDR only in fragmented MP4 segments.
+            TranscodingProfileDto(if (apple) "mp4" else "ts", "Video", transcodeVideo, transcodeAudio, "hls", minSegments = 1, breakOnNonKeyFrames = true),
+            if (apple) TranscodingProfileDto("aac", "Audio", "", "aac", "hls", minSegments = 1) else TranscodingProfileDto("mp3", "Audio", "", "mp3", "http"),
         )
 
         val codecProfiles = CapabilityRules.videoLimits(caps, settings).flatMap { limit ->
@@ -113,7 +120,7 @@ object JellyfinDeviceProfile {
         // but must be burned in when transcoding.
         // Styled subtitles shown exactly: the server draws them into the picture (libass), fonts and all.
         val exact = settings.subtitleStyle.styled == dev.nitrate.core.playback.StyledSubtitles.EXACT
-        val subtitles = buildList {
+        val subtitles = if (apple) appleSubtitles() else buildList {
             for (format in listOf("srt", "subrip", "vtt", "webvtt", "ass", "ssa", "ttml")) {
                 if (exact && dev.nitrate.core.playback.isStyledSubtitle(format)) {
                     add(SubtitleProfileDto(format, "Encode"))
@@ -137,5 +144,17 @@ object JellyfinDeviceProfile {
             codecProfiles = codecProfiles,
             subtitleProfiles = subtitles,
         )
+    }
+
+    /**
+     * AVPlayer shows subtitles only as WebVTT inside an HLS stream; anything else (styled ASS,
+     * PGS, VobSub) is drawn into the picture by the server.
+     */
+    private fun appleSubtitles(): List<SubtitleProfileDto> = buildList {
+        for (format in listOf("srt", "subrip", "vtt", "webvtt", "ttml")) {
+            add(SubtitleProfileDto(format, "Hls"))
+            add(SubtitleProfileDto(format, "Encode"))
+        }
+        for (format in listOf("ass", "ssa", "pgssub", "dvdsub", "dvbsub")) add(SubtitleProfileDto(format, "Encode"))
     }
 }

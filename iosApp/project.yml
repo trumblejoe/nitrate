@@ -1,0 +1,55 @@
+# Nitrate for iPhone and iPad. Generate the Xcode project with `xcodegen` (in iosApp/), after
+# building the Kotlin side: ./gradlew :ios-app:linkReleaseFrameworkIosArm64 (or Debug / the
+# simulator). .github/workflows/ios.yml does both and packages an unsigned .ipa for sideloading.
+name: Nitrate
+options:
+  bundleIdPrefix: dev.nitrate
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    MARKETING_VERSION: "0.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # The Kotlin framework: device or simulator build, from ios-app.
+    KOTLIN_FRAMEWORK_DIR: "$(SRCROOT)/../ios-app/build/bin/iosArm64/releaseFramework"
+targets:
+  Nitrate:
+    type: application
+    platform: iOS
+    sources: [Nitrate]
+    scheme: {}
+    info:
+      path: Nitrate/Info.plist
+      properties:
+        CFBundleDisplayName: Nitrate
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        UIRequiresFullScreen: false
+        CADisableMinimumFrameDurationOnPhone: true
+        # Home servers are usually plain http on the local network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: Nitrate looks for your Jellyfin server on this network.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.nitrate.ios
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        FRAMEWORK_SEARCH_PATHS: ["$(inherited)", "$(KOTLIN_FRAMEWORK_DIR)"]
+        OTHER_LDFLAGS: ["$(inherited)", "-framework", "NitrateKit", "-lc++", "-lsqlite3"]
+        ENABLE_BITCODE: NO
+        # Unsigned: each person signs it when sideloading (AltStore, SideStore, Sideloadly).
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
