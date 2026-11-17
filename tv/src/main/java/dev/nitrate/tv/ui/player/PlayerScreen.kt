@@ -68,9 +68,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
-import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import dev.nitrate.core.MediaServer
 import dev.nitrate.core.model.PlaybackPlan
@@ -92,11 +90,12 @@ import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.SubtitleDelivery
 
 private const val CONTROLS_TIMEOUT_MS = 5_000L
-private const val SEEK_BACK_MS = 10_000L
-private const val SEEK_FORWARD_MS = 30_000L
 
 
 private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX, CHAT }
+
+/** Keys that, with the controls hidden, only bring them back. */
+private val WAKE_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -231,7 +230,10 @@ fun PlayerScreen(
     var panelFocused by remember { mutableStateOf(false) }
     val playbackControls = session.controls
     val rootFocus = remember { FocusRequester() }
-    val playPauseFocus = remember { FocusRequester() }
+    val controlFocus = remember { ControlFocus() }
+    // The OK or arrow press that brings the controls back only does that (its release is ignored too).
+    var swallowRelease by remember { mutableStateOf<Key?>(null) }
+    var rootFocused by remember { mutableStateOf(false) }
 
     // Started by itself (rolled on) or asked for; any key after is a press.
     LaunchedEffect(item?.id) {
@@ -271,7 +273,19 @@ fun PlayerScreen(
 
     LaunchedEffect(controlsVisible) {
         // A credits-scene banner keeps focus on its button, so OK acts on it.
-        if (controlsVisible && creditAction == null) runCatching { playPauseFocus.requestFocus() }
+        if (controlsVisible && creditAction == null) controlFocus.playPause()
+    }
+    // A pop-up closed: the controls stay up a while longer (presses in it weren't counted) and focus
+    // goes back to the button that opened it, so one Back closes it and the next hides the controls.
+    var panelWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(panel) {
+        touch()
+        if (panel != Panel.NONE) { panelWasOpen = true; return@LaunchedEffect }
+        if (!panelWasOpen) return@LaunchedEffect
+        panelWasOpen = false
+        // Once the dialog's window has gone and this one has focus again.
+        delay(50)
+        controlFocus.restore()
     }
 
     fun togglePanel(target: PlayerPanel) {
@@ -308,7 +322,8 @@ fun PlayerScreen(
             creditAction != null -> { creditAction = null; runCatching { rootFocus.requestFocus() } }
             panel != Panel.NONE -> panel = Panel.NONE
             openPanel != null -> { openPanel = null; touch() }
-            controlsVisible && player.isPlaying -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
+            // The same whether playing or paused: Back hides the controls, then leaves.
+            controlsVisible -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
             else -> onExit()
         }
     }
@@ -329,7 +344,22 @@ fun PlayerScreen(
         Modifier
             .weight(1f)
             .fillMaxHeight()
-            .onPreviewKeyEvent { touch(); pressed(); false }
+            .onPreviewKeyEvent { event ->
+                pressed()
+                // Back is handled on its own (BackHandler): showing the controls here would make
+                // it hide them again instead of leaving.
+                if (event.key == Key.Back || event.key == Key.Escape) return@onPreviewKeyEvent false
+                val wasHidden = !controlsVisible
+                touch()
+                // With the controls hidden, OK or an arrow only brings them back (focus on play/pause),
+                // never also presses or moves on the button that gets focus.
+                if (event.key in WAKE_KEYS) {
+                    if (event.type == KeyEventType.KeyDown && wasHidden && rootFocused) { swallowRelease = event.key; return@onPreviewKeyEvent true }
+                    if (event.type == KeyEventType.KeyDown && swallowRelease == event.key) return@onPreviewKeyEvent true
+                    if (event.type == KeyEventType.KeyUp && swallowRelease == event.key) { swallowRelease = null; return@onPreviewKeyEvent true }
+                }
+                false
+            }
             // While controls are hidden the root has focus; keys act directly on playback.
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyUp) return@onKeyEvent false
@@ -338,12 +368,15 @@ fun PlayerScreen(
                     Key.MediaFastForward -> { player.seekTo(player.currentPosition + SEEK_FORWARD_MS); true }
                     Key.MediaRewind -> { player.seekTo(player.currentPosition - SEEK_BACK_MS); true }
                     Key.Captions -> { panel = Panel.SUBTITLES; true }
+                    // The remote's menu key (≡ on Fire TV) opens More.
+                    Key.Menu -> if (!easy && plan != null) { panel = Panel.MORE; true } else false
                     // Next/previous: by chapter, when the title has them.
                     Key.MediaNext -> item?.chapters?.let { dev.nitrate.core.playback.Chapters.next(it, player.currentPosition) }?.let { player.seekTo(it); true } ?: false
                     Key.MediaPrevious -> item?.chapters?.let { dev.nitrate.core.playback.Chapters.previous(it, player.currentPosition) }?.let { player.seekTo(it); true } ?: false
                     else -> false
                 }
             }
+            .onFocusChanged { rootFocused = it.isFocused }
             .focusRequester(rootFocus)
             .focusable(),
     ) {
@@ -372,31 +405,35 @@ fun PlayerScreen(
 
         val p = plan
         androidx.compose.animation.AnimatedVisibility(visible = controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
-            Controls(
+            // Info and Chat open beside the video: their buttons close them again.
+            fun toggle(target: Panel) { panel = if (panel == target) Panel.NONE else target }
+            val ready = p != null
+            PlayerControls(
                 item = item,
                 plan = p,
                 position = position,
                 duration = duration,
                 playing = playing,
-                playPauseFocus = playPauseFocus,
+                focus = controlFocus,
                 onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                 onSeek = { delta ->
                     // Duration is 0 while unknown (live TV, still loading): don't clamp to it.
                     val target = (player.currentPosition + delta).coerceAtLeast(0)
                     player.seekTo(if (duration > 0) target.coerceAtMost(duration) else target)
                 },
-                onOpen = { panel = it },
                 // Easy mode: play/pause, the seek bar, audio and subtitles (and lyrics) only.
-                easy = easy,
-                extraButtons = if (easy) listOfNotNull(((if (showLyrics) "Hide lyrics" else "Lyrics") to { showLyrics = !showLyrics }).takeIf { lyrics != null }) else listOfNotNull(
-                    ("Chapters" to { panel = Panel.CHAPTERS }).takeIf { (item?.chapters?.size ?: 0) > 1 },
-                    ((if (showLyrics) "Hide lyrics" else "Lyrics") to { showLyrics = !showLyrics }).takeIf { lyrics != null },
-                    ("Why converting?" to { panel = Panel.FIX }).takeIf { capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
-                    ("Chat" to { panel = Panel.CHAT }).takeIf { chatGroup != null },
-                ) +
-                    panels.map { it.panelLabel to { togglePanel(it) } } +
-                    listOfNotNull(sendLog?.let { send ->
-                        "Send log" to {
+                buttons = listOfNotNull(
+                    PlayerAction("Audio", ready) { panel = Panel.AUDIO },
+                    PlayerAction("Subtitles", ready) { panel = Panel.SUBTITLES },
+                    PlayerAction(if (panel == Panel.INFO) "Hide info" else "Info", ready) { toggle(Panel.INFO) }.takeIf { !easy },
+                    PlayerAction("More", ready) { panel = Panel.MORE }.takeIf { !easy },
+                    PlayerAction("Chapters") { panel = Panel.CHAPTERS }.takeIf { !easy && (item?.chapters?.size ?: 0) > 1 },
+                    PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },
+                    PlayerAction("Why converting?") { panel = Panel.FIX }.takeIf { !easy && capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
+                    PlayerAction(if (panel == Panel.CHAT) "Hide chat" else "Chat") { toggle(Panel.CHAT) }.takeIf { !easy && chatGroup != null },
+                ) + (if (easy) emptyList() else panels.map { PlayerAction(it.panelLabel) { togglePanel(it) } }) +
+                    listOfNotNull(sendLog?.takeIf { !easy }?.let { send ->
+                        PlayerAction("Send log") {
                             logMessage = "Sending the playback log…"
                             logScope.launch {
                                 logMessage = send(session).fold(
@@ -404,7 +441,6 @@ fun PlayerScreen(
                                     { e -> "Couldn't send the log: ${e.message ?: e::class.simpleName}" },
                                 )
                             }
-                            Unit
                         }
                     }),
             )
@@ -533,92 +569,6 @@ fun PlayerScreen(
         TrackDialog("Subtitles", p.subtitleChoices(), p.subtitleIndex, onSelect = { selectTrack(StreamKind.SUBTITLE, it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })
     }
 }
-
-@Composable
-private fun Controls(
-    item: MediaItem?,
-    plan: PlaybackPlan?,
-    position: Long,
-    duration: Long,
-    playing: Boolean,
-    playPauseFocus: FocusRequester,
-    onPlayPause: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onOpen: (Panel) -> Unit,
-    easy: Boolean = false,
-    extraButtons: List<Pair<String, () -> Unit>> = emptyList(),
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
-            .padding(start = 48.dp, end = 48.dp, top = 80.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item?.let {
-            Text(it.displayTitle, style = MaterialTheme.typography.headlineSmall, color = Color.White)
-            it.episodeLabel?.let { label -> Text(label, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f)) }
-        }
-        SeekBar(position, duration, onSeek)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onPlayPause, modifier = Modifier.focusRequester(playPauseFocus)) { Text(if (playing) "Pause" else "Play") }
-            OutlinedButton(onClick = { onOpen(Panel.AUDIO) }, enabled = plan != null) { Text("Audio") }
-            OutlinedButton(onClick = { onOpen(Panel.SUBTITLES) }, enabled = plan != null) { Text("Subtitles") }
-            if (!easy) OutlinedButton(onClick = { onOpen(Panel.INFO) }, enabled = plan != null) { Text("Info") }
-            if (!easy) OutlinedButton(onClick = { onOpen(Panel.MORE) }, enabled = plan != null) { Text("More") }
-            for ((label, action) in extraButtons) OutlinedButton(onClick = action) { Text(label) }
-            plan?.takeIf { it.method != PlayMethod.DIRECT_PLAY }?.let {
-                Text(
-                    if (it.method == PlayMethod.TRANSCODE) "Transcoding" else "Direct stream",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(start = 12.dp),
-                )
-            }
-        }
-    }
-}
-
-/** Focusable progress bar: Left/Right seek while it has focus. */
-@Composable
-private fun SeekBar(position: Long, duration: Long, onSeek: (Long) -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val accent = MaterialTheme.colorScheme.primary
-    Column {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(if (focused) 10.dp else 6.dp)
-                .background(Color.White.copy(alpha = 0.25f), MaterialTheme.shapes.small)
-                .onFocusChanged { focused = it.isFocused }
-                .onKeyEvent { event ->
-                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-                    when (event.key) {
-                        Key.DirectionLeft -> { onSeek(-SEEK_BACK_MS); true }
-                        Key.DirectionRight -> { onSeek(SEEK_FORWARD_MS); true }
-                        else -> false
-                    }
-                }
-                .focusable(),
-        ) {
-            val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
-            Box(Modifier.fillMaxWidth(fraction).height(if (focused) 10.dp else 6.dp).background(accent, MaterialTheme.shapes.small))
-        }
-        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatTime(position), style = MaterialTheme.typography.labelMedium, color = Color.White)
-            Text("-" + formatTime((duration - position).coerceAtLeast(0)), style = MaterialTheme.typography.labelMedium, color = Color.White)
-        }
-    }
-}
-
-private fun formatTime(ms: Long): String {
-    val total = ms / 1000
-    val h = total / 3600
-    val m = (total % 3600) / 60
-    val s = total % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
-}
-
 
 /** The title's chapters with their pictures; the one playing is focused, OK jumps there. */
 @Composable

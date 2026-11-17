@@ -236,6 +236,26 @@ class TvScreenshotTest {
         press("up", "left", "up")
     }) { c -> dev.nitrate.tv.ui.settings.ServersScreen(c, onSwitch = {}, onAdd = {}) }
 
+    /** The player's controls: every button alike until focused; the focused one is plain to see. */
+    private fun playerControls(name: String, vararg keys: String, check: () -> Unit = {}) = shoot(name, act = { press(*keys); check() }) { c ->
+        val item by androidx.compose.runtime.produceState<dev.nitrate.core.model.MediaItem?>(null) { value = c.server.getItem("s1e2") }
+        val focus = androidx.compose.runtime.remember { dev.nitrate.tv.ui.player.ControlFocus() }
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF2A3440))) {
+            Box(Modifier.align(androidx.compose.ui.Alignment.BottomStart)) {
+                dev.nitrate.tv.ui.player.PlayerControls(
+                    item, null, position = 1_260_000, duration = 2_700_000, playing = true, focus = focus,
+                    onPlayPause = {}, onSeek = {},
+                    buttons = listOf("Audio", "Subtitles", "Info", "More", "Chapters").map { dev.nitrate.tv.ui.player.PlayerAction(it) {} },
+                )
+            }
+        }
+        androidx.compose.runtime.LaunchedEffect(Unit) { focus.playPause() }
+    }
+
+    @Test fun playerControlsPlay() = playerControls("tv-player-controls-play")
+    @Test fun playerControlsButton() = playerControls("tv-player-controls-audio", "right") { check(focusedHasText("Audio")) }
+    @Test fun playerControlsSeek() = playerControls("tv-player-controls-seek", "up")
+
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {
         keys.forEach { name ->

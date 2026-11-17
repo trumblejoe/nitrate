@@ -67,6 +67,8 @@ fun PlayerMoreDialog(
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
+        // Back from "Find subtitles" or "Watch together" returns here rather than closing it all.
+        androidx.activity.compose.BackHandler(enabled = searching || together) { searching = false; together = false }
         Column(
             Modifier.width(760.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -145,7 +147,8 @@ fun PlayerMoreDialog(
             }
         }
     }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    // On opening, and on coming back from a sub-page (its window keeps focus but the button went).
+    LaunchedEffect(searching, together) { if (!searching && !together) runCatching { first.requestFocus() } }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
