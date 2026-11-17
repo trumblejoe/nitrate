@@ -137,7 +137,7 @@ internal fun PlayerControls(
 }
 
 /**
- * The chapters under the buttons. Folded to one line ("▾ Chapters", the one playing) so the picture
+ * The chapters under the buttons. Folded to one line ("▾ Chapters", nothing more: names and counts can spoil) so the picture
  * keeps the screen; Down onto it opens the pictures: a picture each (or a numbered placeholder when
  * the server has none), name and start time, starting on the chapter playing. OK jumps to the
  * focused one; Up (or focus leaving any other way) folds it again.
@@ -159,12 +159,8 @@ private fun ChapterStrip(chapters: List<dev.nitrate.core.model.Chapter>, positio
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Only the word: chapter names and counts can give things away until asked for.
             Text("▾  Chapters", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = if (focused) 1f else 0.75f))
-            Text(
-                "${now + 1} of ${chapters.size} · ${dev.nitrate.core.playback.Chapters.title(chapters, now)}",
-                style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.55f),
-                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
         }
         return
     }
