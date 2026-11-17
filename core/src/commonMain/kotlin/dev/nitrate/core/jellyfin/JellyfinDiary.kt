@@ -32,6 +32,7 @@ import kotlinx.serialization.Serializable
     val note: String? = null,
     val logged: Boolean = false,
 )
+@Serializable internal data class LinesStatusDto(val titles: Int = 0, val lines: Long = 0, val enabled: Boolean = true)
 @Serializable internal data class DiaryPostDto(val itemId: String, val watchedAt: Long?, val rating: Int?, val note: String?)
 @Serializable internal data class DiaryEditDto(val rating: Int?, val note: String?, val watchedAt: Long?)
 @Serializable internal data class SpokenLineDto(
@@ -76,6 +77,13 @@ internal class JellyfinDiary(private val client: JellyfinClient) {
         }
     } catch (e: ClientRequestException) {
         if (e.response.status == HttpStatusCode.NotFound) emptyList() else throw e
+    }
+
+    /** Titles and lines spoken-line search has indexed (null: not there). */
+    suspend fun linesStatus(): Pair<Int, Long>? = try {
+        client.get("Nitrate", "Lines", "Status").decode<LinesStatusDto>().takeIf { it.enabled }?.let { it.titles to it.lines }
+    } catch (e: ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound) null else throw e
     }
 
     private fun DiaryEntryDto.toModel() = DiaryEntry(

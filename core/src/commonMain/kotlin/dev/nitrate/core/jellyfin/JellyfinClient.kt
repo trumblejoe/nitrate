@@ -566,7 +566,10 @@ class JellyfinClient(
         val info = async { runCatching { get("System", "Info", "Public").decode<JsonObject>() }.getOrNull() }
         // Hidden ones too: a library left out of My Media is missing from the usual list.
         val libraries = async { runCatching { items("UserViews", query = mapOf("includeHidden" to true)).associate { it.id to it.name } }.getOrDefault(emptyMap()) }
-        JellyfinServerSettings.from(me.await(), info.await(), libraries.await())
+        val companion = async { runCatching { companionApi.info() } }
+        val indexed = async { runCatching { diaryApi.linesStatus() }.getOrNull() }
+        val settings = JellyfinServerSettings.from(me.await(), info.await(), libraries.await())
+        settings.copy(groups = settings.groups + dev.nitrate.core.account.CompanionStatus.group(companion.await(), indexed.await()))
     }
 
     override suspend fun watchedSeries(): Set<String> =

@@ -1130,4 +1130,14 @@ class JellyfinLiveTest {
         assumeTrue("Needs a film whose subtitles say it", lines.isNotEmpty())
         assertTrue(lines.first().text.contains("bigger", ignoreCase = true))
     }
+
+    @Test
+    fun `server-side settings say whether the Companion plugin works`() = runBlocking {
+        assumeTrue("Set JELLYFIN_URL to run", url != null)
+        val client = JellyfinClient(OkHttp.create(), ClientIdentity("Nitrate", "test", "nitrate-live-test", "Live test"), storage, { caps() }, settings)
+        client.login(url!!, System.getenv("JELLYFIN_USER") ?: "nitrate", System.getenv("JELLYFIN_PASSWORD").orEmpty())
+        val group = client.serverSettings().groups.first { it.title == "Nitrate Companion" }
+        println(dev.nitrate.core.account.ServerSettings(listOf(group)).render())
+        assertTrue(group.settings.first { it.label == "Plugin" }.value in setOf("Installed and answering", "Not installed"))
+    }
 }
