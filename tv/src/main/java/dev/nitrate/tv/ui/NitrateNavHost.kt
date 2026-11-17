@@ -534,6 +534,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     PlaybackGateDialog(gate)
     dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)
     dev.nitrate.tv.ui.settings.BackupPrompt(container.backups)
+    dev.nitrate.tv.ui.player.SpeakersSetupPrompt(container)
     if (partnersOn) dev.nitrate.tv.ui.partners.PartnerRequestPrompt(container)
     LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.

@@ -71,6 +71,12 @@ class DeviceBackupManager(
     /** The first-time "set this device up like…" question, when there is one. */
     val offer: StateFlow<SetupOffer?> = _offer
 
+    /**
+     * The first-time question is out of the way for this account (answered, or there was nothing
+     * to ask): other first-run questions wait for it, since a restore may answer them.
+     */
+    val settled = store.data.map { prefs -> server.currentAccountKey?.let { it in prefs[settledKey].orEmpty() } == true }
+
     /** When this account's backup was last saved from this device. */
     val lastSaved = store.data.map { it[savedKey(server.currentAccountKey)] }
 

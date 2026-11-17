@@ -84,5 +84,11 @@ class UpmixerTest {
         assertTrue(Speakers.shouldAsk(SoundOutput(OutputKind.HDMI, "Other AVR", 8), known))
         assertTrue(!Speakers.shouldAsk(tv, known) && !Speakers.shouldAsk(denon, known))
         assertTrue(!Speakers.shouldAsk(SoundOutput(OutputKind.BLUETOOTH, "Buds", null), known))
+        // "Later" holds it back for a day, then it's asked again.
+        val other = SoundOutput(OutputKind.HDMI, "Other AVR", 8)
+        val later = Speakers.askLater(emptyMap(), other, nowMs = 1_000)
+        assertTrue(!Speakers.shouldAsk(other, known, later, nowMs = 1_000 + Speakers.LATER_MS - 1))
+        assertTrue(Speakers.shouldAsk(other, known, later, nowMs = 1_000 + Speakers.LATER_MS))
+        assertEquals(setOf(other.key), Speakers.askLater(mapOf("old" to 500L), other, 1_000).keys, "expired ones dropped")
     }
 }

@@ -71,6 +71,8 @@ data class PlaybackSettings(
     val upmixStereo: Boolean = true,
     /** What speakers each sound output has, by [SoundOutput.key] (asked once per output). */
     val speakerLayouts: Map<String, SpeakerLayout> = emptyMap(),
+    /** Outputs whose speakers question was put off ("Later"), until when (ms). */
+    val speakerAskLater: Map<String, Long> = emptyMap(),
     /**
      * After episodes keep playing on with nothing pressed, stop and ask "Still watching?"; with no
      * answer, go back to where the last press was.

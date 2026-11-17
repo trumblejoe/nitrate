@@ -14,7 +14,7 @@ enum class SpeakerLayout(val label: String, val detail: String, val upmixChannel
     FIVE_ONE("5.1", "Front, centre, two surrounds and a subwoofer", 6),
     SEVEN_ONE("7.1", "Front, centre, side and back surrounds and a subwoofer", 8),
     /** More than two speakers, but stereo stays stereo here (e.g. the receiver upmixes it itself). */
-    KEEP_STEREO("Keep it stereo", "Don't spread stereo here (e.g. the receiver does it itself)", null),
+    KEEP_STEREO("Keep Stereo (Use Receiver's Upmixers)", "Stereo goes to the receiver as it is, for its own Dolby Surround or DTS Neural:X", null),
 }
 
 /** What a sound output is: its kind, the name its device gives, and the most channels it takes. */
@@ -55,9 +55,19 @@ object Speakers {
         else -> known[output.key]
     }
 
-    /** Ask about this output? Once per output that can take more than stereo. */
-    fun shouldAsk(output: SoundOutput?, known: Map<String, SpeakerLayout>): Boolean =
-        output != null && !output.stereoOnly && output.key !in known
+    /** "Later" holds the question back this long (remembered, so new episodes and restarts don't bring it back sooner). */
+    const val LATER_MS = 24 * 60 * 60_000L
+
+    /**
+     * Ask about this output? Once per output that can take more than stereo, unless "Later" was
+     * chosen for it in the last day ([later]: output key → when it may be asked again).
+     */
+    fun shouldAsk(output: SoundOutput?, known: Map<String, SpeakerLayout>, later: Map<String, Long> = emptyMap(), nowMs: Long = 0): Boolean =
+        output != null && !output.stereoOnly && output.key !in known && (later[output.key] ?: 0) <= nowMs
+
+    /** [later] with [output] held back for a day from [nowMs] (expired ones dropped). */
+    fun askLater(later: Map<String, Long>, output: SoundOutput, nowMs: Long): Map<String, Long> =
+        later.filterValues { it > nowMs } + (output.key to nowMs + LATER_MS)
 
     /**
      * How many channels to upmix stereo to, or null to leave it stereo: upmixing is on, the sound

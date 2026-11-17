@@ -434,14 +434,26 @@ fun PlayerScreen(
         }) { creditAction = null }
         scrub?.let { s -> item?.let { TrickplayPreview(actions.server, it.id, trickplay, s.positionMs, s.x, s.barTop) } }
 
-        // A stereo film or episode is playing on a new output with more than two speakers: ask once.
+        // A stereo film or episode is playing on a new output with more than two speakers: a quiet
+        // note once a day per output (never a dialog over the video); "Set up" asks.
         val output by session.soundOutput.collectAsState()
-        var notNow by remember { mutableStateOf(setOf<String>()) }
         val stereoNow = session.audioPath.collectAsState().value.inChannels == 2 && session.item.collectAsState().value?.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO
-        output?.takeIf { stereoNow && playbackSettings.upmixStereo && dev.nitrate.core.playback.Speakers.shouldAsk(it, playbackSettings.speakerLayouts) && it.key !in notNow }?.let { o ->
+        var speakerBanner by remember { mutableStateOf<dev.nitrate.core.playback.SoundOutput?>(null) }
+        var speakerAsk by remember { mutableStateOf<dev.nitrate.core.playback.SoundOutput?>(null) }
+        LaunchedEffect(output?.key, stereoNow) {
+            val o = output ?: return@LaunchedEffect
+            val s = playbackSettings
+            if (stereoNow && s.upmixStereo && dev.nitrate.core.playback.Speakers.shouldAsk(o, s.speakerLayouts, s.speakerAskLater, System.currentTimeMillis())) {
+                speakerBanner = o
+                actions.container.playbackSettings.update { it.copy(speakerAskLater = dev.nitrate.core.playback.Speakers.askLater(it.speakerAskLater, o, System.currentTimeMillis())) }
+            }
+        }
+        speakerBanner?.let { o -> SpeakersBanner(o, onSetUp = { speakerAsk = o }, onDone = { speakerBanner = null }) }
+        speakerAsk?.let { o ->
             SpeakersQuestion(o, onAnswer = { l ->
+                speakerAsk = null
                 actions.scope.launch { actions.container.playbackSettings.update { it.copy(speakerLayouts = it.speakerLayouts + (o.key to l)) } }
-            }, onLater = { notNow = notNow + o.key })
+            }, onLater = { speakerAsk = null })
         }
 
         stillAsk?.let { next ->

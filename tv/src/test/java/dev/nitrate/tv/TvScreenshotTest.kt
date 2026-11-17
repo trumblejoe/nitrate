@@ -423,7 +423,15 @@ class TvScreenshotTest {
 
     /** Asked once per new output with more than two speakers, while upmixing is on. */
     @Test fun speakersQuestion() = shoot("tv-speakers-question") { _ ->
-        dev.nitrate.tv.ui.player.SpeakersQuestionDialog(dev.nitrate.core.playback.SoundOutput(dev.nitrate.core.playback.OutputKind.HDMI, "DENON-AVR", 8), onAnswer = {}, onLater = {})
+        dev.nitrate.tv.ui.player.SpeakersQuestionDialog(dev.nitrate.core.playback.SoundOutput(dev.nitrate.core.playback.OutputKind.HDMI, "DENON-AVR", 8), onAnswer = {}, onLater = {}, title = "Your sound", laterLabel = "Skip")
+    }
+
+    /** A new output while stereo plays: a quiet note in a corner. */
+    @Test fun speakersBanner() = shoot("tv-speakers-banner") { c ->
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+            coil3.compose.AsyncImage(c.server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            with(dev.nitrate.tv.ui.player.SpeakersUiPreview) { banner() }
+        }
     }
 
     /** The ambient screensaver. */

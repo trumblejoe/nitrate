@@ -382,6 +382,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
 
         UpdatePrompt(container.updater)
         BackupPrompt(container.backups)
+        SpeakersSetupPrompt(container)
         PartnerRequestPrompt(actions)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }
 

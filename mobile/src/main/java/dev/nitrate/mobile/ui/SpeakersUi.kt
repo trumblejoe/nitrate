@@ -1,5 +1,12 @@
 package dev.nitrate.mobile.ui
 
+import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -72,10 +79,16 @@ fun SpeakersSettings(settings: PlaybackSettings, output: SoundOutput?, update: (
 
 /** Asked once per new output that takes more than stereo, when upmixing is on. */
 @Composable
-fun SpeakersQuestion(output: SoundOutput, onAnswer: (SpeakerLayout) -> Unit, onLater: () -> Unit) {
+fun SpeakersQuestion(
+    output: SoundOutput,
+    onAnswer: (SpeakerLayout) -> Unit,
+    onLater: () -> Unit,
+    title: String = "Stereo here can play on all your speakers",
+    laterLabel: String = "Later",
+) {
     AlertDialog(
         onDismissRequest = onLater,
-        title = { Text("Stereo here can play on all your speakers") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("What's connected to ${output.label}? Asked once for this output; change it any time in Settings → Playback.", style = MaterialTheme.typography.bodySmall)
@@ -87,6 +100,64 @@ fun SpeakersQuestion(output: SoundOutput, onAnswer: (SpeakerLayout) -> Unit, onL
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onLater) { Text("Later") } },
+        confirmButton = { TextButton(onClick = onLater) { Text(laterLabel) } },
+    )
+}
+
+/**
+ * A new output with more than two speakers while stereo plays: a quiet note in a corner (never a
+ * dialog over the video) that fades by itself; "Set up" opens the question.
+ */
+@Composable
+fun androidx.compose.foundation.layout.BoxScope.SpeakersBanner(output: SoundOutput, onSetUp: () -> Unit, onDone: () -> Unit) {
+    androidx.compose.runtime.LaunchedEffect(output.key) {
+        kotlinx.coroutines.delay(10_000)
+        onDone()
+    }
+    Row(
+        Modifier.align(Alignment.TopStart).padding(16.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .background(androidx.compose.ui.graphics.Color(0xE6101216)).padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("New sound output: ${output.label}", color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.labelLarge)
+        TextButton(onClick = { onSetUp(); onDone() }) { Text("Set up speakers") }
+    }
+}
+
+/**
+ * At app start (once the first-run backup question is out of the way): if sound goes to an
+ * output with more than two speakers that hasn't been set up, ask what's connected. "Skip" puts it
+ * off for a day; it's asked at most once per app run.
+ */
+@Composable
+fun SpeakersSetupPrompt(container: dev.nitrate.android.AppContainer) {
+    val settled by container.backups.settled.collectAsState(false)
+    val settings by container.playbackSettings.settings.collectAsState(null)
+    val output by dev.nitrate.android.playback.SoundOutputs.current(androidx.compose.ui.platform.LocalContext.current).collectAsState()
+    var asking by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var decided by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    androidx.compose.runtime.LaunchedEffect(settled, settings != null) {
+        if (decided || !settled) return@LaunchedEffect
+        val s = settings ?: return@LaunchedEffect
+        // Give the sound output a moment to be known after start.
+        kotlinx.coroutines.delay(1_500)
+        val o = output
+        decided = true
+        if (s.upmixStereo && Speakers.shouldAsk(o, s.speakerLayouts, s.speakerAskLater, System.currentTimeMillis())) asking = o?.key
+    }
+    val o = output?.takeIf { it.key == asking } ?: return
+    SpeakersQuestion(
+        o,
+        title = "Your sound",
+        laterLabel = "Skip",
+        onAnswer = { l ->
+            asking = null
+            scope.launch { container.playbackSettings.update { it.copy(speakerLayouts = it.speakerLayouts + (o.key to l)) } }
+        },
+        onLater = {
+            asking = null
+            scope.launch { container.playbackSettings.update { it.copy(speakerAskLater = Speakers.askLater(it.speakerAskLater, o, System.currentTimeMillis())) } }
+        },
     )
 }

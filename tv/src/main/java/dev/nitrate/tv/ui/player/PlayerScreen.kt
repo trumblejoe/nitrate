@@ -174,7 +174,6 @@ fun PlayerScreen(
         }
     }
     val settingsNow by playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
-    val speakerScope = androidx.compose.runtime.rememberCoroutineScope()
     val assTrack by session.assTrack.collectAsState()
     val subtitleOffset by session.subtitleOffsetMs.collectAsState()
     // The TV's refresh rate follows the video's frame rate, as set in Playback settings.
@@ -432,15 +431,20 @@ fun PlayerScreen(
 
         SecondSubtitleLine(session, settingsNow.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp))
 
-        // A stereo film or episode is playing on a new output with more than two speakers: ask once.
+        // A stereo film or episode is playing on a new output with more than two speakers: a quiet
+        // note once a day per output, never a dialog over the video or a change of focus.
         val output by session.soundOutput.collectAsState()
-        var notNow by remember { mutableStateOf(setOf<String>()) }
         val stereoNow = session.audioPath.collectAsState().value.inChannels == 2 && session.item.collectAsState().value?.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO
-        output?.takeIf { stereoNow && settingsNow.upmixStereo && dev.nitrate.core.playback.Speakers.shouldAsk(it, settingsNow.speakerLayouts) && it.key !in notNow }?.let { o ->
-            SpeakersQuestionDialog(o, onAnswer = { l ->
-                speakerScope.launch { playbackSettings.update { it.copy(speakerLayouts = it.speakerLayouts + (o.key to l)) } }
-            }, onLater = { notNow = notNow + o.key })
+        var speakerBanner by remember { mutableStateOf<dev.nitrate.core.playback.SoundOutput?>(null) }
+        LaunchedEffect(output?.key, stereoNow) {
+            val o = output ?: return@LaunchedEffect
+            val s = settingsNow
+            if (stereoNow && s.upmixStereo && dev.nitrate.core.playback.Speakers.shouldAsk(o, s.speakerLayouts, s.speakerAskLater, System.currentTimeMillis())) {
+                speakerBanner = o
+                playbackSettings.update { it.copy(speakerAskLater = dev.nitrate.core.playback.Speakers.askLater(it.speakerAskLater, o, System.currentTimeMillis())) }
+            }
         }
+        speakerBanner?.let { o -> SpeakersBanner(o) { speakerBanner = null } }
 
         stillAsk?.let { next ->
             val rewind = remember(next) { stillWatching?.rewind() }
