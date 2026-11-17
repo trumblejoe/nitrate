@@ -116,8 +116,12 @@ fun ShowcaseRow(
                         options.infiniteScroll -> { if (down) onIndexChange(0); true }
                         else -> false
                     }
-                    // On the first item, let focus leave the row.
-                    Key.DirectionLeft -> if (current > 0) { if (down) onIndexChange(current - 1); true } else false
+                    // On the first item (unless it wraps round), let focus leave the row.
+                    Key.DirectionLeft -> when {
+                        current > 0 -> { if (down) onIndexChange(current - 1); true }
+                        options.infiniteScroll && items.size > 1 -> { if (down) onIndexChange(items.lastIndex); true }
+                        else -> false
+                    }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         // A fresh press starts clean: a long press's release goes to the dialog it opened.
                         if (down && event.nativeKeyEvent.repeatCount == 0) longPressHandled = false

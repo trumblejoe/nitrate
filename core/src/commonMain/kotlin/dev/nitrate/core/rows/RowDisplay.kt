@@ -103,7 +103,7 @@ data class ShowcaseOptions(
     val showDetails: Boolean = true,
     val showRatings: Boolean = true,
     val showOverview: Boolean = true,
-    /** Right on the last item wraps to the first. */
+    /** Right on the last item wraps to the first, Left on the first to the last (whatever the menu placement; the Menu key still opens it). */
     val infiniteScroll: Boolean = true,
     /** Cycle through an item's backdrops while it is shown. */
     val rotateArtwork: Boolean = false,
