@@ -270,6 +270,11 @@ class TvScreenshotTest {
         .mapIndexed { i, (n, r) -> dev.nitrate.core.model.Person("p$i", n, r, imageTag = "t".takeIf { i % 3 != 1 }) }
 
     @Test fun playerControlsCast() = playerControls("tv-player-controls-cast", "down", "down") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("▴  Cast")).fetchSemanticsNodes().isNotEmpty()) }
+    /** One strip open at a time: opening the cast folds the chapters. */
+    @Test fun playerControlsOneStrip() = playerControls("tv-player-controls-one-strip", "down", "down") {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("▾  Chapters")).fetchSemanticsNodes().isNotEmpty())
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("▴  Chapters")).fetchSemanticsNodes().isEmpty())
+    }
     @Test fun playerControlsCastUp() = playerControls("tv-player-controls-cast-up", "down", "down", "up") { check(focusedHasText("Now")) }
     @Test fun personDialog() = shoot("tv-person-dialog") { c ->
         dev.nitrate.tv.ui.player.PersonDialog(c.server, sampleCast[1], null, onDismiss = {})

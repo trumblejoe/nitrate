@@ -137,13 +137,18 @@ internal fun PlayerControls(
             }
         }
         val chapterHeading = remember { FocusRequester() }
-        var openStrips by remember { mutableStateOf(0) }
-        fun opened(open: Boolean) { openStrips += if (open) 1 else -1; onStripOpen(openStrips > 0) }
+        // Only one strip is open at a time: opening one folds whichever was open.
+        var openStrip by remember { mutableStateOf<String?>(null) }
+        androidx.compose.runtime.LaunchedEffect(openStrip) { onStripOpen(openStrip != null) }
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onStripOpen(false) } }
+        fun toggler(label: String): (Boolean) -> Unit = { open ->
+            if (open) openStrip = label else if (openStrip == label) openStrip = null
+        }
         val hasChapters = chapters.size > 1
         if (hasChapters) {
             val now = dev.nitrate.core.playback.Chapters.current(chapters, position).coerceAtLeast(0)
             // Only the word while folded: chapter names and counts can give things away until asked for.
-            FoldingStrip("Chapters", chapters.size, start = now, heading = chapterHeading, onOpen = ::opened, onUp = focus::restore) { i, modifier ->
+            FoldingStrip("Chapters", chapters.size, start = now, heading = chapterHeading, open = openStrip == "Chapters", onOpen = toggler("Chapters"), onUp = focus::restore) { i, modifier ->
                 ChapterCard(
                     index = i,
                     chapter = chapters[i],
@@ -157,7 +162,7 @@ internal fun PlayerControls(
         }
         if (cast.isNotEmpty()) {
             FoldingStrip(
-                "Cast", cast.size, start = 0, heading = remember { FocusRequester() }, onOpen = ::opened,
+                "Cast", cast.size, start = 0, heading = remember { FocusRequester() }, open = openStrip == "Cast", onOpen = toggler("Cast"),
                 // Up goes to the strip above it, or to the buttons.
                 onUp = { if (hasChapters) runCatching { chapterHeading.requestFocus() } else focus.restore() },
             ) { i, modifier -> CastCard(cast[i], personImage(cast[i]), onClick = { onPerson(cast[i]) }, modifier = modifier) }
@@ -176,20 +181,14 @@ private fun FoldingStrip(
     count: Int,
     start: Int,
     heading: FocusRequester,
+    open: Boolean,
     onOpen: (Boolean) -> Unit,
     onUp: () -> Unit,
     item: @Composable (index: Int, modifier: Modifier) -> Unit,
 ) {
-    var open by remember { mutableStateOf(false) }
     // Set once focus is inside the open strip, so it folds only when focus really leaves.
-    var entered by remember { mutableStateOf(false) }
-    fun setOpen(value: Boolean) {
-        if (open == value) return
-        open = value
-        entered = false
-        onOpen(value)
-    }
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { if (open) onOpen(false) } }
+    var entered by remember(open) { mutableStateOf(false) }
+    fun setOpen(value: Boolean) { if (open != value) onOpen(value) }
     if (!open) {
         var focused by remember { mutableStateOf(false) }
         Text(
