@@ -120,6 +120,9 @@ sealed interface TvRequest {
 
 const val NO_TRACK = -2
 
+/** Where the player was when an extra opened on top of it (saved on its back-stack entry). */
+private const val RESUME_AT = "resumeAt"
+
 /** "Last time": the recap in [AppContainer.pendingRecap], before playing on. */
 @Serializable object RecapRoute
 
@@ -524,8 +527,14 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 pluginContext = pluginContext,
                 trackMemory = container.trackMemory,
                 remote = container.remote,
-                startMs = route.startMs.takeIf { it >= 0 },
+                // Back from an extra: on from where it was left.
+                startMs = entry.savedStateHandle.get<Long>(RESUME_AT) ?: route.startMs.takeIf { it >= 0 },
                 clipEndMs = route.clipEndMs.takeIf { it >= 0 },
+                // An extra plays on top; Back or its end comes back here, at the same spot.
+                onPlayExtra = if (route.clipEndMs < 0) { extra, at ->
+                    entry.savedStateHandle[RESUME_AT] = at
+                    nav.navigate(PlayerRoute(extra.id, fromStart = true))
+                } else null,
                 audioIndex = route.audioIndex.takeIf { it != NO_TRACK },
                 subtitleIndex = route.subtitleIndex.takeIf { it != NO_TRACK },
                 describedAudio = container::prefersDescribedAudio,

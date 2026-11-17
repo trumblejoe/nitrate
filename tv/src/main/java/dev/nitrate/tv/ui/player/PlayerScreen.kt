@@ -130,6 +130,8 @@ fun PlayerScreen(
     describedAudio: suspend () -> Boolean = { false },
     /** Plays the next episode, or the next film in a collection (null: nothing follows, e.g. in a queue). */
     onPlayNext: ((MediaItem) -> Unit)? = null,
+    /** Plays an extra (trailer, featurette…) on top of this, coming back to where this was (null: no extras strip). */
+    onPlayExtra: ((MediaItem, Long) -> Unit)? = null,
     /** "Still watching?" (episodes rolling on with nothing pressed), and putting things back. */
     stillWatching: dev.nitrate.core.playback.StillWatching? = null,
     stillWatchingRewind: ((dev.nitrate.core.playback.StillWatching.Rewind?, (MediaItem?) -> Unit) -> Unit)? = null,
@@ -300,10 +302,61 @@ fun PlayerScreen(
         }
     }
 
+    // Extras (the title's, else its show's) and what it sits among: the season's episodes, or the
+    // films of its collection. Not in easy mode, recap clips or (for extras) a watch-together group.
+    val extras by androidx.compose.runtime.produceState(emptyList<MediaItem>(), item?.id, easy) {
+        val i = item
+        value = if (i == null || easy || clipEndMs != null || onPlayExtra == null) emptyList() else runCatching {
+            repository.extras(i.id).ifEmpty { i.seriesId?.let { repository.extras(it) }.orEmpty() }
+        }.getOrDefault(emptyList())
+    }
+    val siblings by androidx.compose.runtime.produceState(emptyList<MediaItem>(), item?.id, easy) {
+        val i = item
+        value = if (i == null || easy || onPlayNext == null) emptyList() else runCatching {
+            when {
+                i.isEpisode -> {
+                    val series = i.seriesId
+                    val season = i.seasonId
+                    if (series == null || season == null) emptyList() else repository.episodes(series, season).filter { !it.isMissing }
+                }
+                i.kind == dev.nitrate.core.model.ItemKind.MOVIE ->
+                    dev.nitrate.core.playback.NextInCollection.saga(i, repository.collectionsOf(i.id).take(5).map { repository.collectionItems(it.id) })
+                else -> emptyList()
+            }
+        }.getOrDefault(emptyList())
+    }
+    val titleStrips = run {
+        val current = item
+        listOfNotNull(
+            extras.takeIf { it.isNotEmpty() && syncGroup == null }?.let { list ->
+                TitleStrip("Extras", list.map { e -> TitleCard(e, e.name, listOfNotNull(e.extraType, e.runtimeMs?.let { "${(it / 60_000).coerceAtLeast(1)} min" }).joinToString(" · ").ifEmpty { null }, repository.imageUrl(e, dev.nitrate.core.model.ImageKind.PRIMARY, 320)) }) { e ->
+                    onPlayExtra?.invoke(e, player.currentPosition)
+                }
+            },
+            siblings.takeIf { it.size > 1 && current != null }?.let { list ->
+                val episodes = current!!.isEpisode
+                TitleStrip(
+                    if (episodes) current.seasonNumber?.let { "Season $it" } ?: "Episodes" else "In this collection",
+                    list.map { t ->
+                        TitleCard(
+                            t,
+                            t.name,
+                            if (episodes) listOfNotNull(t.indexNumber?.let { "Episode $it" }, t.runtimeMs?.let { "${it / 60_000} min" }).joinToString(" · ").ifEmpty { null }
+                            else t.productionYear?.toString(),
+                            if (episodes) repository.imageUrl(t, dev.nitrate.core.model.ImageKind.PRIMARY, 320)
+                            else repository.imageUrl(t, dev.nitrate.core.model.ImageKind.BACKDROP, 320) ?: repository.imageUrl(t, dev.nitrate.core.model.ImageKind.PRIMARY, 320),
+                            now = t.id == current.id,
+                        )
+                    },
+                    start = list.indexOfFirst { it.id == current.id }.coerceAtLeast(0),
+                ) { t -> if (t.id != current.id) onPlayNext?.invoke(t) }
+            },
+        )
+    }
     val foldedStrips = if (easy) 0 else listOf(
         (item?.chapters?.size ?: 0) > 1,
         showCast && item?.people.orEmpty().any { it.imageTag != null || !it.role.isNullOrBlank() },
-    ).count { it }
+    ).count { it } + titleStrips.size
     val nextUp = upNext
     val film = nextUp != null && !nextUp.isEpisode
     val creditScenes by session.creditScenes.collectAsState()
@@ -458,6 +511,7 @@ fun PlayerScreen(
                 cast = castShown,
                 personImage = repository::personImageUrl,
                 onPerson = { person = it },
+                titleStrips = titleStrips,
                 onStripOpen = { stripOpen = it },
             )
         }

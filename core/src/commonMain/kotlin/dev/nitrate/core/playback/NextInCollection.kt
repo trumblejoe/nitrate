@@ -25,13 +25,22 @@ object NextInCollection {
      * the last one, or in none.
      */
     fun next(current: MediaItem, collections: List<List<MediaItem>>): MediaItem? {
+        val ordered = saga(current, collections)
+        val at = ordered.indexOfFirst { it.id == current.id }
+        if (at < 0) return null
+        return ordered.getOrNull(at + 1)?.takeIf { !it.isMissing }
+    }
+
+    /**
+     * Every film of the most specific collection [current] is in (as for [next]), in release order,
+     * [current] included; empty when it's in none.
+     */
+    fun saga(current: MediaItem, collections: List<List<MediaItem>>): List<MediaItem> {
         val saga = collections
             .filter { films -> films.size in 2..MAX_SIZE && films.all { it.kind == ItemKind.MOVIE } && films.any { it.id == current.id } }
             .minByOrNull { it.size }
-            ?: return null
-        val ordered = saga.sortedWith(compareBy<MediaItem>({ it.premiereDateMs ?: Long.MAX_VALUE }, { it.productionYear ?: Int.MAX_VALUE }, { it.sortName ?: it.name }))
-        val at = ordered.indexOfFirst { it.id == current.id }
-        return ordered.getOrNull(at + 1)?.takeIf { !it.isMissing }
+            ?: return emptyList()
+        return saga.sortedWith(compareBy<MediaItem>({ it.premiereDateMs ?: Long.MAX_VALUE }, { it.productionYear ?: Int.MAX_VALUE }, { it.sortName ?: it.name }))
     }
 
     /**

@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +33,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -107,6 +110,8 @@ internal fun PlayerControls(
     cast: List<dev.nitrate.core.model.Person> = emptyList(),
     personImage: (dev.nitrate.core.model.Person) -> String? = { null },
     onPerson: (dev.nitrate.core.model.Person) -> Unit = {},
+    /** More strips of titles after the cast (extras, the season's episodes...), in this order. */
+    titleStrips: List<TitleStrip> = emptyList(),
     /** Told when a strip under the buttons opens (Down onto it) and when it folds again. */
     onStripOpen: (Boolean) -> Unit = {},
 ) {
@@ -114,6 +119,9 @@ internal fun PlayerControls(
         Modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
+            // Taller than the screen once a strip opens with more below it: focus scrolls the
+            // strip into view (the title and seek bar go up and come back on the way up).
+            .verticalScroll(rememberScrollState())
             .padding(start = 48.dp, end = 48.dp, top = 80.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -136,19 +144,33 @@ internal fun PlayerControls(
                 )
             }
         }
-        val chapterHeading = remember { FocusRequester() }
         // Only one strip is open at a time: opening one folds whichever was open.
         var openStrip by remember { mutableStateOf<String?>(null) }
         androidx.compose.runtime.LaunchedEffect(openStrip) { onStripOpen(openStrip != null) }
         androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onStripOpen(false) } }
-        fun toggler(label: String): (Boolean) -> Unit = { open ->
-            if (open) openStrip = label else if (openStrip == label) openStrip = null
-        }
+        val headings = remember { mutableMapOf<String, FocusRequester>() }
+        fun heading(label: String) = headings.getOrPut(label) { FocusRequester() }
         val hasChapters = chapters.size > 1
+        val labels = buildList {
+            if (hasChapters) add("Chapters")
+            if (cast.isNotEmpty()) add("Cast")
+            titleStrips.filter { it.cards.isNotEmpty() }.forEach { add(it.label) }
+        }
+        @Composable
+        fun Strip(label: String, count: Int, start: Int, item: @Composable (Int, Modifier) -> Unit) {
+            val above = labels.getOrNull(labels.indexOf(label) - 1)
+            FoldingStrip(
+                label, count, start, heading = heading(label), open = openStrip == label,
+                onOpen = { open -> if (open) openStrip = label else if (openStrip == label) openStrip = null },
+                // Up goes to the strip above it, or back to the button Down was pressed on.
+                onUp = { if (above == null) focus.restore() else runCatching { heading(above).requestFocus() } },
+                item = item,
+            )
+        }
         if (hasChapters) {
             val now = dev.nitrate.core.playback.Chapters.current(chapters, position).coerceAtLeast(0)
             // Only the word while folded: chapter names and counts can give things away until asked for.
-            FoldingStrip("Chapters", chapters.size, start = now, heading = chapterHeading, open = openStrip == "Chapters", onOpen = toggler("Chapters"), onUp = focus::restore) { i, modifier ->
+            Strip("Chapters", chapters.size, now) { i, modifier ->
                 ChapterCard(
                     index = i,
                     chapter = chapters[i],
@@ -161,12 +183,80 @@ internal fun PlayerControls(
             }
         }
         if (cast.isNotEmpty()) {
-            FoldingStrip(
-                "Cast", cast.size, start = 0, heading = remember { FocusRequester() }, open = openStrip == "Cast", onOpen = toggler("Cast"),
-                // Up goes to the strip above it, or to the buttons.
-                onUp = { if (hasChapters) runCatching { chapterHeading.requestFocus() } else focus.restore() },
-            ) { i, modifier -> CastCard(cast[i], personImage(cast[i]), onClick = { onPerson(cast[i]) }, modifier = modifier) }
+            Strip("Cast", cast.size, 0) { i, modifier -> CastCard(cast[i], personImage(cast[i]), onClick = { onPerson(cast[i]) }, modifier = modifier) }
         }
+        for (strip in titleStrips) {
+            if (strip.cards.isEmpty()) continue
+            Strip(strip.label, strip.cards.size, strip.start) { i, modifier ->
+                val card = strip.cards[i]
+                TitleCardView(card, onClick = { strip.onClick(card.item) }, modifier = modifier)
+            }
+        }
+    }
+}
+
+/** A strip of titles under the buttons: extras, the season's episodes, the rest of a collection. */
+internal class TitleStrip(val label: String, val cards: List<TitleCard>, val start: Int = 0, val onClick: (MediaItem) -> Unit)
+
+/** One title in a [TitleStrip]: [now] marks the one playing. */
+internal class TitleCard(val item: MediaItem, val title: String, val subtitle: String?, val imageUrl: String?, val now: Boolean = false)
+
+/**
+ * A title in a strip: its picture (blurred when it would spoil, as on every page; a placeholder with
+ * its name when there's none), progress and watched mark as the user shows them, name and a line.
+ */
+@Composable
+private fun TitleCardView(card: TitleCard, onClick: () -> Unit, modifier: Modifier) {
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val user = card.item.user
+    var focused by remember { mutableStateOf(false) }
+    Column(Modifier.width(CHAPTER_WIDTH), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.tv.material3.Surface(
+            onClick = onClick,
+            modifier = modifier.width(CHAPTER_WIDTH).height(CHAPTER_WIDTH * 9 / 16).onFocusChanged { focused = it.isFocused },
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            border = androidx.tv.material3.ClickableSurfaceDefaults.border(
+                border = if (card.now) Border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary)) else Border.None,
+                focusedBorder = Border(BorderStroke(3.dp, Color.White), inset = (-3).dp),
+            ),
+            colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(containerColor = Color(0xFF1E232A), focusedContainerColor = Color(0xFF1E232A)),
+        ) {
+            Box(Modifier.matchParentSize()) {
+                Box(
+                    Modifier.matchParentSize().background(Brush.linearGradient(listOf(Color(0xFF2C343E), Color(0xFF161A1F)))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(card.title, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.45f), maxLines = 2, modifier = Modifier.padding(8.dp))
+                }
+                if (card.imageUrl != null) {
+                    val blur = dev.nitrate.tv.ui.partners.spoilerStill(card.item)
+                    coil3.compose.AsyncImage(
+                        card.imageUrl, null, contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.matchParentSize().then(if (blur) Modifier.blur(20.dp) else Modifier),
+                    )
+                }
+                if (card.now) {
+                    Text(
+                        "Now", style = MaterialTheme.typography.labelSmall, color = Color.Black,
+                        modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                } else if (user.played && prefs.watchedMarks) {
+                    Text(
+                        "✓", style = MaterialTheme.typography.labelMedium, color = Color.Black,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color.White.copy(alpha = 0.9f), CircleShape).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
+                val runtime = card.item.runtimeMs ?: 0
+                if (!card.now && prefs.progressBars && !user.played && user.positionMs > 0 && runtime > 0) {
+                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
+                        Box(Modifier.fillMaxWidth((user.positionMs.toFloat() / runtime).coerceIn(0f, 1f)).height(4.dp).background(MaterialTheme.colorScheme.primary))
+                    }
+                }
+            }
+        }
+        Text(card.title, style = MaterialTheme.typography.labelLarge, color = if (focused) Color.White else Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        card.subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
     }
 }
 

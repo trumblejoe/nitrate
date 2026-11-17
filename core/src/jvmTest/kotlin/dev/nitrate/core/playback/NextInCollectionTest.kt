@@ -25,6 +25,11 @@ class NextInCollectionTest {
         assertNull(NextInCollection.next(film("a", 1999), listOf(trilogy + MediaItem("s", "Show", ItemKind.SERIES))))
     }
 
+    @Test fun `the whole saga in release order, for the player's strip`() {
+        assertEquals(listOf("a", "b", "c"), NextInCollection.saga(film("b", 2002), listOf(bigList, trilogy)).map { it.id })
+        assertEquals(emptyList<String>(), NextInCollection.saga(film("a", 1999), listOf(bigList)).map { it.id })
+    }
+
     @Test fun `offered at the credits, never far from the end`() {
         val twoHours = 7_200_000L
         assertEquals(6_900_000L, NextInCollection.offerAtMs(twoHours, listOf(MediaSegment(SegmentKind.OUTRO, 6_900_000, twoHours)), emptyList()))

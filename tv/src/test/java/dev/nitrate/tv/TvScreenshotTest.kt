@@ -251,6 +251,7 @@ class TvScreenshotTest {
                         .mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 400_000L, n) },
                     chapterImage = { i -> item?.takeIf { i % 3 != 2 }?.let { c.server.imageUrl(it, dev.nitrate.core.model.ImageKind.BACKDROP, 320) } },
                     cast = sampleCast,
+                    titleStrips = item?.let { current -> sampleStrips(c, current) }.orEmpty(),
                     personImage = { p -> item?.takeIf { p.imageTag != null }?.let { c.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 300) } },
                 )
             }
@@ -279,6 +280,21 @@ class TvScreenshotTest {
     @Test fun personDialog() = shoot("tv-person-dialog") { c ->
         dev.nitrate.tv.ui.player.PersonDialog(c.server, sampleCast[1], null, onDismiss = {})
     }
+    private fun sampleStrips(c: AppContainer, current: dev.nitrate.core.model.MediaItem): List<dev.nitrate.tv.ui.player.TitleStrip> {
+        val art = { i: dev.nitrate.core.model.MediaItem -> c.server.imageUrl(current, dev.nitrate.core.model.ImageKind.BACKDROP, 320).takeIf { i.id.last() != '3' } }
+        val extras = listOf("Trailer", "Making the reel", "Deleted scenes").mapIndexed { i, n -> dev.nitrate.core.model.MediaItem("x$i", n, dev.nitrate.core.model.ItemKind.MOVIE, extraType = if (i == 0) "Trailer" else "Behind the scenes", runtimeMs = 120_000L * (i + 1)) }
+        val episodes = (1..6).map { n ->
+            dev.nitrate.core.model.MediaItem("e$n", "Episode title $n", dev.nitrate.core.model.ItemKind.EPISODE, indexNumber = n, runtimeMs = 2_700_000,
+                user = dev.nitrate.core.model.UserState(played = n < 2, positionMs = if (n == 4) 900_000 else 0))
+        }
+        return listOf(
+            dev.nitrate.tv.ui.player.TitleStrip("Extras", extras.map { dev.nitrate.tv.ui.player.TitleCard(it, it.name, it.extraType, art(it)) }) {},
+            dev.nitrate.tv.ui.player.TitleStrip("Season 1", episodes.map { dev.nitrate.tv.ui.player.TitleCard(it, it.name, "Episode ${it.indexNumber}", art(it), now = it.id == "e2") }, start = 1) {},
+        )
+    }
+
+    @Test fun playerControlsExtras() = playerControls("tv-player-controls-extras", "down", "down", "down") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("▴  Extras")).fetchSemanticsNodes().isNotEmpty()) }
+    @Test fun playerControlsEpisodes() = playerControls("tv-player-controls-episodes", "down", "down", "down", "down") { check(focusedHasText("Now")) } 
     @Test fun playerControlsChapters() = playerControls("tv-player-controls-chapters", "down") { check(focusedHasText("Now")) }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
