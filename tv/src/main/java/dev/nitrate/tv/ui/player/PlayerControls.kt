@@ -206,7 +206,7 @@ internal class TitleCard(val item: MediaItem, val title: String, val subtitle: S
  * its name when there's none), progress and watched mark as the user shows them, name and a line.
  */
 @Composable
-private fun TitleCardView(card: TitleCard, onClick: () -> Unit, modifier: Modifier) {
+internal fun TitleCardView(card: TitleCard, onClick: () -> Unit, modifier: Modifier) {
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val user = card.item.user
     var focused by remember { mutableStateOf(false) }

@@ -295,6 +295,15 @@ class TvScreenshotTest {
 
     @Test fun playerControlsExtras() = playerControls("tv-player-controls-extras", "down", "down", "down") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("▴  Extras")).fetchSemanticsNodes().isNotEmpty()) }
     @Test fun playerControlsEpisodes() = playerControls("tv-player-controls-episodes", "down", "down", "down", "down") { check(focusedHasText("Now")) } 
+    private fun morePanel(name: String, tab: String) = shoot(name) { c ->
+        val item by androidx.compose.runtime.produceState<dev.nitrate.core.model.MediaItem?>(null) { value = c.server.getItem("s1e2") }
+        item?.let { current ->
+            MorePanelMock(c.server.imageUrl(current, dev.nitrate.core.model.ImageKind.BACKDROP, 1920), tab, sampleStrips(c, current)[1].cards)
+        }
+    }
+
+    @Test fun morePanelEpisodes() = morePanel("tv-more-panel-episodes", "Episodes")
+    @Test fun morePanelSettings() = morePanel("tv-more-panel-settings", "Settings")
     @Test fun playerControlsChapters() = playerControls("tv-player-controls-chapters", "down") { check(focusedHasText("Now")) }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
