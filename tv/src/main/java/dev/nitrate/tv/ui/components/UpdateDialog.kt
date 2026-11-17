@@ -55,7 +55,7 @@ internal fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, on
         is UpdateState.NeedsPermission -> Panel(
             "Allow Nitrate to install updates",
             onDismiss,
-            listOf(Choice("Open settings") { runCatching { context.startActivity(state.settings) }; onReoffer(state.release) }, Choice("Not now", onDismiss)),
+            listOf(Choice("Open settings") { runCatching { context.startActivity(state.settings as android.content.Intent) }; onReoffer(state.release) }, Choice("Not now", onDismiss)),
         ) {
             Text("Android asks once: turn on \"Allow from this source\" for Nitrate, then come back and choose Update now.", style = MaterialTheme.typography.bodyMedium)
         }

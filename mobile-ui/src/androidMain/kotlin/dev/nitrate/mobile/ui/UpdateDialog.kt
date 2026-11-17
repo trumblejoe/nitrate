@@ -46,7 +46,7 @@ fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, onLater: (A
             onDismissRequest = onDismiss,
             title = { Text("Allow Nitrate to install updates") },
             text = { Text("Android asks once: turn on \"Allow from this source\" for Nitrate, then come back and tap Update.") },
-            confirmButton = { TextButton(onClick = { context.startActivity(state.settings); onReoffer(state.release) }) { Text("Open settings") } },
+            confirmButton = { TextButton(onClick = { context.startActivity(state.settings as android.content.Intent); onReoffer(state.release) }) { Text("Open settings") } },
             dismissButton = { TextButton(onClick = onDismiss) { Text("Not now") } },
         )
         is UpdateState.Failed -> AlertDialog(

@@ -78,7 +78,7 @@ class PlaybackSession(
     private val describedAudio: suspend () -> Boolean = { false },
     /** What this device reports it can play (probed once per app run). */
     private val capabilities: () -> dev.nitrate.core.playback.DeviceCapabilities = { DeviceProbe.cached(context) },
-) {
+) : dev.nitrate.android.remote.RemotePlayer {
     private val appContext = context.applicationContext
     private val nightMode = NightModeAudioProcessor()
 
@@ -1029,7 +1029,7 @@ class PlaybackSession(
     }
 
     /** Picks a new audio or subtitle stream: in the exo when it has the track, else via the server. */
-    fun selectTrack(kind: StreamKind, index: Int) {
+    override fun selectTrack(kind: StreamKind, index: Int) {
         val p = _plan.value ?: return
         val stream = p.source.streams.firstOrNull { it.index == index }
         val clientSide = when {
@@ -1300,7 +1300,7 @@ class PlaybackSession(
     }
 
     /** Carries out a playback command sent from another app (pause, seek, next...). */
-    fun handleRemote(command: String, seekMs: Long?) {
+    override fun handleRemote(command: String, seekMs: Long?) {
         when (command) {
             "Pause" -> player.pause()
             "Unpause" -> player.play()

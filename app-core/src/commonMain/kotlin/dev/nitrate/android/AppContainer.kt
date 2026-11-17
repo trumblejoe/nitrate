@@ -2,9 +2,6 @@ package dev.nitrate.android
 
 import kotlinx.coroutines.launch
 
-import android.content.Context
-import dev.nitrate.android.downloads.WorkManagerScheduler
-import dev.nitrate.android.playback.DeviceProbe
 import dev.nitrate.android.remote.RemoteControlHub
 import dev.nitrate.android.storage.DisplaySettingsStore
 import dev.nitrate.android.storage.PlaybackSettingsStore
@@ -12,12 +9,6 @@ import dev.nitrate.android.storage.PluginStore
 import dev.nitrate.android.storage.SearchHistoryStore
 import dev.nitrate.android.storage.SessionStore
 import dev.nitrate.android.storage.ProfileStore
-import dev.nitrate.android.storage.playbackDataStore
-import dev.nitrate.android.storage.searchStore
-import dev.nitrate.android.storage.profilesDataStore
-import dev.nitrate.android.storage.pluginDataStore
-import dev.nitrate.android.storage.sessionDataStore
-import dev.nitrate.android.storage.backupDataStore
 import dev.nitrate.core.model.SessionState
 import dev.nitrate.core.model.MediaItem
 import kotlinx.coroutines.flow.first
@@ -42,16 +33,15 @@ import dev.nitrate.core.playback.DeviceCapabilities
 import dev.nitrate.core.plugins.PluginHost
 import dev.nitrate.core.plugins.PluginRegistry
 import dev.nitrate.core.writing.WritingPlugin
-import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.io.files.Path
-import java.io.File
 
 /**
  * Manual dependency container shared by the TV and phone/tablet apps. Each app passes its own
  * [clientName] and [version], which the server shows in its device list.
  */
 class AppContainer(
-    context: Context,
+    /** What differs per platform: storage, the network engine, the decoder probe, notifications… */
+    val platform: AppPlatform,
     private val clientName: String,
     private val version: String,
     /** Replaces the Jellyfin server, for screenshot tests and previews. */
@@ -59,34 +49,23 @@ class AppContainer(
     /** Replaces the downloads database, for screenshot tests. */
     downloadStoreOverride: DownloadStore? = null,
 ) {
-    private val appContext = context.applicationContext
-
     /** Which built-in display profile this device starts on. */
-    val deviceKind: dev.nitrate.core.pages.DeviceKind = when {
-        appContext.packageName.contains(".tv") -> dev.nitrate.core.pages.DeviceKind.TV
-        appContext.resources.configuration.smallestScreenWidthDp >= 600 -> dev.nitrate.core.pages.DeviceKind.TABLET
-        else -> dev.nitrate.core.pages.DeviceKind.PHONE
-    }
+    val deviceKind: dev.nitrate.core.pages.DeviceKind = platform.deviceKind
 
-    val displaySettings = DisplaySettingsStore(appContext, deviceKind, androidIdentity(appContext, clientName, version).deviceName)
+    val displaySettings = DisplaySettingsStore(platform.stores.display, deviceKind, platform.identity.deviceName)
 
-    val playbackSettings = PlaybackSettingsStore(appContext.playbackDataStore)
+    val playbackSettings = PlaybackSettingsStore(platform.stores.playback)
 
     /** Probed once: decoder lists don't change while the app runs. */
-    val capabilities: DeviceCapabilities by lazy { DeviceProbe.cached(appContext) }
+    val capabilities: DeviceCapabilities by lazy { platform.probeCapabilities() }
 
     /** Each page's rows as last loaded, so pages open with them while fresh ones load. */
-    val dataCache: dev.nitrate.android.storage.DataCache by lazy { dev.nitrate.android.storage.DataCache(appContext) }
+    val dataCache: dev.nitrate.android.storage.DataCache by lazy { dev.nitrate.android.storage.DataCache(platform.cacheDir) }
 
     val server: MediaServer = serverOverride ?: JellyfinClient(
-        // Pages ask for all their rows at once; OkHttp would otherwise send 5 at a time per server.
-        engine = OkHttp.create {
-            config {
-                dispatcher(okhttp3.Dispatcher().apply { maxRequests = 64; maxRequestsPerHost = 16 })
-            }
-        },
-        identity = androidIdentity(appContext, clientName, version),
-        sessionStorage = SessionStore(appContext.sessionDataStore),
+        engine = platform.serverEngine(),
+        identity = platform.identity,
+        sessionStorage = SessionStore(platform.stores.session),
         capabilities = { capabilities },
         playbackSettings = playbackSettings,
         textCache = dataCache.text,
@@ -95,7 +74,7 @@ class AppContainer(
     val settingsSync = SettingsSync(server, displaySettings)
 
     val writing by lazy {
-        WritingStore(appContext, server).also { store ->
+        WritingStore(platform.filesDir, server).also { store ->
             store.account = server.currentAccountKey
             store.author = { server.userId.orEmpty() to (account.value?.name ?: "Me") }
         }
@@ -104,17 +83,17 @@ class AppContainer(
     /** Shared screenplays (Companion plugin): links scripts here to shared ones, per account. */
     val sharedWriting by lazy { dev.nitrate.android.writing.SharedWriting(writing, server, companion) { account.value?.name } }
 
-    /** App-specific storage: removed with the app, no storage permission needed. */
-    private val downloadDir by lazy { File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "downloads") }
+    /** Where downloads are saved (removed with the app). */
+    private val downloadDir by lazy { dev.nitrate.android.files.File(platform.downloadDir) }
 
     /** Offline downloads (phone and tablet app). */
     val downloads by lazy {
         DownloadManager(
             server = server,
-            store = downloadStoreOverride ?: FileDownloadStore(Path(File(appContext.filesDir, "downloads.json").path)),
-            engine = OkHttp.create(),
-            root = Path(downloadDir.path),
-            scheduler = WorkManagerScheduler(appContext),
+            store = downloadStoreOverride ?: FileDownloadStore(Path(platform.filesDir, "downloads.json")),
+            engine = platform.downloadEngine(),
+            root = Path(downloadDir.absolutePath),
+            scheduler = platform.downloadScheduler(),
             trackMemory = trackMemory,
             describedAudio = ::prefersDescribedAudio,
         )
@@ -126,11 +105,11 @@ class AppContainer(
         return runCatching { displaySettings.prefs(user).first().describedAudio }.getOrDefault(false)
     }
 
-    val searchHistory by lazy { SearchHistoryStore(appContext.searchStore) }
+    val searchHistory by lazy { SearchHistoryStore(platform.stores.search) }
 
     /** The server's live connection: remote control and live updates. */
     /** "Still watching?": episodes rolling on with nobody pressing anything (fed by the players). */
-    val stillWatching = dev.nitrate.core.playback.StillWatching(System::currentTimeMillis)
+    val stillWatching = dev.nitrate.core.playback.StillWatching(::nowMs)
 
     /**
      * Puts things back as they were at the last press: that episode's resume point (a little
@@ -138,7 +117,7 @@ class AppContainer(
      */
     suspend fun rewindStillWatching(rewind: dev.nitrate.core.playback.StillWatching.Rewind) {
         rewind.unwatch.forEach { runCatching { server.setPlayed(it, false) } }
-        runCatching { server.saveUserData(rewind.back.itemId, rewind.back.positionMs, rewind.back.wasPlayed, System.currentTimeMillis()) }
+        runCatching { server.saveUserData(rewind.back.itemId, rewind.back.positionMs, rewind.back.wasPlayed, nowMs()) }
         stillWatching.clear()
     }
 
@@ -190,7 +169,6 @@ class AppContainer(
     }
 
     /** Tests: asks the (fake) server for its Companion plugin now, as signing in does. */
-    @androidx.annotation.VisibleForTesting
     suspend fun refreshCompanionForTests() = refreshCompanion()
 
     private var scriptSyncJob: kotlinx.coroutines.Job? = null
@@ -235,7 +213,7 @@ class AppContainer(
         val prefs = displaySettings.prefs(user).first()
         if ((if (playlist != null) prefs.playlistRecapAfterDays else prefs.recapAfterDays) <= 0) return null
         return kotlinx.coroutines.withTimeoutOrNull(2_500) {
-            dev.nitrate.core.recap.Recaps.before(server, item, prefs, System.currentTimeMillis(), playlist)
+            dev.nitrate.core.recap.Recaps.before(server, item, prefs, nowMs(), playlist)
         }.also { pendingRecap = it }
     }
 
@@ -247,7 +225,7 @@ class AppContainer(
     }
 
     /** Watching shows with partners (see [dev.nitrate.core.partners.WatchPartnersPlugin]). */
-    val watchPartners = dev.nitrate.core.partners.WatchPartnersPlugin(dev.nitrate.core.partners.TogetherSessions(System::currentTimeMillis), System::currentTimeMillis)
+    val watchPartners = dev.nitrate.core.partners.WatchPartnersPlugin(dev.nitrate.core.partners.TogetherSessions(::nowMs), ::nowMs)
 
     private val partnersState = MutableStateFlow<dev.nitrate.core.partners.PartnersInfo?>(null)
 
@@ -291,7 +269,7 @@ class AppContainer(
     }
 
     /** Theme music behind details pages (each app's details screens ask for it; players stop it). */
-    val themeMusic by lazy { dev.nitrate.android.playback.ThemeMusic(appContext, server) }
+    val themeMusic: dev.nitrate.android.playback.ThemeMusic by lazy { platform.themeMusic(server) }
 
     /** Per-show audio and subtitle languages, for the signed-in user. */
     val trackMemory by lazy { displaySettings.trackMemory { server.userId } }
@@ -307,33 +285,33 @@ class AppContainer(
     }
 
     /** New-episode notifications (phone). */
-    val newEpisodes by lazy { dev.nitrate.android.notifications.NewEpisodeNotifier(appContext, server) }
+    val newEpisodes: dev.nitrate.android.notifications.NewEpisodeNotifier by lazy { platform.newEpisodes(server) }
 
     /**
      * Builds a playback report (this device, what Nitrate allows, and [session]'s item, server
      * decision and player events if given) as text.
      */
-    suspend fun playbackReport(session: dev.nitrate.android.playback.PlaybackSession? = null): String =
+    suspend fun playbackReport(player: PlayerReport? = null): String =
         dev.nitrate.core.playback.PlaybackReport(
             app = clientName,
             version = version,
-            createdAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date()),
+            createdAt = platform.timestamp(),
             caps = capabilities,
             settings = playbackSettings.current(),
-            item = session?.item?.value,
-            plan = session?.plan?.value,
-            videoDecoder = session?.videoDecoder?.value,
-            audioDecoder = session?.audioDecoder?.value,
-            events = session?.eventLog().orEmpty(),
-            error = session?.error?.value,
+            item = player?.item,
+            plan = player?.plan,
+            videoDecoder = player?.videoDecoder,
+            audioDecoder = player?.audioDecoder,
+            events = player?.events.orEmpty(),
+            error = player?.error,
         ).render()
 
     /**
      * Sends a playback report to the signed-in Jellyfin server as a client log, and returns the
      * file name it's saved as there (Dashboard → Logs).
      */
-    suspend fun sendPlaybackReport(session: dev.nitrate.android.playback.PlaybackSession? = null): Result<String> =
-        runCatching { server.sendClientLog(playbackReport(session)) }
+    suspend fun sendPlaybackReport(player: PlayerReport? = null): Result<String> =
+        runCatching { server.sendClientLog(playbackReport(player)) }
 
     /**
      * The audio and subtitles [item] will start with (the user's pick for its show or itself, the
@@ -403,9 +381,9 @@ class AppContainer(
         val steps = server.speedCheck(onStep)
         return dev.nitrate.core.diagnostics.SpeedReport(
             app = "$clientName $version",
-            device = "${capabilities.model} (${androidIdentity(appContext, clientName, version).deviceName})",
+            device = "${capabilities.model} (${platform.identity.deviceName})",
             server = server.serverUrl.orEmpty(),
-            createdAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date()),
+            createdAt = platform.timestamp(),
             steps = steps,
         )
     }
@@ -415,16 +393,13 @@ class AppContainer(
         runCatching { server.sendClientLog(report.render()) }
 
     /** Libraries as last seen, for menus that should be whole at once. */
-    val libraryCache by lazy { dev.nitrate.android.storage.LibraryCache(appContext) }
+    val libraryCache by lazy { dev.nitrate.android.storage.LibraryCache(platform.libraryKeyValues) }
 
     /** Updates from the project's releases, for whichever app this is (phone or TV). */
-    val updater by lazy {
-        dev.nitrate.android.update.AppUpdater(appContext, if (appContext.packageName.contains(".tv")) "tv" else "mobile")
-            .also { dev.nitrate.android.update.AppUpdater.current = it }
-    }
+    val updater: dev.nitrate.android.update.AppUpdater by lazy { platform.updater() }
 
     /** PIN locks and "who's watching" for the accounts saved here. */
-    val profiles by lazy { ProfileStore(appContext.profilesDataStore) }
+    val profiles by lazy { ProfileStore(platform.stores.profiles) }
 
     /** After signing in or switching account: settings, account details and the live connection. */
     suspend fun onSignedIn() {
@@ -449,13 +424,7 @@ class AppContainer(
     private fun watchNetwork() {
         if (networkWatched) return
         networkWatched = true
-        val connectivity = appContext.getSystemService(android.net.ConnectivityManager::class.java) ?: return
-        runCatching {
-            connectivity.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: android.net.Network) { reconnectSoon() }
-                override fun onLost(network: android.net.Network) { reconnectSoon() }
-            })
-        }
+        platform.watchNetwork(::reconnectSoon)
     }
 
     private fun reconnectSoon() {
@@ -544,14 +513,14 @@ class AppContainer(
     }
 
     /** Free space where downloads are saved. */
-    fun downloadSpaceFree(): Long = downloadDir.also { it.mkdirs() }.usableSpace
+    fun downloadSpaceFree(): Long = downloadDir.also { it.mkdirs() }.usableSpace()
 
     /** Implemented by each app's Application so background work can find the container. */
     interface Owner {
         val container: AppContainer
     }
 
-    private val pluginStore = PluginStore(appContext.pluginDataStore)
+    private val pluginStore = PluginStore(platform.stores.plugins)
 
     val plugins = PluginRegistry(
         all = listOf(PreviousEpisodePlugin, watchPartners, WritingPlugin, dev.nitrate.core.channels.ChannelsPlugin),
@@ -561,15 +530,15 @@ class AppContainer(
     /** This device's playback and plugin settings, backed up to the user's server and restorable on another device. */
     val backups by lazy {
         dev.nitrate.android.backup.DeviceBackupManager(
-            store = appContext.backupDataStore,
+            store = platform.stores.backup,
             server = server,
             playback = playbackSettings,
             plugins = pluginStore,
             display = displaySettings,
             pluginList = { plugins.all },
-            deviceName = androidIdentity(appContext, clientName, version).deviceName,
+            deviceName = platform.identity.deviceName,
             model = { capabilities.model },
-            app = if (appContext.packageName.contains(".tv")) "tv" else "mobile",
+            app = platform.appKind,
             version = version,
         )
     }

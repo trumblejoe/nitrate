@@ -1,6 +1,5 @@
 package dev.nitrate.android.remote
 
-import dev.nitrate.android.playback.PlaybackSession
 import dev.nitrate.core.MediaServer
 import dev.nitrate.core.events.ServerEvent
 import dev.nitrate.core.model.StreamKind
@@ -14,6 +13,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+
+/** A player that other apps can steer through the server (pause, seek, change tracks). */
+interface RemotePlayer {
+    /** A playstate command from the server ("Pause", "Seek" with [seekMs]…). */
+    fun handleRemote(command: String, seekMs: Long?)
+    fun selectTrack(kind: StreamKind, index: Int)
+}
 
 /**
  * The server's live connection while signed in. Playback commands from other apps go straight
@@ -34,8 +40,8 @@ class RemoteControlHub(
     val connected: StateFlow<Boolean> = _connected
 
     /** The player on screen, if any; set by player screens. */
-    @Volatile
-    var active: PlaybackSession? = null
+    @kotlin.concurrent.Volatile
+    var active: RemotePlayer? = null
 
     /** Connects (once) and keeps reconnecting until [stop]. */
     fun start() {

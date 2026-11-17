@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui
 
+import dev.nitrate.android.sendPlaybackReport
+import dev.nitrate.android.playbackReport
 import kotlinx.coroutines.flow.map
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding

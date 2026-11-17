@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
  * song playing; leaving the details pages, or starting playback, fades it out.
  */
 @OptIn(UnstableApi::class)
-class ThemeMusic(context: Context, private val server: MediaServer) {
+class AndroidThemeMusic(context: Context, private val server: MediaServer) : ThemeMusic {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: ExoPlayer? = null
@@ -34,7 +34,7 @@ class ThemeMusic(context: Context, private val server: MediaServer) {
     private val songs = mutableMapOf<String, String?>()
 
     /** A details page for [itemId] is showing: play its theme (or its series'), if it has one. */
-    fun show(itemId: String) {
+    override fun show(itemId: String) {
         owner = itemId
         stopJob?.cancel()
         startJob?.cancel()
@@ -47,7 +47,7 @@ class ThemeMusic(context: Context, private val server: MediaServer) {
     }
 
     /** The details page for [itemId] went away: stop soon, unless another details page takes over. */
-    fun hide(itemId: String) {
+    override fun hide(itemId: String) {
         if (owner != itemId) return
         owner = null
         stopJob?.cancel()
@@ -58,7 +58,7 @@ class ThemeMusic(context: Context, private val server: MediaServer) {
     }
 
     /** Something else needs the sound (playback starting): fade out now. */
-    fun stop() {
+    override fun stop() {
         owner = null
         startJob?.cancel()
         stopJob?.cancel()
@@ -107,18 +107,18 @@ class ThemeMusic(context: Context, private val server: MediaServer) {
     private var backgrounded: String? = null
 
     /** Nitrate went out of view: quiet until it's back (then the page still open plays again). */
-    fun onAppHidden() {
+    override fun onAppHidden() {
         backgrounded = owner
         stop()
     }
 
-    fun onAppShown() {
+    override fun onAppShown() {
         backgrounded?.let(::show)
         backgrounded = null
     }
 
     /** Lets go of the player (the app is closing, or signing out). */
-    fun release() {
+    override fun release() {
         stop()
         scope.launch {
             delay(FADE_OUT_MS + 50)

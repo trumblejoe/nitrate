@@ -40,30 +40,30 @@ private val Context.notificationPrefs by preferencesDataStore(name = "notificati
  * every few hours in the background, and straight away when the server says items were added.
  * Each kind is off until switched on.
  */
-class NewEpisodeNotifier(private val context: Context, private val server: MediaServer) {
+class AndroidNewEpisodeNotifier(private val context: Context, private val server: MediaServer) : NewEpisodeNotifier {
     private val enabledKey = booleanPreferencesKey("new_episodes")
     private val seasonsKey = booleanPreferencesKey("new_seasons")
     private fun seenKey(account: String) = longPreferencesKey("seen:$account")
 
-    val enabled: Flow<Boolean> = context.notificationPrefs.data.map { it[enabledKey] ?: false }
+    override val enabled: Flow<Boolean> = context.notificationPrefs.data.map { it[enabledKey] ?: false }
 
     /** New seasons of shows followed or watched before. */
-    val seasonsEnabled: Flow<Boolean> = context.notificationPrefs.data.map { it[seasonsKey] ?: false }
+    override val seasonsEnabled: Flow<Boolean> = context.notificationPrefs.data.map { it[seasonsKey] ?: false }
 
     private val anyEnabled: Flow<Boolean> = context.notificationPrefs.data.map { (it[enabledKey] ?: false) || (it[seasonsKey] ?: false) }
 
-    suspend fun setEnabled(on: Boolean) {
+    override suspend fun setEnabled(on: Boolean) {
         context.notificationPrefs.edit { it[enabledKey] = on }
         schedule(anyEnabled.first())
     }
 
-    suspend fun setSeasonsEnabled(on: Boolean) {
+    override suspend fun setSeasonsEnabled(on: Boolean) {
         context.notificationPrefs.edit { it[seasonsKey] = on }
         schedule(anyEnabled.first())
     }
 
     /** Keeps the background check scheduled (or not) to match the settings; call at startup. */
-    suspend fun ensureScheduled() = schedule(anyEnabled.first())
+    override suspend fun ensureScheduled() = schedule(anyEnabled.first())
 
     private fun schedule(on: Boolean) {
         // WorkManager isn't there in some test environments; the setting still saves.
@@ -79,13 +79,13 @@ class NewEpisodeNotifier(private val context: Context, private val server: Media
     }
 
     /** Checks soon (after a library change), once even if asked several times. */
-    fun checkSoon() {
+    override fun checkSoon() {
         val request = OneTimeWorkRequestBuilder<NewEpisodeWorker>().setInitialDelay(30, TimeUnit.SECONDS).build()
         runCatching { WorkManager.getInstance(context).enqueueUniqueWork(SOON, ExistingWorkPolicy.KEEP, request) }
     }
 
     /** Looks for new seasons and new episodes and posts a notification per show. */
-    suspend fun check() {
+    override suspend fun check() {
         val episodesOn = enabled.first()
         val seasonsOn = seasonsEnabled.first()
         if (!episodesOn && !seasonsOn) return
@@ -118,7 +118,7 @@ class NewEpisodeNotifier(private val context: Context, private val server: Media
             manager.createNotificationChannel(NotificationChannel(channel, channelName, NotificationManager.IMPORTANCE_DEFAULT))
         }
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-            putExtra(EXTRA_OPEN_ITEM, openItemId)
+            putExtra(NewEpisodeNotifier.EXTRA_OPEN_ITEM, openItemId)
             addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val notification = NotificationCompat.Builder(context, channel)
@@ -138,7 +138,6 @@ class NewEpisodeNotifier(private val context: Context, private val server: Media
     }
 
     companion object {
-        const val EXTRA_OPEN_ITEM = "dev.nitrate.OPEN_ITEM"
         private const val CHANNEL = "new_episodes"
         private const val SEASONS_CHANNEL = "new_seasons"
         private const val RECENT = 150

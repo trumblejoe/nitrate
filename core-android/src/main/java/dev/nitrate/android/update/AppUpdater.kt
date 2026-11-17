@@ -23,60 +23,44 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-/** Where an update stands. */
-sealed interface UpdateState {
-    data object Idle : UpdateState
-    data object Checking : UpdateState
-    data object UpToDate : UpdateState
-    data class Available(val release: AppRelease) : UpdateState
-    data class Downloading(val release: AppRelease, val progress: Float) : UpdateState
-
-    /** Android's installer is showing (or about to show) its confirmation. */
-    data class Installing(val release: AppRelease) : UpdateState
-
-    /** Android needs permission for Nitrate to install apps; [settings] opens that switch. */
-    data class NeedsPermission(val release: AppRelease, val settings: Intent) : UpdateState
-    data class Failed(val message: String, val release: AppRelease? = null) : UpdateState
-}
-
 /**
  * Keeps the app up to date from the project's GitHub releases: finds a newer build for this app
  * and channel ([UpdateChannel.forAppId]), downloads it, checks it against the release's
  * SHA256SUMS, and hands it to Android's installer (which always asks the user to confirm).
  */
-class AppUpdater(private val context: Context, private val app: String) {
+class AndroidUpdater(private val context: Context, private val app: String) : AppUpdater {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
-    val state: StateFlow<UpdateState> = _state
+    override val state: StateFlow<UpdateState> = _state
 
     val appId: String = context.packageName
-    val channel: UpdateChannel = UpdateChannel.forAppId(appId)
+    override val channel: UpdateChannel = UpdateChannel.forAppId(appId)
     val versionCode: Int = runCatching {
         val info = context.packageManager.getPackageInfo(appId, 0)
         if (Build.VERSION.SDK_INT >= 28) info.longVersionCode.toInt() else @Suppress("DEPRECATION") info.versionCode
     }.getOrDefault(0)
-    val versionName: String = runCatching { context.packageManager.getPackageInfo(appId, 0).versionName }.getOrNull().orEmpty()
+    override val versionName: String = runCatching { context.packageManager.getPackageInfo(appId, 0).versionName }.getOrNull().orEmpty()
 
     private val _autoCheck = MutableStateFlow(prefs.getBoolean(KEY_AUTO, true))
 
     /** Look for updates by itself when the app opens. */
-    val autoCheck: StateFlow<Boolean> = _autoCheck
+    override val autoCheck: StateFlow<Boolean> = _autoCheck
 
-    fun setAutoCheck(on: Boolean) {
+    override fun setAutoCheck(on: Boolean) {
         prefs.edit().putBoolean(KEY_AUTO, on).apply()
         _autoCheck.value = on
     }
 
     /** On app start: checks if automatic checks are on and the last one was a while ago. */
-    fun checkIfDue() {
+    override fun checkIfDue() {
         if (!_autoCheck.value || channel == UpdateChannel.NONE) return
         if (System.currentTimeMillis() - prefs.getLong(KEY_LAST, 0) < CHECK_EVERY_MS) return
         check(quiet = true)
     }
 
     /** Looks now. [quiet] leaves the state Idle (not "up to date") when there's nothing new. */
-    fun check(quiet: Boolean = false) {
+    override fun check(quiet: Boolean) {
         if (channel == UpdateChannel.NONE) {
             _state.value = UpdateState.Failed("This is a development build; it doesn't update from releases.")
             return
@@ -101,22 +85,22 @@ class AppUpdater(private val context: Context, private val app: String) {
     }
 
     /** "Later": don't bring this one up again on its own. */
-    fun skip(release: AppRelease) {
+    override fun skip(release: AppRelease) {
         prefs.edit().putString(KEY_SKIPPED, release.tag).apply()
         _state.value = UpdateState.Idle
     }
 
     /** Back to offering [release], e.g. while the user is off allowing installs. */
-    fun offer(release: AppRelease) {
+    override fun offer(release: AppRelease) {
         _state.value = UpdateState.Available(release)
     }
 
-    fun dismiss() {
+    override fun dismiss() {
         _state.value = UpdateState.Idle
     }
 
     /** Downloads [release], verifies it, and opens Android's installer. */
-    fun install(release: AppRelease) {
+    override fun install(release: AppRelease) {
         if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
             val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$appId")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             _state.value = UpdateState.NeedsPermission(release, settings)
@@ -231,7 +215,7 @@ class AppUpdater(private val context: Context, private val app: String) {
 
         /** Set by the app container so the receiver can report back. */
         @Volatile
-        internal var current: AppUpdater? = null
+        internal var current: AndroidUpdater? = null
     }
 }
 
@@ -244,6 +228,6 @@ class InstallResultReceiver : BroadcastReceiver() {
             val confirm = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java) else intent.getParcelableExtra(Intent.EXTRA_INTENT)
             confirm?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)?.let(context::startActivity)
         }
-        AppUpdater.current?.onInstallResult(status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))
+        AndroidUpdater.current?.onInstallResult(status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))
     }
 }

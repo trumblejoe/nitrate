@@ -1,5 +1,7 @@
 package dev.nitrate.mobile.ui
 
+import dev.nitrate.android.sendPlaybackReport
+import dev.nitrate.android.playbackReport
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
