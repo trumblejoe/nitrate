@@ -12,7 +12,7 @@ plugins {
 kotlin {
     android {
         namespace = "dev.nitrate.app"
-        compileSdk = 37
+        compileSdk { version = release(37) { minorApiLevel = 2 } }
         minSdk = 24
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     }
