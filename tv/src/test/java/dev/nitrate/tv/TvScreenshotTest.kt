@@ -411,6 +411,12 @@ class TvScreenshotTest {
                 plan, "c2.android.hevc.decoder", "c2.android.flac.decoder",
                 Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(32.dp),
                 audio = dev.nitrate.core.playback.AudioPath("flac", 2, 96_000, 24, dev.nitrate.core.playback.AudioDelivery.DECODED, "PCM float", 2, 96_000, 96_000),
+                video = dev.nitrate.core.playback.VideoPath(
+                    inCodec = "hevc", inWidth = 1920, inHeight = 1080, inFps = 23.976f, inRange = "SDR",
+                    displayWidth = 3840, displayHeight = 2160, displayHz = 60f, displayHdr = setOf("HDR10", "HLG"),
+                    droppedFrames = 0, bufferedMs = 31_000, networkBps = 220_000_000, fileBps = 9_400_000,
+                    subtitles = "Styled (ASS), drawn by libass as the file styles them", secondSubtitle = "English",
+                ),
             )
         }
     }

@@ -466,7 +466,8 @@ fun PlayerScreen(
         }
 
         if (panel == Panel.INFO && p != null) {
-            PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.TopEnd).padding(32.dp), audio = session.audioPath.collectAsState().value)
+            PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.TopEnd).padding(32.dp), audio = session.audioPath.collectAsState().value,
+                video = androidx.compose.runtime.produceState<dev.nitrate.core.playback.VideoPath?>(null, session) { session.videoPath().collect { value = it } }.value)
         }
 
         (logMessage ?: notice)?.let {

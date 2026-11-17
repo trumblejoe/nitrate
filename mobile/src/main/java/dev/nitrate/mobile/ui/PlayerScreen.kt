@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -506,13 +507,21 @@ fun PlayerScreen(
             onDismissRequest = { dialog = PlayerDialog.NONE },
             title = { Text("Playback info") },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                     val audioPath by session.audioPath.collectAsState()
-                    (p.infoRows(videoDecoder, audioDecoder) + audioPath.rows()).forEach { (label, value) ->
+                    val videoPath by androidx.compose.runtime.produceState<dev.nitrate.core.playback.VideoPath?>(null, session) { session.videoPath().collect { value = it } }
+                    @Composable
+                    fun rows(list: List<Pair<String, String>>) = list.forEach { (label, value) ->
                         Row(Modifier.padding(vertical = 3.dp)) {
                             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(110.dp))
-                            Text(value, style = MaterialTheme.typography.bodyMedium)
+                            Text(value, style = MaterialTheme.typography.bodyMedium, color = if (label == "Note") accentColor() else MaterialTheme.colorScheme.onSurface)
                         }
+                    }
+                    rows(p.infoRows(videoDecoder, audioDecoder) + videoPath?.rows().orEmpty())
+                    val sound = audioPath.rows()
+                    if (sound.isNotEmpty()) {
+                        Text("Sound", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                        rows(sound)
                     }
                     logMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor(), modifier = Modifier.padding(top = 10.dp)) }
                     androidx.compose.material3.OutlinedButton(onClick = { dialog = PlayerDialog.MEDIA_INFO }, modifier = Modifier.padding(top = 12.dp)) {

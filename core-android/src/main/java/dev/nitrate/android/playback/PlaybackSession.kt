@@ -144,6 +144,79 @@ class PlaybackSession(
         )
     }
 
+    @Volatile private var videoFormat: androidx.media3.common.Format? = null
+    @Volatile private var droppedFrames = 0
+    @Volatile private var networkBps: Long? = null
+
+    /**
+     * The picture's path, refreshed every second while collected (the Info panel): what the decoder
+     * gets, HDR and how it's shown, the display's mode, smoothness and how subtitles are drawn.
+     */
+    fun videoPath(): kotlinx.coroutines.flow.Flow<dev.nitrate.core.playback.VideoPath> = kotlinx.coroutines.flow.flow {
+        while (true) {
+            emit(videoSnapshot())
+            delay(1_000)
+        }
+    }
+
+    private fun videoSnapshot(): dev.nitrate.core.playback.VideoPath {
+        val p = _plan.value
+        val stream = p?.source?.streams?.firstOrNull { it.kind == StreamKind.VIDEO }
+        val f = videoFormat
+        val shownRange = when {
+            f == null -> null
+            f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION -> "Dolby Vision"
+            f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10"
+            f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG"
+            else -> "SDR"
+        }
+        val type = stream?.rangeType.orEmpty()
+        val fileRange = when {
+            type.startsWith("DOVIWithEL", ignoreCase = true) -> "Dolby Vision (profile 7)"
+            type.startsWith("DOVI", ignoreCase = true) -> "Dolby Vision"
+            type.equals("HDR10Plus", ignoreCase = true) -> "HDR10+"
+            type.equals("HDR10", ignoreCase = true) -> "HDR10"
+            type.equals("HLG", ignoreCase = true) -> "HLG"
+            else -> null
+        }
+        val display = DisplayInfo.read(appContext)
+        return dev.nitrate.core.playback.VideoPath(
+            inCodec = stream?.codec ?: f?.sampleMimeType?.substringAfter('/'),
+            inWidth = f?.width?.takeIf { it > 0 } ?: stream?.width,
+            inHeight = f?.height?.takeIf { it > 0 } ?: stream?.height,
+            inFps = f?.frameRate?.takeIf { it > 0 } ?: stream?.frameRate,
+            inRange = shownRange,
+            fileRange = fileRange?.takeIf { it != shownRange },
+            profile7 = profile7.takeIf { type.startsWith("DOVIWithEL", ignoreCase = true) },
+            software = _videoDecoder.value?.startsWith(dev.nitrate.core.playback.DeviceCapabilities.SOFTWARE_VIDEO_DECODER) == true,
+            tunneled = runCatching { exo.isTunnelingEnabled }.getOrDefault(false),
+            displayWidth = display?.width,
+            displayHeight = display?.height,
+            displayHz = display?.hz,
+            displayHdr = display?.hdr,
+            droppedFrames = droppedFrames,
+            bufferedMs = exo.totalBufferedDuration.takeIf { _plan.value != null },
+            networkBps = networkBps?.takeIf { p?.url?.startsWith("/") != true },
+            fileBps = p?.source?.bitrate?.toLong()?.takeIf { it > 0 && p.url.startsWith("/").not() },
+            subtitles = p?.let { subtitleMethod(it) },
+            secondSubtitle = _secondSubtitle.value?.label,
+            convertingTo = p?.takeIf { it.method == PlayMethod.TRANSCODE }?.let { dev.nitrate.core.playback.VideoPath.convertingTo(it.url) },
+        )
+    }
+
+    /** How the chosen subtitle is drawn, in plain words. */
+    private fun subtitleMethod(p: PlaybackPlan): String {
+        val s = p.source.streams.firstOrNull { it.kind == StreamKind.SUBTITLE && it.index == p.subtitleIndex } ?: return "Off"
+        val codec = s.codec?.lowercase()
+        return when {
+            s.delivery == SubtitleDelivery.ENCODE -> "Burned into the picture by the server"
+            drawsWithLibass(p) -> "Styled (ASS), drawn by libass as the file styles them"
+            dev.nitrate.core.playback.isStyledSubtitle(codec) -> "Styled (ASS), shown " + if (styledMode == dev.nitrate.core.playback.StyledSubtitles.MINE) "in your subtitle style" else "more simply"
+            codec in setOf("pgssub", "pgs", "dvdsub", "dvbsub", "vobsub", "sup") -> "Picture subtitles (${codec?.uppercase()}), as the disc drew them"
+            else -> "Text (${codec?.uppercase() ?: "?"}), in your subtitle style"
+        }
+    }
+
     private val _videoDecoder = MutableStateFlow<String?>(null)
     val videoDecoder: StateFlow<String?> = _videoDecoder
     private val _audioDecoder = MutableStateFlow<String?>(null)
@@ -489,6 +562,7 @@ class PlaybackSession(
             }
 
             override fun onVideoInputFormatChanged(e: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
+                videoFormat = format
                 log("Video in: ${format.sampleMimeType} ${format.codecs ?: ""} ${format.width}x${format.height} ${format.frameRate}fps ${format.colorInfo?.toLogString() ?: ""}")
                 val fromServer = _plan.value?.source?.streams?.firstOrNull { it.kind == StreamKind.VIDEO }?.frameRate
                 _videoFrameRate.value = format.frameRate.takeIf { it > 0 } ?: fromServer
@@ -522,7 +596,12 @@ class PlaybackSession(
                 log("Audio out: ${encodingName(config.encoding)} ${Integer.bitCount(config.channelConfig)}ch ${config.sampleRate}Hz${if (config.tunneling) " tunneled" else ""}${if (config.offload) " offloaded" else ""}; mixer ${mixer ?: "?"}Hz")
             }
 
+            override fun onBandwidthEstimate(e: AnalyticsListener.EventTime, totalLoadTimeMs: Int, totalBytesLoaded: Long, bitrateEstimate: Long) {
+                networkBps = bitrateEstimate
+            }
+
             override fun onDroppedVideoFrames(e: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                this@PlaybackSession.droppedFrames += droppedFrames
                 log("Dropped $droppedFrames video frames in ${elapsedMs}ms")
             }
 
@@ -822,6 +901,8 @@ class PlaybackSession(
 
     /** A new item: subtitle timing and its cached files belong to the old one. */
     private fun forgetItemState() {
+        videoFormat = null
+        droppedFrames = 0
         _audioPath.value = dev.nitrate.core.playback.AudioPath()
         secondJob?.cancel()
         _secondSubtitle.value = null
