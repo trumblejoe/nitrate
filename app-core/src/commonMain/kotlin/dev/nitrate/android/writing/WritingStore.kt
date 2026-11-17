@@ -1,11 +1,12 @@
 package dev.nitrate.android.writing
 
-import android.content.Context
 import dev.nitrate.core.MediaServer
 import dev.nitrate.core.writing.Scripts
-import dev.nitrate.core.writing.TransferDocs
 import dev.nitrate.core.writing.WritingDoc
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -13,8 +14,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.io.File
-import java.util.UUID
+import dev.nitrate.android.files.File
 
 @Serializable
 private data class BackupEntry(val text: String, val modifiedMs: Long, val story: Map<String, dev.nitrate.core.writing.story.StoryRecord>? = null)
@@ -39,8 +39,9 @@ data class SharedLink(
  * When backup is on, each document is also kept in the user's Jellyfin display preferences
  * (a slot of its own), so a reset TV or another TV can restore it. Newest copy wins.
  */
-class WritingStore(context: Context, private val repository: MediaServer) {
-    private val dir = File(context.filesDir, "writing").apply { mkdirs() }
+class WritingStore(filesDir: String, private val repository: MediaServer) {
+    private val lock = SynchronizedObject()
+    private val dir = File(File(filesDir), "writing").apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
     private val backupLock = Mutex()
     private val _docs = MutableStateFlow<List<WritingDoc>>(emptyList())
@@ -72,7 +73,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
      * The signed-in account ("serverUrl|userId"): only its scripts are listed. Scripts from
      * before scripts had owners become the first signed-in account's.
      */
-    @Volatile var account: String? = null
+    @kotlin.concurrent.Volatile var account: String? = null
         set(value) {
             field = value
             if (value != null) claimUnowned(value)
@@ -80,22 +81,22 @@ class WritingStore(context: Context, private val repository: MediaServer) {
         }
 
     /** Who's writing here (user id, name), for the history kept on the device. */
-    @Volatile var author: () -> Pair<String, String> = { "" to "" }
+    @kotlin.concurrent.Volatile var author: () -> Pair<String, String> = { "" to "" }
 
     // ---- Owners ----
 
     private val ownersFile = File(dir, "owners.json")
     private var owners: MutableMap<String, String> = runCatching { json.decodeFromString<Map<String, String>>(ownersFile.readText()) }.getOrDefault(emptyMap()).toMutableMap()
 
-    private fun saveOwners() = synchronized(this) {
+    private fun saveOwners() = synchronized(lock) {
         val temp = File(dir, "owners.json.tmp")
         temp.writeText(json.encodeToString(owners.toMap()))
         temp.renameTo(ownersFile)
     }
 
-    fun ownerOf(id: String): String? = synchronized(this) { owners[id] }
+    fun ownerOf(id: String): String? = synchronized(lock) { owners[id] }
 
-    private fun claimUnowned(account: String) = synchronized(this) {
+    private fun claimUnowned(account: String) = synchronized(lock) {
         val unowned = dir.listFiles { f -> f.extension == "fountain" }.orEmpty().map { it.nameWithoutExtension }.filter { it !in owners }
         if (unowned.isNotEmpty()) {
             unowned.forEach { owners[it] = account }
@@ -105,7 +106,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
 
     /** Gives a script to another account (moving it to that account's server). */
     suspend fun setOwner(id: String, account: String) = withContext(Dispatchers.IO) {
-        synchronized(this@WritingStore) { owners[id] = account; saveOwners() }
+        synchronized(lock) { owners[id] = account; saveOwners() }
         _docs.value = scan()
     }
 
@@ -117,7 +118,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     private data class SyncChoices(val accounts: Map<String, Boolean> = emptyMap(), val deviceOnly: Set<String> = emptySet())
 
     private fun syncChoices(): SyncChoices = runCatching { json.decodeFromString<SyncChoices>(syncFile.readText()) }.getOrDefault(SyncChoices())
-    private fun saveSyncChoices(c: SyncChoices) = synchronized(this) { syncFile.writeText(json.encodeToString(c)) }
+    private fun saveSyncChoices(c: SyncChoices) = synchronized(lock) { syncFile.writeText(json.encodeToString(c)) }
 
     /** This device's choice for syncing [account]'s scripts (null: not chosen, so the default applies). */
     fun syncChoice(account: String): Boolean? = syncChoices().accounts[account]
@@ -151,7 +152,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     private suspend fun record(id: String, before: String?, after: String?, changes: List<dev.nitrate.core.writing.story.RecordChange>) = withContext(Dispatchers.IO) {
         if (link(id) != null) return@withContext // a synced script's history is the server's
         val (userId, userName) = author()
-        val now = System.currentTimeMillis()
+        val now = dev.nitrate.android.nowMs()
         if (!startFile(id).exists()) {
             startFile(id).writeText(json.encodeToString(dev.nitrate.core.writing.story.LocalHistoryStart(before ?: read(id), readStory(id), now, userId)))
         }
@@ -199,7 +200,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     private fun scan(): List<WritingDoc> {
         val links = links()
         val current = account
-        val owned = synchronized(this) { owners.toMap() }
+        val owned = synchronized(lock) { owners.toMap() }
         return dir.listFiles { f -> f.extension == "fountain" }.orEmpty()
             .filter { f -> owned[f.nameWithoutExtension] == current }
             .map { f ->
@@ -232,7 +233,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     suspend fun unlink(id: String) = withContext(Dispatchers.IO) {
         link(id)?.let { l ->
             var story = dev.nitrate.core.writing.story.Story(l.state.records)
-            l.state.pendingRecords.forEach { p -> p.changes.forEach { story = story.apply(it, null, null, System.currentTimeMillis()) } }
+            l.state.pendingRecords.forEach { p -> p.changes.forEach { story = story.apply(it, null, null, dev.nitrate.android.nowMs()) } }
             saveStory(id, story.records)
         }
         linkFile(id).delete()
@@ -243,9 +244,9 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     suspend fun read(id: String): String = withContext(Dispatchers.IO) { file(id).takeIf { it.exists() }?.readText().orEmpty() }
 
     suspend fun create(text: String = ""): String = withContext(Dispatchers.IO) {
-        val id = UUID.randomUUID().toString()
+        val id = kotlin.uuid.Uuid.random().toString()
         file(id).writeText(text)
-        account?.let { a -> synchronized(this@WritingStore) { owners[id] = a; saveOwners() } }
+        account?.let { a -> synchronized(lock) { owners[id] = a; saveOwners() } }
         _docs.value = scan()
         id
     }
@@ -260,7 +261,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
     suspend fun delete(id: String, backup: Boolean) {
         withContext(Dispatchers.IO) {
             file(id).delete(); linkFile(id).delete(); storyFile(id).delete(); logFile(id).delete(); startFile(id).delete()
-            synchronized(this@WritingStore) { if (owners.remove(id) != null) saveOwners() }
+            synchronized(lock) { if (owners.remove(id) != null) saveOwners() }
         }
         _docs.value = scan()
         if (backup) {
@@ -318,7 +319,7 @@ class WritingStore(context: Context, private val repository: MediaServer) {
                 val owner = ownerOf(id)
                 if (owner != null && owner != account) continue
                 if (!local.exists() || local.lastModified() < entry.modifiedMs) {
-                    account?.let { a -> synchronized(this@WritingStore) { owners[id] = a; saveOwners() } }
+                    account?.let { a -> synchronized(lock) { owners[id] = a; saveOwners() } }
                     local.writeText(entry.text)
                     local.setLastModified(entry.modifiedMs)
                     entry.story?.let { if (link(id) == null) saveStory(id, it) }
@@ -328,17 +329,6 @@ class WritingStore(context: Context, private val repository: MediaServer) {
         }
         _docs.value = scan()
         return restored
-    }
-
-    /** Lets the transfer page list, download and add scripts. */
-    fun asTransferDocs(): TransferDocs = object : TransferDocs {
-        override fun list(): List<WritingDoc> = docs.value
-
-        // Only ids of existing scripts: the id comes from a URL, so it must never reach other files.
-        override suspend fun read(id: String): String? =
-            if (docs.value.any { it.id == id }) this@WritingStore.read(id) else null
-
-        override suspend fun create(text: String): String = this@WritingStore.create(text)
     }
 
     companion object {

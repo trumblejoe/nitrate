@@ -7,7 +7,10 @@ import dev.nitrate.core.writing.SharedScriptSession
 import dev.nitrate.core.writing.SharedScriptState
 import dev.nitrate.core.writing.UserRef
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -16,7 +19,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
-import java.util.UUID
 
 /**
  * Shared screenplays (with the Nitrate Companion plugin) on this device. A shared script is
@@ -34,6 +36,7 @@ class SharedWriting(
     /** Keeps what sessions save, outliving any one screen. */
     private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingSaves = mutableMapOf<String, Job>()
+    private val pendingSavesLock = SynchronizedObject()
 
     /** True when the server has the Companion plugin with shared scripts. */
     val available: Flow<Boolean> = companion.map { it?.features?.contains(FEATURE) == true }
@@ -189,10 +192,10 @@ class SharedWriting(
             start = link.state,
             save = { state -> saveSoon(localId, link.copy(state = state)) },
             onConflict = { text -> io.launch { store.create(text) } },
-            newEditId = { UUID.randomUUID().toString() },
+            newEditId = { kotlin.uuid.Uuid.random().toString() },
             selfId = server.userId.orEmpty(),
             selfName = selfName().orEmpty(),
-            now = { System.currentTimeMillis() },
+            now = { dev.nitrate.android.nowMs() },
         )
     }
 
@@ -262,7 +265,7 @@ class SharedWriting(
 
     /** Keeps the latest state, written a moment after typing stops (each write replaces the one before). */
     private fun saveSoon(localId: String, link: SharedLink) {
-        synchronized(pendingSaves) {
+        synchronized(pendingSavesLock) {
             pendingSaves[localId]?.cancel()
             pendingSaves[localId] = io.launch {
                 delay(SAVE_DELAY_MS)

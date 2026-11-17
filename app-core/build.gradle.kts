@@ -17,7 +17,11 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
-    compilerOptions { optIn.add("kotlin.uuid.ExperimentalUuidApi") }
+    compilerOptions {
+        optIn.add("kotlin.uuid.ExperimentalUuidApi")
+        optIn.add("kotlinx.cinterop.ExperimentalForeignApi")
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
 
     sourceSets {
         commonMain.dependencies {
@@ -25,6 +29,7 @@ kotlin {
             api(libs.androidx.datastore.preferences.core)
             implementation(libs.kotlinx.serialization.json)
             api(libs.androidx.lifecycle.viewmodel)
+            implementation(libs.atomicfu)
         }
     }
 }

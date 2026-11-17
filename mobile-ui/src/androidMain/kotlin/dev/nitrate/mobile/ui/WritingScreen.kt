@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import dev.nitrate.android.writing.asTransferDocs
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.DisposableEffect
