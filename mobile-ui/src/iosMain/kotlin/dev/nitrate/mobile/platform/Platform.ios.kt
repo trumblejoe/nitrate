@@ -5,6 +5,8 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import coil3.toBitmap
 import dev.nitrate.core.playback.SoundOutput
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter
@@ -103,3 +105,7 @@ actual fun rememberImagePixels(model: Any?, size: Int): State<Pair<IntArray, Int
 // A local web server for the transfer page comes later on iOS (Files and the share sheet first).
 @Composable
 actual fun rememberScriptTransfer(store: dev.nitrate.android.writing.WritingStore): ScriptTransfer? = null
+
+actual fun toImageBitmap(image: coil3.Image): androidx.compose.ui.graphics.ImageBitmap = image.toBitmap().asComposeImageBitmap()
+
+actual fun softwareImage(builder: coil3.request.ImageRequest.Builder): coil3.request.ImageRequest.Builder = builder

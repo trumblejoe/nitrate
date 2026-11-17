@@ -47,10 +47,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,8 +61,6 @@ import coil3.network.NetworkHeaders
 import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
-import coil3.request.allowHardware
-import coil3.toBitmap
 import dev.nitrate.core.MediaServer
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.MediaSegment
@@ -222,15 +218,15 @@ fun BoxScope.TrickplayPreview(server: MediaServer, itemId: String, info: Trickpl
 /** One trickplay sheet as a bitmap (sheets need the auth header, so they go through Coil by hand). */
 @Composable
 private fun rememberTrickplaySheet(server: MediaServer, url: String): ImageBitmap? {
-    val context = LocalContext.current
+    val context = coil3.compose.LocalPlatformContext.current
     val cache = remember { HashMap<String, ImageBitmap>() }
     val state = produceState(cache[url], url) {
         cache[url]?.let { value = it; return@produceState }
-        val request = ImageRequest.Builder(context).data(url).allowHardware(false)
+        val request = dev.nitrate.mobile.platform.softwareImage(ImageRequest.Builder(context).data(url))
             .httpHeaders(NetworkHeaders.Builder().set("Authorization", server.authorizationHeader()).build())
             .build()
         val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult ?: return@produceState
-        value = result.image.toBitmap().asImageBitmap().also { cache[url] = it }
+        value = dev.nitrate.mobile.platform.toImageBitmap(result.image).also { cache[url] = it }
     }
     return state.value
 }
@@ -316,22 +312,3 @@ fun StillWatchingPrompt(
     )
 }
 
-/** Dual subtitles: the second subtitle's current line, at the top of the picture. */
-@Composable
-fun SecondSubtitleLine(session: dev.nitrate.android.playback.PlaybackSession, scale: Float, modifier: Modifier = Modifier) {
-    val second by session.secondSubtitle.collectAsState()
-    val s = second ?: return
-    val line by produceState<String?>(null, s) {
-        while (true) {
-            value = dev.nitrate.core.playback.SecondSubtitles.at(s.cues, session.player.currentPosition)
-            delay(100)
-        }
-    }
-    line?.let {
-        Text(
-            it, color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * scale),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = modifier.clip(RoundedCornerShape(6.dp)).background(Color(0x99000000)).padding(horizontal = 10.dp, vertical = 4.dp),
-        )
-    }
-}

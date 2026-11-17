@@ -130,3 +130,9 @@ interface ScriptTransfer {
 /** The transfer page for [store]'s scripts, or null where the platform can't serve one (iOS for now). */
 @Composable
 expect fun rememberScriptTransfer(store: dev.nitrate.android.writing.WritingStore): ScriptTransfer?
+
+/** A loaded Coil image as a Compose bitmap (for drawing parts of it, like trickplay tiles). */
+expect fun toImageBitmap(image: coil3.Image): androidx.compose.ui.graphics.ImageBitmap
+
+/** A request whose image can be read pixel by pixel (Android: not a hardware bitmap). */
+expect fun softwareImage(builder: coil3.request.ImageRequest.Builder): coil3.request.ImageRequest.Builder

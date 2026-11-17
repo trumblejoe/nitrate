@@ -13,6 +13,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.window.DialogProperties
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
@@ -148,3 +149,7 @@ actual fun rememberScriptTransfer(store: dev.nitrate.android.writing.WritingStor
         }
     }
 }
+
+actual fun toImageBitmap(image: coil3.Image): androidx.compose.ui.graphics.ImageBitmap = image.toBitmap().asImageBitmap()
+
+actual fun softwareImage(builder: ImageRequest.Builder): ImageRequest.Builder = builder.allowHardware(false)
