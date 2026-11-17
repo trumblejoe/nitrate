@@ -127,6 +127,9 @@ object NavIcons {
  */
 val LocalMenuEdge = androidx.compose.runtime.staticCompositionLocalOf<(Key) -> Boolean> { { false } }
 
+/** Whether the menu is that way from the page's edge (without moving there), e.g. so a row wraps round only when it isn't. */
+val LocalMenuSide = androidx.compose.runtime.staticCompositionLocalOf<(Key) -> Boolean> { { false } }
+
 /**
  * Pages that step through rows themselves (the full-screen Home) report whether they're on the
  * first and last row, so the Top/Bottom bar can sit where you can reach it.
@@ -178,22 +181,21 @@ fun TvMenu(
     LaunchedEffect(focusBar) { if (focusBar > 0) runCatching { kotlinx.coroutines.delay(16); menuFocus.requestFocus() } }
     BackHandler(enabled = inMenu || dialOpen, onBack = toContent)
 
-    val reach: (Key) -> Boolean = { key ->
-        val towards = when (style) {
+    val side: (Key) -> Boolean = { key ->
+        when (style) {
             TvMenuStyle.LEFT -> key == Key.DirectionLeft
             TvMenuStyle.RIGHT -> key == Key.DirectionRight
             // With one row the bar is only at the top.
             TvMenuStyle.TOP, TvMenuStyle.FADE -> (key == Key.DirectionUp && onFirst) || (key == Key.DirectionDown && onLast && !onFirst)
             else -> key == Key.DirectionUp
         }
-        if (towards) toMenu()
-        towards
     }
+    val reach: (Key) -> Boolean = { key -> side(key).also { if (it) toMenu() } }
     val rows: (Boolean, Boolean) -> Unit = { first, last -> onFirst = first; onLast = last }
 
     @Composable
     fun page(insets: MenuInsets) = Box(Modifier.fillMaxSize().focusRequester(contentFocus).focusGroup()) {
-        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuRows provides rows) { content(insets) }
+        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows) { content(insets) }
     }
     val shown by animateFloatAsState(if (!autoHide || inMenu) 1f else 0f, label = "menu-fade")
     val trackMenu = Modifier.alpha(shown).onFocusChanged { inMenu = it.hasFocus; if (!it.hasFocus) forcedTop = false }

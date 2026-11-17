@@ -103,6 +103,7 @@ fun ShowcaseRow(
     }
 
     LaunchedEffect(active, item.id) { if (active) actions.onFocus(item) }
+    val menuSide = dev.nitrate.tv.ui.home.LocalMenuSide.current
 
     Box(
         modifier
@@ -110,16 +111,16 @@ fun ShowcaseRow(
             .onPreviewKeyEvent { event ->
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
-                    // On the last item (unless it wraps round), let focus leave the row, e.g. to a rail on the right.
+                    // Off either end: to the menu if it's that way, else round to the other end (unless
+                    // wrapping is off, when focus leaves the row).
                     Key.DirectionRight -> when {
                         current < items.lastIndex -> { if (down) onIndexChange(current + 1); true }
-                        options.infiniteScroll -> { if (down) onIndexChange(0); true }
+                        options.infiniteScroll && items.size > 1 && !menuSide(Key.DirectionRight) -> { if (down) onIndexChange(0); true }
                         else -> false
                     }
-                    // On the first item (unless it wraps round), let focus leave the row.
                     Key.DirectionLeft -> when {
                         current > 0 -> { if (down) onIndexChange(current - 1); true }
-                        options.infiniteScroll && items.size > 1 -> { if (down) onIndexChange(items.lastIndex); true }
+                        options.infiniteScroll && items.size > 1 && !menuSide(Key.DirectionLeft) -> { if (down) onIndexChange(items.lastIndex); true }
                         else -> false
                     }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {

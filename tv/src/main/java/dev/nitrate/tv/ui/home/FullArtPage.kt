@@ -107,9 +107,10 @@ fun FullArtPage(
             .onPreviewKeyEvent { event ->
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
-                    // Past the first/last item or row: on to the menu if it's that way, otherwise stay.
-                    Key.DirectionRight -> { if (down) { if (current < row.items.lastIndex) itemIndex[row.key] = current + 1 else reachMenu(event.key) }; true }
-                    Key.DirectionLeft -> { if (down) { if (current > 0) itemIndex[row.key] = current - 1 else reachMenu(event.key) }; true }
+                    // Past the first/last item: on to the menu if it's that way, else round to the other
+                    // end (the row's "Infinite scroll"). Past the first/last row: the menu or stay.
+                    Key.DirectionRight -> { if (down) { if (current < row.items.lastIndex) itemIndex[row.key] = current + 1 else if (!reachMenu(event.key) && showcase.infiniteScroll) itemIndex[row.key] = 0 }; true }
+                    Key.DirectionLeft -> { if (down) { if (current > 0) itemIndex[row.key] = current - 1 else if (!reachMenu(event.key) && showcase.infiniteScroll) itemIndex[row.key] = row.items.lastIndex }; true }
                     Key.DirectionDown -> { if (down) { if (rowIndex < shown.lastIndex) rowKey = shown[rowIndex + 1].key else reachMenu(event.key) }; true }
                     Key.DirectionUp -> { if (down) { if (rowIndex > 0) rowKey = shown[rowIndex - 1].key else reachMenu(event.key) }; true }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
