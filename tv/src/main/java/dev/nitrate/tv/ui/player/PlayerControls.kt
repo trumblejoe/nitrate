@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -97,6 +98,10 @@ internal fun PlayerControls(
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     buttons: List<PlayerAction>,
+    /** The title's chapters as a strip of pictures under the buttons (none: no strip). */
+    chapters: List<dev.nitrate.core.model.Chapter> = emptyList(),
+    chapterImage: (Int) -> String? = { null },
+    onChapter: (Long) -> Unit = {},
 ) {
     Column(
         Modifier
@@ -124,8 +129,92 @@ internal fun PlayerControls(
                 )
             }
         }
+        if (chapters.size > 1) ChapterStrip(chapters, position, chapterImage, onChapter)
     }
 }
+
+/**
+ * The chapters under the buttons, Down from them: a picture each (or a numbered placeholder when
+ * the server has none), name and start time. Entering the strip lands on the chapter playing; OK
+ * jumps to the focused one.
+ */
+@Composable
+private fun ChapterStrip(chapters: List<dev.nitrate.core.model.Chapter>, position: Long, image: (Int) -> String?, onChapter: (Long) -> Unit) {
+    val now = dev.nitrate.core.playback.Chapters.current(chapters, position).coerceAtLeast(0)
+    val nowFocus = remember { FocusRequester() }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = now)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Chapters", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f))
+        androidx.compose.foundation.lazy.LazyRow(
+            state = list,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp),
+            modifier = Modifier.focusRestorer(nowFocus),
+        ) {
+            items(chapters.size) { i ->
+                ChapterCard(
+                    index = i,
+                    chapter = chapters[i],
+                    title = dev.nitrate.core.playback.Chapters.title(chapters, i),
+                    imageUrl = image(i),
+                    playing = i == now,
+                    onClick = { onChapter(chapters[i].startMs) },
+                    modifier = if (i == now) Modifier.focusRequester(nowFocus) else Modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChapterCard(index: Int, chapter: dev.nitrate.core.model.Chapter, title: String, imageUrl: String?, playing: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    var focused by remember { mutableStateOf(false) }
+    Column(Modifier.width(CHAPTER_WIDTH), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.tv.material3.Surface(
+            onClick = onClick,
+            modifier = modifier.width(CHAPTER_WIDTH).height(CHAPTER_WIDTH * 9 / 16).onFocusChanged { focused = it.isFocused },
+            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            border = androidx.tv.material3.ClickableSurfaceDefaults.border(
+                border = if (playing) Border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary)) else Border.None,
+                focusedBorder = Border(BorderStroke(3.dp, Color.White), inset = (-3).dp),
+            ),
+            colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(containerColor = Color(0xFF1E232A), focusedContainerColor = Color(0xFF1E232A)),
+        ) {
+            Box(Modifier.matchParentSize()) {
+                // Under the picture, so it shows when there's none or it doesn't load.
+                ChapterPlaceholder(index)
+                if (imageUrl != null) {
+                    coil3.compose.AsyncImage(imageUrl, null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.matchParentSize())
+                }
+                if (playing) {
+                    Text(
+                        "Now", style = MaterialTheme.typography.labelSmall, color = Color.Black,
+                        modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
+        }
+        Text(title, style = MaterialTheme.typography.labelLarge, color = if (focused) Color.White else Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Text(dev.nitrate.core.model.formatClock(chapter.startMs), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
+    }
+}
+
+/** A chapter with no picture: its number on a quiet gradient. */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.ChapterPlaceholder(index: Int) {
+    Box(
+        Modifier.matchParentSize().background(Brush.linearGradient(listOf(Color(0xFF2C343E), Color(0xFF161A1F)))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("${index + 1}", style = MaterialTheme.typography.headlineMedium, color = Color.White.copy(alpha = 0.45f))
+    }
+}
+
+private val CHAPTER_WIDTH = 176.dp
+
+/** How far up overlays sit above the controls: higher when the chapter strip is shown. */
+internal fun controlsHeight(hasChapters: Boolean) = if (hasChapters) 400.dp else 220.dp
 
 /** One button in the player's row. */
 internal class PlayerAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)

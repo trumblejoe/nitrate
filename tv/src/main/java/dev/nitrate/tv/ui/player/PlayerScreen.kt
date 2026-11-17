@@ -92,7 +92,7 @@ import dev.nitrate.core.model.SubtitleDelivery
 private const val CONTROLS_TIMEOUT_MS = 5_000L
 
 
-private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, CHAPTERS, FIX, CHAT }
+private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, FIX, CHAT }
 
 /** Keys that, with the controls hidden, only bring them back. */
 private val WAKE_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)
@@ -426,7 +426,6 @@ fun PlayerScreen(
                     PlayerAction("Audio", ready) { panel = Panel.AUDIO },
                     PlayerAction("Subtitles", ready) { panel = Panel.SUBTITLES },
                     PlayerAction(if (panel == Panel.INFO) "Hide info" else "Info", ready) { toggle(Panel.INFO) }.takeIf { !easy },
-                    PlayerAction("Chapters") { panel = Panel.CHAPTERS }.takeIf { !easy && (item?.chapters?.size ?: 0) > 1 },
                     PlayerAction("More", ready) { panel = Panel.MORE }.takeIf { !easy },
                     PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },
                     PlayerAction("Why converting?") { panel = Panel.FIX }.takeIf { !easy && capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
@@ -443,6 +442,10 @@ fun PlayerScreen(
                             }
                         }
                     }),
+                // Easy mode keeps to the essentials: no chapter strip.
+                chapters = if (easy) emptyList() else item?.chapters.orEmpty(),
+                chapterImage = { i -> item?.let { repository.chapterImageUrl(it, i, 320) } },
+                onChapter = { player.seekTo(it) },
             )
         }
 
@@ -461,7 +464,7 @@ fun PlayerScreen(
                 onPlay = { onPlayNext?.invoke(nextUp) },
                 onCountdownEnd = { rollOn(nextUp) },
                 onHide = { upNextHidden = true; runCatching { rootFocus.requestFocus() } },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) 220.dp else 48.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) controlsHeight(!easy && (item?.chapters?.size ?: 0) > 1) else 48.dp),
             )
         }
 
@@ -512,7 +515,7 @@ fun PlayerScreen(
                     creditAction = null
                     if (!controlsVisible) runCatching { rootFocus.requestFocus() }
                 },
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) 220.dp else 48.dp),
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) controlsHeight(!easy && (item?.chapters?.size ?: 0) > 1) else 48.dp),
             )
         }
 
@@ -559,9 +562,6 @@ fun PlayerScreen(
             onDismiss = { panel = Panel.NONE },
         )
     }
-    item?.takeIf { panel == Panel.CHAPTERS && it.chapters.size > 1 }?.let { current ->
-        ChapterDialog(current, repository, player.currentPosition, onSeek = { player.seekTo(it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })
-    }
     if (p != null && panel == Panel.AUDIO) {
         TrackDialog("Audio", p.audioChoices(), p.audioIndex, onSelect = { selectTrack(StreamKind.AUDIO, it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })
     }
@@ -570,38 +570,7 @@ fun PlayerScreen(
     }
 }
 
-/** The title's chapters with their pictures; the one playing is focused, OK jumps there. */
 @Composable
 private fun ChatToastsSlot(chat: dev.nitrate.core.companion.GroupChat, modifier: Modifier) =
     dev.nitrate.tv.ui.together.ChatToasts(chat, modifier)
 
-@Composable
-private fun ChapterDialog(item: dev.nitrate.core.model.MediaItem, server: dev.nitrate.core.MediaServer, positionMs: Long, onSeek: (Long) -> Unit, onDismiss: () -> Unit) {
-    val focus = remember { FocusRequester() }
-    val now = dev.nitrate.core.playback.Chapters.current(item.chapters, positionMs).coerceAtLeast(0)
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Column(Modifier.width(620.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(24.dp)) {
-            Text("Chapters", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp))
-            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 480.dp)) {
-                items(item.chapters.size) { i ->
-                    val c = item.chapters[i]
-                    androidx.tv.material3.ListItem(
-                        selected = i == now,
-                        onClick = { onSeek(c.startMs) },
-                        leadingContent = {
-                            coil3.compose.AsyncImage(
-                                server.chapterImageUrl(item, i, 320), null,
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                modifier = Modifier.width(120.dp).aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),
-                            )
-                        },
-                        headlineContent = { Text(dev.nitrate.core.playback.Chapters.title(item.chapters, i)) },
-                        supportingContent = { Text(dev.nitrate.core.model.formatClock(c.startMs)) },
-                        modifier = if (i == now) Modifier.focusRequester(focus) else Modifier,
-                    )
-                }
-            }
-        }
-    }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-}

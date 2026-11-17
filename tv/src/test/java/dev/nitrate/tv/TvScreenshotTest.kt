@@ -245,7 +245,11 @@ class TvScreenshotTest {
                 dev.nitrate.tv.ui.player.PlayerControls(
                     item, null, position = 1_260_000, duration = 2_700_000, playing = true, focus = focus,
                     onPlayPause = {}, onSeek = {},
-                    buttons = listOf("Audio", "Subtitles", "Info", "Chapters", "More").map { dev.nitrate.tv.ui.player.PlayerAction(it) {} },
+                    buttons = listOf("Audio", "Subtitles", "Info", "More").map { dev.nitrate.tv.ui.player.PlayerAction(it) {} },
+                    // Pictures for some, placeholders for the rest.
+                    chapters = listOf("Opening", "The letter", "Night train", "Crossing", "The reel", "Morning", "Credits")
+                        .mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 400_000L, n) },
+                    chapterImage = { i -> item?.takeIf { i % 3 != 2 }?.let { c.server.imageUrl(it, dev.nitrate.core.model.ImageKind.BACKDROP, 320) } },
                 )
             }
         }
@@ -255,6 +259,7 @@ class TvScreenshotTest {
     @Test fun playerControlsPlay() = playerControls("tv-player-controls-play")
     @Test fun playerControlsButton() = playerControls("tv-player-controls-audio", "right") { check(focusedHasText("Audio")) }
     @Test fun playerControlsSeek() = playerControls("tv-player-controls-seek", "up")
+    @Test fun playerControlsChapters() = playerControls("tv-player-controls-chapters", "down") { check(focusedHasText("Now")) }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {
