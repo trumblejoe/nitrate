@@ -333,6 +333,30 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
+    /** Rows of different styles one under another, on a tall canvas so the whole page shows. */
+    @Test
+    @Config(qualifiers = "w960dp-h1500dp-land-television-night-xhdpi")
+    fun homeMixedRows() = shoot("tv-home-mixed-rows", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FILM_STRIP))
+        c.displaySettings.save("user-1", rows[3], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA))
+    }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h1500dp-land-television-night-xhdpi")
+    fun homeMixedRows2() = shoot("tv-home-mixed-rows-2", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.POSTER, size = dev.nitrate.core.rows.RowSize.SMALL))
+        c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.LIGHTNING))
+        c.displaySettings.save("user-1", rows[2], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, size = dev.nitrate.core.rows.RowSize.LARGE))
+    }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
     /** A Full Showcase row lower on the page fills the screen when scrolled to, before it has focus. */
     @Test fun homeFullShowcase() = shoot("tv-home-full-showcase", { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

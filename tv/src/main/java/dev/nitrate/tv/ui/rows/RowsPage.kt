@@ -1,5 +1,8 @@
 package dev.nitrate.tv.ui.rows
 
+import kotlinx.coroutines.launch
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.core.pages.hidesDescription
 import androidx.compose.animation.AnimatedVisibility
@@ -51,6 +54,7 @@ class RowActions(
  * A vertical page of rows, shared by Home and library pages. Draws the focused item's
  * backdrop and summary above the rows, except while a showcase row has taken over the screen.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RowsPage(
     rows: List<MediaRow>,
@@ -95,8 +99,13 @@ fun RowsPage(
 
         Column(Modifier.fillMaxSize()) {
             AnimatedVisibility(visible = activeShowcase == null) {
-                FocusedSummary(focused, Modifier.padding(start = RowPadding, top = 36.dp, end = RowPadding).height(190.dp))
+                // A clear gap below, so the first row's title never runs into the description.
+                FocusedSummary(focused, Modifier.padding(start = RowPadding, top = 36.dp, end = RowPadding, bottom = 20.dp).height(190.dp))
             }
+            // TVs scroll focused content to a fixed "pivot", which pushes a tall row's title off the
+            // top: up and down, scroll just enough to show the whole row; rows keep the TV's own way.
+            val rowsScroll = androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides WholeRowInView) {
             LazyColumn(
                 state = listState,
                 contentPadding = PaddingValues(bottom = 48.dp),
@@ -106,7 +115,16 @@ fun RowsPage(
                 if (header != null) item(key = "page-header") { header() }
                 itemsIndexed(rows, key = { _, row -> row.key }) { _, row ->
                     // Rows added or removed by a reload slide and fade rather than jump.
-                    androidx.compose.foundation.layout.Box(Modifier.animateItem()) {
+                    // Moving into a row scrolls the whole row into view, its title included (a tall
+                    // row otherwise brings only the focused card in, leaving its title out of sight).
+                    val wholeRow = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+                    val rowScope = androidx.compose.runtime.rememberCoroutineScope()
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.animateItem()
+                            .bringIntoViewRequester(wholeRow)
+                            .onFocusChanged { if (it.hasFocus) rowScope.launch { wholeRow.bringIntoView() } },
+                    ) {
+                        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowsScroll) {
                         val display = overrides[row.key] ?: row.defaultDisplay
                         val hidden = activeShowcase != null && activeShowcase != row.key
                         if (display.style.isShowcase) {
@@ -132,12 +150,14 @@ fun RowsPage(
                         } else {
                             Box(Modifier.alpha(if (hidden) 0f else 1f)) {
                                 when (display.style) {
-                                    RowStyle.FILM_STRIP -> FilmStripRow(row, repository, actions, display.size)
+                                    // The page's own summary names the focused title: no second caption.
+                                    RowStyle.FILM_STRIP -> FilmStripRow(row, repository, actions, display.size, caption = false)
                                     RowStyle.LIGHTNING -> LightningRow(row, repository, actions, display.size)
                                     RowStyle.CRESSIDA -> CressidaRow(row, repository, actions, display)
                                     else -> CardRow(row, display, repository, actions)
                                 }
                             }
+                        }
                         }
                     }
                 }
@@ -147,6 +167,7 @@ fun RowsPage(
                     }
                 }
                 footer()
+            }
             }
         }
     }
@@ -174,8 +195,23 @@ private fun FocusedSummary(item: MediaItem?, modifier: Modifier) {
         ItemMetaLine(item)
         item.overview?.takeIf { LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.hidesDescription(item) }?.let {
             Spacer(Modifier.height(8.dp))
-            Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis,
+            Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/**
+ * Scrolls only as far as needed to show what asked to be seen (all of it, when it fits). Something
+ * taller than the list (an art card drawn at its design size reports that size, not the shrunk
+ * one) is left alone while its top is in the upper part of the list, else brought to the top.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private object WholeRowInView : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
+        offset < 0 -> offset
+        size <= containerSize -> if (offset + size > containerSize) offset + size - containerSize else 0f
+        offset <= containerSize / 3 -> 0f
+        else -> offset
     }
 }

@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.rows
 
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -121,13 +122,14 @@ private fun stripScale(size: RowSize) = when (size) {
 
 /** A tilted strip of film; the focused frame is in the gate, lit and named below. */
 @Composable
-fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, size: RowSize = RowSize.MEDIUM) {
+fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, size: RowSize = RowSize.MEDIUM, caption: Boolean = true) {
     var gate by remember(row.key) { mutableIntStateOf(0) }
     val accent = MaterialTheme.colorScheme.primary
     val prefs = LocalDisplayPrefs.current
     Column {
         RowTitle(row)
-        BoxWithConstraints(Modifier.fillMaxWidth().designScale(stripScale(size)).height(250.dp)) {
+        // Clipped to the row, so the tilted strip never reaches under the menu rail beside the page.
+        BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds().designScale(stripScale(size)).height(250.dp)) {
             Box(Modifier.align(Alignment.Center).requiredWidth(maxWidth + 200.dp).height(206.dp).rotate(-3f).background(RowArtDrawing.FilmBase)) {
                 val stripState = androidx.compose.foundation.lazy.rememberLazyListState()
                 PrefetchAlongRow(stripState, row.items) { listOf(repository.artwork(it)) }
@@ -161,7 +163,7 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
                 }
             }
         }
-        row.items.getOrNull(gate)?.let { item ->
+        if (caption) row.items.getOrNull(gate)?.let { item ->
             Column(Modifier.padding(start = RowPadding, top = 4.dp)) {
                 Text(item.displayTitle, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val line = listOfNotNull(item.episodeLabel) + prefs.facts(item).take(4)
