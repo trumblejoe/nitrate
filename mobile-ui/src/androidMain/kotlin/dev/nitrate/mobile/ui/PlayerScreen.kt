@@ -584,7 +584,7 @@ fun PlayerScreen(
 }
 
 @Composable
-internal fun TrackPicker(title: String, choices: List<TrackChoice>, selected: Int?, onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
+fun TrackPicker(title: String, choices: List<TrackChoice>, selected: Int?, onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -611,7 +611,7 @@ internal fun TrackPicker(title: String, choices: List<TrackChoice>, selected: In
  * video keeps playing either way.
  */
 @Composable
-internal fun PlayerLayout(
+fun PlayerLayout(
     writing: Boolean,
     split: WritingSplit,
     videoAspect: Float?,

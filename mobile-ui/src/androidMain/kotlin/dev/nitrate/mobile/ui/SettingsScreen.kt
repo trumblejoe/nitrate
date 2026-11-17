@@ -614,7 +614,7 @@ private fun QuickConnectRow(actions: AppActions) {
 }
 
 @Composable
-internal fun QuickConnectDialog(actions: AppActions, onDismiss: () -> Unit) {
+fun QuickConnectDialog(actions: AppActions, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var code by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<Pair<Boolean, String>?>(null) }

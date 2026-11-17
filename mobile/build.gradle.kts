@@ -1,6 +1,5 @@
-// Android phone/tablet app. Screens use only :core types and multiplatform-ready Compose
-// libraries (Material 3, Navigation, Lifecycle, Coil) so they can move to Compose
-// Multiplatform for iOS; Android-only pieces live in the `platform` package.
+// Android phone/tablet app: the activity, application and manifest around the screens in
+// :mobile-ui (shared with iOS through Compose Multiplatform).
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -73,6 +72,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":mobile-ui"))
     implementation(project(":core-android"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

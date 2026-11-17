@@ -295,7 +295,7 @@ private fun SelectMark(on: Boolean, modifier: Modifier) {
  * sits in the middle of it, so the slice a touch falls in is always the letter drawn there.
  */
 @Composable
-internal fun AlphabetStrip(modifier: Modifier, onLetter: (String) -> Unit) {
+fun AlphabetStrip(modifier: Modifier, onLetter: (String) -> Unit) {
     var height by remember { mutableStateOf(1) }
     var last by remember { mutableStateOf<String?>(null) }
     fun at(y: Float) {

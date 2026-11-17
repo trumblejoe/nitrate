@@ -246,7 +246,7 @@ class BrightnessControl internal constructor(private val activity: Activity?) {
         return current
     }
 
-    internal fun restore() {
+    fun restore() {
         activity?.window?.let { w -> w.attributes = w.attributes.apply { screenBrightness = original } }
     }
 }
@@ -292,7 +292,7 @@ fun FullscreenPlayback(lockLandscape: Boolean = true) {
     }
 }
 
-internal tailrec fun Context.findActivity(): Activity? = when (this) {
+tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null

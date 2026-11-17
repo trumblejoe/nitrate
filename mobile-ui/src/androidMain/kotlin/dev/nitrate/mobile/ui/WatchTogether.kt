@@ -34,7 +34,7 @@ import dev.nitrate.core.syncplay.SyncPlayController
 import dev.nitrate.core.syncplay.SyncPlayGroup
 import kotlinx.coroutines.launch
 
-internal fun GroupState.label() = when (this) {
+fun GroupState.label() = when (this) {
     GroupState.IDLE -> "Nothing playing"
     GroupState.WAITING -> "Waiting for everyone"
     GroupState.PAUSED -> "Paused"
@@ -166,7 +166,7 @@ fun WatchTogetherDialog(actions: AppActions, onDismiss: () -> Unit) {
 }
 
 @Composable
-internal fun defaultGroupName(actions: AppActions): String {
+fun defaultGroupName(actions: AppActions): String {
     val account by actions.container.account.collectAsState()
     return account?.name?.let { "$it's group" } ?: "Movie night"
 }

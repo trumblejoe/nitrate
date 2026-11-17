@@ -410,7 +410,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
 
 
 /** Volume commands from other apps (a phone remote, the Jellyfin dashboard). */
-internal fun adjustVolume(context: android.content.Context, command: String) {
+fun adjustVolume(context: android.content.Context, command: String) {
     val audio = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
     val direction = when (command) {
         "VolumeUp" -> android.media.AudioManager.ADJUST_RAISE

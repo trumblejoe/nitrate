@@ -27,7 +27,7 @@ import com.google.common.util.concurrent.ListenableFuture
 /** The player that background playback and the media notification control. */
 object BackgroundPlayback {
     @Volatile
-    internal var player: Player? = null
+    var player: Player? = null
     private var controller: ListenableFuture<MediaController>? = null
 
     /** Keeps [player] going with a media notification while the app is in the background. */

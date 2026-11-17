@@ -58,7 +58,7 @@ fun TrackLine(actions: AppActions, item: MediaItem, modifier: Modifier = Modifie
 }
 
 @Composable
-internal fun TrackPill(label: String, value: String, onClick: () -> Unit) {
+fun TrackPill(label: String, value: String, onClick: () -> Unit) {
     Column(
         Modifier.clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.10f)).pressable(onClick).padding(horizontal = 14.dp, vertical = 8.dp),
     ) {

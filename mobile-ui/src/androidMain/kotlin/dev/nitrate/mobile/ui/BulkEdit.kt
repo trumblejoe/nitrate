@@ -33,7 +33,7 @@ import dev.nitrate.core.model.MediaItem
 import kotlinx.coroutines.launch
 
 /** "a, b , c" → {a, b, c}. */
-internal fun words(text: String): Set<String> = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+fun words(text: String): Set<String> = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
 /**
  * Edits many titles at once (admins): add or remove genres, tags and studios, set or clear the

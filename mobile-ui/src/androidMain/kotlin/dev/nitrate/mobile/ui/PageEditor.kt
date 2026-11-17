@@ -171,7 +171,7 @@ fun PageEditor(pageTitle: String, vm: RowsViewModel, actions: AppActions, librar
     }
 }
 
-internal fun newId() = Random.nextBytes(8).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+fun newId() = Random.nextBytes(8).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 
 @Composable
 private fun EntryCard(

@@ -35,7 +35,7 @@ import dev.nitrate.mobile.platform.rememberFilePickers
 import kotlinx.coroutines.launch
 
 /** "When" in words, for backups. */
-internal fun backupAge(savedAtMs: Long, now: Long = System.currentTimeMillis()): String {
+fun backupAge(savedAtMs: Long, now: Long = System.currentTimeMillis()): String {
     val minutes = (now - savedAtMs) / 60_000
     return when {
         minutes < 1 -> "just now"
@@ -45,7 +45,7 @@ internal fun backupAge(savedAtMs: Long, now: Long = System.currentTimeMillis()):
     }
 }
 
-internal fun backupTitle(b: BackupSummary, thisDevice: String) =
+fun backupTitle(b: BackupSummary, thisDevice: String) =
     if (b.deviceId == thisDevice) "This device (saved before)" else b.deviceName
 
 /**
@@ -70,7 +70,7 @@ fun BackupPrompt(manager: DeviceBackupManager) {
 
 /** The list of backups, then the differences for the chosen one, then apply. */
 @Composable
-internal fun RestoreChooser(
+fun RestoreChooser(
     title: String,
     intro: String?,
     backups: List<BackupSummary>,
@@ -114,7 +114,7 @@ internal fun RestoreChooser(
 
 /** What restoring would change, setting by setting, before anything is applied. */
 @Composable
-internal fun DifferencesDialog(preview: RestorePreview, onApply: () -> Unit, onBack: () -> Unit) {
+fun DifferencesDialog(preview: RestorePreview, onApply: () -> Unit, onBack: () -> Unit) {
     AlertDialog(
         onDismissRequest = onBack,
         title = { Text("Differences") },
@@ -143,7 +143,7 @@ internal fun DifferencesDialog(preview: RestorePreview, onApply: () -> Unit, onB
 }
 
 @Composable
-internal fun DifferenceList(differences: List<Difference>, modifier: Modifier = Modifier) {
+fun DifferenceList(differences: List<Difference>, modifier: Modifier = Modifier) {
     LazyColumn(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         differences.groupBy { it.section }.forEach { (section, list) ->
             item(key = "h:$section") {

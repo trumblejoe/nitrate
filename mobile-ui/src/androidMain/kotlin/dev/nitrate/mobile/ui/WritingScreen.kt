@@ -516,7 +516,7 @@ private fun LineCommentDialog(ctx: dev.nitrate.android.writing.StoryContext, cur
 
 /** Switches the computer transfer page on or off and shows where to find it. */
 @Composable
-internal fun TransferDialog(state: TransferServer.State, onToggle: (Boolean) -> Unit, onDismiss: () -> Unit) {
+fun TransferDialog(state: TransferServer.State, onToggle: (Boolean) -> Unit, onDismiss: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     AlertDialog(
         onDismissRequest = onDismiss,

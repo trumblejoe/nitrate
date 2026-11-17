@@ -26,7 +26,7 @@ fun UpdatePrompt(updater: AppUpdater) {
 }
 
 @Composable
-internal fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, onLater: (AppRelease) -> Unit, onDismiss: () -> Unit, onReoffer: (AppRelease) -> Unit = {}) {
+fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, onLater: (AppRelease) -> Unit, onDismiss: () -> Unit, onReoffer: (AppRelease) -> Unit = {}) {
     val context = LocalContext.current
     when (state) {
         is UpdateState.Available -> AlertDialog(
@@ -60,7 +60,7 @@ internal fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, on
 }
 
 @Composable
-internal fun ReleaseNotes(release: AppRelease) {
+fun ReleaseNotes(release: AppRelease) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(release.title, style = MaterialTheme.typography.titleSmall)
         if (release.notes.isNotEmpty()) {
