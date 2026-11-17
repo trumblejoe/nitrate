@@ -22,7 +22,9 @@ interface NitrateMpv {
     fun duration(): Double
     fun isPaused(): Boolean
     fun isEnded(): Boolean
-    fun release()
+
+    /** Ends the player (not "release", which Objective-C's NSObject already has). */
+    fun close()
 }
 
 /** Called once by the Swift app at start: mpv is built in, and [make] makes a player. */
@@ -43,7 +45,7 @@ fun useMpv(make: () -> NitrateMpv) {
                 override fun duration() = m.duration()
                 override fun isPaused() = m.isPaused()
                 override fun isEnded() = m.isEnded()
-                override fun release() = m.release()
+                override fun release() = m.close()
             }
         }
     }

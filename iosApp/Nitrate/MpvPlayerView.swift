@@ -134,7 +134,7 @@ final class NitrateMpvPlayer: NSObject, NitrateMpv {
 
     func isEnded() -> Bool { flag("eof-reached") }
 
-    func release() {
+    func close() {
         guard let h = handle else { return }
         handle = nil
         mpv_set_wakeup_callback(h, nil, nil)
