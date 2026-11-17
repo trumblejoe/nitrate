@@ -56,7 +56,7 @@ internal object JellyfinServerSettings {
                 ServerSetting("Files can be repackaged (remux)", yesNo(policy.flag("EnablePlaybackRemuxing")), APPLIES),
                 ServerSetting("Always convert away from home", yesNo(policy.flag("ForceRemoteSourceTranscoding")), APPLIES),
                 ServerSetting("Bitrate limit away from home", if (bitrate == null || bitrate <= 0) "No limit" else "${bitrate / 1_000_000.0} Mbps".replace(".0 ", " "), APPLIES,
-                    "On top of this device's own limit in Playback settings."),
+                    "On top of this device's own limit in Settings → Picture & sound."),
                 ServerSetting("Downloads allowed", yesNo(policy.flag("EnableContentDownloading")), APPLIES,
                     "Off: Nitrate can't save titles to this device."),
             ),

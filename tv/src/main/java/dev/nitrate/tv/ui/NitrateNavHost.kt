@@ -68,6 +68,11 @@ import kotlinx.serialization.Serializable
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
 @Serializable object SettingsRoute
 @Serializable object SettingsHubRoute
+@Serializable object AdvancedPlaybackRoute
+@Serializable object SubtitleSettingsRoute
+@Serializable object WhileWatchingRoute
+@Serializable object ShownSettingsRoute
+@Serializable object UpdatesRoute
 @Serializable object PlaybackTestRoute
 @Serializable object AudioChannelTestRoute
 @Serializable object PluginsRoute
@@ -295,35 +300,55 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     nav.navigate(next) { popUpTo(0) { inclusive = true } }
                 }
             }
+            var reportMessage by remember { mutableStateOf<String?>(null) }
             dev.nitrate.tv.ui.settings.SettingsHubScreen(
                 listOf(
-                    dev.nitrate.tv.ui.settings.SettingsLink("Playback", "Formats, quality, tests and updates for this TV") { nav.navigate(SettingsRoute) },
-                    dev.nitrate.tv.ui.settings.SettingsLink("Server-side settings", "Languages, subtitles and permissions set on your Jellyfin server, not on this TV") { nav.navigate(ServerSettingsRoute) },
-                    dev.nitrate.tv.ui.settings.SettingsLink("Display", "What's shown about items, in this TV's display profile") { nav.navigate(DisplaySettingsRoute) },
-                    dev.nitrate.tv.ui.settings.SettingsLink("Display profile", "Which profile this TV uses; new, rename, import a radial menu") { nav.navigate(DisplayProfilesRoute) },
-                    dev.nitrate.tv.ui.settings.SettingsLink("Your year", "What you've watched and listened to: top shows, genres and artists") { nav.navigate(StatsRoute) },
-                ) + (if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) listOf(
-                    dev.nitrate.tv.ui.settings.SettingsLink("Watch diary", "Every film and episode you finish, with your ratings and notes") { nav.navigate(DiaryRoute) },
-                ) else emptyList()) + listOf(
-                    dev.nitrate.tv.ui.settings.SettingsLink("Check for updates", "Nitrate ${container.updater.versionName}") { container.updater.check() },
-                    dev.nitrate.tv.ui.settings.SettingsLink("Plugins", "Built-in extras, on or off") { nav.navigate(PluginsRoute) },
-                    dev.nitrate.tv.ui.settings.SettingsLink("Server speed check", "Is slowness the network, the server or this TV? Times it and shows you") { nav.navigate(SpeedCheckRoute) },
-                    dev.nitrate.tv.ui.settings.SettingsLink("Device backup", "This TV's settings on your server; restore another device's") { nav.navigate(DeviceBackupRoute) },
-                ) +
-                    (if (partnersOn) listOf(
+                    dev.nitrate.tv.ui.settings.SettingsSection(null, listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Picture & sound", "Sound, speakers, audio sync, frame rate; Advanced for formats and fixes") { nav.navigate(SettingsRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Subtitles", "Size, colour, background and styled subtitles") { nav.navigate(SubtitleSettingsRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Display", "Home and menu, colours, screensaver, what's shown about titles") { nav.navigate(DisplaySettingsRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("While watching", "Scenes in the credits, recaps, spoilers, audio description, theme music, \"Still watching?\"") { nav.navigate(WhileWatchingRoute) },
+                    )),
+                    dev.nitrate.tv.ui.settings.SettingsSection("Account & servers", listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Switch user", "Other users and servers, profile PINs") { nav.navigate(ProfilesRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Servers", "Local, VPN and remote addresses; add, switch and choose the primary") { nav.navigate(ServerAddressesRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Server-side settings", "Languages, subtitles and permissions set on your Jellyfin server, not on this TV") { nav.navigate(ServerSettingsRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Display profile", "Which profile this TV uses; new, rename, import a radial menu") { nav.navigate(DisplayProfilesRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Device backup", "This TV's settings on your server; restore another device's") { nav.navigate(DeviceBackupRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl) { if (easy) askSignOut = true else signOut() },
+                    )),
+                    dev.nitrate.tv.ui.settings.SettingsSection("Your watching", listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Your year", "What you've watched and listened to: top shows, genres and artists") { nav.navigate(StatsRoute) },
+                    ) + (if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Watch diary", "Every film and episode you finish, with your ratings and notes") { nav.navigate(DiaryRoute) },
+                    ) else emptyList()) + (if (partnersOn) listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Watch partners", "Shows you watch with someone, requests, and keeping your account private") { nav.navigate(WatchPartnersRoute) },
                     ) else emptyList()) +
-                    (if (account?.isAdmin == true) listOf(
-                        dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) },
+                        enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } }),
+                    dev.nitrate.tv.ui.settings.SettingsSection("Tools", listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Playback test", "Plays short samples to find what this TV really plays") { nav.navigate(PlaybackTestRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Audio channel test", "A voice from each speaker in turn") { nav.navigate(AudioChannelTestRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Server speed check", "Is slowness the network, the server or this TV? Times it and shows you") { nav.navigate(SpeedCheckRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Send device report", "What this TV plays and how it's set, saved in your server's logs for troubleshooting") {
+                            reportMessage = "Sending…"
+                            scope.launch {
+                                reportMessage = container.sendPlaybackReport().fold(
+                                    { name -> "Device report saved on your server as $name (Jellyfin Dashboard → Logs)" },
+                                    { e -> "Couldn't send the device report: ${e.message ?: e::class.simpleName}" },
+                                )
+                            }
+                        },
+                    ) + (if (account?.isAdmin == true) listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Library health", "Missing artwork and details, duplicates, missing episodes, what this TV always converts") { nav.navigate(LibraryHealthRoute) },
-                    ) else emptyList()) +
-                    enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } } +
-                    listOf(
-                        dev.nitrate.tv.ui.settings.SettingsLink("Servers", "Local, VPN and remote addresses; add, switch and choose the primary") { nav.navigate(ServerAddressesRoute) },
-                        dev.nitrate.tv.ui.settings.SettingsLink("Switch user", "Other users and servers, profile PINs") { nav.navigate(ProfilesRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) },
+                    ) else emptyList())),
+                    dev.nitrate.tv.ui.settings.SettingsSection("About", listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Updates", "Nitrate ${container.updater.versionName}; check now or when Nitrate opens") { nav.navigate(UpdatesRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Plugins", "Built-in extras, on or off") { nav.navigate(PluginsRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Open-source licences", "FFmpeg, Media3, Kotlin and the rest Nitrate is built with") { nav.navigate(LicensesRoute) },
-                        dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl) { if (easy) askSignOut = true else signOut() },
-                    ),
+                    )),
+                ),
+                message = reportMessage,
             )
             // Easy mode asks first.
             if (askSignOut) androidx.compose.ui.window.Dialog(onDismissRequest = { askSignOut = false }) {
@@ -343,15 +368,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             }
         }
         composable<SettingsRoute> {
-            PlaybackSettingsScreen(
-                store = container.playbackSettings,
-                capabilities = container.capabilities,
-                onRunTest = { nav.navigate(PlaybackTestRoute) },
-                onChannelTest = { nav.navigate(AudioChannelTestRoute) },
-                updater = container.updater,
-                sendReport = { container.sendPlaybackReport() },
-            )
+            PlaybackSettingsScreen(container.playbackSettings, container.capabilities, onAdvanced = { nav.navigate(AdvancedPlaybackRoute) })
         }
+        composable<AdvancedPlaybackRoute> { PlaybackSettingsScreen(container.playbackSettings, container.capabilities, dev.nitrate.tv.ui.settings.PlaybackPage.ADVANCED) }
+        composable<SubtitleSettingsRoute> { PlaybackSettingsScreen(container.playbackSettings, container.capabilities, dev.nitrate.tv.ui.settings.PlaybackPage.SUBTITLES) }
+        composable<UpdatesRoute> { dev.nitrate.tv.ui.settings.UpdatesScreen(container.updater) }
         composable<OfflineRoute> {
             OfflineScreen(
                 repository = container.server,
@@ -373,7 +394,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() })
             }
         }
-        composable<DisplaySettingsRoute> { DisplaySettingsScreen(container) { nav.navigate(MenuStopsRoute) } }
+        composable<DisplaySettingsRoute> { DisplaySettingsScreen(container, onMenuStops = { nav.navigate(MenuStopsRoute) }, onShown = { nav.navigate(ShownSettingsRoute) }) }
+        composable<ShownSettingsRoute> { DisplaySettingsScreen(container, dev.nitrate.tv.ui.pages.DisplayPage.SHOWN) }
+        composable<WhileWatchingRoute> { DisplaySettingsScreen(container, dev.nitrate.tv.ui.pages.DisplayPage.WATCHING) }
         composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
         composable<SpeedCheckRoute> { dev.nitrate.tv.ui.settings.SpeedCheckScreen(container) }
         composable<StatsRoute> { dev.nitrate.tv.ui.settings.StatsScreen(container.server) }

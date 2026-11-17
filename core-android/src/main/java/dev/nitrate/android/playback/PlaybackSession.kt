@@ -127,6 +127,10 @@ class PlaybackSession(
 
     /** Voices lifted over music and effects (decoded sound only). */
     val dialogueBoostOn: StateFlow<Boolean> = _dialogueBoostOn
+    private val _soundMode = MutableStateFlow(dev.nitrate.core.playback.SoundMode.NORMAL)
+
+    /** The Sound choice now (Normal, Clearer dialogue, Night). */
+    val soundMode: StateFlow<dev.nitrate.core.playback.SoundMode> = _soundMode
 
     /** Original text of retimed subtitles, so repeated changes shift from the original. */
     private val subtitleOriginals = mutableMapOf<Int, String>()
@@ -500,7 +504,7 @@ class PlaybackSession(
                 }
                 showNotice(
                     "$deviceNoun couldn't decode it (${e.errorCodeName}). Switched to transcoding; " +
-                        "it will transcode this format from now on. Change this in Playback settings.",
+                        "it will transcode this format from now on. Change this in Settings → Picture & sound → Advanced.",
                 )
             }
             log("Direct ${failed.method} failed at ${at}ms: retrying as a transcode")
@@ -548,8 +552,7 @@ class PlaybackSession(
                 recheckUpmix("output changed")
             }
         }
-        scope.launch { setNightMode(settings.current().nightMode) }
-        scope.launch { setDialogueBoost(settings.current().dialogueBoost) }
+        scope.launch { setSoundMode(dev.nitrate.core.playback.SoundMode.of(settings.current())) }
         scope.launch { setAudioDelay(settings.current().audioDelayMs, resync = false) }
         scope.launch { setFrameRateMatch(settings.current().frameRateMatch) }
         // How styled subtitles are shown can change from the player's settings while playing.
@@ -1104,19 +1107,15 @@ class PlaybackSession(
         else -> "Encoding $encoding"
     }
 
-    fun setNightMode(on: Boolean) {
+    /** Sets both night mode and dialogue boost for [mode], deciding the sound path once. */
+    fun setSoundMode(mode: dev.nitrate.core.playback.SoundMode) {
         val wasActive = nightMode.active
-        _nightModeOn.value = on
-        nightMode.enabled = on
-        redecideAudio(wasActive, "Night mode", on)
-        updateProcessing()
-    }
-
-    fun setDialogueBoost(on: Boolean) {
-        val wasActive = nightMode.active
-        _dialogueBoostOn.value = on
-        nightMode.dialogueBoost = on
-        redecideAudio(wasActive, "Dialogue boost", on)
+        _soundMode.value = mode
+        _nightModeOn.value = mode == dev.nitrate.core.playback.SoundMode.NIGHT
+        _dialogueBoostOn.value = mode != dev.nitrate.core.playback.SoundMode.NORMAL
+        nightMode.enabled = _nightModeOn.value
+        nightMode.dialogueBoost = _dialogueBoostOn.value
+        redecideAudio(wasActive, "Sound ${mode.label}", mode != dev.nitrate.core.playback.SoundMode.NORMAL)
         updateProcessing()
     }
 

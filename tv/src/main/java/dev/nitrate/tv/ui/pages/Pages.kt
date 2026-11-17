@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -169,18 +170,24 @@ fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, 
     }
 }
 
-/** What's shown about items, the accent colour and black level; synced for the user. */
+/** Settings pages over the display profile: Display (how things look), While watching, What's shown. */
+enum class DisplayPage { LOOK, WATCHING, SHOWN }
+
+private typealias PrefToggle = Triple<String, (DisplayPrefs) -> Boolean, (DisplayPrefs, Boolean) -> DisplayPrefs>
+
+/** Display settings, in this TV's display profile and synced for the user; [page] picks which. */
 @Composable
-fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {}) {
+fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPage.LOOK, onMenuStops: () -> Unit = {}, onShown: () -> Unit = {}) {
     val prefs = LocalDisplayPrefs.current
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
+    val user = container.server.userId
+    val profileName by remember(user) { user?.let { container.displaySettings.activeProfileName(it) } ?: kotlinx.coroutines.flow.flowOf(null) }.collectAsState(null)
     fun update(change: (DisplayPrefs) -> DisplayPrefs) {
-        val user = container.server.userId ?: return
-        scope.launch { container.displaySettings.savePrefs(user, change(prefs)) }
+        val u = container.server.userId ?: return
+        scope.launch { container.displaySettings.savePrefs(u, change(prefs)) }
     }
-    val toggles: List<Triple<String, (DisplayPrefs) -> Boolean, (DisplayPrefs, Boolean) -> DisplayPrefs>> = listOf(
-        Triple("Easy mode (bigger text, only the essential menu stops and player buttons, a question before signing out)", { p -> p.easyMode }, { p, v -> p.copy(easyMode = v) }),
+    val shown: List<PrefToggle> = listOf(
         Triple("Community rating", { p -> p.communityRating }, { p, v -> p.copy(communityRating = v) }),
         Triple("Critic rating", { p -> p.criticRating }, { p, v -> p.copy(criticRating = v) }),
         Triple("Age rating", { p -> p.officialRating }, { p, v -> p.copy(officialRating = v) }),
@@ -196,48 +203,35 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
         Triple("Logos", { p -> p.logos }, { p, v -> p.copy(logos = v) }),
         Triple("Cast & crew", { p -> p.cast }, { p, v -> p.copy(cast = v) }),
         Triple("More like this", { p -> p.similar }, { p, v -> p.copy(similar = v) }),
-        Triple("Hide spoilers (blur unwatched episodes; hide descriptions of unwatched episodes and movies)", { p -> p.hideSpoilers }, { p, v -> p.copy(hideSpoilers = v) }),
-        Triple("Theme music on details pages (quietly, when a title has some)", { p -> p.themeMusic ?: true }, { p, v -> p.copy(themeMusic = v) }),
-        Triple("True black (OLED)", { p -> p.trueBlack }, { p, v -> p.copy(trueBlack = v) }),
-        Triple("Audio description (start with the described track when a title has one in its language)", { p -> p.describedAudio }, { p, v -> p.copy(describedAudio = v) }),
-        Triple("Skip to after-credits scenes (jump past the credits to a scene during or after them)", { p -> p.creditScenes }, { p, v -> p.copy(creditScenes = v) }),
     )
+    @Composable
+    fun Toggle(label: String, detail: String?, on: Boolean, modifier: Modifier = Modifier, flip: () -> Unit) = ListItem(
+        selected = false,
+        onClick = flip,
+        headlineContent = { Text(label) },
+        supportingContent = detail?.let { { Text(it) } },
+        trailingContent = { Switch(checked = on, onCheckedChange = null) },
+        modifier = modifier,
+    )
+    @Composable
+    fun Heading(title: String, scope: dev.nitrate.core.settings.SettingScope? = null) = Column(Modifier.padding(top = 20.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        scope?.let { dev.nitrate.tv.ui.settings.ScopeTag(it, profileName) }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(PagePadding), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Display", style = MaterialTheme.typography.displaySmall)
-                Text("In this TV's display profile (Settings → Display profile). Spoiler hiding is the same on every device.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Shows: \"Last time\" recap after a break of at least", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    dev.nitrate.core.recap.RECAP_CHOICES.forEach { (days, label) ->
-                        FilterChip(selected = prefs.recapAfterDays == days, onClick = { update { it.copy(recapAfterDays = days) } }) { Text(label) }
+        when (page) {
+            DisplayPage.LOOK -> {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Display", style = MaterialTheme.typography.displaySmall)
+                        dev.nitrate.tv.ui.settings.ScopeTag(dev.nitrate.core.settings.SettingScope.PROFILE, profileName)
                     }
                 }
-                Text("Playlists in story order: recap after a break of at least", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    dev.nitrate.core.recap.RECAP_CHOICES.forEach { (days, label) ->
-                        FilterChip(selected = prefs.playlistRecapAfterDays == days, onClick = { update { it.copy(playlistRecapAfterDays = days) } }) { Text(label) }
+                item {
+                    Toggle("Easy mode", "Bigger text, only the essential menu stops and player buttons, and a question before signing out", prefs.easyMode, Modifier.focusRequester(first)) {
+                        update { it.copy(easyMode = !it.easyMode) }
                     }
                 }
-                Text("Ambient screensaver: artwork from your library, the time and what's next, when nothing's pressed", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    dev.nitrate.core.ambient.Ambient.CHOICES.forEach { m ->
-                        FilterChip(selected = prefs.tvAmbientMinutes == m, onClick = { update { it.copy(tvAmbientMinutes = m) } }) { Text(if (m == 0) "Off" else "$m min") }
-                    }
-                }
-                Text("Accent colour", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AccentMode.entries.forEachIndexed { i, m ->
-                        FilterChip(selected = prefs.accent == m, onClick = { update { it.copy(accent = m) } }, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                m.argb?.let { Box(Modifier.width(12.dp).height(12.dp).background(Color(it), RoundedCornerShape(6.dp))) }
-                                Text(m.label, Modifier.padding(start = if (m.argb != null) 8.dp else 0.dp))
-                            }
-                        }
-                    }
-                }
-            }
-        }
         item {
             ListItem(
                 selected = false,
@@ -278,7 +272,6 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
                 trailingContent = { Switch(checked = on, onCheckedChange = null) },
             )
         }
-        item { MissingEpisodesToggle(container) }
         item {
             ListItem(
                 selected = false,
@@ -296,16 +289,109 @@ fun DisplaySettingsScreen(container: AppContainer, onMenuStops: () -> Unit = {})
                 trailingContent = { Text("${prefs.cardTitles.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
-        items(toggles, key = { it.first }) { (label, get, set) ->
-            ListItem(
-                selected = false,
-                onClick = { update { set(it, !get(it)) } },
-                headlineContent = { Text(label) },
-                trailingContent = { Switch(checked = get(prefs), onCheckedChange = null) },
-            )
+                item(key = "accent") {
+                    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Accent colour", style = MaterialTheme.typography.titleMedium, )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AccentMode.entries.forEachIndexed { i, m ->
+                        FilterChip(selected = prefs.accent == m, onClick = { update { it.copy(accent = m) } }, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                m.argb?.let { Box(Modifier.width(12.dp).height(12.dp).background(Color(it), RoundedCornerShape(6.dp))) }
+                                Text(m.label, Modifier.padding(start = if (m.argb != null) 8.dp else 0.dp))
+                            }
+                        }
+                    }
+                }
+                    }
+                }
+                item { Toggle("True black", "Pure black backgrounds, for OLED screens", prefs.trueBlack) { update { it.copy(trueBlack = !it.trueBlack) } } }
+                item(key = "ambient") {
+                    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Screensaver: artwork from your library, the time and what's next, when nothing's pressed", style = MaterialTheme.typography.titleMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            dev.nitrate.core.ambient.Ambient.CHOICES.forEach { m ->
+                                FilterChip(selected = prefs.tvAmbientMinutes == m, onClick = { update { it.copy(tvAmbientMinutes = m) } }) { Text(if (m == 0) "Off" else "$m min") }
+                            }
+                        }
+                    }
+                }
+                item(key = "shown") {
+                    ListItem(
+                        selected = false,
+                        onClick = onShown,
+                        headlineContent = { Text("What's shown") },
+                        supportingContent = { Text("Ratings, year, genres, descriptions, logos, progress and the rest on cards and pages") },
+                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                    )
+                }
+                item { Heading("Your server account", dev.nitrate.core.settings.SettingScope.EVERYWHERE) }
+                item { MissingEpisodesToggle(container) }
+            }
+            DisplayPage.SHOWN -> {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("What's shown", style = MaterialTheme.typography.displaySmall)
+                        Text("About titles on cards, Home and details pages.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        dev.nitrate.tv.ui.settings.ScopeTag(dev.nitrate.core.settings.SettingScope.PROFILE, profileName)
+                    }
+                }
+                itemsIndexed(shown, key = { _, t -> t.first }) { i, (label, get, set) ->
+                    Toggle(label, null, get(prefs), if (i == 0) Modifier.focusRequester(first) else Modifier) { update { set(it, !get(it)) } }
+                }
+            }
+            DisplayPage.WATCHING -> {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("While watching", style = MaterialTheme.typography.displaySmall)
+                        Text("What Nitrate does around what you play.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                item { Heading("Your display profile", dev.nitrate.core.settings.SettingScope.PROFILE) }
+                item {
+                    Toggle("Skip to scenes in the credits", "Jumps past the credits to a scene during or after them when it's known; otherwise only offers it", prefs.creditScenes, Modifier.focusRequester(first)) {
+                        update { it.copy(creditScenes = !it.creditScenes) }
+                    }
+                }
+                item(key = "recaps") {
+                    Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("\"Last time\" recap for shows, after a break of at least", style = MaterialTheme.typography.titleMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            dev.nitrate.core.recap.RECAP_CHOICES.forEach { (days, label) ->
+                                FilterChip(selected = prefs.recapAfterDays == days, onClick = { update { it.copy(recapAfterDays = days) } }) { Text(label) }
+                            }
+                        }
+                        Text("For playlists in story order, after a break of at least", style = MaterialTheme.typography.titleMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            dev.nitrate.core.recap.RECAP_CHOICES.forEach { (days, label) ->
+                                FilterChip(selected = prefs.playlistRecapAfterDays == days, onClick = { update { it.copy(playlistRecapAfterDays = days) } }) { Text(label) }
+                            }
+                        }
+                    }
+                }
+                item { Toggle("Audio description", "Start with the described track when a title has one in its language", prefs.describedAudio) { update { it.copy(describedAudio = !it.describedAudio) } } }
+                item { Toggle("Theme music", "Plays a title's theme quietly on its details page", prefs.themeMusic ?: true) { update { it.copy(themeMusic = !(it.themeMusic ?: true)) } } }
+                item { Heading("All your devices", dev.nitrate.core.settings.SettingScope.EVERYWHERE) }
+                item { Toggle("Hide spoilers", "Blur stills and hold back descriptions of episodes and films you haven't seen", prefs.hideSpoilers) { update { it.copy(hideSpoilers = !it.hideSpoilers) } } }
+                item { Heading("This TV", dev.nitrate.core.settings.SettingScope.DEVICE) }
+                item { StillWatchingToggle(container) }
+            }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+}
+
+/** "Still watching?" is a playback setting: this TV only. */
+@Composable
+private fun StillWatchingToggle(container: AppContainer) {
+    val scope = rememberCoroutineScope()
+    val settings by container.playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+    ListItem(
+        selected = false,
+        onClick = { scope.launch { container.playbackSettings.update { it.copy(askStillWatching = !it.askStillWatching) } } },
+        headlineContent = { Text("Ask \"Still watching?\"") },
+        supportingContent = { Text("After two episodes play on by themselves with nothing pressed, stop and ask. No answer: go back to where you last pressed something") },
+        trailingContent = { Switch(checked = settings.askStillWatching, onCheckedChange = null) },
+    )
 }
 
 /** Season lists include episodes you don't have (marked Missing, or with their air date): your server account's setting. */

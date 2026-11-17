@@ -91,7 +91,7 @@ fun SpeakersQuestion(
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("What's connected to ${output.label}? Asked once for this output; change it any time in Settings → Playback.", style = MaterialTheme.typography.bodySmall)
+                Text("What's connected to ${output.label}? Asked once for this output; change it any time in Settings → Picture & sound.", style = MaterialTheme.typography.bodySmall)
                 SpeakerLayout.entries.forEach { l ->
                     Row(Modifier.fillMaxWidth().clickable { onAnswer(l) }.padding(vertical = 8.dp)) {
                         Text(l.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 14.dp))

@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.player
 
+import dev.nitrate.core.playback.withSoundMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -58,8 +59,7 @@ fun PlayerMoreDialog(
     syncPlay: dev.nitrate.core.syncplay.SyncPlayController? = null,
 ) {
     val speed by session.speed.collectAsState()
-    val night by session.nightModeOn.collectAsState()
-    val voices by session.dialogueBoostOn.collectAsState()
+    val sound by session.soundMode.collectAsState()
     val offset by session.subtitleOffsetMs.collectAsState()
     val audioDelay by session.audioDelayMs.collectAsState()
     var searching by remember { mutableStateOf(false) }
@@ -105,29 +105,18 @@ fun PlayerMoreDialog(
                 SLEEP_MINUTES.forEach { m -> FilterChip(selected = false, onClick = { onSleep(System.currentTimeMillis() + m * 60_000L, false) }) { Text("$m min") } }
                 FilterChip(selected = sleepAtEnd, onClick = { onSleep(null, true) }) { Text("End of this") }
             }
-            ListItem(
-                selected = false,
-                onClick = {
-                    session.setNightMode(!night)
-                    scope.launch { settings.update { it.copy(nightMode = !night) } }
-                },
-                headlineContent = { Text("Night mode") },
-                supportingContent = { Text("Quieter loud parts, clearer dialogue (sound for a receiver is decoded on the TV while on)") },
-                trailingContent = { Switch(checked = night, onCheckedChange = null) },
-            )
+            Text("Sound · ${sound.detail}", style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                dev.nitrate.core.playback.SoundMode.entries.forEach { m ->
+                    FilterChip(selected = sound == m, onClick = {
+                        session.setSoundMode(m)
+                        scope.launch { settings.update { it.withSoundMode(m) } }
+                    }) { Text(m.label) }
+                }
+            }
             val settingsNow by settings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
             val output by session.soundOutput.collectAsState()
             if (output?.stereoOnly == false) SpeakersSettings(settingsNow, output) { f -> scope.launch { settings.update(f) } }
-            ListItem(
-                selected = false,
-                onClick = {
-                    session.setDialogueBoost(!voices)
-                    scope.launch { settings.update { it.copy(dialogueBoost = !voices) } }
-                },
-                headlineContent = { Text("Dialogue boost") },
-                supportingContent = { Text("Voices louder than music and effects (sound for a receiver is decoded on the TV while on)") },
-                trailingContent = { Switch(checked = voices, onCheckedChange = null) },
-            )
             Text("Subtitle timing" + if (offset != 0L) " · ${if (offset > 0) "+" else ""}${offset / 1000.0}s" else "", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(-1000L, -250L, 250L, 1000L).forEach { d ->

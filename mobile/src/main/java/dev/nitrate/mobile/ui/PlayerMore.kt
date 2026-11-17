@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import dev.nitrate.core.playback.withSoundMode
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,7 +49,7 @@ val SUBTITLE_LANGUAGES = listOf("eng" to "English", "spa" to "Spanish", "fre" to
 
 private enum class MorePage { MAIN, SUBTITLES, PLAY_ON, TOGETHER }
 
-/** Speed, sleep timer, night mode, subtitle timing and search, play elsewhere, picture-in-picture. */
+/** Speed, sleep timer, sound (normal, clearer dialogue, night), subtitle timing and search, play elsewhere, picture-in-picture. */
 @Composable
 fun PlayerMoreSheet(
     actions: AppActions,
@@ -62,8 +63,7 @@ fun PlayerMoreSheet(
 ) {
     var page by remember { mutableStateOf(MorePage.MAIN) }
     val speed by session.speed.collectAsState()
-    val night by session.nightModeOn.collectAsState()
-    val voices by session.dialogueBoostOn.collectAsState()
+    val sound by session.soundMode.collectAsState()
     val offset by session.subtitleOffsetMs.collectAsState()
     val audioDelay by session.audioDelayMs.collectAsState()
     val scope = rememberCoroutineScope()
@@ -98,23 +98,12 @@ fun PlayerMoreSheet(
                         SLEEP_MINUTES.forEach { m -> FilterChip(selected = false, onClick = { onSleep(System.currentTimeMillis() + m * 60_000L, false) }, label = { Text("$m min") }) }
                         FilterChip(selected = sleepAtEnd, onClick = { onSleep(null, true) }, label = { Text("End of this") })
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { setNight(actions, session, !night) }) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Night mode", style = MaterialTheme.typography.bodyLarge)
-                            Text("Quieter loud parts, clearer dialogue", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(checked = night, onCheckedChange = { setNight(actions, session, it) })
+                    Section("Sound · ${sound.detail}") {
+                        dev.nitrate.core.playback.SoundMode.entries.forEach { m -> FilterChip(selected = sound == m, onClick = { setSound(actions, session, m) }, label = { Text(m.label) }) }
                     }
                     val playbackNow by actions.container.playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
                     val output by session.soundOutput.collectAsState()
                     if (output?.stereoOnly == false) SpeakersSettings(playbackNow, output) { f -> actions.scope.launch { actions.container.playbackSettings.update(f) } }
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { setVoices(actions, session, !voices) }) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Dialogue boost", style = MaterialTheme.typography.bodyLarge)
-                            Text("Voices louder than music and effects", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(checked = voices, onCheckedChange = { setVoices(actions, session, it) })
-                    }
                     Section("Subtitle timing" + if (offset != 0L) " · ${if (offset > 0) "+" else ""}${offset / 1000.0}s" else "") {
                         listOf(-1000L, -250L, 250L, 1000L).forEach { d -> OutlinedButton(onClick = { session.setSubtitleOffset(offset + d) }) { Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d) / 1000.0}s") } }
                         if (offset != 0L) TextButton(onClick = { session.setSubtitleOffset(0) }) { Text("Reset") }
@@ -152,15 +141,10 @@ private fun setAudioDelay(actions: AppActions, session: PlaybackSession, ms: Int
     actions.scope.launch { actions.container.playbackSettings.update { it.copy(audioDelayMs = session.audioDelayMs.value) } }
 }
 
-private fun setVoices(actions: AppActions, session: PlaybackSession, on: Boolean) {
-    session.setDialogueBoost(on)
-    actions.scope.launch { actions.container.playbackSettings.update { it.copy(dialogueBoost = on) } }
-}
-
-private fun setNight(actions: AppActions, session: PlaybackSession, on: Boolean) {
-    session.setNightMode(on)
+private fun setSound(actions: AppActions, session: PlaybackSession, mode: dev.nitrate.core.playback.SoundMode) {
+    session.setSoundMode(mode)
     // Remembered for next time on this device.
-    actions.scope.launch { actions.container.playbackSettings.update { it.copy(nightMode = on) } }
+    actions.scope.launch { actions.container.playbackSettings.update { it.withSoundMode(mode) } }
 }
 
 @Composable

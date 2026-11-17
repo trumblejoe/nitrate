@@ -123,12 +123,12 @@ object PlaybackDoctor {
         if (plan.method != PlayMethod.DIRECT_PLAY) {
             if (!settings.allowDirectPlay) findings += PlaybackFinding(
                 "Direct play is off",
-                "Direct play is turned off in this device's Playback settings, so everything goes through the server.",
+                "Direct play is turned off in this device's Picture & sound settings (Advanced), so everything goes through the server.",
                 listOf(PlaybackFix.Change(SettingsChange.AllowDirectPlay, "Turn direct play on", null)),
             )
             if (!settings.allowDirectStream && plan.method == PlayMethod.TRANSCODE) findings += PlaybackFinding(
                 "Repackaging is off",
-                "Direct stream is turned off in Playback settings, so files the server could simply repackage are converted instead.",
+                "Direct stream is turned off in Picture & sound settings (Advanced), so files the server could simply repackage are converted instead.",
                 listOf(PlaybackFix.Change(SettingsChange.AllowDirectStream, "Turn direct stream on", null)),
             )
         }
@@ -274,7 +274,7 @@ object PlaybackDoctor {
     /** The user's own settings that stop [id], with the fixes for each. */
     private fun settingsBlocks(id: String, name: String, settings: PlaybackSettings): Pair<String, List<PlaybackFix>>? = when {
         settings.overrides[id] == Override.NEVER ->
-            "$name is set to Never in this device's Playback settings." to
+            "$name is set to Never in this device's Picture & sound settings (Advanced)." to
                 listOf(PlaybackFix.Change(SettingsChange.ClearOverride(id), "Set $name back to Auto", null))
         settings.useLearnedFailures && id in settings.learnedFailures && settings.overrides[id] != Override.ALWAYS -> {
             val f = settings.learnedFailures.getValue(id)
@@ -315,7 +315,7 @@ object PlaybackDoctor {
         val fixes = mutableListOf<PlaybackFix>()
         val reasons = mutableListOf<String>()
         settings.maxResolution.height?.takeIf { height > it }?.let {
-            reasons += "this device's Playback settings limit videos to ${settings.maxResolution.label}"
+            reasons += "this device's Picture & sound settings (Advanced) limit videos to ${settings.maxResolution.label}"
             fixes += PlaybackFix.Change(SettingsChange.ResolutionAuto, "Set the resolution limit to Auto", null)
         }
         codec?.let { settings.codecMaxHeight[it] }?.takeIf { height > it }?.let {
@@ -339,7 +339,7 @@ object PlaybackDoctor {
         val text = when {
             codec != null && codec in settings.eightBitOnly -> {
                 fixes += PlaybackFix.Change(SettingsChange.AllowTenBit(codec), "Allow 10-bit $name", "It was turned off here because 10-bit $name failed.")
-                "10-bit $name is turned off in this device's Playback settings."
+                "10-bit $name is turned off in this device's Picture & sound settings (Advanced)."
             }
             codec != null && caps.video[codec]?.softwareTenBit == true && (video.height ?: 0) > CapabilityRules.SOFTWARE_MAX_HEIGHT ->
                 "This device decodes 10-bit $name only in software, which keeps to ${CapabilityRules.SOFTWARE_MAX_HEIGHT}p; this one is ${video.height}p, so the server converts it."

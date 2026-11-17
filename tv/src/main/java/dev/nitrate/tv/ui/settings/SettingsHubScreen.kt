@@ -21,25 +21,39 @@ import androidx.tv.material3.Text
 /** One line in the settings list: what it is, a hint, and where it goes. */
 data class SettingsLink(val label: String, val detail: String? = null, val onClick: () -> Unit)
 
-/** Everything that used to sit in Home's footer: settings, tools, account. */
+/** A heading in the settings list and the links under it (none shown if [links] is empty). */
+data class SettingsSection(val title: String?, val links: List<SettingsLink>)
+
+/** Settings, grouped: the settings themselves, then account, your watching, tools and about. */
 @Composable
-fun SettingsHubScreen(links: List<SettingsLink>) {
+fun SettingsHubScreen(sections: List<SettingsSection>, message: String? = null) {
     val first = remember { FocusRequester() }
+    val shown = sections.filter { it.links.isNotEmpty() }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 58.dp, vertical = 36.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item { Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 16.dp)) }
-        itemsIndexed(links, key = { _, l -> l.label }) { i, link ->
-            ListItem(
-                selected = false,
-                onClick = link.onClick,
-                headlineContent = { Text(link.label) },
-                supportingContent = link.detail?.let { { Text(it) } },
-                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                modifier = Modifier.widthIn(max = 720.dp).then(if (i == 0) Modifier.focusRequester(first) else Modifier),
-            )
+        item {
+            Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 8.dp))
+            message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 8.dp)) }
+        }
+        shown.forEachIndexed { s, section ->
+            section.title?.let { title ->
+                item(key = "section-$title") {
+                    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 20.dp, bottom = 4.dp))
+                }
+            }
+            itemsIndexed(section.links, key = { _, l -> "${section.title}/${l.label}" }) { i, link ->
+                ListItem(
+                    selected = false,
+                    onClick = link.onClick,
+                    headlineContent = { Text(link.label) },
+                    supportingContent = link.detail?.let { { Text(it) } },
+                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                    modifier = Modifier.widthIn(max = 720.dp).then(if (s == 0 && i == 0) Modifier.focusRequester(first) else Modifier),
+                )
+            }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }

@@ -57,235 +57,321 @@ import dev.nitrate.core.playback.Override
 import dev.nitrate.core.playback.PlaybackSettings
 import dev.nitrate.core.playback.capabilityLabel
 import dev.nitrate.core.playback.formatBitrate
+import dev.nitrate.core.playback.SoundMode
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import dev.nitrate.core.playback.soundMode
+import dev.nitrate.core.playback.withSoundMode
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawing
 import dev.nitrate.core.plugins.settings
 import dev.nitrate.core.plugins.update
 import dev.nitrate.core.writing.WritingPlugin
 import dev.nitrate.core.writing.WritingSettings
 import kotlinx.coroutines.launch
 
+/** Settings subpages, opened from the Settings tab ([SettingsPageRoute.page]). */
+enum class SettingsPage(val title: String) {
+    SOUND("Picture & sound"),
+    ADVANCED("Picture & sound: Advanced"),
+    SUBTITLES("Subtitles"),
+    DISPLAY("Display"),
+    SHOWN("What's shown"),
+    WATCHING("While watching"),
+    NOTIFICATIONS("Notifications"),
+    BACKUP("Device backup"),
+    REMOTE("Control a device"),
+    UPDATES("Updates"),
+    PLUGINS("Plugins"),
+}
+
+/**
+ * The Settings tab: the settings in groups (the settings themselves, account and servers, your
+ * watching, tools, about), each opening its own page.
+ */
 @Composable
-fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modifier = Modifier, initiallyOpen: List<String> = listOf("Account")) {
+fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modifier = Modifier) {
     val c = actions.container
     val scope = rememberCoroutineScope()
-    val playback by c.playbackSettings.settings.collectAsState(PlaybackSettings())
-    val enabled by c.plugins.enabledIds.collectAsState(emptySet())
-    val store = c.plugins.host.store
-    val previous by store.settings(PreviousEpisodePlugin.id, PreviousEpisodeSettings()).collectAsState(PreviousEpisodeSettings())
-    val writing by store.settings(WritingPlugin.id, WritingSettings()).collectAsState(WritingSettings())
-    val updatePlayback: ((PlaybackSettings) -> PlaybackSettings) -> Unit = { f -> scope.launch { c.playbackSettings.update(f) } }
-    val caps = c.capabilities
-    val prefs = LocalDisplayPrefs.current
     val account by c.account.collectAsState()
-
-    // Each section folds away under its heading; Account starts open. Kept while the app runs.
-    val open = androidx.compose.runtime.saveable.rememberSaveable(saver = androidx.compose.runtime.saveable.listSaver(
-        save = { it.toList() }, restore = { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(it) } },
-    )) { androidx.compose.runtime.mutableStateListOf<String>().apply { addAll(initiallyOpen) } }
+    val companion by c.companion.collectAsState()
+    val easy = LocalDisplayPrefs.current.easyMode
+    fun open(page: SettingsPage) = actions.nav.navigate(SettingsPageRoute(page.name))
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
-        section(open, "Account") {
-            item {
-                ListItem(
-                    headlineContent = { Text(actions.server.serverUrl ?: "Not signed in") },
-                    supportingContent = { Text("Server") },
-                    trailingContent = {
-                        // Easy mode asks first.
-                        var asking by remember { mutableStateOf(false) }
-                        val easy = LocalDisplayPrefs.current.easyMode
-                        OutlinedButton(onClick = { if (easy) asking = true else scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") }
-                        if (asking) androidx.compose.material3.AlertDialog(
-                            onDismissRequest = { asking = false },
-                            title = { Text("Sign out?") },
-                            text = { Text("You'll need your password to sign in again.") },
-                            confirmButton = { androidx.compose.material3.TextButton(onClick = { asking = false; scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") } },
-                            dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = false }) { Text("Cancel") } },
-                        )
-                    },
-                )
+        item { Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        item { Link("Picture & sound", "Sound, speakers, audio sync; Advanced for formats and fixes") { open(SettingsPage.SOUND) } }
+        item { Link("Subtitles", "Size, colour, background and styled subtitles") { open(SettingsPage.SUBTITLES) } }
+        item { Link("Display", "Look, colours, display profile, what's shown about titles") { open(SettingsPage.DISPLAY) } }
+        item { Link("While watching", "Scenes in the credits, recaps, spoilers, audio description, theme music, \"Still watching?\"") { open(SettingsPage.WATCHING) } }
+        item { Link("Notifications", "New episodes and new seasons") { open(SettingsPage.NOTIFICATIONS) } }
+
+        group("Account & servers")
+        item {
+            ListItem(
+                headlineContent = { Text(actions.server.serverUrl ?: "Not signed in") },
+                supportingContent = { Text("Server") },
+                trailingContent = {
+                    // Easy mode asks first.
+                    var asking by remember { mutableStateOf(false) }
+                    OutlinedButton(onClick = { if (easy) asking = true else scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") }
+                    if (asking) androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { asking = false },
+                        title = { Text("Sign out?") },
+                        text = { Text("You'll need your password to sign in again.") },
+                        confirmButton = { androidx.compose.material3.TextButton(onClick = { asking = false; scope.launch { c.signOut(); onSignedOut() } }) { Text("Sign out") } },
+                        dismissButton = { androidx.compose.material3.TextButton(onClick = { asking = false }) { Text("Cancel") } },
+                    )
+                },
+            )
+        }
+        item { Link("Switch account", "Other users and servers, PINs for profiles") { actions.nav.navigate(ProfilesRoute) } }
+        item { Link("Servers", "Local, VPN and remote addresses; add, switch and choose the primary") { actions.nav.navigate(ServerAddressesRoute) } }
+        item { ServerSettingsRow(actions) }
+        item { QuickConnectRow(actions) }
+        item { Link("Device backup", "This phone's settings on your server; restore another device's") { open(SettingsPage.BACKUP) } }
+
+        group("Your watching")
+        item { Link("Your year", "Films, episodes and songs, top shows, genres and artists") { actions.nav.navigate(StatsRoute) } }
+        if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) item {
+            Link("Watch diary", "Every film and episode you finish, with your ratings and notes; export for Letterboxd") { actions.nav.navigate(DiaryRoute) }
+        }
+        item { WatchTogetherRow(actions) }
+        item { if (partnersAvailable(actions)) Link("Watch partners", "Shows you watch with someone, requests, and keeping your account private") { actions.nav.navigate(WatchPartnersRoute) } }
+        item { Link("Control a device", "Play, pause, seek and change volume on your TV or another app") { open(SettingsPage.REMOTE) } }
+
+        group("Tools")
+        item { SpeedCheckRow(actions) }
+        item { DeviceReportRow(actions) }
+        if (account?.isAdmin == true) {
+            item { Link("Library health", "Missing artwork and details, duplicates, missing episodes, what this phone always converts") { actions.nav.navigate(LibraryHealthRoute) } }
+            item { Link("Manage server", "Libraries, tasks, activity, devices and users") { actions.nav.navigate(ServerAdminRoute) } }
+        }
+
+        group("About")
+        item { Link("Updates", "Nitrate ${c.updater.versionName}; check now or when Nitrate opens") { open(SettingsPage.UPDATES) } }
+        item { Link("Plugins", "Built-in extras, on or off for this phone") { open(SettingsPage.PLUGINS) } }
+        item { Link("Open-source licences", "FFmpeg, Media3, Kotlin and the rest Nitrate is built with") { actions.nav.navigate(LicensesRoute) } }
+    }
+}
+
+private fun LazyListScope.group(title: String) {
+    item(key = "g-$title") {
+        HorizontalDivider(Modifier.padding(top = 8.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+    }
+}
+
+@Composable
+private fun Link(title: String, detail: String?, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
+        headlineContent = { Text(title) },
+        supportingContent = detail?.let { { Text(it) } },
+        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+    )
+}
+
+/** Where a page's settings apply: this phone only, its display profile, or every device. */
+@Composable
+private fun ScopeTag(scope: dev.nitrate.core.settings.SettingScope, profile: String? = null) {
+    Text(
+        scope.label("phone", profile),
+        style = MaterialTheme.typography.labelMedium,
+        color = accentColor(),
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .background(accentColor().copy(alpha = 0.12f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
+}
+
+private fun LazyListScope.heading(title: String, scope: dev.nitrate.core.settings.SettingScope? = null, profile: String? = null) {
+    item(key = "h-$title") {
+        Column(Modifier.padding(top = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            scope?.let { ScopeTag(it, profile) }
+        }
+    }
+}
+
+/** One settings page, with a back arrow. */
+@Composable
+fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
+    val c = actions.container
+    val scope = rememberCoroutineScope()
+    val playback by c.playbackSettings.settings.collectAsState(PlaybackSettings())
+    val updatePlayback: ((PlaybackSettings) -> PlaybackSettings) -> Unit = { f -> scope.launch { c.playbackSettings.update(f) } }
+    val prefs = LocalDisplayPrefs.current
+    val updatePrefs: ((DisplayPrefs) -> DisplayPrefs) -> Unit = { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
+    val user = actions.server.userId
+    val profile by remember(user) { user?.let { c.displaySettings.activeProfileName(it) } ?: kotlinx.coroutines.flow.flowOf(null) }.collectAsState(null)
+    val caps = c.capabilities
+
+    LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentPadding = PaddingValues(bottom = 32.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+                androidx.compose.material3.IconButton(onClick = { actions.nav.popBackStack() }) {
+                    androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                }
+                Text(page.title, style = MaterialTheme.typography.headlineSmall)
             }
-            item {
-                ListItem(
-                    modifier = Modifier.clickable { actions.nav.navigate(ProfilesRoute) },
-                    headlineContent = { Text("Switch account") },
-                    supportingContent = { Text("Other users and servers, PINs for profiles") },
-                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                )
-            }
-
-            item {
-                ListItem(
-                    modifier = Modifier.clickable { actions.nav.navigate(ServerAddressesRoute) },
-                    headlineContent = { Text("Servers") },
-                    supportingContent = { Text("Local, VPN and remote addresses; add, switch and choose the primary") },
-                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                )
-            }
-
-            item { ServerSettingsRow(actions) }
-
-            item { QuickConnectRow(actions) }
-
-            if (account?.isAdmin == true) {
+        }
+        when (page) {
+            SettingsPage.SOUND -> {
+                item { ScopeTag(dev.nitrate.core.settings.SettingScope.DEVICE) }
+                heading("Audio")
                 item {
                     ListItem(
-                        modifier = Modifier.clickable { actions.nav.navigate(ServerAdminRoute) },
-                        headlineContent = { Text("Manage server") },
-                        supportingContent = { Text("Libraries, tasks, activity, devices and users") },
-                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                        headlineContent = { Text("Sound") },
+                        supportingContent = {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    SoundMode.entries.forEach { m -> FilterChip(selected = playback.soundMode == m, onClick = { updatePlayback { it.withSoundMode(m) } }, label = { Text(m.label) }) }
+                                }
+                                Text(playback.soundMode.detail + ". " + SoundMode.RECEIVER_NOTE)
+                            }
+                        },
                     )
                 }
                 item {
+                    val output by dev.nitrate.android.playback.SoundOutputs.current(androidx.compose.ui.platform.LocalContext.current).collectAsState()
+                    SpeakersSettings(playback, output, updatePlayback)
+                }
+                item {
                     ListItem(
-                        modifier = Modifier.clickable { actions.nav.navigate(LibraryHealthRoute) },
-                        headlineContent = { Text("Library health") },
-                        supportingContent = { Text("Missing artwork and details, duplicates, missing episodes, what this phone always converts") },
-                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                        headlineContent = { Text("Audio sync") },
+                        supportingContent = {
+                            Column {
+                                Text(dev.nitrate.core.playback.AudioSync.label(playback.audioDelayMs) + ". Change it if lips and voices don't line up, e.g. with Bluetooth headphones or a receiver that adds lag; also in the player's menu.")
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    dev.nitrate.core.playback.AudioSync.STEPS.forEach { d ->
+                                        OutlinedButton(onClick = { updatePlayback { it.copy(audioDelayMs = dev.nitrate.core.playback.AudioSync.clamp(it.audioDelayMs + d)) } }) {
+                                            Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d)} ms")
+                                        }
+                                    }
+                                    if (playback.audioDelayMs != 0) androidx.compose.material3.TextButton(onClick = { updatePlayback { it.copy(audioDelayMs = 0) } }) { Text("Reset") }
+                                }
+                            }
+                        },
                     )
                 }
-            }
-
-        }
-        section(open, "Notifications") {
-            item { NewEpisodesToggle(actions) }
-            item { NewSeasonsToggle(actions) }
-        }
-        section(open, "Watch together", "Play in step with people on other devices (SyncPlay).") {
-            item { WatchTogetherRow(actions) }
-            item {
-                if (partnersAvailable(actions)) ListItem(
-                    modifier = Modifier.clickable { actions.nav.navigate(WatchPartnersRoute) },
-                    headlineContent = { Text("Watch partners") },
-                    supportingContent = { Text("Shows you watch with someone, requests, and keeping your account private") },
-                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                )
-            }
-        }
-        section(open, "Your watching", "What you've watched and listened to, year by year.") {
-            item {
-                ListItem(
-                    modifier = Modifier.clickable { actions.nav.navigate(StatsRoute) },
-                    headlineContent = { Text("Your year") },
-                    supportingContent = { Text("Films, episodes and songs, top shows, genres and artists") },
-                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                )
-            }
-            item {
-                val companion by actions.container.companion.collectAsState()
-                if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) ListItem(
-                    modifier = Modifier.clickable { actions.nav.navigate(DiaryRoute) },
-                    headlineContent = { Text("Watch diary") },
-                    supportingContent = { Text("Every film and episode you finish, with your ratings and notes; export for Letterboxd") },
-                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                )
-            }
-        }
-        section(open, "Control a device", "Play, pause, seek and change volume on your TV or another app.") {
-            item { RemoteTargets(actions) }
-
-        }
-        section(open, "Display", "In this device's display profile. Spoiler hiding, custom pages and series languages are the same on every device.") {
-            item { DisplayProfileRow(actions) }
-            item { MissingEpisodesToggle(actions) }
-            displaySettings(prefs) { change -> actions.server.userId?.let { u -> scope.launch { c.displaySettings.savePrefs(u, change(prefs)) } } }
-
-        }
-        section(open, "Playback", "Settings for this device; they aren't synced.") {
-            item { DeviceReportRow(actions) }
-            item { SpeedCheckRow(actions) }
-            item {
-                Choice("Maximum bitrate", formatBitrate(playback.maxBitrate)) {
-                    val list = PlaybackSettings.BITRATES
-                    updatePlayback { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
-                }
-            }
-            item {
-                Choice("Maximum resolution", playback.maxResolution.label) {
-                    updatePlayback { it.copy(maxResolution = MaxResolution.entries[(it.maxResolution.ordinal + 1) % MaxResolution.entries.size]) }
-                }
-            }
-            item { Toggle("Allow direct play", "Play files as they are when this device supports them", playback.allowDirectPlay) { v -> updatePlayback { it.copy(allowDirectPlay = v) } } }
-            item { Toggle("Allow direct stream", "Repackage without re-encoding when only the container is unsupported", playback.allowDirectStream) { v -> updatePlayback { it.copy(allowDirectStream = v) } } }
-            item { Toggle("Learn from failures", "Transcode formats that failed to direct play here", playback.useLearnedFailures) { v -> updatePlayback { it.copy(useLearnedFailures = v) } } }
-            if (playback.learnedFailures.isNotEmpty()) {
+                heading("Player")
+                item { Toggle("Keep playing in the background", "Audio continues with the screen off or in another app", playback.backgroundAudio) { v -> updatePlayback { it.copy(backgroundAudio = v) } } }
+                item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }
+                item { Toggle("Swipe for brightness and volume", "Up and down on the left of the video for brightness, on the right for volume", playback.swipeControls) { v -> updatePlayback { it.copy(swipeControls = v) } } }
+                heading("Streaming")
                 item {
+                    Choice("Maximum bitrate", formatBitrate(playback.maxBitrate), "Lower it only if playback keeps buffering, e.g. on mobile data. Anything above it is converted down by the server") {
+                        val list = PlaybackSettings.BITRATES
+                        updatePlayback { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
+                    }
+                }
+                item { Link("Advanced", "Dolby Vision profile 7, 3D, resolution limit, direct play, and the formats this phone plays") { actions.nav.navigate(SettingsPageRoute(SettingsPage.ADVANCED.name)) } }
+            }
+            SettingsPage.ADVANCED -> {
+                item {
+                    Text(
+                        "For troubleshooting and unusual setups. Leave these as they are unless something plays wrong; \"Why converting?\" in the player and \"How it plays\" on a title suggest the right change.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+                item { ScopeTag(dev.nitrate.core.settings.SettingScope.DEVICE) }
+                heading("Picture")
+                item {
+                    Toggle("Dolby Vision profile 7 as 8.1", "UHD Blu-ray Dolby Vision is converted while it plays, for Dolby Vision instead of HDR10 on devices that take profile 8. Turn off only if those films look wrong", playback.convertProfile7) { v ->
+                        updatePlayback { it.copy(convertProfile7 = v) }
+                    }
+                }
+                item {
+                    val t = playback.threeD
+                    Choice("3D films", t.label, t.detail) {
+                        val all = dev.nitrate.core.playback.ThreeDMode.entries
+                        updatePlayback { it.copy(threeD = all[(t.ordinal + 1) % all.size]) }
+                    }
+                }
+                item {
+                    Choice("Maximum resolution", playback.maxResolution.label, "Larger video is converted down by the server") {
+                        updatePlayback { it.copy(maxResolution = MaxResolution.entries[(it.maxResolution.ordinal + 1) % MaxResolution.entries.size]) }
+                    }
+                }
+                heading("Troubleshooting")
+                item { Toggle("Learn from failures", "Formats that failed to play here as they are get converted next time. Keep on", playback.useLearnedFailures) { v -> updatePlayback { it.copy(useLearnedFailures = v) } } }
+                if (playback.learnedFailures.isNotEmpty()) item {
                     ListItem(
                         modifier = Modifier.clickable { scope.launch { c.playbackSettings.clearFailures() } },
                         headlineContent = { Text("Forget ${playback.learnedFailures.size} learned failure(s)") },
                         supportingContent = { Text(playback.learnedFailures.keys.joinToString { capabilityLabel(it) }) },
                     )
                 }
-            }
-
-            item { Toggle("Keep playing in the background", "Audio continues with the screen off or in another app", playback.backgroundAudio) { v -> updatePlayback { it.copy(backgroundAudio = v) } } }
-            item { Toggle("Swipe for brightness and volume", "Up and down on the left of the video for brightness, on the right for volume", playback.swipeControls) { v -> updatePlayback { it.copy(swipeControls = v) } } }
-            item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }
-            item {
-                val output by dev.nitrate.android.playback.SoundOutputs.current(androidx.compose.ui.platform.LocalContext.current).collectAsState()
-                SpeakersSettings(playback, output, updatePlayback)
-            }
-            item { Toggle("Dialogue boost", "Voices louder than music and effects (sound normally passed through is decoded here while it's on)", playback.dialogueBoost) { v -> updatePlayback { it.copy(dialogueBoost = v) } } }
-            item { Toggle("Ask \"Still watching?\"", "After two episodes play on by themselves with nothing pressed, stop and ask. No answer: go back to where you last pressed something", playback.askStillWatching) { v -> updatePlayback { it.copy(askStillWatching = v) } } }
-            item { Toggle("Night mode", "Quieter loud parts and clearer dialogue (sound normally passed through is decoded here while it's on)", playback.nightMode) { v -> updatePlayback { it.copy(nightMode = v) } } }
-            item {
-                Toggle("Dolby Vision profile 7 as 8.1", "UHD Blu-ray Dolby Vision is converted while it plays, for Dolby Vision instead of HDR10 on devices that take profile 8", playback.convertProfile7) { v ->
-                    updatePlayback { it.copy(convertProfile7 = v) }
+                item { Toggle("Allow direct play", "Files play as they are when this phone supports them. Turning this off makes the server convert everything", playback.allowDirectPlay) { v -> updatePlayback { it.copy(allowDirectPlay = v) } } }
+                item { Toggle("Allow direct stream", "Repackaged without re-encoding when only the container is unsupported. Turning this off converts those too", playback.allowDirectStream) { v -> updatePlayback { it.copy(allowDirectStream = v) } } }
+                heading("Formats")
+                item { Text("Tap to cycle Auto → Always → Never.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
+                items(CapabilityRules.videoCodecs(caps, playback) + CapabilityRules.hdrFormats(caps, playback) + CapabilityRules.audioCodecs(caps, playback), key = { it.id }) { cap ->
+                    Capability(cap, playback, updatePlayback)
                 }
             }
-            item {
-                Toggle("Show 3D films in 2D", "Side-by-side and top-and-bottom 3D shows one eye's view at its proper shape. Off: both views as recorded, for a 3D screen", playback.threeD == dev.nitrate.core.playback.ThreeDMode.TWO_D) { v ->
-                    updatePlayback { it.copy(threeD = if (v) dev.nitrate.core.playback.ThreeDMode.TWO_D else dev.nitrate.core.playback.ThreeDMode.AS_FILE) }
+            SettingsPage.SUBTITLES -> {
+                item {
+                    Text("How subtitles look. Which language plays is set per show, and by your server account (Account → Server-side settings).", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 }
+                item { ScopeTag(dev.nitrate.core.settings.SettingScope.DEVICE) }
+                item { SubtitleStyleEditor(playback.subtitleStyle) { st -> updatePlayback { it.copy(subtitleStyle = st) } } }
             }
-            item {
-                ListItem(
-                    headlineContent = { Text("Audio sync") },
-                    supportingContent = {
-                        Column {
-                            Text(dev.nitrate.core.playback.AudioSync.label(playback.audioDelayMs) + ". For Bluetooth headphones or a receiver that adds lag; also in the player's menu.")
-                            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                dev.nitrate.core.playback.AudioSync.STEPS.forEach { d ->
-                                    OutlinedButton(onClick = { updatePlayback { it.copy(audioDelayMs = dev.nitrate.core.playback.AudioSync.clamp(it.audioDelayMs + d)) } }) {
-                                        Text((if (d > 0) "+" else "−") + "${kotlin.math.abs(d)} ms")
-                                    }
-                                }
-                                if (playback.audioDelayMs != 0) androidx.compose.material3.TextButton(onClick = { updatePlayback { it.copy(audioDelayMs = 0) } }) { Text("Reset") }
-                            }
-                        }
-                    },
-                )
+            SettingsPage.DISPLAY -> {
+                item { ScopeTag(dev.nitrate.core.settings.SettingScope.PROFILE, profile) }
+                item { DisplayProfileRow(actions) }
+                displayLook(prefs, updatePrefs)
+                item { Link("What's shown", "Ratings, year, genres, descriptions, logos, progress and the rest on cards and pages") { actions.nav.navigate(SettingsPageRoute(SettingsPage.SHOWN.name)) } }
+                heading("Your server account", dev.nitrate.core.settings.SettingScope.EVERYWHERE)
+                item { MissingEpisodesToggle(actions) }
             }
-
-        }
-        section(open, "Subtitles", "How subtitles look on this device.") {
-            item { SubtitleStyleEditor(playback.subtitleStyle) { st -> updatePlayback { it.copy(subtitleStyle = st) } } }
-
-        }
-        section(open, "Formats", "Tap to cycle Auto → Always → Never.") {
-            items(CapabilityRules.videoCodecs(caps, playback) + CapabilityRules.hdrFormats(caps, playback) + CapabilityRules.audioCodecs(caps, playback), key = { it.id }) { cap ->
-                Capability(cap, playback, updatePlayback)
+            SettingsPage.SHOWN -> {
+                item { ScopeTag(dev.nitrate.core.settings.SettingScope.PROFILE, profile) }
+                shownSettings(prefs, updatePrefs)
             }
-
-        }
-        section(open, "Device backup", "This device's playback and plugin settings, kept on your server so a new device can start the same way. No PINs; screenplays have their own backup.") {
-            item { DeviceBackupSection(c.backups) }
-
-        }
-        section(open, "Updates", "New versions from Nitrate's releases. Android asks before installing.") {
-            item { UpdatesSection(c.updater) }
-            item {
-                ListItem(
-                    modifier = Modifier.clickable { actions.nav.navigate(LicensesRoute) },
-                    headlineContent = { Text("Open-source licences") },
-                    supportingContent = { Text("FFmpeg, Media3, Kotlin and the rest Nitrate is built with") },
-                    trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                )
+            SettingsPage.WATCHING -> {
+                heading("Your display profile", dev.nitrate.core.settings.SettingScope.PROFILE, profile)
+                watchingSettings(prefs, updatePrefs)
+                heading("All your devices", dev.nitrate.core.settings.SettingScope.EVERYWHERE)
+                item { Toggle("Hide spoilers", "Blur stills and hold back descriptions of episodes and films you haven't seen", prefs.hideSpoilers) { v -> updatePrefs { it.copy(hideSpoilers = v) } } }
+                heading("This phone", dev.nitrate.core.settings.SettingScope.DEVICE)
+                item { Toggle("Ask \"Still watching?\"", "After two episodes play on by themselves with nothing pressed, stop and ask. No answer: go back to where you last pressed something", playback.askStillWatching) { v -> updatePlayback { it.copy(askStillWatching = v) } } }
             }
-
+            SettingsPage.NOTIFICATIONS -> {
+                item { ScopeTag(dev.nitrate.core.settings.SettingScope.DEVICE) }
+                item { NewEpisodesToggle(actions) }
+                item { NewSeasonsToggle(actions) }
+            }
+            SettingsPage.BACKUP -> {
+                item {
+                    Text("This phone's playback and plugin settings, kept on your server so a new device can start the same way. No PINs; screenplays have their own backup.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                }
+                item { DeviceBackupSection(c.backups) }
+            }
+            SettingsPage.REMOTE -> item { RemoteTargets(actions) }
+            SettingsPage.UPDATES -> {
+                item { Text("New versions from Nitrate's releases. Android asks before installing.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+                item { UpdatesSection(c.updater) }
+            }
+            SettingsPage.PLUGINS -> {
+                item { Text("Built in; switch them on or off for this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+                pluginSettings(actions)
+            }
         }
-        section(open, "Plugins", "Built in; switch them on or off for this device.") {
-            // Each plugin with its own settings beneath it (shown while it's on).
-            items(c.plugins.all, key = { it.id }) { plugin ->
+    }
+}
+
+/** Each plugin with its own settings beneath it (shown while it's on). */
+private fun LazyListScope.pluginSettings(actions: AppActions) {
+    val c = actions.container
+    items(c.plugins.all, key = { it.id }) { plugin ->
+        val scope = rememberCoroutineScope()
+        val enabled by c.plugins.enabledIds.collectAsState(emptySet())
+        val store = c.plugins.host.store
+        val previous by store.settings(PreviousEpisodePlugin.id, PreviousEpisodeSettings()).collectAsState(PreviousEpisodeSettings())
+        val writing by store.settings(WritingPlugin.id, WritingSettings()).collectAsState(WritingSettings())
                 val on = plugin.id in enabled
                 PluginBlock(plugin.name, plugin.description, on, { v -> scope.launch { c.plugins.setEnabled(plugin.id, v) } }) {
                     when (plugin.id) {
@@ -324,8 +410,6 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
                     }
                 }
             }
-        }
-    }
 }
 
 /** A plugin: its switch, and its own settings indented beneath it while it's on. */
@@ -350,8 +434,14 @@ private fun PluginLink(title: String, detail: String, onClick: () -> Unit) {
 @Composable
 private fun PluginNote(text: String) = ListItem(headlineContent = { Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) })
 
-/** Toggles for what's shown about items, the look, and Home. */
-private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((DisplayPrefs) -> DisplayPrefs) -> Unit) {
+/** How things look: easy mode, accent, black level, card titles. */
+private fun LazyListScope.displayLook(prefs: DisplayPrefs, update: ((DisplayPrefs) -> DisplayPrefs) -> Unit) {
+    item(key = "easy") {
+        Toggle(
+            "Easy mode", "Bigger text and buttons, only the essential tabs and player controls, and a question before anything is deleted or signed out",
+            prefs.easyMode,
+        ) { v -> update { it.copy(easyMode = v) } }
+    }
     item(key = "accent") {
         ListItem(
             headlineContent = { Text("Accent colour") },
@@ -369,11 +459,30 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
             },
         )
     }
-    item(key = "easy") {
+    item(key = "black") { Toggle("True black", "Pure black backgrounds, for OLED screens", prefs.trueBlack) { v -> update { it.copy(trueBlack = v) } } }
+    item(key = "titles") {
+        Choice("Titles under cards", prefs.cardTitles.label) { update { it.copy(cardTitles = CardTitles.entries[(it.cardTitles.ordinal + 1) % CardTitles.entries.size]) } }
+    }
+}
+
+/** What Nitrate does around what you play (display profile settings). */
+private fun LazyListScope.watchingSettings(prefs: DisplayPrefs, update: ((DisplayPrefs) -> DisplayPrefs) -> Unit) {
+    item(key = "credit_scenes") {
         Toggle(
-            "Easy mode", "Bigger text and buttons, only the essential tabs and player controls, and a question before anything is deleted or signed out",
-            prefs.easyMode,
-        ) { v -> update { it.copy(easyMode = v) } }
+            "Skip to scenes in the credits", "When a film has a scene during or after its credits and Nitrate knows where, jump to it when the credits start (\"Watch credits\" goes back). Off: just offer it",
+            prefs.creditScenes,
+        ) { v -> update { it.copy(creditScenes = v) } }
+    }
+    item(key = "recap") {
+        // Cycles Never → 3 days → 1 week → 2 weeks → 1 month.
+        val choices = dev.nitrate.core.recap.RECAP_CHOICES
+        val i = choices.indexOfFirst { it.first == prefs.recapAfterDays }.coerceAtLeast(0)
+        Choice("\"Last time\" recap for shows", choices[i].second, "After a break of at least this long") { update { it.copy(recapAfterDays = choices[(i + 1) % choices.size].first) } }
+    }
+    item(key = "recap-playlists") {
+        val choices = dev.nitrate.core.recap.RECAP_CHOICES
+        val i = choices.indexOfFirst { it.first == prefs.playlistRecapAfterDays }.coerceAtLeast(0)
+        Choice("Recap for playlists in story order", choices[i].second, "After a break of at least this long") { update { it.copy(playlistRecapAfterDays = choices[(i + 1) % choices.size].first) } }
     }
     item(key = "described") {
         Toggle(
@@ -381,27 +490,11 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
             prefs.describedAudio,
         ) { v -> update { it.copy(describedAudio = v) } }
     }
-    item(key = "credit_scenes") {
-        Toggle(
-            "Skip to after-credits scenes", "When a film has a scene during or after its credits and Nitrate knows where, jump to it when the credits start (\"Watch credits\" goes back). Off: just offer it",
-            prefs.creditScenes,
-        ) { v -> update { it.copy(creditScenes = v) } }
-    }
-    item(key = "black") { Toggle("True black", "Pure black backgrounds, for OLED screens", prefs.trueBlack) { v -> update { it.copy(trueBlack = v) } } }
-    item(key = "recap") {
-        // Cycles Never → 3 days → 1 week → 2 weeks → 1 month.
-        val choices = dev.nitrate.core.recap.RECAP_CHOICES
-        val i = choices.indexOfFirst { it.first == prefs.recapAfterDays }.coerceAtLeast(0)
-        Choice("Shows: \"Last time\" recap after a break of at least", choices[i].second) { update { it.copy(recapAfterDays = choices[(i + 1) % choices.size].first) } }
-    }
-    item(key = "recap-playlists") {
-        val choices = dev.nitrate.core.recap.RECAP_CHOICES
-        val i = choices.indexOfFirst { it.first == prefs.playlistRecapAfterDays }.coerceAtLeast(0)
-        Choice("Playlists in story order: recap after a break of at least", choices[i].second) { update { it.copy(playlistRecapAfterDays = choices[(i + 1) % choices.size].first) } }
-    }
-    item(key = "titles") {
-        Choice("Titles under cards", prefs.cardTitles.label) { update { it.copy(cardTitles = CardTitles.entries[(it.cardTitles.ordinal + 1) % CardTitles.entries.size]) } }
-    }
+    item(key = "theme") { Toggle("Theme music", "Plays a title's theme quietly on its details page", prefs.themeMusic ?: false) { v -> update { it.copy(themeMusic = v) } } }
+}
+
+/** What's shown about titles on cards and pages. */
+private fun LazyListScope.shownSettings(prefs: DisplayPrefs, update: ((DisplayPrefs) -> DisplayPrefs) -> Unit) {
     val toggles: List<Triple<String, String, Pair<(DisplayPrefs) -> Boolean, (DisplayPrefs, Boolean) -> DisplayPrefs>>> = listOf(
         Triple("Community rating", "★ 7.8", Pair({ p -> p.communityRating }, { p, v -> p.copy(communityRating = v) })),
         Triple("Critic rating", "92% critics", Pair({ p -> p.criticRating }, { p, v -> p.copy(criticRating = v) })),
@@ -418,37 +511,18 @@ private fun LazyListScope.displaySettings(prefs: DisplayPrefs, update: ((Display
         Triple("Logos", "Title art instead of plain titles", Pair({ p -> p.logos }, { p, v -> p.copy(logos = v) })),
         Triple("Cast & crew", "On details pages", Pair({ p -> p.cast }, { p, v -> p.copy(cast = v) })),
         Triple("More like this", "On details pages", Pair({ p -> p.similar }, { p, v -> p.copy(similar = v) })),
-        Triple("Hide spoilers", "Blur episode stills and hide descriptions of episodes and movies you haven't seen", Pair({ p -> p.hideSpoilers }, { p, v -> p.copy(hideSpoilers = v) })),
-        Triple("Theme music", "Plays a title's theme quietly on its details page", Pair({ p -> p.themeMusic ?: false }, { p, v -> p.copy(themeMusic = v) })),
     )
     toggles.forEach { (label, detail, get) ->
         item(key = "pref-$label") { Toggle(label, detail, get.first(prefs)) { v -> update { get.second(it, v) } } }
     }
 }
 
-/**
- * A settings section that folds away under its heading (tap to open or close); [content] is only
- * added while it's open.
- */
-private fun LazyListScope.section(open: MutableList<String>, title: String, subtitle: String? = null, content: LazyListScope.() -> Unit) {
-    val isOpen = title in open
-    item(key = "h-$title") {
-        HorizontalDivider(Modifier.padding(top = 8.dp))
-        ListItem(
-            modifier = Modifier.clickable { if (isOpen) open.remove(title) else open.add(title) },
-            headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) },
-            supportingContent = subtitle?.takeIf { isOpen }?.let { { Text(it) } },
-            trailingContent = { Text(if (isOpen) "▾" else "▸", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) },
-        )
-    }
-    if (isOpen) content()
-}
-
 @Composable
-private fun Choice(label: String, value: String, onClick: () -> Unit) {
+private fun Choice(label: String, value: String, detail: String? = null, onClick: () -> Unit) {
     ListItem(
         modifier = Modifier.clickable(onClick = onClick),
         headlineContent = { Text(label) },
+        supportingContent = detail?.let { { Text(it) } },
         trailingContent = { Text(value, color = MaterialTheme.colorScheme.primary) },
     )
 }

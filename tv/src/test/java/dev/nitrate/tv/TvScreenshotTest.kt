@@ -367,9 +367,13 @@ class TvScreenshotTest {
     }
 
     @Test fun settingsHub() = shoot("tv-settings-hub") { _ ->
+        fun links(vararg l: Pair<String, String>) = l.map { (label, detail) -> dev.nitrate.tv.ui.settings.SettingsLink(label, detail) {} }
         dev.nitrate.tv.ui.settings.SettingsHubScreen(
-            listOf("Playback" to "Formats, quality, tests and updates for this TV", "Display" to "What's shown about items; follows your account", "Check for updates" to "Nitrate 0.0.0-dev.18", "Plugins" to "Built-in extras, on or off", "Switch user" to "Other users and servers, profile PINs", "Sign out" to "http://jellyfin.local:8096")
-                .map { (l, d) -> dev.nitrate.tv.ui.settings.SettingsLink(l, d) {} },
+            listOf(
+                dev.nitrate.tv.ui.settings.SettingsSection(null, links("Picture & sound" to "Sound, speakers, audio sync, frame rate; Advanced for formats and fixes", "Subtitles" to "Size, colour, background and styled subtitles", "Display" to "Home and menu, colours, screensaver, what's shown about titles", "While watching" to "Scenes in the credits, recaps, spoilers, audio description, theme music")),
+                dev.nitrate.tv.ui.settings.SettingsSection("Account & servers", links("Switch user" to "Other users and servers, profile PINs", "Sign out" to "http://jellyfin.local:8096")),
+                dev.nitrate.tv.ui.settings.SettingsSection("About", links("Updates" to "Nitrate 0.0.0-dev.18")),
+            ),
         )
     }
 
@@ -382,6 +386,18 @@ class TvScreenshotTest {
 
     @Test fun displaySettings() = shoot("tv-display-settings", { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(criticRating = false, hideSpoilers = true)) }) { c ->
         DisplaySettingsScreen(c)
+    }
+
+    @Test fun whileWatchingSettings() = shoot("tv-while-watching-settings", { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true)) }) { c ->
+        DisplaySettingsScreen(c, dev.nitrate.tv.ui.pages.DisplayPage.WATCHING)
+    }
+
+    @Test fun pictureAndSound() = shoot("tv-picture-and-sound") { c ->
+        dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities)
+    }
+
+    @Test fun advancedPlayback() = shoot("tv-picture-and-sound-advanced") { c ->
+        dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities, dev.nitrate.tv.ui.settings.PlaybackPage.ADVANCED)
     }
 
     /** Up Next on TV: the next episode with its countdown, and the next film in a collection without. */

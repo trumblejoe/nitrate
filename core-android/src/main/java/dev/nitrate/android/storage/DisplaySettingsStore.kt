@@ -80,6 +80,12 @@ class DisplaySettingsStore(
     /** The id of the profile this device uses. */
     fun activeProfile(userId: String): Flow<String> = context.displayDataStore.data.map { activeId(it, userId) }
 
+    /** The name of the profile this device uses (for "applies to" labels on settings). */
+    fun activeProfileName(userId: String): Flow<String> = context.displayDataStore.data.map { prefs ->
+        val id = activeId(prefs, userId)
+        (DisplayProfiles.BUILT_IN + customProfiles(prefs, userId)).firstOrNull { it.id == id }?.name ?: "?"
+    }
+
     /** The profile this device uses for whoever [userId] says is signed in (re-read on every change). */
     fun activeProfileOf(userId: () -> String?): Flow<String?> = context.displayDataStore.data.map { prefs -> userId()?.let { activeId(prefs, it) } }
 

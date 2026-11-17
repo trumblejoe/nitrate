@@ -113,8 +113,7 @@ object DeviceBackups {
         playback("Direct play", onOff(a.allowDirectPlay), onOff(n.allowDirectPlay))
         playback("Direct stream", onOff(a.allowDirectStream), onOff(n.allowDirectStream))
         playback("Avoid formats that failed before", onOff(a.useLearnedFailures), onOff(n.useLearnedFailures))
-        playback("Night mode", onOff(a.nightMode), onOff(n.nightMode))
-        playback("Dialogue boost", onOff(a.dialogueBoost), onOff(n.dialogueBoost))
+        playback("Sound", dev.nitrate.core.playback.SoundMode.of(a).label, dev.nitrate.core.playback.SoundMode.of(n).label)
         playback("Upmix stereo", onOff(a.upmixStereo), onOff(n.upmixStereo))
         (a.speakerLayouts.keys + n.speakerLayouts.keys).sorted().forEach { k ->
             hardware("Speakers on ${k.substringAfter(':').ifBlank { k.substringBefore(':') }}", a.speakerLayouts[k]?.label ?: "Not set", n.speakerLayouts[k]?.label ?: "Not set")

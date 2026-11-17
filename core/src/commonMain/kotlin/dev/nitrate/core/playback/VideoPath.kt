@@ -81,7 +81,7 @@ data class VideoPath(
         val content = inFps?.takeIf { it > 0 }
         val display = displayHz?.takeIf { it > 0 }
         if (content != null && display != null && !cadenceFits(content, display)) {
-            add("${fps(content)} fps on a ${fps(display)} Hz display: motion stutters slightly (judder). Match frame rate in Playback settings switches the display to suit.")
+            add("${fps(content)} fps on a ${fps(display)} Hz display: motion stutters slightly (judder). Match frame rate in Settings → Picture & sound switches the display to suit.")
         }
         if (droppedFrames >= DROPPED_WARN) add("Dropped frames: this device is struggling with this video. A lower quality or another version may play smoothly.")
         val need = fileBps

@@ -78,6 +78,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ServerAddressesRoute
 @Serializable object LicensesRoute
+@Serializable data class SettingsPageRoute(val page: String)
 
 /** A page of the user's own rows; [editNow] opens the editor straight away (just created). */
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
@@ -289,6 +290,10 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ChannelEditorRoute> { entry -> ChannelEditorScreen(actions, entry.toRoute<ChannelEditorRoute>().channelId.ifEmpty { null }) }
             screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<LicensesRoute> { LicensesScreen() }
+            screen<SettingsPageRoute> { entry ->
+                val page = runCatching { SettingsPage.valueOf(entry.toRoute<SettingsPageRoute>().page) }.getOrDefault(SettingsPage.SOUND)
+                SettingsPageScreen(actions, page)
+            }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
             screen<StatsRoute> { StatsScreen(actions) }
             screen<DiaryRoute> { DiaryScreen(actions) }

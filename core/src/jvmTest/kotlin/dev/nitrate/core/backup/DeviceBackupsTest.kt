@@ -49,7 +49,7 @@ class DeviceBackupsTest {
         assertEquals(
             listOf(
                 "Playback | Maximum bitrate | 120 Mbps → 20 Mbps",
-                "Playback | Night mode | Off → On",
+                "Playback | Sound | Normal → Night",
                 "Subtitles | Size | 100% → 150%",
                 "Subtitles | Colour | White → Yellow",
                 "Plugins | Writing pane | Off → On",

@@ -98,7 +98,7 @@ fun SpeakersQuestionDialog(
                 Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = onLater) { Text(laterLabel) }
             }
-            Text("What's connected to ${output.label}? Asked once for this output; change it any time in Settings → Playback.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("What's connected to ${output.label}? Asked once for this output; change it any time in Settings → Picture & sound.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             // Two columns, so every answer fits on screen.
             SpeakerLayout.entries.chunked(2).forEach { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -129,7 +129,7 @@ fun androidx.compose.foundation.layout.BoxScope.SpeakersBanner(output: SoundOutp
         onDone()
     }
     Text(
-        "New sound output: ${output.label}. Set up its speakers in More (or Settings → Playback) to hear stereo on all of them.",
+        "New sound output: ${output.label}. Set up its speakers in More (or Settings → Picture & sound) to hear stereo on all of them.",
         style = MaterialTheme.typography.bodyMedium,
         color = androidx.compose.ui.graphics.Color.White,
         modifier = Modifier.align(androidx.compose.ui.Alignment.TopStart).padding(32.dp).width(620.dp)

@@ -42,6 +42,8 @@ import dev.nitrate.mobile.ui.PageEditor
 import dev.nitrate.mobile.ui.ProvideDisplayPrefs
 import dev.nitrate.mobile.ui.RowBuilderDialog
 import dev.nitrate.mobile.ui.SettingsScreen
+import dev.nitrate.mobile.ui.SettingsPageScreen
+import dev.nitrate.mobile.ui.SettingsPage
 import dev.nitrate.mobile.ui.PlayerLayout
 import dev.nitrate.mobile.ui.WritingScreen
 import dev.nitrate.mobile.ui.TransferDialog
@@ -512,12 +514,12 @@ class ScreenshotTest {
 
     @Test fun displaySettings() = shoot("phone-display-settings", setup = { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(accent = AccentMode.TEAL, hideSpoilers = true, criticRating = false))
-    }) { SettingsScreen(it, {}, initiallyOpen = listOf("Display")) }
+    }) { SettingsPageScreen(it, SettingsPage.DISPLAY) }
 
     @Test fun pluginSettings() = shoot("phone-settings-plugins", setup = { c ->
         c.plugins.setEnabled(dev.nitrate.core.episodes.PreviousEpisodePlugin.id, true)
         c.refreshCompanionForTests()
-    }) { SettingsScreen(it, {}, initiallyOpen = listOf("Plugins")) }
+    }) { SettingsPageScreen(it, SettingsPage.PLUGINS) }
 
     /** Long-pressing a plot copies it; a tap still expands it. */
     @Test fun longPressCopiesThePlot() {
@@ -530,6 +532,10 @@ class ScreenshotTest {
     }
 
     @Test fun settingsFolded() = shoot("phone-settings") { SettingsScreen(it, {}) }
+
+    @Test fun pictureAndSound() = shoot("phone-picture-and-sound") { SettingsPageScreen(it, SettingsPage.SOUND) }
+
+    @Test fun whileWatching() = shoot("phone-while-watching", setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true)) }) { SettingsPageScreen(it, SettingsPage.WATCHING) }
 
     @Test fun spoilerFree() = shoot("phone-series-spoilers", setup = { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true, communityRating = false, overview = false))
