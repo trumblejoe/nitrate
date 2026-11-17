@@ -228,7 +228,9 @@ fun PlayerScreen(
     var openPanel by remember { mutableStateOf<PlayerPanel?>(null) }
     var creditAction by remember(item?.id) { mutableStateOf<dev.nitrate.core.playback.CreditSkipper.Action?>(null) }
     var panelFocused by remember { mutableStateOf(false) }
-    var chaptersOpen by remember { mutableStateOf(false) }
+    var stripOpen by remember { mutableStateOf(false) }
+    var person by remember { mutableStateOf<dev.nitrate.core.model.Person?>(null) }
+    val showCast = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.cast
     val playbackControls = session.controls
     val rootFocus = remember { FocusRequester() }
     val controlFocus = remember { ControlFocus() }
@@ -263,7 +265,7 @@ fun PlayerScreen(
             position = player.currentPosition
             duration = player.duration.coerceAtLeast(0L)
             playing = player.isPlaying
-            if (controlsVisible && playing && panel == Panel.NONE && System.currentTimeMillis() - lastInput > CONTROLS_TIMEOUT_MS) {
+            if (controlsVisible && playing && panel == Panel.NONE && person == null && System.currentTimeMillis() - lastInput > CONTROLS_TIMEOUT_MS) {
                 controlsVisible = false
                 // Never pull focus away from someone typing in a side panel.
                 if (!panelFocused) runCatching { rootFocus.requestFocus() }
@@ -298,6 +300,10 @@ fun PlayerScreen(
         }
     }
 
+    val foldedStrips = if (easy) 0 else listOf(
+        (item?.chapters?.size ?: 0) > 1,
+        showCast && item?.people.orEmpty().any { it.imageTag != null || !it.role.isNullOrBlank() },
+    ).count { it }
     val nextUp = upNext
     val film = nextUp != null && !nextUp.isEpisode
     val creditScenes by session.creditScenes.collectAsState()
@@ -409,6 +415,7 @@ fun PlayerScreen(
             // Info and Chat open beside the video: their buttons close them again.
             fun toggle(target: Panel) { panel = if (panel == target) Panel.NONE else target }
             val ready = p != null
+            val castShown = if (easy || !showCast) emptyList() else item?.people.orEmpty().filter { it.imageTag != null || !it.role.isNullOrBlank() }.take(30)
             PlayerControls(
                 item = item,
                 plan = p,
@@ -447,7 +454,11 @@ fun PlayerScreen(
                 chapters = if (easy) emptyList() else item?.chapters.orEmpty(),
                 chapterImage = { i -> item?.let { repository.chapterImageUrl(it, i, 320) } },
                 onChapter = { player.seekTo(it) },
-                onChaptersOpen = { chaptersOpen = it },
+                // The cast (as on the details page, when shown there); OK opens a pop-up over the video.
+                cast = castShown,
+                personImage = repository::personImageUrl,
+                onPerson = { person = it },
+                onStripOpen = { stripOpen = it },
             )
         }
 
@@ -466,7 +477,7 @@ fun PlayerScreen(
                 onPlay = { onPlayNext?.invoke(nextUp) },
                 onCountdownEnd = { rollOn(nextUp) },
                 onHide = { upNextHidden = true; runCatching { rootFocus.requestFocus() } },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) controlsHeight(!easy && (item?.chapters?.size ?: 0) > 1, chaptersOpen) else 48.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) controlsHeight(foldedStrips, stripOpen) else 48.dp),
             )
         }
 
@@ -517,7 +528,7 @@ fun PlayerScreen(
                     creditAction = null
                     if (!controlsVisible) runCatching { rootFocus.requestFocus() }
                 },
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) controlsHeight(!easy && (item?.chapters?.size ?: 0) > 1, chaptersOpen) else 48.dp),
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) controlsHeight(foldedStrips, stripOpen) else 48.dp),
             )
         }
 
@@ -563,6 +574,10 @@ fun PlayerScreen(
             onFix = { fix -> session.applyFix(fix); panel = Panel.NONE },
             onDismiss = { panel = Panel.NONE },
         )
+    }
+    person?.let { who ->
+        // Focus stays on their photo in the cast strip; the controls stay up a while longer.
+        PersonDialog(repository, who, item, onDismiss = { person = null; touch() })
     }
     if (p != null && panel == Panel.AUDIO) {
         TrackDialog("Audio", p.audioChoices(), p.audioIndex, onSelect = { selectTrack(StreamKind.AUDIO, it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })

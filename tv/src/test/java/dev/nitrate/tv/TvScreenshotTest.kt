@@ -250,6 +250,8 @@ class TvScreenshotTest {
                     chapters = listOf("Opening", "The letter", "Night train", "Crossing", "The reel", "Morning", "Credits")
                         .mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 400_000L, n) },
                     chapterImage = { i -> item?.takeIf { i % 3 != 2 }?.let { c.server.imageUrl(it, dev.nitrate.core.model.ImageKind.BACKDROP, 320) } },
+                    cast = sampleCast,
+                    personImage = { p -> item?.takeIf { p.imageTag != null }?.let { c.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 300) } },
                 )
             }
         }
@@ -263,6 +265,14 @@ class TvScreenshotTest {
     @Test fun playerControlsChaptersFoldBack() = playerControls("tv-player-controls-chapters-fold-back", "down", "up") {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Now"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         check(compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasContentDescription("Pause")).fetchSemanticsNodes().isNotEmpty())
+    }
+    private val sampleCast = listOf("Ada Marsh" to "Iris Vale", "Tom Okafor" to "The Projectionist", "Lena Brook" to "Night Clerk", "Sam Ito" to "Conductor", "Rui Costa" to "Ferryman", "June Hale" to "Archivist")
+        .mapIndexed { i, (n, r) -> dev.nitrate.core.model.Person("p$i", n, r, imageTag = "t".takeIf { i % 3 != 1 }) }
+
+    @Test fun playerControlsCast() = playerControls("tv-player-controls-cast", "down", "down") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("▴  Cast")).fetchSemanticsNodes().isNotEmpty()) }
+    @Test fun playerControlsCastUp() = playerControls("tv-player-controls-cast-up", "down", "down", "up") { check(focusedHasText("Now")) }
+    @Test fun personDialog() = shoot("tv-person-dialog") { c ->
+        dev.nitrate.tv.ui.player.PersonDialog(c.server, sampleCast[1], null, onDismiss = {})
     }
     @Test fun playerControlsChapters() = playerControls("tv-player-controls-chapters", "down") { check(focusedHasText("Now")) }
 
