@@ -8,11 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 
-/** Saving and opening files through the system picker. iOS uses its document picker instead. */
-class FilePickers(val save: (fileName: String, mime: String, bytes: ByteArray) -> Unit, val open: () -> Unit)
-
 @Composable
-fun rememberFilePickers(onOpened: (ByteArray) -> Unit, onResult: (String) -> Unit): FilePickers {
+actual fun rememberFilePickers(onOpened: (ByteArray) -> Unit, onResult: (String) -> Unit): FilePickers {
     val context = LocalContext.current
     val opened by rememberUpdatedState(onOpened)
     val result by rememberUpdatedState(onResult)

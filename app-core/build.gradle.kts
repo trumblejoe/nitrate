@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.multiplatform)
 }
 
 kotlin {
@@ -30,6 +32,8 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             api(libs.androidx.lifecycle.viewmodel)
             implementation(libs.atomicfu)
+            // Row art drawing (paths and DrawScope only), shared by both apps' decorative rows.
+            implementation(compose.ui)
         }
     }
 }

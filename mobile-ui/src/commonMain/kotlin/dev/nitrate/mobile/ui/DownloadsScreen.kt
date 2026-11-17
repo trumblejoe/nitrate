@@ -1,0 +1,507 @@
+package dev.nitrate.mobile.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import dev.nitrate.core.downloads.DownloadOption
+import dev.nitrate.core.downloads.DownloadQuality
+import dev.nitrate.core.playback.audioChoices
+import dev.nitrate.core.playback.subtitleChoices
+import dev.nitrate.core.downloads.DownloadRecord
+import dev.nitrate.core.downloads.DownloadSettings
+import dev.nitrate.core.downloads.DownloadSizing
+import dev.nitrate.core.downloads.DownloadState
+import dev.nitrate.core.downloads.SmartRule
+import dev.nitrate.core.model.ItemKind
+import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.model.formatClock
+import kotlinx.coroutines.launch
+
+/** Downloaded and downloading items, with download settings. Works without a connection. */
+@Composable
+fun DownloadsScreen(actions: AppActions, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
+    val downloads = actions.container.downloads
+    val records by downloads.downloads.collectAsState(emptyList())
+    val settings by downloads.settings.collectAsState(DownloadSettings())
+    val rules by downloads.rules.collectAsState(emptyList())
+    val scope = rememberCoroutineScope()
+    var removing by remember { mutableStateOf<DownloadRecord?>(null) }
+
+    val active = records.filter { it.state != DownloadState.COMPLETED }
+    val done = records.filter { it.state == DownloadState.COMPLETED }
+    val movies = done.filter { it.item.kind != ItemKind.EPISODE }.sortedBy { it.item.name }
+    val shows = done.filter { it.item.kind == ItemKind.EPISODE }
+        .groupBy { it.item.seriesName ?: "Other" }
+        .toList().sortedBy { it.first.lowercase() }.toMap()
+        .mapValues { (_, eps) -> eps.sortedWith(compareBy({ it.item.seasonNumber ?: 0 }, { it.item.indexNumber ?: 0 })) }
+    // Read once per change: the files aren't large in number.
+    val used = remember(records) { downloads.bytesUsed() }
+    val free = remember(records) { actions.container.downloadSpaceFree() }
+
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
+        item {
+            Row(Modifier.padding(start = if (onBack != null) 4.dp else ScreenPadding, end = ScreenPadding, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                Column(Modifier.weight(1f)) {
+                    Text("Downloads", style = MaterialTheme.typography.headlineMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Black)
+                    Text(
+                        "${DownloadSizing.formatBytes(used)} used · ${DownloadSizing.formatBytes(free)} free",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        item { DownloadSettingsCard(actions, settings) }
+        if (rules.isNotEmpty()) {
+            item { SectionTitle("Smart downloads", Modifier.padding(top = 8.dp)) }
+            items(rules, key = { "r-${it.seriesId}" }) { rule ->
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                    leadingContent = { Icon(NitrateIcons.Auto, null, tint = accentColor()) },
+                    headlineContent = { Text(rule.seriesName) },
+                    supportingContent = { Text("Keeps the next ${rule.keep} · ${rule.quality.label}") },
+                    trailingContent = { TextButton(onClick = { scope.launch { downloads.removeSmartRule(rule.seriesId) } }) { Text("Turn off") } },
+                )
+            }
+        }
+
+        if (records.isEmpty()) {
+            item {
+                Text(
+                    "Nothing downloaded yet. Use the download button on a movie or episode to watch it without a connection.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(ScreenPadding),
+                )
+            }
+        }
+        if (active.isNotEmpty()) {
+            item { SectionTitle("In progress", Modifier.padding(top = 16.dp)) }
+            items(active, key = { "a-${it.itemId}" }) { r ->
+                ActiveRow(r, actions, onRemove = { removing = r }, onPause = { scope.launch { downloads.pause(r.itemId) } }, onResume = { scope.launch { downloads.resume(r.itemId) } })
+            }
+        }
+        if (movies.isNotEmpty()) {
+            item { SectionTitle("Movies", Modifier.padding(top = 16.dp)) }
+            items(movies, key = { "m-${it.itemId}" }) { r -> DoneRow(r, actions, onRemove = { removing = r }) }
+        }
+        shows.forEach { (series, episodes) ->
+            item(key = "s-$series") { SectionTitle(series, Modifier.padding(top = 16.dp)) }
+            items(episodes, key = { "e-${it.itemId}" }) { r -> DoneRow(r, actions, onRemove = { removing = r }) }
+        }
+    }
+
+    removing?.let { r ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text(if (r.state == DownloadState.COMPLETED) "Delete download?" else "Cancel download?") },
+            text = { Text("${r.item.episodeLabel ?: r.item.name} will be removed from this device. It stays on your server.") },
+            confirmButton = { TextButton(onClick = { scope.launch { downloads.remove(r.itemId) }; removing = null }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } },
+        )
+    }
+}
+
+@Composable
+private fun DownloadSettingsCard(actions: AppActions, settings: DownloadSettings) {
+    val downloads = actions.container.downloads
+    val scope = rememberCoroutineScope()
+    val hevcCapable = remember { "hevc" in actions.container.capabilities.video }
+    Column(
+        Modifier.padding(ScreenPadding).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Default quality", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DownloadQuality.entries.forEach { q ->
+                FilterChip(selected = settings.quality == q, onClick = { scope.launch { downloads.updateSettings { it.copy(quality = q) } } }, label = { Text(q.label) })
+            }
+        }
+        SwitchRow("Download on Wi-Fi only", "Queued downloads wait for Wi-Fi.", settings.wifiOnly) { on -> scope.launch { downloads.updateSettings { it.copy(wifiOnly = on) } } }
+        if (hevcCapable) {
+            SwitchRow("Smaller files (HEVC)", "About 40% smaller transcodes. Takes the server longer to make.", settings.hevc) { on ->
+                scope.launch { downloads.updateSettings { it.copy(hevc = on) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwitchRow(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().selectable(checked, role = Role.Switch) { onChange(!checked) }.padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+@Composable
+private fun Thumb(r: DownloadRecord, actions: AppActions) {
+    val local = actions.container.downloads.imagePath(r, poster = true)
+    Box(Modifier.width(56.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+        val model: Any? = local?.let { okio.Path.Companion.run { it.toPath() } } ?: actions.server.cardImage(r.item, CardShape.POSTER, 200)
+        if (model != null) AsyncImage(model, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+    }
+}
+
+private fun DownloadRecord.title() = if (item.kind == ItemKind.EPISODE) "S${item.seasonNumber ?: "?"}:E${item.indexNumber ?: "?"} · ${item.name}" else item.name
+
+@Composable
+private fun DoneRow(r: DownloadRecord, actions: AppActions, onRemove: () -> Unit) {
+    val user = r.item.user
+    val status = when {
+        user.played -> "Watched"
+        user.positionMs > 0 -> "Resume at ${formatClock(user.positionMs)}"
+        else -> null
+    }
+    ListItem(
+        modifier = Modifier.clickable { actions.play(r.item, false) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
+        leadingContent = { Thumb(r, actions) },
+        headlineContent = { Text(r.title(), maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Text(listOfNotNull(r.quality.label, r.totalBytes?.let(DownloadSizing::formatBytes), status, "Not synced".takeIf { r.pendingSync }).joinToString(" · "))
+        },
+        trailingContent = {
+            Row {
+                IconButton(onClick = { actions.play(r.item, false) }) { Icon(Icons.Default.PlayArrow, "Play") }
+                IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, "Delete") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun ActiveRow(r: DownloadRecord, actions: AppActions, onRemove: () -> Unit, onPause: () -> Unit, onResume: () -> Unit) {
+    val status = when (r.state) {
+        DownloadState.DOWNLOADING -> listOfNotNull(
+            DownloadSizing.formatBytes(r.bytesDownloaded),
+            r.totalBytes?.let { (if (r.quality.isOriginal) "of " else "of about ") + DownloadSizing.formatBytes(it) },
+        ).joinToString(" ")
+        DownloadState.QUEUED -> r.error ?: "Queued"
+        DownloadState.PAUSED -> "Paused"
+        DownloadState.FAILED -> r.error ?: "Failed"
+        DownloadState.COMPLETED -> ""
+    }
+    ListItem(
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
+        leadingContent = { Thumb(r, actions) },
+        headlineContent = { Text(r.title(), maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                val progress = r.progress
+                if (r.state == DownloadState.DOWNLOADING && progress != null) {
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                } else if (r.state == DownloadState.DOWNLOADING) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+                Text("${r.quality.label} · $status", color = if (r.state == DownloadState.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        trailingContent = {
+            Row {
+                when (r.state) {
+                    DownloadState.DOWNLOADING, DownloadState.QUEUED -> IconButton(onClick = onPause) { Icon(NitrateIcons.Pause, "Pause") }
+                    DownloadState.PAUSED -> IconButton(onClick = onResume) { Icon(NitrateIcons.Download, "Resume") }
+                    DownloadState.FAILED -> IconButton(onClick = onResume) { Icon(Icons.Default.Refresh, "Retry") }
+                    DownloadState.COMPLETED -> Unit
+                }
+                IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, "Cancel") }
+            }
+        },
+    )
+}
+
+/**
+ * Download action for a movie or episode: progress while downloading, a tick when done. Tapping
+ * opens the quality picker, or offers to delete a download.
+ */
+@Composable
+fun DownloadAction(actions: AppActions, item: MediaItem) {
+    val downloads = actions.container.downloads
+    val records by downloads.downloads.collectAsState(emptyList())
+    val record = records.firstOrNull { it.itemId == item.id }
+    var picking by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val accent = accentColor()
+
+    val label = when (record?.state) {
+        null -> "Download"
+        DownloadState.COMPLETED -> "Downloaded"
+        DownloadState.DOWNLOADING -> record.progress?.let { "${(it * 100).toInt()}%" } ?: "Downloading"
+        DownloadState.FAILED -> "Failed"
+        else -> "Queued"
+    }
+    RoundAction(NitrateIcons.Download, label, onClick = { if (record == null) picking = true else confirmRemove = true }, active = record?.state == DownloadState.COMPLETED) {
+        when (record?.state) {
+            DownloadState.COMPLETED -> Icon(NitrateIcons.DownloadDone, label, tint = accent)
+            DownloadState.DOWNLOADING -> {
+                val p = record.progress
+                if (p != null) CircularProgressIndicator(progress = { p }, modifier = Modifier.size(26.dp), strokeWidth = 3.dp, color = accent)
+                else CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 3.dp, color = accent)
+            }
+            null -> Icon(NitrateIcons.Download, label, tint = androidx.compose.ui.graphics.Color.White)
+            else -> Icon(NitrateIcons.Download, label, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    if (picking) DownloadDialog(actions, listOf(item), item.episodeLabel ?: item.name) { picking = false }
+    if (confirmRemove && record != null) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text(if (record.state == DownloadState.COMPLETED) "Delete download?" else "Cancel download?") },
+            text = { Text("Removes it from this device. It stays on your server.") },
+            confirmButton = { TextButton(onClick = { scope.launch { downloads.remove(item.id) }; confirmRemove = false }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Keep") } },
+        )
+    }
+}
+
+/** "Auto" action on a show: keeps its next episodes downloaded. */
+@Composable
+fun SmartDownloadAction(actions: AppActions, series: MediaItem) {
+    val rules by actions.container.downloads.rules.collectAsState(emptyList())
+    val rule = rules.firstOrNull { it.seriesId == series.id }
+    var open by remember { mutableStateOf(false) }
+    RoundAction(NitrateIcons.Auto, if (rule != null) "Auto: ${rule.keep}" else "Auto", onClick = { open = true }, active = rule != null)
+    if (open) SmartDownloadDialog(actions, series, rule) { open = false }
+}
+
+@Composable
+fun SmartDownloadDialog(actions: AppActions, series: MediaItem, rule: SmartRule?, onDismiss: () -> Unit) {
+    val downloads = actions.container.downloads
+    val settings by downloads.settings.collectAsState(DownloadSettings())
+    val scope = rememberCoroutineScope()
+    var keep by remember { mutableStateOf(rule?.keep ?: 3) }
+    var quality by remember { mutableStateOf(rule?.quality ?: settings.quality) }
+    var working by remember { mutableStateOf(false) }
+    val platformActions = dev.nitrate.mobile.platform.rememberPlatformActions()
+    val askNotifications = dev.nitrate.mobile.platform.rememberNotificationPermission { }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Smart downloads") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Keeps the next unwatched episodes of ${series.name} on this device, and deletes the ones it downloaded once you've watched them.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text("Episodes to keep", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(1, 2, 3, 5, 10).forEach { n -> FilterChip(selected = keep == n, onClick = { keep = n }, label = { Text("$n") }) }
+                }
+                Text("Quality", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    DownloadQuality.entries.forEach { q -> FilterChip(selected = quality == q, onClick = { quality = q }, label = { Text(q.label) }) }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !working, onClick = {
+                // Progress shows as a notification: ask for that permission where needed.
+                askNotifications { }
+                working = true
+                // Closed once saved: closing first would cancel this scope.
+                scope.launch {
+                    runCatching { downloads.setSmartRule(series, keep, quality, settings.hevc && !quality.isOriginal) }
+                    onDismiss()
+                }
+            }) { Text(if (rule == null) "Turn on" else "Save") }
+        },
+        dismissButton = {
+            if (rule != null) {
+                TextButton(onClick = { scope.launch { downloads.removeSmartRule(series.id); onDismiss() } }) { Text("Turn off") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+/** Picks a quality for [items] (one item, or a season's episodes) and queues them. */
+@Composable
+fun DownloadDialog(actions: AppActions, items: List<MediaItem>, title: String, onDismiss: () -> Unit) {
+    val downloads = actions.container.downloads
+    val settings by downloads.settings.collectAsState(DownloadSettings())
+    val platformActions = dev.nitrate.mobile.platform.rememberPlatformActions()
+    val scope = rememberCoroutineScope()
+    var options by remember { mutableStateOf<Result<List<DownloadOption>>?>(null) }
+    var chosen by remember { mutableStateOf<DownloadQuality?>(null) }
+    val askNotifications = dev.nitrate.mobile.platform.rememberNotificationPermission { }
+    // Tracks: what it would start with (the show's or title's pick, else the server's), changeable
+    // here; a season shows its first episode's and passes the choice on as the show's languages.
+    var tracks by remember { mutableStateOf<dev.nitrate.core.playback.TrackSetup?>(null) }
+    var picking by remember { mutableStateOf<dev.nitrate.core.model.StreamKind?>(null) }
+    var burnIn by remember { mutableStateOf(false) }
+    LaunchedEffect(items) { tracks = runCatching { actions.container.trackSetup(items.first()) }.getOrNull() }
+
+    LaunchedEffect(items, settings.hevc) {
+        // Sizes from the first item; for a season they're scaled by total runtime.
+        options = runCatching {
+            val first = downloads.options(items.first(), settings.hevc)
+            if (items.size == 1) first else {
+                val runtime = items.sumOf { it.runtimeMs ?: 0 }
+                first.map { o ->
+                    val bitrate = o.quality.totalBitrate(settings.hevc)
+                    o.copy(estimatedBytes = if (bitrate != null) DownloadSizing.estimate(bitrate, runtime) else null)
+                }
+            }
+        }
+    }
+    val list = options?.getOrNull()
+    val selected = chosen ?: list?.firstOrNull { it.quality == settings.quality && it.worthwhile }?.quality ?: DownloadQuality.ORIGINAL
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (items.size > 1) "Download ${items.size} episodes" else "Download") },
+        text = {
+            Column {
+                Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                when {
+                    options == null -> Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) { CircularProgressIndicator() }
+                    list == null -> Text("Couldn't reach the server: ${options?.exceptionOrNull()?.message}", color = MaterialTheme.colorScheme.error)
+                    else -> list.forEach { o ->
+                        val size = o.estimatedBytes?.let { (if (o.quality.isOriginal) "" else "about ") + DownloadSizing.formatBytes(it) }
+                        val detail = when {
+                            !o.worthwhile -> "Not smaller than the original"
+                            o.quality.isOriginal -> listOfNotNull(size, "full quality").joinToString(" · ")
+                            else -> listOfNotNull(size, "converted by your server").joinToString(" · ")
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().selectable(o.quality == selected, enabled = o.worthwhile, role = Role.RadioButton) { chosen = o.quality }.padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = o.quality == selected, onClick = null, enabled = o.worthwhile)
+                            Column(Modifier.padding(start = 12.dp)) {
+                                Text(o.quality.label, style = MaterialTheme.typography.bodyLarge, color = if (o.worthwhile) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+                tracks?.takeIf { it.hasChoices }?.let { t ->
+                    Text("Tracks", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TrackPill("Audio", t.audioName) { picking = dev.nitrate.core.model.StreamKind.AUDIO }
+                        TrackPill("Subtitles", t.subtitleName) { picking = dev.nitrate.core.model.StreamKind.SUBTITLE }
+                    }
+                    if (!selected.isOriginal) {
+                        Text(
+                            "A smaller copy keeps only this audio.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
+                        )
+                        if (t.subtitleIndex >= 0) Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Burn-In Subtitles", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "Your server draws these subtitles into the picture, exactly as styled (fonts and effects too). They can't be turned off in this copy.",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            androidx.compose.material3.Switch(checked = burnIn, onCheckedChange = { burnIn = it })
+                        }
+                    }
+                }
+                if (settings.wifiOnly) {
+                    Text("Starts when you're on Wi-Fi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = list != null,
+                onClick = {
+                    askNotifications { }
+                    // Closed once queued: closing first would cancel this scope.
+                    scope.launch {
+                        downloads.updateSettings { it.copy(quality = selected) }
+                        val t = tracks
+                        val request = dev.nitrate.core.downloads.TrackRequest(
+                            audioIndex = t?.audioIndex, subtitleIndex = t?.subtitleIndex,
+                            burnIn = burnIn && !selected.isOriginal && (t?.subtitleIndex ?: -1) >= 0,
+                        )
+                        downloads.enqueue(items, selected, settings.hevc && !selected.isOriginal, request)
+                        onDismiss()
+                    }
+                },
+            ) { Text("Download") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+    picking?.let { kind ->
+        val t = tracks ?: return@let
+        val audio = kind == dev.nitrate.core.model.StreamKind.AUDIO
+        TrackPicker(
+            if (audio) "Audio" else "Subtitles",
+            if (audio) t.source.audioChoices() else t.source.subtitleChoices(),
+            if (audio) t.audioIndex else t.subtitleIndex,
+            onSelect = { index ->
+                picking = null
+                // Remembered for the show (or title), like a pick in the player.
+                scope.launch { tracks = actions.container.pickTrack(items.first(), t, kind, index) }
+            },
+        ) { picking = null }
+    }
+}

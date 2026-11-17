@@ -19,7 +19,7 @@ struct NitrateApp: App {
 
 struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        AppKt.MainViewController()
+        MainKt.MainViewController()
     }
 
     func updateUIViewController(_ controller: UIViewController, context: Context) {}

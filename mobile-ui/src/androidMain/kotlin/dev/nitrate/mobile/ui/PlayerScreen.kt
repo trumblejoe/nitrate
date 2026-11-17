@@ -108,19 +108,16 @@ import dev.nitrate.mobile.platform.VideoSurface
 private enum class PlayerDialog { NONE, AUDIO, SUBTITLES, INFO, MEDIA_INFO, MORE, CHAPTERS, FIX, CHAT }
 
 @Composable
-fun PlayerScreen(
+actual fun PlayerScreen(
     actions: AppActions,
     itemId: String,
     fromStart: Boolean,
     onExit: () -> Unit,
     onEnded: () -> Unit,
-    local: Boolean = false,
-    /** Start here instead of the resume point (e.g. handed over from another device). */
-    startMs: Long? = null,
-    /** Plays the following episode; null turns Up Next off (e.g. playlists, which queue their own). */
-    onPlayNext: ((MediaItem) -> Unit)? = null,
-    /** A recap clip: plays from [startMs] to here, unreported, then ends. */
-    clipEndMs: Long? = null,
+    local: Boolean,
+    startMs: Long?,
+    onPlayNext: ((MediaItem) -> Unit)?,
+    clipEndMs: Long?,
 ) {
     val context = LocalContext.current
     val downloads = actions.container.downloads
@@ -585,27 +582,6 @@ fun PlayerScreen(
     }
 }
 
-@Composable
-fun TrackPicker(title: String, choices: List<TrackChoice>, selected: Int?, onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            if (choices.isEmpty()) Text("No tracks available")
-            LazyColumn {
-                items(choices, key = { it.index }) { choice ->
-                    ListItem(
-                        modifier = Modifier.clickable { onSelect(choice.index) },
-                        leadingContent = { RadioButton(selected = choice.index == selected, onClick = { onSelect(choice.index) }) },
-                        headlineContent = { Text(choice.title) },
-                        supportingContent = choice.detail?.let { { Text(it) } },
-                    )
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
-}
 
 /**
  * The video alone, or with the writing [pane] beside it or below it, as the user chose in the

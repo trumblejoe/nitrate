@@ -482,7 +482,7 @@ class ScreenshotTest {
 
     @Test
     fun transfer() = shoot("phone-writing-transfer") {
-        TransferDialog(dev.nitrate.core.writing.TransferServer.State(running = true, address = "http://192.168.1.42:8765", pin = "482913"), onToggle = {}, onDismiss = {})
+        TransferDialog(dev.nitrate.mobile.platform.TransferState(running = true, address = "http://192.168.1.42:8765", pin = "482913"), onToggle = {}, onDismiss = {})
     }
 
     /** A Home the user has edited: a renamed row, a hidden one, and a row of their own. */

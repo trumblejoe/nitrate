@@ -25,6 +25,7 @@ kotlin {
         iosMain.dependencies {
             implementation(project(":core"))
             implementation(project(":app-core"))
+            implementation(project(":mobile-ui"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.ui)
