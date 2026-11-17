@@ -120,19 +120,6 @@ actual fun rememberLicenceText(name: String): String? {
 
 actual fun fullScreenDialog() = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
 
-@Composable
-actual fun rememberImagePixels(model: Any?, size: Int): State<Pair<IntArray, Int>?> {
-    val context = LocalContext.current
-    return produceState<Pair<IntArray, Int>?>(null, model) {
-        if (model == null) return@produceState
-        val request = ImageRequest.Builder(context).data(model).size(size).allowHardware(false).build()
-        val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult ?: return@produceState
-        value = withContext(Dispatchers.Default) {
-            val bitmap = result.image.toBitmap().let { if (it.config == Bitmap.Config.ARGB_8888) it else it.copy(Bitmap.Config.ARGB_8888, false) }
-            IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) } to bitmap.width
-        }
-    }
-}
 
 @Composable
 actual fun rememberScriptTransfer(store: dev.nitrate.android.writing.WritingStore): ScriptTransfer? {

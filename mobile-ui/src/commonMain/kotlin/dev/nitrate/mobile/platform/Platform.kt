@@ -81,7 +81,16 @@ expect fun fullScreenDialog(): DialogProperties
 
 /** The pixels of [model]'s artwork at about [size] px (ARGB, row by row) and its width, or null. */
 @Composable
-expect fun rememberImagePixels(model: Any?, size: Int): State<Pair<IntArray, Int>?>
+fun rememberImagePixels(model: Any?, size: Int): State<Pair<IntArray, Int>?> {
+    val context = coil3.compose.LocalPlatformContext.current
+    return produceState<Pair<IntArray, Int>?>(null, model) {
+        if (model == null) return@produceState
+        val request = softwareImage(coil3.request.ImageRequest.Builder(context).data(model).size(size)).build()
+        val result = coil3.SingletonImageLoader.get(context).execute(request) as? coil3.request.SuccessResult ?: return@produceState
+        val bitmap = toImageBitmap(result.image)
+        value = IntArray(bitmap.width * bitmap.height).also { bitmap.readPixels(it) } to bitmap.width
+    }
+}
 
 /** The accent colour of [model]'s artwork (a URL or file), or null until it's loaded or if it's grey. */
 @Composable

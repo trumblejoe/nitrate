@@ -65,8 +65,8 @@ class IosPlatform(private val version: String) : AppPlatform {
     }
 
     override fun probeCapabilities() = appleCapabilities()
-    override fun themeMusic(server: MediaServer): ThemeMusic = ThemeMusic.None
-    override fun newEpisodes(server: MediaServer): NewEpisodeNotifier = NewEpisodeNotifier.None
+    override fun themeMusic(server: MediaServer): ThemeMusic = IosThemeMusic(server)
+    override fun newEpisodes(server: MediaServer): NewEpisodeNotifier = IosNewEpisodeNotifier(server, store("notifications"))
     override fun updater(): AppUpdater = NoUpdates(version)
 
     // Reconnecting on network changes (NWPathMonitor) comes later; the app re-checks when it opens.
@@ -85,6 +85,9 @@ class IosPlatform(private val version: String) : AppPlatform {
 
 /** The one container for the app run. */
 object IosApp {
+    /** An item to open once signed in (a tapped notification). */
+    val openItem = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
     val container: AppContainer by lazy {
         val version = platform.Foundation.NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "0"
         AppContainer(IosPlatform(version), clientName = "Nitrate", version = version)

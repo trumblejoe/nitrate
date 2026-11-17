@@ -8,6 +8,7 @@ import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.crossfade
 import dev.nitrate.mobile.ui.MobileApp
 import okio.Path.Companion.toPath
+import kotlinx.coroutines.launch
 import platform.UIKit.UIViewController
 
 /** What the Swift app hosts: the phone app's shared screens (Compose Multiplatform). */
@@ -20,5 +21,18 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
             .crossfade(true)
             .build()
     }
-    MobileApp(IosApp.container)
+    MobileApp(IosApp.container, IosApp.openItem)
+}
+
+/** A notification was tapped (from Swift's notification delegate): open its item. */
+fun openItem(itemId: String) {
+    IosApp.openItem.value = itemId
+}
+
+/** iOS gave the app background time (BGAppRefreshTask): look for new episodes, then [done]. */
+fun checkNewEpisodes(done: () -> Unit) {
+    kotlinx.coroutines.MainScope().launch {
+        runCatching { if (IosApp.container.server.restoreSession() == dev.nitrate.core.model.SessionState.VALID) IosApp.container.newEpisodes.check() }
+        done()
+    }
 }
