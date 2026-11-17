@@ -27,7 +27,7 @@ class NewEpisodeNotifierTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         shadowOf(context as Application).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
         val server = FakeServer().apply { recent = listOf(episode("e4", "series-1", 4, 1_000)) }
-        val notifier = NewEpisodeNotifier(context, server)
+        val notifier = dev.nitrate.android.notifications.AndroidNewEpisodeNotifier(context, server)
         notifier.setEnabled(true)
         val manager = shadowOf(context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
 
