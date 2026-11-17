@@ -230,7 +230,8 @@ fun PlayerScreen(
     var openPanel by remember { mutableStateOf<PlayerPanel?>(null) }
     var creditAction by remember(item?.id) { mutableStateOf<dev.nitrate.core.playback.CreditSkipper.Action?>(null) }
     var panelFocused by remember { mutableStateOf(false) }
-    var stripOpen by remember { mutableStateOf(false) }
+    // The More panel's tab, kept between openings.
+    var moreTab by remember { mutableStateOf<String?>(null) }
     var person by remember { mutableStateOf<dev.nitrate.core.model.Person?>(null) }
     val showCast = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.cast
     val playbackControls = session.controls
@@ -329,7 +330,7 @@ fun PlayerScreen(
         val current = item
         listOfNotNull(
             extras.takeIf { it.isNotEmpty() && syncGroup == null }?.let { list ->
-                TitleStrip("Extras", list.map { e -> TitleCard(e, e.name, listOfNotNull(e.extraType, e.runtimeMs?.let { "${(it / 60_000).coerceAtLeast(1)} min" }).joinToString(" · ").ifEmpty { null }, repository.imageUrl(e, dev.nitrate.core.model.ImageKind.PRIMARY, 320)) }) { e ->
+                TitleStrip(EXTRAS, list.map { e -> TitleCard(e, e.name, listOfNotNull(e.extraType, e.runtimeMs?.let { "${(it / 60_000).coerceAtLeast(1)} min" }).joinToString(" · ").ifEmpty { null }, repository.imageUrl(e, dev.nitrate.core.model.ImageKind.PRIMARY, 320)) }) { e ->
                     onPlayExtra?.invoke(e, player.currentPosition)
                 }
             },
@@ -353,10 +354,6 @@ fun PlayerScreen(
             },
         )
     }
-    val foldedStrips = if (easy) 0 else listOf(
-        (item?.chapters?.size ?: 0) > 1,
-        showCast && item?.people.orEmpty().any { it.imageTag != null || !it.role.isNullOrBlank() },
-    ).count { it } + titleStrips.size
     val nextUp = upNext
     val film = nextUp != null && !nextUp.isEpisode
     val creditScenes by session.creditScenes.collectAsState()
@@ -464,11 +461,11 @@ fun PlayerScreen(
         lyrics?.takeIf { showLyrics }?.let { LyricsView(it, position, Modifier.align(Alignment.CenterEnd)) }
 
         val p = plan
-        androidx.compose.animation.AnimatedVisibility(visible = controlsVisible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
+        // The More panel takes the controls' place while it's open.
+        androidx.compose.animation.AnimatedVisibility(visible = controlsVisible && panel != Panel.MORE, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
             // Info and Chat open beside the video: their buttons close them again.
             fun toggle(target: Panel) { panel = if (panel == target) Panel.NONE else target }
             val ready = p != null
-            val castShown = if (easy || !showCast) emptyList() else item?.people.orEmpty().filter { it.imageTag != null || !it.role.isNullOrBlank() }.take(30)
             PlayerControls(
                 item = item,
                 plan = p,
@@ -503,16 +500,8 @@ fun PlayerScreen(
                             }
                         }
                     }),
-                // Easy mode keeps to the essentials: no chapter strip.
-                chapters = if (easy) emptyList() else item?.chapters.orEmpty(),
-                chapterImage = { i -> item?.let { repository.chapterImageUrl(it, i, 320) } },
-                onChapter = { player.seekTo(it) },
-                // The cast (as on the details page, when shown there); OK opens a pop-up over the video.
-                cast = castShown,
-                personImage = repository::personImageUrl,
-                onPerson = { person = it },
-                titleStrips = titleStrips,
-                onStripOpen = { stripOpen = it },
+                // Down opens More (not in easy mode, which has no More).
+                onDown = { if (!easy && ready) panel = Panel.MORE },
             )
         }
 
@@ -531,7 +520,7 @@ fun PlayerScreen(
                 onPlay = { onPlayNext?.invoke(nextUp) },
                 onCountdownEnd = { rollOn(nextUp) },
                 onHide = { upNextHidden = true; runCatching { rootFocus.requestFocus() } },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) controlsHeight(foldedStrips, stripOpen) else 48.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
             )
         }
 
@@ -582,7 +571,28 @@ fun PlayerScreen(
                     creditAction = null
                     if (!controlsVisible) runCatching { rootFocus.requestFocus() }
                 },
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) controlsHeight(foldedStrips, stripOpen) else 48.dp),
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
+            )
+        }
+
+        if (panel == Panel.MORE && p != null) {
+            MoreSheet(
+                moreTabs(
+                    current = item,
+                    titleStrips = titleStrips,
+                    // The cast (as on the details page, when shown there); OK opens a pop-up over the video.
+                    cast = if (showCast) item?.people.orEmpty().filter { it.imageTag != null || !it.role.isNullOrBlank() }.take(30) else emptyList(),
+                    chapterImage = { i -> item?.let { repository.chapterImageUrl(it, i, 320) } },
+                    personImage = repository::personImageUrl,
+                    position = position,
+                    onChapter = { player.seekTo(it) },
+                    onPerson = { person = it },
+                    choices = rememberPlayerChoices(session, playbackSettings, repository, sleepAt, sleepAtEndState.value, syncPlay,
+                        onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDone = { panel = Panel.NONE }),
+                ),
+                initial = moreTab,
+                onTab = { moreTab = it },
+                modifier = Modifier.align(Alignment.BottomStart),
             )
         }
 
@@ -614,10 +624,6 @@ fun PlayerScreen(
     }
 
     val p = plan
-    if (p != null && panel == Panel.MORE) {
-        PlayerMoreDialog(repository, playbackSettings, session, sleepAt, sleepAtEndState.value,
-            onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDismiss = { panel = Panel.NONE }, syncPlay = syncPlay)
-    }
     if (panel == Panel.FIX && capabilities != null) {
         val diagnosis by androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackDiagnosis?>(null, plan) {
             value = session.diagnosis(capabilities)

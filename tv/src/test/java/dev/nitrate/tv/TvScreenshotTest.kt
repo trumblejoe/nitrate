@@ -246,13 +246,6 @@ class TvScreenshotTest {
                     item, null, position = 1_260_000, duration = 2_700_000, playing = true, focus = focus,
                     onPlayPause = {}, onSeek = {},
                     buttons = listOf("Audio", "Subtitles", "Info", "More").map { dev.nitrate.tv.ui.player.PlayerAction(it) {} },
-                    // Pictures for some, placeholders for the rest.
-                    chapters = listOf("Opening", "The letter", "Night train", "Crossing", "The reel", "Morning", "Credits")
-                        .mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 400_000L, n) },
-                    chapterImage = { i -> item?.takeIf { i % 3 != 2 }?.let { c.server.imageUrl(it, dev.nitrate.core.model.ImageKind.BACKDROP, 320) } },
-                    cast = sampleCast,
-                    titleStrips = item?.let { current -> sampleStrips(c, current) }.orEmpty(),
-                    personImage = { p -> item?.takeIf { p.imageTag != null }?.let { c.server.imageUrl(it, dev.nitrate.core.model.ImageKind.PRIMARY, 300) } },
                 )
             }
         }
@@ -262,21 +255,9 @@ class TvScreenshotTest {
     @Test fun playerControlsPlay() = playerControls("tv-player-controls-play")
     @Test fun playerControlsButton() = playerControls("tv-player-controls-audio", "right") { check(focusedHasText("Audio")) }
     @Test fun playerControlsSeek() = playerControls("tv-player-controls-seek", "up")
-    @Test fun playerControlsChaptersFolded() = playerControls("tv-player-controls-chapters-folded")
-    @Test fun playerControlsChaptersFoldBack() = playerControls("tv-player-controls-chapters-fold-back", "down", "up") {
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Now"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-        check(compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasContentDescription("Pause")).fetchSemanticsNodes().isNotEmpty())
-    }
     private val sampleCast = listOf("Ada Marsh" to "Iris Vale", "Tom Okafor" to "The Projectionist", "Lena Brook" to "Night Clerk", "Sam Ito" to "Conductor", "Rui Costa" to "Ferryman", "June Hale" to "Archivist")
         .mapIndexed { i, (n, r) -> dev.nitrate.core.model.Person("p$i", n, r, imageTag = "t".takeIf { i % 3 != 1 }) }
 
-    @Test fun playerControlsCast() = playerControls("tv-player-controls-cast", "down", "down") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("▴  Cast")).fetchSemanticsNodes().isNotEmpty()) }
-    /** One strip open at a time: opening the cast folds the chapters. */
-    @Test fun playerControlsOneStrip() = playerControls("tv-player-controls-one-strip", "down", "down") {
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("▾  Chapters")).fetchSemanticsNodes().isNotEmpty())
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("▴  Chapters")).fetchSemanticsNodes().isEmpty())
-    }
-    @Test fun playerControlsCastUp() = playerControls("tv-player-controls-cast-up", "down", "down", "up") { check(focusedHasText("Now")) }
     @Test fun personDialog() = shoot("tv-person-dialog") { c ->
         dev.nitrate.tv.ui.player.PersonDialog(c.server, sampleCast[1], null, onDismiss = {})
     }
@@ -288,23 +269,57 @@ class TvScreenshotTest {
                 user = dev.nitrate.core.model.UserState(played = n < 2, positionMs = if (n == 4) 900_000 else 0))
         }
         return listOf(
-            dev.nitrate.tv.ui.player.TitleStrip("Extras", extras.map { dev.nitrate.tv.ui.player.TitleCard(it, it.name, it.extraType, art(it)) }) {},
+            dev.nitrate.tv.ui.player.TitleStrip(dev.nitrate.tv.ui.player.EXTRAS, extras.map { dev.nitrate.tv.ui.player.TitleCard(it, it.name, it.extraType, art(it)) }) {},
             dev.nitrate.tv.ui.player.TitleStrip("Season 1", episodes.map { dev.nitrate.tv.ui.player.TitleCard(it, it.name, "Episode ${it.indexNumber}", art(it), now = it.id == "e2") }, start = 1) {},
         )
     }
 
-    @Test fun playerControlsExtras() = playerControls("tv-player-controls-extras", "down", "down", "down") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("▴  Extras")).fetchSemanticsNodes().isNotEmpty()) }
-    @Test fun playerControlsEpisodes() = playerControls("tv-player-controls-episodes", "down", "down", "down", "down") { check(focusedHasText("Now")) } 
-    private fun morePanel(name: String, tab: String) = shoot(name) { c ->
+    private val sampleChapters = listOf("Opening", "The letter", "Night train", "Crossing", "The reel", "Morning", "Credits")
+        .mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 400_000L, n) }
+
+    private fun sampleChoices(sound: dev.nitrate.core.playback.SoundMode = dev.nitrate.core.playback.SoundMode.NIGHT, audioDelay: Int = 100) = dev.nitrate.tv.ui.player.PlayerChoices(
+        speed = 1f, onSpeed = {},
+        sound = sound, defaultSound = dev.nitrate.core.playback.SoundMode.CLEARER_DIALOGUE, onSound = {}, onSoundAsDefault = {},
+        sleepAt = null, sleepAtEnd = false, onSleep = { _, _ -> },
+        subtitleOffsetMs = 0, onSubtitleOffset = {},
+        audioDelayMs = audioDelay, defaultAudioDelayMs = 0, onAudioDelay = {}, onAudioDelayAsDefault = {},
+        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch together").map { it to { _: () -> Unit -> androidx.tv.material3.Text(it) } },
+    )
+
+    /** The More panel over the video, opened on [tab]. */
+    private fun moreSheet(name: String, tab: String, vararg keys: String, check: () -> Unit = {}) = shoot(name, act = { press(*keys); check() }) { c ->
         val item by androidx.compose.runtime.produceState<dev.nitrate.core.model.MediaItem?>(null) { value = c.server.getItem("s1e2") }
         item?.let { current ->
-            MorePanelMock(c.server.imageUrl(current, dev.nitrate.core.model.ImageKind.BACKDROP, 1920), tab, sampleStrips(c, current)[1].cards)
+            val playing = current.copy(kind = dev.nitrate.core.model.ItemKind.EPISODE, chapters = sampleChapters, people = sampleCast)
+            Box(Modifier.fillMaxSize()) {
+                coil3.compose.AsyncImage(c.server.imageUrl(current, dev.nitrate.core.model.ImageKind.BACKDROP, 1920), null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                dev.nitrate.tv.ui.player.MoreSheet(
+                    dev.nitrate.tv.ui.player.moreTabs(
+                        current = playing,
+                        titleStrips = sampleStrips(c, current),
+                        cast = sampleCast,
+                        chapterImage = { i -> c.server.imageUrl(current, dev.nitrate.core.model.ImageKind.BACKDROP, 320).takeIf { i % 3 != 2 } },
+                        personImage = { p -> c.server.imageUrl(current, dev.nitrate.core.model.ImageKind.PRIMARY, 300).takeIf { p.imageTag != null } },
+                        position = 1_260_000,
+                        onChapter = {}, onPerson = {},
+                        choices = sampleChoices(),
+                    ),
+                    initial = tab, onTab = {},
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.BottomStart),
+                )
+            }
         }
     }
 
-    @Test fun morePanelEpisodes() = morePanel("tv-more-panel-episodes", "Episodes")
-    @Test fun morePanelSettings() = morePanel("tv-more-panel-settings", "Settings")
-    @Test fun playerControlsChapters() = playerControls("tv-player-controls-chapters", "down") { check(focusedHasText("Now")) }
+    @Test fun moreEpisodes() = moreSheet("tv-more-episodes", "siblings", "down") { check(focusedHasText("Now")) }
+    /** The season goes round: ◀ on the first episode lands on the last. */
+    @Test fun moreEpisodesWrap() = moreSheet("tv-more-episodes-wrap", "siblings", "down", "left", "left") { check(focusedHasText("Episode title 6")) }
+    @Test fun moreChapters() = moreSheet("tv-more-chapters", "chapters", "down") { check(focusedHasText("Now")) }
+    @Test fun moreCast() = moreSheet("tv-more-cast", "cast", "down")
+    @Test fun moreExtras() = moreSheet("tv-more-extras", "extras", "down")
+    @Test fun moreSettings() = moreSheet("tv-more-settings", "settings", "down") { check(focusedHasText("Normal")) }
+    /** ◀▶ on the tabs shows each one as it's reached. */
+    @Test fun moreTabsMove() = moreSheet("tv-more-tabs-move", "siblings", "right") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("Crossing")).fetchSemanticsNodes().isNotEmpty()) }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {
@@ -574,7 +589,12 @@ class TvScreenshotTest {
         val session = androidx.compose.runtime.remember {
             dev.nitrate.android.playback.PlaybackSession(context, c.server, c.playbackSettings, deviceNoun = "This TV", onEnded = {}, trackMemory = c.trackMemory)
         }
-        dev.nitrate.tv.ui.player.PlayerMoreDialog(c.server, c.playbackSettings, session, sleepAt = null, sleepAtEnd = false, onSleep = { _, _ -> }, onDismiss = {})
+        // The Settings tab over a real session: its defaults come from this device's settings.
+        val choices = dev.nitrate.tv.ui.player.rememberPlayerChoices(session, c.playbackSettings, c.server, null, false, null, onSleep = { _, _ -> }, onDone = {})
+        Box(Modifier.fillMaxSize()) {
+            dev.nitrate.tv.ui.player.MoreSheet(listOf(dev.nitrate.tv.ui.player.MoreTab("settings", "Settings") { dev.nitrate.tv.ui.player.PlayerChoicesTab(choices) }), null, {},
+                Modifier.align(androidx.compose.ui.Alignment.BottomStart))
+        }
     }
 
     @Test fun watchTogether() = shoot("tv-watch-together") { c -> dev.nitrate.tv.ui.together.WatchTogetherScreen(c.syncPlay, "Joe's group") }

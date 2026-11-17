@@ -102,26 +102,13 @@ internal fun PlayerControls(
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     buttons: List<PlayerAction>,
-    /** The title's chapters as a strip of pictures under the buttons (none: no strip). */
-    chapters: List<dev.nitrate.core.model.Chapter> = emptyList(),
-    chapterImage: (Int) -> String? = { null },
-    onChapter: (Long) -> Unit = {},
-    /** The cast as a strip of photos under the chapters; OK on someone calls [onPerson]. */
-    cast: List<dev.nitrate.core.model.Person> = emptyList(),
-    personImage: (dev.nitrate.core.model.Person) -> String? = { null },
-    onPerson: (dev.nitrate.core.model.Person) -> Unit = {},
-    /** More strips of titles after the cast (extras, the season's episodes...), in this order. */
-    titleStrips: List<TitleStrip> = emptyList(),
-    /** Told when a strip under the buttons opens (Down onto it) and when it folds again. */
-    onStripOpen: (Boolean) -> Unit = {},
+    /** Down from the buttons: opens the More panel. */
+    onDown: () -> Unit = {},
 ) {
     Column(
         Modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
-            // Taller than the screen once a strip opens with more below it: focus scrolls the
-            // strip into view (the title and seek bar go up and come back on the way up).
-            .verticalScroll(rememberScrollState())
             .padding(start = 48.dp, end = 48.dp, top = 80.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -130,7 +117,14 @@ internal fun PlayerControls(
             it.episodeLabel?.let { label -> Text(label, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f)) }
         }
         SeekBar(position, duration, onSeek)
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            // Down from the buttons opens the More panel (episodes, chapters, cast, extras, settings).
+            Modifier.onPreviewKeyEvent { e ->
+                if (e.key == Key.DirectionDown && e.type == KeyEventType.KeyDown) { onDown(); true } else false
+            },
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             PlayPauseButton(playing, onPlayPause, Modifier.remembered(focus, ControlFocus.PLAY_PAUSE))
             for (b in buttons) {
                 PlayerButton(b.label, b.onClick, Modifier.remembered(focus, b.label), enabled = b.enabled)
@@ -144,58 +138,10 @@ internal fun PlayerControls(
                 )
             }
         }
-        // Only one strip is open at a time: opening one folds whichever was open.
-        var openStrip by remember { mutableStateOf<String?>(null) }
-        androidx.compose.runtime.LaunchedEffect(openStrip) { onStripOpen(openStrip != null) }
-        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { onStripOpen(false) } }
-        val headings = remember { mutableMapOf<String, FocusRequester>() }
-        fun heading(label: String) = headings.getOrPut(label) { FocusRequester() }
-        val hasChapters = chapters.size > 1
-        val labels = buildList {
-            if (hasChapters) add("Chapters")
-            if (cast.isNotEmpty()) add("Cast")
-            titleStrips.filter { it.cards.isNotEmpty() }.forEach { add(it.label) }
-        }
-        @Composable
-        fun Strip(label: String, count: Int, start: Int, item: @Composable (Int, Modifier) -> Unit) {
-            val above = labels.getOrNull(labels.indexOf(label) - 1)
-            FoldingStrip(
-                label, count, start, heading = heading(label), open = openStrip == label,
-                onOpen = { open -> if (open) openStrip = label else if (openStrip == label) openStrip = null },
-                // Up goes to the strip above it, or back to the button Down was pressed on.
-                onUp = { if (above == null) focus.restore() else runCatching { heading(above).requestFocus() } },
-                item = item,
-            )
-        }
-        if (hasChapters) {
-            val now = dev.nitrate.core.playback.Chapters.current(chapters, position).coerceAtLeast(0)
-            // Only the word while folded: chapter names and counts can give things away until asked for.
-            Strip("Chapters", chapters.size, now) { i, modifier ->
-                ChapterCard(
-                    index = i,
-                    chapter = chapters[i],
-                    title = dev.nitrate.core.playback.Chapters.title(chapters, i),
-                    imageUrl = chapterImage(i),
-                    playing = i == now,
-                    onClick = { onChapter(chapters[i].startMs) },
-                    modifier = modifier,
-                )
-            }
-        }
-        if (cast.isNotEmpty()) {
-            Strip("Cast", cast.size, 0) { i, modifier -> CastCard(cast[i], personImage(cast[i]), onClick = { onPerson(cast[i]) }, modifier = modifier) }
-        }
-        for (strip in titleStrips) {
-            if (strip.cards.isEmpty()) continue
-            Strip(strip.label, strip.cards.size, strip.start) { i, modifier ->
-                val card = strip.cards[i]
-                TitleCardView(card, onClick = { strip.onClick(card.item) }, modifier = modifier)
-            }
-        }
     }
 }
 
-/** A strip of titles under the buttons: extras, the season's episodes, the rest of a collection. */
+/** A row of titles in the More panel: extras, the season's episodes, the rest of a collection. */
 internal class TitleStrip(val label: String, val cards: List<TitleCard>, val start: Int = 0, val onClick: (MediaItem) -> Unit)
 
 /** One title in a [TitleStrip]: [now] marks the one playing. */
@@ -260,66 +206,9 @@ internal fun TitleCardView(card: TitleCard, onClick: () -> Unit, modifier: Modif
     }
 }
 
-/**
- * A row under the buttons, folded to its name ("▾ Chapters") so the picture keeps the screen.
- * Focus reaching the name (Down) opens it on item [start]; Up leaves through [onUp] (the button
- * Down was pressed on, or the strip above), and focus leaving any other way folds it again.
- */
-@Composable
-private fun FoldingStrip(
-    label: String,
-    count: Int,
-    start: Int,
-    heading: FocusRequester,
-    open: Boolean,
-    onOpen: (Boolean) -> Unit,
-    onUp: () -> Unit,
-    item: @Composable (index: Int, modifier: Modifier) -> Unit,
-) {
-    // Set once focus is inside the open strip, so it folds only when focus really leaves.
-    var entered by remember(open) { mutableStateOf(false) }
-    fun setOpen(value: Boolean) { if (open != value) onOpen(value) }
-    if (!open) {
-        var focused by remember { mutableStateOf(false) }
-        Text(
-            "▾  $label", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = if (focused) 1f else 0.75f),
-            modifier = Modifier
-                .focusRequester(heading)
-                .onFocusChanged { focused = it.isFocused; if (it.isFocused) setOpen(true) }
-                .focusable()
-                .padding(vertical = 2.dp),
-        )
-        return
-    }
-    val startFocus = remember { FocusRequester() }
-    val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = start)
-    androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { startFocus.requestFocus() } }
-    Column(
-        Modifier
-            .onFocusChanged {
-                if (it.hasFocus) entered = true
-                else if (entered) setOpen(false)
-            }
-            .onPreviewKeyEvent { e ->
-                if (e.key == Key.DirectionUp && e.type == KeyEventType.KeyDown) { onUp(); true } else false
-            },
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text("▴  $label", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f))
-        androidx.compose.foundation.lazy.LazyRow(
-            state = list,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp),
-            modifier = Modifier.focusRestorer(startFocus),
-        ) {
-            items(count) { i -> item(i, if (i == start) Modifier.focusRequester(startFocus) else Modifier) }
-        }
-    }
-}
-
 /** Someone in the cast: photo (or initials), name and the part they play. */
 @Composable
-private fun CastCard(person: dev.nitrate.core.model.Person, imageUrl: String?, onClick: () -> Unit, modifier: Modifier) {
+internal fun CastCard(person: dev.nitrate.core.model.Person, imageUrl: String?, onClick: () -> Unit, modifier: Modifier) {
     var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(CAST_WIDTH), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         androidx.tv.material3.Surface(
@@ -349,7 +238,7 @@ internal fun initials(name: String) = name.split(" ").mapNotNull { it.firstOrNul
 private val CAST_WIDTH = 104.dp
 
 @Composable
-private fun ChapterCard(index: Int, chapter: dev.nitrate.core.model.Chapter, title: String, imageUrl: String?, playing: Boolean, onClick: () -> Unit, modifier: Modifier) {
+internal fun ChapterCard(index: Int, chapter: dev.nitrate.core.model.Chapter, title: String, imageUrl: String?, playing: Boolean, onClick: () -> Unit, modifier: Modifier) {
     var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(CHAPTER_WIDTH), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         androidx.tv.material3.Surface(
@@ -395,8 +284,8 @@ private fun androidx.compose.foundation.layout.BoxScope.ChapterPlaceholder(index
 
 private val CHAPTER_WIDTH = 176.dp
 
-/** How far up overlays sit above the controls: higher when the chapter strip is shown. */
-internal fun controlsHeight(foldedStrips: Int, stripOpen: Boolean) = 220.dp + 34.dp * foldedStrips + if (stripOpen) 190.dp else 0.dp
+/** How far up overlays sit above the controls. */
+internal val CONTROLS_HEIGHT = 220.dp
 
 /** One button in the player's row. */
 internal class PlayerAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)
