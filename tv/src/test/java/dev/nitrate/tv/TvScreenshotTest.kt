@@ -161,20 +161,20 @@ class TvScreenshotTest {
 
     /** Choosing All keeps focus on the tabs (it used to fall through to the menu). */
     @Test fun libraryTabSwitch() = libraryShot("tv-library-tab-switch", rowsLibrary) {
-        press("up", "up", "up", "right", "ok")
+        press("right", "ok")
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
         check(focusedHasText("All")) { "focus should stay on the All tab" }
     }
 
     /** The All view: the A–Z bar down the right (away from the menu rail on the left). */
     @Test fun libraryLettersRight() = libraryShot("tv-library-letters-right", rowsLibrary) {
-        press("up", "up", "up", "right", "ok")
+        press("right", "ok")
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
     }
 
     /** Left from the first title in the All view goes to the menu, not nowhere. */
     @Test fun libraryLeftToMenu() = libraryShot("tv-library-left-to-menu", rowsLibrary) {
-        press("up", "up", "up", "right", "ok")
+        press("right", "ok")
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
         press("down", "down")
         // Left along the first row to its first title.
@@ -187,6 +187,30 @@ class TvScreenshotTest {
 
     /** Library pages can be full art like Home, with their tabs top right. */
     @Test fun libraryFullArt() = libraryShot("tv-library-full-art", dev.nitrate.core.pages.DisplayPrefs()) { press("up") }
+
+    /** Fast-forward on a row: its next artwork style there and then, named for a moment. */
+    @Test fun rowStyleFastForward() = libraryShot("tv-row-style-ff", rowsLibrary) {
+        press("down", "ff")
+        compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("◀◀ ▶▶", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the new style should be named" }
+    }
+
+    /** Settings → Display → Pages → a library: its tabs, shown or not, and adding your own. */
+    @Test fun libraryTabsSetup() = shoot("tv-library-tabs-setup") { c -> dev.nitrate.tv.ui.pages.LibraryTabsScreen(c, "lib-movies") }
+
+    /** Settings → Display → Pages. */
+    @Test fun pageSetup() = shoot("tv-page-setup") { c -> dev.nitrate.tv.ui.pages.PageSetupScreen(c) {} }
+
+    /** A library with more tabs switched on (Genres, and your own) and Genres open. */
+    @Test fun libraryGenresTab() = shoot("tv-library-genres-tab", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+            dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES),
+            dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
+            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
+            dev.nitrate.core.pages.LibraryTab("own1", dev.nitrate.core.pages.LibraryTabKind.OWN, "Friday night"),
+        ))
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
     @Test fun libraryMenu() = prefsShot("tv-library-menu", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.TOP)) { c ->
         WithMenu(c) {
@@ -395,7 +419,7 @@ class TvScreenshotTest {
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {
         keys.forEach { name ->
-            val k = when (name) { "ok" -> androidx.compose.ui.input.key.Key.DirectionCenter; "menu" -> androidx.compose.ui.input.key.Key.Menu; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
+            val k = when (name) { "ok" -> androidx.compose.ui.input.key.Key.DirectionCenter; "ff" -> androidx.compose.ui.input.key.Key.MediaFastForward; "rw" -> androidx.compose.ui.input.key.Key.MediaRewind; "menu" -> androidx.compose.ui.input.key.Key.Menu; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
             compose.onRoot().performKeyInput { pressKey(k) }
             compose.mainClock.advanceTimeBy(400)
             compose.waitForIdle()

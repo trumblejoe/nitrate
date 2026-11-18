@@ -490,6 +490,9 @@ interface MediaServer {
     /** Genres in a library (or all libraries), for building rows. */
     suspend fun genres(libraryId: String?): List<String> = unsupported()
 
+    /** Studios with titles in a library (or all libraries), for a library's Studios tab. */
+    suspend fun studios(libraryId: String?): List<String> = emptyList()
+
     /** All collections, for building rows. */
     suspend fun collections(): List<MediaItem> = unsupported()
 

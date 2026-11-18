@@ -31,6 +31,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,7 +109,20 @@ fun PageEditor(pageTitle: String, vm: RowsViewModel, repository: MediaServer, li
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 if (entries.isEmpty()) item { Text("No rows yet. Add one to start this page.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 itemsIndexed(entries, key = { _, e -> e.id }) { i, e ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Fast-forward / Rewind here too: the row's next / previous artwork style.
+                    val shownRow = loaded.firstOrNull { it.key == e.rowKey }
+                    Row(
+                        Modifier.onPreviewKeyEvent { k ->
+                            val by = when (k.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
+                            if (by == 0 || shownRow == null) return@onPreviewKeyEvent false
+                            if (k.type == KeyEventType.KeyDown) {
+                                val now = e.display ?: overrides[e.rowKey] ?: shownRow.defaultDisplay
+                                vm.save(shownRow, now.copy(style = now.style.step(by)))
+                            }
+                            true
+                        },
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         ListItem(
                             selected = false,
                             onClick = { editing = e },
@@ -183,6 +201,20 @@ private fun EntryDialog(
             Text("Edit row", style = MaterialTheme.typography.headlineSmall)
             TvTextField(name, { name = it }, placeholder = title, modifier = Modifier.focusRequester(first))
             if (row != null && display != null) {
+                // The artwork style straight from here (OK for the next; Fast-forward/Rewind either way).
+                ListItem(
+                    selected = false,
+                    onClick = { onDisplay(row, display.copy(style = display.style.step(1))) },
+                    headlineContent = { Text("Artwork style") },
+                    supportingContent = { Text("OK for the next · ◀◀ ▶▶ either way") },
+                    trailingContent = { Text("${display.style.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                    modifier = Modifier.onPreviewKeyEvent { k ->
+                        val by = when (k.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
+                        if (by == 0) return@onPreviewKeyEvent false
+                        if (k.type == KeyEventType.KeyDown) onDisplay(row, display.copy(style = display.style.step(by)))
+                        true
+                    },
+                )
                 ListItem(selected = false, onClick = { look = true }, headlineContent = { Text("Look") }, supportingContent = { Text("${display.style.label} · ${display.size.label}") })
             }
             if (entry.isCustom) {

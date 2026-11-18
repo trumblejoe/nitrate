@@ -160,6 +160,7 @@ class JellyfinContractTest {
         }
         client.collectionItems(DASHED)
         client.genres(DASHED)
+        client.studios(DASHED)
         client.collections()
         client.playlists()
 

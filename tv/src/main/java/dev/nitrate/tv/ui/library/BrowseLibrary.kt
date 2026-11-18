@@ -85,8 +85,13 @@ fun BrowseLibrary(
     onPlay: (MediaItem) -> Unit,
     /** Admins can select titles and edit them together. */
     admin: Boolean = false,
+    /** A tab of its own (Unwatched): its own saved options, starting from these. */
+    viewKey: String? = null,
+    startWith: dev.nitrate.core.pages.BrowseOptions = dev.nitrate.core.pages.BrowseOptions(),
 ) {
-    val vm = viewModel(key = "browse-${library.id}") { BrowseViewModel(repository, displaySettings, library) }
+    val vm = viewModel(key = "browse-${library.id}-${viewKey.orEmpty()}") {
+        if (viewKey == null) BrowseViewModel(repository, displaySettings, library) else BrowseViewModel(repository, displaySettings, library, viewKey, startWith)
+    }
     val state by vm.state.collectAsStateWithLifecycle()
     val genres by vm.genres.collectAsStateWithLifecycle()
     val libraryFilters by vm.filters.collectAsStateWithLifecycle()

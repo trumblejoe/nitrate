@@ -197,5 +197,8 @@ private fun ToggleItem(label: String, checked: Boolean, modifier: Modifier = Mod
     )
 }
 
-private fun RowStyle.next() = RowStyle.entries[(ordinal + 1) % RowStyle.entries.size]
+private fun RowStyle.next() = step(1)
+
+/** The style [by] places on (round the list): Fast-forward/Rewind and the Edit page's quick choice. */
+internal fun RowStyle.step(by: Int) = RowStyle.entries[(ordinal + by).mod(RowStyle.entries.size)]
 private fun RowSize.next() = RowSize.entries[(ordinal + 1) % RowSize.entries.size]

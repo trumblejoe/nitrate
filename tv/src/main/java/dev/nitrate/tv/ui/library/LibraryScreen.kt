@@ -46,7 +46,6 @@ import dev.nitrate.core.model.ImageKind
 
 private val PagePadding = 58.dp
 
-private enum class LibraryTab(val label: String) { RECOMMENDED("Recommended"), ALL("All") }
 
 @Composable
 fun LibraryScreen(
@@ -90,7 +89,14 @@ fun LibraryScreen(
 
     val hasRecommended = lib.collection == CollectionKind.MOVIES || lib.collection == CollectionKind.TV_SHOWS
     val music = lib.collection == CollectionKind.MUSIC
-    var tab by rememberSaveable { mutableStateOf(if (hasRecommended) LibraryTab.RECOMMENDED else LibraryTab.ALL) }
+    // The tabs as arranged in Settings → Display → Pages (Recommended and All until then).
+    val userId = repository.userId
+    val saved by remember(userId, lib.id) {
+        userId?.let { displaySettings.libraryTabs(it, lib.id) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsStateWithLifecycle(emptyList())
+    val shownTabs = dev.nitrate.core.pages.LibraryTabs.shown(dev.nitrate.core.pages.LibraryTabs.resolve(saved, hasRecommended))
+    var tabId by rememberSaveable { mutableStateOf<String?>(null) }
+    val tab = shownTabs.firstOrNull { it.id == tabId } ?: shownTabs.first()
     var artists by rememberSaveable { mutableStateOf(false) }
     // Switching tabs replaces the page, the tabs with it: focus goes to the tab just chosen
     // (else it fell through to the menu).
@@ -106,6 +112,8 @@ fun LibraryScreen(
         }
     }
     fun switchTo(key: String, change: () -> Unit) { change(); switched = key + "#" + System.nanoTime() }
+    // Opening the library: focus starts on its current tab, on the page (not left in the menu).
+    LaunchedEffect(lib.id) { switched = tab.id + "#open" }
 
     val tabs: @Composable () -> Unit = {
         Row(
@@ -114,53 +122,120 @@ fun LibraryScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(lib.name.orEmpty(), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(end = 16.dp))
-            if (hasRecommended) {
-                for (t in LibraryTab.entries) {
-                    FilterChip(selected = tab == t, onClick = { switchTo(t.name) { tab = t } }, modifier = Modifier.focusRequester(tabFocus(t.name))) { Text(t.label) }
+            if (shownTabs.size > 1) {
+                for (t in shownTabs) {
+                    FilterChip(selected = tab.id == t.id, onClick = { switchTo(t.id) { tabId = t.id } }, modifier = Modifier.focusRequester(tabFocus(t.id))) { Text(t.label) }
                 }
             }
-            if (music) {
+            if (music && tab.kind == dev.nitrate.core.pages.LibraryTabKind.ALL) {
                 FilterChip(selected = !artists, onClick = { switchTo("albums") { artists = false } }, modifier = Modifier.focusRequester(tabFocus("albums"))) { Text("Albums") }
                 FilterChip(selected = artists, onClick = { switchTo("artists") { artists = true } }, modifier = Modifier.focusRequester(tabFocus("artists"))) { Text("Artists") }
             }
         }
     }
+    val padded = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)
+    val types = dev.nitrate.core.pages.LibraryTabs.typesFor(lib.collection)
 
-    when (tab) {
-        LibraryTab.RECOMMENDED -> {
-            val vm = viewModel(key = "library-rows-$libraryId") {
-                RowsViewModel(PageKeys.library(lib.id), { repository.libraryRows(lib) }, displaySettings, repository, changes, cache = dataCache, loadProgress = { repository.libraryRowsProgress(lib) })
-            }
-            val state by vm.state.collectAsStateWithLifecycle()
-            val overrides by vm.overrides.collectAsStateWithLifecycle()
-            var editing by remember { mutableStateOf(false) }
-            if (editing) PageEditor(lib.name, vm, repository, libraryId = lib.id, onDone = { editing = false })
-            when (val s = state) {
-                // As Home can be: one title at a time, the tabs top right.
-                is RowsState.Loaded -> if (fullArt) dev.nitrate.tv.ui.home.FullArtPage(
-                    rows = s.rows,
-                    overrides = overrides,
-                    repository = repository,
-                    onOpen = onOpen,
-                    onPlay = onPlay,
-                    onSaveDisplay = vm::save,
-                    onEditPage = { editing = true },
-                    insets = insets,
-                    header = tabs,
-                ) else RowsPage(
-                    onEditPage = { editing = true },
-                    rows = s.rows,
-                    overrides = overrides,
-                    repository = repository,
-                    onOpen = onOpen,
-                    onPlay = onPlay,
-                    onSaveDisplay = vm::save,
-                    header = tabs,
+    when (tab.kind) {
+        dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED -> TabRows(
+            "library-rows-$libraryId", PageKeys.library(lib.id), { repository.libraryRows(lib) }, { repository.libraryRowsProgress(lib) },
+            lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+        )
+        dev.nitrate.core.pages.LibraryTabKind.GENRES, dev.nitrate.core.pages.LibraryTabKind.STUDIOS, dev.nitrate.core.pages.LibraryTabKind.DECADES -> TabRows(
+            "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab),
+            {
+                dev.nitrate.core.pages.LibraryTabs.rows(
+                    lib.id, tab.kind, types,
+                    genres = { repository.genres(lib.id) },
+                    studios = { repository.studios(lib.id) },
+                    years = { repository.libraryFilters(lib.id, types).years },
+                    load = repository::queryItems,
                 )
-                is RowsState.Error -> Column { tabs(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
-                RowsState.Loading -> Column { tabs(); Text("Loading…", Modifier.padding(PagePadding)) }
+            },
+            null, lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+        )
+        // The user's own page of rows (made in Settings → Display → Pages).
+        dev.nitrate.core.pages.LibraryTabKind.OWN -> TabRows(
+            "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab), { emptyList() }, null,
+            lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+            empty = "No rows here yet. Add some in Settings → Display → Pages → ${lib.name}.",
+        )
+        dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, tabs, onOpen) }
+        dev.nitrate.core.pages.LibraryTabKind.UNWATCHED -> Box(padded) {
+            BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin,
+                viewKey = "browse/${lib.id}/unwatched",
+                startWith = dev.nitrate.core.pages.BrowseOptions(watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, sort = dev.nitrate.core.pages.QuerySort.DATE_ADDED, descending = true))
+        }
+        dev.nitrate.core.pages.LibraryTabKind.ALL -> Box(padded) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin) }
+    }
+}
+
+/**
+ * A tab that's a page of rows (Recommended, Genres, Studios, Decades, the user's own): as Home is
+ * laid out (full art with the tabs top right, or rows under them), each row's look its own.
+ */
+@Composable
+private fun TabRows(
+    vmKey: String,
+    pageKey: String,
+    loadBuiltIn: suspend () -> List<dev.nitrate.core.rows.MediaRow>,
+    loadProgress: (() -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)?,
+    lib: MediaItem,
+    repository: MediaServer,
+    displaySettings: DisplaySettingsStore,
+    changes: kotlinx.coroutines.flow.Flow<Unit>,
+    dataCache: dev.nitrate.android.storage.DataCache?,
+    fullArt: Boolean,
+    insets: dev.nitrate.tv.ui.home.MenuInsets,
+    tabs: @Composable () -> Unit,
+    onOpen: (MediaItem) -> Unit,
+    onPlay: (MediaItem) -> Unit,
+    empty: String = "Nothing here yet.",
+) {
+    val vm = viewModel(key = vmKey) {
+        RowsViewModel(pageKey, loadBuiltIn, displaySettings, repository, changes, cache = dataCache, loadProgress = loadProgress)
+    }
+    val state by vm.state.collectAsStateWithLifecycle()
+    val overrides by vm.overrides.collectAsStateWithLifecycle()
+    var editing by remember { mutableStateOf(false) }
+    if (editing) PageEditor(lib.name, vm, repository, libraryId = lib.id, onDone = { editing = false })
+    when (val s = state) {
+        is RowsState.Loaded -> when {
+            s.rows.none { it.items.isNotEmpty() } -> Column { tabs(); Text(empty, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            // As Home can be: one title at a time, the tabs top right.
+            fullArt -> dev.nitrate.tv.ui.home.FullArtPage(
+                rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
+                onSaveDisplay = vm::save, onEditPage = { editing = true }, insets = insets, header = tabs,
+            )
+            else -> RowsPage(
+                onEditPage = { editing = true }, rows = s.rows, overrides = overrides, repository = repository,
+                onOpen = onOpen, onPlay = onPlay, onSaveDisplay = vm::save, header = tabs,
+            )
+        }
+        is RowsState.Error -> Column { tabs(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
+        RowsState.Loading -> Column { tabs(); Text("Loading…", Modifier.padding(PagePadding)) }
+    }
+}
+
+/** The server's collections (box sets) as a grid, under the tabs. */
+@Composable
+private fun CollectionsGrid(repository: MediaServer, tabs: @Composable () -> Unit, onOpen: (MediaItem) -> Unit) {
+    val collections by produceState<List<MediaItem>?>(null) { value = runCatching { repository.collections() }.getOrDefault(emptyList()) }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(7),
+        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) { tabs() }
+        val list = collections
+        when {
+            list == null -> item(span = { GridItemSpan(maxLineSpan) }) { Text("Loading…") }
+            list.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Text("No collections on this server yet.") }
+            else -> items(list, key = { it.id }) { c ->
+                MediaCard(item = c, imageUrl = repository.imageUrl(c, ImageKind.PRIMARY, 360), width = null, aspectRatio = 2f / 3f, title = c.name, onClick = { onOpen(c) })
             }
         }
-        LibraryTab.ALL -> Box(Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin) }
     }
 }

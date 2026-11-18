@@ -27,6 +27,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.background
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -94,8 +102,21 @@ fun RowsPage(
         if (index >= 0) listState.animateScrollToItem(index + headerCount)
     }
 
+    // "Row: style" for a moment after Fast-forward/Rewind changes one.
+    var styleNote by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    LaunchedEffect(styleNote) { if (styleNote != null) { kotlinx.coroutines.delay(2_500); styleNote = null } }
     Box(modifier.fillMaxSize()) {
         if (activeShowcase == null) Backdrop(focused?.let(repository::backdropUrl), Modifier.fillMaxSize())
+        androidx.compose.animation.AnimatedVisibility(
+            visible = styleNote != null, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = RowPadding).zIndex(2f),
+        ) {
+            Text(
+                (styleNote?.first ?: "") + "   ◀◀ ▶▶",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(horizontal = 18.dp, vertical = 10.dp),
+            )
+        }
 
         Column(Modifier.fillMaxSize()) {
             AnimatedVisibility(visible = activeShowcase == null) {
@@ -123,7 +144,20 @@ fun RowsPage(
                     androidx.compose.foundation.layout.Box(
                         Modifier.animateItem()
                             .bringIntoViewRequester(wholeRow)
-                            .onFocusChanged { if (it.hasFocus) rowScope.launch { wholeRow.bringIntoView() } },
+                            .onFocusChanged { if (it.hasFocus) rowScope.launch { wholeRow.bringIntoView() } }
+                            // Fast-forward / Rewind on a row: its next / previous artwork style, there and then.
+                            .onPreviewKeyEvent { e ->
+                                val by = when (e.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
+                                if (by == 0) return@onPreviewKeyEvent false
+                                if (e.type == KeyEventType.KeyDown) {
+                                    val now = overrides[row.key] ?: row.defaultDisplay
+                                    val next = now.copy(style = now.style.step(by))
+                                    if (activeShowcase == row.key) activeShowcase = null
+                                    onSaveDisplay(row, next)
+                                    styleNote = "${row.title}: ${next.style.label}" to System.nanoTime()
+                                }
+                                true
+                            },
                     ) {
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowsScroll) {
                         val display = overrides[row.key] ?: row.defaultDisplay

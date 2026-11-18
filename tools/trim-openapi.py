@@ -59,6 +59,7 @@ PATHS = [
     "/UserItems/{itemId}/UserData",
     "/Persons",
     "/Genres",
+    "/Studios",
     "/Items/RemoteSearch/Movie",
     "/Items/RemoteSearch/Series",
     "/Items/RemoteSearch/Apply/{itemId}",

@@ -34,9 +34,12 @@ class BrowseViewModel(
     private val server: MediaServer,
     private val store: DisplaySettingsStore,
     private val library: MediaItem,
+    /** What the options are saved under (a library's Unwatched tab keeps its own). */
+    private val key: String = "browse/${library.id}",
+    /** The options until any are saved (Unwatched starts with unwatched only). */
+    private val startWith: BrowseOptions = BrowseOptions(),
 ) : ViewModel() {
     private val userId = server.userId
-    private val key = "browse/${library.id}"
     private val _state = MutableStateFlow(BrowseState())
     val state: StateFlow<BrowseState> = _state
     private val _genres = MutableStateFlow<List<String>>(emptyList())
@@ -50,7 +53,7 @@ class BrowseViewModel(
 
     init {
         viewModelScope.launch {
-            (userId?.let { store.view(it, key, BrowseOptions()) } ?: flowOf(BrowseOptions())).distinctUntilChanged().collect { options ->
+            (userId?.let { store.view(it, key, startWith) } ?: flowOf(startWith)).distinctUntilChanged().collect { options ->
                 if (options != _state.value.options || _state.value.total < 0) restart(options)
             }
         }

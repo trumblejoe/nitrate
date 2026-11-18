@@ -220,6 +220,12 @@ class DisplaySettingsStore(
     suspend fun saveLayout(userId: String, pageKey: String, layout: PageLayout) =
         if (layout.entries.isEmpty()) removeRaw(userId, LAYOUT + pageKey) else saveRaw(userId, LAYOUT + pageKey, json.encodeToString(layout))
 
+    /** A library page's tabs as arranged (empty: never arranged; `LibraryTabs.resolve` fills in the rest). */
+    fun libraryTabs(userId: String, libraryId: String): Flow<List<dev.nitrate.core.pages.LibraryTab>> = stored(userId, TABS + libraryId, emptyList())
+
+    suspend fun saveLibraryTabs(userId: String, libraryId: String, tabs: List<dev.nitrate.core.pages.LibraryTab>) =
+        saveRaw(userId, TABS + libraryId, json.encodeToString(tabs))
+
     fun customPages(userId: String): Flow<List<CustomPage>> = stored(userId, PAGES, emptyList())
 
     suspend fun saveCustomPages(userId: String, pages: List<CustomPage>) = saveRaw(userId, PAGES, json.encodeToString(pages))
@@ -302,6 +308,7 @@ class DisplaySettingsStore(
         const val VIEW = "view:"
         const val LAYOUT = "layout:"
         const val PAGES = "pages"
+        const val TABS = "tabs:"
         const val PREFS = "prefs"
         const val TRACKS = "tracks"
     }

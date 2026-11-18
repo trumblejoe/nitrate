@@ -177,7 +177,7 @@ private typealias PrefToggle = Triple<String, (DisplayPrefs) -> Boolean, (Displa
 
 /** Display settings, in this TV's display profile and synced for the user; [page] picks which. */
 @Composable
-fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPage.LOOK, onMenuStops: () -> Unit = {}, onShown: () -> Unit = {}) {
+fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPage.LOOK, onMenuStops: () -> Unit = {}, onShown: () -> Unit = {}, onPages: () -> Unit = {}) {
     val prefs = LocalDisplayPrefs.current
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
@@ -292,6 +292,15 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 headlineContent = { Text("Fade in") },
                 supportingContent = { Text("Keep the menu out of sight until you move onto it or press Menu") },
                 trailingContent = { Switch(checked = on, onCheckedChange = null) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = onPages,
+                headlineContent = { Text("Pages") },
+                supportingContent = { Text("Home's rows, and each library's tabs (Genres, Collections, Unwatched, your own…)") },
+                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
             )
         }
         item {

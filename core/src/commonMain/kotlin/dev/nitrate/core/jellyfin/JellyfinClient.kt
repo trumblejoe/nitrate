@@ -1353,6 +1353,10 @@ class JellyfinClient(
         get("Genres", query = mapOf("parentId" to libraryId, "sortBy" to "SortName", "sortOrder" to "Ascending", "enableTotalRecordCount" to false))
             .decode<QueryResultDto<ItemDto>>().items.mapNotNull { it.name }
 
+    override suspend fun studios(libraryId: String?): List<String> =
+        get("Studios", query = mapOf("parentId" to libraryId, "userId" to userId, "enableImages" to false, "enableTotalRecordCount" to false))
+            .decode<QueryResultDto<ItemDto>>().items.mapNotNull { it.name }
+
     override suspend fun collections(): List<MediaItem> = listOfType("BoxSet")
 
     override suspend fun playlists(): List<MediaItem> = listOfType("Playlist")
