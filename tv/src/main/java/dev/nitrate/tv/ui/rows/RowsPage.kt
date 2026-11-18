@@ -85,6 +85,9 @@ fun RowsPage(
 ) {
     var focused by remember { mutableStateOf<MediaItem?>(null) }
     var activeShowcase by remember { mutableStateOf<String?>(null) }
+    // The row holding focus: a Full Showcase above it draws as its banner, not a screen-tall picture
+    // cut off by the scroll (that left a strip of it over the rows below).
+    var focusedRowIndex by remember { mutableStateOf(-1) }
     val showcaseIndex = remember { mutableStateMapOf<String, Int>() }
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     var listingRows by remember { mutableStateOf(false) }
@@ -141,7 +144,7 @@ fun RowsPage(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 if (header != null) item(key = "page-header") { header() }
-                itemsIndexed(rows, key = { _, row -> row.key }) { _, row ->
+                itemsIndexed(rows, key = { _, row -> row.key }) { rowIndex, row ->
                     // Rows added or removed by a reload slide and fade rather than jump.
                     // Moving into a row scrolls the whole row into view, its title included (a tall
                     // row otherwise brings only the focused card in, leaving its title out of sight).
@@ -155,7 +158,7 @@ fun RowsPage(
                     androidx.compose.foundation.layout.Box(
                         Modifier.animateItem()
                             .bringIntoViewRequester(wholeRow)
-                            .onFocusChanged { if (it.hasFocus) rowScope.launch { wholeRow.bringIntoView() } }
+                            .onFocusChanged { if (it.hasFocus) { focusedRowIndex = rowIndex; rowScope.launch { wholeRow.bringIntoView() } } }
                             // Fast-forward / Rewind on a row: its next / previous artwork style, there and then.
                             .onPreviewKeyEvent { e ->
                                 val by = when (e.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
@@ -196,7 +199,7 @@ fun RowsPage(
                         if (display.style.isShowcase) {
                             val active = activeShowcase == row.key
                             // Full Showcase fills the screen even before it has focus.
-                            val full = display.style == RowStyle.FULL_SHOWCASE
+                            val full = display.style == RowStyle.FULL_SHOWCASE && rowIndex >= focusedRowIndex
                             ShowcaseRow(
                                 row = row,
                                 display = display,

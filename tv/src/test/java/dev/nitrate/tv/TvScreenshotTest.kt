@@ -688,6 +688,23 @@ class TvScreenshotTest {
         }
     }
 
+    /** Down from a showcase row to the next: nothing of the showcase may be left over the row below. */
+    @Test fun showcaseThenDown() = shoot("tv-showcase-then-down", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.SHOWCASE))
+    }, act = { press("down") }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    @Test fun fullShowcaseThenDown() = shoot("tv-full-showcase-then-down", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
+    }, act = { press("down") }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
     @Test fun settingsHub() = shoot("tv-settings-hub") { _ ->
         fun links(vararg l: Pair<String, String>) = l.map { (label, detail) -> dev.nitrate.tv.ui.settings.SettingsLink(label, detail) {} }
         dev.nitrate.tv.ui.settings.SettingsHubScreen(
