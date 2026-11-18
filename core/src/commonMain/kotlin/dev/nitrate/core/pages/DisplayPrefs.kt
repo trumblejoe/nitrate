@@ -81,6 +81,8 @@ data class DisplayPrefs(
     val tvMenuAutoHide: Boolean = false,
     /** The TV menu (rail, bar or dial) on solid black, so it stands out over page themes and art. */
     val tvMenuBlack: Boolean = false,
+    /** TV rows layout: every row stacked down the page, rather than one at a time along the bottom. */
+    val tvRowsStacked: Boolean = false,
     /** The menu's stops in order (rail and bars), as [MenuStops] ids; null until arranged. */
     val tvMenuStops: List<String>? = null,
     /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */

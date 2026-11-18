@@ -244,6 +244,15 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
             )
         }
         item {
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvRowsStacked = !it.tvRowsStacked) } },
+                headlineContent = { Text("Rows") },
+                supportingContent = { Text(if (prefs.tvRowsStacked) "Stacked down the page under the focused title" else "One at a time along the bottom, the picture above; the others show as you reach them") },
+                trailingContent = { Text("${if (prefs.tvRowsStacked) "Stacked" else "One at a time"}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
             // Like Home, or each its own way.
             val layouts = listOf<dev.nitrate.core.pages.TvHomeLayout?>(null) + dev.nitrate.core.pages.TvHomeLayout.entries
             val now = prefs.tvLibraryLayout

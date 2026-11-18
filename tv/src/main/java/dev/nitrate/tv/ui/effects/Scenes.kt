@@ -86,6 +86,7 @@ private fun DrawnScene(key: Any, at: Float?, still: Boolean, draw: DrawScope.(Fl
     val latest = androidx.compose.runtime.rememberUpdatedState(draw)
     var area by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var frame by remember { mutableStateOf<ImageBitmap?>(null) }
+    val onScreen = remember { java.util.concurrent.atomic.AtomicReference<ImageBitmap?>(null) }
     LaunchedEffect(key, area, still) {
         if (area.width <= 0 || area.height <= 0) return@LaunchedEffect
         val full = Size(area.width.toFloat(), area.height.toFloat())
@@ -95,14 +96,15 @@ private fun DrawnScene(key: Any, at: Float?, still: Boolean, draw: DrawScope.(Fl
         val h = (full.height * scale).toInt().coerceAtLeast(1)
         // Three bitmaps in turn, so the one on screen is never the one being drawn.
         val buffers = List(3) { ImageBitmap(w, h) }
+        onScreen.set(null)
         val scope = androidx.compose.ui.graphics.drawscope.CanvasDrawScope()
         val start = System.nanoTime()
-        var n = 0
         withContext(Dispatchers.Default) {
             while (isActive) {
                 val began = System.nanoTime()
                 val t = if (still) 0f else (began - start) / 1e9f
-                val bitmap = buffers[n++ % buffers.size]
+                // Never the one on screen, nor the one waiting to be shown (the screen can be frames behind).
+                val bitmap = buffers.first { it !== onScreen.get() && it !== frame }
                 bitmap.asAndroidBitmap().eraseColor(android.graphics.Color.TRANSPARENT)
                 val canvas = androidx.compose.ui.graphics.Canvas(bitmap)
                 canvas.scale(scale, scale)
@@ -116,7 +118,7 @@ private fun DrawnScene(key: Any, at: Float?, still: Boolean, draw: DrawScope.(Fl
         }
     }
     Canvas(Modifier.fillMaxSize().onSizeChanged { area = it }) {
-        frame?.let { drawImage(it, dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()), filterQuality = FilterQuality.Low) }
+        frame?.also { onScreen.set(it) }?.let { drawImage(it, dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()), filterQuality = FilterQuality.Low) }
     }
 }
 

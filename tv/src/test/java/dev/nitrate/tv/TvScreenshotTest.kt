@@ -172,6 +172,13 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
+    /** One row at a time: Down moves the next row up to the bottom; the others stay hidden. */
+    @Test fun rowsOneAtATimeDown() = shoot("tv-home-rows-one-at-a-time-down", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+    }, act = { press("down") }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
     @Test fun groupStandingsOnCards() = shoot("tv-group-standings") { c ->
         fun ep(n: Int, series: String, played: Boolean = false) = dev.nitrate.core.model.MediaItem("$series-$n", "Episode $n", dev.nitrate.core.model.ItemKind.EPISODE,
             seriesId = series, seriesName = series.replaceFirstChar { it.uppercase() }, seasonNumber = 1, indexNumber = n, user = dev.nitrate.core.model.UserState(played = played, positionMs = if (n == 3) 600_000 else 0))
