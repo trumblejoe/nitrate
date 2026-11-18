@@ -5,10 +5,10 @@ import kotlinx.serialization.Serializable
 
 /** Whether the TV's refresh rate follows the video's frame rate. */
 @Serializable
-enum class FrameRateMatch(val label: String, val detail: String) {
-    OFF("Off", "The TV stays at its usual refresh rate"),
-    SEAMLESS("Only when seamless", "Switches only where the TV can do it without a blank screen"),
-    ALWAYS("Always", "Switches the TV to match each video (a second or two of blank screen while it changes)"),
+enum class FrameRateMatch(val label: String, val detail: String, val shortLabel: String) {
+    OFF("Off", "The TV stays at its usual refresh rate", "Off"),
+    SEAMLESS("Only when seamless", "Switches only where the TV can do it without a blank screen", "When seamless"),
+    ALWAYS("Always", "Switches the TV to match each video (a second or two of blank screen while it changes)", "Always"),
 }
 
 /** One display mode a TV offers. */
@@ -17,18 +17,44 @@ data class DisplayMode(val id: Int, val width: Int, val height: Int, val refresh
 /** Picking the display mode that shows a video without judder. */
 object DisplayModes {
     /**
-     * The mode at [current]'s resolution whose refresh rate is a whole multiple of [fps] (exactly:
-     * 23.976 isn't 24), the smallest multiple first (24 Hz before 48 before 120), or null when the
-     * current mode already fits or none does.
+     * The mode at [current]'s resolution whose refresh rate is a whole multiple of [fps], the
+     * smallest multiple first (23.976 Hz before 47.952 before 119.88), or null when the current mode
+     * already fits or none does better. Exact multiples come first (23.976 is shown at 23.976 Hz);
+     * when the TV has none, a near one (within [NEAR]: 24.000 Hz for 23.976 fps, one repeated frame
+     * every 42 s) still beats a rate that doesn't fit at all (59.94 Hz: 3:2 judder all the time),
+     * but never replaces a current mode that's already near.
      */
     fun best(modes: List<DisplayMode>, current: DisplayMode, fps: Float): DisplayMode? {
         if (fps <= 0f) return null
         if (fits(current.refreshRate, fps) != null) return null
-        return modes
-            .filter { it.width == current.width && it.height == current.height }
-            .mapNotNull { mode -> fits(mode.refreshRate, fps)?.let { multiple -> mode to multiple } }
+        val sameSize = modes.filter { it.width == current.width && it.height == current.height }
+        fun pick(test: (Float, Float) -> Int?) = sameSize
+            .mapNotNull { mode -> test(mode.refreshRate, fps)?.let { multiple -> mode to multiple } }
             .minWithOrNull(compareBy<Pair<DisplayMode, Int>> { it.second }.thenBy { abs(it.first.refreshRate - it.second * fps) })
             ?.first
+        pick(::fits)?.let { return it }
+        if (nearFits(current.refreshRate, fps) != null) return null
+        return pick(::nearFits)
+    }
+
+    /** How far off a near match may be: 0.2% (24.000 against 23.976 is 0.1%; 25 against 24 is 4%). */
+    const val NEAR = 0.002f
+
+    /** What showing [fps] at [refreshRate] looks like, for explaining it. */
+    fun cadence(fps: Float, refreshRate: Float): Cadence = when {
+        fps <= 0f || refreshRate <= 0f -> Cadence.UNKNOWN
+        fits(refreshRate, fps) != null -> Cadence.EXACT
+        nearFits(refreshRate, fps) != null -> Cadence.NEAR
+        else -> Cadence.JUDDER
+    }
+
+    enum class Cadence { EXACT, NEAR, JUDDER, UNKNOWN }
+
+    /** The whole multiple of [fps] that [refreshRate] nearly is (within [NEAR]), or null. */
+    private fun nearFits(refreshRate: Float, fps: Float): Int? {
+        val multiple = kotlin.math.round(refreshRate / fps).toInt()
+        if (multiple < 1) return null
+        return multiple.takeIf { abs(refreshRate - multiple * fps) / (multiple * fps) < NEAR }
     }
 
     /** The whole multiple of [fps] that [refreshRate] is (within a hair), or null. */

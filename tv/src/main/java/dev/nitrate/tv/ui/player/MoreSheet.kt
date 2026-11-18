@@ -176,6 +176,13 @@ internal class PlayerChoices(
     val defaultAudioDelayMs: Int,
     val onAudioDelay: (Int) -> Unit,
     val onAudioDelayAsDefault: () -> Unit,
+    /** Matching the TV's refresh rate for this playback (null: not on this device). */
+    val frameRate: dev.nitrate.core.playback.FrameRateMatch? = null,
+    val defaultFrameRate: dev.nitrate.core.playback.FrameRateMatch? = null,
+    val onFrameRate: (dev.nitrate.core.playback.FrameRateMatch) -> Unit = {},
+    val onFrameRateAsDefault: () -> Unit = {},
+    /** What the video's frame rate looks like at the TV's rate now, e.g. "23.976 fps at 59.94 Hz: slight judder". */
+    val refreshNote: String? = null,
     /** Pages of their own (Speakers, Second subtitles, Find subtitles, Watch together): label → content. */
     val pages: List<Pair<String, @Composable (onBack: () -> Unit) -> Unit>> = emptyList(),
 )
@@ -242,6 +249,18 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
                 Text("now " + dev.nitrate.core.playback.AudioSync.label(choices.audioDelayMs), style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.7f), modifier = Modifier.align(Alignment.CenterVertically))
                 MakeDefault(choices.onAudioDelayAsDefault)
+            }
+        }
+        val frameRate = choices.frameRate
+        if (frameRate != null) {
+            Line("Refresh rate") {
+                dev.nitrate.core.playback.FrameRateMatch.entries.forEach { m ->
+                    DefaultChip(m.shortLabel, selected = frameRate == m, isDefault = m == choices.defaultFrameRate) { choices.onFrameRate(m) }
+                }
+                if (frameRate != choices.defaultFrameRate) MakeDefault(choices.onFrameRateAsDefault)
+                choices.refreshNote?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.align(Alignment.CenterVertically))
+                }
             }
         }
         if (choices.pages.isNotEmpty()) {
@@ -354,6 +373,11 @@ internal fun rememberPlayerChoices(
     syncPlay: dev.nitrate.core.syncplay.SyncPlayController?,
     onSleep: (Long?, Boolean) -> Unit,
     onDone: () -> Unit,
+    /** This playback's refresh-rate choice (null: the device's own) and how to change it. */
+    frameRate: dev.nitrate.core.playback.FrameRateMatch? = null,
+    onFrameRate: (dev.nitrate.core.playback.FrameRateMatch) -> Unit = {},
+    /** The TV's refresh rate now (null: unknown). */
+    displayHz: Float? = null,
 ): PlayerChoices {
     val scope = rememberCoroutineScope()
     val saved by settings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
@@ -394,7 +418,25 @@ internal fun rememberPlayerChoices(
         defaultAudioDelayMs = saved.audioDelayMs,
         onAudioDelay = { session.setAudioDelay(it) },
         onAudioDelayAsDefault = { scope.launch { settings.update { it.copy(audioDelayMs = audioDelay) } } },
+        frameRate = frameRate ?: saved.frameRateMatch,
+        defaultFrameRate = saved.frameRateMatch,
+        onFrameRate = onFrameRate,
+        onFrameRateAsDefault = { val m = frameRate ?: saved.frameRateMatch; scope.launch { settings.update { it.copy(frameRateMatch = m) } } },
+        refreshNote = refreshNote(session.videoFrameRate.collectAsState().value, displayHz),
         pages = pages,
     )
+}
+
+/** "23.976 fps at 59.94 Hz: slight judder" and the like, for the Refresh rate line. */
+internal fun refreshNote(fps: Float?, hz: Float?): String? {
+    if (fps == null || hz == null) return null
+    fun f(v: Float) = if (v % 1f == 0f) v.toInt().toString() else "%.3f".format(v).trimEnd('0').trimEnd('.')
+    val what = when (dev.nitrate.core.playback.DisplayModes.cadence(fps, hz)) {
+        dev.nitrate.core.playback.DisplayModes.Cadence.EXACT -> "smooth"
+        dev.nitrate.core.playback.DisplayModes.Cadence.NEAR -> "nearly smooth"
+        dev.nitrate.core.playback.DisplayModes.Cadence.JUDDER -> "slight judder"
+        dev.nitrate.core.playback.DisplayModes.Cadence.UNKNOWN -> return null
+    }
+    return "${f(fps)} fps at ${f(hz)} Hz: $what"
 }
 

@@ -33,8 +33,13 @@ fun FrameRateMatcher(session: PlaybackSession, match: FrameRateMatch) {
     val fps by session.videoFrameRate.collectAsState()
     LaunchedEffect(match) { session.setFrameRateMatch(match) }
     LaunchedEffect(fps, match) {
+        if (Build.VERSION.SDK_INT < 23) return@LaunchedEffect
+        // Turned off (or to seamless only) during playback: back to the TV's own mode.
+        if (match != FrameRateMatch.ALWAYS) {
+            if (activity.window.attributes.preferredDisplayModeId != 0) activity.window.attributes = activity.window.attributes.apply { preferredDisplayModeId = 0 }
+            return@LaunchedEffect
+        }
         val rate = fps ?: return@LaunchedEffect
-        if (match != FrameRateMatch.ALWAYS || Build.VERSION.SDK_INT < 23) return@LaunchedEffect
         val display = activity.windowManager.defaultDisplay ?: return@LaunchedEffect
         val current = display.mode.let { DisplayMode(it.modeId, it.physicalWidth, it.physicalHeight, it.refreshRate) }
         val modes = display.supportedModes.map { DisplayMode(it.modeId, it.physicalWidth, it.physicalHeight, it.refreshRate) }
@@ -62,6 +67,26 @@ fun FrameRateMatcher(session: PlaybackSession, match: FrameRateMatch) {
             if (Build.VERSION.SDK_INT >= 23) activity.window.attributes = activity.window.attributes.apply { preferredDisplayModeId = 0 }
         }
     }
+}
+
+/** The TV's refresh rate now, followed as it changes (null before Android 6). */
+@Composable
+fun rememberDisplayHz(): Float? {
+    val context = LocalContext.current
+    val activity = context.findActivity() ?: return null
+    if (Build.VERSION.SDK_INT < 23) return null
+    val hz = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(activity.windowManager.defaultDisplay?.mode?.refreshRate) }
+    DisposableEffect(activity) {
+        val manager = activity.getSystemService(DisplayManager::class.java)
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayChanged(displayId: Int) { hz.value = activity.windowManager.defaultDisplay?.mode?.refreshRate }
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+        }
+        manager?.registerDisplayListener(listener, Handler(Looper.getMainLooper()))
+        onDispose { manager?.unregisterDisplayListener(listener) }
+    }
+    return hz.value
 }
 
 private fun Context.findActivity(): Activity? = when (this) {

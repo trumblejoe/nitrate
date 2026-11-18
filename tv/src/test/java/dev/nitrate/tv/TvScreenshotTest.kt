@@ -283,6 +283,8 @@ class TvScreenshotTest {
         sleepAt = null, sleepAtEnd = false, onSleep = { _, _ -> },
         subtitleOffsetMs = 0, onSubtitleOffset = {},
         audioDelayMs = audioDelay, defaultAudioDelayMs = 0, onAudioDelay = {}, onAudioDelayAsDefault = {},
+        frameRate = dev.nitrate.core.playback.FrameRateMatch.ALWAYS, defaultFrameRate = dev.nitrate.core.playback.FrameRateMatch.SEAMLESS,
+        refreshNote = dev.nitrate.tv.ui.player.refreshNote(23.976f, 59.94f),
         pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch together").map { it to { _: () -> Unit -> androidx.tv.material3.Text(it) } },
     )
 
@@ -317,6 +319,11 @@ class TvScreenshotTest {
     @Test fun moreChapters() = moreSheet("tv-more-chapters", "chapters", "down") { check(focusedHasText("Now")) }
     @Test fun moreCast() = moreSheet("tv-more-cast", "cast", "down")
     @Test fun moreExtras() = moreSheet("tv-more-extras", "extras", "down")
+    /** Lower down the Settings tab: the refresh rate for this playback, with what it looks like now. */
+    @Test fun moreSettingsRefresh() = moreSheet("tv-more-settings-refresh", "settings", "down", "down", "down", "down", "down", "down", "down") {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("23.976 fps at 59.94 Hz: slight judder")).fetchSemanticsNodes().isNotEmpty())
+    }
+    @Test fun refreshRateInfo() = shoot("tv-refresh-rate-info") { _ -> dev.nitrate.tv.ui.settings.RefreshRateInfo {} }
     @Test fun moreSettings() = moreSheet("tv-more-settings", "settings", "down") { check(focusedHasText("Normal")) }
     /** ◀▶ on the tabs shows each one as it's reached. */
     @Test fun moreTabsMove() = moreSheet("tv-more-tabs-move", "siblings", "right") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("Crossing")).fetchSemanticsNodes().isNotEmpty()) }

@@ -21,6 +21,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.focusable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
@@ -136,6 +140,17 @@ private fun LazyListScope.mainPage(
             val all = dev.nitrate.core.playback.FrameRateMatch.entries
             update { it.copy(frameRateMatch = all[(m.ordinal + 1) % all.size]) }
         }
+    }
+    item {
+        var open by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+        ListItem(
+            selected = false,
+            onClick = { open = true },
+            headlineContent = { Text("How refresh rate works") },
+            supportingContent = { Text("Why films can stutter on a TV, and what each choice does") },
+            trailingContent = { Text("ⓘ", color = MaterialTheme.colorScheme.primary) },
+        )
+        if (open) RefreshRateInfo { open = false }
     }
     item {
         ChoiceRow("Maximum bitrate", formatBitrate(settings.maxBitrate), "Lower it only if playback keeps buffering, e.g. away from home. Anything above it is converted down by the server.") {
@@ -429,4 +444,66 @@ private fun ToggleRow(label: String, checked: Boolean, subtitle: String, modifie
         supportingContent = { Text(subtitle) },
         trailingContent = { Switch(checked = checked, onCheckedChange = null) },
     )
+}
+
+/**
+ * What refresh rate does to films, in plain words: why 23.976 fps stutters at 59.94 Hz, what
+ * each "Match frame rate" choice does, the near match Nitrate falls back to, and where else to look.
+ */
+@Composable
+internal fun RefreshRateInfo(onDismiss: () -> Unit) {
+    val close = remember { androidx.compose.ui.focus.FocusRequester() }
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 760) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("How refresh rate works", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            androidx.tv.material3.Button(onClick = onDismiss, modifier = Modifier.focusRequester(close)) { Text("Close") }
+        }
+        // Each part takes focus in turn, so ▲▼ read through it (the dialog scrolls to the focused part).
+        @Composable fun Part(title: String, body: String) {
+            var focused by remember { mutableStateOf(false) }
+            Column(
+                Modifier.fillMaxWidth()
+                    .onFocusChanged { focused = it.isFocused }
+                    .focusable()
+                    .background(if (focused) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                Text(body, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        Part(
+            "Why films can stutter",
+            "Most films and many shows are made at 23.976 frames a second; TVs usually run at 59.94 or 60 times a second. " +
+                "59.94 ÷ 23.976 = 2.5, so frames can't be shown for equal times: one stays for 3 refreshes, the next for 2 (\"3:2\"). " +
+                "Each frame lasts 50 or 33 ms in turn, which shows as a slight shudder on slow camera pans, called judder.",
+        )
+        Part(
+            "What matching does",
+            "With Match frame rate on Always, the player switches the TV to a rate the video divides into evenly: 23.976 Hz for a film " +
+                "(else 47.952 or 119.88 Hz), 50 Hz for 25 fps, 59.94 Hz for 29.97 fps. Every frame is then shown for the same time and motion is smooth. " +
+                "The screen goes black for a second or two while the TV changes mode, with playback held; leaving the player gives the TV its own rate back.",
+        )
+        Part(
+            "When the TV has no exact rate",
+            "Some TVs offer 24 Hz but not 23.976 Hz. Nitrate then uses 24 Hz: it's 0.1% fast, so one frame repeats about every 42 seconds, " +
+                "far less noticeable than 3:2 judder all the time. A TV already at a near rate isn't switched.",
+        )
+        Part(
+            "The three choices",
+            "Off: the TV keeps its own rate. Only when seamless: the player asks for a match, but only where the TV can change without a blank screen " +
+                "(many TVs can't, so nothing changes). Always: switches for each video, with the short blank screen.",
+        )
+        Part(
+            "For one film, and checking",
+            "More → Settings in the player changes this for what's playing (DEFAULT marks this setting) and says how the current video looks at the TV's rate. " +
+                "The player's Info shows the TV's mode and warns about judder.",
+        )
+        Part(
+            "Fire TV and other boxes",
+            "Fire TV has its own Match Original Frame Rate switch (Settings → Display & Sounds → Display). If Always doesn't change anything, turn that on too. " +
+                "Some other boxes have a similar \"auto frame rate\" setting.",
+        )
+    }
+    LaunchedEffect(Unit) { runCatching { close.requestFocus() } }
 }

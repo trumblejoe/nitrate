@@ -28,7 +28,20 @@ class DisplayModesTest {
         assertNull(DisplayModes.best(all, m60, 0f))
     }
 
-    @Test fun `23_976 is not 24`() {
-        assertNull(DisplayModes.best(listOf(m60, m24), m60, 23.976f))
+    @Test fun `23_976 prefers its exact rate, else 24 beats judder at 59_94`() {
+        assertEquals(m23976, DisplayModes.best(all, m5994, 23.976f))
+        // A TV with no 23.976 Hz mode: 24 Hz (a repeated frame every 42 s) rather than 3:2 judder.
+        assertEquals(m24, DisplayModes.best(listOf(m60, m5994, m24), m5994, 23.976f))
+        // Already at 24 Hz: near enough, no blank screen to switch.
+        assertNull(DisplayModes.best(listOf(m60, m24), m24, 23.976f))
+        // 25 fps isn't near 24.
+        assertNull(DisplayModes.best(listOf(m60, m24), m60, 25f))
+    }
+
+    @Test fun `cadence explains what a rate does to a frame rate`() {
+        assertEquals(DisplayModes.Cadence.JUDDER, DisplayModes.cadence(23.976f, 59.94f))
+        assertEquals(DisplayModes.Cadence.EXACT, DisplayModes.cadence(23.976f, 23.976f))
+        assertEquals(DisplayModes.Cadence.NEAR, DisplayModes.cadence(23.976f, 24f))
+        assertEquals(DisplayModes.Cadence.EXACT, DisplayModes.cadence(29.97f, 59.94f))
     }
 }

@@ -178,7 +178,9 @@ fun PlayerScreen(
     val assTrack by session.assTrack.collectAsState()
     val subtitleOffset by session.subtitleOffsetMs.collectAsState()
     // The TV's refresh rate follows the video's frame rate, as set in Playback settings.
-    FrameRateMatcher(session, settingsNow.frameRateMatch)
+    // This playback's choice from More → Settings, else the device's.
+    var frameRateOverride by remember { mutableStateOf<dev.nitrate.core.playback.FrameRateMatch?>(null) }
+    FrameRateMatcher(session, frameRateOverride ?: settingsNow.frameRateMatch)
     var sleepAt by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(sleepAt) {
         val at = sleepAt ?: return@LaunchedEffect
@@ -588,7 +590,8 @@ fun PlayerScreen(
                     onChapter = { player.seekTo(it) },
                     onPerson = { person = it },
                     choices = rememberPlayerChoices(session, playbackSettings, repository, sleepAt, sleepAtEndState.value, syncPlay,
-                        onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDone = { panel = Panel.NONE }),
+                        onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDone = { panel = Panel.NONE },
+                        frameRate = frameRateOverride, onFrameRate = { frameRateOverride = it }, displayHz = rememberDisplayHz()),
                 ),
                 initial = moreTab,
                 onTab = { moreTab = it },
