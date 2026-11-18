@@ -62,7 +62,8 @@ object PrerollPlan {
 
 /** The scene clips this build ships (`assets/fx/preroll-*.mp4`). */
 fun shippedClips(context: android.content.Context): Set<String> =
-    runCatching { context.assets.list("fx")?.filter { it.endsWith(".mp4") }?.map { it.removeSuffix(".mp4") }?.toSet() }.getOrNull() ?: emptySet()
+    (runCatching { context.assets.list("fx")?.filter { it.endsWith(".mp4") }?.map { it.removeSuffix(".mp4") }?.toSet() }.getOrNull() ?: emptySet()) +
+        dev.nitrate.tv.ui.effects.shippedPhotoSets(context).map { "photos/$it" }
 
 /**
  * The steps before [item], or none: the server's intros and the user's own videos are asked for
@@ -156,7 +157,15 @@ private fun VerseCard(lines: List<String>, poet: String?, source: String?) {
 @Composable
 fun SceneView(scene: PrerollScene, at: Float? = null) {
     val context = LocalContext.current
-    val clip = remember(scene) { scene.clip.takeIf { it in shippedClips(context) } }
+    val shipped = remember { shippedClips(context) }
+    val clip = remember(scene) { scene.clip.takeIf { it in shipped } }
+    // The app's own photos, given slow movement (jellyfish with the water's specks drifting over them).
+    if (clip == null && scene.photos != null && "photos/${scene.photos}" in shipped) {
+        val over: (androidx.compose.ui.graphics.drawscope.DrawScope.(Float) -> Unit)? =
+            if (scene == PrerollScene.JELLYFISH) { t -> with(dev.nitrate.tv.ui.effects.JellyWater) { draw(t) } } else null
+        dev.nitrate.tv.ui.effects.PhotoStage(scene.photos!!, at = at, over = over)
+        return
+    }
     if (clip != null && at == null) {
         val player = remember(clip) {
             ExoPlayer.Builder(context).build().apply {

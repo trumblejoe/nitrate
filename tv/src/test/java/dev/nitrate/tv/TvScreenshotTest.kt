@@ -201,6 +201,8 @@ class TvScreenshotTest {
     @Test fun prerollOcean() = shoot("tv-preroll-ocean-floor") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.OCEAN_FLOOR, at = 6f) }
     @Test fun prerollAurora() = shoot("tv-preroll-northern-lights") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.NORTHERN_LIGHTS, at = 6f) }
     @Test fun prerollStars() = shoot("tv-preroll-starfield") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.STARFIELD, at = 6f) }
+    @Test fun prerollJellyfish() = shoot("tv-preroll-jellyfish") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.JELLYFISH, at = 3f) }
+    @Test fun prerollAnimals() = shoot("tv-preroll-animals") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.WILD_ANIMALS, at = 8.5f) }
     @Test fun prerollSettings() = shoot("tv-preroll-settings") { c -> dev.nitrate.tv.ui.preroll.PrerollSettingsScreen(c) }
     @Test fun fxEffectsSettings() = shoot("tv-fx-settings") { c -> dev.nitrate.tv.ui.effects.EffectsSettingsScreen(c) }
 

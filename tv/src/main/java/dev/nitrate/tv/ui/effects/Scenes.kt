@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -51,8 +52,13 @@ fun EffectsLayer(theme: PageTheme?, occasion: Occasion?, prefs: EffectsPrefs, mo
     val occasionClip = occasion?.let { dev.nitrate.core.effects.EffectClips.forOccasion(it) }?.takeIf { it.name in shipped && !prefs.reduceMotion && at == null }
     androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
         (occasionClip ?: themeClip)?.let { ClipBand(it, Modifier.align(androidx.compose.ui.Alignment.BottomCenter)) }
+        // No film clip: the app's own photos, if this theme has a set and the build ships it.
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val themePhotos = if (themeClip == null && occasionClip == null && !prefs.reduceMotion)
+            theme?.let { dev.nitrate.core.effects.EffectClips.photosForTheme(it) }?.takeIf { it in remember { shippedPhotoSets(context) } } else null
+        themePhotos?.let { PhotoBand(it, 0.45f, Modifier.align(androidx.compose.ui.Alignment.BottomCenter), at = at) }
         Canvas(Modifier.fillMaxSize()) {
-            if (theme != null && themeClip == null) drawTheme(theme, t, k)
+            if (theme != null && themeClip == null && themePhotos == null) drawTheme(theme, t, k)
             if (occasion != null && occasionClip == null) drawOccasion(occasion, t, k)
         }
     }

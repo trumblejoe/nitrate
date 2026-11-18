@@ -13,7 +13,7 @@ import kotlin.random.Random
  * others are only offered when their clip is there.
  */
 @Serializable
-enum class PrerollScene(val label: String, val detail: String, val clip: String, val drawn: Boolean) {
+enum class PrerollScene(val label: String, val detail: String, val clip: String, val drawn: Boolean, val photos: String? = null) {
     OCEAN_FLOOR("Ocean floor", "Light shafts and drifting life on the sea bed", "preroll-ocean-floor", true),
     NORTHERN_LIGHTS("Northern lights", "Aurora curtains over a still night", "preroll-northern-lights", true),
     STARFIELD("Into the stars", "Flying through a field of stars", "preroll-starfield", true),
@@ -21,6 +21,12 @@ enum class PrerollScene(val label: String, val detail: String, val clip: String,
     JUNGLE("Through the jungle", "Moving through dense rainforest", "preroll-jungle", false),
     AMAZON_RIVER("Down the river", "A small boat on a wide jungle river", "preroll-river", false),
     ABOVE_CLOUDS("Above the clouds", "Gliding over a sea of cloud", "preroll-clouds", false),
+    WILD_ANIMALS("Wild animals", "Tigers, a giraffe, a bear, a gorilla and more, one after another", "preroll-animals", false, photos = "animals"),
+    JELLYFISH("Jellyfish", "Moon jellies glowing in the blue", "preroll-jellyfish", false, photos = "jellyfish"),
+    ;
+
+    /** Whether this build can show it: drawn, or its film clip or photos are there (`photos/<set>` in [shipped]). */
+    fun usable(shipped: Set<String>) = drawn || clip in shipped || (photos != null && "photos/$photos" in shipped)
 }
 
 /** Where the user's own pre-roll videos are: a playlist or a collection on the server. */
@@ -80,7 +86,7 @@ object Prerolls {
     /**
      * The steps in the order they play: a scene, then a verse (or own line) just before the videos,
      * then the server's intros and one of the user's own videos. [shippedClips] says which scene clips
-     * this build has; a scene without its clip only plays if it can be drawn.
+     * (and `photos/<set>` photo sets) this build has; a scene with neither only plays if it can be drawn.
      */
     fun plan(
         prefs: PrerollPrefs,
@@ -90,7 +96,7 @@ object Prerolls {
         random: Random = Random.Default,
         recentVerses: Collection<Poem> = emptyList(),
     ): List<PrerollStep> = buildList {
-        prefs.scenes.filter { it.drawn || it.clip in shippedClips }.randomOrNull(random)?.let { add(PrerollStep.Scene(it)) }
+        prefs.scenes.filter { it.usable(shippedClips) }.randomOrNull(random)?.let { add(PrerollStep.Scene(it)) }
         val lines = prefs.ownLines.map { it.trim() }.filter { it.isNotEmpty() }
         val verse = prefs.verses
         when {

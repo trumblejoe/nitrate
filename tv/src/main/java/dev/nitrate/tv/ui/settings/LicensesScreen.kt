@@ -50,6 +50,8 @@ fun LicensesScreen() {
         OpenSource.components + listOf(
             dev.nitrate.core.OpenSourceComponent("Verses: Hyakunin Isshu", "Public domain", "", "https://archive.org/details/hundredversesfro00fujiuoft",
                 "The classical Japanese tanka shown in the Poetry theme and before titles, in William N. Porter's English translation, A Hundred Verses from Old Japan (Oxford, 1909), which is in the public domain."),
+            dev.nitrate.core.OpenSourceComponent("Effect photos", "Used with permission", "", "https://github.com/trumblejoe/nitrate",
+                "The animal and jellyfish photos in the Safari theme and the Wild animals and Jellyfish scenes were taken by Nitrate's author for the app."),
         ) + if (footage.isEmpty()) emptyList() else listOf(
             dev.nitrate.core.OpenSourceComponent("Effect footage", "Public domain / Creative Commons", "", "https://commons.wikimedia.org",
                 "Film clips in the seasonal and page effects, from Wikimedia Commons, trimmed and looped."),

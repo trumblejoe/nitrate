@@ -230,6 +230,9 @@ object PageThemes {
 data class EffectClip(val name: String, val band: Float)
 
 object EffectClips {
+    /** A theme shown with the app's own photos (when shipped, and no film clip is): the set's name. */
+    fun photosForTheme(theme: PageTheme): String? = if (theme == PageTheme.SAFARI) "animals" else null
+
     fun forTheme(theme: PageTheme): EffectClip? = when (theme) {
         PageTheme.SAFARI -> EffectClip("safari", 0.42f)
         else -> null
