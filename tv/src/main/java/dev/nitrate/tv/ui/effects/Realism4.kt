@@ -194,28 +194,34 @@ internal fun DrawScope.rosesAndThorns(t: Float, k: Float) {
     val h = size.height
     val light = Offset(-0.5f, -0.85f) // from the upper left
     // A dark, warm frame and a pool of red light behind the page.
-    drawRect(Brush.radialGradient(listOf(Color.Transparent, Color(0x99140006), Color(0xEE080002)), center = Offset(w * 0.5f, h * 0.45f), radius = w * 0.72f))
-    glow(Offset(w * 0.5f, h * 0.35f), w * 0.55f, Color(0xFF7A0A1E), 0.18f + 0.04f * sin(t * 0.5f))
+    back {
+        drawRect(Brush.radialGradient(listOf(Color.Transparent, Color(0x99140006), Color(0xEE080002)), center = Offset(w * 0.5f, h * 0.45f), radius = w * 0.72f))
+        glow(Offset(w * 0.5f, h * 0.35f), w * 0.55f, Color(0xFF7A0A1E), 0.18f + 0.04f * sin(t * 0.5f))
+    }
     // Thorny canes arching across the corners, behind the blooms.
-    thornCane(listOf(Offset(-60f, h * 0.25f), Offset(w * 0.08f, h * 0.06f), Offset(w * 0.24f, -20f), Offset(w * 0.32f, -80f)), 9f, t, 1, true)
-    thornCane(listOf(Offset(w + 60f, h * 0.3f), Offset(w * 0.9f, h * 0.08f), Offset(w * 0.74f, -10f), Offset(w * 0.66f, -80f)), 9f, t, 2, true)
-    thornCane(listOf(Offset(-40f, h * 1.05f), Offset(w * 0.06f, h * 0.7f), Offset(w * 0.02f, h * 0.45f), Offset(-30f, h * 0.3f)), 11f, t, 3, true)
-    thornCane(listOf(Offset(w + 40f, h * 1.05f), Offset(w * 0.95f, h * 0.72f), Offset(w * 0.99f, h * 0.5f), Offset(w + 40f, h * 0.35f)), 11f, t, 4, true)
-    thornCane(listOf(Offset(w * 0.18f, h + 30f), Offset(w * 0.35f, h * 0.93f), Offset(w * 0.55f, h * 0.97f), Offset(w * 0.8f, h + 30f)), 8f, t, 5, false)
-    // The blooms: big ones in the lower corners, smaller ones in the upper, all turning very slowly.
-    val sway = sin(t * 0.4f)
-    realRose(Offset(w * 0.07f, h * 0.86f) + Offset(sway * 3f, 0f), h * 0.17f, Color(0xFFB0102C), t * 0.01f, light, 11)
-    realRose(Offset(w * 0.17f, h * 0.99f), h * 0.11f, Color(0xFF8C0A22), 1.3f + t * 0.012f, light, 12)
-    realRose(Offset(w * 0.93f, h * 0.84f) - Offset(sway * 3f, 0f), h * 0.15f, Color(0xFFC21632), 2.2f - t * 0.01f, light, 13)
-    realRose(Offset(w * 0.83f, h * 1.0f), h * 0.1f, Color(0xFF9E0D27), 0.6f, light, 14)
-    realRose(Offset(w * 0.06f, h * 0.12f), h * 0.08f, Color(0xFFA30E28), 0.9f + t * 0.015f, light, 15, dew = false)
-    realRose(Offset(w * 0.94f, h * 0.1f), h * 0.075f, Color(0xFFB8122F), 2.8f, light, 16, dew = false)
-    // Out of focus close to the lens: soft dark-red shapes in the corners.
-    glow(Offset(-w * 0.02f, h * 0.55f), h * 0.32f, Color(0xFF3A0410), 0.75f, additive = false)
-    glow(Offset(w * 1.03f, h * 0.45f), h * 0.3f, Color(0xFF3A0410), 0.7f, additive = false)
-    glow(Offset(w * 0.02f, h * 0.55f), h * 0.18f, Color(0xFFB0102C), 0.12f)
-    // Petals falling, large and curled, catching the light as they turn.
-    fallingPetals(t, k, 18, listOf(Color(0xFFB0102C), Color(0xFF8C0A22), Color(0xFFD0263F)), 1700, 1.8f)
+    mid {
+        thornCane(listOf(Offset(-60f, h * 0.25f), Offset(w * 0.08f, h * 0.06f), Offset(w * 0.24f, -20f), Offset(w * 0.32f, -80f)), 9f, t, 1, true)
+        thornCane(listOf(Offset(w + 60f, h * 0.3f), Offset(w * 0.9f, h * 0.08f), Offset(w * 0.74f, -10f), Offset(w * 0.66f, -80f)), 9f, t, 2, true)
+        thornCane(listOf(Offset(-40f, h * 1.05f), Offset(w * 0.06f, h * 0.7f), Offset(w * 0.02f, h * 0.45f), Offset(-30f, h * 0.3f)), 11f, t, 3, true)
+        thornCane(listOf(Offset(w + 40f, h * 1.05f), Offset(w * 0.95f, h * 0.72f), Offset(w * 0.99f, h * 0.5f), Offset(w + 40f, h * 0.35f)), 11f, t, 4, true)
+        thornCane(listOf(Offset(w * 0.18f, h + 30f), Offset(w * 0.35f, h * 0.93f), Offset(w * 0.55f, h * 0.97f), Offset(w * 0.8f, h + 30f)), 8f, t, 5, false)
+        // The blooms: big ones in the lower corners, smaller ones in the upper, all turning very slowly.
+        val sway = sin(t * 0.4f)
+        realRose(Offset(w * 0.07f, h * 0.86f) + Offset(sway * 3f, 0f), h * 0.17f, Color(0xFFB0102C), t * 0.01f, light, 11)
+        realRose(Offset(w * 0.17f, h * 0.99f), h * 0.11f, Color(0xFF8C0A22), 1.3f + t * 0.012f, light, 12)
+        realRose(Offset(w * 0.93f, h * 0.84f) - Offset(sway * 3f, 0f), h * 0.15f, Color(0xFFC21632), 2.2f - t * 0.01f, light, 13)
+        realRose(Offset(w * 0.83f, h * 1.0f), h * 0.1f, Color(0xFF9E0D27), 0.6f, light, 14)
+        realRose(Offset(w * 0.06f, h * 0.12f), h * 0.08f, Color(0xFFA30E28), 0.9f + t * 0.015f, light, 15, dew = false)
+        realRose(Offset(w * 0.94f, h * 0.1f), h * 0.075f, Color(0xFFB8122F), 2.8f, light, 16, dew = false)
+        // Out of focus close to the lens: soft dark-red shapes in the corners (big and dark, so behind the rows).
+        glow(Offset(-w * 0.02f, h * 0.55f), h * 0.32f, Color(0xFF3A0410), 0.75f, additive = false)
+        glow(Offset(w * 1.03f, h * 0.45f), h * 0.3f, Color(0xFF3A0410), 0.7f, additive = false)
+    }
+    front {
+        glow(Offset(w * 0.02f, h * 0.55f), h * 0.18f, Color(0xFFB0102C), 0.12f)
+        // Petals falling, large and curled, catching the light as they turn.
+        fallingPetals(t, k, 18, listOf(Color(0xFFB0102C), Color(0xFF8C0A22), Color(0xFFD0263F)), 1700, 1.8f)
+    }
 }
 
 // =====================================================================================
@@ -287,68 +293,75 @@ internal fun DrawScope.flowerGarden(t: Float, k: Float) {
     val h = size.height
     val sun = Offset(w * 0.18f, h * 0.2f)
     // Golden-hour sky glow and haze over the lower page; the sun low on the left, a veil of rays.
-    glow(sun, h * 1.2f, Color(0xFFFFB45A), 0.28f)
-    glow(sun, h * 0.22f, Color(0xFFFFF2D0), 0.75f)
-    glow(sun, h * 0.05f, Color.White, 0.9f)
-    // Light through the haze: a few broad, soft-edged beams, each built of widening faint layers.
-    for (r in 0 until 3) {
-        val a = 0.25f + r * 0.22f + sin(t * 0.05f + r) * 0.02f
-        val end = sun + Offset(cos(a), sin(a)) * w * 1.3f
-        for (layer in 1..8) {
-            val side = Offset(-sin(a), cos(a)) * (24f + r * 8f) * layer.toFloat()
-            drawPath(Path().apply { moveTo(sun.x, sun.y); lineTo(end.x + side.x, end.y + side.y); lineTo(end.x - side.x, end.y - side.y); close() },
-                Brush.linearGradient(listOf(Color(0x09FFE0A0), Color.Transparent), start = sun, end = end), blendMode = BlendMode.Plus)
-        }
-    }
-    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55E8B070), Color(0x88302010)), startY = h * 0.55f))
-    // Far: the meadow dissolving into haze, specks of colour.
-    for (i in 0 until 160) {
-        val x = rnd(i, 1800) * w
-        val y = h * (0.7f + rnd(i, 1801) * 0.08f)
-        val col = listOf(Color(0xFFF4E2C8), Color(0xFFF0A890), Color(0xFFE8D0F0), Color(0xFFFFF0B0))[i % 4]
-        drawCircle(col.copy(alpha = 0.45f), 1.6f + rnd(i, 1802) * 2f, Offset(x, y))
-    }
-    // Three ranks, nearer = larger, sharper and stronger in colour.
-    for (rank in 0 until 3) {
-        val haze = 0.6f - rank * 0.28f
-        val scale = 0.6f + rank * 0.55f
-        val baseY = h * (0.8f + rank * 0.08f)
-        // Grass first, then flowers standing in it.
-        for (g in 0 until 140 - rank * 30) {
-            val id = g + rank * 1000
-            val x = rnd(id, 1810) * (w + 40f) - 20f
-            val sway = sin(t * 1.1f + x * 0.01f + rank) * 6f * scale + (fbm(t * 0.25f + x * 0.003f, 1811) - 0.5f) * 12f * scale
-            blade(Offset(x, baseY + rnd(id, 1812) * 20f), (40f + rnd(id, 1813) * 70f) * scale, sway + (rnd(id, 1814) - 0.5f) * 30f * scale, 2.2f * scale, haze.coerceAtLeast(0f))
-        }
-        for (i in 0 until 24 - rank * 7) {
-            val id = i + rank * 500
-            val x = w * (i + rnd(id, 1820) * 0.9f) / (24 - rank * 7)
-            val hgt = h * (0.1f + rnd(id, 1821) * 0.12f) * scale
-            val sway = sin(t * 0.8f + x * 0.008f + rank) * 9f * scale + (fbm(t * 0.2f + x * 0.002f, 1822) - 0.5f) * 14f * scale
-            val root = Offset(x, baseY + 20f)
-            val head = root + Offset(sway, -hgt)
-            val stem = Path().apply { moveTo(root.x, root.y); quadraticBezierTo(root.x + sway * 0.1f, root.y - hgt * 0.5f, head.x, head.y) }
-            drawPath(stem, lerp(Color(0xFF2E4A1E), Color(0xFF9AA082), haze.coerceAtLeast(0f)), style = Stroke(2.4f * scale))
-            if (rnd(id, 1823) < 0.55f) {
-                meadowBloom(head, 26f * scale, listOf(Color(0xFFF2F0F4), Color(0xFFF07AA8), Color(0xFFD94A7A))[i % 3], rnd(id, 1824) * TAU + t * 0.02f, rnd(id, 1825) * 0.6f, haze.coerceAtLeast(0f))
-            } else {
-                poppyCup(head, 24f * scale, haze.coerceAtLeast(0f), sway * 0.6f)
+    back {
+        glow(sun, h * 1.2f, Color(0xFFFFB45A), 0.28f)
+        glow(sun, h * 0.22f, Color(0xFFFFF2D0), 0.75f)
+        glow(sun, h * 0.05f, Color.White, 0.9f)
+        // Light through the haze: a few broad, soft-edged beams, each built of widening faint layers.
+        for (r in 0 until 3) {
+            val a = 0.25f + r * 0.22f + sin(t * 0.05f + r) * 0.02f
+            val end = sun + Offset(cos(a), sin(a)) * w * 1.3f
+            for (layer in 1..8) {
+                val side = Offset(-sin(a), cos(a)) * (24f + r * 8f) * layer.toFloat()
+                drawPath(Path().apply { moveTo(sun.x, sun.y); lineTo(end.x + side.x, end.y + side.y); lineTo(end.x - side.x, end.y - side.y); close() },
+                    Brush.linearGradient(listOf(Color(0x09FFE0A0), Color.Transparent), start = sun, end = end), blendMode = BlendMode.Plus)
             }
         }
-        // Haze settling between the ranks.
-        if (rank < 2) drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x33F0C890), Color.Transparent), startY = baseY - h * 0.08f, endY = baseY + h * 0.06f))
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55E8B070), Color(0x88302010)), startY = h * 0.55f))
+        // Far: the meadow dissolving into haze, specks of colour.
+        for (i in 0 until 160) {
+            val x = rnd(i, 1800) * w
+            val y = h * (0.7f + rnd(i, 1801) * 0.08f)
+            val col = listOf(Color(0xFFF4E2C8), Color(0xFFF0A890), Color(0xFFE8D0F0), Color(0xFFFFF0B0))[i % 4]
+            drawCircle(col.copy(alpha = 0.45f), 1.6f + rnd(i, 1802) * 2f, Offset(x, y))
+        }
     }
-    // Out of focus right in front of the lens: big soft blooms and blades in the corners.
-    glow(Offset(w * 0.03f, h * 0.98f), h * 0.2f, Color(0xFFE0301A), 0.45f, additive = false)
-    glow(Offset(w * 0.12f, h * 1.02f), h * 0.16f, Color(0xFFF07AA8), 0.35f, additive = false)
-    glow(Offset(w * 0.96f, h * 0.97f), h * 0.22f, Color(0xFF2E4A1E), 0.6f, additive = false)
-    glow(Offset(w * 0.9f, h * 1.02f), h * 0.14f, Color(0xFFF2F0F4), 0.3f, additive = false)
-    // Pollen and seed fluff drifting through the light.
-    for (i in 0 until (70 * k).toInt()) {
-        val x = frac(rnd(i, 1830) + t * 0.008f * (0.5f + rnd(i, 1831))) * w
-        val y = h * (0.25f + rnd(i, 1832) * 0.6f) + sin(t * 0.7f + i) * 20f
-        val near = rnd(i, 1833)
-        glow(Offset(x, y), 3f + near * 9f, Color(0xFFFFE7B0), 0.35f + 0.4f * near)
+    mid {
+        // Three ranks, nearer = larger, sharper and stronger in colour.
+        for (rank in 0 until 3) {
+            val haze = 0.6f - rank * 0.28f
+            val scale = 0.6f + rank * 0.55f
+            val baseY = h * (0.8f + rank * 0.08f)
+            // Grass first, then flowers standing in it.
+            for (g in 0 until 140 - rank * 30) {
+                val id = g + rank * 1000
+                val x = rnd(id, 1810) * (w + 40f) - 20f
+                val sway = sin(t * 1.1f + x * 0.01f + rank) * 6f * scale + (fbm(t * 0.25f + x * 0.003f, 1811) - 0.5f) * 12f * scale
+                blade(Offset(x, baseY + rnd(id, 1812) * 20f), (40f + rnd(id, 1813) * 70f) * scale, sway + (rnd(id, 1814) - 0.5f) * 30f * scale, 2.2f * scale, haze.coerceAtLeast(0f))
+            }
+            for (i in 0 until 24 - rank * 7) {
+                val id = i + rank * 500
+                val x = w * (i + rnd(id, 1820) * 0.9f) / (24 - rank * 7)
+                val hgt = h * (0.1f + rnd(id, 1821) * 0.12f) * scale
+                val sway = sin(t * 0.8f + x * 0.008f + rank) * 9f * scale + (fbm(t * 0.2f + x * 0.002f, 1822) - 0.5f) * 14f * scale
+                val root = Offset(x, baseY + 20f)
+                val head = root + Offset(sway, -hgt)
+                val stem = Path().apply { moveTo(root.x, root.y); quadraticBezierTo(root.x + sway * 0.1f, root.y - hgt * 0.5f, head.x, head.y) }
+                drawPath(stem, lerp(Color(0xFF2E4A1E), Color(0xFF9AA082), haze.coerceAtLeast(0f)), style = Stroke(2.4f * scale))
+                if (rnd(id, 1823) < 0.55f) {
+                    meadowBloom(head, 26f * scale, listOf(Color(0xFFF2F0F4), Color(0xFFF07AA8), Color(0xFFD94A7A))[i % 3], rnd(id, 1824) * TAU + t * 0.02f, rnd(id, 1825) * 0.6f, haze.coerceAtLeast(0f))
+                } else {
+                    poppyCup(head, 24f * scale, haze.coerceAtLeast(0f), sway * 0.6f)
+                }
+            }
+            // Haze settling between the ranks.
+            if (rank < 2) drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x33F0C890), Color.Transparent), startY = baseY - h * 0.08f, endY = baseY + h * 0.06f))
+        }
+        // Out of focus right in front of the lens: big soft blooms and blades in the corners.
+        // (Big and fairly opaque, so drawn with the meadow behind the rows.)
+        glow(Offset(w * 0.03f, h * 0.98f), h * 0.2f, Color(0xFFE0301A), 0.45f, additive = false)
+        glow(Offset(w * 0.96f, h * 0.97f), h * 0.22f, Color(0xFF2E4A1E), 0.6f, additive = false)
+    }
+    front {
+        glow(Offset(w * 0.12f, h * 1.02f), h * 0.16f, Color(0xFFF07AA8), 0.35f, additive = false)
+        glow(Offset(w * 0.9f, h * 1.02f), h * 0.14f, Color(0xFFF2F0F4), 0.3f, additive = false)
+        // Pollen and seed fluff drifting through the light.
+        for (i in 0 until (70 * k).toInt()) {
+            val x = frac(rnd(i, 1830) + t * 0.008f * (0.5f + rnd(i, 1831))) * w
+            val y = h * (0.25f + rnd(i, 1832) * 0.6f) + sin(t * 0.7f + i) * 20f
+            val near = rnd(i, 1833)
+            glow(Offset(x, y), 3f + near * 9f, Color(0xFFFFE7B0), 0.35f + 0.4f * near)
+        }
     }
 }
 

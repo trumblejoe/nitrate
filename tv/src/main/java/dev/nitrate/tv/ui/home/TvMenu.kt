@@ -591,14 +591,21 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     val style = if (prefs.tvMenu == TvMenuStyle.FADE) TvMenuStyle.TOP else prefs.tvMenu
     val theme = dev.nitrate.core.effects.PageThemes.pageKeyFor(current)?.let { prefs.pageThemes[it] }
     val occasion = dev.nitrate.tv.ui.effects.rememberOccasion(prefs.effects)
+    val themed = !prefs.easyMode
     TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
-        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
-            content(insets)
-            // The page's theme and the day's occasion, over the page but under the menu (kept clear of
-            // where the menu sits, so it always stands out; never in the player: it isn't a menu page).
-            if (!prefs.easyMode) {
-                dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects,
-                    Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom))
+        // The page's theme and the day's occasion, in layers around the page (kept clear of where the
+        // menu sits; never in the player: it isn't a menu page): its back and middle behind the rows,
+        // drawn by the page just over its own backdrop (ThemeBehindSlot), or under the whole page when
+        // it has none; its front over the page.
+        val clear = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)
+        val behind = remember { dev.nitrate.tv.ui.effects.ThemeBehind() }
+        behind.active = themed && prefs.effects.on && ((theme != null && theme != dev.nitrate.core.effects.PageTheme.NONE) || occasion != null)
+        behind.draw = { m -> if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, m.then(clear), depths = dev.nitrate.tv.ui.effects.BEHIND) }
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalThemeBehind provides behind) {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                if (behind.claims == 0) behind.draw(Modifier.fillMaxSize())
+                content(insets)
+                if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.INFRONT)
             }
         }
     }

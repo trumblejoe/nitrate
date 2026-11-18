@@ -150,6 +150,8 @@ fun FullArtPage(
             .focusable(),
     ) {
         Backdrop(repository.backdropUrl(item), Modifier.fillMaxSize())
+        // The page's theme, over the picture and under the title and controls.
+        dev.nitrate.tv.ui.effects.ThemeBehindSlot()
 
         val pad = Modifier.padding(start = 58.dp + insets.start, end = 58.dp + insets.end)
         // Which row this is, top left, as a quiet label.

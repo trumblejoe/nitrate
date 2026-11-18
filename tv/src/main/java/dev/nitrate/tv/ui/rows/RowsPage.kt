@@ -121,6 +121,8 @@ fun RowsPage(
     LaunchedEffect(styleNote) { if (styleNote != null) { kotlinx.coroutines.delay(2_500); styleNote = null } }
     Box(modifier.fillMaxSize()) {
         if (activeShowcase == null) Backdrop(focused?.let(repository::backdropUrl), Modifier.fillMaxSize())
+        // The page's theme, behind the rows and over the title's picture.
+        dev.nitrate.tv.ui.effects.ThemeBehindSlot()
         androidx.compose.animation.AnimatedVisibility(
             visible = styleNote != null, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = RowPadding).zIndex(2f),

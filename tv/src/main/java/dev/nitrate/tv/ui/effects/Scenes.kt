@@ -45,26 +45,30 @@ import kotlin.math.sin
  * linework drawn in code. ~30 frames a second; with "Reduce motion" a still frame.
  */
 @Composable
-fun EffectsLayer(theme: PageTheme?, occasion: Occasion?, prefs: EffectsPrefs, modifier: Modifier = Modifier, at: Float? = null) {
+fun EffectsLayer(theme: PageTheme?, occasion: Occasion?, prefs: EffectsPrefs, modifier: Modifier = Modifier, at: Float? = null, depths: Set<Depth>? = null) {
     if (!prefs.on || (theme == null || theme == PageTheme.NONE) && occasion == null) return
+    // Film and photos are the scene's back: only in the pass that draws it.
+    val backPass = depths == null || Depth.BACK in depths
     val k = prefs.intensity.scale
     // Real subjects play as film when this build has the clip (and not with Reduce motion), else drawn.
     val shipped = rememberShippedClips()
     val themeClip = theme?.let { dev.nitrate.core.effects.EffectClips.forTheme(it) }?.takeIf { it.name in shipped && !prefs.reduceMotion && at == null }
     val occasionClip = occasion?.let { dev.nitrate.core.effects.EffectClips.forOccasion(it) }?.takeIf { it.name in shipped && !prefs.reduceMotion && at == null }
     androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
-        (occasionClip ?: themeClip)?.let { ClipBand(it, Modifier.align(androidx.compose.ui.Alignment.BottomCenter)) }
+        if (backPass) (occasionClip ?: themeClip)?.let { ClipBand(it, Modifier.align(androidx.compose.ui.Alignment.BottomCenter)) }
         // No film clip: the app's own photos, if this theme has a set and the build ships it.
         val context = androidx.compose.ui.platform.LocalContext.current
         val themePhotos = if (themeClip == null && occasionClip == null && !prefs.reduceMotion)
             theme?.let { dev.nitrate.core.effects.EffectClips.photosForTheme(it) }?.takeIf { it in remember { shippedPhotoSets(context) } } else null
-        themePhotos?.let { PhotoBand(it, 0.45f, Modifier.align(androidx.compose.ui.Alignment.BottomCenter), at = at) }
+        if (backPass) themePhotos?.let { PhotoBand(it, 0.45f, Modifier.align(androidx.compose.ui.Alignment.BottomCenter), at = at) }
         val drawTheme = theme != null && themeClip == null && themePhotos == null
         val drawOccasion = occasion != null && occasionClip == null
         if (drawTheme || drawOccasion) {
-            DrawnScene(theme to occasion, at = at, still = prefs.reduceMotion) { t ->
-                if (drawTheme) drawTheme(theme!!, t, k)
-                if (drawOccasion) drawOccasion(occasion!!, t, k)
+            DrawnScene(Triple(theme, occasion, depths), at = at, still = prefs.reduceMotion) { t ->
+                Pass.with(depths) {
+                    if (drawTheme) drawTheme(theme!!, t, k)
+                    if (drawOccasion) drawOccasion(occasion!!, t, k)
+                }
             }
         }
     }
@@ -225,15 +229,19 @@ private fun DrawScope.drawTheme(theme: PageTheme, t: Float, k: Float) {
         PageTheme.NONE -> Unit
         PageTheme.THUNDERSTORM -> thunderstorm(t, k)
         PageTheme.SAFARI -> {
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55E07A2E), Color(0x99582812)), startY = h * 0.62f), topLeft = Offset(0f, h * 0.62f), size = Size(w, h * 0.38f))
-            drawCircle(Color(0x66FFB45A), radius = h * 0.11f, center = Offset(w * 0.78f, h * 0.84f))
+            back {
+                drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55E07A2E), Color(0x99582812)), startY = h * 0.62f), topLeft = Offset(0f, h * 0.62f), size = Size(w, h * 0.38f))
+                drawCircle(Color(0x66FFB45A), radius = h * 0.11f, center = Offset(w * 0.78f, h * 0.84f))
+            }
             val ground = h * 0.93f
-            drawRect(Color(0xCC2A1608), topLeft = Offset(0f, ground), size = Size(w, h - ground))
-            acacia(Offset(w * 0.12f, ground), h * 0.16f)
-            acacia(Offset(w * 0.9f, ground), h * 0.12f)
-            crossing(t, 46f, w, 200f, 1)?.let { x -> giraffe(Offset(x, ground), h * 0.2f, t) }
-            crossing(t, 38f, w, 220f, -1, 14f)?.let { x -> elephant(Offset(x, ground), h * 0.11f, t) }
-            crossing(t, 30f, w, 120f, 1, 7f)?.let { x -> zebraish(Offset(x, ground), h * 0.07f, t) }
+            mid {
+                drawRect(Color(0xCC2A1608), topLeft = Offset(0f, ground), size = Size(w, h - ground))
+                acacia(Offset(w * 0.12f, ground), h * 0.16f)
+                acacia(Offset(w * 0.9f, ground), h * 0.12f)
+                crossing(t, 46f, w, 200f, 1)?.let { x -> giraffe(Offset(x, ground), h * 0.2f, t) }
+                crossing(t, 38f, w, 220f, -1, 14f)?.let { x -> elephant(Offset(x, ground), h * 0.11f, t) }
+                crossing(t, 30f, w, 120f, 1, 7f)?.let { x -> zebraish(Offset(x, ground), h * 0.07f, t) }
+            }
         }
         PageTheme.DEEP_SPACE -> deepSpace(t, k)
         PageTheme.UNDERWATER -> underwater(t, k)
@@ -255,7 +263,7 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
     val w = size.width
     val h = size.height
     when (o) {
-        Occasion.WINTER -> snow(t, k, 71)
+        Occasion.WINTER -> realSnow(t, k, 71, layered = true)
         Occasion.CHRISTMAS -> christmas(t, k)
         Occasion.FESTIVUS -> {
             festivusPole(t)
@@ -263,7 +271,7 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
             val life = (t - c * 6f) / 5f
             if (life in 0f..1f) {
                 val words = listOf("I got a lot of problems with you people!", "Feats of strength!", "A Festivus for the rest of us!", "The airing of grievances")
-                drawWord(words[c.mod(words.size)], Offset(w * 0.5f, h * 0.1f), 30f, Color(0xFFF2F4F7).copy(alpha = (1 - abs(life - 0.5f) * 2).coerceIn(0f, 1f)))
+                mid { drawWord(words[c.mod(words.size)], Offset(w * 0.5f, h * 0.1f), 30f, Color(0xFFF2F4F7).copy(alpha = (1 - abs(life - 0.5f) * 2).coerceIn(0f, 1f))) }
             }
         }
         Occasion.NEW_YEAR -> newYear(t, k)
@@ -271,15 +279,15 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
         Occasion.ST_PATRICKS -> shamrocks(t, k)
         Occasion.ARMY_BIRTHDAY -> {
             val ground = h * 0.95f
-            for (j in 0 until 2) crossing(t, 26f, w, 220f, 1, j * 12f)?.let { x -> tank(Offset(x, ground), 1f) }
-            shellBursts(t, k, 111, ground)
+            mid { for (j in 0 until 2) crossing(t, 26f, w, 220f, 1, j * 12f)?.let { x -> tank(Offset(x, ground), 1f) } }
+            back { shellBursts(t, k, 111, ground) }
         }
         Occasion.INDEPENDENCE_DAY -> {
-            fireworkShow(t, k, listOf(Color(0xFFFF3B4E), Color(0xFFF4F6FF), Color(0xFF3D6BFF)), 121, floorY = 0.5f)
+            back { fireworkShow(t, k, listOf(Color(0xFFFF3B4E), Color(0xFFF4F6FF), Color(0xFF3D6BFF)), 121, floorY = 0.5f) }
         }
         Occasion.AIR_FORCE_BIRTHDAY -> {
             val ground = h * 0.97f
-            for (j in 0 until 3) {
+            mid { for (j in 0 until 3) {
                 val period = 14f + j * 3
                 val phase = j * 4f
                 crossing(t, period, w, 160f, 1, phase)?.let { x ->
@@ -298,22 +306,24 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
                         }
                     }
                 }
-            }
-            shellBursts(t, k, 131, ground)
+            } }
+            back { shellBursts(t, k, 131, ground) }
         }
         Occasion.NAVY_BIRTHDAY -> {
             val sea = h * 0.93f
-            drawRect(Color(0x66103050), topLeft = Offset(0f, sea), size = Size(w, h - sea))
-            for (j in 0 until 2) crossing(t, 34f, w, 260f, if (j == 0) 1 else -1, j * 15f)?.let { x ->
-                battleship(Offset(x, sea), if (j == 0) 1 else -1)
-                val c = frac(t / 2.5f + j * 0.4f)
-                if (c < 0.25f) drawCircle(Color(0xAAE0E0E0).copy(alpha = 0.6f * (1 - c * 4)), radius = 20f + c * 120f, center = Offset(x + 90f * (if (j == 0) 1 else -1), sea - 60f))
+            mid {
+                drawRect(Color(0x66103050), topLeft = Offset(0f, sea), size = Size(w, h - sea))
+                for (j in 0 until 2) crossing(t, 34f, w, 260f, if (j == 0) 1 else -1, j * 15f)?.let { x ->
+                    battleship(Offset(x, sea), if (j == 0) 1 else -1)
+                    val c = frac(t / 2.5f + j * 0.4f)
+                    if (c < 0.25f) drawCircle(Color(0xAAE0E0E0).copy(alpha = 0.6f * (1 - c * 4)), radius = 20f + c * 120f, center = Offset(x + 90f * (if (j == 0) 1 else -1), sea - 60f))
+                }
             }
         }
         Occasion.MARINE_CORPS_BIRTHDAY -> {
             // Down range: the nests face us, tracers coming out of the screen.
             val ground = h
-            for (n in 0 until 3) {
+            mid { for (n in 0 until 3) {
                 val c = Offset(w * (0.2f + n * 0.3f), ground)
                 drawArc(Color(0xEE6B5A3C), 180f, 180f, true, topLeft = Offset(c.x - 150f, c.y - 80f), size = Size(300f, 160f))
                 for (s in 0 until 6) drawOval(Color(0xFFA08C64), topLeft = Offset(c.x - 150f + s * 50f, c.y - 92f), size = Size(54f, 26f))
@@ -331,23 +341,27 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
                     val b = Offset(c.x + dir.x * (p + 0.08f), c.y - 112f + dir.y * (p + 0.08f))
                     drawLine(Color(0xFFFFB300).copy(alpha = 0.9f), a, b, strokeWidth = 2f + p * 7f, cap = StrokeCap.Round)
                 }
-            }
+            } }
         }
         Occasion.VETERANS_DAY -> {
-            waveFlag(Offset(30f, 30f), 220f, 120f, t)
-            waveFlag(Offset(w - 250f, 30f), 220f, 120f, t + 1f)
-            fallers(count(20, k), t, 40f, 151) { p, r, _ -> star(p, 6f + r * 6f, Color(0x99FFFFFF)) }
+            back {
+                waveFlag(Offset(30f, 30f), 220f, 120f, t)
+                waveFlag(Offset(w - 250f, 30f), 220f, 120f, t + 1f)
+            }
+            mid { fallers(count(20, k), t, 40f, 151) { p, r, _ -> star(p, 6f + r * 6f, Color(0x99FFFFFF)) } }
         }
         Occasion.THANKSGIVING -> autumn(t, k)
         Occasion.LABOR_DAY -> laborDay(t, k)
         Occasion.EASTER -> {
             val ground = h
-            for (b in 0 until 3) crossing(t, 16f + b * 4, w, 60f, if (b % 2 == 0) 1 else -1, b * 5f)?.let { x ->
-                val hop = abs(sin(t * 3.2f + b)) * 60f
-                rabbit(Offset(x, ground - hop), 30f, if (b % 2 == 0) 1 else -1)
+            mid {
+                for (b in 0 until 3) crossing(t, 16f + b * 4, w, 60f, if (b % 2 == 0) 1 else -1, b * 5f)?.let { x ->
+                    val hop = abs(sin(t * 3.2f + b)) * 60f
+                    rabbit(Offset(x, ground - hop), 30f, if (b % 2 == 0) 1 else -1)
+                }
+                val eggs = listOf(Color(0xCCF8BBD0), Color(0xCCB3E5FC), Color(0xCCFFF59D), Color(0xCCC8E6C9))
+                for (e in 0 until 9) drawOval(eggs[e % 4], topLeft = Offset(w * (e + 0.5f) / 9f - 14f, ground - 40f), size = Size(28f, 38f))
             }
-            val eggs = listOf(Color(0xCCF8BBD0), Color(0xCCB3E5FC), Color(0xCCFFF59D), Color(0xCCC8E6C9))
-            for (e in 0 until 9) drawOval(eggs[e % 4], topLeft = Offset(w * (e + 0.5f) / 9f - 14f, ground - 40f), size = Size(28f, 38f))
         }
         Occasion.HALLOWEEN -> halloween(t, k)
     }
@@ -638,5 +652,5 @@ private fun DrawScope.pumpkin(c: Offset, s: Float, t: Float) {
 }
 
 
-internal fun DrawScope.drawThemeForTest(theme: PageTheme, t: Float, k: Float) = drawTheme(theme, t, k)
-internal fun DrawScope.drawOccasionForTest(o: Occasion, t: Float, k: Float) = drawOccasion(o, t, k)
+internal fun DrawScope.drawThemeForTest(theme: PageTheme, t: Float, k: Float, depths: Set<Depth>? = null) = Pass.with(depths) { drawTheme(theme, t, k) }
+internal fun DrawScope.drawOccasionForTest(o: Occasion, t: Float, k: Float, depths: Set<Depth>? = null) = Pass.with(depths) { drawOccasion(o, t, k) }

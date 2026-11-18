@@ -98,15 +98,15 @@ internal fun DrawScope.verse(poem: Poem, at: Offset, alpha: Float, sizePx: Float
 internal fun DrawScope.poetry(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    inkMountains(t)
-    fallingPetals(t, k, 26, listOf(Color(0xFFF7C6D0), Color(0xFFF2AFC0), Color(0xFFFFE3EA)), 1420, 0.75f)
+    back { inkMountains(t) }
+    front { fallingPetals(t, k, 26, listOf(Color(0xFFF7C6D0), Color(0xFFF2AFC0), Color(0xFFFFE3EA)), 1420, 0.75f) }
     // One verse at a time: 3 s in, ~22 s up, 3 s out.
     val cycle = 30f
     val n = floor(t / cycle).toLong()
     val u = t - n * cycle
     val alpha = when { u < 3f -> u / 3f; u > cycle - 3f -> (cycle - u) / 3f; else -> 1f }
     val poem = dev.nitrate.core.poetry.Poems.at((n + (System.currentTimeMillis() / 86_400_000L)) * 30_000L)
-    verse(poem, Offset(w - 600f, h * 0.6f), alpha * 0.92f, 30f, android.graphics.Paint.Align.LEFT)
+    mid { verse(poem, Offset(w - 600f, h * 0.6f), alpha * 0.92f, 30f, android.graphics.Paint.Align.LEFT) }
 }
 
 // ---- Drawn pre-roll scenes (full screen, opaque) ----

@@ -95,7 +95,8 @@ internal fun DrawScope.cloudDeck(t: Float, depth: Float, lit: Float = 0f, litAt:
 }
 
 /** Rain in three depths, slanted by a gusting wind, splashes and spray along the bottom. */
-internal fun DrawScope.rain(t: Float, k: Float, salt: Int = 400) {
+/** [layered]: far drops behind, middle ones in the middle, the few nearest in front (callers then don't gate it). */
+internal fun DrawScope.rain(t: Float, k: Float, salt: Int = 400, layered: Boolean = false) {
     val w = size.width
     val h = size.height
     val wind = 0.16f + (fbm(t * 0.15f, salt) - 0.5f) * 0.18f
@@ -115,12 +116,14 @@ internal fun DrawScope.rain(t: Float, k: Float, salt: Int = 400) {
             val y = p - l.len
             val x = (rnd(id, salt + 2) * (w + 400f) - 200f + p * wind) % (w + 200f)
             val dx = l.len * wind
-            drawLine(color.copy(alpha = l.alpha * 0.35f), Offset(x - dx, y - l.len), Offset(x - dx * 0.4f, y - l.len * 0.4f), l.width, StrokeCap.Round)
-            drawLine(color.copy(alpha = l.alpha), Offset(x - dx * 0.4f, y - l.len * 0.4f), Offset(x, y), l.width, StrokeCap.Round)
+            atDepth(layered, li) {
+                drawLine(color.copy(alpha = l.alpha * 0.35f), Offset(x - dx, y - l.len), Offset(x - dx * 0.4f, y - l.len * 0.4f), l.width, StrokeCap.Round)
+                drawLine(color.copy(alpha = l.alpha), Offset(x - dx * 0.4f, y - l.len * 0.4f), Offset(x, y), l.width, StrokeCap.Round)
+            }
         }
     }
-    // Gusts: broad sheets of heavier rain sweeping across.
-    for (g in 0 until 3) {
+    // Gusts: broad sheets of heavier rain sweeping across (far off).
+    if (!layered || Pass.on(Depth.BACK)) for (g in 0 until 3) {
         val x = ((t * (120f + g * 40f) + g * 700f) % (w + 1200f)) - 600f
         drawRect(
             Brush.horizontalGradient(listOf(Color.Transparent, Color(0x14C8D8F0), Color.Transparent), startX = x, endX = x + 600f),
@@ -194,16 +197,19 @@ internal fun DrawScope.thunderstorm(t: Float, k: Float) {
     val sheetPhase = (t * 0.37f) % 1f
     val sheet = if (sheetPhase < 0.03f) 0.35f * (1 - sheetPhase / 0.03f) else 0f
     val sheetAt = Offset(w * noise(floor(t * 0.37f), 77), h * 0.1f)
-    cloudDeck(t, h * 0.42f, lit = max(env, sheet), litAt = if (env > 0f) top else sheetAt)
-    if (env > 0f) {
-        drawRect(Color(0xFFCAD6FF).copy(alpha = 0.10f * env), blendMode = BlendMode.Plus)
-        glow(top, h * 0.9f, Color(0xFF9FB4FF), alpha = 0.35f * env)
-        if (u < 0.45f) {
-            val ground = Offset(top.x + (rnd(cycle, 8) - 0.5f) * w * 0.35f, h * (0.75f + rnd(cycle, 9) * 0.25f))
-            lightning(boltSegments(top, ground, cycle * 97 + 11), env)
+    back {
+        cloudDeck(t, h * 0.42f, lit = max(env, sheet), litAt = if (env > 0f) top else sheetAt)
+        if (env > 0f) {
+            drawRect(Color(0xFFCAD6FF).copy(alpha = 0.10f * env), blendMode = BlendMode.Plus)
+            glow(top, h * 0.9f, Color(0xFF9FB4FF), alpha = 0.35f * env)
+            if (u < 0.45f) {
+                val ground = Offset(top.x + (rnd(cycle, 8) - 0.5f) * w * 0.35f, h * (0.75f + rnd(cycle, 9) * 0.25f))
+                lightning(boltSegments(top, ground, cycle * 97 + 11), env)
+            }
         }
     }
-    rain(t, k)
+    // Dense, with its depths inside the helper: kept behind the cards.
+    rain(t, k, layered = true)
 }
 
 // ---- Fireworks ----
@@ -288,7 +294,8 @@ internal fun DrawScope.fireworkShow(t: Float, k: Float, palette: List<Color>, sa
 // ---- Snow ----
 
 /** Snow in depth: far specks, mid flakes and a few big soft out-of-focus ones close by, on a wandering breeze. */
-internal fun DrawScope.realSnow(t: Float, k: Float, salt: Int = 600) {
+/** [layered]: far flakes behind, middle ones in the middle, the few big near ones in front (callers then don't gate it). */
+internal fun DrawScope.realSnow(t: Float, k: Float, salt: Int = 600, layered: Boolean = false) {
     val w = size.width
     val h = size.height
     val breeze = (fbm(t * 0.08f, salt) - 0.5f) * 80f
@@ -306,8 +313,10 @@ internal fun DrawScope.realSnow(t: Float, k: Float, salt: Int = 600) {
             val y = (rnd(id, salt + 1) * span + t * speed) % span - 30f
             val sway = (fbm(t * 0.3f + id * 0.37f, salt + 2) - 0.5f) * 70f * (1 + li)
             val x = ((rnd(id, salt + 3) * w + sway + breeze * (1 + li) * t * 0.02f) % w + w) % w
-            if (l.soft) glow(Offset(x, y), l.r * 2.2f, Color.White, l.alpha, additive = false)
-            else drawCircle(Color.White.copy(alpha = l.alpha * (0.6f + 0.4f * rnd(id, salt + 4))), l.r, Offset(x, y))
+            atDepth(layered, li) {
+                if (l.soft) glow(Offset(x, y), l.r * 2.2f, Color.White, l.alpha, additive = false)
+                else drawCircle(Color.White.copy(alpha = l.alpha * (0.6f + 0.4f * rnd(id, salt + 4))), l.r, Offset(x, y))
+            }
         }
     }
 }
@@ -370,17 +379,21 @@ internal fun DrawScope.pineTree(base: Offset, height: Float, seed: Int, haze: Fl
 internal fun DrawScope.snowyForest(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x553C4C66)), startY = h * 0.55f))
+    back { drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x553C4C66)), startY = h * 0.55f)) }
     for (rank in 0 until 3) {
         val haze = 0.75f - rank * 0.35f
         val count = 16 - rank * 4
-        for (i in 0 until count) {
-            val x = w * (i + rnd(i, 700 + rank) * 0.8f) / (count - 1f) - 40f
-            val hgt = h * (0.18f + rank * 0.07f) * (0.8f + rnd(i, 710 + rank) * 0.45f)
-            pineTree(Offset(x, h + 8f - rank * 2f), hgt, i * 13 + rank * 101, haze.coerceAtLeast(0f))
+        // The far rank (and the mist over it) is distant scenery; the nearer ranks are the subject.
+        val drawRank = {
+            for (i in 0 until count) {
+                val x = w * (i + rnd(i, 700 + rank) * 0.8f) / (count - 1f) - 40f
+                val hgt = h * (0.18f + rank * 0.07f) * (0.8f + rnd(i, 710 + rank) * 0.45f)
+                pineTree(Offset(x, h + 8f - rank * 2f), hgt, i * 13 + rank * 101, haze.coerceAtLeast(0f))
+            }
+            // Mist between the ranks.
+            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x30B8C6DA), Color.Transparent), startY = h * (0.72f + rank * 0.06f), endY = h))
         }
-        // Mist between the ranks.
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x30B8C6DA), Color.Transparent), startY = h * (0.72f + rank * 0.06f), endY = h))
+        if (rank == 0) back { drawRank() } else mid { drawRank() }
     }
     // Drifts across the front.
     val drift = androidx.compose.ui.graphics.Path().apply {
@@ -389,6 +402,17 @@ internal fun DrawScope.snowyForest(t: Float, k: Float) {
         while (x <= w) { lineTo(x, h - 26f - fbm(x / 260f, 720) * 34f); x += 24f }
         lineTo(w, h); close()
     }
-    drawPath(drift, Brush.verticalGradient(listOf(Color(0xFFDCE4EE), Color(0xFFA9B6C8)), startY = h - 60f, endY = h))
-    realSnow(t, k)
+    mid { drawPath(drift, Brush.verticalGradient(listOf(Color(0xFFDCE4EE), Color(0xFFA9B6C8)), startY = h - 60f, endY = h)) }
+    // Dense, with its depths inside the shared helper: kept behind the cards.
+    realSnow(t, k, layered = true)
+}
+
+/** For particle helpers drawn in three depth layers: layer 0 behind, 1 in the middle, 2 (nearest) in front; ungated when not [layered]. */
+internal inline fun atDepth(layered: Boolean, layer: Int, block: () -> Unit) {
+    if (!layered) return block()
+    when (layer) {
+        0 -> back(block)
+        1 -> mid(block)
+        else -> front(block)
+    }
 }
