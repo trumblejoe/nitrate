@@ -270,6 +270,19 @@ class TvScreenshotTest {
         press("down", "ff")
         compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("◀◀ ▶▶", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the new style should be named" }
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        // Focus stays in the row, on a card: never handed to the menu.
+        val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes()
+        check(focused.isNotEmpty()) { "something should keep focus" }
+        check(!focusedHasText("Home") && !focusedHasText("Settings") && !focusedHasText("Search")) { "focus went to the menu" }
+        // And again, through a style of a different height.
+        press("ff", "ff")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(!focusedHasText("Home") && !focusedHasText("Settings") && !focusedHasText("Search")) { "focus went to the menu after more steps" }
+        // Never left with nothing focused (on a TV that hands focus to the menu), never on the rail at the left edge.
+        val after = compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes()
+        check(after.isNotEmpty()) { "focus was lost while the style changed" }
+        check(after.all { it.boundsInRoot.left > 100f }) { "focus went to the menu rail" }
     }
 
     /** Settings → Display → Pages → a library: its tabs, shown or not, and adding your own. */

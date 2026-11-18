@@ -2,6 +2,11 @@ package dev.nitrate.tv.ui.rows
 
 import kotlinx.coroutines.launch
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.core.pages.hidesDescription
@@ -142,6 +147,11 @@ fun RowsPage(
                     // row otherwise brings only the focused card in, leaving its title out of sight).
                     val wholeRow = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
                     val rowScope = androidx.compose.runtime.rememberCoroutineScope()
+                    // Changing a row's style swaps its cards for others: focus waits on a holder in the
+                    // row meanwhile (else it falls to the menu), then goes into the new style.
+                    val holder = remember { androidx.compose.ui.focus.FocusRequester() }
+                    val content = remember { androidx.compose.ui.focus.FocusRequester() }
+                    var holding by remember { mutableStateOf(false) }
                     androidx.compose.foundation.layout.Box(
                         Modifier.animateItem()
                             .bringIntoViewRequester(wholeRow)
@@ -154,18 +164,34 @@ fun RowsPage(
                                     val now = overrides[row.key] ?: row.defaultDisplay
                                     val next = now.copy(style = now.style.step(by))
                                     if (activeShowcase == row.key) activeShowcase = null
+                                    holding = true
+                                    runCatching { holder.requestFocus() }
                                     onSaveDisplay(row, next)
                                     styleNote = "${row.title}: ${next.style.label}" to System.nanoTime()
                                 }
                                 true
                             },
                     ) {
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.size(1.dp).focusRequester(holder)
+                                .focusProperties { canFocus = holding }.focusable(),
+                        )
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowsScroll) {
                         val display = overrides[row.key] ?: row.defaultDisplay
+                        // The new style is on screen: into it, and the whole row back in view at its new height.
+                        LaunchedEffect(display.style) {
+                            if (!holding) return@LaunchedEffect
+                            kotlinx.coroutines.delay(80)
+                            runCatching { content.requestFocus() }
+                            holding = false
+                            kotlinx.coroutines.delay(60)
+                            wholeRow.bringIntoView()
+                        }
                         val prefs = LocalDisplayPrefs.current
                         val fx = dev.nitrate.tv.ui.effects.rememberCardFx(display, prefs.effects, prefs.easyMode)
                         val actions = if (fx != null && !display.style.isShowcase) fx.wrap(actions) else actions
                         androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalCardFx provides fx) {
+                        androidx.compose.foundation.layout.Box(Modifier.focusRequester(content).focusGroup()) {
                         val hidden = activeShowcase != null && activeShowcase != row.key
                         if (display.style.isShowcase) {
                             val active = activeShowcase == row.key
@@ -197,6 +223,7 @@ fun RowsPage(
                                     else -> CardRow(row, display, repository, actions)
                                 }
                             }
+                        }
                         }
                         }
                         }
