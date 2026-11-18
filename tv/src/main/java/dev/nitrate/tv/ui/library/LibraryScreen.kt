@@ -123,13 +123,17 @@ fun LibraryScreen(
         ) {
             Text(lib.name.orEmpty(), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(end = 16.dp))
             if (shownTabs.size > 1) {
-                for (t in shownTabs) {
-                    FilterChip(selected = tab.id == t.id, onClick = { switchTo(t.id) { tabId = t.id } }, modifier = Modifier.focusRequester(tabFocus(t.id))) { Text(t.label) }
-                }
+                dev.nitrate.tv.ui.components.PageTabs(
+                    shownTabs.map { dev.nitrate.tv.ui.components.PageTab(it.id, it.label) }, selected = tab.id,
+                    onSelect = { id -> switchTo(id) { tabId = id } }, focusFor = ::tabFocus,
+                )
             }
             if (music && tab.kind == dev.nitrate.core.pages.LibraryTabKind.ALL) {
-                FilterChip(selected = !artists, onClick = { switchTo("albums") { artists = false } }, modifier = Modifier.focusRequester(tabFocus("albums"))) { Text("Albums") }
-                FilterChip(selected = artists, onClick = { switchTo("artists") { artists = true } }, modifier = Modifier.focusRequester(tabFocus("artists"))) { Text("Artists") }
+                dev.nitrate.tv.ui.components.PageTabs(
+                    listOf(dev.nitrate.tv.ui.components.PageTab("albums", "Albums"), dev.nitrate.tv.ui.components.PageTab("artists", "Artists")),
+                    selected = if (artists) "artists" else "albums",
+                    onSelect = { id -> switchTo(id) { artists = id == "artists" } }, focusFor = ::tabFocus,
+                )
             }
         }
     }

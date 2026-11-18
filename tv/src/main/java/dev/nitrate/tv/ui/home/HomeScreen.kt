@@ -97,12 +97,12 @@ fun HomeScreen(
     val tabs: (@Composable () -> Unit)? = if (pinnedPages.isEmpty()) null else {
         {
             Row(Modifier.padding(start = 58.dp, end = 58.dp, top = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                androidx.tv.material3.FilterChip(selected = openPage == null, onClick = { pageTab = null; switched = "home#" + System.nanoTime() },
-                    modifier = Modifier.focusRequester(tabFocus("home"))) { Text("Home") }
-                for (p in pinnedPages) {
-                    androidx.tv.material3.FilterChip(selected = openPage?.id == p.id, onClick = { pageTab = p.id; switched = p.id + "#" + System.nanoTime() },
-                        modifier = Modifier.focusRequester(tabFocus(p.id))) { Text(p.title) }
-                }
+                dev.nitrate.tv.ui.components.PageTabs(
+                    listOf(dev.nitrate.tv.ui.components.PageTab("home", "Home")) + pinnedPages.map { dev.nitrate.tv.ui.components.PageTab(it.id, it.title) },
+                    selected = openPage?.id ?: "home",
+                    onSelect = { id -> pageTab = id.takeIf { it != "home" }; switched = id + "#" + System.nanoTime() },
+                    focusFor = ::tabFocus,
+                )
             }
         }
     }

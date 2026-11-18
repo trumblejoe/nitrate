@@ -65,6 +65,8 @@ data class DisplayPrefs(
     val tvHome: TvHomeLayout = TvHomeLayout.FULL_ART,
     /** TV library pages' Recommended tab: like Home (null), or a layout of their own. */
     val tvLibraryLayout: TvHomeLayout? = null,
+    /** How page tabs look on TV (Home's pinned pages, a library's tabs). */
+    val tvTabStyle: TabStyle = TabStyle.CHIPS,
     /** Row, page and seasonal effects (TV). */
     val effects: dev.nitrate.core.effects.EffectsPrefs = dev.nitrate.core.effects.EffectsPrefs(),
     /** Each page's animated theme, by page key (Home, a library, a custom page). */
@@ -100,6 +102,24 @@ enum class LetterBarPlace(val label: String) {
         OFF -> null
         else -> this
     }
+}
+
+/**
+ * How page tabs are drawn on TV. Each keeps "open" (the page showing) and "focused" (where the
+ * remote is) clearly different. Unknown values (a newer app's) read as the default.
+ */
+@Serializable
+enum class TabStyle(val label: String, val detail: String) {
+    CHIPS("Chips", "Rounded buttons"),
+    UNDERLINE("Underline", "Plain words, a short line under the open one"),
+    PILL("Sliding pill", "One capsule, a pill moving between them"),
+    LARGE("Large words", "Big type, the others dimmed"),
+    GLASS("Frosted glass", "A pane of frosted glass catching the light"),
+    NEON("Neon sign", "Glowing tubes, flickering on as you reach one"),
+    MARQUEE("Cinema marquee", "Chasing bulbs around the one you're on"),
+    FILM("Film strip", "Frames on a strip of film, the open one lit"),
+    BRUSH("Ink brush", "A sweep of ink behind the open one"),
+    TICKET("Ticket stubs", "Admit-one tickets, perforated"),
 }
 
 @Serializable

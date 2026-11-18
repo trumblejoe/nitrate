@@ -716,6 +716,16 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
+    /** Every tab style in the picker, each drawn with "Recommended" open and "All" focused. */
+    @Test fun tabStyles() = shoot("tv-tab-styles") { dev.nitrate.tv.ui.components.TabStyleChoices(dev.nitrate.core.pages.TabStyle.CHIPS) {} }
+
+    @Test fun tabStylesMore() = shoot("tv-tab-styles-more", act = { press("down", "down", "down", "down", "down", "down", "down", "down", "down") }) {
+        dev.nitrate.tv.ui.components.TabStyleChoices(dev.nitrate.core.pages.TabStyle.CHIPS) {}
+    }
+
+    /** A library page with the neon tabs. */
+    @Test fun libraryNeonTabs() = libraryShot("tv-library-neon-tabs", rowsLibrary.copy(tvTabStyle = dev.nitrate.core.pages.TabStyle.NEON)) {}
+
     @Test fun settingsHub() = shoot("tv-settings-hub") { _ ->
         fun links(vararg l: Pair<String, String>) = l.map { (label, detail) -> dev.nitrate.tv.ui.settings.SettingsLink(label, detail) {} }
         dev.nitrate.tv.ui.settings.SettingsHubScreen(

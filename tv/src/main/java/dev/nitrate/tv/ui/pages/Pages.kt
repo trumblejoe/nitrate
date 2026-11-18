@@ -187,6 +187,8 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
         val u = container.server.userId ?: return
         scope.launch { container.displaySettings.savePrefs(u, change(prefs)) }
     }
+    var pickingTabStyle by remember { mutableStateOf(false) }
+    if (pickingTabStyle) dev.nitrate.tv.ui.components.TabStylePicker(prefs.tvTabStyle, onPick = { style -> update { it.copy(tvTabStyle = style) }; pickingTabStyle = false }, onDismiss = { pickingTabStyle = false })
     val shown: List<PrefToggle> = listOf(
         Triple("Community rating", { p -> p.communityRating }, { p, v -> p.copy(communityRating = v) }),
         Triple("Critic rating", { p -> p.criticRating }, { p, v -> p.copy(criticRating = v) }),
@@ -251,6 +253,15 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 headlineContent = { Text("Library pages") },
                 supportingContent = { Text("How a library's Recommended rows are shown") },
                 trailingContent = { Text("${now?.label ?: "Same as Home"}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = { pickingTabStyle = true },
+                headlineContent = { Text("Tabs") },
+                supportingContent = { Text("How Home's and each library's tabs look: ${prefs.tvTabStyle.detail.lowercase()}") },
+                trailingContent = { Text("${prefs.tvTabStyle.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
         item {
