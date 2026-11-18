@@ -12690,6 +12690,84 @@
     ]
    }
   },
+  "/Items/{itemId}/Intros": {
+   "get": {
+    "operationId": "GetIntros",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "userId",
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/BaseItemDtoQueryResult"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
+    ]
+   }
+  },
   "/Items/{itemId}/LocalTrailers": {
    "get": {
     "operationId": "GetLocalTrailers",

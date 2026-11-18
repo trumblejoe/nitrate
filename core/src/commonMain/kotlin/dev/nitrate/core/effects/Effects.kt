@@ -47,6 +47,9 @@ enum class PageTheme(val label: String, val detail: String) {
     SUPERHERO_CITY("Superhero city", "Comic-book skyline, halftone sky and action bursts"),
     ALIEN_AGENTS("Alien agents", "Black suits, a sunglasses glint and neon visitors"),
     NEON_ARCADE("Neon arcade", "A glowing grid running to the horizon"),
+    ROSES("Roses and thorns", "Climbing briars in bloom, petals drifting down"),
+    FLOWERS("Flower garden", "A meadow of blossoms swaying, petals on the breeze"),
+    POETRY("Poetry", "Old Japanese verses fading in and out, cherry petals falling"),
 }
 
 /** How much of each effect there is. */

@@ -39,6 +39,13 @@ CLIPS = {
     "marines": ("File:5th ANGLICO Marines Sharpen Skills on Live-Fire Machine Gun Range (980555).webm", 6.0, 8.0, 0.42, 0.6),
     "veterans": ("File:Thousands of Flags Honor the Fallen at Arlington National Cemetery.webm", 20.0, 8.0, 0.42, 0.6),
     "easter": ("File:European Rabbit 2025 06 18 01.webm", 2.0, 8.0, 0.36, 0.6),
+    # Pre-roll scenes: full screen (band 1.0), played before titles (core PrerollScene.clip).
+    "preroll-northern-lights": ("File:Alaskan Aurora Time Lapse (SVS15077).webm", 2.0, 14.0, 1.0, 0.5),
+    "preroll-clouds": ("File:Clouds above Japan - 2019 4 1.webm", 2.0, 14.0, 1.0, 0.5),
+    "preroll-ocean-floor": ("File:Video of a flight over a cold-water coral reef (Ifremer 00842-95365).webm", 4.0, 14.0, 1.0, 0.5),
+    "preroll-river": ("File:Paliastomi Lake and Pichori River boat tour. Kolkheti National Park, Georgia. August 2022 01.webm", 2.0, 14.0, 1.0, 0.5),
+    # No freely licensed POV skydive or jungle walk found on Commons yet ("preroll-skydive",
+    # "preroll-jungle"); until there is, those scenes stay off (your own pre-roll videos can be anything).
 }
 
 

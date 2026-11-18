@@ -69,6 +69,8 @@ data class DisplayPrefs(
     val effects: dev.nitrate.core.effects.EffectsPrefs = dev.nitrate.core.effects.EffectsPrefs(),
     /** Each page's animated theme, by page key (Home, a library, a custom page). */
     val pageThemes: Map<String, dev.nitrate.core.effects.PageTheme> = emptyMap(),
+    /** What plays before titles: verses, scenes, the server's intros (off until switched on). */
+    val prerolls: dev.nitrate.core.preroll.PrerollPrefs = dev.nitrate.core.preroll.PrerollPrefs(),
     /** Where the TV library's A–Z bar sits in the All view. */
     val tvLetterBar: LetterBarPlace = LetterBarPlace.AUTO,
     /** Where the TV's main menu sits. */

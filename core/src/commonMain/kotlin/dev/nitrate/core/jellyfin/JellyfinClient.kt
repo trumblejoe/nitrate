@@ -1515,6 +1515,9 @@ class JellyfinClient(
         return dev.nitrate.core.model.ThemeMusicInfo(dto.items.map { it.toMediaItem() }, dto.ownerId?.let(::normalizeId))
     }
 
+    override suspend fun intros(itemId: String): List<MediaItem> =
+        items("Items", itemId, "Intros", query = mapOf("userId" to userId))
+
     override fun audioStreamUrl(itemId: String): String = url("Audio", itemId, "stream", query = mapOf("static" to true))
 
     override fun chapterImageUrl(item: MediaItem, index: Int, maxWidth: Int): String? {

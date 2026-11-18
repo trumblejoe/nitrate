@@ -513,6 +513,12 @@ interface MediaServer {
     /** The address to stream an audio file as it is (with [authorizationHeader]). */
     fun audioStreamUrl(itemId: String): String = unsupported()
 
+    /**
+     * What the server would play before [itemId]: its intros (Jellyfin's intro providers, such as a
+     * cinema-mode plugin's trailers and pre-rolls). Empty when the server has none.
+     */
+    suspend fun intros(itemId: String): List<MediaItem> = emptyList()
+
     /** Trailers (files on the server) then extras: behind the scenes, deleted scenes, featurettes... */
     suspend fun extras(itemId: String): List<MediaItem> = emptyList()
 

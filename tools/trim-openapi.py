@@ -28,6 +28,7 @@ PATHS = [
     "/Items/{itemId}/SpecialFeatures",
     "/Items/Filters",
     "/Items/{itemId}/ThemeSongs",
+    "/Items/{itemId}/Intros",
     "/Videos/MergeVersions",
     "/Users/Configuration",
     "/Playback/BitrateTest",

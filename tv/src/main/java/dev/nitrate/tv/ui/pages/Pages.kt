@@ -177,7 +177,7 @@ private typealias PrefToggle = Triple<String, (DisplayPrefs) -> Boolean, (Displa
 
 /** Display settings, in this TV's display profile and synced for the user; [page] picks which. */
 @Composable
-fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPage.LOOK, onMenuStops: () -> Unit = {}, onShown: () -> Unit = {}, onPages: () -> Unit = {}, onEffects: () -> Unit = {}) {
+fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPage.LOOK, onMenuStops: () -> Unit = {}, onShown: () -> Unit = {}, onPages: () -> Unit = {}, onEffects: () -> Unit = {}, onPrerolls: () -> Unit = {}) {
     val prefs = LocalDisplayPrefs.current
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
@@ -388,7 +388,16 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 }
                 item { Heading("Your display profile", dev.nitrate.core.settings.SettingScope.PROFILE) }
                 item {
-                    Toggle("Skip to scenes in the credits", "Jumps past the credits to a scene during or after them when it's known; otherwise only offers it", prefs.creditScenes, Modifier.focusRequester(first)) {
+                    ListItem(
+                        selected = false, onClick = onPrerolls,
+                        headlineContent = { Text("Before it plays") },
+                        supportingContent = { Text(if (prefs.prerolls.on) "A verse on black, a scene, the server's intros or your own videos before titles" else "Off · verses, scenes and intros before titles") },
+                        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.focusRequester(first),
+                    )
+                }
+                item {
+                    Toggle("Skip to scenes in the credits", "Jumps past the credits to a scene during or after them when it's known; otherwise only offers it", prefs.creditScenes) {
                         update { it.copy(creditScenes = !it.creditScenes) }
                     }
                 }

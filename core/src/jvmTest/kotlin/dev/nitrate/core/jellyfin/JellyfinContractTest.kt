@@ -255,6 +255,7 @@ class JellyfinContractTest {
         client.additionalParts(DASHED)
         client.extras(DASHED)
         client.themeSongs(DASHED)
+        client.intros(DASHED)
         client.themeMusicInfo(DASHED)
         client.healthScan(DASHED)
         client.healthScan(null)

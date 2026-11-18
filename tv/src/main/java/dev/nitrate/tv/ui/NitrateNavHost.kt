@@ -73,6 +73,7 @@ import kotlinx.serialization.Serializable
 @Serializable object AdvancedPlaybackRoute
 @Serializable object SubtitleSettingsRoute
 @Serializable object WhileWatchingRoute
+@Serializable object PrerollSettingsRoute
 @Serializable object ShownSettingsRoute
 @Serializable object UpdatesRoute
 @Serializable object PlaybackTestRoute
@@ -129,6 +130,9 @@ private const val RESUME_AT = "resumeAt"
 /** "Last time": the recap in [AppContainer.pendingRecap], before playing on. */
 @Serializable object RecapRoute
 
+/** What plays before [itemId] ([dev.nitrate.tv.ui.preroll.PrerollPlan.steps]): a scene, a verse, then intros. */
+@Serializable data class PrerollRoute(val itemId: String, val fromStart: Boolean = false)
+
 @Composable
 fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.MutableStateFlow<TvRequest?> = kotlinx.coroutines.flow.MutableStateFlow(null)) {
     var start by remember { mutableStateOf<Any?>(null) }
@@ -155,10 +159,18 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     val account by container.account.collectAsState()
     // Every "play this item" goes through plugin guards first; queues (playlists) don't.
     // Resuming after a break: the "Last time" recap first, when one is due.
+    // Before a title starts from the top: the user's pre-rolls (verse, scene, intros), when switched on.
+    val displayPrefs by androidx.compose.runtime.rememberUpdatedState(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current)
+    val context = androidx.compose.ui.platform.LocalContext.current
     val gate = rememberPlaybackGate(container.plugins) { item, fromStart, startMs ->
         scope.launch {
             if (startMs != null) nav.navigate(PlayerRoute(item.id, fromStart = false, startMs = startMs))
-            else if (!fromStart && container.recapBefore(item) != null) nav.navigate(RecapRoute) else nav.navigate(PlayerRoute(item.id, fromStart))
+            else if (!fromStart && container.recapBefore(item) != null) nav.navigate(RecapRoute)
+            else {
+                val steps = if (displayPrefs.easyMode) emptyList() else dev.nitrate.tv.ui.preroll.planPrerolls(container, context, item, displayPrefs.prerolls, fromStart)
+                if (steps.isEmpty()) nav.navigate(PlayerRoute(item.id, fromStart))
+                else { dev.nitrate.tv.ui.preroll.PrerollPlan.steps = steps; nav.navigate(PrerollRoute(item.id, fromStart)) }
+            }
         }
     }
     // The TV screens of plugins that are switched on.
@@ -295,6 +307,15 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 if (recap.then.isNotEmpty()) nav.playQueue(listOf(recap.next.id) + recap.then) else nav.navigate(PlayerRoute(recap.next.id))
             }, onClip = { clip -> nav.navigate(PlayerRoute(clip.item.id, startMs = clip.startMs, clipEndMs = clip.endMs)) }, onBack = { nav.popBackStack() })
         }
+        composable<PrerollRoute> { entry ->
+            val route = entry.toRoute<PrerollRoute>()
+            dev.nitrate.tv.ui.preroll.PrerollScreen(dev.nitrate.tv.ui.preroll.PrerollPlan.steps, dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.prerolls) { videos ->
+                nav.popBackStack()
+                // The intros and own videos play in the player, then the title.
+                if (videos.isEmpty()) nav.navigate(PlayerRoute(route.itemId, route.fromStart)) else nav.playQueue(videos.map { it.id } + route.itemId)
+            }
+        }
+        composable<PrerollSettingsRoute> { dev.nitrate.tv.ui.preroll.PrerollSettingsScreen(container) }
         composable<WatchPartnersRoute> {
             dev.nitrate.tv.ui.partners.WatchPartnersScreen(container) { id -> nav.navigate(DetailsRoute(id)) }
         }
@@ -315,7 +336,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         dev.nitrate.tv.ui.settings.SettingsLink("Picture & sound", "Sound, speakers, audio sync, frame rate; Advanced for formats and fixes") { nav.navigate(SettingsRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Subtitles", "Size, colour, background and styled subtitles") { nav.navigate(SubtitleSettingsRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Display", "Home and menu, colours, screensaver, what's shown about titles") { nav.navigate(DisplaySettingsRoute) },
-                        dev.nitrate.tv.ui.settings.SettingsLink("While watching", "Scenes in the credits, recaps, spoilers, audio description, theme music, \"Still watching?\"") { nav.navigate(WhileWatchingRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("While watching", "Before it plays, scenes in the credits, recaps, spoilers, audio description, theme music, \"Still watching?\"") { nav.navigate(WhileWatchingRoute) },
                     )),
                     dev.nitrate.tv.ui.settings.SettingsSection("Account & servers", listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Switch user", "Other users and servers, profile PINs") { nav.navigate(ProfilesRoute) },
@@ -407,7 +428,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<PageSetupRoute> { dev.nitrate.tv.ui.pages.PageSetupScreen(container) { lib -> nav.navigate(LibraryTabsRoute(lib.id)) } }
         composable<LibraryTabsRoute> { entry -> dev.nitrate.tv.ui.pages.LibraryTabsScreen(container, entry.toRoute<LibraryTabsRoute>().libraryId) }
         composable<ShownSettingsRoute> { DisplaySettingsScreen(container, dev.nitrate.tv.ui.pages.DisplayPage.SHOWN) }
-        composable<WhileWatchingRoute> { DisplaySettingsScreen(container, dev.nitrate.tv.ui.pages.DisplayPage.WATCHING) }
+        composable<WhileWatchingRoute> { DisplaySettingsScreen(container, dev.nitrate.tv.ui.pages.DisplayPage.WATCHING, onPrerolls = { nav.navigate(PrerollSettingsRoute) }) }
         composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
         composable<SpeedCheckRoute> { dev.nitrate.tv.ui.settings.SpeedCheckScreen(container) }
         composable<StatsRoute> { dev.nitrate.tv.ui.settings.StatsScreen(container.server) }

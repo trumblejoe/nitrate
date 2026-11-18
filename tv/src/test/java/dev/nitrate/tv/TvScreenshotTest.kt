@@ -172,6 +172,16 @@ class TvScreenshotTest {
     @Test fun fxValentines() = effectShot("tv-fx-valentines", occasion = dev.nitrate.core.effects.Occasion.VALENTINES, at = 12f)
     @Test fun fxThanksgiving() = effectShot("tv-fx-thanksgiving", occasion = dev.nitrate.core.effects.Occasion.THANKSGIVING, at = 12f)
     @Test fun fxStPatricks() = effectShot("tv-fx-st-patricks", occasion = dev.nitrate.core.effects.Occasion.ST_PATRICKS, at = 12f)
+    @Test fun fxRoses() = effectShot("tv-fx-roses", theme = dev.nitrate.core.effects.PageTheme.ROSES, at = 8f)
+    @Test fun fxFlowers() = effectShot("tv-fx-flowers", theme = dev.nitrate.core.effects.PageTheme.FLOWERS, at = 8f)
+    @Test fun fxPoetry() = effectShot("tv-fx-poetry", theme = dev.nitrate.core.effects.PageTheme.POETRY, at = 12f)
+    @Test fun prerollVerse() = shoot("tv-preroll-verse") {
+        dev.nitrate.tv.ui.preroll.PrerollScreen(listOf(dev.nitrate.core.preroll.PrerollStep.Verse(dev.nitrate.core.poetry.Poems.all[33])), dev.nitrate.core.preroll.PrerollPrefs(verseSeconds = 20)) {}
+    }
+    @Test fun prerollOcean() = shoot("tv-preroll-ocean-floor") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.OCEAN_FLOOR, at = 6f) }
+    @Test fun prerollAurora() = shoot("tv-preroll-northern-lights") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.NORTHERN_LIGHTS, at = 6f) }
+    @Test fun prerollStars() = shoot("tv-preroll-starfield") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.STARFIELD, at = 6f) }
+    @Test fun prerollSettings() = shoot("tv-preroll-settings") { c -> dev.nitrate.tv.ui.preroll.PrerollSettingsScreen(c) }
     @Test fun fxEffectsSettings() = shoot("tv-fx-settings") { c -> dev.nitrate.tv.ui.effects.EffectsSettingsScreen(c) }
 
     @Test fun railRightExits() = prefsShot("tv-rail-exit", dev.nitrate.core.pages.DisplayPrefs(), {

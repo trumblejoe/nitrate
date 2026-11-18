@@ -176,6 +176,9 @@ private fun DrawScope.drawTheme(theme: PageTheme, t: Float, k: Float) {
         PageTheme.SUPERHERO_CITY -> heroCity(t, k)
         PageTheme.ALIEN_AGENTS -> visitors(t, k)
         PageTheme.NEON_ARCADE -> arcade(t, k)
+        PageTheme.ROSES -> rosesAndThorns(t, k)
+        PageTheme.FLOWERS -> flowerGarden(t, k)
+        PageTheme.POETRY -> poetry(t, k)
     }
 }
 
