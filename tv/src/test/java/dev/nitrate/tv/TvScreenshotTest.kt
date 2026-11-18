@@ -139,6 +139,26 @@ class TvScreenshotTest {
         HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages)
     }
 
+    /** A theme far down the list is focused when the picker opens on it, so another can be chosen straight from it. */
+    @Test fun themePickerFromLastTheme() {
+        var picked: dev.nitrate.core.effects.PageTheme? = null
+        shoot("tv-theme-picker-from-poetry", act = {
+            check(focusedHasText("Poetry")) { "the theme in use should have focus" }
+            press("up", "ok")
+            compose.waitForIdle()
+            check(picked == dev.nitrate.core.effects.PageTheme.FLOWERS) { "Up then OK from Poetry should pick Flower garden, got $picked" }
+        }) { _ ->
+            dev.nitrate.tv.ui.effects.PageThemeChoices("Movies", dev.nitrate.core.effects.PageTheme.POETRY, onPick = { picked = it })
+        }
+    }
+
+    /** A drawn page theme shows over Home itself, not only in the picker's preview. */
+    @Test fun homeDrawnTheme() = shoot("tv-home-theme-roses", { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.ROSES)))
+    }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
     @Test fun groupStandingsOnCards() = shoot("tv-group-standings") { c ->
         fun ep(n: Int, series: String, played: Boolean = false) = dev.nitrate.core.model.MediaItem("$series-$n", "Episode $n", dev.nitrate.core.model.ItemKind.EPISODE,
             seriesId = series, seriesName = series.replaceFirstChar { it.uppercase() }, seasonNumber = 1, indexNumber = n, user = dev.nitrate.core.model.UserState(played = played, positionMs = if (n == 3) 600_000 else 0))
@@ -299,7 +319,9 @@ class TvScreenshotTest {
     @Test fun libraryTabsSetup() = shoot("tv-library-tabs-setup") { c -> dev.nitrate.tv.ui.pages.LibraryTabsScreen(c, "lib-movies") }
 
     /** Settings → Display → Pages. */
-    @Test fun pageSetup() = shoot("tv-page-setup") { c -> dev.nitrate.tv.ui.pages.PageSetupScreen(c) {} }
+    @Test fun pageSetup() = shoot("tv-page-setup") { c -> dev.nitrate.tv.ui.pages.PageSetupScreen(c, onHome = {}) {} }
+
+    @Test fun homeSetup() = shoot("tv-home-setup", { c -> c.displaySettings.saveCustomPages("user-1", listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids"), dev.nitrate.core.pages.CustomPage("uhd", "4K films", pinned = false))) }) { c -> dev.nitrate.tv.ui.pages.HomeSetupScreen(c) }
 
     /** A library with more tabs switched on (Genres, and your own) and Genres open. */
     @Test fun libraryGenresTab() = shoot("tv-library-genres-tab", setup = { c ->

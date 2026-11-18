@@ -47,12 +47,13 @@ private fun loadPhoto(context: android.content.Context, set: String, name: Strin
 /**
  * A set of photos shown one after another, each slowly zooming and drifting (alternating ways) and
  * crossfading into the next: real pictures given a little life. Only the photo showing and the next
- * are in memory. [at] holds a moment (screenshots); [over] draws on top (particles, light).
+ * are in memory, in a random order each time. [at] holds a moment (screenshots); [over] draws on top (particles, light).
  */
 @Composable
 fun PhotoStage(set: String, modifier: Modifier = Modifier, seconds: Float = 9f, at: Float? = null, over: (DrawScope.(Float) -> Unit)? = null) {
     val context = LocalContext.current
-    val names = remember(set) { photoNames(context, set) }
+    // A fresh order each time the stage appears (held moments keep the set's order, so screenshots match).
+    val names = remember(set, at == null) { photoNames(context, set).let { if (at == null) it.shuffled() else it } }
     if (names.isEmpty()) return
     val t by produceState(at ?: 0f, at) {
         if (at != null) return@produceState

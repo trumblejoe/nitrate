@@ -190,33 +190,50 @@ private fun StandInPage() {
  */
 @Composable
 fun PageThemePicker(pageName: String, current: PageTheme, onPick: (PageTheme) -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        PageThemeChoices(pageName, current, onPick)
+    }
+}
+
+/** The picker's contents: the stand-in page with the focused theme playing, and the list of themes. */
+@Composable
+internal fun PageThemeChoices(pageName: String, current: PageTheme, onPick: (PageTheme) -> Unit) {
     val prefs = LocalDisplayPrefs.current
     var focused by remember { mutableStateOf(current) }
     val focus = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1C2230), Color(0xFF0B0D12))))) {
-            StandInPage()
-            EffectsLayer(focused, null, prefs.effects.copy(on = true))
-            LazyColumn(
-                Modifier.align(Alignment.CenterEnd).width(400.dp).fillMaxHeight().background(Color(0xE6101218)),
-                contentPadding = PaddingValues(24.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                item { Text("$pageName: theme", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp)) }
-                itemsIndexed(PageTheme.entries) { _, t ->
-                    ListItem(
-                        selected = t == current,
-                        onClick = { onPick(t) },
-                        headlineContent = { Text(t.label) },
-                        supportingContent = { Text(t.detail) },
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) focused = t }
-                            .then(if (t == current) Modifier.focusRequester(focus) else Modifier),
-                    )
+    var focusTaken by remember { mutableStateOf(false) }
+    // Open scrolled to the theme in use: the list only builds the rows on screen, and focus can only
+    // go to a row that's built (themes far down the list used to leave the picker with no focus, so
+    // nothing could be chosen until the page was set back to None).
+    val currentIndex = PageTheme.entries.indexOf(current) + 1
+    val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 2).coerceAtLeast(0))
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1C2230), Color(0xFF0B0D12))))) {
+        StandInPage()
+        EffectsLayer(focused, null, prefs.effects.copy(on = true))
+        LazyColumn(
+            Modifier.align(Alignment.CenterEnd).width(400.dp).fillMaxHeight().background(Color(0xE6101218)),
+            state = list,
+            contentPadding = PaddingValues(24.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            item { Text("$pageName: theme", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp)) }
+            itemsIndexed(PageTheme.entries) { _, t ->
+                ListItem(
+                    selected = t == current,
+                    onClick = { onPick(t) },
+                    headlineContent = { Text(t.label) },
+                    supportingContent = { Text(t.detail) },
+                    modifier = Modifier.onFocusChanged { if (it.isFocused) focused = t }
+                        .then(if (t == current) Modifier.focusRequester(focus) else Modifier),
+                )
+                // The row in use takes focus itself once it's built and placed (asking from outside
+                // the list could come before it exists, and that leaves the picker with no focus).
+                if (t == current) LaunchedEffect(Unit) {
+                    if (!focusTaken) { kotlinx.coroutines.android.awaitFrame(); runCatching { focus.requestFocus() }; focusTaken = true }
                 }
             }
         }
     }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }
 
 private inline fun <reified E : Enum<E>> E.cycle(): E = enumValues<E>().let { it[(ordinal + 1) % it.size] }

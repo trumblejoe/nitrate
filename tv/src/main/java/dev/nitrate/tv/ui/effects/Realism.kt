@@ -44,7 +44,8 @@ internal fun fbm(x: Float, salt: Int = 0): Float =
 
 // ---- Glows ----
 
-private val glows = HashMap<Int, Brush>()
+// Shared by scenes drawing on background threads at once (a page and a preview).
+private val glows = java.util.concurrent.ConcurrentHashMap<Int, Brush>()
 
 /** A soft round light of [radius] at [c]: bright middle, long falloff, nothing allocated per call. */
 internal fun DrawScope.glow(c: Offset, radius: Float, color: Color, alpha: Float = 1f, additive: Boolean = true) {

@@ -37,6 +37,8 @@ import dev.nitrate.core.pages.LibraryTab
 import dev.nitrate.core.pages.LibraryTabKind
 import dev.nitrate.core.pages.LibraryTabs
 import dev.nitrate.core.pages.PageKeys
+import dev.nitrate.core.pages.CustomPage
+import dev.nitrate.core.effects.PageTheme
 import dev.nitrate.tv.ui.components.TvTextField
 import dev.nitrate.tv.ui.lists.TvDialog
 import dev.nitrate.tv.ui.rows.PageEditor
@@ -46,61 +48,217 @@ import kotlinx.coroutines.launch
 private val Padding = 58.dp
 
 /**
- * Settings → Display → Pages: where pages are arranged, rather than on the pages themselves. Home's
- * rows (order, hide, rename, add your own), and each library's tabs. A row's look stays a press away
- * on the page (Fast-forward/Rewind, or holding OK).
+ * Settings → Display → Pages: where pages are arranged, rather than on the pages themselves. Home and
+ * each library open the same setup ([SetupPage]): its theme, then its tabs and their rows. A row's look
+ * stays a press away on the page (Fast-forward/Rewind, or holding OK).
  */
 @Composable
-fun PageSetupScreen(container: AppContainer, onLibrary: (MediaItem) -> Unit) {
+fun PageSetupScreen(container: AppContainer, onHome: () -> Unit, onLibrary: (MediaItem) -> Unit) {
     val first = remember { FocusRequester() }
-    var editingHome by remember { mutableStateOf(false) }
-    var choosingTheme by remember { mutableStateOf<Pair<String, String>?>(null) }
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
-    val libraries = dev.nitrate.tv.ui.home.rememberLibraries(container)
-        .filter { it.collection != CollectionKind.LIVE_TV && it.collection != CollectionKind.PLAYLISTS }
+    val libraries by produceState(emptyList<MediaItem>()) { value = runCatching { container.server.views() }.getOrDefault(emptyList()) }
+    val shown = libraries.filter { it.collection != CollectionKind.LIVE_TV && it.collection != CollectionKind.PLAYLISTS }
+    fun themeOf(key: String) = (prefs.pageThemes[key] ?: PageTheme.NONE).label
     LazyColumn(contentPadding = PaddingValues(horizontal = Padding, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
-        item {
-            Column(Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Pages", style = MaterialTheme.typography.displaySmall)
-                Text("Home's rows and each library's tabs. A row's look changes on the page itself: Fast-forward/Rewind on a row, or hold OK.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        item { SetupHeader("Pages", "Each page's theme, its tabs and their rows. Home and every library are set up the same way.") }
         item {
             ListItem(
-                selected = false, onClick = { editingHome = true },
+                selected = false, onClick = onHome,
                 headlineContent = { Text("Home") },
-                supportingContent = { Text("Its rows: order, hide, rename, and add your own") },
+                supportingContent = { Text("Theme: ${themeOf(PageKeys.HOME)} · tabs and their rows") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
                 modifier = Modifier.focusRequester(first),
             )
         }
-        item {
-            val theme = prefs.pageThemes[PageKeys.HOME] ?: dev.nitrate.core.effects.PageTheme.NONE
-            ListItem(
-                selected = false, onClick = { choosingTheme = PageKeys.HOME to "Home" },
-                headlineContent = { Text("Home's theme") },
-                supportingContent = { Text("An animated background: thunderstorm, safari, deep space…") },
-                trailingContent = { Text("${theme.label}  ›", color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-        items(libraries, key = { it.id }) { lib ->
+        items(shown, key = { it.id }) { lib ->
             ListItem(
                 selected = false, onClick = { onLibrary(lib) },
                 headlineContent = { Text(lib.name) },
-                supportingContent = { Text("Its tabs: which show, their order and names, your own tabs and their rows") },
+                supportingContent = { Text("Theme: ${themeOf(PageKeys.library(lib.id))} · tabs and their rows") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
             )
         }
     }
-    choosingTheme?.let { (key, name) -> ThemeChoice(container, key, name) { choosingTheme = null } }
+    LaunchedEffect(Unit) { kotlinx.coroutines.android.awaitFrame(); runCatching { first.requestFocus() } }
+}
+
+/**
+ * Home's setup, laid out like a library's: its theme, then its tabs. "Home" (its own rows) comes
+ * first and always shows; the user's own pages follow, shown as tabs when switched on (pinned), and
+ * "Add your own tab" makes a new one.
+ */
+@Composable
+fun HomeSetupScreen(container: AppContainer) {
+    val server = container.server
+    val user = server.userId
+    val scope = rememberCoroutineScope()
+    val first = remember { FocusRequester() }
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val pages by remember(user) { user?.let { container.displaySettings.customPages(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsState(emptyList())
+    fun save(next: List<CustomPage>) { val u = user ?: return; scope.launch { container.displaySettings.saveCustomPages(u, next) } }
+    var choosingTheme by remember { mutableStateOf(false) }
+    var actingHome by remember { mutableStateOf(false) }
+    var acting by remember { mutableStateOf<CustomPage?>(null) }
+    var renaming by remember { mutableStateOf<CustomPage?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    var editingHome by remember { mutableStateOf(false) }
+    var editingPage by remember { mutableStateOf<CustomPage?>(null) }
+    if (choosingTheme) ThemeChoice(container, PageKeys.HOME, "Home") { choosingTheme = false }
+
+    SetupPage("Home", first) {
+        item { ThemeItem(prefs.pageThemes[PageKeys.HOME], first) { choosingTheme = true } }
+        item { TabsLabel() }
+        item { TabItem("Home", "Its rows: order, hide, rename, and add your own", shown = null) { actingHome = true } }
+        items(pages, key = { it.id }) { page ->
+            TabItem(page.title, if (page.pinned) "Your page, a tab beside Home" else "Your page, not on Home (in Your pages)", shown = page.pinned) { acting = page }
+        }
+        item { AddTabItem { adding = true } }
+    }
+
+    if (actingHome) TabActions("Home", hidden = null, upEnabled = false, downEnabled = false, onDismiss = { actingHome = false },
+        onRows = { actingHome = false; editingHome = true })
+    acting?.let { page ->
+        val i = pages.indexOfFirst { it.id == page.id }
+        TabActions(
+            page.title, hidden = !page.pinned, upEnabled = i > 0, downEnabled = i in 0 until pages.lastIndex,
+            onDismiss = { acting = null },
+            onToggle = { save(pages.map { if (it.id == page.id) it.copy(pinned = !it.pinned) else it }); acting = null },
+            onMove = { by -> save(movePage(pages, page.id, by)); acting = null },
+            onRename = { renaming = page; acting = null },
+            onRows = { editingPage = page; acting = null },
+            removeLabel = "Delete this page",
+            onRemove = { user?.let { scope.launch { container.displaySettings.deleteCustomPage(it, page.id) } }; acting = null },
+        )
+    }
+    renaming?.let { page ->
+        NameDialog("Rename tab", page.title, onDismiss = { renaming = null }) { name ->
+            save(pages.map { if (it.id == page.id) it.copy(title = name.trim().ifEmpty { it.title }) else it })
+            renaming = null
+        }
+    }
+    if (adding) {
+        NameDialog("Your own tab", "", onDismiss = { adding = false }) { name ->
+            val made = CustomPage(dev.nitrate.tv.ui.rows.newId(), name.trim().ifEmpty { "My page" }, pinned = true)
+            save(pages + made)
+            adding = false
+            // Straight on to its rows: an empty tab shows nothing.
+            editingPage = made
+        }
+    }
     if (editingHome) {
         val vm = viewModel(key = "home-setup") {
-            RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges, cache = container.dataCache)
+            RowsViewModel(PageKeys.HOME, server::homeRows, container.displaySettings, server, container.serverChanges, cache = container.dataCache)
         }
-        PageEditor("Home", vm, container.server, libraryId = null, onDone = { editingHome = false })
+        PageEditor("Home", vm, server, libraryId = null, onDone = { editingHome = false })
     }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    editingPage?.let { page ->
+        val vm = viewModel(key = "custom-setup-${page.id}") {
+            RowsViewModel(PageKeys.custom(page.id), { emptyList() }, container.displaySettings, server, container.serverChanges, cache = container.dataCache)
+        }
+        PageEditor(page.title, vm, server, libraryId = null, onDone = { editingPage = null })
+    }
+}
+
+private fun movePage(pages: List<CustomPage>, id: String, by: Int): List<CustomPage> {
+    val i = pages.indexOfFirst { it.id == id }
+    val j = i + by
+    if (i < 0 || j !in pages.indices) return pages
+    return pages.toMutableList().apply { add(j, removeAt(i)) }
+}
+
+// ---- The frame every page's setup shares ----
+
+@Composable
+private fun SetupHeader(title: String, intro: String) {
+    Column(Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.displaySmall)
+        Text(intro, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** One page's setup: its name, then [content] (theme, tabs), the same for Home and every library. */
+@Composable
+private fun SetupPage(title: String, @Suppress("UNUSED_PARAMETER") first: FocusRequester, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
+    LazyColumn(contentPadding = PaddingValues(horizontal = Padding, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
+        item { SetupHeader(title, "Its theme, then its tabs in order. OK on a tab to show or hide it, move it, rename it or change its rows.") }
+        content()
+    }
+}
+
+@Composable
+private fun ThemeItem(theme: PageTheme?, focus: FocusRequester, onClick: () -> Unit) {
+    // Focus starts here, once: asked for after the row is built (asking earlier does nothing), and
+    // never again (a list loading later used to pull focus back here, even out of an open picker).
+    var taken by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { if (!taken) { kotlinx.coroutines.android.awaitFrame(); runCatching { focus.requestFocus() }; taken = true } }
+    val modifier = Modifier.focusRequester(focus)
+    ListItem(
+        selected = false, onClick = onClick,
+        headlineContent = { Text("Theme") },
+        supportingContent = { Text("An animated background over this page: thunderstorm, safari, roses…") },
+        trailingContent = { Text("${(theme ?: PageTheme.NONE).label}  ›", color = MaterialTheme.colorScheme.primary) },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun TabsLabel() {
+    Text("Tabs", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 18.dp, bottom = 4.dp))
+}
+
+/** A tab: [shown] is its switch (null for one that always shows). */
+@Composable
+private fun TabItem(label: String, detail: String, shown: Boolean?, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    ListItem(
+        selected = false, onClick = onClick,
+        headlineContent = { Text(label) },
+        supportingContent = { Text(detail) },
+        trailingContent = { if (shown != null) Switch(checked = shown, onCheckedChange = null) else Text("Always", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun AddTabItem(onClick: () -> Unit) {
+    ListItem(
+        selected = false, onClick = onClick,
+        headlineContent = { Text("Add your own tab") },
+        supportingContent = { Text("A page of rows you build: \"Kids\", \"4K\", \"Unwatched horror\"…") },
+        trailingContent = { Text("+", color = MaterialTheme.colorScheme.primary) },
+    )
+}
+
+/** What can be done to a tab, the same choices on Home and in libraries; null leaves a choice out. */
+@Composable
+private fun TabActions(
+    label: String,
+    hidden: Boolean?,
+    upEnabled: Boolean,
+    downEnabled: Boolean,
+    onDismiss: () -> Unit,
+    onToggle: (() -> Unit)? = null,
+    onMove: ((Int) -> Unit)? = null,
+    onRename: (() -> Unit)? = null,
+    onRows: (() -> Unit)? = null,
+    removeLabel: String = "Remove this tab",
+    onRemove: (() -> Unit)? = null,
+) {
+    val focus = remember { FocusRequester() }
+    TvDialog(onDismiss = onDismiss, width = 520) {
+        Text(label, style = MaterialTheme.typography.headlineSmall)
+        // The first choice takes focus, whichever it is.
+        var focusTaken = false
+        fun first(): Modifier = if (focusTaken) Modifier else { focusTaken = true; Modifier.focusRequester(focus) }
+        if (hidden != null && onToggle != null) Button(onClick = onToggle, modifier = first()) { Text(if (hidden) "Show this tab" else "Hide this tab") }
+        if (onRows != null) OutlinedButton(onClick = onRows, modifier = first()) { Text("Rows: order, hide, add") }
+        if (onMove != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { onMove(-1) }, enabled = upEnabled, modifier = if (upEnabled) first() else Modifier) { Text("Move up") }
+            OutlinedButton(onClick = { onMove(1) }, enabled = downEnabled, modifier = if (downEnabled) first() else Modifier) { Text("Move down") }
+        }
+        if (onRename != null) OutlinedButton(onClick = onRename, modifier = first()) { Text("Rename") }
+        if (onRemove != null) OutlinedButton(onClick = onRemove, modifier = first()) { Text(removeLabel) }
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    }
 }
 
 /**
@@ -130,62 +288,27 @@ fun LibraryTabsScreen(container: AppContainer, libraryId: String) {
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     if (choosingTheme) ThemeChoice(container, PageKeys.library(libraryId), lib?.name ?: "Library") { choosingTheme = false }
 
-    LazyColumn(contentPadding = PaddingValues(horizontal = Padding, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
-        item {
-            Column(Modifier.padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(lib?.name ?: "Library", style = MaterialTheme.typography.displaySmall)
-                Text("Its tabs, in order. OK on one to show or hide it, move it, rename it or change its rows.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            val theme = prefs.pageThemes[PageKeys.library(libraryId)] ?: dev.nitrate.core.effects.PageTheme.NONE
-            ListItem(
-                selected = false, onClick = { choosingTheme = true },
-                headlineContent = { Text("Theme") },
-                supportingContent = { Text("An animated background over this library's pages") },
-                trailingContent = { Text("${theme.label}  ›", color = MaterialTheme.colorScheme.primary) },
-            )
-        }
+    SetupPage(lib?.name ?: "Library", first) {
+        item { ThemeItem(prefs.pageThemes[PageKeys.library(libraryId)], first) { choosingTheme = true } }
+        item { TabsLabel() }
         items(tabs, key = { it.id }) { tab ->
-            ListItem(
-                selected = false,
-                onClick = { acting = tab },
-                headlineContent = { Text(tab.label) },
-                supportingContent = { Text(if (tab.title != null && tab.kind != LibraryTabKind.OWN) "${tab.kind.label} · ${tab.kind.detail}" else tab.kind.detail) },
-                trailingContent = { Switch(checked = !tab.hidden, onCheckedChange = null) },
-                modifier = if (tab == tabs.first()) Modifier.focusRequester(first) else Modifier,
-            )
+            TabItem(tab.label, if (tab.title != null && tab.kind != LibraryTabKind.OWN) "${tab.kind.label} · ${tab.kind.detail}" else tab.kind.detail, shown = !tab.hidden) { acting = tab }
         }
-        item {
-            ListItem(
-                selected = false, onClick = { adding = true },
-                headlineContent = { Text("Add your own tab") },
-                supportingContent = { Text("A page of rows you build: \"Kids\", \"4K\", \"Unwatched horror\"…") },
-                trailingContent = { Text("+", color = MaterialTheme.colorScheme.primary) },
-            )
-        }
+        item { AddTabItem { adding = true } }
     }
-    LaunchedEffect(tabs.isNotEmpty()) { if (tabs.isNotEmpty()) runCatching { first.requestFocus() } }
 
     acting?.let { tab ->
         val rows = tab.kind in setOf(LibraryTabKind.RECOMMENDED, LibraryTabKind.GENRES, LibraryTabKind.STUDIOS, LibraryTabKind.DECADES, LibraryTabKind.OWN)
-        val focus = remember { FocusRequester() }
-        TvDialog(onDismiss = { acting = null }, width = 520) {
-            Text(tab.label, style = MaterialTheme.typography.headlineSmall)
-            fun act(change: (List<LibraryTab>) -> List<LibraryTab>) { save(change(tabs)); acting = null }
-            Button(onClick = { act { list -> list.map { if (it.id == tab.id) it.copy(hidden = !it.hidden) else it } } }, modifier = Modifier.focusRequester(focus)) {
-                Text(if (tab.hidden) "Show this tab" else "Hide this tab")
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { act { LibraryTabs.move(it, tab.id, -1) } }, enabled = tabs.first().id != tab.id) { Text("Move up") }
-                OutlinedButton(onClick = { act { LibraryTabs.move(it, tab.id, 1) } }, enabled = tabs.last().id != tab.id) { Text("Move down") }
-            }
-            OutlinedButton(onClick = { renaming = tab; acting = null }) { Text("Rename") }
-            if (rows) OutlinedButton(onClick = { editingRows = tab; acting = null }) { Text("Rows: order, hide, add") }
-            if (tab.kind == LibraryTabKind.OWN) OutlinedButton(onClick = { act { list -> list.filterNot { it.id == tab.id } } }) { Text("Remove this tab") }
-            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-        }
+        fun act(change: (List<LibraryTab>) -> List<LibraryTab>) { save(change(tabs)); acting = null }
+        TabActions(
+            tab.label, hidden = tab.hidden, upEnabled = tabs.first().id != tab.id, downEnabled = tabs.last().id != tab.id,
+            onDismiss = { acting = null },
+            onToggle = { act { list -> list.map { if (it.id == tab.id) it.copy(hidden = !it.hidden) else it } } },
+            onMove = { by -> act { LibraryTabs.move(it, tab.id, by) } },
+            onRename = { renaming = tab; acting = null },
+            onRows = if (rows) ({ editingRows = tab; acting = null }) else null,
+            onRemove = if (tab.kind == LibraryTabKind.OWN) ({ act { list -> list.filterNot { it.id == tab.id } } }) else null,
+        )
     }
 
     renaming?.let { tab ->

@@ -3,7 +3,17 @@ package dev.nitrate.tv.ui.effects
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -37,14 +47,6 @@ import kotlin.math.sin
 @Composable
 fun EffectsLayer(theme: PageTheme?, occasion: Occasion?, prefs: EffectsPrefs, modifier: Modifier = Modifier, at: Float? = null) {
     if (!prefs.on || (theme == null || theme == PageTheme.NONE) && occasion == null) return
-    val t by produceState(at ?: 0f, prefs.reduceMotion, at) {
-        if (prefs.reduceMotion || at != null) return@produceState
-        val start = System.nanoTime()
-        while (true) {
-            value = (System.nanoTime() - start) / 1e9f
-            delay(33)
-        }
-    }
     val k = prefs.intensity.scale
     // Real subjects play as film when this build has the clip (and not with Reduce motion), else drawn.
     val shipped = rememberShippedClips()
@@ -57,12 +59,69 @@ fun EffectsLayer(theme: PageTheme?, occasion: Occasion?, prefs: EffectsPrefs, mo
         val themePhotos = if (themeClip == null && occasionClip == null && !prefs.reduceMotion)
             theme?.let { dev.nitrate.core.effects.EffectClips.photosForTheme(it) }?.takeIf { it in remember { shippedPhotoSets(context) } } else null
         themePhotos?.let { PhotoBand(it, 0.45f, Modifier.align(androidx.compose.ui.Alignment.BottomCenter), at = at) }
-        Canvas(Modifier.fillMaxSize()) {
-            if (theme != null && themeClip == null && themePhotos == null) drawTheme(theme, t, k)
-            if (occasion != null && occasionClip == null) drawOccasion(occasion, t, k)
+        val drawTheme = theme != null && themeClip == null && themePhotos == null
+        val drawOccasion = occasion != null && occasionClip == null
+        if (drawTheme || drawOccasion) {
+            DrawnScene(theme to occasion, at = at, still = prefs.reduceMotion) { t ->
+                if (drawTheme) drawTheme(theme!!, t, k)
+                if (drawOccasion) drawOccasion(occasion!!, t, k)
+            }
         }
     }
 }
+
+/**
+ * A drawn scene over the page. A held moment ([at], screenshots) is drawn in place. Playing, each
+ * frame is drawn in software on a background thread into a bitmap and the page shows the latest one:
+ * the scenes are thousands of shapes a frame, too much for a TV's main thread and its graphics
+ * driver, which stalled or dropped them; this way they look the same on every device (and as in the
+ * tests) and run as fast as the device allows, up to ~30 fps, without slowing the page.
+ */
+@Composable
+private fun DrawnScene(key: Any, at: Float?, still: Boolean, draw: DrawScope.(Float) -> Unit) {
+    if (at != null) {
+        Canvas(Modifier.fillMaxSize()) { draw(at) }
+        return
+    }
+    val latest = androidx.compose.runtime.rememberUpdatedState(draw)
+    var area by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    var frame by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(key, area, still) {
+        if (area.width <= 0 || area.height <= 0) return@LaunchedEffect
+        val full = Size(area.width.toFloat(), area.height.toFloat())
+        // Drawn at up to 1280 wide and scaled up: the scenes are soft light, and it keeps each frame quick.
+        val scale = (RENDER_WIDTH / full.width).coerceAtMost(1f)
+        val w = (full.width * scale).toInt().coerceAtLeast(1)
+        val h = (full.height * scale).toInt().coerceAtLeast(1)
+        // Three bitmaps in turn, so the one on screen is never the one being drawn.
+        val buffers = List(3) { ImageBitmap(w, h) }
+        val scope = androidx.compose.ui.graphics.drawscope.CanvasDrawScope()
+        val start = System.nanoTime()
+        var n = 0
+        withContext(Dispatchers.Default) {
+            while (isActive) {
+                val began = System.nanoTime()
+                val t = if (still) 0f else (began - start) / 1e9f
+                val bitmap = buffers[n++ % buffers.size]
+                bitmap.asAndroidBitmap().eraseColor(android.graphics.Color.TRANSPARENT)
+                val canvas = androidx.compose.ui.graphics.Canvas(bitmap)
+                canvas.scale(scale, scale)
+                runCatching {
+                    scope.draw(androidx.compose.ui.unit.Density(1f), androidx.compose.ui.unit.LayoutDirection.Ltr, canvas, full) { latest.value(this, t) }
+                }
+                frame = bitmap
+                if (still) break
+                delay((FRAME_MS - (System.nanoTime() - began) / 1_000_000).coerceAtLeast(4))
+            }
+        }
+    }
+    Canvas(Modifier.fillMaxSize().onSizeChanged { area = it }) {
+        frame?.let { drawImage(it, dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()), filterQuality = FilterQuality.Low) }
+    }
+}
+
+private const val RENDER_WIDTH = 1280f
+private const val FRAME_MS = 33L
 
 /** Today's occasion (in the device's time zone), checked again every hour. */
 @Composable
@@ -576,3 +635,6 @@ private fun DrawScope.pumpkin(c: Offset, s: Float, t: Float) {
     drawArc(glow, 20f, 140f, true, topLeft = Offset(c.x - s * 0.5f, c.y - s * 0.4f), size = Size(s, s * 0.6f))
 }
 
+
+internal fun DrawScope.drawThemeForTest(theme: PageTheme, t: Float, k: Float) = drawTheme(theme, t, k)
+internal fun DrawScope.drawOccasionForTest(o: Occasion, t: Float, k: Float) = drawOccasion(o, t, k)
