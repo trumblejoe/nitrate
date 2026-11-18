@@ -31,6 +31,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.tv.ui.effects.cardFx
 
 /** Remote "Play" keys, so any card can start playback without opening details first. */
 fun Modifier.onPlayKey(onPlay: (() -> Unit)?): Modifier =
@@ -69,6 +70,7 @@ fun MediaCard(
             onClick = onClick,
             onLongClick = onLongClick,
             modifier = Modifier
+                .cardFx(item.id)
                 .fillMaxWidth()
                 .aspectRatio(aspectRatio)
                 .onFocusChanged { if (it.isFocused) onFocus() }

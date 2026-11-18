@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.rows
 
+import dev.nitrate.core.rows.isShowcase
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -161,6 +162,14 @@ fun RowSettingsDialog(
                     item { ToggleItem("Show titles", display.showTitles) { onChange(display.copy(showTitles = it)) } }
                 }
                 }
+                if (!display.style.isShowcase) {
+                    // Fun on the cards: what one does when opened, and now and then while browsing.
+                    item { ChoiceItem("Click effect", display.clickEffect.label) { onChange(display.copy(clickEffect = display.clickEffect.cycle())) } }
+                    item { ChoiceItem("Browsing effect", display.cardSpark.label) { onChange(display.copy(cardSpark = display.cardSpark.cycle())) } }
+                    if (display.cardSpark != dev.nitrate.core.effects.CardSpark.NONE) {
+                        item { ChoiceItem("How often", display.sparkRate.label) { onChange(display.copy(sparkRate = display.sparkRate.cycle())) } }
+                    }
+                }
                 onEditPage?.let { edit ->
                     item { ListItem(selected = false, onClick = edit, headlineContent = { Text("Edit page") }, supportingContent = { Text("Order, hide, rename and add rows") }) }
                 }
@@ -202,3 +211,5 @@ private fun RowStyle.next() = step(1)
 /** The style [by] places on (round the list): Fast-forward/Rewind and the Edit page's quick choice. */
 internal fun RowStyle.step(by: Int) = RowStyle.entries[(ordinal + by).mod(RowStyle.entries.size)]
 private fun RowSize.next() = RowSize.entries[(ordinal + 1) % RowSize.entries.size]
+
+internal inline fun <reified E : Enum<E>> E.cycle(): E = enumValues<E>().let { it[(ordinal + 1) % it.size] }

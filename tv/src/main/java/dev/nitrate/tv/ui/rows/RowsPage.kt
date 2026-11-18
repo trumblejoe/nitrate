@@ -161,6 +161,10 @@ fun RowsPage(
                     ) {
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowsScroll) {
                         val display = overrides[row.key] ?: row.defaultDisplay
+                        val prefs = LocalDisplayPrefs.current
+                        val fx = dev.nitrate.tv.ui.effects.rememberCardFx(display, prefs.effects, prefs.easyMode)
+                        val actions = if (fx != null && !display.style.isShowcase) fx.wrap(actions) else actions
+                        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalCardFx provides fx) {
                         val hidden = activeShowcase != null && activeShowcase != row.key
                         if (display.style.isShowcase) {
                             val active = activeShowcase == row.key
@@ -192,6 +196,7 @@ fun RowsPage(
                                     else -> CardRow(row, display, repository, actions)
                                 }
                             }
+                        }
                         }
                         }
                     }

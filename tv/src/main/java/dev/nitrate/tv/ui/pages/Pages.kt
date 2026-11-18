@@ -177,7 +177,7 @@ private typealias PrefToggle = Triple<String, (DisplayPrefs) -> Boolean, (Displa
 
 /** Display settings, in this TV's display profile and synced for the user; [page] picks which. */
 @Composable
-fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPage.LOOK, onMenuStops: () -> Unit = {}, onShown: () -> Unit = {}, onPages: () -> Unit = {}) {
+fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPage.LOOK, onMenuStops: () -> Unit = {}, onShown: () -> Unit = {}, onPages: () -> Unit = {}, onEffects: () -> Unit = {}) {
     val prefs = LocalDisplayPrefs.current
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
@@ -300,6 +300,15 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 onClick = onPages,
                 headlineContent = { Text("Pages") },
                 supportingContent = { Text("Home's rows, and each library's tabs (Genres, Collections, Unwatched, your own…)") },
+                trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = onEffects,
+                headlineContent = { Text("Effects") },
+                supportingContent = { Text(if (prefs.effects.on) "Page themes, card effects and the calendar's occasions" else "Off") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
             )
         }

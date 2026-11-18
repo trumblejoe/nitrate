@@ -585,5 +585,13 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     val marked = remember(catalog, current) { catalog.current(current) }
     // "Fade in" used to be its own menu: it's the top/bottom bar, hidden.
     val style = if (prefs.tvMenu == TvMenuStyle.FADE) TvMenuStyle.TOP else prefs.tvMenu
-    TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE, content = content)
+    androidx.compose.foundation.layout.Box {
+        TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE, content = content)
+        // The page's theme and the day's occasion, over the page (never in the player: it isn't a menu page).
+        if (!prefs.easyMode) {
+            val theme = dev.nitrate.core.effects.PageThemes.pageKeyFor(current)?.let { prefs.pageThemes[it] }
+            val occasion = dev.nitrate.tv.ui.effects.rememberOccasion(prefs.effects)
+            dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects)
+        }
+    }
 }

@@ -215,7 +215,7 @@ private fun EntryDialog(
                         true
                     },
                 )
-                ListItem(selected = false, onClick = { look = true }, headlineContent = { Text("Look") }, supportingContent = { Text("${display.style.label} · ${display.size.label}") })
+                ListItem(selected = false, onClick = { look = true }, headlineContent = { Text("Look") }, supportingContent = { Text("${display.style.label} · ${display.size.label}" + if (display.clickEffect != dev.nitrate.core.effects.ClickEffect.NONE || display.cardSpark != dev.nitrate.core.effects.CardSpark.NONE) " · effects" else "") })
             }
             if (entry.isCustom) {
                 ListItem(selected = false, onClick = { contents = true }, headlineContent = { Text("Change contents") })

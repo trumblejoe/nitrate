@@ -129,6 +129,45 @@ class TvScreenshotTest {
         shoot(name, { c -> c.displaySettings.savePrefs("user-1", prefs) }, act = check, content = content)
 
     /** Right from the open rail goes back to the page (the open drawer covers it, so focus can't find it alone). */
+    // ---- Effects: each scene held at a moment, over a stand-in page ----
+    private fun effectShot(name: String, theme: dev.nitrate.core.effects.PageTheme? = null, occasion: dev.nitrate.core.effects.Occasion? = null, at: Float = 3.1f) =
+        shoot(name) { dev.nitrate.tv.ui.effects.EffectStage(theme, occasion, dev.nitrate.core.effects.EffectsPrefs(), onDismiss = {}, at = at) }
+
+    @Test fun fxThunderstorm() = effectShot("tv-fx-thunderstorm", theme = dev.nitrate.core.effects.PageTheme.THUNDERSTORM, at = 6.6f)
+    @Test fun fxSafari() = effectShot("tv-fx-safari", theme = dev.nitrate.core.effects.PageTheme.SAFARI, at = 12f)
+    @Test fun fxDeepSpace() = effectShot("tv-fx-deep-space", theme = dev.nitrate.core.effects.PageTheme.DEEP_SPACE, at = 4f)
+    @Test fun fxUnderwater() = effectShot("tv-fx-underwater", theme = dev.nitrate.core.effects.PageTheme.UNDERWATER, at = 6f)
+    @Test fun fxHaunted() = effectShot("tv-fx-haunted", theme = dev.nitrate.core.effects.PageTheme.HAUNTED)
+    @Test fun fxDesert() = effectShot("tv-fx-desert", theme = dev.nitrate.core.effects.PageTheme.DESERT, at = 4f)
+    @Test fun fxSnowyForest() = effectShot("tv-fx-snowy-forest", theme = dev.nitrate.core.effects.PageTheme.SNOWY_FOREST)
+    @Test fun fxSuperhero() = effectShot("tv-fx-superhero", theme = dev.nitrate.core.effects.PageTheme.SUPERHERO_CITY, at = 5.3f)
+    @Test fun fxAlienAgents() = effectShot("tv-fx-alien-agents", theme = dev.nitrate.core.effects.PageTheme.ALIEN_AGENTS, at = 5f)
+    @Test fun fxNeonArcade() = effectShot("tv-fx-neon-arcade", theme = dev.nitrate.core.effects.PageTheme.NEON_ARCADE)
+    @Test fun fxOccasions() {
+        // One stage per occasion, small, in a grid.
+        shoot("tv-fx-occasions") {
+            androidx.compose.foundation.layout.Column {
+                dev.nitrate.core.effects.Occasion.entries.chunked(4).forEach { line ->
+                    androidx.compose.foundation.layout.Row(Modifier.weight(1f)) {
+                        line.forEach { o ->
+                            Box(Modifier.weight(1f).fillMaxSize().padding(2.dp)) {
+                                dev.nitrate.tv.ui.effects.EffectsLayer(null, o, dev.nitrate.core.effects.EffectsPrefs(), at = 4.2f)
+                                androidx.tv.material3.Text(o.label, Modifier.align(androidx.compose.ui.Alignment.Center))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    @Test fun fxLaborDay() = effectShot("tv-fx-labor-day", occasion = dev.nitrate.core.effects.Occasion.LABOR_DAY)
+    @Test fun fxMarines() = effectShot("tv-fx-marine-corps", occasion = dev.nitrate.core.effects.Occasion.MARINE_CORPS_BIRTHDAY)
+    @Test fun fxAirForce() = effectShot("tv-fx-air-force", occasion = dev.nitrate.core.effects.Occasion.AIR_FORCE_BIRTHDAY, at = 3.6f)
+    @Test fun fxJuly4() = effectShot("tv-fx-independence-day", occasion = dev.nitrate.core.effects.Occasion.INDEPENDENCE_DAY)
+    @Test fun fxChristmas() = effectShot("tv-fx-christmas", occasion = dev.nitrate.core.effects.Occasion.CHRISTMAS, at = 5f)
+    @Test fun fxFestivus() = effectShot("tv-fx-festivus", occasion = dev.nitrate.core.effects.Occasion.FESTIVUS, at = 2.5f)
+    @Test fun fxEffectsSettings() = shoot("tv-fx-settings") { c -> dev.nitrate.tv.ui.effects.EffectsSettingsScreen(c) }
+
     @Test fun railRightExits() = prefsShot("tv-rail-exit", dev.nitrate.core.pages.DisplayPrefs(), {
         press("left")
         org.junit.Assert.assertTrue("Left reaches the rail", focusedHasText("Home"))

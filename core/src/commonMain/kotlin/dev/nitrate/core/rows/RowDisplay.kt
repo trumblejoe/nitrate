@@ -68,6 +68,11 @@ data class RowDisplay(
     val inkTint: InkTint = InkTint.SMART,
     /** The ink colour when [inkTint] is CUSTOM (ARGB). */
     val inkArgb: Long = InkPalette.GOLD,
+    /** What a card does when clicked (posters and wide cards). */
+    val clickEffect: dev.nitrate.core.effects.ClickEffect = dev.nitrate.core.effects.ClickEffect.NONE,
+    /** What now and then happens to a card while browsing, and how often. */
+    val cardSpark: dev.nitrate.core.effects.CardSpark = dev.nitrate.core.effects.CardSpark.NONE,
+    val sparkRate: dev.nitrate.core.effects.SparkRate = dev.nitrate.core.effects.SparkRate.SOMETIMES,
 )
 
 @Serializable

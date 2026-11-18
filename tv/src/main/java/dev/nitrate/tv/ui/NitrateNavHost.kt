@@ -85,6 +85,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 @Serializable object DisplaySettingsRoute
 @Serializable object PageSetupRoute
+@Serializable object EffectsSettingsRoute
 @Serializable data class LibraryTabsRoute(val libraryId: String)
 @Serializable object MenuStopsRoute
 @Serializable object ServerAddressesRoute
@@ -401,7 +402,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() })
             }
         }
-        composable<DisplaySettingsRoute> { DisplaySettingsScreen(container, onMenuStops = { nav.navigate(MenuStopsRoute) }, onShown = { nav.navigate(ShownSettingsRoute) }, onPages = { nav.navigate(PageSetupRoute) }) }
+        composable<DisplaySettingsRoute> { DisplaySettingsScreen(container, onMenuStops = { nav.navigate(MenuStopsRoute) }, onShown = { nav.navigate(ShownSettingsRoute) }, onPages = { nav.navigate(PageSetupRoute) }, onEffects = { nav.navigate(EffectsSettingsRoute) }) }
+        composable<EffectsSettingsRoute> { dev.nitrate.tv.ui.effects.EffectsSettingsScreen(container) }
         composable<PageSetupRoute> { dev.nitrate.tv.ui.pages.PageSetupScreen(container) { lib -> nav.navigate(LibraryTabsRoute(lib.id)) } }
         composable<LibraryTabsRoute> { entry -> dev.nitrate.tv.ui.pages.LibraryTabsScreen(container, entry.toRoute<LibraryTabsRoute>().libraryId) }
         composable<ShownSettingsRoute> { DisplaySettingsScreen(container, dev.nitrate.tv.ui.pages.DisplayPage.SHOWN) }

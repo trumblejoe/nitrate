@@ -40,6 +40,7 @@ import dev.nitrate.core.pages.PageKeys
 import dev.nitrate.tv.ui.components.TvTextField
 import dev.nitrate.tv.ui.lists.TvDialog
 import dev.nitrate.tv.ui.rows.PageEditor
+import dev.nitrate.tv.ui.effects.withTheme
 import kotlinx.coroutines.launch
 
 private val Padding = 58.dp
@@ -53,6 +54,8 @@ private val Padding = 58.dp
 fun PageSetupScreen(container: AppContainer, onLibrary: (MediaItem) -> Unit) {
     val first = remember { FocusRequester() }
     var editingHome by remember { mutableStateOf(false) }
+    var choosingTheme by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val libraries = dev.nitrate.tv.ui.home.rememberLibraries(container)
         .filter { it.collection != CollectionKind.LIVE_TV && it.collection != CollectionKind.PLAYLISTS }
     LazyColumn(contentPadding = PaddingValues(horizontal = Padding, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
@@ -72,6 +75,15 @@ fun PageSetupScreen(container: AppContainer, onLibrary: (MediaItem) -> Unit) {
                 modifier = Modifier.focusRequester(first),
             )
         }
+        item {
+            val theme = prefs.pageThemes[PageKeys.HOME] ?: dev.nitrate.core.effects.PageTheme.NONE
+            ListItem(
+                selected = false, onClick = { choosingTheme = PageKeys.HOME to "Home" },
+                headlineContent = { Text("Home's theme") },
+                supportingContent = { Text("An animated background: thunderstorm, safari, deep space…") },
+                trailingContent = { Text("${theme.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
         items(libraries, key = { it.id }) { lib ->
             ListItem(
                 selected = false, onClick = { onLibrary(lib) },
@@ -81,6 +93,7 @@ fun PageSetupScreen(container: AppContainer, onLibrary: (MediaItem) -> Unit) {
             )
         }
     }
+    choosingTheme?.let { (key, name) -> ThemeChoice(container, key, name) { choosingTheme = null } }
     if (editingHome) {
         val vm = viewModel(key = "home-setup") {
             RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges, cache = container.dataCache)
@@ -113,6 +126,9 @@ fun LibraryTabsScreen(container: AppContainer, libraryId: String) {
     var renaming by remember { mutableStateOf<LibraryTab?>(null) }
     var adding by remember { mutableStateOf(false) }
     var editingRows by remember { mutableStateOf<LibraryTab?>(null) }
+    var choosingTheme by remember { mutableStateOf(false) }
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    if (choosingTheme) ThemeChoice(container, PageKeys.library(libraryId), lib?.name ?: "Library") { choosingTheme = false }
 
     LazyColumn(contentPadding = PaddingValues(horizontal = Padding, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
         item {
@@ -121,6 +137,15 @@ fun LibraryTabsScreen(container: AppContainer, libraryId: String) {
                 Text("Its tabs, in order. OK on one to show or hide it, move it, rename it or change its rows.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        item {
+            val theme = prefs.pageThemes[PageKeys.library(libraryId)] ?: dev.nitrate.core.effects.PageTheme.NONE
+            ListItem(
+                selected = false, onClick = { choosingTheme = true },
+                headlineContent = { Text("Theme") },
+                supportingContent = { Text("An animated background over this library's pages") },
+                trailingContent = { Text("${theme.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
         }
         items(tabs, key = { it.id }) { tab ->
             ListItem(
@@ -197,6 +222,18 @@ fun LibraryTabsScreen(container: AppContainer, libraryId: String) {
             PageEditor("${lib.name} · ${tab.label}", vm, server, libraryId = lib.id, onDone = { editingRows = null })
         }
     }
+}
+
+/** Picks [pageKey]'s theme and saves it in the display profile. */
+@Composable
+private fun ThemeChoice(container: AppContainer, pageKey: String, name: String, onDone: () -> Unit) {
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val scope = rememberCoroutineScope()
+    dev.nitrate.tv.ui.effects.PageThemePicker(name, prefs.pageThemes[pageKey] ?: dev.nitrate.core.effects.PageTheme.NONE, onPick = { theme ->
+        val u = container.server.userId
+        if (u != null) scope.launch { container.displaySettings.savePrefs(u, prefs.withTheme(pageKey, theme)) }
+        onDone()
+    }, onDismiss = onDone)
 }
 
 /** A name to type (TV keyboard on OK), with Save and Cancel. */
