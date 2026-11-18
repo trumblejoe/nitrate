@@ -127,7 +127,7 @@ fun BrowseLibrary(
         BrowseView.GRID -> if (music) 6 else 7
         BrowseView.ARTWORK -> if (music) 6 else 4
         BrowseView.LIST -> 2
-        BrowseView.BOUNCE -> 7
+        else -> 7 // the show views lay themselves out
     }
     // The A–Z bar: above the titles, down one side (the user's choice, away from the menu by
     // default) or off. Above, it's one of the grid's first items with the header and options bar.
@@ -147,7 +147,7 @@ fun BrowseLibrary(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { dialog = "sort" }) { Text("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}") }
                 OutlinedButton(onClick = { dialog = "filters" }) { Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") }
-                OutlinedButton(onClick = { update { it.copy(view = BrowseView.entries[(it.view.ordinal + 1) % BrowseView.entries.size]) } }) {
+                OutlinedButton(onClick = { dialog = "view" }) {
                     Text("View: ${options.view.label}")
                 }
                 if (options.filterCount > 0) OutlinedButton(onClick = { update { it.clearFilters() } }) { Text("Clear filters") }
@@ -163,8 +163,8 @@ fun BrowseLibrary(
                 }
             }
     }
-    if (options.view == BrowseView.BOUNCE) {
-        // The box fills the page under the header and bar; no A–Z (nothing to scroll to).
+    if (options.view.tvOnly) {
+        // A show view fills the page under the header and bar; no A–Z (nothing to scroll through).
         Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             header()
             bar()
@@ -172,11 +172,20 @@ fun BrowseLibrary(
                 state.error != null && state.items.isEmpty() -> Column { Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error); Button(onClick = vm::retry) { Text("Try again") } }
                 state.loading -> Text("Loading…")
                 state.items.isEmpty() -> Text(if (options.filterCount > 0) "Nothing matches these filters." else "Nothing here yet.", style = MaterialTheme.typography.titleMedium)
-                else -> BounceBox(
+                options.view == BrowseView.BOUNCE -> BounceBox(
                     state.items, state.total, repository, music,
                     titleOf = { item -> if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else item.name },
                     onOpen = ::tap, onPlay = onPlay,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+                else -> ShowView(
+                    options.view,
+                    ShowArgs(
+                        state.items, repository, music,
+                        titleOf = { item -> if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else item.name },
+                        onOpen = ::tap, onPlay = onPlay, onNeedMore = vm::loadMore,
+                    ),
+                    Modifier.weight(1f).fillMaxWidth(),
                 )
             }
         }
@@ -247,6 +256,7 @@ fun BrowseLibrary(
             dialog = null
             if (changed) { selecting = false; selected = emptySet(); vm.reload() }
         }
+        "view" -> ViewDialog(options.view, onPick = { v -> update { it.copy(view = v) }; dialog = null }, onDismiss = { dialog = null })
         "sort" -> SortDialog(options, onPick = { change -> update(change); dialog = null }, onDismiss = { dialog = null })
         "filters" -> FilterDialog(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
     }
@@ -306,6 +316,24 @@ private fun SortDialog(options: BrowseOptions, onPick: ((BrowseOptions) -> Brows
                 Text(if (options.descending) "Reverse (lowest/oldest first)" else "Reverse (highest/newest first)")
             }
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        }
+    }
+}
+
+/** Every way to lay the titles out: the plain ones, then the show views. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ViewDialog(current: BrowseView, onPick: (BrowseView) -> Unit, onDismiss: () -> Unit) {
+    val first = remember { FocusRequester() }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(Modifier.width(620.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("View", style = MaterialTheme.typography.headlineSmall)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                BrowseView.entries.forEach { v ->
+                    FilterChip(selected = v == current, onClick = { onPick(v) }, modifier = if (v == current) Modifier.focusRequester(first) else Modifier) { Text(v.label) }
+                }
+            }
+            LaunchedEffect(Unit) { kotlinx.coroutines.android.awaitFrame(); runCatching { first.requestFocus() } }
         }
     }
 }

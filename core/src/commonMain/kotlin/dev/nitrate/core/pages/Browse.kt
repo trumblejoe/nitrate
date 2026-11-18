@@ -12,6 +12,20 @@ enum class BrowseView(val label: String, val tvOnly: Boolean = false) {
     GRID("Posters"), ARTWORK("Artwork"), LIST("List"),
     /** Posters flying round a box, bouncing off its walls and each other; the one focused stops still. */
     BOUNCE("Bouncing box", tvOnly = true),
+    /** One big cover in the middle, its neighbours tilted away either side. */
+    COVERFLOW("Cover flow", tvOnly = true),
+    /** Book spines on wooden shelves; the chosen one slides out to show its cover. */
+    SHELF("Bookshelf", tvOnly = true),
+    /** A line through the years, each title by its release year. */
+    TIMELINE("Timeline", tvOnly = true),
+    /** A gallery wall of backdrops, panning slowly; the chosen one lifts out. */
+    WALL("Wall of art", tvOnly = true),
+    /** Cards flipping over a drum, one title at a time with its details. */
+    ROLODEX("Rolodex", tvOnly = true),
+    /** Posters drifting towards you out of deep space; the chosen one parked up front. */
+    STARFIELD("Starfield", tvOnly = true),
+    /** A deck of cards: each one dealt off the top with a flick. */
+    DECK("Shuffle deck", tvOnly = true),
 }
 
 /**

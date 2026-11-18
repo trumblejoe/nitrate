@@ -349,6 +349,29 @@ class TvScreenshotTest {
         check(focused.isNotEmpty() && kotlin.math.abs(focused.first().boundsInRoot.width - 144f) < 2f) { "Down from the bar should catch a poster in the box, got ${focused.map { it.boundsInRoot }}" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
+    /** A library's All tab in [view]: Down from the bar into it, then Right twice; something in it keeps focus. */
+    private fun showViewShot(view: dev.nitrate.core.pages.BrowseView) = shoot("tv-library-view-${view.name.lowercase()}", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
+            dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
+        ))
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = view))
+    }, act = {
+        press("down", "down", "right", "right")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
+        check(focused.isNotEmpty() && focused.first().boundsInRoot.top > 200f) { "focus should be in the ${view.label} view, got ${focused.map { it.boundsInRoot }}" }
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
+    @Test fun libraryCoverFlow() = showViewShot(dev.nitrate.core.pages.BrowseView.COVERFLOW)
+    @Test fun libraryBookshelf() = showViewShot(dev.nitrate.core.pages.BrowseView.SHELF)
+    @Test fun libraryTimeline() = showViewShot(dev.nitrate.core.pages.BrowseView.TIMELINE)
+    @Test fun libraryWall() = showViewShot(dev.nitrate.core.pages.BrowseView.WALL)
+    @Test fun libraryRolodex() = showViewShot(dev.nitrate.core.pages.BrowseView.ROLODEX)
+    @Test fun libraryStarfield() = showViewShot(dev.nitrate.core.pages.BrowseView.STARFIELD)
+    @Test fun libraryDeck() = showViewShot(dev.nitrate.core.pages.BrowseView.DECK)
+
     /** A library with more tabs switched on (Genres, and your own) and Genres open. */
     @Test fun libraryGenresTab() = shoot("tv-library-genres-tab", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)

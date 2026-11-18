@@ -188,3 +188,8 @@ object PrerollDrawing {
         }
     }
 }
+
+/** The pre-roll starfield, softer, behind the library's Starfield view. */
+object ShowStars {
+    fun DrawScope.draw(t: Float) = starfield(t, 0.6f)
+}
