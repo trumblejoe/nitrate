@@ -206,14 +206,15 @@ private fun Expanded(
 
         // Captioned as the screensaver is: the row and place as a small label, the title, a quiet line
         // or two, in a bottom corner that alternates side from one title to the next.
+        val (capTop, end) = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCaptionCorner.resolve(index)
         dev.nitrate.tv.ui.components.ArtCaptionShade()
-        val end = index % 2 == 1
+        if (capTop) dev.nitrate.tv.ui.components.ArtCaptionShade(top = true)
         dev.nitrate.tv.ui.components.ArtCaption(
             item, label = "${row.title}  ·  ${index + 1} / ${row.items.size}", end = end,
             logoUrl = if (options.showLogo) repository.logoUrl(item) else null,
             showDetails = options.showDetails, showRatings = options.showRatings, showOverview = options.showOverview,
-            modifier = Modifier.align(if (end) Alignment.BottomEnd else Alignment.BottomStart)
-                .padding(start = RowPadding, end = RowPadding, bottom = bottom).cardFx(item.id, spark = false),
+            modifier = Modifier.align(when { capTop && end -> Alignment.TopEnd; capTop -> Alignment.TopStart; end -> Alignment.BottomEnd; else -> Alignment.BottomStart })
+                .padding(start = RowPadding, end = RowPadding, top = if (capTop) 72.dp else 0.dp, bottom = if (capTop) 0.dp else bottom).cardFx(item.id, spark = false),
         )
 
         if (strip) Filmstrip(row, index, repository, Modifier.align(Alignment.BottomStart).padding(bottom = 36.dp))

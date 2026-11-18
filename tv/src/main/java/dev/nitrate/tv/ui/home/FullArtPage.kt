@@ -156,16 +156,18 @@ fun FullArtPage(
         val pad = Modifier.padding(start = 58.dp + insets.start, end = 58.dp + insets.end)
         // Captioned as the screensaver is: the row and place as a small label, the title, a quiet line
         // or two, in a bottom corner that alternates side from one title to the next.
-        dev.nitrate.tv.ui.components.ArtCaptionShade()
+        val (capTop, capEnd) = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCaptionCorner.resolve(current)
+        dev.nitrate.tv.ui.components.ArtCaptionShade(top = capTop)
         AnimatedContent(item, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "details", contentKey = { it.id },
             modifier = Modifier.fillMaxSize()) { it ->
             Box(Modifier.fillMaxSize()) {
-                val end = current % 2 == 1
+                val end = capEnd
                 dev.nitrate.tv.ui.components.ArtCaption(
                     it, label = "${row.title}  ·  ${current + 1} / ${row.items.size}", end = end,
                     logoUrl = if (showcase.showLogo) repository.logoUrl(it) else null,
                     showDetails = showcase.showDetails, showRatings = showcase.showRatings, showOverview = showcase.showOverview,
-                    modifier = Modifier.align(if (end) Alignment.BottomEnd else Alignment.BottomStart).then(pad).padding(bottom = 56.dp + insets.bottom),
+                    modifier = Modifier.align(when { capTop && end -> Alignment.TopEnd; capTop -> Alignment.TopStart; end -> Alignment.BottomEnd; else -> Alignment.BottomStart })
+                        .then(pad).padding(top = if (capTop) 84.dp + insets.top else 0.dp, bottom = if (capTop) 0.dp else 56.dp + insets.bottom),
                 )
             }
         }

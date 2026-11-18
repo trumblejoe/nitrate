@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -139,8 +140,6 @@ fun RowsPage(
         if (activeShowcase == null) Backdrop(focused?.let(repository::backdropUrl), Modifier.fillMaxSize())
         // The page's theme, behind the rows and over the title's picture.
         dev.nitrate.tv.ui.effects.ThemeBehindSlot()
-        // One at a time, the screensaver's shade along the bottom under the caption and row.
-        if (!LocalDisplayPrefs.current.tvRowsStacked) dev.nitrate.tv.ui.components.ArtCaptionShade()
         androidx.compose.animation.AnimatedVisibility(
             visible = styleNote != null, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = RowPadding).zIndex(2f),
@@ -307,21 +306,61 @@ fun RowsPage(
                                 }
                             }
                             if (oneAtATime) {
-                                // The screensaver's way: the title's caption (the row and place as its label)
-                                // on the same line as the row, beside it, the side alternating row by row.
-                                val end = rowIndex % 2 == 1
+                                // The screensaver's way: the title's caption (the row and place as its label) in
+                                // its corner, the row along the top or bottom or down a side; the row fills the
+                                // screen as one layer, so each can go exactly where it's set.
+                                val p = LocalDisplayPrefs.current
+                                val place = p.tvRowPlace
+                                val (capTop, capEnd) = p.tvCaptionCorner.resolve(rowIndex, place)
+                                val compact = p.tvCaptionSize == dev.nitrate.core.pages.CaptionSize.COMPACT
                                 val shownItem = focused?.takeIf { f -> row.items.any { it.id == f.id } } ?: row.items.firstOrNull()
-                                val place = shownItem?.let { f -> row.items.indexOfFirst { it.id == f.id } + 1 } ?: 0
-                                val caption: @Composable () -> Unit = {
+                                val number = shownItem?.let { f -> row.items.indexOfFirst { it.id == f.id } + 1 } ?: 0
+                                val captionPad = Modifier.padding(start = if (capEnd) 0.dp else RowPadding, end = if (capEnd) RowPadding else 0.dp, top = if (capTop) 12.dp else 0.dp, bottom = if (capTop) 0.dp else 10.dp)
+                                val caption: @Composable (Modifier) -> Unit = { m ->
                                     if (shownItem != null) dev.nitrate.tv.ui.components.ArtCaption(
-                                        shownItem, label = "${row.title}  ·  $place / ${row.items.size}", end = end, logoUrl = null,
-                                        modifier = Modifier.width(CaptionWidth).padding(start = if (end) 0.dp else RowPadding, end = if (end) RowPadding else 0.dp, bottom = 6.dp),
+                                        shownItem, label = "${row.title}  ·  $number / ${row.items.size}", end = capEnd, logoUrl = null,
+                                        compact = compact, modifier = m.then(captionPad).width(dev.nitrate.tv.ui.components.captionWidth(compact)),
                                     )
                                 }
-                                androidx.compose.foundation.layout.Row(Modifier.alpha(if (hidden) 0f else 1f), verticalAlignment = Alignment.Bottom) {
-                                    if (!end) caption()
-                                    Box(Modifier.weight(1f)) { CompositionLocalProvider(LocalRowTitle provides false) { cards() } }
-                                    if (end) caption()
+                                val partial = p.tvRowExtent == dev.nitrate.core.pages.RowExtent.PARTIAL
+                                Box(Modifier.alpha(if (hidden) 0f else 1f).fillMaxWidth().height(with(density) { viewport.toDp() })) {
+                                    dev.nitrate.tv.ui.components.ArtCaptionShade(top = capTop, side = if (place.horizontal) null else place == dev.nitrate.core.pages.RowPlace.RIGHT)
+                                    if (place.horizontal && capTop != (place == dev.nitrate.core.pages.RowPlace.TOP)) dev.nitrate.tv.ui.components.ArtCaptionShade(top = !capTop)
+                                    CompositionLocalProvider(LocalRowTitle provides false) {
+                                        if (place.horizontal) {
+                                            val rowTop = place == dev.nitrate.core.pages.RowPlace.TOP
+                                            val edge = if (rowTop) Alignment.TopStart else Alignment.BottomStart
+                                            if (capTop == rowTop) {
+                                                // On the same line: the row starts beside the caption (part way, always).
+                                                androidx.compose.foundation.layout.Row(Modifier.align(edge).padding(top = if (rowTop) 8.dp else 0.dp), verticalAlignment = if (rowTop) Alignment.Top else Alignment.Bottom) {
+                                                    if (!capEnd) caption(Modifier)
+                                                    Box(Modifier.weight(1f)) { cards() }
+                                                    if (capEnd) caption(Modifier)
+                                                }
+                                            } else {
+                                                caption(Modifier.align(corner(capTop, capEnd)))
+                                                Box(Modifier.align(if (rowTop) (if (partial && capEnd) Alignment.TopEnd else Alignment.TopStart) else (if (partial && capEnd) Alignment.BottomEnd else Alignment.BottomStart))
+                                                    .padding(top = if (rowTop) 8.dp else 0.dp, bottom = if (rowTop) 0.dp else 10.dp)
+                                                    .fillMaxWidth(if (partial) PartialShare else 1f)) { cards() }
+                                            }
+                                        } else {
+                                            val rowEnd = place == dev.nitrate.core.pages.RowPlace.RIGHT
+                                            val sidePad = Modifier.padding(start = if (rowEnd) 0.dp else RowPadding - 16.dp, end = if (rowEnd) RowPadding - 16.dp else 0.dp)
+                                            val column: @Composable (Modifier) -> Unit = { m -> ColumnCards(row, display, repository, actions, m.width(ColumnWidth)) }
+                                            if (capEnd == rowEnd) {
+                                                // On the same side: the caption heads (or ends) the column, which takes the rest.
+                                                Column(Modifier.align(if (rowEnd) Alignment.TopEnd else Alignment.TopStart).fillMaxHeight(),
+                                                    horizontalAlignment = if (rowEnd) Alignment.End else Alignment.Start) {
+                                                    if (capTop) caption(Modifier)
+                                                    column(Modifier.weight(1f).then(sidePad))
+                                                    if (!capTop) caption(Modifier)
+                                                }
+                                            } else {
+                                                caption(Modifier.align(corner(capTop, capEnd)))
+                                                column(Modifier.align(corner(!partial || capTop, rowEnd)).then(sidePad).fillMaxHeight(if (partial) PartialShare else 1f))
+                                            }
+                                        }
+                                    }
                                 }
                             } else Box(Modifier.alpha(if (hidden) 0f else 1f)) { cards() }
                         }
@@ -408,8 +447,15 @@ private object WholeRowInView : androidx.compose.foundation.gestures.BringIntoVi
     }
 }
 
-/** The caption beside a row, one at a time. */
-private val CaptionWidth = 400.dp
+/** How much of the page a row part way takes (one at a time). */
+private const val PartialShare = 0.62f
+
+private fun corner(top: Boolean, end: Boolean) = when {
+    top && end -> Alignment.TopEnd
+    top -> Alignment.TopStart
+    end -> Alignment.BottomEnd
+    else -> Alignment.BottomStart
+}
 
 /** [RowsPage]'s focused row while the page's header (its tabs) has focus. */
 private const val HEADER_FOCUSED = Int.MAX_VALUE

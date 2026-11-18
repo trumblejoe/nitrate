@@ -179,6 +179,25 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
+    /** Rows one at a time in each place, with the caption in another corner or beside them. */
+    private fun rowLayout(name: String, prefs: dev.nitrate.core.pages.DisplayPrefs, down: Boolean = false) = shoot(name, { c ->
+        c.displaySettings.savePrefs("user-1", prefs)
+    }, act = { if (down) press("down") }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    @Test fun rowsAtTopCaptionBottom() = rowLayout("tv-rows-top-caption-bottom-right", rowsHome.copy(
+        tvRowPlace = dev.nitrate.core.pages.RowPlace.TOP, tvCaptionCorner = dev.nitrate.core.pages.CaptionCorner.BOTTOM_RIGHT, tvRowExtent = dev.nitrate.core.pages.RowExtent.PARTIAL))
+
+    @Test fun rowsBottomCompactTopLeft() = rowLayout("tv-rows-bottom-compact-top-left", rowsHome.copy(
+        tvCaptionCorner = dev.nitrate.core.pages.CaptionCorner.TOP_LEFT, tvCaptionSize = dev.nitrate.core.pages.CaptionSize.COMPACT))
+
+    @Test fun rowsDownTheRight() = rowLayout("tv-rows-right-caption-bottom-left", rowsHome.copy(
+        tvRowPlace = dev.nitrate.core.pages.RowPlace.RIGHT, tvCaptionCorner = dev.nitrate.core.pages.CaptionCorner.BOTTOM_LEFT), down = true)
+
+    @Test fun rowsDownTheLeftSameSide() = rowLayout("tv-rows-left-caption-top-left", rowsHome.copy(
+        tvRowPlace = dev.nitrate.core.pages.RowPlace.LEFT, tvCaptionCorner = dev.nitrate.core.pages.CaptionCorner.TOP_LEFT, tvCaptionSize = dev.nitrate.core.pages.CaptionSize.COMPACT))
+
     /** A Showcase row reached with a theme on: it shows over the theme's back layers. */
     @Test fun showcaseOverTheme() = shoot("tv-showcase-over-theme", { c ->
         c.displaySettings.savePrefs("user-1", rowsHome.copy(pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.ROSES)))

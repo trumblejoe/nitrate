@@ -248,9 +248,47 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 selected = false,
                 onClick = { update { it.copy(tvRowsStacked = !it.tvRowsStacked) } },
                 headlineContent = { Text("Rows") },
-                supportingContent = { Text(if (prefs.tvRowsStacked) "Stacked down the page under the focused title" else "One at a time along the bottom, the picture above; the others show as you reach them") },
+                supportingContent = { Text(if (prefs.tvRowsStacked) "Stacked down the page under the focused title" else "One at a time, the picture around it; the others show as you reach them") },
                 trailingContent = { Text("${if (prefs.tvRowsStacked) "Stacked" else "One at a time"}  ›", color = MaterialTheme.colorScheme.primary) },
             )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvCaptionCorner = dev.nitrate.core.pages.CaptionCorner.entries[(it.tvCaptionCorner.ordinal + 1) % dev.nitrate.core.pages.CaptionCorner.entries.size]) } },
+                headlineContent = { Text("Caption corner") },
+                supportingContent = { Text("Where the title's name and details sit, on rows one at a time and full-screen pictures") },
+                trailingContent = { Text("${prefs.tvCaptionCorner.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvCaptionSize = dev.nitrate.core.pages.CaptionSize.entries[(it.tvCaptionSize.ordinal + 1) % dev.nitrate.core.pages.CaptionSize.entries.size]) } },
+                headlineContent = { Text("Caption size") },
+                supportingContent = { Text(if (prefs.tvCaptionSize == dev.nitrate.core.pages.CaptionSize.COMPACT) "A smaller title and its facts, no description: more of the picture" else "The title, its facts and a two-line description") },
+                trailingContent = { Text("${prefs.tvCaptionSize.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        if (!prefs.tvRowsStacked) {
+            item {
+                ListItem(
+                    selected = false,
+                    onClick = { update { it.copy(tvRowPlace = dev.nitrate.core.pages.RowPlace.entries[(it.tvRowPlace.ordinal + 1) % dev.nitrate.core.pages.RowPlace.entries.size]) } },
+                    headlineContent = { Text("Row position") },
+                    supportingContent = { Text(if (prefs.tvRowPlace.horizontal) "The row in use runs across the screen" else "The row in use runs down the side as a column: ▲ ▼ along it") },
+                    trailingContent = { Text("${prefs.tvRowPlace.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+            item {
+                ListItem(
+                    selected = false,
+                    onClick = { update { it.copy(tvRowExtent = dev.nitrate.core.pages.RowExtent.entries[(it.tvRowExtent.ordinal + 1) % dev.nitrate.core.pages.RowExtent.entries.size]) } },
+                    headlineContent = { Text("Row length") },
+                    supportingContent = { Text("Part way whenever the caption shares the row's line") },
+                    trailingContent = { Text("${prefs.tvRowExtent.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
         }
         item {
             // Like Home, or each its own way.

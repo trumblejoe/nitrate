@@ -83,6 +83,12 @@ data class DisplayPrefs(
     val tvMenuBlack: Boolean = false,
     /** TV rows layout: every row stacked down the page, rather than one at a time along the bottom. */
     val tvRowsStacked: Boolean = false,
+    /** Where the title's caption sits (rows one at a time, full art, showcases). */
+    val tvCaptionCorner: CaptionCorner = CaptionCorner.ALTERNATE,
+    val tvCaptionSize: CaptionSize = CaptionSize.NORMAL,
+    /** Rows one at a time: where the row in use sits, and whether it runs the page's full length. */
+    val tvRowPlace: RowPlace = RowPlace.BOTTOM,
+    val tvRowExtent: RowExtent = RowExtent.FULL,
     /** The menu's stops in order (rail and bars), as [MenuStops] ids; null until arranged. */
     val tvMenuStops: List<String>? = null,
     /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */
@@ -107,6 +113,36 @@ enum class LetterBarPlace(val label: String) {
         else -> this
     }
 }
+
+/** The corner of a title's caption on TV; [ALTERNATE] moves it side to side, row by row (or title by title). */
+@Serializable
+enum class CaptionCorner(val label: String) {
+    ALTERNATE("Alternate sides"), TOP_LEFT("Top left"), TOP_RIGHT("Top right"), BOTTOM_LEFT("Bottom left"), BOTTOM_RIGHT("Bottom right");
+
+    /** Where it lands for a row (or title) at [place] in the page, with the row at [rowPlace]: (top, right side). */
+    fun resolve(place: Int, rowPlace: RowPlace = RowPlace.BOTTOM): Pair<Boolean, Boolean> = when (this) {
+        ALTERNATE -> (rowPlace == RowPlace.TOP) to (place % 2 == 1)
+        TOP_LEFT -> true to false
+        TOP_RIGHT -> true to true
+        BOTTOM_LEFT -> false to false
+        BOTTOM_RIGHT -> false to true
+    }
+}
+
+/** A title's caption on TV: [COMPACT] is the label, a smaller title and its facts, no description. */
+@Serializable
+enum class CaptionSize(val label: String) { NORMAL("Normal"), COMPACT("Compact") }
+
+/** Where the row in use sits, one row at a time: along the top or bottom, or as a column down the left or right. */
+@Serializable
+enum class RowPlace(val label: String) {
+    BOTTOM("Along the bottom"), TOP("Along the top"), LEFT("Down the left"), RIGHT("Down the right");
+    val horizontal get() = this == BOTTOM || this == TOP
+}
+
+/** How far the row in use runs: the page's full width (or height), or part of it. */
+@Serializable
+enum class RowExtent(val label: String) { FULL("Full length"), PARTIAL("Part way") }
 
 /**
  * How page tabs are drawn on TV. Each keeps "open" (the page showing) and "focused" (where the

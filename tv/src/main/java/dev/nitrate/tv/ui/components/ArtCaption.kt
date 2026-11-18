@@ -17,12 +17,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.pages.CaptionSize
 import dev.nitrate.core.pages.hidesDescription
 
 /**
@@ -41,20 +43,21 @@ fun ArtCaption(
     showDetails: Boolean = true,
     showRatings: Boolean = true,
     showOverview: Boolean = true,
+    compact: Boolean = LocalDisplayPrefs.current.tvCaptionSize == CaptionSize.COMPACT,
 ) {
     val prefs = LocalDisplayPrefs.current
     val align = if (end) Alignment.End else Alignment.Start
     val textAlign = if (end) TextAlign.End else TextAlign.Start
-    Column(modifier.widthIn(max = 620.dp), horizontalAlignment = align, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier.widthIn(max = captionWidth(compact)), horizontalAlignment = align, verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)) {
         label?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp, color = Color.White.copy(alpha = 0.75f), maxLines = 1) }
         if (logoUrl != null && prefs.logos) {
             AsyncImage(
                 logoUrl, item.displayTitle, contentScale = ContentScale.Fit,
                 alignment = if (end) Alignment.BottomEnd else Alignment.BottomStart,
-                modifier = Modifier.padding(vertical = 4.dp).widthIn(max = 340.dp).heightIn(max = 84.dp),
+                modifier = Modifier.padding(vertical = 4.dp).widthIn(max = if (compact) 220.dp else 300.dp).heightIn(max = if (compact) 56.dp else 76.dp),
             )
         } else {
-            Text(item.displayTitle, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = Color.White,
+            Text(item.displayTitle, style = if (compact) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = Color.White,
                 maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = textAlign)
         }
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -63,15 +66,30 @@ fun ArtCaption(
             Text("👥 ${st.long}", style = MaterialTheme.typography.titleSmall, maxLines = 1,
                 color = if (st.catchUp) Color(0xFFFFC94D) else Color(0xDDFFFFFF))
         }
-        if (showOverview && prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
+        if (!compact && showOverview && prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = Color.White.copy(alpha = 0.8f), textAlign = textAlign, modifier = Modifier.padding(top = 2.dp))
         }
     }
 }
 
-/** The screensaver's shade along the bottom of a full-screen picture, under its caption. */
+/** How wide a caption may run: kept narrow so the picture shows. */
+fun captionWidth(compact: Boolean): Dp = if (compact) 260.dp else 340.dp
+
+/**
+ * The screensaver's shade under a caption: along the bottom of a full-screen picture by default, or
+ * along the [top]; [side] (start/end, null = the whole width) adds a shade from that edge for a caption
+ * set beside a column of cards.
+ */
 @Composable
-fun ArtCaptionShade(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, 0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f))))
+fun ArtCaptionShade(modifier: Modifier = Modifier, top: Boolean = false, side: Boolean? = null) {
+    val dark = Color.Black.copy(alpha = 0.75f)
+    val brush = if (top) Brush.verticalGradient(0f to dark, 0.45f to Color.Transparent, 1f to Color.Transparent)
+    else Brush.verticalGradient(0f to Color.Transparent, 0.55f to Color.Transparent, 1f to dark)
+    Box(modifier.fillMaxSize().background(brush))
+    side?.let { end ->
+        val b = if (end) Brush.horizontalGradient(0f to Color.Transparent, 0.6f to Color.Transparent, 1f to dark.copy(alpha = 0.6f))
+        else Brush.horizontalGradient(0f to dark.copy(alpha = 0.6f), 0.4f to Color.Transparent, 1f to Color.Transparent)
+        Box(modifier.fillMaxSize().background(b))
+    }
 }

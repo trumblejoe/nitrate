@@ -86,3 +86,68 @@ internal fun wideImage(repository: MediaServer, item: MediaItem): String? =
 private fun MediaItem.subtitleLine(): String? =
     dev.nitrate.core.model.AirDates.status(this, System.currentTimeMillis())?.let { "S${seasonNumber ?: "?"}:E${indexNumber ?: "?"} · $it" }
         ?: if (seriesName != null) "S${seasonNumber ?: "?"}:E${indexNumber ?: "?"} · ${name.orEmpty()}" else productionYear?.toString()
+
+/**
+ * A row as a column (one row at a time, down the left or right): posters two abreast, every other
+ * style as wide cards one under another. ▲▼ move along it; past its ends they go to the rows above
+ * and below, as from a row along the bottom.
+ */
+@Composable
+fun ColumnCards(
+    row: MediaRow,
+    display: RowDisplay,
+    repository: MediaServer,
+    actions: RowActions,
+    modifier: Modifier = Modifier,
+) {
+    val posters = display.style == RowStyle.POSTER
+    val pad = PaddingValues(vertical = 24.dp, horizontal = 8.dp)
+    if (posters) {
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+            contentPadding = pad,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = modifier,
+        ) {
+            items(row.items.size, key = { i -> "$i:${row.items[i].id}" }) { i ->
+                val item = row.items[i]
+                MediaCard(
+                    item = item,
+                    imageUrl = repository.imageUrl(item, ImageKind.PRIMARY, display.size.posterHeightDp * 2),
+                    width = null,
+                    aspectRatio = 2f / 3f,
+                    title = if (display.showTitles) item.displayTitle else null,
+                    onFocus = { actions.onFocus(item) },
+                    onClick = { actions.onOpen(item) },
+                    onPlay = { actions.onPlay(item) },
+                    onLongClick = { actions.onEditRow(row) },
+                )
+            }
+        }
+    } else {
+        androidx.compose.foundation.lazy.LazyColumn(
+            contentPadding = pad,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = modifier,
+        ) {
+            itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
+                MediaCard(
+                    item = item,
+                    imageUrl = wideImage(repository, item),
+                    width = null,
+                    aspectRatio = 16f / 9f,
+                    title = if (display.showTitles) item.displayTitle else null,
+                    subtitle = if (display.showTitles) item.subtitleLine() else null,
+                    onFocus = { actions.onFocus(item) },
+                    onClick = { actions.onOpen(item) },
+                    onPlay = { actions.onPlay(item) },
+                    onLongClick = { actions.onEditRow(row) },
+                )
+            }
+        }
+    }
+}
+
+/** How wide a row's column is, down the left or right. */
+internal val ColumnWidth = 300.dp
