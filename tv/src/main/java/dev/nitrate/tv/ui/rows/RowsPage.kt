@@ -100,7 +100,8 @@ fun RowsPage(
         Column(Modifier.fillMaxSize()) {
             AnimatedVisibility(visible = activeShowcase == null) {
                 // A clear gap below, so the first row's title never runs into the description.
-                FocusedSummary(focused, Modifier.padding(start = RowPadding, top = 36.dp, end = RowPadding, bottom = 20.dp).height(190.dp))
+                // Just tall enough for its title, facts and two lines (it took nearly half the screen).
+                FocusedSummary(focused, Modifier.padding(start = RowPadding, top = 20.dp, end = RowPadding, bottom = 14.dp).height(148.dp))
             }
             // TVs scroll focused content to a fixed "pivot", which pushes a tall row's title off the
             // top: up and down, scroll just enough to show the whole row; rows keep the TV's own way.
@@ -190,7 +191,7 @@ fun RowsPage(
 private fun FocusedSummary(item: MediaItem?, modifier: Modifier) {
     Column(modifier.fillMaxWidth(0.55f), verticalArrangement = Arrangement.Bottom) {
         if (item == null) return@Column
-        Text(item.displayTitle, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(item.displayTitle, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, maxLines = 1) }
         ItemMetaLine(item)
         item.overview?.takeIf { LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.hidesDescription(item) }?.let {

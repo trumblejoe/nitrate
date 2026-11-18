@@ -144,6 +144,10 @@ class TvScreenshotTest {
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
     /** Library pages carry the menu too, with their library underlined. */
+    /** A library page with a title focused: summary, tabs and more than one row on screen. */
+    @Test fun libraryRows() = prefsShot("tv-library-rows", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT), { press("down", "down") }) { c ->
+        WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) }
+    }
     @Test fun libraryMenu() = prefsShot("tv-library-menu", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.TOP)) { c ->
         WithMenu(c) {
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library("lib-movies"), overlay = false) {

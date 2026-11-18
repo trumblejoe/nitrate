@@ -158,7 +158,7 @@ private fun Collapsed(row: MediaRow, item: MediaItem, artwork: String?, display:
             Modifier
                 .padding(horizontal = RowPadding)
                 .fillMaxWidth()
-                .height(display.size.bannerHeightDp.dp)
+                .height(display.size.tvBannerDp().dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {

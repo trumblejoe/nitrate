@@ -22,6 +22,17 @@ import dev.nitrate.core.model.ImageKind
 
 internal val RowPadding = 58.dp
 
+/**
+ * [RowSize]'s heights are the phone's; on a TV screen (960×540 dp, the summary above the rows) they
+ * left room for barely one row, so TV cards take this share of them (art rows have their own
+ * `designScale`). Pictures are still asked for at the full size (`rowCardImages` matches).
+ */
+internal const val TV_CARD_SCALE = 0.65f
+internal const val TV_BANNER_SCALE = 0.75f
+internal fun dev.nitrate.core.rows.RowSize.tvPosterDp() = kotlin.math.round(posterHeightDp * TV_CARD_SCALE).toInt()
+internal fun dev.nitrate.core.rows.RowSize.tvWideDp() = kotlin.math.round(wideHeightDp * TV_CARD_SCALE).toInt()
+internal fun dev.nitrate.core.rows.RowSize.tvBannerDp() = kotlin.math.round(bannerHeightDp * TV_BANNER_SCALE).toInt()
+
 /** A classic horizontal row of poster or wide cards. */
 @Composable
 fun CardRow(
@@ -31,7 +42,7 @@ fun CardRow(
     actions: RowActions,
 ) {
     val wide = display.style == RowStyle.WIDE
-    val height = if (wide) display.size.wideHeightDp else display.size.posterHeightDp
+    val height = if (wide) display.size.tvWideDp() else display.size.tvPosterDp()
     val ratio = if (wide) 16f / 9f else 2f / 3f
     val width = (height * ratio).dp
 
@@ -49,7 +60,7 @@ fun CardRow(
             itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                 MediaCard(
                     item = item,
-                    imageUrl = if (wide) wideImage(repository, item) else repository.imageUrl(item, ImageKind.PRIMARY, (height * 2)),
+                    imageUrl = if (wide) wideImage(repository, item) else repository.imageUrl(item, ImageKind.PRIMARY, display.size.posterHeightDp * 2),
                     width = width,
                     aspectRatio = ratio,
                     title = if (display.showTitles) item.displayTitle else null,
