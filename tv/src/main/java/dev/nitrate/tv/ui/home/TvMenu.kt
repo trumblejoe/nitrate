@@ -78,6 +78,8 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -155,10 +157,13 @@ fun TvMenu(
     stops: List<NavEntry>,
     dial: List<NavEntry?>,
     overlay: Boolean,
-    /** Keep the menu invisible until focus reaches it (it still sits where it always does). */
+    /** Keep the menu invisible until focus reaches it, fading in over the page (as on Home). */
     autoHide: Boolean = false,
     content: @Composable (MenuInsets) -> Unit,
 ) {
+    // A hidden menu takes no room of its own: it fades in over the page on every page, not only
+    // over Home's full-screen art (a column of its own left a blank strip while hidden).
+    @Suppress("NAME_SHADOWING") val overlay = overlay || autoHide
     val contentFocus = remember { FocusRequester() }
     val menuFocus = remember { FocusRequester() }
     var inMenu by remember { mutableStateOf(false) }
@@ -193,8 +198,33 @@ fun TvMenu(
     val reach: (Key) -> Boolean = { key -> side(key).also { if (it) toMenu() } }
     val rows: (Boolean, Boolean) -> Unit = { first, last -> onFirst = first; onLast = last }
 
+    // Leaving the page towards the menu always lands on the menu (its current stop, or the dial),
+    // whatever the page is (rows, a grid, a list), instead of whichever piece of it happens to be
+    // nearest. Moves within the page are left alone; a page that handles its own edges (full art)
+    // never lets focus leave this way.
+    val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     @Composable
-    fun page(insets: MenuInsets) = Box(Modifier.fillMaxSize().focusRequester(contentFocus).focusGroup()) {
+    fun page(insets: MenuInsets) = Box(
+        Modifier.fillMaxSize()
+            .focusProperties {
+                @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+                @Suppress("DEPRECATION")
+                exit = { direction ->
+                    val key = when (direction) {
+                        androidx.compose.ui.focus.FocusDirection.Left -> Key.DirectionLeft
+                        androidx.compose.ui.focus.FocusDirection.Right -> Key.DirectionRight
+                        androidx.compose.ui.focus.FocusDirection.Up -> Key.DirectionUp
+                        androidx.compose.ui.focus.FocusDirection.Down -> Key.DirectionDown
+                        else -> null
+                    }
+                    if (key != null && side(key)) {
+                        mainHandler.post { toMenu() }
+                        FocusRequester.Cancel
+                    } else FocusRequester.Default
+                }
+            }
+            .focusRequester(contentFocus).focusGroup(),
+    ) {
         CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows) { content(insets) }
     }
     val shown by animateFloatAsState(if (!autoHide || inMenu) 1f else 0f, label = "menu-fade")

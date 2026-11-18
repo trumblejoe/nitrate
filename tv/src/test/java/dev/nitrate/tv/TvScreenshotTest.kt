@@ -148,6 +148,46 @@ class TvScreenshotTest {
     @Test fun libraryRows() = prefsShot("tv-library-rows", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT), { press("down", "down") }) { c ->
         WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) }
     }
+    private fun libraryShot(name: String, prefs: dev.nitrate.core.pages.DisplayPrefs, check: () -> Unit) = prefsShot(name, prefs, check) { c ->
+        WithMenu(c) {
+            val p = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+            val fullArt = (p.tvLibraryLayout ?: p.tvHome) == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
+            dev.nitrate.tv.ui.home.MainMenu("lib-movies", overlay = fullArt) { insets ->
+                dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}, fullArt = fullArt, insets = insets)
+            }
+        }
+    }
+    private val rowsLibrary = dev.nitrate.core.pages.DisplayPrefs(tvLibraryLayout = dev.nitrate.core.pages.TvHomeLayout.ROWS)
+
+    /** Choosing All keeps focus on the tabs (it used to fall through to the menu). */
+    @Test fun libraryTabSwitch() = libraryShot("tv-library-tab-switch", rowsLibrary) {
+        press("up", "up", "up", "right", "ok")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(focusedHasText("All")) { "focus should stay on the All tab" }
+    }
+
+    /** The All view: the A–Z bar down the right (away from the menu rail on the left). */
+    @Test fun libraryLettersRight() = libraryShot("tv-library-letters-right", rowsLibrary) {
+        press("up", "up", "up", "right", "ok")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+    }
+
+    /** Left from the first title in the All view goes to the menu, not nowhere. */
+    @Test fun libraryLeftToMenu() = libraryShot("tv-library-left-to-menu", rowsLibrary) {
+        press("up", "up", "up", "right", "ok")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        press("down", "down")
+        // Left along the first row to its first title.
+        repeat(6) { if (!focusedHasText("Arclight")) press("left") }
+        check(focusedHasText("Arclight")) { "Left within the grid should move to the first title" }
+        press("left")
+        check(!focusedHasText("Arclight")) { "Left from the first title should reach the menu" }
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "something should have focus" }
+    }
+
+    /** Library pages can be full art like Home, with their tabs top right. */
+    @Test fun libraryFullArt() = libraryShot("tv-library-full-art", dev.nitrate.core.pages.DisplayPrefs()) { press("up") }
+
     @Test fun libraryMenu() = prefsShot("tv-library-menu", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.TOP)) { c ->
         WithMenu(c) {
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library("lib-movies"), overlay = false) {

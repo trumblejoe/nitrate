@@ -63,6 +63,10 @@ data class DisplayPrefs(
     val trueBlack: Boolean = false,
     /** TV Home: one row at a time across the whole screen, or the classic stack of rows. */
     val tvHome: TvHomeLayout = TvHomeLayout.FULL_ART,
+    /** TV library pages' Recommended tab: like Home (null), or a layout of their own. */
+    val tvLibraryLayout: TvHomeLayout? = null,
+    /** Where the TV library's A–Z bar sits in the All view. */
+    val tvLetterBar: LetterBarPlace = LetterBarPlace.AUTO,
     /** Where the TV's main menu sits. */
     val tvMenu: TvMenuStyle = TvMenuStyle.LEFT,
     /** Keep the menu invisible until you move onto it (any menu but the dial). */
@@ -72,6 +76,25 @@ data class DisplayPrefs(
     /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */
     val tvDialStops: List<String?>? = null,
 )
+
+/** Where the A–Z bar goes on TV library pages. */
+@Serializable
+enum class LetterBarPlace(val label: String) {
+    /** The side away from the menu rail (the right, unless the menu is on the right). */
+    AUTO("Automatic"),
+    LEFT("Left side"),
+    RIGHT("Right side"),
+    TOP("Above the titles"),
+    OFF("Off"),
+    ;
+
+    /** Where it actually goes with the menu at [menu]: AUTO resolved, OFF as null. */
+    fun resolve(menu: TvMenuStyle): LetterBarPlace? = when (this) {
+        AUTO -> if (menu == TvMenuStyle.RIGHT) LEFT else RIGHT
+        OFF -> null
+        else -> this
+    }
+}
 
 @Serializable
 enum class TvHomeLayout(val label: String) {

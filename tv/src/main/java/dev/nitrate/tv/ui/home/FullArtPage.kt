@@ -21,6 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -63,7 +65,11 @@ fun FullArtPage(
     onEditPage: () -> Unit,
     insets: MenuInsets = MenuInsets(),
     modifier: Modifier = Modifier,
+    /** Above the first row, top right (a library's tabs): Up from the first row, Down back. */
+    header: (@Composable () -> Unit)? = null,
 ) {
+    val pageFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val headerFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val shown = rows.filter { it.items.isNotEmpty() }
     if (shown.isEmpty()) {
         Box(modifier.fillMaxSize(), Alignment.Center) { Text("Nothing here yet") }
@@ -112,7 +118,14 @@ fun FullArtPage(
                     Key.DirectionRight -> { if (down) { if (current < row.items.lastIndex) itemIndex[row.key] = current + 1 else if (!reachMenu(event.key) && showcase.infiniteScroll) itemIndex[row.key] = 0 }; true }
                     Key.DirectionLeft -> { if (down) { if (current > 0) itemIndex[row.key] = current - 1 else if (!reachMenu(event.key) && showcase.infiniteScroll) itemIndex[row.key] = row.items.lastIndex }; true }
                     Key.DirectionDown -> { if (down) { if (rowIndex < shown.lastIndex) rowKey = shown[rowIndex + 1].key else reachMenu(event.key) }; true }
-                    Key.DirectionUp -> { if (down) { if (rowIndex > 0) rowKey = shown[rowIndex - 1].key else reachMenu(event.key) }; true }
+                    Key.DirectionUp -> {
+                        if (down) when {
+                            rowIndex > 0 -> rowKey = shown[rowIndex - 1].key
+                            header != null -> runCatching { headerFocus.requestFocus() }
+                            else -> reachMenu(event.key)
+                        }
+                        true
+                    }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                         // A fresh press starts clean: a long press's release goes to the dialog it opened.
                         if (down && event.nativeKeyEvent.repeatCount == 0) longPressHandled = false
@@ -129,6 +142,7 @@ fun FullArtPage(
                     else -> false
                 }
             }
+            .focusRequester(pageFocus)
             .focusable(),
     ) {
         Backdrop(repository.backdropUrl(item), Modifier.fillMaxSize())
@@ -155,6 +169,22 @@ fun FullArtPage(
                     }
                 }
             }
+        }
+
+        header?.let { tabs ->
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(end = insets.end, top = 20.dp + insets.top)
+                    .focusRequester(headerFocus)
+                    .focusGroup()
+                    .onPreviewKeyEvent { e ->
+                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (e.key) {
+                            Key.DirectionDown -> { runCatching { pageFocus.requestFocus() }; true }
+                            Key.DirectionUp -> { reachMenu(e.key); true }
+                            else -> false
+                        }
+                    },
+            ) { tabs() }
         }
 
         Text(

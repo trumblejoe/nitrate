@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -59,6 +60,10 @@ fun LibraryScreen(
     dataCache: dev.nitrate.android.storage.DataCache? = null,
     /** Admins can bulk-edit titles from the All tab. */
     admin: Boolean = false,
+    /** Recommended as one title at a time across the screen (as Home can be), else rows. */
+    fullArt: Boolean = false,
+    /** Room the menu takes over the page (full art only; elsewhere it has its own space). */
+    insets: dev.nitrate.tv.ui.home.MenuInsets = dev.nitrate.tv.ui.home.MenuInsets(),
 ) {
     val library by produceState<Result<MediaItem>?>(null, libraryId) {
         value = runCatching { repository.getItem(libraryId) }
@@ -87,6 +92,20 @@ fun LibraryScreen(
     val music = lib.collection == CollectionKind.MUSIC
     var tab by rememberSaveable { mutableStateOf(if (hasRecommended) LibraryTab.RECOMMENDED else LibraryTab.ALL) }
     var artists by rememberSaveable { mutableStateOf(false) }
+    // Switching tabs replaces the page, the tabs with it: focus goes to the tab just chosen
+    // (else it fell through to the menu).
+    val tabFocus = remember { mutableMapOf<String, androidx.compose.ui.focus.FocusRequester>() }
+    fun tabFocus(key: String) = tabFocus.getOrPut(key) { androidx.compose.ui.focus.FocusRequester() }
+    var switched by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(switched) {
+        val key = switched?.substringBefore('#') ?: return@LaunchedEffect
+        // The new page and its tabs are composed a frame or two later.
+        repeat(10) {
+            kotlinx.coroutines.delay(32)
+            if (runCatching { tabFocus(key).requestFocus() }.isSuccess) return@LaunchedEffect
+        }
+    }
+    fun switchTo(key: String, change: () -> Unit) { change(); switched = key + "#" + System.nanoTime() }
 
     val tabs: @Composable () -> Unit = {
         Row(
@@ -97,12 +116,12 @@ fun LibraryScreen(
             Text(lib.name.orEmpty(), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(end = 16.dp))
             if (hasRecommended) {
                 for (t in LibraryTab.entries) {
-                    FilterChip(selected = tab == t, onClick = { tab = t }) { Text(t.label) }
+                    FilterChip(selected = tab == t, onClick = { switchTo(t.name) { tab = t } }, modifier = Modifier.focusRequester(tabFocus(t.name))) { Text(t.label) }
                 }
             }
             if (music) {
-                FilterChip(selected = !artists, onClick = { artists = false }) { Text("Albums") }
-                FilterChip(selected = artists, onClick = { artists = true }) { Text("Artists") }
+                FilterChip(selected = !artists, onClick = { switchTo("albums") { artists = false } }, modifier = Modifier.focusRequester(tabFocus("albums"))) { Text("Albums") }
+                FilterChip(selected = artists, onClick = { switchTo("artists") { artists = true } }, modifier = Modifier.focusRequester(tabFocus("artists"))) { Text("Artists") }
             }
         }
     }
@@ -117,7 +136,18 @@ fun LibraryScreen(
             var editing by remember { mutableStateOf(false) }
             if (editing) PageEditor(lib.name, vm, repository, libraryId = lib.id, onDone = { editing = false })
             when (val s = state) {
-                is RowsState.Loaded -> RowsPage(
+                // As Home can be: one title at a time, the tabs top right.
+                is RowsState.Loaded -> if (fullArt) dev.nitrate.tv.ui.home.FullArtPage(
+                    rows = s.rows,
+                    overrides = overrides,
+                    repository = repository,
+                    onOpen = onOpen,
+                    onPlay = onPlay,
+                    onSaveDisplay = vm::save,
+                    onEditPage = { editing = true },
+                    insets = insets,
+                    header = tabs,
+                ) else RowsPage(
                     onEditPage = { editing = true },
                     rows = s.rows,
                     overrides = overrides,
@@ -131,6 +161,6 @@ fun LibraryScreen(
                 RowsState.Loading -> Column { tabs(); Text("Loading…", Modifier.padding(PagePadding)) }
             }
         }
-        LibraryTab.ALL -> if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin)
+        LibraryTab.ALL -> Box(Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin) }
     }
 }

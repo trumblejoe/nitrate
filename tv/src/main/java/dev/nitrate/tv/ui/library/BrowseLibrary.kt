@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -122,15 +123,28 @@ fun BrowseLibrary(
         BrowseView.ARTWORK -> if (music) 6 else 4
         BrowseView.LIST -> 2
     }
-    // The header, options bar and A–Z row are the grid's first items.
-    val leading = if (options.alphabetical) 3 else 2
+    // The A–Z bar: above the titles, down one side (the user's choice, away from the menu by
+    // default) or off. Above, it's one of the grid's first items with the header and options bar.
+    val prefs = LocalDisplayPrefs.current
+    val letterPlace = if (options.alphabetical) prefs.tvLetterBar.resolve(prefs.tvMenu) else null
+    val leading = if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.TOP) 3 else 2
+    val jumpTo: (String) -> Unit = { letter ->
+        scope.launch {
+            val index = vm.positionOf(letter) ?: return@launch
+            grid.scrollToItem(index + leading)
+            jumpedTo = index
+            jumps++
+        }
+    }
+    Row(Modifier.fillMaxSize()) {
+    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) LetterColumn(jumpTo, Modifier.padding(start = 12.dp))
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         state = grid,
         contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
         horizontalArrangement = Arrangement.spacedBy(18.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.weight(1f).fillMaxSize(),
     ) {
         item(key = "header", span = { GridItemSpan(maxLineSpan) }) { header() }
         item(key = "bar", span = { GridItemSpan(maxLineSpan) }) {
@@ -153,25 +167,10 @@ fun BrowseLibrary(
                 }
             }
         }
-        if (options.alphabetical) {
+        if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.TOP) {
             item(key = "letters", span = { GridItemSpan(maxLineSpan) }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Browse.LETTERS.forEach { letter ->
-                        Surface(
-                            onClick = {
-                                scope.launch {
-                                    val index = vm.positionOf(letter) ?: return@launch
-                                    grid.scrollToItem(index + leading)
-                                    jumpedTo = index
-                                    jumps++
-                                }
-                            },
-                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
-                            modifier = Modifier.size(width = 28.dp, height = 34.dp),
-                        ) {
-                            Box(Modifier.fillMaxSize(), Alignment.Center) { Text(letter, style = MaterialTheme.typography.labelLarge) }
-                        }
-                    }
+                    Browse.LETTERS.forEach { letter -> LetterKey(letter, Modifier.size(width = 28.dp, height = 34.dp)) { jumpTo(letter) } }
                 }
             }
         }
@@ -214,6 +213,9 @@ fun BrowseLibrary(
         }
     }
 
+    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.RIGHT) LetterColumn(jumpTo, Modifier.padding(end = 12.dp))
+    }
+
     when (dialog) {
         "bulk" -> BulkEditDialog(repository, state.items.filter { it.id in selected }, genres) { changed ->
             dialog = null
@@ -221,6 +223,21 @@ fun BrowseLibrary(
         }
         "sort" -> SortDialog(options, onPick = { change -> update(change); dialog = null }, onDismiss = { dialog = null })
         "filters" -> FilterDialog(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
+    }
+}
+
+/** The A–Z bar down one side: every letter in the screen's height, ▲▼ through them, OK jumps. */
+@Composable
+private fun LetterColumn(onLetter: (String) -> Unit, modifier: Modifier) {
+    Column(modifier.fillMaxHeight().padding(vertical = 12.dp).width(30.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Browse.LETTERS.forEach { letter -> LetterKey(letter, Modifier.weight(1f).fillMaxWidth(), small = true) { onLetter(letter) } }
+    }
+}
+
+@Composable
+private fun LetterKey(letter: String, modifier: Modifier, small: Boolean = false, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)), modifier = modifier) {
+        Box(Modifier.fillMaxSize(), Alignment.Center) { Text(letter, style = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge) }
     }
 }
 

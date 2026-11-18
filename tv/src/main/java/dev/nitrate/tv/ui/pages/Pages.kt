@@ -242,6 +242,28 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
             )
         }
         item {
+            // Like Home, or each its own way.
+            val layouts = listOf<dev.nitrate.core.pages.TvHomeLayout?>(null) + dev.nitrate.core.pages.TvHomeLayout.entries
+            val now = prefs.tvLibraryLayout
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvLibraryLayout = layouts[(layouts.indexOf(it.tvLibraryLayout) + 1) % layouts.size]) } },
+                headlineContent = { Text("Library pages") },
+                supportingContent = { Text("How a library's Recommended rows are shown") },
+                trailingContent = { Text("${now?.label ?: "Same as Home"}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            val places = dev.nitrate.core.pages.LetterBarPlace.entries
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvLetterBar = places[(it.tvLetterBar.ordinal + 1) % places.size]) } },
+                headlineContent = { Text("A–Z bar") },
+                supportingContent = { Text("Where the letters to jump through a library's All view go (Automatic: the side away from the menu)") },
+                trailingContent = { Text("${prefs.tvLetterBar.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
             ListItem(
                 selected = false,
                 onClick = {
