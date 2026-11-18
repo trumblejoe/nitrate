@@ -116,6 +116,18 @@ fun MediaCard(
                         )
                     }
                 }
+                // A show watched with a group: where the user stands, at a glance.
+                groupStanding(item)?.let { st ->
+                    Text(
+                        "👥 ${st.short}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (st.catchUp) Color.Black else Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 10.dp, end = 6.dp)
+                            .background(if (st.catchUp) Color(0xFFFFC94D) else Color(0xCC000000), MaterialTheme.shapes.small).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
                 if (item.user.played && prefs.watchedMarks) {
                     Text(
                         "✓",

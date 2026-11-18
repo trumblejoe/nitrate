@@ -161,6 +161,10 @@ fun FullArtPage(
                 TitleOrLogo(it, if (showcase.showLogo) repository.logoUrl(it) else null)
                 it.episodeLabel?.let { label -> Text(label, style = MaterialTheme.typography.titleMedium) }
                 if (showcase.showDetails) ItemMetaLine(it, showRatings = showcase.showRatings)
+                dev.nitrate.tv.ui.components.groupStanding(it)?.let { st ->
+                    androidx.tv.material3.Text("👥 ${st.long}", style = androidx.tv.material3.MaterialTheme.typography.titleSmall, maxLines = 1,
+                        color = if (st.catchUp) androidx.compose.ui.graphics.Color(0xFFFFC94D) else androidx.compose.ui.graphics.Color(0xDDFFFFFF))
+                }
                 val prefs = LocalDisplayPrefs.current
                 if (showcase.showOverview && prefs.overview && !prefs.hidesDescription(it)) {
                     it.overview?.let { text ->

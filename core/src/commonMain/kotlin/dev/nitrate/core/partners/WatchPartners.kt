@@ -47,6 +47,22 @@ data class PartnersInfo(val groups: List<WatchGroup>, val incoming: List<Incomin
 /** Where another member of one of the user's groups ([groupId]) is in the group's show. */
 data class PartnerProgress(val groupId: String, val userId: String, val userName: String, val watched: Set<String>, val last: String?, val nextId: String?)
 
+/**
+ * Where the user stands in one shared show: the episodes in order (specials left out), the ones
+ * the user has finished, and every group member's progress.
+ */
+data class KeepUp(val seriesId: String, val order: List<String>, val mine: Set<String>, val progress: List<PartnerProgress>) {
+    companion object {
+        fun of(seriesId: String, episodes: List<MediaItem>, progress: List<PartnerProgress>): KeepUp {
+            val real = episodes.filter { !it.isMissing && (it.seasonNumber ?: 0) != 0 }
+            return KeepUp(seriesId, real.map { it.id }, real.filter { it.user.played }.map { it.id }.toSet(), progress)
+        }
+    }
+}
+
+/** A card's line about a shared show ([short]) and the summary's sentence ([long]); [catchUp]: the user is behind. */
+data class Standing(val short: String, val long: String, val catchUp: Boolean)
+
 /** Whether the user is private (never listed, not findable by name), and whether an admin made it so. */
 data class Privacy(val isPrivate: Boolean, val byAdmin: Boolean)
 
@@ -100,6 +116,40 @@ object WatchPartners {
     fun nextTogether(episodes: List<MediaItem>, progress: List<PartnerProgress>): MediaItem? =
         episodes.filter { !it.isMissing && (it.seasonNumber ?: 0) != 0 }.firstOrNull { e -> !e.user.played || progress.any { e.id !in it.watched } }
 
+    /**
+     * Where the user stands with their group(s) for [item] (an episode or the show): someone ahead
+     * (catch up), an episode nobody's seen (watch it together), the user ahead, or in step.
+     */
+    fun standing(item: MediaItem, k: KeepUp): Standing? {
+        val members = k.progress.distinctBy { it.userId }
+        if (members.isEmpty()) return null
+        val inShow = k.order.toSet()
+        fun ahead(p: PartnerProgress) = (p.watched intersect inShow).count { it !in k.mine }
+        fun behindBy(p: PartnerProgress) = k.mine.count { it in inShow && it !in p.watched }
+        val ahead = members.map { it to ahead(it) }.filter { it.second > 0 }.sortedByDescending { it.second }
+        if (ahead.isNotEmpty()) {
+            val (first, n) = ahead.first()
+            val short = if (ahead.size == 1) "${first.userName} is $n ahead" else "${names(ahead.map { it.first.userName })} are ahead"
+            val detail = ahead.joinToString(", ") { (p, c) -> "${p.userName} by $c" }
+            val episodes = if (n == 1) "1 episode" else "$n episodes"
+            return Standing(short, "Catch up with your group: $episodes to go ($detail)", catchUp = true)
+        }
+        if (item.kind == ItemKind.EPISODE && item.id !in k.mine) {
+            val waiting = members.filter { item.id !in it.watched }
+            if (waiting.isNotEmpty()) {
+                val who = names(waiting.map { it.userName })
+                return Standing("Watch with $who", "$who ${if (waiting.size == 1) "hasn't" else "haven't"} seen this yet either: watch it together", catchUp = false)
+            }
+        }
+        val behind = members.map { it to behindBy(it) }.filter { it.second > 0 }
+        if (behind.isNotEmpty()) {
+            val who = names(behind.map { it.first.userName })
+            return Standing("$who catching up", "You're ahead: $who ${if (behind.size == 1) "is" else "are"} catching up (${behind.joinToString(", ") { (p, c) -> "${p.userName} by $c" }})", catchUp = false)
+        }
+        val who = names(members.map { it.userName })
+        return Standing("In step with $who", "You and $who are at the same place", catchUp = false)
+    }
+
     /** The episodes of a together session newly finished: played now, not when it started. */
     fun newlyWatched(session: TogetherSession, episodes: List<MediaItem>): List<MediaItem> =
         episodes.filter { it.user.played && it.id !in session.known }
@@ -120,6 +170,9 @@ class TogetherSessions(private val now: () -> Long) {
     fun put(session: TogetherSession) = sessions.update { it + (session.seriesId to session) }
 
     fun stop(seriesId: String) = sessions.update { it - seriesId }
+
+    /** Forgets them all: they belong to the account that chose them, not the next one on this device. */
+    fun clear() = sessions.update { emptyMap() }
 }
 
 /**

@@ -513,6 +513,9 @@ interface MediaServer {
     /** The address to stream an audio file as it is (with [authorizationHeader]). */
     fun audioStreamUrl(itemId: String): String = unsupported()
 
+    /** Where the user stands in each show they watch with a group, by series id (Companion `partners`). */
+    suspend fun groupStandings(): Map<String, dev.nitrate.core.partners.KeepUp> = emptyMap()
+
     /**
      * What the server would play before [itemId]: its intros (Jellyfin's intro providers, such as a
      * cinema-mode plugin's trailers and pre-rolls). Empty when the server has none.

@@ -1160,6 +1160,13 @@ class JellyfinClient(
         }.flatMap { it.await() }.distinctBy { it.id }
     }
 
+    override suspend fun groupStandings(): Map<String, dev.nitrate.core.partners.KeepUp> = coroutineScope {
+        if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyMap()
+        partners().groups.map { it.seriesId }.distinct().map { id ->
+            async { runCatching { dev.nitrate.core.partners.KeepUp.of(id, allEpisodes(id), partnerProgress(id)) }.getOrNull() }
+        }.mapNotNull { it.await() }.associateBy { it.seriesId }
+    }
+
     override suspend fun houseChannels() = channelsApi.list()
     override suspend fun channelGuide(fromMs: Long, toMs: Long) = channelsApi.guide(fromMs, toMs)
     override suspend fun tuneChannel(channelId: String, count: Int) = channelsApi.tune(channelId, count)

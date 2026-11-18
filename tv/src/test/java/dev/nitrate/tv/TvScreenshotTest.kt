@@ -129,6 +129,26 @@ class TvScreenshotTest {
         shoot(name, { c -> c.displaySettings.savePrefs("user-1", prefs) }, act = check, content = content)
 
     /** Right from the open rail goes back to the page (the open drawer covers it, so focus can't find it alone). */
+    @Test fun groupStandingsOnCards() = shoot("tv-group-standings") { c ->
+        fun ep(n: Int, series: String, played: Boolean = false) = dev.nitrate.core.model.MediaItem("$series-$n", "Episode $n", dev.nitrate.core.model.ItemKind.EPISODE,
+            seriesId = series, seriesName = series.replaceFirstChar { it.uppercase() }, seasonNumber = 1, indexNumber = n, user = dev.nitrate.core.model.UserState(played = played, positionMs = if (n == 3) 600_000 else 0))
+        val bear = (1..6).map { ep(it, "bear", played = it <= 2) }
+        val dune = (1..6).map { ep(it, "dune", played = it <= 4) }
+        val keep = mapOf(
+            "bear" to dev.nitrate.core.partners.KeepUp.of("bear", bear, listOf(dev.nitrate.core.partners.PartnerProgress("g", "will", "Will", (1..5).map { "bear-$it" }.toSet(), "S1 E5", "bear-6"))),
+            "dune" to dev.nitrate.core.partners.KeepUp.of("dune", dune, listOf(dev.nitrate.core.partners.PartnerProgress("h", "kim", "Kim", (1..4).map { "dune-$it" }.toSet(), "S1 E4", "dune-5"))),
+        )
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.components.LocalGroupStandings provides keep) {
+            androidx.compose.foundation.layout.Column(Modifier.padding(top = 40.dp)) {
+                dev.nitrate.tv.ui.rows.CardRow(
+                    dev.nitrate.core.rows.MediaRow("home/continue_watching", "Continue Watching", listOf(bear[2], dune[4]), dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE)),
+                    dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE), c.server,
+                    dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}),
+                )
+            }
+        }
+    }
+
     // ---- Effects: each scene held at a moment, over a stand-in page ----
     private fun effectShot(name: String, theme: dev.nitrate.core.effects.PageTheme? = null, occasion: dev.nitrate.core.effects.Occasion? = null, at: Float = 3.1f) =
         shoot(name) { dev.nitrate.tv.ui.effects.EffectStage(theme, occasion, dev.nitrate.core.effects.EffectsPrefs(), onDismiss = {}, at = at) }

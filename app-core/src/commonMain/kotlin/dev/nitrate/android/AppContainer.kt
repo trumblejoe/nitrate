@@ -235,12 +235,28 @@ class AppContainer(
     /** Requests to answer, shown when the app opens until answered or put off ("Later" hides them until next time). */
     val partnerRequestsLater = MutableStateFlow(emptySet<String>())
 
+    private val standingsState = MutableStateFlow<Map<String, dev.nitrate.core.partners.KeepUp>>(emptyMap())
+
+    /** Where the user stands in each show they watch with a group (cards say "Will is 2 ahead"). */
+    val groupStandings: StateFlow<Map<String, dev.nitrate.core.partners.KeepUp>> = standingsState
+    private var standingsJob: kotlinx.coroutines.Job? = null
+
+    /** Reloads [groupStandings] (after sign-in, when watched state changes, after leaving a player). */
+    fun refreshGroupStandings(delayMs: Long = 0) {
+        standingsJob?.cancel()
+        standingsJob = networkScope.launch {
+            kotlinx.coroutines.delay(delayMs)
+            runCatching { server.groupStandings() }.onSuccess { standingsState.value = it }
+        }
+    }
+
     suspend fun refreshPartners() {
         runCatching { server.partners() }.onSuccess { partnersState.value = it }
     }
 
     /** After leaving a player: counts what was just watched with partners (in case no live update came). */
     fun settleTogether() {
+        refreshGroupStandings(3_000)
         if (watchPartners.sessions.all().isEmpty()) return
         networkScope.launch {
             kotlinx.coroutines.delay(2_000)
@@ -259,6 +275,7 @@ class AppContainer(
         followingTogether = true
         networkScope.launch {
             remote.events.filter { it is ServerEvent.UserDataChanged }.collect {
+                refreshGroupStandings(2_500)
                 if (watchPartners.sessions.all().isNotEmpty()) {
                     // Let the server finish saving the stop first.
                     kotlinx.coroutines.delay(1_500)
@@ -409,6 +426,7 @@ class AppContainer(
         // Not waited for: Home shouldn't wait on the account details (admin tools appear when they arrive).
         networkScope.launch { refreshAccount() }
         networkScope.launch { refreshCompanion() }
+        refreshGroupStandings()
         writing.account = server.currentAccountKey
         watchNetwork()
     }
@@ -507,6 +525,9 @@ class AppContainer(
         accountState.value = null
         chatOnlyGroup.value = null
         companionState.value = null
+        // "Watching with" and group standings belong to the account that's leaving.
+        watchPartners.sessions.clear()
+        standingsState.value = emptyMap()
         writing.account = null
         scriptSyncJob?.cancel()
         themeMusic.stop()

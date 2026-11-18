@@ -213,6 +213,10 @@ private fun Expanded(
             TitleOrLogo(item, if (options.showLogo) repository.logoUrl(item) else null)
             item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
             if (options.showDetails) ItemMetaLine(item, showRatings = options.showRatings)
+            dev.nitrate.tv.ui.components.groupStanding(item)?.let { st ->
+                androidx.tv.material3.Text("👥 ${st.long}", style = androidx.tv.material3.MaterialTheme.typography.titleSmall, maxLines = 1,
+                    color = if (st.catchUp) androidx.compose.ui.graphics.Color(0xFFFFC94D) else androidx.compose.ui.graphics.Color(0xDDFFFFFF))
+            }
             if (options.showOverview && LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.hidesDescription(item)) {
                 item.overview?.let {
                     Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 3, overflow = TextOverflow.Ellipsis,

@@ -119,4 +119,39 @@ class WatchPartnersTest {
         assertEquals(GuardDecision.Allow, plugin.beforePlay(fake.episodes[1], PluginHost(fake.server, store)))
         assertEquals(GuardDecision.Allow, plugin.beforePlay(MediaItem("m", "Movie", ItemKind.MOVIE), PluginHost(fake.server, store)))
     }
+
+    // ---- Where the user stands (cards on Home) ----
+
+    private val eps = (1..4).map { ep(it) }
+
+    @Test fun partnerAheadMeansCatchUp() {
+        val k = KeepUp.of("bear", eps.mapIndexed { i, e -> if (i == 0) e.copy(user = UserState(played = true)) else e }, listOf(sam))
+        val s = WatchPartners.standing(eps[1], k)!!
+        assertEquals("Sam is 1 ahead", s.short)
+        assertTrue(s.catchUp)
+    }
+
+    @Test fun nobodyHasSeenItMeansWatchTogether() {
+        val k = KeepUp.of("bear", eps.map { if (it.id in setOf("e1-1", "e1-2")) it.copy(user = UserState(played = true)) else it }, listOf(sam))
+        assertEquals("Watch with Sam", WatchPartners.standing(eps[2], k)!!.short)
+    }
+
+    @Test fun aheadOfThePartner() {
+        val k = KeepUp.of("bear", eps.map { if (it.id != "e1-4") it.copy(user = UserState(played = true)) else it }, listOf(kim))
+        val s = WatchPartners.standing(eps[0].copy(kind = ItemKind.SERIES, id = "bear"), k)!!
+        assertEquals("Kim catching up", s.short)
+        assertFalse(s.catchUp)
+    }
+
+    @Test fun inStep() {
+        val k = KeepUp.of("bear", eps.map { if (it.id in setOf("e1-1", "e1-2")) it.copy(user = UserState(played = true)) else it }, listOf(sam))
+        assertEquals("In step with Sam", WatchPartners.standing(eps[0].copy(kind = ItemKind.SERIES, id = "bear"), k)!!.short)
+    }
+
+    @Test fun sessionsClearForTheNextAccount() {
+        val sessions = TogetherSessions { 0L }
+        sessions.put(TogetherSession("bear", "g1", listOf("Sam"), 1_000, emptySet()))
+        sessions.clear()
+        assertNull(sessions.active("bear"))
+    }
 }
