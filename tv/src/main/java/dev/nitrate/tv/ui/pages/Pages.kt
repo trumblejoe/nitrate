@@ -75,10 +75,10 @@ fun PagesScreen(container: AppContainer, onOpen: (String, Boolean) -> Unit) {
     val first = remember { FocusRequester() }
     Column(Modifier.fillMaxSize().padding(PagePadding), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text("Your pages", style = MaterialTheme.typography.displaySmall)
-        Text("Pages of your own rows. Pinned pages appear at the top of Home.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Pages of your own rows. Pinned pages are tabs on Home, beside it.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
             item(key = "new") { PageCard("+  New page", Modifier.focusRequester(first)) { creating = true } }
-            items(pages, key = { it.id }) { page -> PageCard(page.title + if (page.pinned) "\n\nOn Home" else "") { onOpen(page.id, false) } }
+            items(pages, key = { it.id }) { page -> PageCard(page.title + if (page.pinned) "\n\nA tab on Home" else "") { onOpen(page.id, false) } }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
@@ -143,7 +143,7 @@ fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, 
             Button(onClick = { editing = true }) { Text("Edit rows") }
             OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
             OutlinedButton(onClick = { save(pages.map { if (it.id == pageId) it.copy(pinned = !it.pinned) else it }) }) {
-                Text(if (page?.pinned == true) "Unpin from Home" else "Pin to Home")
+                Text(if (page?.pinned == true) "Remove from Home's tabs" else "Add as a tab on Home")
             }
             OutlinedButton(onClick = {
                 user?.let { scope.launch { container.displaySettings.deleteCustomPage(it, pageId) } }

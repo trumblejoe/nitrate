@@ -28,6 +28,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -70,6 +71,8 @@ fun FullArtPage(
 ) {
     val pageFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val headerFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    // The page sees keys before the tabs over it: while they have focus, the keys are theirs.
+    var headerFocused by remember { mutableStateOf(false) }
     val shown = rows.filter { it.items.isNotEmpty() }
     if (shown.isEmpty()) {
         Box(modifier.fillMaxSize(), Alignment.Center) { Text("Nothing here yet") }
@@ -111,6 +114,7 @@ fun FullArtPage(
         modifier
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
+                if (headerFocused) return@onPreviewKeyEvent false
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
                     // Past the first/last item: on to the menu if it's that way, else round to the other
@@ -179,6 +183,7 @@ fun FullArtPage(
             Box(
                 Modifier.align(Alignment.TopEnd).padding(end = insets.end, top = 20.dp + insets.top)
                     .focusRequester(headerFocus)
+                    .onFocusChanged { headerFocused = it.hasFocus }
                     .focusGroup()
                     .onPreviewKeyEvent { e ->
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false

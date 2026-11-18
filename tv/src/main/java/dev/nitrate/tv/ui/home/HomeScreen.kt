@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -79,9 +80,41 @@ fun HomeScreen(
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val fullArt = prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
     val pinnedPages = customPages.filter { it.pinned }
+    // Pinned pages are Home's other tabs (as a library's tabs are): "Home" first, then each page.
+    var pageTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val openPage = pinnedPages.firstOrNull { it.id == pageTab }
+    val tabFocus = remember { mutableMapOf<String, FocusRequester>() }
+    fun tabFocus(key: String) = tabFocus.getOrPut(key) { FocusRequester() }
+    var switched by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(switched) {
+        val key = switched?.substringBefore('#') ?: return@LaunchedEffect
+        // The new page and its tabs are composed a frame or two later: focus stays on the tab chosen.
+        repeat(10) {
+            kotlinx.coroutines.delay(32)
+            if (runCatching { tabFocus(key).requestFocus() }.isSuccess) return@LaunchedEffect
+        }
+    }
+    val tabs: (@Composable () -> Unit)? = if (pinnedPages.isEmpty()) null else {
+        {
+            Row(Modifier.padding(start = 58.dp, end = 58.dp, top = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.tv.material3.FilterChip(selected = openPage == null, onClick = { pageTab = null; switched = "home#" + System.nanoTime() },
+                    modifier = Modifier.focusRequester(tabFocus("home"))) { Text("Home") }
+                for (p in pinnedPages) {
+                    androidx.tv.material3.FilterChip(selected = openPage?.id == p.id, onClick = { pageTab = p.id; switched = p.id + "#" + System.nanoTime() },
+                        modifier = Modifier.focusRequester(tabFocus(p.id))) { Text(p.title) }
+                }
+            }
+        }
+    }
     MainMenu(dev.nitrate.core.pages.MenuStops.HOME, overlay = fullArt) { insets ->
     Box(Modifier.fillMaxSize().focusRequester(content).focusGroup()) {
-    when (val s = state) {
+    if (openPage != null) {
+        // The page draws its tabs again as it goes from loading to its rows: keep focus on the tab
+        // chosen through that (only just after choosing it, so later reloads never take focus).
+        var chosenAt by remember(openPage.id) { mutableStateOf(System.currentTimeMillis()) }
+        PinnedPage(openPage, repository, displaySettings, changes, dataCache, fullArt, insets, tabs!!, onOpen, onPlay,
+            onRedrawn = { if (System.currentTimeMillis() - chosenAt < 4_000) switched = openPage.id + "#" + System.nanoTime() })
+    } else when (val s = state) {
         RowsState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Loading…") }
         is RowsState.Error -> Box(Modifier.fillMaxSize(), Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -103,6 +136,7 @@ fun HomeScreen(
             onSaveDisplay = vm::save,
             onEditPage = { editing = true },
             insets = insets,
+            header = tabs,
         ) else RowsPage(
             rows = s.rows,
             overrides = overrides,
@@ -111,13 +145,7 @@ fun HomeScreen(
             onPlay = onPlay,
             onSaveDisplay = vm::save,
             onEditPage = { editing = true },
-            header = if (pinnedPages.isEmpty()) null else {
-                {
-                    Row(Modifier.padding(start = 58.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        for (p in pinnedPages) OutlinedButton(onClick = { onOpenPage(p.id) }) { Text(p.title) }
-                    }
-                }
-            },
+            header = tabs,
         )
     }
     }
@@ -128,5 +156,47 @@ fun HomeScreen(
             kotlinx.coroutines.delay(50)
             focusedOnce = runCatching { content.requestFocus() }.getOrDefault(false)
         }
+    }
+}
+
+/** A pinned page as one of Home's tabs: its rows, laid out as Home is, the tabs above them. */
+@Composable
+private fun PinnedPage(
+    page: dev.nitrate.core.pages.CustomPage,
+    repository: MediaServer,
+    displaySettings: DisplaySettingsStore,
+    changes: kotlinx.coroutines.flow.Flow<Unit>,
+    dataCache: dev.nitrate.android.storage.DataCache?,
+    fullArt: Boolean,
+    insets: MenuInsets,
+    tabs: @Composable () -> Unit,
+    onOpen: (MediaItem) -> Unit,
+    onPlay: (MediaItem) -> Unit,
+    onRedrawn: () -> Unit,
+) {
+    val vm = viewModel(key = "custom-${page.id}") { RowsViewModel(PageKeys.custom(page.id), { emptyList() }, displaySettings, repository, changes, cache = dataCache) }
+    val state by vm.state.collectAsStateWithLifecycle()
+    val overrides by vm.overrides.collectAsStateWithLifecycle()
+    var editing by remember { mutableStateOf(false) }
+    if (editing) PageEditor(page.title, vm, repository, libraryId = null, onDone = { editing = false })
+    val shape = when (val s = state) { is RowsState.Loaded -> if (s.rows.isEmpty()) "empty" else "rows"; is RowsState.Error -> "error"; RowsState.Loading -> "loading" }
+    LaunchedEffect(shape) { onRedrawn() }
+    // The tabs where they are on the full page: top right with full art, else top left.
+    val placedTabs: @Composable () -> Unit = {
+        Box(Modifier.fillMaxWidth().padding(end = insets.end), contentAlignment = if (fullArt) Alignment.TopEnd else Alignment.TopStart) { tabs() }
+    }
+    when (val s = state) {
+        is RowsState.Loaded -> when {
+            s.rows.isEmpty() -> Column(Modifier.fillMaxSize().padding(top = insets.top)) {
+                placedTabs()
+                Text("This page is empty. Add rows to it from Your pages, or Settings → Display → Pages.",
+                    Modifier.padding(horizontal = 58.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = { editing = true }, modifier = Modifier.padding(horizontal = 58.dp)) { Text("Edit rows") }
+            }
+            fullArt -> FullArtPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, onEditPage = { editing = true }, insets = insets, header = tabs)
+            else -> RowsPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, header = tabs, onEditPage = { editing = true })
+        }
+        is RowsState.Error -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text(s.message, Modifier.padding(58.dp), color = MaterialTheme.colorScheme.error) }
+        RowsState.Loading -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text("Loading…", Modifier.padding(58.dp)) }
     }
 }

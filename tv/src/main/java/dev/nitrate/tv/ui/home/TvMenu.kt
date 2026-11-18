@@ -566,7 +566,8 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
     }.map { if (it.id == current) it.copy(selected = true) else it }
     return MenuCatalog(
         list.associateBy { it.id },
-        MenuStops.defaults(libraries.map { it.id }, pages.filter { it.pinned }.map { it.id }),
+        // Pinned pages are Home's tabs, so they aren't stops by default (they can still be added in Menu stops).
+        MenuStops.defaults(libraries.map { it.id }, emptyList()),
     )
 }
 

@@ -129,6 +129,16 @@ class TvScreenshotTest {
         shoot(name, { c -> c.displaySettings.savePrefs("user-1", prefs) }, act = check, content = content)
 
     /** Right from the open rail goes back to the page (the open drawer covers it, so focus can't find it alone). */
+    /** Pinned pages are tabs beside Home; Up from the rows reaches them, and choosing one keeps focus on its tab. */
+    @Test fun homeTabs() = shoot("tv-home-tabs", act = {
+        press("up", "right", "ok")
+        compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
+        check(focusedHasText("Kids")) { "focus should stay on the tab chosen" }
+    }) { c ->
+        val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true), dev.nitrate.core.pages.CustomPage("uhd", "4K films", pinned = true))
+        HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages)
+    }
+
     @Test fun groupStandingsOnCards() = shoot("tv-group-standings") { c ->
         fun ep(n: Int, series: String, played: Boolean = false) = dev.nitrate.core.model.MediaItem("$series-$n", "Episode $n", dev.nitrate.core.model.ItemKind.EPISODE,
             seriesId = series, seriesName = series.replaceFirstChar { it.uppercase() }, seasonNumber = 1, indexNumber = n, user = dev.nitrate.core.model.UserState(played = played, positionMs = if (n == 3) 600_000 else 0))
