@@ -103,12 +103,10 @@ fun RowsPage(
         )
     }
 
-    // Header rows (before the media rows) shift row indices in the LazyColumn.
-    val headerCount = if (header != null) 1 else 0
     LaunchedEffect(activeShowcase) {
         val key = activeShowcase ?: return@LaunchedEffect
         val index = rows.indexOfFirst { it.key == key }
-        if (index >= 0) listState.animateScrollToItem(index + headerCount)
+        if (index >= 0) listState.animateScrollToItem(index)
     }
 
     // "Row: style" for a moment after Fast-forward/Rewind changes one.
@@ -128,6 +126,12 @@ fun RowsPage(
         }
 
         Column(Modifier.fillMaxSize()) {
+            // The page's tabs, at the very top (above the focused title, as they're top right on full
+            // art): there while on them or the first row, out of the rows' way further down. They
+            // count as above every row, so a Full Showcase below shows as its banner meanwhile.
+            if (header != null) AnimatedVisibility(visible = focusedRowIndex <= 0 || focusedRowIndex == HEADER_FOCUSED) {
+                androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { if (it.hasFocus) focusedRowIndex = HEADER_FOCUSED }) { header() }
+            }
             AnimatedVisibility(visible = activeShowcase == null) {
                 // A clear gap below, so the first row's title never runs into the description.
                 // Just tall enough for its title, facts and two lines (it took nearly half the screen).
@@ -143,11 +147,6 @@ fun RowsPage(
                 verticalArrangement = Arrangement.spacedBy(28.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (header != null) item(key = "page-header") {
-                    // The tabs above the rows count as above every row: a Full Showcase below them shows
-                    // as its banner rather than a screen-tall picture cut off under them.
-                    androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { if (it.hasFocus) focusedRowIndex = HEADER_FOCUSED }) { header() }
-                }
                 itemsIndexed(rows, key = { _, row -> row.key }) { rowIndex, row ->
                     // Rows added or removed by a reload slide and fade rather than jump.
                     // Moving into a row scrolls the whole row into view, its title included (a tall
