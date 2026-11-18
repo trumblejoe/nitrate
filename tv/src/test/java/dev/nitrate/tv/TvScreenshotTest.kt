@@ -334,6 +334,21 @@ class TvScreenshotTest {
         check(focusedHasText("Recommended") || focusedHasText("All")) { "Up from the showcase should reach the tabs" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
+    /** The All view as a bouncing box: posters flying round it; Down from the bar catches one. */
+    @Test fun libraryBounceView() = shoot("tv-library-bounce", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
+            dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
+        ))
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.BOUNCE))
+    }, act = {
+        compose.mainClock.advanceTimeBy(2_000); compose.waitForIdle()
+        press("down", "down")
+        val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
+        check(focused.isNotEmpty() && kotlin.math.abs(focused.first().boundsInRoot.width - 144f) < 2f) { "Down from the bar should catch a poster in the box, got ${focused.map { it.boundsInRoot }}" }
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
     /** A library with more tabs switched on (Genres, and your own) and Genres open. */
     @Test fun libraryGenresTab() = shoot("tv-library-genres-tab", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)

@@ -243,11 +243,11 @@ private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOpti
             FilterChip(
                 selected = false,
                 onClick = { viewMenu = true },
-                label = { Text(options.view.label) },
+                label = { Text((if (options.view.tvOnly) BrowseView.GRID else options.view).label) },
                 leadingIcon = { if (options.view == BrowseView.LIST) Icon(Icons.AutoMirrored.Filled.List, null) },
             )
             DropdownMenu(viewMenu, onDismissRequest = { viewMenu = false }) {
-                BrowseView.entries.forEach { v ->
+                BrowseView.entries.filterNot { it.tvOnly }.forEach { v ->
                     DropdownMenuItem(
                         text = { Text(v.label) },
                         trailingIcon = { if (v == options.view) Icon(Icons.Default.Check, null) },

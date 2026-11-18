@@ -127,6 +127,7 @@ fun BrowseLibrary(
         BrowseView.GRID -> if (music) 6 else 7
         BrowseView.ARTWORK -> if (music) 6 else 4
         BrowseView.LIST -> 2
+        BrowseView.BOUNCE -> 7
     }
     // The A–Z bar: above the titles, down one side (the user's choice, away from the menu by
     // default) or off. Above, it's one of the grid's first items with the header and options bar.
@@ -141,18 +142,8 @@ fun BrowseLibrary(
             jumps++
         }
     }
-    Row(Modifier.fillMaxSize()) {
-    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) LetterColumn(jumpTo, Modifier.padding(start = 12.dp))
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(columns),
-        state = grid,
-        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-        modifier = Modifier.weight(1f).fillMaxSize(),
-    ) {
-        item(key = "header", span = { GridItemSpan(maxLineSpan) }) { header() }
-        item(key = "bar", span = { GridItemSpan(maxLineSpan) }) {
+    // Sort, filters, view, the count and selecting: above the titles in every view.
+    val bar: @Composable () -> Unit = {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { dialog = "sort" }) { Text("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}") }
                 OutlinedButton(onClick = { dialog = "filters" }) { Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") }
@@ -171,7 +162,37 @@ fun BrowseLibrary(
                     }
                 }
             }
+    }
+    if (options.view == BrowseView.BOUNCE) {
+        // The box fills the page under the header and bar; no A–Z (nothing to scroll to).
+        Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            header()
+            bar()
+            when {
+                state.error != null && state.items.isEmpty() -> Column { Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error); Button(onClick = vm::retry) { Text("Try again") } }
+                state.loading -> Text("Loading…")
+                state.items.isEmpty() -> Text(if (options.filterCount > 0) "Nothing matches these filters." else "Nothing here yet.", style = MaterialTheme.typography.titleMedium)
+                else -> BounceBox(
+                    state.items, state.total, repository, music,
+                    titleOf = { item -> if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else item.name },
+                    onOpen = ::tap, onPlay = onPlay,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+            }
         }
+    } else
+    Row(Modifier.fillMaxSize()) {
+    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) LetterColumn(jumpTo, Modifier.padding(start = 12.dp))
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(columns),
+        state = grid,
+        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+        modifier = Modifier.weight(1f).fillMaxSize(),
+    ) {
+        item(key = "header", span = { GridItemSpan(maxLineSpan) }) { header() }
+        item(key = "bar", span = { GridItemSpan(maxLineSpan) }) { bar() }
         if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.TOP) {
             item(key = "letters", span = { GridItemSpan(maxLineSpan) }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {

@@ -7,7 +7,12 @@ import kotlinx.serialization.Serializable
 
 /** How a library's full list is shown: a grid of posters or of artwork, or a list with details. */
 @Serializable
-enum class BrowseView(val label: String) { GRID("Posters"), ARTWORK("Artwork"), LIST("List") }
+/** How a library's All view lays titles out. [tvOnly] views need the TV's own screen (the phone shows its grid instead). */
+enum class BrowseView(val label: String, val tvOnly: Boolean = false) {
+    GRID("Posters"), ARTWORK("Artwork"), LIST("List"),
+    /** Posters flying round a box, bouncing off its walls and each other; the one focused stops still. */
+    BOUNCE("Bouncing box", tvOnly = true),
+}
 
 /**
  * Sorting, filters and view for browsing one library, saved per library and user (synced like
