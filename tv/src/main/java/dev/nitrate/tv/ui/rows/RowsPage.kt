@@ -189,7 +189,7 @@ fun RowsPage(
                         }
                         val prefs = LocalDisplayPrefs.current
                         val fx = dev.nitrate.tv.ui.effects.rememberCardFx(display, prefs.effects, prefs.easyMode)
-                        val actions = if (fx != null && !display.style.isShowcase) fx.wrap(actions) else actions
+                        val actions = fx?.wrap(actions) ?: actions
                         androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalCardFx provides fx) {
                         androidx.compose.foundation.layout.Box(Modifier.focusRequester(content).focusGroup()) {
                         val hidden = activeShowcase != null && activeShowcase != row.key

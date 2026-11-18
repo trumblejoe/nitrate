@@ -1,6 +1,5 @@
 package dev.nitrate.tv.ui.rows
 
-import dev.nitrate.core.rows.isShowcase
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -162,13 +161,11 @@ fun RowSettingsDialog(
                     item { ToggleItem("Show titles", display.showTitles) { onChange(display.copy(showTitles = it)) } }
                 }
                 }
-                if (!display.style.isShowcase) {
-                    // Fun on the cards: what one does when opened, and now and then while browsing.
-                    item { ChoiceItem("Click effect", display.clickEffect.label) { onChange(display.copy(clickEffect = display.clickEffect.cycle())) } }
-                    item { ChoiceItem("Browsing effect", display.cardSpark.label) { onChange(display.copy(cardSpark = display.cardSpark.cycle())) } }
-                    if (display.cardSpark != dev.nitrate.core.effects.CardSpark.NONE) {
-                        item { ChoiceItem("How often", display.sparkRate.label) { onChange(display.copy(sparkRate = display.sparkRate.cycle())) } }
-                    }
+                // Fun on the cards: what one does when opened, and now and then while browsing.
+                item { ChoiceItem("Click effect", display.clickEffect.label) { onChange(display.copy(clickEffect = display.clickEffect.cycle())) } }
+                item { ChoiceItem("Browsing effect", display.cardSpark.label) { onChange(display.copy(cardSpark = display.cardSpark.cycle())) } }
+                if (display.cardSpark != dev.nitrate.core.effects.CardSpark.NONE) {
+                    item { ChoiceItem("How often", display.sparkRate.label) { onChange(display.copy(sparkRate = display.sparkRate.cycle())) } }
                 }
                 onEditPage?.let { edit ->
                     item { ListItem(selected = false, onClick = edit, headlineContent = { Text("Edit page") }, supportingContent = { Text("Order, hide, rename and add rows") }) }

@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -19,12 +20,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.graphicsLayer
 import dev.nitrate.core.effects.CardSpark
 import dev.nitrate.core.effects.ClickEffect
 import dev.nitrate.core.effects.EffectsPrefs
 import dev.nitrate.core.rows.RowDisplay
 import dev.nitrate.tv.ui.rows.RowActions
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -33,14 +36,17 @@ import kotlin.math.sin
 import kotlin.random.Random
 import androidx.compose.ui.unit.dp
 
-/** One row's card effects: which card is mid-click and which one is sparking. */
+/** One row's card effects: which card is mid-click and which ones are sparking. */
 class CardFx internal constructor(
     val click: ClickEffect,
     val spark: CardSpark,
     internal val scale: Float,
 ) {
     internal val clicked = mutableStateOf<String?>(null)
-    internal val sparking = mutableStateOf<Pair<String, Long>?>(null)
+    /** Cards sparking now, each with when its spark began. */
+    internal val sparking = mutableStateMapOf<String, Long>()
+    /** Holds sparks at this progress instead of playing them (screenshots). */
+    internal var holdAt: Float? = null
     /** The cards composed now (on screen or about to be): sparks pick among them. */
     internal val shown = mutableStateListOf<String>()
 
@@ -71,6 +77,10 @@ class CardFx internal constructor(
     internal companion object {
         const val CLICK_MS = 720
         const val SPARK_MS = 1400
+        /** How many cards a spark goes off on at once (fewer when fewer are shown). */
+        val AT_ONCE = 3..5
+        /** Their starts spread over this, so they go off as a ripple rather than in step. */
+        const val STAGGER_MS = 450
     }
 }
 
@@ -93,27 +103,41 @@ fun rememberCardFx(display: RowDisplay, prefs: EffectsPrefs, easyMode: Boolean):
             while (true) {
                 // Spread out, so rows on the same setting don't go off together.
                 delay((every * (0.6 + Random.nextDouble() * 0.8)).toLong())
-                val pick = fx.shown.toList().randomOrNull() ?: continue
-                fx.sparking.value = pick to System.nanoTime()
-                delay(CardFx.SPARK_MS.toLong())
-                fx.sparking.value = null
+                val picks = fx.shown.toList().shuffled().take(Random.nextInt(CardFx.AT_ONCE.first, CardFx.AT_ONCE.last + 1))
+                if (picks.isEmpty()) continue
+                coroutineScope {
+                    picks.forEachIndexed { i, id ->
+                        launch {
+                            if (i > 0) delay(Random.nextLong(CardFx.STAGGER_MS.toLong()))
+                            fx.sparking[id] = System.nanoTime()
+                            delay(CardFx.SPARK_MS.toLong())
+                            fx.sparking.remove(id)
+                        }
+                    }
+                }
             }
         }
     }
     return fx
 }
 
-/** A card's share of its row's effects: the click animation and, now and then, a spark over it. */
-fun Modifier.cardFx(id: String): Modifier = composed {
+/**
+ * A card's share of its row's effects: the click animation and, now and then, a spark over it.
+ * Showcase rows split them: the spark over the picture ([click] off), the click on the title ([spark]
+ * off, so it isn't one of the cards sparks pick from).
+ */
+fun Modifier.cardFx(id: String, click: Boolean = true, spark: Boolean = true): Modifier = composed {
     val fx = LocalCardFx.current ?: return@composed this
-    if (fx.spark != CardSpark.NONE) {
+    val clickOn = click
+    val sparkOn = spark
+    if (fx.spark != CardSpark.NONE && sparkOn) {
         DisposableEffect(fx, id) {
             fx.shown += id
             onDispose { fx.shown -= id }
         }
     }
     val click = remember { Animatable(0f) }
-    val clicking = fx.clicked.value == id
+    val clicking = clickOn && fx.clicked.value == id
     LaunchedEffect(clicking) {
         if (clicking) {
             click.snapTo(0f)
@@ -121,7 +145,7 @@ fun Modifier.cardFx(id: String): Modifier = composed {
         } else click.snapTo(0f)
     }
     val spark = remember { Animatable(0f) }
-    val sparkingNow = fx.sparking.value?.takeIf { it.first == id }
+    val sparkingNow = if (sparkOn) fx.sparking[id] else null
     LaunchedEffect(sparkingNow) {
         if (sparkingNow != null) {
             spark.snapTo(0f)
@@ -146,10 +170,36 @@ fun Modifier.cardFx(id: String): Modifier = composed {
         }
         .drawWithContent {
             drawContent()
-            val p = spark.value
-            if (p > 0f && p < 1f) drawSpark(fx.spark, p, fx.scale, id.hashCode() xor (sparkingNow?.second?.toInt() ?: 0))
+            val p = if (sparkingNow != null) fx.holdAt ?: spark.value else spark.value
+            if (p > 0f && p < 1f) drawSparkAnySize(fx.spark, p, fx.scale, id.hashCode() xor (sparkingNow?.toInt() ?: 0))
         }
 }
+
+/**
+ * A spark sized for what it's over: a card gets one; an area far larger than a card (a showcase's
+ * full-screen picture) gets [BIG_SPOTS] card-sized ones at scattered spots, going off one after another,
+ * so it looks the same as on cards rather than spread thin across the screen.
+ */
+internal fun DrawScope.drawSparkAnySize(spark: CardSpark, p: Float, k: Float, seed: Int) {
+    val w = size.width
+    val h = size.height
+    if (w < BIG_AREA_PX) return drawSpark(spark, p, k, seed)
+    val cw = w * 0.26f
+    val ch = h * 0.34f
+    for (i in 0 until BIG_SPOTS) {
+        val local = (p * 1.45f - i * 0.15f).coerceIn(0f, 1f)
+        if (local <= 0f || local >= 1f) continue
+        // Columns across the picture, each at its own height, so spots never pile up together.
+        val left = (w - cw) * ((i + rnd(seed + i, 20) * 0.6f) / (BIG_SPOTS - 0.4f)).coerceIn(0f, 1f)
+        val top = (h - ch) * (0.08f + rnd(seed + i, 21) * 0.6f)
+        inset(left, top, w - left - cw, h - top - ch) {
+            drawSpark(spark, local, k, seed * 7 + i)
+        }
+    }
+}
+
+private const val BIG_AREA_PX = 1200f
+private const val BIG_SPOTS = 4
 
 /** One spark over the card at progress [p] (0..1). */
 internal fun DrawScope.drawSpark(spark: CardSpark, p: Float, k: Float, seed: Int) {

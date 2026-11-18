@@ -49,6 +49,7 @@ import dev.nitrate.core.MediaServer
 import dev.nitrate.core.rows.MediaRow
 import dev.nitrate.core.rows.RowDisplay
 import dev.nitrate.tv.ui.components.Backdrop
+import dev.nitrate.tv.ui.effects.cardFx
 import dev.nitrate.tv.ui.components.ItemMetaLine
 import dev.nitrate.tv.ui.components.TitleOrLogo
 import kotlinx.coroutines.delay
@@ -159,6 +160,7 @@ private fun Collapsed(row: MediaRow, item: MediaItem, artwork: String?, display:
                 .padding(horizontal = RowPadding)
                 .fillMaxWidth()
                 .height(display.size.tvBannerDp().dp)
+                .cardFx(item.id)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
@@ -198,7 +200,8 @@ private fun Expanded(
     // Room for the strip below the text, or just a margin without it.
     val bottom = if (strip) 150.dp else 72.dp
     Box(Modifier.fillMaxSize()) {
-        Backdrop(artwork, Modifier.fillMaxSize())
+        // The picture is the item here: sparks go over it, and the click plays on the title.
+        Backdrop(artwork, Modifier.fillMaxSize().cardFx(item.id, click = false))
 
         Text(
             row.title,
@@ -207,7 +210,7 @@ private fun Expanded(
         )
 
         Column(
-            Modifier.align(Alignment.BottomStart).padding(start = RowPadding, bottom = bottom).fillMaxWidth(0.5f),
+            Modifier.align(Alignment.BottomStart).padding(start = RowPadding, bottom = bottom).fillMaxWidth(0.5f).cardFx(item.id, spark = false),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             TitleOrLogo(item, if (options.showLogo) repository.logoUrl(item) else null)

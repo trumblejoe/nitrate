@@ -63,7 +63,7 @@ class TvScreenshotTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun shoot(name: String, setup: suspend (AppContainer) -> Unit = {}, act: () -> Unit = {}, content: @Composable (AppContainer) -> Unit) {
+    private fun shoot(name: String, setup: suspend (AppContainer) -> Unit = {}, act: () -> Unit = {}, settleMs: Long = 1_000, content: @Composable (AppContainer) -> Unit) {
         val container = AppContainer(compose.activity, "test", "0", serverOverride = FakeServer())
         runBlocking {
             // Stored settings outlive a test in the same process: start each one clean.
@@ -91,7 +91,7 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(1_500)
         compose.waitForIdle()
         act()
-        compose.mainClock.advanceTimeBy(1_000)
+        compose.mainClock.advanceTimeBy(settleMs)
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
@@ -644,6 +644,26 @@ class TvScreenshotTest {
         c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
     }) { c ->
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    /** Full Showcase takes the row's effects: the browsing effect lands on the title showing, and only on it. */
+    @Test fun fullShowcaseSpark() {
+        val fx = dev.nitrate.tv.ui.effects.CardFx(dev.nitrate.core.effects.ClickEffect.POP, dev.nitrate.core.effects.CardSpark.FIREWORKS, 1f).apply { holdAt = 0.35f }
+        lateinit var row: dev.nitrate.core.rows.MediaRow
+        shoot("tv-full-showcase-spark", { c -> row = c.server.homeRows().first { it.items.size > 1 } }, act = {
+            compose.runOnIdle {
+                check(fx.shown.toList() == listOf(row.items[0].id)) { "sparks should pick only the title showing, got ${fx.shown.toList()}" }
+                fx.sparking[row.items[0].id] = 7L
+            }
+        }) { c ->
+            androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalCardFx provides fx) {
+                dev.nitrate.tv.ui.rows.ShowcaseRow(
+                    row, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE), c.server,
+                    dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}), index = 0, onIndexChange = {}, active = false, onActiveChange = {},
+                    alwaysExpanded = true,
+                )
+            }
+        }
     }
 
     @Test fun settingsHub() = shoot("tv-settings-hub") { _ ->
