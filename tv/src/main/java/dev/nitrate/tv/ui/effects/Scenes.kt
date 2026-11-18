@@ -45,9 +45,16 @@ fun EffectsLayer(theme: PageTheme?, occasion: Occasion?, prefs: EffectsPrefs, mo
         }
     }
     val k = prefs.intensity.scale
-    Canvas(modifier.fillMaxSize()) {
-        if (theme != null) drawTheme(theme, t, k)
-        if (occasion != null) drawOccasion(occasion, t, k)
+    // Real subjects play as film when this build has the clip (and not with Reduce motion), else drawn.
+    val shipped = rememberShippedClips()
+    val themeClip = theme?.let { dev.nitrate.core.effects.EffectClips.forTheme(it) }?.takeIf { it.name in shipped && !prefs.reduceMotion && at == null }
+    val occasionClip = occasion?.let { dev.nitrate.core.effects.EffectClips.forOccasion(it) }?.takeIf { it.name in shipped && !prefs.reduceMotion && at == null }
+    androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
+        (occasionClip ?: themeClip)?.let { ClipBand(it, Modifier.align(androidx.compose.ui.Alignment.BottomCenter)) }
+        Canvas(Modifier.fillMaxSize()) {
+            if (theme != null && themeClip == null) drawTheme(theme, t, k)
+            if (occasion != null && occasionClip == null) drawOccasion(occasion, t, k)
+        }
     }
 }
 
@@ -149,24 +156,7 @@ private fun DrawScope.drawTheme(theme: PageTheme, t: Float, k: Float) {
     val h = size.height
     when (theme) {
         PageTheme.NONE -> Unit
-        PageTheme.THUNDERSTORM -> {
-            drawRect(Brush.verticalGradient(listOf(Color(0xCC0B0F18), Color.Transparent), endY = h * 0.3f), size = Size(w, h * 0.3f))
-            for (i in 0 until 7) {
-                val x = frac(rnd(i, 5) + t * 0.004f * (1 + i % 3)) * (w + 400f) - 200f
-                drawCircle(Color(0x66202833), radius = 120f + rnd(i, 6) * 120f, center = Offset(x, h * 0.04f + rnd(i, 7) * h * 0.08f))
-            }
-            fallers(count(140, k), t, 900f, 11) { p, r, _ ->
-                drawLine(Color(0x55A9C4E8), p, Offset(p.x - 6f, p.y + 22f + r * 14f), strokeWidth = 1.6f)
-            }
-            // A strike every few seconds: a bolt and a flash.
-            val cycle = floor(t / 6.5f).toInt()
-            val inCycle = t - cycle * 6.5f
-            if (inCycle < 0.35f && rnd(cycle, 3) > 0.25f) {
-                val x = w * (0.15f + rnd(cycle, 4) * 0.7f)
-                drawRect(Color.White.copy(alpha = 0.10f * (1 - inCycle / 0.35f)))
-                bolt(Offset(x, h * 0.06f), Offset(x + (rnd(cycle, 8) - 0.5f) * 200f, h * (0.45f + rnd(cycle, 9) * 0.35f)), cycle, Color(0xEEE8F2FF))
-            }
-        }
+        PageTheme.THUNDERSTORM -> thunderstorm(t, k)
         PageTheme.SAFARI -> {
             drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55E07A2E), Color(0x99582812)), startY = h * 0.62f), topLeft = Offset(0f, h * 0.62f), size = Size(w, h * 0.38f))
             drawCircle(Color(0x66FFB45A), radius = h * 0.11f, center = Offset(w * 0.78f, h * 0.84f))
@@ -178,107 +168,14 @@ private fun DrawScope.drawTheme(theme: PageTheme, t: Float, k: Float) {
             crossing(t, 38f, w, 220f, -1, 14f)?.let { x -> elephant(Offset(x, ground), h * 0.11f, t) }
             crossing(t, 30f, w, 120f, 1, 7f)?.let { x -> zebraish(Offset(x, ground), h * 0.07f, t) }
         }
-        PageTheme.DEEP_SPACE -> {
-            for (i in 0 until count(160, k)) {
-                val x = frac(rnd(i, 21) - t * 0.002f * (0.5f + rnd(i, 22))) * w
-                val y = rnd(i, 23) * h
-                val tw = 0.35f + 0.35f * sin(t * (1 + rnd(i, 24) * 2) + i)
-                drawCircle(Color.White.copy(alpha = tw.coerceIn(0.1f, 0.8f)), radius = 1f + rnd(i, 25) * 1.8f, center = Offset(x, y))
-            }
-            drawCircle(Brush.radialGradient(listOf(Color(0x664A6BD8), Color(0x22101A40), Color.Transparent), center = Offset(w * 0.92f, h * 0.12f), radius = h * 0.25f), radius = h * 0.25f, center = Offset(w * 0.92f, h * 0.12f))
-            crossing(t, 18f, w, 120f, -1)?.let { x ->
-                val y = h * 0.08f + (w - x) / w * h * 0.18f
-                drawLine(Brush.linearGradient(listOf(Color(0xCCFFFFFF), Color.Transparent), start = Offset(x, y), end = Offset(x + 140f, y - 30f)), Offset(x, y), Offset(x + 140f, y - 30f), strokeWidth = 3f)
-                drawCircle(Color.White, 3.5f, Offset(x, y))
-            }
-        }
-        PageTheme.UNDERWATER -> {
-            drawRect(Brush.verticalGradient(listOf(Color(0x3326A6D6), Color(0x22042A44))))
-            for (i in 0 until 5) {
-                val x = w * (0.1f + i * 0.2f) + sin(t * 0.2f + i) * 40f
-                val ray = Path().apply { moveTo(x, 0f); lineTo(x + 60f, 0f); lineTo(x + 220f, h); lineTo(x + 120f, h); close() }
-                drawPath(ray, Color(0x0FFFFFFF))
-            }
-            fallers(count(40, k), t, -120f, 31) { p, r, _ -> drawCircle(Color(0x66CFF4FF), radius = 2f + r * 6f, center = p, style = Stroke(1.5f)) }
-            for (j in 0 until 3) crossing(t, 22f + j * 6, w, 80f, if (j % 2 == 0) 1 else -1, j * 5f)?.let { x -> fish(Offset(x, h * (0.25f + j * 0.22f) + sin(t + j) * 12f), 26f + j * 6f, if (j % 2 == 0) 1 else -1) }
-        }
-        PageTheme.HAUNTED -> {
-            drawCircle(Brush.radialGradient(listOf(Color(0xAAF3F0D8), Color(0x22F3F0D8), Color.Transparent), center = Offset(w * 0.86f, h * 0.15f), radius = h * 0.16f), radius = h * 0.16f, center = Offset(w * 0.86f, h * 0.15f))
-            drawCircle(Color(0xDDF3F0D8), radius = h * 0.06f, center = Offset(w * 0.86f, h * 0.15f))
-            for (i in 0 until 4) {
-                val x = frac(rnd(i, 41) + t * 0.01f * (1 + i % 2)) * (w + 600f) - 300f
-                drawOval(Color(0x22D8DCE6), topLeft = Offset(x, h * (0.82f + i * 0.04f)), size = Size(600f, 80f))
-            }
-            for (b in 0 until count(5, k)) crossing(t, 9f + b * 2.3f, w, 40f, if (b % 2 == 0) 1 else -1, b * 3f)?.let { x -> bat(Offset(x, h * (0.12f + rnd(b, 42) * 0.4f) + sin(t * 3 + b) * 20f), 16f, t * 14 + b) }
-        }
-        PageTheme.DESERT -> {
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x44F0B060)), startY = h * 0.6f))
-            val dunes = Path().apply {
-                moveTo(0f, h); lineTo(0f, h * 0.9f)
-                var x = 0f
-                while (x <= w) { lineTo(x, h * 0.9f - sin(x / w * 6f) * h * 0.03f); x += 20f }
-                lineTo(w, h); close()
-            }
-            drawPath(dunes, Color(0xAA8A5A24))
-            crossing(t, 16f, w, 60f, 1)?.let { x ->
-                val c = Offset(x, h * 0.9f - 22f - abs(sin(t * 4)) * 16f)
-                rotate(t * 240f, c) { drawCircle(Color(0xAA6B4A22), 22f, c, style = Stroke(3f)); drawLine(Color(0xAA6B4A22), c - Offset(18f, 0f), c + Offset(18f, 0f), 2f) }
-            }
-        }
-        PageTheme.SNOWY_FOREST -> {
-            snow(t, k, 51)
-            for (i in 0 until 9) pine(Offset(w * (i / 8f) + (rnd(i, 52) - 0.5f) * 60f, h), h * (0.14f + rnd(i, 53) * 0.1f))
-        }
-        PageTheme.SUPERHERO_CITY -> {
-            // Halftone sky: dots fading down from the top.
-            var y = 10f
-            while (y < h * 0.25f) {
-                var x = (y.toInt() / 18 % 2) * 9f
-                while (x < w) { drawCircle(Color(0x22F2C14E), radius = 4f * (1 - y / (h * 0.25f)), center = Offset(x, y)); x += 18f }
-                y += 18f
-            }
-            skyline(h * 0.82f, Color(0xCC14121E))
-            crossing(t, 11f, w, 90f, 1)?.let { x -> caped(Offset(x, h * 0.18f + sin(t * 2) * 20f), 52f, t) }
-            val cycle = floor(t / 5f).toInt()
-            val life = (t - cycle * 5f) / 1.1f
-            if (life in 0f..1f) {
-                val c = Offset(w * (0.2f + rnd(cycle, 61) * 0.6f), h * (0.3f + rnd(cycle, 62) * 0.3f))
-                star(c, 80f * (0.6f + life * 0.6f), Color(0xDDF2C14E).copy(alpha = (1 - life) * 0.9f), points = 12, inner = 0.6f)
-                drawWord(listOf("POW!", "BAM!", "ZAP!", "KRAK!")[cycle.mod(4)], c, 34f, Color(0xFFD62828).copy(alpha = 1 - life))
-            }
-        }
-        PageTheme.ALIEN_AGENTS -> {
-            var y = 0f
-            while (y < h) { drawLine(Color(0x0AFFFFFF), Offset(0f, y), Offset(w, y), 1f); y += 4f }
-            agent(Offset(w * 0.06f, h), h * 0.32f)
-            agent(Offset(w * 0.94f, h), h * 0.3f)
-            // The sunglasses glint every few seconds.
-            val g = frac(t / 7f)
-            if (g < 0.08f) star(Offset(w * 0.06f + 10f, h - h * 0.32f * 0.84f), 18f * (1 - abs(g - 0.04f) * 25), Color.White, points = 4, inner = 0.2f)
-            crossing(t, 20f, w, 100f, -1)?.let { x ->
-                val c = Offset(x, h * 0.16f + sin(t * 1.5f) * 16f)
-                drawOval(Brush.radialGradient(listOf(Color(0x8839FF88), Color.Transparent), center = c, radius = 90f), topLeft = c - Offset(90f, 40f), size = Size(180f, 80f))
-                drawOval(Color(0xCC1D2B24), topLeft = c - Offset(50f, 10f), size = Size(100f, 22f))
-                drawOval(Color(0xAA39FF88), topLeft = c - Offset(20f, 24f), size = Size(40f, 22f))
-            }
-            // A flash now and then: a white-out that clears.
-            val f = frac(t / 23f)
-            if (f < 0.05f) drawRect(Color.White.copy(alpha = 0.18f * (1 - f / 0.05f)))
-        }
-        PageTheme.NEON_ARCADE -> {
-            val horizon = h * 0.72f
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55FF2E97)), startY = horizon - 80f, endY = horizon), topLeft = Offset(0f, horizon - 80f), size = Size(w, 80f))
-            drawCircle(Brush.verticalGradient(listOf(Color(0xAAFFC04D), Color(0xAAFF2E97)), startY = horizon - 160f, endY = horizon), radius = 110f, center = Offset(w / 2, horizon - 20f))
-            for (i in 0..20) {
-                val x = w / 2 + (i - 10) * w / 10f
-                drawLine(Color(0x88B44DFF), Offset(w / 2 + (i - 10) * 30f, horizon), Offset(x, h), 1.5f)
-            }
-            for (j in 0 until 8) {
-                val p = frac(j / 8f + t * 0.08f)
-                val y = horizon + (h - horizon) * p * p
-                drawLine(Color(0x88B44DFF).copy(alpha = 0.2f + p * 0.5f), Offset(0f, y), Offset(w, y), 1.5f)
-            }
-        }
+        PageTheme.DEEP_SPACE -> deepSpace(t, k)
+        PageTheme.UNDERWATER -> underwater(t, k)
+        PageTheme.HAUNTED -> haunted(t, k)
+        PageTheme.DESERT -> desert(t, k)
+        PageTheme.SNOWY_FOREST -> snowyForest(t, k)
+        PageTheme.SUPERHERO_CITY -> heroCity(t, k)
+        PageTheme.ALIEN_AGENTS -> visitors(t, k)
+        PageTheme.NEON_ARCADE -> arcade(t, k)
     }
 }
 
@@ -289,23 +186,9 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
     val h = size.height
     when (o) {
         Occasion.WINTER -> snow(t, k, 71)
-        Occasion.CHRISTMAS -> {
-            snow(t, k, 72)
-            // A string of lights along the top.
-            val path = Path().apply { moveTo(0f, 18f); var x = 0f; while (x <= w) { lineTo(x, 18f + sin(x / 90f) * 10f); x += 12f } }
-            drawPath(path, Color(0x66223322), style = Stroke(2f))
-            val colors = listOf(Color(0xFFE53935), Color(0xFF43A047), Color(0xFFFDD835), Color(0xFF1E88E5))
-            for (i in 0 until (w / 70f).toInt()) {
-                val x = i * 70f + 35f
-                val on = sin(t * 2.5f + i * 1.3f) > -0.3f
-                drawCircle(colors[i % 4].copy(alpha = if (on) 0.95f else 0.3f), 6f, Offset(x, 18f + sin(x / 90f) * 10f + 8f))
-            }
-            crossing(t, 24f, w, 260f, 1)?.let { x -> sleigh(Offset(x, h * 0.14f + sin(t * 1.2f) * 14f)) }
-        }
+        Occasion.CHRISTMAS -> christmas(t, k)
         Occasion.FESTIVUS -> {
-            // The bare aluminium pole: no tinsel.
-            drawRect(Brush.horizontalGradient(listOf(Color(0x99B0B6BE), Color(0xEEF2F4F7), Color(0x998A9099)), startX = w - 80f, endX = w - 60f), topLeft = Offset(w - 80f, h * 0.18f), size = Size(20f, h * 0.82f))
-            drawOval(Color(0xAA8A9099), topLeft = Offset(w - 100f, h - 16f), size = Size(60f, 16f))
+            festivusPole(t)
             val c = floor(t / 6f).toInt()
             val life = (t - c * 6f) / 5f
             if (life in 0f..1f) {
@@ -313,24 +196,16 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
                 drawWord(words[c.mod(words.size)], Offset(w * 0.5f, h * 0.1f), 30f, Color(0xFFF2F4F7).copy(alpha = (1 - abs(life - 0.5f) * 2).coerceIn(0f, 1f)))
             }
         }
-        Occasion.NEW_YEAR -> {
-            val colors = listOf(Color(0xCCFDD835), Color(0xCC00E5FF), Color(0xCCFF4081), Color(0xCCFFFFFF))
-            fallers(count(90, k), t, 140f, 81) { p, r, i -> rotate(t * 200 * (r - 0.5f), p) { drawRect(colors[i % 4], topLeft = p, size = Size(10f, 5f)) } }
-            fireworks(t, k, 82, w, h * 0.45f)
-        }
-        Occasion.VALENTINES -> fallers(count(26, k), t, -60f, 91) { p, r, _ -> heart(p, 12f + r * 16f, Color(0x99FF4D7A)) }
-        Occasion.ST_PATRICKS -> fallers(count(30, k), t, 70f, 101) { p, r, _ ->
-            val s = 8f + r * 8f
-            rotate(t * 40f + r * 360f, p) { for (q in 0 until 3) { val a = q * 2.094f; heart(Offset(p.x + cos(a) * s, p.y + sin(a) * s), s, Color(0x9943A047)) } }
-        }
+        Occasion.NEW_YEAR -> newYear(t, k)
+        Occasion.VALENTINES -> valentines(t, k)
+        Occasion.ST_PATRICKS -> shamrocks(t, k)
         Occasion.ARMY_BIRTHDAY -> {
             val ground = h * 0.95f
             for (j in 0 until 2) crossing(t, 26f, w, 220f, 1, j * 12f)?.let { x -> tank(Offset(x, ground), 1f) }
             shellBursts(t, k, 111, ground)
         }
         Occasion.INDEPENDENCE_DAY -> {
-            stripes(Offset(0f, 0f), w, 26f, t)
-            fireworks(t, k, 121, w, h * 0.5f)
+            fireworkShow(t, k, listOf(Color(0xFFFF3B4E), Color(0xFFF4F6FF), Color(0xFF3D6BFF)), 121, floorY = 0.5f)
         }
         Occasion.AIR_FORCE_BIRTHDAY -> {
             val ground = h * 0.97f
@@ -393,24 +268,8 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
             waveFlag(Offset(w - 250f, 30f), 220f, 120f, t + 1f)
             fallers(count(20, k), t, 40f, 151) { p, r, _ -> star(p, 6f + r * 6f, Color(0x99FFFFFF)) }
         }
-        Occasion.THANKSGIVING -> {
-            val colors = listOf(Color(0xCCD35400), Color(0xCCB03A2E), Color(0xCCE67E22), Color(0xCC8E6E1E))
-            fallers(count(36, k), t, 60f, 161) { p, r, i -> rotate(t * 90 * (r - 0.5f) + i * 40, p) { drawOval(colors[i % 4], topLeft = p - Offset(10f, 5f), size = Size(20f, 10f)) } }
-        }
-        Occasion.LABOR_DAY -> {
-            // Red banners from the top, each with the hammer and sickle and a star.
-            val n = 5
-            for (i in 0 until n) {
-                val x = w * (i + 0.5f) / n - 60f
-                val sway = sin(t * 1.4f + i) * 6f
-                banner(Offset(x + sway, -40f), 96f, 150f, t + i)
-            }
-            // A march along the bottom, flags up.
-            for (m in 0 until 8) {
-                val x = frac(m / 8f + t * 0.015f) * (w + 200f) - 100f
-                marcher(Offset(x, h), 70f, t * 4 + m, m % 2 == 0)
-            }
-        }
+        Occasion.THANKSGIVING -> autumn(t, k)
+        Occasion.LABOR_DAY -> laborDay(t, k)
         Occasion.EASTER -> {
             val ground = h
             for (b in 0 until 3) crossing(t, 16f + b * 4, w, 60f, if (b % 2 == 0) 1 else -1, b * 5f)?.let { x ->
@@ -420,31 +279,16 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
             val eggs = listOf(Color(0xCCF8BBD0), Color(0xCCB3E5FC), Color(0xCCFFF59D), Color(0xCCC8E6C9))
             for (e in 0 until 9) drawOval(eggs[e % 4], topLeft = Offset(w * (e + 0.5f) / 9f - 14f, ground - 40f), size = Size(28f, 38f))
         }
-        Occasion.HALLOWEEN -> {
-            for (i in 0 until 3) {
-                val x = frac(rnd(i, 171) + t * 0.012f) * (w + 600f) - 300f
-                drawOval(Color(0x22C8D0D8), topLeft = Offset(x, h * (0.86f + i * 0.04f)), size = Size(600f, 70f))
-            }
-            for (b in 0 until count(6, k)) crossing(t, 8f + b * 2f, w, 40f, if (b % 2 == 0) 1 else -1, b * 2.5f)?.let { x -> bat(Offset(x, h * (0.1f + rnd(b, 172) * 0.35f) + sin(t * 3 + b) * 18f), 15f, t * 14 + b) }
-            for (p in 0 until 4) pumpkin(Offset(w * (0.1f + p * 0.27f), h - 30f), 30f, t + p)
-        }
+        Occasion.HALLOWEEN -> halloween(t, k)
     }
 }
 
 // ---- Drawings ----
 
-private fun DrawScope.snow(t: Float, k: Float, salt: Int) =
-    fallers(count(90, k), t, 50f, salt) { p, r, _ -> drawCircle(Color.White.copy(alpha = 0.45f + r * 0.4f), radius = 1.5f + r * 3.5f, center = p) }
+private fun DrawScope.snow(t: Float, k: Float, salt: Int) = realSnow(t, k, salt)
 
-private fun DrawScope.fireworks(t: Float, k: Float, salt: Int, w: Float, maxY: Float) {
-    val colors = listOf(Color(0xFFFF5252), Color(0xFFFFFFFF), Color(0xFF448AFF), Color(0xFFFFD740), Color(0xFF69F0AE))
-    for (f in 0 until count(4, k)) {
-        val period = 2.6f + f * 0.7f
-        val cycle = floor((t + f * 1.1f) / period).toInt()
-        val life = ((t + f * 1.1f) - cycle * period) / 1.6f
-        burst(Offset(w * (0.1f + rnd(cycle * 7 + f, salt) * 0.8f), maxY * (0.25f + rnd(cycle * 7 + f, salt + 1) * 0.7f)), life, 90f + rnd(cycle, salt + 2) * 60f, colors[(cycle + f).mod(colors.size)])
-    }
-}
+private fun DrawScope.fireworks(t: Float, k: Float, salt: Int, w: Float, maxY: Float) =
+    fireworkShow(t, k, listOf(Color(0xFFFF4D5E), Color(0xFFF4F6FF), Color(0xFF4D7CFF), Color(0xFFFFC94D), Color(0xFF5CFFB0), Color(0xFFD06BFF)), salt, floorY = maxY / size.height)
 
 private fun DrawScope.shellBursts(t: Float, k: Float, salt: Int, ground: Float) {
     for (s in 0 until count(3, k)) {

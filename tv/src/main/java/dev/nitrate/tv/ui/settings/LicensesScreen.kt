@@ -36,9 +36,26 @@ import dev.nitrate.core.OpenSource
 @Composable
 fun LicensesScreen() {
     val context = LocalContext.current
+    // The effect clips' footage, when this build ships any (fx/credits.json): each with its author and licence.
+    val footage = remember {
+        runCatching {
+            val list = org.json.JSONArray(context.assets.open("fx/credits.json").bufferedReader().readText())
+            (0 until list.length()).map { i ->
+                val c = list.getJSONObject(i)
+                "${c.optString("title")}\nBy ${c.optString("author").ifBlank { "unknown" }} · ${c.optString("license")}\n${c.optString("page")}"
+            }
+        }.getOrDefault(emptyList())
+    }
+    val components = remember(footage) {
+        OpenSource.components + if (footage.isEmpty()) emptyList() else listOf(
+            dev.nitrate.core.OpenSourceComponent("Effect footage", "Public domain / Creative Commons", "", "https://commons.wikimedia.org",
+                "Film clips in the seasonal and page effects, from Wikimedia Commons, trimmed and looped."),
+        )
+    }
     var chosen by remember { mutableStateOf(OpenSource.components.first()) }
-    val text = remember(chosen.licenseText) {
-        runCatching { context.assets.open("licenses/${chosen.licenseText}").bufferedReader().readText() }.getOrDefault("")
+    val text = remember(chosen) {
+        if (chosen.name == "Effect footage") footage
+        else runCatching { context.assets.open("licenses/${chosen.licenseText}").bufferedReader().readText() }.getOrDefault("")
             .split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotEmpty() }
     }
     val first = remember { FocusRequester() }
@@ -46,7 +63,7 @@ fun LicensesScreen() {
     Row(Modifier.fillMaxSize().padding(horizontal = 58.dp, vertical = 36.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
         LazyColumn(Modifier.width(380.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             item { Text("Open-source licences", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 12.dp)) }
-            items(OpenSource.components, key = { it.name }) { c ->
+            items(components, key = { it.name }) { c ->
                 ListItem(
                     selected = c == chosen,
                     onClick = { chosen = c },

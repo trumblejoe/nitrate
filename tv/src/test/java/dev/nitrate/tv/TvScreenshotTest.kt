@@ -133,7 +133,7 @@ class TvScreenshotTest {
     private fun effectShot(name: String, theme: dev.nitrate.core.effects.PageTheme? = null, occasion: dev.nitrate.core.effects.Occasion? = null, at: Float = 3.1f) =
         shoot(name) { dev.nitrate.tv.ui.effects.EffectStage(theme, occasion, dev.nitrate.core.effects.EffectsPrefs(), onDismiss = {}, at = at) }
 
-    @Test fun fxThunderstorm() = effectShot("tv-fx-thunderstorm", theme = dev.nitrate.core.effects.PageTheme.THUNDERSTORM, at = 6.6f)
+    @Test fun fxThunderstorm() = effectShot("tv-fx-thunderstorm", theme = dev.nitrate.core.effects.PageTheme.THUNDERSTORM, at = 7.53f)
     @Test fun fxSafari() = effectShot("tv-fx-safari", theme = dev.nitrate.core.effects.PageTheme.SAFARI, at = 12f)
     @Test fun fxDeepSpace() = effectShot("tv-fx-deep-space", theme = dev.nitrate.core.effects.PageTheme.DEEP_SPACE, at = 4f)
     @Test fun fxUnderwater() = effectShot("tv-fx-underwater", theme = dev.nitrate.core.effects.PageTheme.UNDERWATER, at = 6f)
@@ -163,9 +163,15 @@ class TvScreenshotTest {
     @Test fun fxLaborDay() = effectShot("tv-fx-labor-day", occasion = dev.nitrate.core.effects.Occasion.LABOR_DAY)
     @Test fun fxMarines() = effectShot("tv-fx-marine-corps", occasion = dev.nitrate.core.effects.Occasion.MARINE_CORPS_BIRTHDAY)
     @Test fun fxAirForce() = effectShot("tv-fx-air-force", occasion = dev.nitrate.core.effects.Occasion.AIR_FORCE_BIRTHDAY, at = 3.6f)
-    @Test fun fxJuly4() = effectShot("tv-fx-independence-day", occasion = dev.nitrate.core.effects.Occasion.INDEPENDENCE_DAY)
+    @Test fun fxJuly4() = effectShot("tv-fx-independence-day", occasion = dev.nitrate.core.effects.Occasion.INDEPENDENCE_DAY, at = 9.2f)
+    @Test fun fxJuly4b() = effectShot("tv-fx-independence-day-b", occasion = dev.nitrate.core.effects.Occasion.INDEPENDENCE_DAY, at = 13.7f)
     @Test fun fxChristmas() = effectShot("tv-fx-christmas", occasion = dev.nitrate.core.effects.Occasion.CHRISTMAS, at = 5f)
     @Test fun fxFestivus() = effectShot("tv-fx-festivus", occasion = dev.nitrate.core.effects.Occasion.FESTIVUS, at = 2.5f)
+    @Test fun fxHalloween() = effectShot("tv-fx-halloween", occasion = dev.nitrate.core.effects.Occasion.HALLOWEEN, at = 6f)
+    @Test fun fxNewYear() = effectShot("tv-fx-new-year", occasion = dev.nitrate.core.effects.Occasion.NEW_YEAR, at = 9.2f)
+    @Test fun fxValentines() = effectShot("tv-fx-valentines", occasion = dev.nitrate.core.effects.Occasion.VALENTINES, at = 12f)
+    @Test fun fxThanksgiving() = effectShot("tv-fx-thanksgiving", occasion = dev.nitrate.core.effects.Occasion.THANKSGIVING, at = 12f)
+    @Test fun fxStPatricks() = effectShot("tv-fx-st-patricks", occasion = dev.nitrate.core.effects.Occasion.ST_PATRICKS, at = 12f)
     @Test fun fxEffectsSettings() = shoot("tv-fx-settings") { c -> dev.nitrate.tv.ui.effects.EffectsSettingsScreen(c) }
 
     @Test fun railRightExits() = prefsShot("tv-rail-exit", dev.nitrate.core.pages.DisplayPrefs(), {

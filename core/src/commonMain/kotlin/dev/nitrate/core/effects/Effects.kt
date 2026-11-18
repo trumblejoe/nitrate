@@ -216,3 +216,29 @@ object PageThemes {
         else -> null
     }
 }
+
+/**
+ * Scenes built around real subjects (animals, aircraft, ships, people) play a short looping film
+ * clip along the bottom of the screen instead of a drawing, when the app ships one: `fx/<name>.mp4`
+ * in the TV app's assets, made by `tools/build-effect-clips.py` from freely licensed footage (each
+ * clip's credit in `fx/credits.json`, shown on the licences page). [band] is the share of the screen
+ * height the clip covers, from the bottom; clips are encoded at that shape.
+ */
+data class EffectClip(val name: String, val band: Float)
+
+object EffectClips {
+    fun forTheme(theme: PageTheme): EffectClip? = when (theme) {
+        PageTheme.SAFARI -> EffectClip("safari", 0.42f)
+        else -> null
+    }
+
+    fun forOccasion(o: Occasion): EffectClip? = when (o) {
+        Occasion.ARMY_BIRTHDAY -> EffectClip("army", 0.42f)
+        Occasion.AIR_FORCE_BIRTHDAY -> EffectClip("air-force", 0.42f)
+        Occasion.NAVY_BIRTHDAY -> EffectClip("navy", 0.42f)
+        Occasion.MARINE_CORPS_BIRTHDAY -> EffectClip("marines", 0.42f)
+        Occasion.VETERANS_DAY -> EffectClip("veterans", 0.42f)
+        Occasion.EASTER -> EffectClip("easter", 0.36f)
+        else -> null
+    }
+}

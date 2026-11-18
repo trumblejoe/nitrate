@@ -1,0 +1,35 @@
+name: Effect clips
+
+# Fetches the TV effects' film clips from Wikimedia Commons and encodes them
+# (tools/build-effect-clips.py), with a contact sheet of each to review. The clips
+# come back as an artifact; they're checked in by hand after a look.
+on:
+  workflow_dispatch:
+    inputs:
+      clips:
+        description: Clip names (space-separated), empty for all
+        required: false
+        default: ""
+
+jobs:
+  clips:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ffmpeg
+        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+      - name: Clips
+        run: python3 -u tools/build-effect-clips.py ${{ inputs.clips }}
+      - name: Contact sheets
+        run: |
+          mkdir -p sheets
+          for f in tv/src/main/assets/fx/*.mp4; do
+            ffmpeg -loglevel error -i "$f" -vf "fps=1,scale=640:-2,tile=2x4" -frames:v 1 "sheets/$(basename "$f" .mp4).png"
+          done
+          ls -l tv/src/main/assets/fx sheets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: effect-clips
+          path: |
+            tv/src/main/assets/fx
+            sheets
