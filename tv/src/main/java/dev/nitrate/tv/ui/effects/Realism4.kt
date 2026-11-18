@@ -425,49 +425,102 @@ internal fun DrawScope.oceanFloor(t: Float, k: Float) {
     }
     drawRect(Brush.verticalGradient(0f to Color(0x000E4D66), 0.45f to Color(0xF00E4D66), 1f to Color(0x000E4D66), startY = horizon - h * 0.1f, endY = horizon + h * 0.2f),
         topLeft = Offset(0f, horizon - h * 0.1f), size = Size(w, h * 0.3f))
-    // Rubble: stones scattered over the bed, small and blue far off, larger and lit up close.
-    for (i in 0 until 190) {
+    // Far reef ridges across the whole width, lost in the blue.
+    for (r in 0 until 2) {
+        val top = horizon - h * (0.07f - r * 0.03f)
+        val pts = buildList {
+            add(Offset(-20f, horizon + h * 0.08f))
+            var x = -20f
+            while (x <= w + 20f) { add(Offset(x, top - fbm(x / (260f - r * 60f) + r * 5f, 2300 + r) * h * (0.1f - r * 0.03f) + rnd((x / 20).toInt(), 2302 + r) * 6f)); x += 18f }
+            add(Offset(w + 20f, horizon + h * 0.08f))
+        }
+        rockMass(pts, 0.82f - r * 0.18f, 2310 + r, t, life = false)
+    }
+    // The ridges' feet sink into the haze over the bed.
+    drawRect(Brush.verticalGradient(listOf(Color(0x000E4D66), Color(0xEE1C5A6C), Color(0x00315F66)), startY = horizon - h * 0.02f, endY = horizon + h * 0.12f), topLeft = Offset(0f, horizon - h * 0.02f), size = Size(w, h * 0.14f))
+    // Rubble on the open bed between the reefs.
+    for (i in 0 until 120) {
         val z = rnd(i, 2000).let { sqrt(it) }
         val y = horizon + (h - horizon) * z * z + 6f
         val x = ((rnd(i, 2001) * (w + 200f) - drift * (0.5f + z * 2f)) % (w + 200f) + w + 200f) % (w + 200f) - 100f
-        val r = (3f + rnd(i, 2002) * 12f) * (0.3f + z * 2.2f)
+        val r = (3f + rnd(i, 2002) * 10f) * (0.3f + z * 2f)
         val haze = (1 - z * 1.15f).coerceIn(0f, 1f)
         val tone = lerp(listOf(Color(0xFF8A8478), Color(0xFF6E7068), Color(0xFF8E7E66), Color(0xFF5E5A54))[i % 4], Color(0xFF2A6A7A), haze * 0.9f)
         drawOval(Color.Black.copy(alpha = 0.28f * z), topLeft = Offset(x - r * 1.1f, y - r * 0.12f), size = Size(r * 2.4f, r * 0.45f))
-        val stone = Path()
-        for (a in 0..9) {
-            val ang = a / 9f * 2 * PI.toFloat()
-            val rr = r * (0.75f + 0.35f * rnd(a + i * 10, 2003))
-            val p = Offset(x + cos(ang) * rr, y - r * 0.4f + sin(ang) * rr * (if (sin(ang) < 0) 0.75f else 0.35f))
-            if (a == 0) stone.moveTo(p.x, p.y) else stone.lineTo(p.x, p.y)
+        drawOval(Brush.verticalGradient(listOf(lerp(tone, Color(0xFFF0F4E8), 0.4f * (1 - haze)), tone, lerp(tone, Color.Black, 0.5f)), startY = y - r * 0.9f, endY = y), topLeft = Offset(x - r, y - r * 0.8f), size = Size(r * 2f, r * 0.85f))
+    }
+    // A rocky reef across the middle, with an arch through it.
+    val reefTop = h * 0.56f
+    val reef = buildList {
+        add(Offset(w * 0.3f, h * 0.74f))
+        var x = w * 0.3f
+        while (x <= w * 0.82f) {
+            val f = (x - w * 0.3f) / (w * 0.52f)
+            val hump = sin(f * PI.toFloat()).let { sqrt(it) }
+            add(Offset(x, h * 0.74f - (h * 0.74f - reefTop) * hump - fbm(x / 90f, 2320) * h * 0.06f))
+            x += 14f
         }
-        stone.close()
-        drawPath(stone, Brush.verticalGradient(listOf(lerp(tone, Color(0xFFF0F4E8), 0.4f * (1 - haze)), tone, lerp(tone, Color.Black, 0.5f)), startY = y - r * 1.1f, endY = y))
+        // A ragged foot half buried in sand.
+        var xb = w * 0.82f
+        while (xb >= w * 0.3f) { add(Offset(xb, h * 0.74f + (fbm(xb / 60f, 2324) - 0.3f) * h * 0.03f)); xb -= 20f }
     }
-    // Outcrops across the bed, far ones lost in the blue.
-    for (r in 0 until 9) {
-        val z = 0.12f + rnd(r, 2010) * 0.6f
-        val y = horizon + (h - horizon) * z * z + 8f
-        val x = ((rnd(r, 2011) * (w + 700f) - drift * (0.5f + z * 2f)) % (w + 700f) + w + 700f) % (w + 700f) - 350f
-        val size = (60f + rnd(r, 2012) * 90f) * (0.35f + z * 1.4f)
-        boulder(Offset(x, y), size * 1.3f, size * (0.6f + rnd(r, 2013) * 0.5f), 2014 + r * 7, (1 - z).coerceIn(0f, 1f), t)
+    rockMass(reef, 0.35f, 2321, t, life = true)
+    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x669DA88C), Color.Transparent), startY = h * 0.715f, endY = h * 0.77f), topLeft = Offset(w * 0.28f, h * 0.715f), size = Size(w * 0.56f, h * 0.055f))
+    // The arch: a dark mouth through the reef with the blue showing through it.
+    val arch = Offset(w * 0.6f, h * 0.705f)
+    val mouth = Path().apply {
+        for (i in 0..24) {
+            val a = PI.toFloat() + i / 24f * PI.toFloat()
+            val rr = 1f + (fbm(i * 0.6f, 2325) - 0.5f) * 0.35f
+            val p = arch + Offset(cos(a) * h * 0.075f * rr, sin(a) * h * 0.1f * rr)
+            if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+        }
+        lineTo(arch.x + h * 0.08f, arch.y + h * 0.04f); lineTo(arch.x - h * 0.08f, arch.y + h * 0.04f); close()
     }
-    // A reef wall rising on the left: boulders piled on boulders, out of the light at its foot.
-    val wall = listOf(
-        floatArrayOf(0.02f, 1.02f, 0.36f, 0.30f), floatArrayOf(0.12f, 1.04f, 0.30f, 0.22f), floatArrayOf(-0.02f, 0.80f, 0.26f, 0.26f),
-        floatArrayOf(0.08f, 0.66f, 0.22f, 0.17f), floatArrayOf(-0.03f, 0.55f, 0.2f, 0.2f), floatArrayOf(0.03f, 0.43f, 0.16f, 0.13f),
-    )
-    wall.forEachIndexed { i, b -> boulder(Offset(w * b[0], h * b[1]), w * b[2], h * b[3], 2100 + i * 13, 0.05f + (1.05f - b[1]) * 0.35f, t) }
-    // And a big boulder close on the right, partly out of frame.
-    boulder(Offset(w * 0.93f, h * 1.04f), w * 0.3f, h * 0.3f, 2200, 0f, t)
-    boulder(Offset(w * 0.8f, h * 1.05f), w * 0.16f, h * 0.13f, 2201, 0f, t)
-    // Sea fans and kelp growing from the rock, swaying with the swell.
-    seaFan(Offset(w * 0.11f, h * 0.62f), h * 0.16f, Color(0xFFB04A8A), t, 1)
-    seaFan(Offset(w * 0.2f, h * 0.84f), h * 0.12f, Color(0xFFE07A3A), t, 2)
-    seaFan(Offset(w * 0.9f, h * 0.8f), h * 0.14f, Color(0xFF8A5AD0), t, 3)
+    // The blue beyond, seen through it, darkening into the rock's inner walls.
+    drawPath(mouth, Brush.radialGradient(listOf(Color(0xFF2A7A90), Color(0xFF0B3A4C), Color(0xFF020A0E)), center = arch, radius = h * 0.1f))
+    drawPath(mouth, Color(0xFFDDEDE8).copy(alpha = 0.15f), style = Stroke(2f))
+    // The left wall: a cliff rising out of frame, ledges and an overhang.
+    val left = buildList {
+        add(Offset(-30f, h + 30f))
+        var y = h + 30f
+        while (y >= -30f) {
+            val f = y / h
+            val overhang = if (f in 0.18f..0.36f) sin((f - 0.18f) / 0.18f * PI.toFloat()) * w * 0.08f else 0f
+            val ledge = if (((y / 70f).toInt()) % 3 == 0) w * 0.02f else 0f
+            add(Offset(w * (0.17f + 0.05f * fbm(y / 160f, 2330)) + overhang + ledge + (rnd((y / 10).toInt(), 2331) - 0.5f) * 10f, y))
+            y -= 16f
+        }
+        add(Offset(-30f, -30f))
+    }
+    rockMass(left, 0.05f, 2332, t, life = true)
+    // The right wall, lower, its top broken into pinnacles.
+    val right = buildList {
+        add(Offset(w + 30f, h + 30f))
+        var y = h + 30f
+        while (y >= h * 0.34f) {
+            add(Offset(w * (0.86f - 0.04f * fbm(y / 140f, 2340)) - (if (((y / 60f).toInt()) % 3 == 1) w * 0.02f else 0f) + (rnd((y / 10).toInt(), 2341) - 0.5f) * 10f, y))
+            y -= 16f
+        }
+        var x = w * 0.84f
+        while (x <= w + 30f) { add(Offset(x, h * 0.34f - fbm(x / 50f, 2342) * h * 0.12f)); x += 14f }
+    }
+    rockMass(right, 0.1f, 2343, t, life = true)
+    // A ledge right in front, which we look over.
+    val front = buildList {
+        add(Offset(-30f, h + 30f))
+        var x = -30f
+        while (x <= w + 30f) { add(Offset(x, h * 0.93f - fbm(x / 160f, 2350) * h * 0.06f - rnd((x / 14).toInt(), 2351) * 5f)); x += 14f }
+        add(Offset(w + 30f, h + 30f))
+    }
+    rockMass(front, 0f, 2352, t, life = true)
+    // Sea fans and kelp growing from the walls, swaying with the swell.
+    seaFan(Offset(w * 0.2f, h * 0.62f), h * 0.16f, Color(0xFFB04A8A), t, 1)
+    seaFan(Offset(w * 0.55f, h * 0.6f), h * 0.1f, Color(0xFFE07A3A), t, 2)
+    seaFan(Offset(w * 0.86f, h * 0.5f), h * 0.13f, Color(0xFF8A5AD0), t, 3)
     for (g in 0 until 8) {
-        val base = listOf(Offset(w * 0.04f, h * 0.45f), Offset(w * 0.15f, h * 0.7f), Offset(w * 0.26f, h * 0.95f), Offset(w * 0.86f, h * 0.82f), Offset(w * 0.97f, h * 0.78f), Offset(w * 0.07f, h * 0.6f), Offset(w * 0.75f, h * 0.97f), Offset(w * 0.9f, h * 0.92f))[g]
-        kelp(base, h * (0.25f + rnd(g, 2020) * 0.25f), t, g)
+        val base = listOf(Offset(w * 0.19f, h * 0.45f), Offset(w * 0.21f, h * 0.8f), Offset(w * 0.36f, h * 0.68f), Offset(w * 0.86f, h * 0.7f), Offset(w * 0.9f, h * 0.38f), Offset(w * 0.5f, h * 0.6f), Offset(w * 0.7f, h * 0.92f), Offset(w * 0.12f, h * 0.92f))[g]
+        kelp(base, h * (0.2f + rnd(g, 2020) * 0.25f), t, g)
     }
     // A school of fish far off, turning together, blue with distance.
     val school = Offset(w * (0.25f + fbm(t * 0.03f, 1930) * 0.5f), h * (0.32f + fbm(t * 0.04f, 1931) * 0.12f))
@@ -608,4 +661,92 @@ private fun DrawScope.kelp(base: Offset, hgt: Float, t: Float, seed: Int) {
         }
         drawPath(blade, Brush.linearGradient(listOf(Color(0xEE5A6A26), Color(0xAA9AA84A)), start = p, end = p + Offset(side * 46f, 0f)))
     }
+}
+
+
+/**
+ * A mass of rock (a cliff, a reef, a ledge) inside [outline]: lit from above and darkening down,
+ * layered in strata whose ledges catch the light and throw a shadow, split by cracks, pocked with
+ * dark crevices, mottled, dappled by caustics, and crusted with sponges and anemones on the ledges
+ * ([life]). [haze] blues it with distance.
+ */
+private fun DrawScope.rockMass(outline: List<Offset>, haze: Float, seed: Int, t: Float, life: Boolean) {
+    val path = Path().apply { moveTo(outline[0].x, outline[0].y); outline.drop(1).forEach { lineTo(it.x, it.y) }; close() }
+    val minX = outline.minOf { it.x }; val maxX = outline.maxOf { it.x }
+    val minY = outline.minOf { it.y }; val maxY = outline.maxOf { it.y }
+    val bw = maxX - minX
+    val bh = maxY - minY
+    val stone = lerp(Color(0xFF5E5C54), Color(0xFF155A70), haze * 0.9f)
+    val water = Color(0xFF0E4D66)
+    drawPath(path, Brush.verticalGradient(listOf(lerp(stone, Color(0xFFDCE6DA), 0.35f * (1 - haze)), stone, lerp(stone, Color.Black, 0.55f)), startY = minY, endY = maxY))
+    clipPath(path) {
+        // Strata: ragged ledges across the rock, each lit on top with a shadow below.
+        val step = (26f + bh * 0.04f).coerceAtMost(70f)
+        var y = minY + step * rnd(seed, 1)
+        var j = 0
+        while (y < maxY) {
+            val ledge = Path().apply {
+                moveTo(minX, y)
+                var x = minX
+                while (x <= maxX) { lineTo(x, y + (fbm(x / 70f + j * 3.1f, seed + 2) - 0.5f) * step * 0.9f + (x - minX) * (rnd(j, seed + 22) - 0.5f) * 0.12f); x += 12f }
+            }
+            // Each band a slightly different stone: some warmer, some greener with growth.
+            val tint = listOf(Color(0xFF8A7A62), Color(0xFF5E6A52), Color(0xFF6A6A66), Color(0xFF4A4C48))[(j + seed).mod(4)]
+            drawRect(tint.copy(alpha = 0.16f * (1 - haze)), topLeft = Offset(minX, y), size = Size(bw, step))
+            withTransform({ translate(0f, step * 0.12f) }) { drawPath(ledge, Color.Black.copy(alpha = 0.3f * (1 - haze * 0.6f)), style = Stroke(step * (0.15f + 0.2f * rnd(j, seed + 20)))) }
+            drawPath(ledge, Color(0xFFE6EEE2).copy(alpha = (0.08f + 0.12f * rnd(j, seed + 21)) * (1 - haze)), style = Stroke(1.5f))
+            // Cracks splitting the band into blocks.
+            for (c in 0 until (bw / 90f).toInt()) {
+                val cx = minX + rnd(c + j * 31, seed + 3) * bw
+                drawLine(Color.Black.copy(alpha = 0.4f * (1 - haze * 0.6f)), Offset(cx, y + 2f), Offset(cx + (rnd(c, seed + 4) - 0.5f) * 14f, y + step * (0.6f + rnd(c, seed + 5) * 0.4f)), 1.6f)
+            }
+            y += step * (0.5f + rnd(j, seed + 6) * 1.1f)
+            j++
+        }
+        // Mottling across the blocks, and crevices going dark.
+        for (i in 0 until (bw * bh / 9000f).toInt().coerceIn(12, 120)) {
+            val p = Offset(minX + rnd(i, seed + 7) * bw, minY + rnd(i, seed + 8) * bh)
+            glow(p, 20f + rnd(i, seed + 9) * 60f, if (i % 2 == 0) Color.Black else Color(0xFF9A9888), 0.16f, additive = false)
+        }
+        for (i in 0 until (bw * bh / 60000f).toInt().coerceIn(2, 14)) {
+            val p = Offset(minX + rnd(i, seed + 10) * bw, minY + rnd(i, seed + 11) * bh)
+            glow(p, 18f + rnd(i, seed + 12) * 40f, Color.Black, 0.7f * (1 - haze * 0.5f), additive = false)
+        }
+        // Light dappling the rock as the surface moves.
+        for (i in 0 until 14) {
+            val p = Offset(minX + fbm(t * 0.15f + i * 1.3f, seed + 13) * bw, minY + fbm(t * 0.12f + i * 2.1f, seed + 14) * bh * 0.7f)
+            glow(p, 40f + bw * 0.03f, Color(0xFFFFF6D8), 0.10f * (1 - haze))
+        }
+        if (life) {
+            // Sponges, encrusting coral and anemones along the ledges.
+            val colours = listOf(Color(0xFFE8743A), Color(0xFFB04A8A), Color(0xFFF2C14E), Color(0xFF7A5AD0), Color(0xFFE04A4A))
+            for (i in 0 until (bw * bh / 9000f).toInt().coerceIn(6, 50)) {
+                val p = Offset(minX + rnd(i, seed + 15) * bw, minY + rnd(i, seed + 16) * bh)
+                val col = lerp(colours[i % colours.size], water, haze * 0.7f)
+                val r = 4f + rnd(i, seed + 17) * 10f
+                when (i % 3) {
+                    // An encrusting sponge: a flat irregular patch, soft-edged.
+                    0 -> for (b in 0 until 5) glow(p + Offset((rnd(b + i * 7, seed + 18) - 0.5f) * r * 2f, (rnd(b + i * 7, seed + 19) - 0.5f) * r * 0.8f), r * 0.9f, lerp(col, Color(0xFF6A5A4A), 0.35f), 0.55f, additive = false)
+                    // An anemone: fronds waving from a small foot.
+                    1 -> for (f in 0 until 9) {
+                        val a = -PI.toFloat() / 2 + (f - 4) * 0.24f + sin(t * 1.5f + f + i) * 0.12f
+                        drawLine(lerp(col, Color.White, 0.15f).copy(alpha = 0.8f), p, p + Offset(cos(a), sin(a)) * (r * 1.5f), 1.4f, StrokeCap.Round)
+                    }
+                    // Tube sponges: a few upright, shaded cylinders.
+                    else -> for (u in 0 until 3) {
+                        val q = p + Offset((u - 1) * r * 0.7f, 0f)
+                        val th = r * (1.2f + rnd(u + i, seed + 23) * 0.9f)
+                        drawRect(Brush.horizontalGradient(listOf(lerp(col, Color.Black, 0.45f), lerp(col, Color.White, 0.1f), lerp(col, Color.Black, 0.3f)), startX = q.x - r * 0.25f, endX = q.x + r * 0.25f), topLeft = Offset(q.x - r * 0.25f, q.y - th), size = Size(r * 0.5f, th))
+                        drawOval(lerp(col, Color.Black, 0.6f), topLeft = Offset(q.x - r * 0.25f, q.y - th - r * 0.1f), size = Size(r * 0.5f, r * 0.22f))
+                    }
+                }
+            }
+        }
+        // Where the rock meets the bed: darker and softer, not a hard line.
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF061A22).copy(alpha = 0.6f * (1 - haze * 0.5f))), startY = maxY - bh * 0.18f, endY = maxY), topLeft = Offset(minX, maxY - bh * 0.18f), size = Size(bw, bh * 0.18f))
+        // Distance: the water between us and the rock.
+        if (haze > 0f) drawRect(water.copy(alpha = haze * 0.55f))
+    }
+    // The rock's edge against the water, catching a little light.
+    drawPath(path, Color(0xFFCFE6E0).copy(alpha = 0.12f * (1 - haze)), style = Stroke(2f))
 }
