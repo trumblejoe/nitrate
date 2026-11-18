@@ -79,6 +79,8 @@ data class DisplayPrefs(
     val tvMenu: TvMenuStyle = TvMenuStyle.LEFT,
     /** Keep the menu invisible until you move onto it (any menu but the dial). */
     val tvMenuAutoHide: Boolean = false,
+    /** The TV menu (rail, bar or dial) on solid black, so it stands out over page themes and art. */
+    val tvMenuBlack: Boolean = false,
     /** The menu's stops in order (rail and bars), as [MenuStops] ids; null until arranged. */
     val tvMenuStops: List<String>? = null,
     /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */

@@ -159,6 +159,19 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
+    /** Black menu: the rail on solid black, the page's theme kept off it. */
+    @Test fun blackMenuOverTheme() = shoot("tv-home-black-menu", { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenuBlack = true, pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.ROSES)))
+    }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    @Test fun blackBarOverTheme() = shoot("tv-home-black-bar", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvMenu = dev.nitrate.core.pages.TvMenuStyle.TOP, tvMenuBlack = true, pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.FLOWERS)))
+    }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
     @Test fun groupStandingsOnCards() = shoot("tv-group-standings") { c ->
         fun ep(n: Int, series: String, played: Boolean = false) = dev.nitrate.core.model.MediaItem("$series-$n", "Episode $n", dev.nitrate.core.model.ItemKind.EPISODE,
             seriesId = series, seriesName = series.replaceFirstChar { it.uppercase() }, seasonNumber = 1, indexNumber = n, user = dev.nitrate.core.model.UserState(played = played, positionMs = if (n == 3) 600_000 else 0))

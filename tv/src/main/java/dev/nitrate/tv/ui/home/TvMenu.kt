@@ -305,7 +305,9 @@ private fun Rail(
     val target = stops.firstOrNull { it.selected } ?: stops.firstOrNull()
     val drawer: @Composable androidx.tv.material3.NavigationDrawerScope.(DrawerValue) -> Unit = {
         Column(
-            Modifier.fillMaxHeight().then(trackMenu)
+            Modifier.fillMaxHeight()
+                .then(if (dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvMenuBlack) Modifier.background(Color.Black) else Modifier)
+                .then(trackMenu)
                 .onPreviewKeyEvent { e ->
                     if (e.key != exitKey) return@onPreviewKeyEvent false
                     if (e.type == KeyEventType.KeyDown) toContent()
@@ -348,6 +350,7 @@ private fun Rail(
 private fun MenuBar(entries: List<NavEntry>, edge: Edge, overlay: Boolean, menuFocus: FocusRequester, toContent: () -> Unit, modifier: Modifier) {
     val shade = Color.Black.copy(alpha = 0.6f)
     val background = when {
+        dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvMenuBlack -> Modifier.background(Color.Black)
         !overlay -> Modifier
         edge == Edge.TOP -> Modifier.background(Brush.verticalGradient(listOf(shade, Color.Transparent)))
         else -> Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, shade)))
@@ -433,7 +436,7 @@ private fun Dial(slots: List<NavEntry?>, onClose: () -> Unit) {
         at = at,
         centre = selected?.label ?: "▲ ▶ ▼ ◀",
         showEmpty = false,
-        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f))
+        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvMenuBlack) 0.94f else 0.6f))
             .focusRequester(focus)
             .onPreviewKeyEvent { e ->
                 val dir = Spokes.indexOf(e.key)
@@ -586,13 +589,17 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     val marked = remember(catalog, current) { catalog.current(current) }
     // "Fade in" used to be its own menu: it's the top/bottom bar, hidden.
     val style = if (prefs.tvMenu == TvMenuStyle.FADE) TvMenuStyle.TOP else prefs.tvMenu
-    androidx.compose.foundation.layout.Box {
-        TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE, content = content)
-        // The page's theme and the day's occasion, over the page (never in the player: it isn't a menu page).
-        if (!prefs.easyMode) {
-            val theme = dev.nitrate.core.effects.PageThemes.pageKeyFor(current)?.let { prefs.pageThemes[it] }
-            val occasion = dev.nitrate.tv.ui.effects.rememberOccasion(prefs.effects)
-            dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects)
+    val theme = dev.nitrate.core.effects.PageThemes.pageKeyFor(current)?.let { prefs.pageThemes[it] }
+    val occasion = dev.nitrate.tv.ui.effects.rememberOccasion(prefs.effects)
+    TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+            content(insets)
+            // The page's theme and the day's occasion, over the page but under the menu (kept clear of
+            // where the menu sits, so it always stands out; never in the player: it isn't a menu page).
+            if (!prefs.easyMode) {
+                dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects,
+                    Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom))
+            }
         }
     }
 }

@@ -308,6 +308,15 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
         item {
             ListItem(
                 selected = false,
+                onClick = { update { it.copy(tvMenuBlack = !it.tvMenuBlack) } },
+                headlineContent = { Text("Black menu") },
+                supportingContent = { Text("The menu on solid black, so it stands out over page themes and artwork") },
+                trailingContent = { Switch(checked = prefs.tvMenuBlack, onCheckedChange = null) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
                 onClick = onPages,
                 headlineContent = { Text("Pages") },
                 supportingContent = { Text("Home's rows, and each library's tabs (Genres, Collections, Unwatched, your own…)") },
