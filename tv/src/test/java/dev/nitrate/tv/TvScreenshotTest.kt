@@ -179,6 +179,23 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
+    /** A Showcase row reached with a theme on: it shows over the theme's back layers. */
+    @Test fun showcaseOverTheme() = shoot("tv-showcase-over-theme", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.ROSES)))
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.SHOWCASE))
+    }, act = { press("down") }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    @Test fun fullShowcaseOverTheme() = shoot("tv-full-showcase-over-theme", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.ROSES)))
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
+    }, act = { press("down") }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
     @Test fun groupStandingsOnCards() = shoot("tv-group-standings") { c ->
         fun ep(n: Int, series: String, played: Boolean = false) = dev.nitrate.core.model.MediaItem("$series-$n", "Episode $n", dev.nitrate.core.model.ItemKind.EPISODE,
             seriesId = series, seriesName = series.replaceFirstChar { it.uppercase() }, seasonNumber = 1, indexNumber = n, user = dev.nitrate.core.model.UserState(played = played, positionMs = if (n == 3) 600_000 else 0))
@@ -391,6 +408,32 @@ class TvScreenshotTest {
     @Test fun libraryRolodex() = showViewShot(dev.nitrate.core.pages.BrowseView.ROLODEX)
     @Test fun libraryStarfield() = showViewShot(dev.nitrate.core.pages.BrowseView.STARFIELD)
     @Test fun libraryDeck() = showViewShot(dev.nitrate.core.pages.BrowseView.DECK)
+
+    /**
+     * Home with tabs (pinned pages), rows one at a time: Right past a row's last card stays in the row (it
+     * used to jump to the tabs); Left off its first card reaches the menu; Right from the menu comes back
+     * to that card, not the tabs.
+     */
+    @Test fun homeMenuAndBack() = shoot("tv-home-menu-and-back", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+    }, act = {
+        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        press("down")
+        repeat(6) { press("right") }
+        check(at().top > 300f) { "Right past the end of a row should stay in it, got ${at()}" }
+        repeat(6) { if (at().left > 300f) press("left") }
+        fun name() = compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = false).fetchSemanticsNodes().first().config.toString().substringAfter("{").replace(Regex("@[0-9a-f]+"), "")
+        val card = name()
+        val place = at()
+        press("left")
+        check(at().left < 60f) { "Left from the first card should reach the menu, got ${at()}" }
+        press("right")
+        check(name() == card) { "Right from the menu should return to the card left, got ${at()}" }
+        check(at() == place) { "and the row should stay put (no bounce): was $place, now ${at()}" }
+    }) { c ->
+        val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
+    }
 
     /** A library with more tabs switched on (Genres, and your own) and Genres open. */
     @Test fun libraryGenresTab() = shoot("tv-library-genres-tab", setup = { c ->

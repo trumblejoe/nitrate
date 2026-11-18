@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -70,7 +71,7 @@ class RowActions(
  * A vertical page of rows, shared by Home and library pages. Draws the focused item's
  * backdrop and summary above the rows, except while a showcase row has taken over the screen.
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun RowsPage(
     rows: List<MediaRow>,
@@ -84,12 +85,22 @@ fun RowsPage(
     footer: LazyListScope.() -> Unit = {},
     /** Opens the page editor (order, hide, rename, own rows); without it, only row looks can change. */
     onEditPage: (() -> Unit)? = null,
+    /** The "Edit page" button after the rows (library pages leave it to Settings → Display → Pages). */
+    editButton: Boolean = true,
 ) {
     var focused by remember { mutableStateOf<MediaItem?>(null) }
     var activeShowcase by remember { mutableStateOf<String?>(null) }
     // The row holding focus: a Full Showcase above it draws as its banner, not a screen-tall picture
     // cut off by the scroll (that left a strip of it over the rows below).
     var focusedRowIndex by remember { mutableStateOf(-1) }
+    // The card last focused (its row and item), to come back to from the menu.
+    var lastCard by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    val returnRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val focusReturn = LocalFocusReturn.current
+    DisposableEffect(focusReturn) {
+        focusReturn?.restore = { lastCard != null && runCatching { returnRequester.requestFocus() }.isSuccess }
+        onDispose { focusReturn?.restore = null }
+    }
     // One row at a time, along the bottom (the picture gets the rest), unless the user stacks them.
     val oneAtATime = !LocalDisplayPrefs.current.tvRowsStacked
     // The room above the first row (one at a time), so any row can sit at the bottom; px.
@@ -112,8 +123,8 @@ fun RowsPage(
     LaunchedEffect(activeShowcase) {
         val key = activeShowcase ?: return@LaunchedEffect
         val index = rows.indexOfFirst { it.key == key }
-        // One at a time, the list has a screen's room above its rows: scroll past it too.
-        if (index >= 0) listState.animateScrollToItem(index, if (oneAtATime) roomAbove else 0)
+        // One at a time, the row itself comes into place as it grows (see onSizeChanged below).
+        if (index >= 0 && !oneAtATime) listState.animateScrollToItem(index)
     }
 
     // "Row: style" for a moment after Fast-forward/Rewind changes one.
@@ -138,7 +149,13 @@ fun RowsPage(
             // The page's tabs, at the very top (above the focused title, as they're top right on full
             // art): there while on them or the first row, out of the rows' way further down. They
             // count as above every row, so a Full Showcase below shows as its banner meanwhile.
-            if (header != null) AnimatedVisibility(visible = focusedRowIndex <= 0 || focusedRowIndex == HEADER_FOCUSED) {
+            val tabsShown = focusedRowIndex <= 0 || focusedRowIndex == HEADER_FOCUSED
+            if (header != null && oneAtATime) {
+                // One at a time the tabs keep their place and only fade: collapsing them moved the
+                // whole page each time the first row was left or reached.
+                val tabsAlpha by androidx.compose.animation.core.animateFloatAsState(if (tabsShown) 1f else 0f, label = "tabs")
+                androidx.compose.foundation.layout.Box(Modifier.graphicsLayer { alpha = tabsAlpha }.onFocusChanged { if (it.hasFocus) focusedRowIndex = HEADER_FOCUSED }) { header() }
+            } else if (header != null) AnimatedVisibility(visible = tabsShown) {
                 androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { if (it.hasFocus) focusedRowIndex = HEADER_FOCUSED }) { header() }
             }
             AnimatedVisibility(visible = activeShowcase == null) {
@@ -182,10 +199,12 @@ fun RowsPage(
                             .bringIntoViewRequester(wholeRow)
                             // Opening the page (and while on the tabs): the first row up into its place
                             // along the bottom, again whenever it changes size (its art and titles arriving).
-                            .then(if (oneAtATime && rowIndex == 0) Modifier.onSizeChanged {
-                                if (focusedRowIndex <= 0 || focusedRowIndex == HEADER_FOCUSED) rowScope.launch { wholeRow.bringIntoView() }
+                            // The row in use back into place whenever it changes size: a showcase growing to
+                            // the full screen, art and titles arriving (the first row also while on the tabs).
+                            .then(if (oneAtATime) Modifier.onSizeChanged {
+                                if (rowIndex == current) rowScope.launch { wholeRow.placeRow(spec) }
                             } else Modifier)
-                            .onFocusChanged { if (it.hasFocus) { focusedRowIndex = rowIndex; rowScope.launch { wholeRow.bringIntoView() } } }
+                            .onFocusChanged { if (it.hasFocus) { focusedRowIndex = rowIndex; rowScope.launch { wholeRow.placeRow(spec) } } }
                             // Fast-forward / Rewind on a row: its next / previous artwork style, there and then.
                             .onPreviewKeyEvent { e ->
                                 val by = when (e.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
@@ -215,13 +234,30 @@ fun RowsPage(
                             runCatching { content.requestFocus() }
                             holding = false
                             kotlinx.coroutines.delay(60)
-                            wholeRow.bringIntoView()
+                            wholeRow.placeRow(spec)
                         }
                         val prefs = LocalDisplayPrefs.current
                         val fx = dev.nitrate.tv.ui.effects.rememberCardFx(display, prefs.effects, prefs.easyMode)
-                        val actions = fx?.wrap(actions) ?: actions
-                        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalCardFx provides fx) {
-                        androidx.compose.foundation.layout.Box(Modifier.focusRequester(content).focusGroup()) {
+                        val rowActions = remember(actions, rowIndex) {
+                            RowActions(onFocus = { item -> lastCard = rowIndex to item.id; actions.onFocus(item) }, onOpen = actions.onOpen, onPlay = actions.onPlay, onEditRow = actions.onEditRow)
+                        }
+                        val actions = fx?.wrap(rowActions) ?: rowActions
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            dev.nitrate.tv.ui.effects.LocalCardFx provides fx,
+                            LocalReturnTarget provides lastCard?.takeIf { it.first == rowIndex }?.let { ReturnTarget(it.second, returnRequester) },
+                        ) {
+                        // Left/Right stay in the row: past its end nothing happens (it used to jump to
+                        // whatever was nearest that way, the tabs or a hidden row), except towards the
+                        // menu, which they still reach. Up/Down go between rows as before.
+                        val menuSide = dev.nitrate.tv.ui.home.LocalMenuSide.current
+                        androidx.compose.foundation.layout.Box(Modifier.focusRequester(content)
+                            .focusProperties {
+                                exit = { d ->
+                                    val key = when (d) { androidx.compose.ui.focus.FocusDirection.Left -> Key.DirectionLeft; androidx.compose.ui.focus.FocusDirection.Right -> Key.DirectionRight; else -> null }
+                                    if (key != null && !menuSide(key)) androidx.compose.ui.focus.FocusRequester.Cancel else androidx.compose.ui.focus.FocusRequester.Default
+                                }
+                            }
+                            .focusGroup()) {
                         val hidden = activeShowcase != null && activeShowcase != row.key
                         if (display.style.isShowcase) {
                             val active = activeShowcase == row.key
@@ -241,7 +277,8 @@ fun RowsPage(
                                 },
                                 alwaysExpanded = full,
                                 modifier = Modifier.alpha(if (hidden) 0f else 1f)
-                                    .then(if (active || full) Modifier.fillParentMaxHeight() else Modifier),
+                                    // The screen's height (not the list's: one at a time it has a screen's room above its rows).
+                                    .then(if (active || full) Modifier.height(with(density) { viewport.toDp() }) else Modifier),
                             )
                         } else {
                             Box(Modifier.alpha(if (hidden) 0f else 1f)) {
@@ -259,7 +296,7 @@ fun RowsPage(
                         }
                     }
                 }
-                item(key = "customize-rows") {
+                if (editButton) item(key = "customize-rows") {
                     OutlinedButton(onClick = { onEditPage?.invoke() ?: run { listingRows = true } }, modifier = Modifier.padding(start = RowPadding)) {
                         Text(if (onEditPage != null) "Edit page" else "Customize rows")
                     }
@@ -312,8 +349,20 @@ private fun FocusedSummary(item: MediaItem?, modifier: Modifier) {
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 /** One at a time: the row in use sits along the bottom, [gap] px up from the edge (a taller one from the top). */
 private class RowAtBottom(private val gap: Float) : androidx.compose.foundation.gestures.BringIntoViewSpec {
-    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
-        if (size + gap <= containerSize) offset + size - (containerSize - gap) else offset
+    /** Set while a row asks to come into place; a card's own request (focus landing on it) only scrolls when it's out of view. */
+    var rowRequest = false
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
+        !rowRequest && offset >= 0f && offset + size <= containerSize -> 0f
+        size + gap <= containerSize -> offset + size - (containerSize - gap)
+        else -> offset
+    }
+}
+
+/** Brings a row into its place along the bottom (one at a time) or whole into view (stacked). */
+private suspend fun androidx.compose.foundation.relocation.BringIntoViewRequester.placeRow(spec: androidx.compose.foundation.gestures.BringIntoViewSpec) {
+    val atBottom = spec as? RowAtBottom
+    atBottom?.rowRequest = true
+    try { bringIntoView() } finally { atBottom?.rowRequest = false }
 }
 
 private object WholeRowInView : androidx.compose.foundation.gestures.BringIntoViewSpec {

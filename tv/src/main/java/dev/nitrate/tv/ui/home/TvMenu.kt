@@ -173,7 +173,13 @@ fun TvMenu(
     var onLast by remember { mutableStateOf(true) }
     var forcedTop by remember { mutableStateOf(false) }
     var focusBar by remember { mutableStateOf(0) }
-    val toContent: () -> Unit = { dialOpen = false; forcedTop = false; runCatching { contentFocus.requestFocus() } }
+    // Back to the page where it was left (the card in the row, not the first thing on the page) when
+    // the page can say where that was (dev.nitrate.tv.ui.rows.FocusReturn), else to its start.
+    val focusReturn = remember { dev.nitrate.tv.ui.rows.FocusReturn() }
+    val toContent: () -> Unit = {
+        dialOpen = false; forcedTop = false
+        if (focusReturn.restore?.invoke() != true) runCatching { contentFocus.requestFocus() }
+    }
     val toMenu: () -> Unit = {
         when (style) {
             TvMenuStyle.RADIAL -> dialOpen = true
@@ -225,7 +231,7 @@ fun TvMenu(
             }
             .focusRequester(contentFocus).focusGroup(),
     ) {
-        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows) { content(insets) }
+        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows, dev.nitrate.tv.ui.rows.LocalFocusReturn provides focusReturn) { content(insets) }
     }
     val shown by animateFloatAsState(if (!autoHide || inMenu) 1f else 0f, label = "menu-fade")
     val trackMenu = Modifier.alpha(shown).onFocusChanged { inMenu = it.hasFocus; if (!it.hasFocus) forcedTop = false }

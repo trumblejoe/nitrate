@@ -147,7 +147,7 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
                                     shape = ClickableSurfaceDefaults.shape(shape),
                                     border = accentBorder(shape),
                                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-                                    modifier = Modifier.cardFx(item.id).fillMaxWidth().height(135.dp).alpha(if (inGate) 1f else 0.55f)
+                                    modifier = Modifier.cardFx(item.id).returnFocus(item.id).fillMaxWidth().height(135.dp).alpha(if (inGate) 1f else 0.55f)
                                         .onFocusChanged { if (it.isFocused) { gate = i; actions.onFocus(item) } }.onPlayKey { actions.onPlay(item) },
                                 ) {
                                     AsyncImage(repository.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -222,7 +222,7 @@ private fun DoubleBill(row: MediaRow, left: MediaItem, right: MediaItem, reposit
                 shape = ClickableSurfaceDefaults.shape(shape),
                 border = accentBorder(shape),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-                modifier = Modifier.cardFx(item.id).align(if (isRight) Alignment.TopEnd else Alignment.TopStart).fillMaxHeight().fillMaxWidth(width)
+                modifier = Modifier.cardFx(item.id).returnFocus(item.id).align(if (isRight) Alignment.TopEnd else Alignment.TopStart).fillMaxHeight().fillMaxWidth(width)
                     .onFocusChanged { if (it.isFocused) { lit = isRight; actions.onFocus(item) } else if (lit == isRight) lit = null }
                     .onPlayKey { actions.onPlay(item) },
             ) {
@@ -259,7 +259,7 @@ private fun SingleBill(row: MediaRow, item: MediaItem, repository: MediaServer, 
         onLongClick = { actions.onEditRow(row) },
         shape = ClickableSurfaceDefaults.shape(shape),
         border = accentBorder(shape),
-        modifier = Modifier.cardFx(item.id).size(640.dp, 340.dp).onFocusChanged { if (it.isFocused) actions.onFocus(item) }.onPlayKey { actions.onPlay(item) },
+        modifier = Modifier.cardFx(item.id).returnFocus(item.id).size(640.dp, 340.dp).onFocusChanged { if (it.isFocused) actions.onFocus(item) }.onPlayKey { actions.onPlay(item) },
     ) {
         AsyncImage(repository.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xCC000000))))
@@ -289,7 +289,7 @@ fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions, dis
                     shape = ClickableSurfaceDefaults.shape(shape),
                     border = accentBorder(shape),
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
-                    modifier = Modifier.cardFx(item.id).designScale(cardScale(display.size)).size(600.dp, 340.dp).onFocusChanged { if (it.isFocused) actions.onFocus(item) }.onPlayKey { actions.onPlay(item) },
+                    modifier = Modifier.cardFx(item.id).returnFocus(item.id).designScale(cardScale(display.size)).size(600.dp, 340.dp).onFocusChanged { if (it.isFocused) actions.onFocus(item) }.onPlayKey { actions.onPlay(item) },
                 ) {
                     AsyncImage(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     AsyncImage(

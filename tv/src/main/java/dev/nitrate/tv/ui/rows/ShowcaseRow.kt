@@ -140,6 +140,7 @@ fun ShowcaseRow(
                     else -> false
                 }
             }
+            .returnFocus(item.id)
             .focusable(),
     ) {
         if (active || alwaysExpanded) {

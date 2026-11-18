@@ -213,7 +213,7 @@ private fun TabRows(
             )
             else -> RowsPage(
                 onEditPage = { editing = true }, rows = s.rows, overrides = overrides, repository = repository,
-                onOpen = onOpen, onPlay = onPlay, onSaveDisplay = vm::save, header = tabs,
+                onOpen = onOpen, onPlay = onPlay, onSaveDisplay = vm::save, header = tabs, editButton = false,
             )
         }
         is RowsState.Error -> Column { tabs(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
