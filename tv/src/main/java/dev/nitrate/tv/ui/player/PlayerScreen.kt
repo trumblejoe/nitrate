@@ -30,6 +30,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
@@ -93,6 +94,9 @@ private const val CONTROLS_TIMEOUT_MS = 5_000L
 
 
 private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, FIX, CHAT }
+
+/** Panels shown as dialogs (their own window, with focus of their own). */
+private val DIALOG_PANELS = setOf(Panel.AUDIO, Panel.SUBTITLES, Panel.FIX)
 
 /** Keys that, with the controls hidden, only bring them back. */
 private val WAKE_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)
@@ -264,8 +268,21 @@ fun PlayerScreen(
         controlsVisible = true
     }
 
+    // Where focus is: on the controls, anywhere in the player, or (side panel) beside it.
+    var controlsHaveFocus by remember { mutableStateOf(false) }
+    var playerHasFocus by remember { mutableStateOf(false) }
+
+    /**
+     * Something focused went away (a banner, Up Next, a pop-up): focus goes to the controls' last
+     * button when they're showing, else to the player itself, never nowhere (keys would do nothing).
+     */
+    fun refocus() {
+        if (controlsVisible && panel == Panel.NONE) controlFocus.restore() else runCatching { rootFocus.requestFocus() }
+    }
+
     fun selectTrack(kind: StreamKind, index: Int) = session.selectTrack(kind, index)
 
+    var lostFocusTicks by remember { mutableIntStateOf(0) }
     // Clock for the seek bar, and auto-hide of the controls while playing.
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -274,9 +291,14 @@ fun PlayerScreen(
             playing = player.isPlaying
             if (controlsVisible && playing && panel == Panel.NONE && person == null && System.currentTimeMillis() - lastInput > CONTROLS_TIMEOUT_MS) {
                 controlsVisible = false
-                // Never pull focus away from someone typing in a side panel.
-                if (!panelFocused) runCatching { rootFocus.requestFocus() }
+                // Only take focus from the controls themselves (not a banner, Up Next or a side panel).
+                if (controlsHaveFocus) runCatching { rootFocus.requestFocus() }
             }
+            // Focus lost (what had it went away) with no pop-up, dialog or side panel open: put it
+            // back after a moment, so the remote never goes dead.
+            val dialogOpen = panel in DIALOG_PANELS || person != null || stillAsk != null || openPanel != null || panelFocused
+            lostFocusTicks = if (!playerHasFocus && !dialogOpen) lostFocusTicks + 1 else 0
+            if (lostFocusTicks >= 3) { lostFocusTicks = 0; refocus() }
             delay(250)
         }
     }
@@ -379,10 +401,11 @@ fun PlayerScreen(
 
     BackHandler {
         when {
-            showUpNext -> upNextHidden = true
-            creditAction != null -> { creditAction = null; runCatching { rootFocus.requestFocus() } }
+            // What's open goes first (a banner appearing meanwhile doesn't take Back from it).
             panel != Panel.NONE -> panel = Panel.NONE
             openPanel != null -> { openPanel = null; touch() }
+            showUpNext -> { upNextHidden = true; refocus() }
+            creditAction != null -> { creditAction = null; refocus() }
             // The same whether playing or paused: Back hides the controls, then leaves.
             controlsVisible -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
             else -> onExit()
@@ -437,7 +460,7 @@ fun PlayerScreen(
                     else -> false
                 }
             }
-            .onFocusChanged { rootFocused = it.isFocused }
+            .onFocusChanged { rootFocused = it.isFocused; playerHasFocus = it.hasFocus }
             .focusRequester(rootFocus)
             .focusable(),
     ) {
@@ -469,7 +492,11 @@ fun PlayerScreen(
 
         val p = plan
         // The More panel takes the controls' place while it's open.
-        androidx.compose.animation.AnimatedVisibility(visible = controlsVisible && panel != Panel.MORE, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
+        // More and Info take the controls' place while they're open.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = controlsVisible && panel != Panel.MORE && panel != Panel.INFO, enter = fadeIn(), exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomStart).onFocusChanged { controlsHaveFocus = it.hasFocus },
+        ) {
             // Info and Chat open beside the video: their buttons close them again.
             fun toggle(target: Panel) { panel = if (panel == target) Panel.NONE else target }
             val ready = p != null
@@ -490,7 +517,7 @@ fun PlayerScreen(
                 buttons = listOfNotNull(
                     PlayerAction("Audio", ready) { panel = Panel.AUDIO },
                     PlayerAction("Subtitles", ready) { panel = Panel.SUBTITLES },
-                    PlayerAction(if (panel == Panel.INFO) "Hide info" else "Info", ready) { toggle(Panel.INFO) }.takeIf { !easy },
+                    PlayerAction("Info", ready) { panel = Panel.INFO }.takeIf { !easy },
                     PlayerAction("More", ready) { panel = Panel.MORE }.takeIf { !easy },
                     PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },
                     PlayerAction("Why converting?") { panel = Panel.FIX }.takeIf { !easy && capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
@@ -526,7 +553,7 @@ fun PlayerScreen(
                 nextUp, repository, seconds = remaining.coerceIn(5, 15).takeIf { !film },
                 onPlay = { onPlayNext?.invoke(nextUp) },
                 onCountdownEnd = { rollOn(nextUp) },
-                onHide = { upNextHidden = true; runCatching { rootFocus.requestFocus() } },
+                onHide = { upNextHidden = true; refocus() },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
             )
         }
@@ -567,6 +594,8 @@ fun PlayerScreen(
         creditAction?.takeIf { !showUpNext }?.let { a ->
             CreditSceneBanner(
                 a,
+                // Never takes focus from More, Info or a dialog; Back closes those first anyway.
+                takeFocus = panel == Panel.NONE && person == null,
                 onAct = { act ->
                     when (act) {
                         is dev.nitrate.core.playback.CreditSkipper.Action.Skip -> player.seekTo(act.backMs)
@@ -576,7 +605,7 @@ fun PlayerScreen(
                 },
                 onDone = {
                     creditAction = null
-                    if (!controlsVisible) runCatching { rootFocus.requestFocus() }
+                    refocus()
                 },
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
             )
@@ -605,7 +634,8 @@ fun PlayerScreen(
         }
 
         if (panel == Panel.INFO && p != null) {
-            PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.TopEnd).padding(32.dp), audio = session.audioPath.collectAsState().value,
+            // Over the video with the controls out of the way; ▲▼ scroll it, Back closes it.
+            PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.Center).padding(horizontal = 32.dp, vertical = 24.dp), audio = session.audioPath.collectAsState().value,
                 video = androidx.compose.runtime.produceState<dev.nitrate.core.playback.VideoPath?>(null, session) { session.videoPath().collect { value = it } }.value)
         }
 

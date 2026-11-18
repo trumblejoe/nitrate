@@ -1,6 +1,24 @@
 package dev.nitrate.tv.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,20 +48,46 @@ fun PlaybackInfoPanel(
     audio: dev.nitrate.core.playback.AudioPath? = null,
     video: dev.nitrate.core.playback.VideoPath? = null,
 ) {
-    Row(
-        modifier.width(1120.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), RoundedCornerShape(14.dp)).padding(20.dp),
-        horizontalArrangement = Arrangement.spacedBy(28.dp),
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val focus = remember { FocusRequester() }
+    // Fits the screen whatever the notes: the panel scrolls (▲▼, as it has focus) rather than run off it.
+    Column(
+        modifier
+            .fillMaxWidth()
+            .heightIn(max = 492.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f), RoundedCornerShape(14.dp))
+            .focusRequester(focus)
+            .onKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+                when (e.key) {
+                    Key.DirectionDown -> { scope.launch { scroll.animateScrollBy(140f) }; true }
+                    Key.DirectionUp -> { scope.launch { scroll.animateScrollBy(-140f) }; true }
+                    // Nothing to move to sideways: keep focus here.
+                    Key.DirectionLeft, Key.DirectionRight -> true
+                    else -> false
+                }
+            }
+            .focusable()
+            .padding(20.dp),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Playback info", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 6.dp))
-            InfoRows(plan.infoRows(videoDecoder, audioDecoder) + video?.rows().orEmpty())
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+            Text("Playback info", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text(if (scroll.maxValue > 0) "▲▼ scroll  ·  Back closes" else "Back closes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        val sound = audio?.rows().orEmpty()
-        if (sound.isNotEmpty()) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Sound", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 6.dp))
-            InfoRows(sound)
+        Row(Modifier.verticalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Picture", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
+                InfoRows(plan.infoRows(videoDecoder, audioDecoder) + video?.rows().orEmpty())
+            }
+            val sound = audio?.rows().orEmpty()
+            if (sound.isNotEmpty()) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Sound", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
+                InfoRows(sound)
+            }
         }
     }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }
 
 @Composable
@@ -51,7 +95,7 @@ private fun InfoRows(rows: List<Pair<String, String>>) {
     for ((label, value) in rows) {
         Row {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(120.dp))
-            Text(value, style = MaterialTheme.typography.bodyMedium, color = if (label == "Note") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+            Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), color = if (label == "Note") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
         }
     }
 }

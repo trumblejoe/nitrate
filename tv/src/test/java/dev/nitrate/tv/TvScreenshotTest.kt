@@ -252,6 +252,14 @@ class TvScreenshotTest {
         androidx.compose.runtime.LaunchedEffect(Unit) { focus.playPause() }
     }
 
+    /** The real player before it's ready (buttons not yet usable): where focus is still shows plainly. */
+    @Test fun playerNotReadyFocus() = shoot("tv-player-not-ready-focus", act = {
+        press("right", "right", "right")
+        check(focusedHasText("Info")) { "focus should be on Info" }
+    }) { c ->
+        dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {})
+    }
+
     @Test fun playerControlsPlay() = playerControls("tv-player-controls-play")
     @Test fun playerControlsButton() = playerControls("tv-player-controls-audio", "right") { check(focusedHasText("Audio")) }
     @Test fun playerControlsSeek() = playerControls("tv-player-controls-seek", "up")
@@ -526,7 +534,12 @@ class TvScreenshotTest {
     }
 
     /** Playback info with the sound's path (hi-res stereo FLAC going to a receiver). */
-    @Test fun playbackInfoAudio() = shoot("tv-playback-info-audio") { c ->
+    @Test fun playbackInfoAudio() = playbackInfo("tv-playback-info-audio", notes = false)
+
+    /** With every note on the picture's side (judder, dropped frames, a slow network): still fits the screen. */
+    @Test fun playbackInfoNotes() = playbackInfo("tv-playback-info-notes", notes = true)
+
+    private fun playbackInfo(name: String, notes: Boolean) = shoot(name) { c ->
         val plan = dev.nitrate.core.model.PlaybackPlan(
             itemId = "m1", url = "", method = dev.nitrate.core.model.PlayMethod.DIRECT_PLAY, playSessionId = null,
             source = dev.nitrate.core.model.MediaSource(
@@ -541,12 +554,12 @@ class TvScreenshotTest {
         androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
             dev.nitrate.tv.ui.player.PlaybackInfoPanel(
                 plan, "c2.android.hevc.decoder", "c2.android.flac.decoder",
-                Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(32.dp),
+                Modifier.align(androidx.compose.ui.Alignment.Center).padding(horizontal = 32.dp, vertical = 24.dp),
                 audio = dev.nitrate.core.playback.AudioPath("flac", 2, 96_000, 24, dev.nitrate.core.playback.AudioDelivery.DECODED, "PCM float", 2, 96_000, 96_000),
                 video = dev.nitrate.core.playback.VideoPath(
                     inCodec = "hevc", inWidth = 1920, inHeight = 1080, inFps = 23.976f, inRange = "SDR",
                     displayWidth = 3840, displayHeight = 2160, displayHz = 60f, displayHdr = setOf("HDR10", "HLG"),
-                    droppedFrames = 0, bufferedMs = 31_000, networkBps = 220_000_000, fileBps = 9_400_000,
+                    droppedFrames = if (notes) 240 else 0, bufferedMs = if (notes) 1_200 else 31_000, networkBps = if (notes) 4_000_000 else 220_000_000, fileBps = 9_400_000,
                     subtitles = "Styled (ASS), drawn by libass as the file styles them", secondSubtitle = "English",
                 ),
             )

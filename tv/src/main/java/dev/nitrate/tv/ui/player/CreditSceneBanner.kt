@@ -30,7 +30,7 @@ import kotlinx.coroutines.delay
  * OK acts; it goes away by itself after a while (or with Back).
  */
 @Composable
-fun CreditSceneBanner(action: CreditSkipper.Action, onAct: (CreditSkipper.Action) -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
+fun CreditSceneBanner(action: CreditSkipper.Action, onAct: (CreditSkipper.Action) -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier, takeFocus: Boolean = true) {
     val focus = remember { FocusRequester() }
     val button = when (action) {
         is CreditSkipper.Action.Skip -> "Watch credits"
@@ -38,7 +38,7 @@ fun CreditSceneBanner(action: CreditSkipper.Action, onAct: (CreditSkipper.Action
         is CreditSkipper.Action.HeadsUp -> null
     }
     LaunchedEffect(action) {
-        if (button != null) runCatching { focus.requestFocus() }
+        if (button != null && takeFocus) runCatching { focus.requestFocus() }
         delay(if (button == null) 6_000 else 10_000)
         onDone()
     }

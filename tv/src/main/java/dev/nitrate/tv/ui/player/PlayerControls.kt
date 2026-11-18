@@ -315,8 +315,9 @@ internal fun PlayerButton(label: String, onClick: () -> Unit, modifier: Modifier
         enabled = enabled,
         modifier = modifier,
         colors = playerButtonColors(),
-        scale = ButtonDefaults.scale(focusedScale = 1.12f),
-        border = ButtonDefaults.border(focusedBorder = focusBorder),
+        // Not ready yet (still loading) still shows plainly where focus is: outlined and larger.
+        scale = ButtonDefaults.scale(focusedScale = 1.12f, focusedDisabledScale = 1.12f),
+        border = ButtonDefaults.border(focusedBorder = focusBorder, focusedDisabledBorder = focusBorder),
     ) { Text(label) }
 }
 
