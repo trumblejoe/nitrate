@@ -180,7 +180,9 @@ fun PlayerScreen(
     // The TV's refresh rate follows the video's frame rate, as set in Playback settings.
     // This playback's choice from More → Settings, else the device's.
     var frameRateOverride by remember { mutableStateOf<dev.nitrate.core.playback.FrameRateMatch?>(null) }
-    FrameRateMatcher(session, frameRateOverride ?: settingsNow.frameRateMatch)
+    // Null until the device's settings have loaded (the default read first would hand a kept rate back).
+    val savedFrameRate by playbackSettings.settings.map<dev.nitrate.core.playback.PlaybackSettings, dev.nitrate.core.playback.FrameRateMatch?> { it.frameRateMatch }.collectAsState(null)
+    val matchingRate = FrameRateMatcher(session, frameRateOverride ?: savedFrameRate)
     var sleepAt by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(sleepAt) {
         val at = sleepAt ?: return@LaunchedEffect
@@ -461,6 +463,9 @@ fun PlayerScreen(
         )
 
         lyrics?.takeIf { showLyrics }?.let { LyricsView(it, position, Modifier.align(Alignment.CenterEnd)) }
+
+        // The TV changing its refresh rate: a quiet screen rather than a frozen frame before the black.
+        if (matchingRate) MatchingRefreshRate(item?.displayTitle)
 
         val p = plan
         // The More panel takes the controls' place while it's open.
