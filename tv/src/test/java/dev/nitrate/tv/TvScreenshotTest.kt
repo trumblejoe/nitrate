@@ -323,6 +323,17 @@ class TvScreenshotTest {
 
     @Test fun homeSetup() = shoot("tv-home-setup", { c -> c.displaySettings.saveCustomPages("user-1", listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids"), dev.nitrate.core.pages.CustomPage("uhd", "4K films", pinned = false))) }) { c -> dev.nitrate.tv.ui.pages.HomeSetupScreen(c) }
 
+    /** Up from a Full Showcase to a library's tabs: the showcase shows as its banner, not cut off under them. */
+    @Test fun libraryFullShowcaseUpToTabs() = shoot("tv-library-full-showcase-up-to-tabs", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        val lib = c.server.views().first { it.id == "lib-movies" }
+        val rows = c.server.libraryRows(lib)
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
+    }, act = {
+        press("down", "up")
+        check(focusedHasText("Recommended") || focusedHasText("All")) { "Up from the showcase should reach the tabs" }
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
     /** A library with more tabs switched on (Genres, and your own) and Genres open. */
     @Test fun libraryGenresTab() = shoot("tv-library-genres-tab", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)

@@ -143,7 +143,11 @@ fun RowsPage(
                 verticalArrangement = Arrangement.spacedBy(28.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (header != null) item(key = "page-header") { header() }
+                if (header != null) item(key = "page-header") {
+                    // The tabs above the rows count as above every row: a Full Showcase below them shows
+                    // as its banner rather than a screen-tall picture cut off under them.
+                    androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { if (it.hasFocus) focusedRowIndex = HEADER_FOCUSED }) { header() }
+                }
                 itemsIndexed(rows, key = { _, row -> row.key }) { rowIndex, row ->
                     // Rows added or removed by a reload slide and fade rather than jump.
                     // Moving into a row scrolls the whole row into view, its title included (a tall
@@ -199,7 +203,7 @@ fun RowsPage(
                         if (display.style.isShowcase) {
                             val active = activeShowcase == row.key
                             // Full Showcase fills the screen even before it has focus.
-                            val full = display.style == RowStyle.FULL_SHOWCASE && rowIndex >= focusedRowIndex
+                            val full = display.style == RowStyle.FULL_SHOWCASE && rowIndex >= focusedRowIndex && focusedRowIndex != HEADER_FOCUSED
                             ShowcaseRow(
                                 row = row,
                                 display = display,
@@ -290,3 +294,6 @@ private object WholeRowInView : androidx.compose.foundation.gestures.BringIntoVi
         else -> offset
     }
 }
+
+/** [RowsPage]'s focused row while the page's header (its tabs) has focus. */
+private const val HEADER_FOCUSED = Int.MAX_VALUE
