@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -28,6 +29,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -123,8 +125,11 @@ fun RowsPage(
     LaunchedEffect(activeShowcase) {
         val key = activeShowcase ?: return@LaunchedEffect
         val index = rows.indexOfFirst { it.key == key }
-        // One at a time, the row itself comes into place as it grows (see onSizeChanged below).
-        if (index >= 0 && !oneAtATime) listState.animateScrollToItem(index)
+        if (index < 0) return@LaunchedEffect
+        // One at a time the list has a screen's room above its rows: past it, so the showcase's top meets
+        // the list's (once it has grown to the screen's height).
+        if (oneAtATime) { kotlinx.coroutines.delay(32); listState.animateScrollToItem(index, roomAbove) }
+        else listState.animateScrollToItem(index)
     }
 
     // "Row: style" for a moment after Fast-forward/Rewind changes one.
@@ -134,6 +139,8 @@ fun RowsPage(
         if (activeShowcase == null) Backdrop(focused?.let(repository::backdropUrl), Modifier.fillMaxSize())
         // The page's theme, behind the rows and over the title's picture.
         dev.nitrate.tv.ui.effects.ThemeBehindSlot()
+        // One at a time, the screensaver's shade along the bottom under the caption and row.
+        if (!LocalDisplayPrefs.current.tvRowsStacked) dev.nitrate.tv.ui.components.ArtCaptionShade()
         androidx.compose.animation.AnimatedVisibility(
             visible = styleNote != null, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = RowPadding).zIndex(2f),
@@ -158,7 +165,8 @@ fun RowsPage(
             } else if (header != null) AnimatedVisibility(visible = tabsShown) {
                 androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { if (it.hasFocus) focusedRowIndex = HEADER_FOCUSED }) { header() }
             }
-            AnimatedVisibility(visible = activeShowcase == null) {
+            // One at a time, the title's caption sits beside its row along the bottom instead.
+            if (!oneAtATime) AnimatedVisibility(visible = activeShowcase == null) {
                 // A clear gap below, so the first row's title never runs into the description.
                 // Just tall enough for its title, facts and two lines (it took nearly half the screen).
                 FocusedSummary(focused, Modifier.padding(start = RowPadding, top = 20.dp, end = RowPadding, bottom = 14.dp).height(148.dp))
@@ -250,11 +258,19 @@ fun RowsPage(
                         // whatever was nearest that way, the tabs or a hidden row), except towards the
                         // menu, which they still reach. Up/Down go between rows as before.
                         val menuSide = dev.nitrate.tv.ui.home.LocalMenuSide.current
+                        val reachMenu = dev.nitrate.tv.ui.home.LocalMenuEdge.current
+                        val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
                         androidx.compose.foundation.layout.Box(Modifier.focusRequester(content)
                             .focusProperties {
                                 exit = { d ->
                                     val key = when (d) { androidx.compose.ui.focus.FocusDirection.Left -> Key.DirectionLeft; androidx.compose.ui.focus.FocusDirection.Right -> Key.DirectionRight; else -> null }
-                                    if (key != null && !menuSide(key)) androidx.compose.ui.focus.FocusRequester.Cancel else androidx.compose.ui.focus.FocusRequester.Default
+                                    when {
+                                        key == null -> androidx.compose.ui.focus.FocusRequester.Default
+                                        // Towards the menu: straight to it (else the tabs, up and to the side, could
+                                        // be "nearest" with the caption beside the row).
+                                        menuSide(key) -> { mainHandler.post { reachMenu(key) }; androidx.compose.ui.focus.FocusRequester.Cancel }
+                                        else -> androidx.compose.ui.focus.FocusRequester.Cancel
+                                    }
                                 }
                             }
                             .focusGroup()) {
@@ -281,7 +297,7 @@ fun RowsPage(
                                     .then(if (active || full) Modifier.height(with(density) { viewport.toDp() }) else Modifier),
                             )
                         } else {
-                            Box(Modifier.alpha(if (hidden) 0f else 1f)) {
+                            val cards: @Composable () -> Unit = {
                                 when (display.style) {
                                     // The page's own summary names the focused title: no second caption.
                                     RowStyle.FILM_STRIP -> FilmStripRow(row, repository, actions, display.size, caption = false)
@@ -290,6 +306,24 @@ fun RowsPage(
                                     else -> CardRow(row, display, repository, actions)
                                 }
                             }
+                            if (oneAtATime) {
+                                // The screensaver's way: the title's caption (the row and place as its label)
+                                // on the same line as the row, beside it, the side alternating row by row.
+                                val end = rowIndex % 2 == 1
+                                val shownItem = focused?.takeIf { f -> row.items.any { it.id == f.id } } ?: row.items.firstOrNull()
+                                val place = shownItem?.let { f -> row.items.indexOfFirst { it.id == f.id } + 1 } ?: 0
+                                val caption: @Composable () -> Unit = {
+                                    if (shownItem != null) dev.nitrate.tv.ui.components.ArtCaption(
+                                        shownItem, label = "${row.title}  ·  $place / ${row.items.size}", end = end, logoUrl = null,
+                                        modifier = Modifier.width(CaptionWidth).padding(start = if (end) 0.dp else RowPadding, end = if (end) RowPadding else 0.dp, bottom = 6.dp),
+                                    )
+                                }
+                                androidx.compose.foundation.layout.Row(Modifier.alpha(if (hidden) 0f else 1f), verticalAlignment = Alignment.Bottom) {
+                                    if (!end) caption()
+                                    Box(Modifier.weight(1f)) { CompositionLocalProvider(LocalRowTitle provides false) { cards() } }
+                                    if (end) caption()
+                                }
+                            } else Box(Modifier.alpha(if (hidden) 0f else 1f)) { cards() }
                         }
                         }
                         }
@@ -373,6 +407,9 @@ private object WholeRowInView : androidx.compose.foundation.gestures.BringIntoVi
         else -> offset
     }
 }
+
+/** The caption beside a row, one at a time. */
+private val CaptionWidth = 400.dp
 
 /** [RowsPage]'s focused row while the page's header (its tabs) has focus. */
 private const val HEADER_FOCUSED = Int.MAX_VALUE

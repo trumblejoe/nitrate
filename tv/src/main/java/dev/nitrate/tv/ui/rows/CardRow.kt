@@ -33,6 +33,9 @@ internal fun dev.nitrate.core.rows.RowSize.tvPosterDp() = kotlin.math.round(post
 internal fun dev.nitrate.core.rows.RowSize.tvWideDp() = kotlin.math.round(wideHeightDp * TV_CARD_SCALE).toInt()
 internal fun dev.nitrate.core.rows.RowSize.tvBannerDp() = kotlin.math.round(bannerHeightDp * TV_BANNER_SCALE).toInt()
 
+/** Whether rows show their own title above their cards (off where a caption beside them names the row). */
+val LocalRowTitle = androidx.compose.runtime.staticCompositionLocalOf { true }
+
 /** A classic horizontal row of poster or wide cards. */
 @Composable
 fun CardRow(
@@ -51,7 +54,7 @@ fun CardRow(
     PrefetchAlongRow(state, row.items) { repository.rowCardImages(it, display) }
     PrefetchAlongRow(state, row.items, ahead = 2) { listOf(repository.backdropUrl(it)) }
     Column {
-        Text(row.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = RowPadding, bottom = 12.dp))
+        if (LocalRowTitle.current) Text(row.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = RowPadding, bottom = 12.dp))
         LazyRow(
             state = state,
             contentPadding = PaddingValues(horizontal = RowPadding),

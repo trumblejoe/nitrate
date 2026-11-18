@@ -75,8 +75,9 @@ import dev.nitrate.tv.ui.components.onPlayKey
 internal fun MediaServer.artwork(item: MediaItem) = backdropUrl(item, 960) ?: imageUrl(item, ImageKind.THUMB, 720) ?: imageUrl(item, ImageKind.PRIMARY, 720)
 
 @Composable
-private fun RowTitle(row: MediaRow) =
-    Text(row.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = RowPadding, bottom = 12.dp))
+private fun RowTitle(row: MediaRow) {
+    if (LocalRowTitle.current) Text(row.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = RowPadding, bottom = 12.dp))
+}
 
 /** A focus ring in the accent colour that follows [shape]. */
 @Composable

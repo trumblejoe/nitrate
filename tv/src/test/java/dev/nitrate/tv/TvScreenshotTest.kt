@@ -426,14 +426,14 @@ class TvScreenshotTest {
         press("down")
         repeat(6) { press("right") }
         check(at().top > 300f) { "Right past the end of a row should stay in it, got ${at()}" }
-        repeat(6) { if (at().left > 300f) press("left") }
         fun name() = compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = false).fetchSemanticsNodes().first().config.toString().substringAfter("{").replace(Regex("@[0-9a-f]+"), "")
-        val card = name()
-        val place = at()
-        press("left")
+        // Left card by card to the menu, remembering the last card on the way.
+        var card = name()
+        var place = at()
+        repeat(10) { if (at().left > 150f) { card = name(); place = at(); press("left") } }
         check(at().left < 60f) { "Left from the first card should reach the menu, got ${at()}" }
         press("right")
-        check(name() == card) { "Right from the menu should return to the card left, got ${at()}" }
+        check(name() == card) { "Right from the menu should return to the card left, got ${at()} / was $place\n${name()}\n$card" }
         check(at() == place) { "and the row should stay put (no bounce): was $place, now ${at()}" }
     }) { c ->
         val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
