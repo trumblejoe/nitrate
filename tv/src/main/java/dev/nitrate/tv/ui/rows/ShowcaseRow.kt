@@ -199,41 +199,21 @@ private fun Expanded(
 ) {
     val options = display.showcase
     // Room for the strip below the text, or just a margin without it.
-    val bottom = if (strip) 150.dp else 72.dp
+    val bottom = if (strip) 150.dp else 56.dp
     Box(Modifier.fillMaxSize()) {
         // The picture is the item here: sparks go over it, and the click plays on the title.
         Backdrop(artwork, Modifier.fillMaxSize().cardFx(item.id, click = false))
 
-        Text(
-            row.title,
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.align(Alignment.TopStart).padding(start = RowPadding, top = 36.dp).alpha(0.7f),
-        )
-
-        Column(
-            Modifier.align(Alignment.BottomStart).padding(start = RowPadding, bottom = bottom).fillMaxWidth(0.5f).cardFx(item.id, spark = false),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            TitleOrLogo(item, if (options.showLogo) repository.logoUrl(item) else null)
-            item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-            if (options.showDetails) ItemMetaLine(item, showRatings = options.showRatings)
-            dev.nitrate.tv.ui.components.groupStanding(item)?.let { st ->
-                androidx.tv.material3.Text("👥 ${st.long}", style = androidx.tv.material3.MaterialTheme.typography.titleSmall, maxLines = 1,
-                    color = if (st.catchUp) androidx.compose.ui.graphics.Color(0xFFFFC94D) else androidx.compose.ui.graphics.Color(0xDDFFFFFF))
-            }
-            if (options.showOverview && LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.hidesDescription(item)) {
-                item.overview?.let {
-                    Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-
-        Text(
-            "${index + 1} / ${row.items.size}",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = RowPadding, bottom = bottom),
+        // Captioned as the screensaver is: the row and place as a small label, the title, a quiet line
+        // or two, in a bottom corner that alternates side from one title to the next.
+        dev.nitrate.tv.ui.components.ArtCaptionShade()
+        val end = index % 2 == 1
+        dev.nitrate.tv.ui.components.ArtCaption(
+            item, label = "${row.title}  ·  ${index + 1} / ${row.items.size}", end = end,
+            logoUrl = if (options.showLogo) repository.logoUrl(item) else null,
+            showDetails = options.showDetails, showRatings = options.showRatings, showOverview = options.showOverview,
+            modifier = Modifier.align(if (end) Alignment.BottomEnd else Alignment.BottomStart)
+                .padding(start = RowPadding, end = RowPadding, bottom = bottom).cardFx(item.id, spark = false),
         )
 
         if (strip) Filmstrip(row, index, repository, Modifier.align(Alignment.BottomStart).padding(bottom = 36.dp))

@@ -154,30 +154,19 @@ fun FullArtPage(
         dev.nitrate.tv.ui.effects.ThemeBehindSlot()
 
         val pad = Modifier.padding(start = 58.dp + insets.start, end = 58.dp + insets.end)
-        // Which row this is, top left, as a quiet label.
-        AnimatedContent(row.title, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "row-title",
-            modifier = Modifier.align(Alignment.TopStart).then(pad).padding(top = 36.dp + insets.top)) { title ->
-            Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.alpha(0.85f))
-        }
-
-        AnimatedContent(item, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "details",
-            contentKey = { it.id },
-            modifier = Modifier.align(Alignment.BottomStart).then(pad).padding(bottom = 48.dp + insets.bottom).fillMaxWidth(0.55f)) { it ->
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                TitleOrLogo(it, if (showcase.showLogo) repository.logoUrl(it) else null)
-                it.episodeLabel?.let { label -> Text(label, style = MaterialTheme.typography.titleMedium) }
-                if (showcase.showDetails) ItemMetaLine(it, showRatings = showcase.showRatings)
-                dev.nitrate.tv.ui.components.groupStanding(it)?.let { st ->
-                    androidx.tv.material3.Text("👥 ${st.long}", style = androidx.tv.material3.MaterialTheme.typography.titleSmall, maxLines = 1,
-                        color = if (st.catchUp) androidx.compose.ui.graphics.Color(0xFFFFC94D) else androidx.compose.ui.graphics.Color(0xDDFFFFFF))
-                }
-                val prefs = LocalDisplayPrefs.current
-                if (showcase.showOverview && prefs.overview && !prefs.hidesDescription(it)) {
-                    it.overview?.let { text ->
-                        Text(text, style = MaterialTheme.typography.bodyLarge, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+        // Captioned as the screensaver is: the row and place as a small label, the title, a quiet line
+        // or two, in a bottom corner that alternates side from one title to the next.
+        dev.nitrate.tv.ui.components.ArtCaptionShade()
+        AnimatedContent(item, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "details", contentKey = { it.id },
+            modifier = Modifier.fillMaxSize()) { it ->
+            Box(Modifier.fillMaxSize()) {
+                val end = current % 2 == 1
+                dev.nitrate.tv.ui.components.ArtCaption(
+                    it, label = "${row.title}  ·  ${current + 1} / ${row.items.size}", end = end,
+                    logoUrl = if (showcase.showLogo) repository.logoUrl(it) else null,
+                    showDetails = showcase.showDetails, showRatings = showcase.showRatings, showOverview = showcase.showOverview,
+                    modifier = Modifier.align(if (end) Alignment.BottomEnd else Alignment.BottomStart).then(pad).padding(bottom = 56.dp + insets.bottom),
+                )
             }
         }
 
@@ -198,12 +187,6 @@ fun FullArtPage(
             ) { tabs() }
         }
 
-        Text(
-            "${current + 1} / ${row.items.size}",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.BottomEnd).then(pad).padding(bottom = 48.dp + insets.bottom),
-        )
     }
 
     editing?.let { r ->
