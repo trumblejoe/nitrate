@@ -290,6 +290,12 @@ class PlaybackSession(
     private val events = ArrayDeque<String>()
     private val clock = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
 
+    /** Adds a line to the playback log from outside the session (e.g. the refresh-rate switch). */
+    fun note(message: String) = log(message)
+
+    /** Shows a short message over the video (cleared after a few seconds). */
+    fun tell(message: String) = showNotice(message)
+
     private fun log(message: String) = synchronized(events) {
         if (events.size >= MAX_EVENTS) events.removeFirst()
         events.addLast("${clock.format(java.util.Date())}  $message")
