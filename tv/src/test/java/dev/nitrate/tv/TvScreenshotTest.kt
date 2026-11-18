@@ -260,6 +260,18 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {})
     }
 
+    /** The remote's menu key hides the controls, and shows them again with focus on play/pause. */
+    @Test fun playerMenuKey() = shoot("tv-player-menu-key", act = {
+        press("right")
+        press("menu")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Subtitles")).fetchSemanticsNodes().isEmpty()) { "Menu should hide the controls" }
+        press("menu")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Subtitles")).fetchSemanticsNodes().isNotEmpty()) { "Menu should show the controls" }
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasContentDescription("Play")).fetchSemanticsNodes().isNotEmpty()) { "focus on play/pause" }
+    }) { c ->
+        dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {})
+    }
+
     @Test fun playerControlsPlay() = playerControls("tv-player-controls-play")
     @Test fun playerControlsButton() = playerControls("tv-player-controls-audio", "right") { check(focusedHasText("Audio")) }
     @Test fun playerControlsSeek() = playerControls("tv-player-controls-seek", "up")

@@ -433,6 +433,16 @@ fun PlayerScreen(
                 // Back is handled on its own (BackHandler): showing the controls here would make
                 // it hide them again instead of leaving.
                 if (event.key == Key.Back || event.key == Key.Escape) return@onPreviewKeyEvent false
+                // The remote's menu key (≡) shows the controls, and hides them again; with More or
+                // Info open it closes that, back to the controls.
+                if (event.key == Key.Menu) {
+                    if (event.type == KeyEventType.KeyUp) when {
+                        panel == Panel.MORE || panel == Panel.INFO -> panel = Panel.NONE
+                        controlsVisible -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
+                        else -> touch()
+                    }
+                    return@onPreviewKeyEvent true
+                }
                 val wasHidden = !controlsVisible
                 touch()
                 // With the controls hidden, OK or an arrow only brings them back (focus on play/pause),
@@ -452,8 +462,6 @@ fun PlayerScreen(
                     Key.MediaFastForward -> { player.seekTo(player.currentPosition + SEEK_FORWARD_MS); true }
                     Key.MediaRewind -> { player.seekTo(player.currentPosition - SEEK_BACK_MS); true }
                     Key.Captions -> { panel = Panel.SUBTITLES; true }
-                    // The remote's menu key (≡ on Fire TV) opens More.
-                    Key.Menu -> if (!easy && plan != null) { panel = Panel.MORE; true } else false
                     // Next/previous: by chapter, when the title has them.
                     Key.MediaNext -> item?.chapters?.let { dev.nitrate.core.playback.Chapters.next(it, player.currentPosition) }?.let { player.seekTo(it); true } ?: false
                     Key.MediaPrevious -> item?.chapters?.let { dev.nitrate.core.playback.Chapters.previous(it, player.currentPosition) }?.let { player.seekTo(it); true } ?: false
