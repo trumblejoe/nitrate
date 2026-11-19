@@ -14,6 +14,14 @@ data class VideoCodecCaps(
      * up to [CapabilityRules.SOFTWARE_MAX_HEIGHT] (Hi10P H.264).
      */
     val softwareTenBit: Boolean = false,
+    /**
+     * Profiles (Jellyfin's names, lower case) the device's own decoders don't take, e.g. H.264's
+     * "high 4:2:2" from cameras and editors. Such files go to Nitrate's software decoder when
+     * [softwareProfiles] (up to 1080p, progressive), else to the server.
+     */
+    val missingProfiles: Set<String> = emptySet(),
+    /** Nitrate's software decoder takes [missingProfiles] (it converts any picture layout it decodes). */
+    val softwareProfiles: Boolean = false,
 ) {
     companion object {
         /**
@@ -25,7 +33,9 @@ data class VideoCodecCaps(
         fun combine(decoders: List<VideoCodecCaps>): VideoCodecCaps? {
             val tier = decoders.filter { it.hardware }.ifEmpty { decoders }
             val best = tier.maxByOrNull { it.maxWidth.toLong() * it.maxHeight } ?: return null
-            return best.copy(tenBit = tier.any { it.tenBit })
+            // A profile is missing only when none of them takes it.
+            val missing = tier.map { it.missingProfiles }.reduce { a, b -> a intersect b }
+            return best.copy(tenBit = tier.any { it.tenBit }, missingProfiles = missing)
         }
     }
 }

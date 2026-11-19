@@ -27,4 +27,4 @@ fun capabilityLabel(id: String): String = when (id) {
     else -> id
 }
 
-fun formatBitrate(bps: Int) = "${bps / 1_000_000} Mbps"
+fun formatBitrate(bps: Int) = if (bps >= PlaybackSettings.NO_LIMIT) "No limit" else "${bps / 1_000_000} Mbps"

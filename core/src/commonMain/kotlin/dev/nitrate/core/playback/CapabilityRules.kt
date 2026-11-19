@@ -73,6 +73,10 @@ object CapabilityRules {
         val tenBitMaxHeight: Int? = null,
         /** Decoded in software, which doesn't deinterlace: interlaced video is left to the server. */
         val progressiveOnly: Boolean = false,
+        /** Profiles (Jellyfin's names) the device's decoders don't take: see [softwareProfiles]. */
+        val missingProfiles: Set<String> = emptySet(),
+        /** Those profiles go to Nitrate's software decoder (to 1080p, progressive) rather than the server. */
+        val softwareProfiles: Boolean = false,
     )
 
     /** Limits for every allowed video codec, after per-codec and global caps. */
@@ -96,6 +100,9 @@ object CapabilityRules {
                 tenBit = tenBit || softTenBit,
                 tenBitMaxHeight = if (softTenBit) minOf(SOFTWARE_MAX_HEIGHT, maxHeight) else null,
                 progressiveOnly = c != null && !c.hardware && settings.overrides[cap.id] != Override.ALWAYS,
+                // "Always" for the codec: the user says it plays everything.
+                missingProfiles = if (settings.overrides[cap.id] == Override.ALWAYS) emptySet() else c?.missingProfiles.orEmpty(),
+                softwareProfiles = c?.softwareProfiles == true,
             )
         }
     }

@@ -32,8 +32,14 @@ class JellyfinDeviceProfileTest {
 
     @Test
     fun `learned failures are skipped unless forced on or disabled`() {
-        val failure = LearnedFailure(1, "DECODING_FAILED", 0)
+        // One title failing converts only that title; the format goes only after three different titles.
+        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(1, "DECODING_FAILED", 0, setOf("a"))))))
+        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(4, "DECODING_FAILED", 0, setOf("a", "b"))))))
+        val failure = LearnedFailure(3, "DECODING_FAILED", 0, setOf("a", "b", "c"))
         assertFalse("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to failure))))
+        // Older records kept only a count.
+        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(1, "DECODING_FAILED", 0)))))
+        assertFalse("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(3, "DECODING_FAILED", 0)))))
         assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to failure), overrides = mapOf("hevc" to Override.ALWAYS))))
         assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to failure), useLearnedFailures = false)))
     }
@@ -93,5 +99,50 @@ class JellyfinDeviceProfileTest {
         assertTrue("avi" in p.directPlayProfiles.first { it.type == "Video" }.container)
         assertEquals(setOf("External", "Embed"), p.subtitleProfiles.filter { it.format == "ass" }.map { it.method }.toSet())
         assertTrue(p.subtitleProfiles.any { it.format == "pgssub" && it.method == "Embed" })
+    }
+
+    @Test
+    fun `profiles no decoder takes are converted up front, or played in software where it can`() {
+        val hevc = dev.nitrate.core.playback.video("hevc").copy(missingProfiles = setOf("rext", "scc"))
+        val h264Hw = dev.nitrate.core.playback.video("h264").copy(missingProfiles = setOf("high 4:2:2", "high 4:4:4 predictive"))
+        fun profiles(h264: dev.nitrate.core.playback.VideoCodecCaps, settings: PlaybackSettings = PlaybackSettings()) =
+            JellyfinDeviceProfile.create(caps(video = listOf(h264, hevc)), settings).codecProfiles
+
+        // HEVC 4:2:2/4:4:4: no decoder here, straight to the server.
+        val hevcMain = profiles(h264Hw).first { it.codec == "hevc" && it.applyConditions.isEmpty() }
+        assertEquals(listOf("rext", "scc"), hevcMain.conditions.filter { it.property == "VideoProfile" }.map { it.value })
+
+        // H.264 4:2:2 with no software decoder: to the server too.
+        val noSoftware = profiles(h264Hw).first { it.codec == "h264" && it.applyConditions.isEmpty() }
+        assertEquals(listOf("high 4:2:2", "high 4:4:4 predictive"), noSoftware.conditions.filter { it.property == "VideoProfile" }.map { it.value })
+
+        // With Nitrate's software decoder: played here up to 1080p progressive instead.
+        val withSoftware = profiles(h264Hw.copy(softwareProfiles = true)).filter { it.codec == "h264" }
+        assertTrue(withSoftware.first { it.applyConditions.isEmpty() }.conditions.none { it.property == "VideoProfile" })
+        val soft = withSoftware.first { it.applyConditions.any { c -> c.property == "VideoProfile" } }
+        assertEquals("high 4:2:2|high 4:4:4 predictive", soft.applyConditions.single().value)
+        assertEquals("1080", soft.conditions.first { it.property == "Height" }.value)
+
+        // "Always" for the codec: the user says it plays everything.
+        val always = profiles(h264Hw, PlaybackSettings(overrides = mapOf("hevc" to Override.ALWAYS))).first { it.codec == "hevc" && it.applyConditions.isEmpty() }
+        assertTrue(always.conditions.none { it.property == "VideoProfile" })
+    }
+
+    @Test
+    fun `a profile is missing only when none of the decoders takes it`() {
+        val a = dev.nitrate.core.playback.video("h264").copy(missingProfiles = setOf("high 4:2:2", "high 4:4:4 predictive"))
+        val b = dev.nitrate.core.playback.video("h264").copy(decoderName = "c2.other", missingProfiles = setOf("high 4:4:4 predictive"))
+        assertEquals(setOf("high 4:4:4 predictive"), dev.nitrate.core.playback.VideoCodecCaps.combine(listOf(a, b))!!.missingProfiles)
+    }
+
+    @Test
+    fun `no bitrate cap by default`() {
+        assertEquals(dev.nitrate.core.playback.PlaybackSettings.NO_LIMIT, JellyfinDeviceProfile.create(caps(), PlaybackSettings()).maxStreamingBitrate)
+    }
+
+    @Test
+    fun `AVI, MPEG program streams and FLV play as they are in Media3`() {
+        val containers = JellyfinDeviceProfile.create(caps(), PlaybackSettings()).directPlayProfiles.first { it.type == "Video" }.container.split(",")
+        assertTrue(listOf("avi", "mpg", "mpeg", "vob", "flv").all { it in containers })
     }
 }

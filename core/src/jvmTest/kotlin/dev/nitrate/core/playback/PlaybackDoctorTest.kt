@@ -68,7 +68,7 @@ class PlaybackDoctorTest {
         val never = PlaybackDoctor.diagnose(plan(reasons = listOf("VideoCodecNotSupported")), caps(), PlaybackSettings(overrides = mapOf("hevc" to Override.NEVER)))
         assertEquals(SettingsChange.ClearOverride("hevc"), (never.findings.single().fixes.first() as PlaybackFix.Change).change)
 
-        val failed = PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(1, "ERROR_CODE_DECODING_FAILED", 0)))
+        val failed = PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(3, "ERROR_CODE_DECODING_FAILED", 0, setOf("a", "b", "c"))))
         val again = PlaybackDoctor.diagnose(plan(reasons = listOf("VideoCodecNotSupported")), caps(), failed)
         val change = (again.findings.single().fixes.first() as PlaybackFix.Change).change
         assertEquals(SettingsChange.ForgetFailure("hevc"), change)

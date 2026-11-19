@@ -48,7 +48,7 @@ class DeviceBackupsTest {
         val lines = diffs.map { "${it.section} | ${it.setting} | ${it.from} → ${it.to}" }
         assertEquals(
             listOf(
-                "Playback | Maximum bitrate | 120 Mbps → 20 Mbps",
+                "Playback | Maximum bitrate | No limit → 20 Mbps",
                 "Playback | Sound | Normal → Night",
                 "Subtitles | Size | 100% → 150%",
                 "Subtitles | Colour | White → Yellow",

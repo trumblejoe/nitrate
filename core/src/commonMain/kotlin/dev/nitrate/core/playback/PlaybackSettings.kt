@@ -15,9 +15,34 @@ enum class MaxResolution(val label: String, val width: Int?, val height: Int?) {
     HD("720p", 1280, 720),
 }
 
-/** A direct-play failure seen on this TV, so the same file isn't tried again. */
+/**
+ * Direct-play failures of one format (a codec or HDR type) seen on this device. It stops the whole
+ * format only once [BLOCK_TITLES] different titles have failed with it: one odd file (a camera's
+ * 4:2:2 HEVC, a damaged rip) shouldn't send every HEVC file to the server. Before then, only the
+ * titles that failed are converted ([PlaybackSettings.failedTitles]).
+ */
 @Serializable
-data class LearnedFailure(val count: Int, val lastError: String, val lastSeenMs: Long)
+data class LearnedFailure(
+    val count: Int,
+    val lastError: String,
+    val lastSeenMs: Long,
+    /** The titles that failed (ids); empty in records from before titles were kept. */
+    val items: Set<String> = emptySet(),
+) {
+    /** Whether the format as a whole is converted (older records kept only a count). */
+    val blocksFormat: Boolean get() = (if (items.isEmpty()) count else items.size) >= BLOCK_TITLES
+
+    companion object {
+        /** Different titles that must fail before a whole format is converted. */
+        const val BLOCK_TITLES = 3
+        /** Failures older than this are forgotten, so the format (or title) is tried as it is again. */
+        const val KEEP_MS = 60L * 24 * 60 * 60 * 1000
+    }
+}
+
+/** One title that failed to play here as it is: it's converted from then on (until forgotten or [LearnedFailure.KEEP_MS]). */
+@Serializable
+data class TitleFailure(val capability: String, val error: String, val atMs: Long)
 
 /**
  * Per-device playback settings. Not synced: they describe this TV, not the user.
@@ -26,12 +51,15 @@ data class LearnedFailure(val count: Int, val lastError: String, val lastSeenMs:
  */
 @Serializable
 data class PlaybackSettings(
-    val maxBitrate: Int = 120_000_000,
+    /** Above this the server converts down; [NO_LIMIT] (the default) leaves every file as it is. */
+    val maxBitrate: Int = NO_LIMIT,
     val maxResolution: MaxResolution = MaxResolution.AUTO,
     val allowDirectPlay: Boolean = true,
     val allowDirectStream: Boolean = true,
     val overrides: Map<String, Override> = emptyMap(),
     val learnedFailures: Map<String, LearnedFailure> = emptyMap(),
+    /** Titles (by item id) that failed to play here as they are, converted from then on. */
+    val failedTitles: Map<String, TitleFailure> = emptyMap(),
     /** Per video codec: largest height to direct play, e.g. 1080 when 4K decodes too slowly. */
     val codecMaxHeight: Map<String, Int> = emptyMap(),
     /** Video codecs limited to 8-bit even if the device reports 10-bit support. */
@@ -92,11 +120,28 @@ data class PlaybackSettings(
     fun allows(id: String, claimed: Boolean): Boolean = when (overrides[id]) {
         Override.ALWAYS -> true
         Override.NEVER -> false
-        null -> claimed && !(useLearnedFailures && id in learnedFailures)
+        null -> claimed && !(useLearnedFailures && learnedFailures[id]?.blocksFormat == true)
+    }
+
+    /** Whether [itemId] is converted because it failed to play here as it is. */
+    fun convertsTitle(itemId: String): Boolean = useLearnedFailures && itemId in failedTitles
+
+    /** Without failures older than [LearnedFailure.KEEP_MS]. */
+    fun withoutOldFailures(nowMs: Long): PlaybackSettings {
+        val keep = { at: Long -> nowMs - at < LearnedFailure.KEEP_MS }
+        val formats = learnedFailures.filterValues { keep(it.lastSeenMs) }
+        val titles = failedTitles.filterValues { keep(it.atMs) }
+        return if (formats.size == learnedFailures.size && titles.size == failedTitles.size) this else copy(learnedFailures = formats, failedTitles = titles)
     }
 
     companion object {
-        val BITRATES = listOf(120_000_000, 80_000_000, 40_000_000, 20_000_000, 10_000_000, 4_000_000)
+        /**
+         * No cap: a file is never converted for its bitrate alone (high-bitrate remuxes play as they
+         * are, buffering if the network falls short). The server's own per-user streaming limit
+         * still applies away from home. Jellyfin takes the cap as an Int, so this is 1 Gbps.
+         */
+        const val NO_LIMIT = 1_000_000_000
+        val BITRATES = listOf(NO_LIMIT, 120_000_000, 80_000_000, 40_000_000, 20_000_000, 10_000_000, 4_000_000)
         fun hdrId(format: String) = "range:$format"
     }
 }
@@ -107,10 +152,20 @@ interface PlaybackSettingsRepository {
     val settings: Flow<PlaybackSettings>
     suspend fun current(): PlaybackSettings
     suspend fun update(transform: (PlaybackSettings) -> PlaybackSettings)
-    suspend fun clearFailures() = update { it.copy(learnedFailures = emptyMap()) }
+    suspend fun clearFailures() = update { it.copy(learnedFailures = emptyMap(), failedTitles = emptyMap()) }
 
-    suspend fun recordFailure(id: String, error: String, nowMs: Long) = update { s ->
+    /** [itemId] failed to play here as it is because of [id] (a codec or HDR type): see [LearnedFailure]. */
+    suspend fun recordFailure(id: String, error: String, nowMs: Long, itemId: String? = null) = update { st ->
+        val s = st.withoutOldFailures(nowMs)
         val previous = s.learnedFailures[id]
-        s.copy(learnedFailures = s.learnedFailures + (id to LearnedFailure((previous?.count ?: 0) + 1, error, nowMs)))
+        s.copy(
+            learnedFailures = s.learnedFailures + (id to LearnedFailure((previous?.count ?: 0) + 1, error, nowMs, previous?.items.orEmpty() + listOfNotNull(itemId))),
+            failedTitles = if (itemId == null) s.failedTitles else s.failedTitles + (itemId to TitleFailure(id, error, nowMs)),
+        )
+    }
+
+    /** Lets failures past [LearnedFailure.KEEP_MS] go, so those formats and titles are tried as they are again. */
+    suspend fun forgetOldFailures(nowMs: Long) {
+        if (current().let { it.withoutOldFailures(nowMs) != it }) update { it.withoutOldFailures(nowMs) }
     }
 }

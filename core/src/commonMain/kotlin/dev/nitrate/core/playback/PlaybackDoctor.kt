@@ -38,7 +38,12 @@ sealed interface SettingsChange {
     }
 
     data class ForgetFailure(val id: String) : SettingsChange {
-        override fun apply(s: PlaybackSettings) = s.copy(learnedFailures = s.learnedFailures - id)
+        override fun apply(s: PlaybackSettings) = s.copy(learnedFailures = s.learnedFailures - id, failedTitles = s.failedTitles.filterValues { it.capability != id })
+    }
+
+    /** Tries one title as it is again (it had failed here before). */
+    data class ForgetTitle(val itemId: String) : SettingsChange {
+        override fun apply(s: PlaybackSettings) = s.copy(failedTitles = s.failedTitles - itemId)
     }
 
     data object AllowDirectPlay : SettingsChange {
@@ -133,7 +138,12 @@ object PlaybackDoctor {
             )
         }
 
-        if (forcedTranscode) findings += PlaybackFinding(
+        val titleFailure = settings.failedTitles[plan.itemId]?.takeIf { settings.useLearnedFailures }
+        if (titleFailure != null) findings += PlaybackFinding(
+            "This title failed here before",
+            "Playing this file as it is failed on this device (${titleFailure.error}), so Nitrate has it converted. Other files of the same kind still play as they are.",
+            listOf(PlaybackFix.Change(SettingsChange.ForgetTitle(plan.itemId), "Try it as it is again", "If it fails again, Nitrate goes back to converting it.")),
+        ) else if (forcedTranscode) findings += PlaybackFinding(
             "Switched after a playback error",
             "Playing the file directly failed earlier, so Nitrate asked the server to convert it.",
             listOf(PlaybackFix.Retry("Try direct play again", "If it fails again, Nitrate goes back to converting.")),
@@ -276,9 +286,10 @@ object PlaybackDoctor {
         settings.overrides[id] == Override.NEVER ->
             "$name is set to Never in this device's Picture & sound settings (Advanced)." to
                 listOf(PlaybackFix.Change(SettingsChange.ClearOverride(id), "Set $name back to Auto", null))
-        settings.useLearnedFailures && id in settings.learnedFailures && settings.overrides[id] != Override.ALWAYS -> {
+        settings.useLearnedFailures && settings.learnedFailures[id]?.blocksFormat == true && settings.overrides[id] != Override.ALWAYS -> {
             val f = settings.learnedFailures.getValue(id)
-            "$name failed to play on this device before (${f.lastError}), so Nitrate stopped asking for it." to
+            val titles = f.items.size.takeIf { it > 0 } ?: f.count
+            "$name failed to play on this device with $titles different titles (${f.lastError}), so Nitrate stopped asking for it." to
                 listOf(PlaybackFix.Change(SettingsChange.ForgetFailure(id), "Try $name again", "If it fails again, Nitrate goes back to converting it."))
         }
         else -> null
@@ -369,7 +380,7 @@ object PlaybackDoctor {
     private fun bitrateFinding(plan: PlaybackPlan, settings: PlaybackSettings): PlaybackFinding {
         val bitrate = plan.source.bitrate
         val needed = bitrate?.let { b -> PlaybackSettings.BITRATES.filter { it >= b }.minOrNull() }
-        val mbps = { b: Int -> "${(b + 999_999) / 1_000_000} Mbps" }
+        val mbps = { b: Int -> if (b >= PlaybackSettings.NO_LIMIT) "no limit" else "${(b + 999_999) / 1_000_000} Mbps" }
         val fixes = buildList<PlaybackFix> {
             if (needed != null && needed > settings.maxBitrate) add(PlaybackFix.Change(SettingsChange.Bitrate(needed), "Raise the limit to ${mbps(needed)}", "Only if your connection to the server keeps up."))
             addAll(versionFixes(plan))

@@ -262,7 +262,7 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                 item { Toggle("Swipe for brightness and volume", "Up and down on the left of the video for brightness, on the right for volume", playback.swipeControls) { v -> updatePlayback { it.copy(swipeControls = v) } } }
                 heading("Streaming")
                 item {
-                    Choice("Maximum bitrate", formatBitrate(playback.maxBitrate), "Lower it only if playback keeps buffering, e.g. on mobile data. Anything above it is converted down by the server") {
+                    Choice("Maximum bitrate", formatBitrate(playback.maxBitrate), "No limit plays every file as it is. Set a cap to have the server convert big files down, e.g. on mobile data") {
                         val list = PlaybackSettings.BITRATES
                         updatePlayback { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
                     }
@@ -296,12 +296,18 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                     }
                 }
                 heading("Troubleshooting")
-                item { Toggle("Learn from failures", "Formats that failed to play here as they are get converted next time. Keep on", playback.useLearnedFailures) { v -> updatePlayback { it.copy(useLearnedFailures = v) } } }
-                if (playback.learnedFailures.isNotEmpty()) item {
+                item { Toggle("Learn from failures", "A title that failed to play here as it is gets converted next time; a whole format only after 3 different titles fail. Forgotten after 60 days. Keep on", playback.useLearnedFailures) { v -> updatePlayback { it.copy(useLearnedFailures = v) } } }
+                if (playback.learnedFailures.isNotEmpty() || playback.failedTitles.isNotEmpty()) item {
+                    val formats = playback.learnedFailures.filterValues { it.blocksFormat }.keys
                     ListItem(
                         modifier = Modifier.clickable { scope.launch { c.playbackSettings.clearFailures() } },
-                        headlineContent = { Text("Forget ${playback.learnedFailures.size} learned failure(s)") },
-                        supportingContent = { Text(playback.learnedFailures.keys.joinToString { capabilityLabel(it) }) },
+                        headlineContent = { Text("Forget learned failures") },
+                        supportingContent = {
+                            Text(listOfNotNull(
+                                "${playback.failedTitles.size} title(s) converted".takeIf { playback.failedTitles.isNotEmpty() },
+                                "whole formats converted: ${formats.joinToString { capabilityLabel(it) }}".takeIf { formats.isNotEmpty() },
+                            ).joinToString(" · ").ifEmpty { "Failures noted, nothing converted yet" })
+                        },
                     )
                 }
                 item { Toggle("Allow direct play", "Files play as they are when this phone supports them. Turning this off makes the server convert everything", playback.allowDirectPlay) { v -> updatePlayback { it.copy(allowDirectPlay = v) } } }

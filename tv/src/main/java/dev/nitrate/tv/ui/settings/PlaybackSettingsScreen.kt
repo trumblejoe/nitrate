@@ -153,7 +153,7 @@ private fun LazyListScope.mainPage(
         if (open) RefreshRateInfo { open = false }
     }
     item {
-        ChoiceRow("Maximum bitrate", formatBitrate(settings.maxBitrate), "Lower it only if playback keeps buffering, e.g. away from home. Anything above it is converted down by the server.") {
+        ChoiceRow("Maximum bitrate", formatBitrate(settings.maxBitrate), "No limit plays every file as it is (a fast file on a slow network buffers rather than being converted). Set a cap only if you'd rather the server convert big files down, e.g. away from home.") {
             val list = PlaybackSettings.BITRATES
             update { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
         }
@@ -206,16 +206,22 @@ private fun LazyListScope.advancedPage(
     }
     section("Troubleshooting")
     item {
-        ToggleRow("Learn from failures", settings.useLearnedFailures, "Formats that failed to play here as they are get converted next time. Keep on") { v ->
+        ToggleRow("Learn from failures", settings.useLearnedFailures, "A title that failed to play here as it is gets converted next time; a whole format only after 3 different titles fail. Forgotten after 60 days. Keep on") { v ->
             update { it.copy(useLearnedFailures = v) }
         }
     }
-    if (settings.learnedFailures.isNotEmpty()) item(key = "forget") {
+    if (settings.learnedFailures.isNotEmpty() || settings.failedTitles.isNotEmpty()) item(key = "forget") {
+        val formats = settings.learnedFailures.filterValues { it.blocksFormat }.keys
         ListItem(
             selected = false,
             onClick = { scope.launch { store.clearFailures() } },
-            headlineContent = { Text("Forget ${settings.learnedFailures.size} learned failure(s)") },
-            supportingContent = { Text("Try those formats as they are again") },
+            headlineContent = { Text("Forget learned failures") },
+            supportingContent = {
+                Text(listOfNotNull(
+                    "${settings.failedTitles.size} title(s) converted".takeIf { settings.failedTitles.isNotEmpty() },
+                    "whole formats converted: ${formats.joinToString()}".takeIf { formats.isNotEmpty() },
+                ).joinToString(" · ").ifEmpty { "Failures noted, nothing converted yet" } + ". Try them as they are again")
+            },
         )
     }
     item { ToggleRow("Allow direct play", settings.allowDirectPlay, "Files play as they are when the TV supports them. Turning this off makes the server convert everything") { v -> update { it.copy(allowDirectPlay = v) } } }
@@ -392,6 +398,7 @@ private fun CapabilityRow(
             update { s ->
                 s.copy(
                     learnedFailures = s.learnedFailures - cap.id,
+                    failedTitles = s.failedTitles.filterValues { f -> f.capability != cap.id },
                     codecMaxHeight = s.codecMaxHeight - cap.id,
                     eightBitOnly = s.eightBitOnly - cap.id,
                     tenBitAllowed = s.tenBitAllowed - cap.id,
@@ -404,7 +411,9 @@ private fun CapabilityRow(
                 Text("TV reports: " + (reported ?: "not supported"), style = MaterialTheme.typography.bodySmall)
                 if (limits.isNotEmpty()) Text(limits.joinToString(" · ").replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 failure?.let {
-                    Text("Failed to direct play here ${it.count}× (${it.lastError})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    val titles = it.items.size.takeIf { n -> n > 0 } ?: it.count
+                    Text("Failed to play as it is with $titles title(s) (${it.lastError})" + if (it.blocksFormat) ": all converted" else ": only those converted",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
         },

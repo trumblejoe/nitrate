@@ -75,6 +75,7 @@ object DeviceBackups {
         val playback = if (sameModel) b else b.copy(
             overrides = current.playback.overrides,
             learnedFailures = current.playback.learnedFailures,
+            failedTitles = current.playback.failedTitles,
             codecMaxHeight = current.playback.codecMaxHeight,
             eightBitOnly = current.playback.eightBitOnly,
             tenBitAllowed = current.playback.tenBitAllowed,
@@ -108,7 +109,7 @@ object DeviceBackups {
         fun playback(setting: String, from: String, to: String) { if (from != to) add(Difference("Playback", setting, from, to)) }
         fun hardware(setting: String, from: String, to: String) { if (from != to) add(Difference("This device's hardware results", setting, from, to)) }
 
-        playback("Maximum bitrate", mbps(a.maxBitrate), mbps(n.maxBitrate))
+        playback("Maximum bitrate", dev.nitrate.core.playback.formatBitrate(a.maxBitrate), dev.nitrate.core.playback.formatBitrate(n.maxBitrate))
         playback("Maximum resolution", a.maxResolution.label, n.maxResolution.label)
         playback("Direct play", onOff(a.allowDirectPlay), onOff(n.allowDirectPlay))
         playback("Direct stream", onOff(a.allowDirectStream), onOff(n.allowDirectStream))
@@ -165,7 +166,6 @@ object DeviceBackups {
     ).filter { it.second != it.third }
 
     private fun colour(argb: Long) = SubtitleStyle.COLORS.firstOrNull { it.first == argb }?.second ?: "#" + (argb and 0xFFFFFF).toString(16).padStart(6, '0').uppercase()
-    private fun mbps(bps: Int) = "${bps / 1_000_000} Mbps"
     private fun onOff(on: Boolean) = if (on) "On" else "Off"
     private fun list(items: Collection<String>) = items.sorted().joinToString(", ").ifEmpty { "None" }
 

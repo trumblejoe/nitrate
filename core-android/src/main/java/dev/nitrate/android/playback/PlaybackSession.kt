@@ -507,11 +507,12 @@ class PlaybackSession(
                 val renderer = (e as? ExoPlaybackException)?.takeIf { it.type == ExoPlaybackException.TYPE_RENDERER }
                 val videoFailed = !MimeTypes.isAudio(renderer?.rendererFormat?.sampleMimeType)
                 CapabilityRules.failureCapabilityId(failed, videoFailed)?.let { id ->
-                    scope.launch { settings.recordFailure(id, e.errorCodeName, System.currentTimeMillis()) }
+                    scope.launch { settings.recordFailure(id, e.errorCodeName, System.currentTimeMillis(), itemId = failed.itemId) }
                 }
+                // Only this title from now on; a whole format only after several different titles fail.
                 showNotice(
-                    "$deviceNoun couldn't decode it (${e.errorCodeName}). Switched to transcoding; " +
-                        "it will transcode this format from now on. Change this in Settings → Picture & sound → Advanced.",
+                    "$deviceNoun couldn't play this file as it is (${e.errorCodeName}). Switched to converting; " +
+                        "this title will be converted from now on, other files of its kind still play as they are. Change this in Settings → Picture & sound → Advanced.",
                 )
             }
             log("Direct ${failed.method} failed at ${at}ms: retrying as a transcode")
@@ -979,6 +980,13 @@ class PlaybackSession(
 
     private suspend fun start(startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false, sourceId: String? = null) {
         val current = _item.value ?: return
+        // A title that failed here as it is goes straight to the server (others of its kind don't);
+        // failures past their time are let go first, so those get tried as they are again.
+        val now = System.currentTimeMillis()
+        runCatching { settings.forgetOldFailures(now) }
+        val titleFailed = runCatching { settings.current().convertsTitle(current.id) }.getOrDefault(false)
+        @Suppress("NAME_SHADOWING") val forceTranscode = forceTranscode || titleFailed
+        if (titleFailed) log("This title failed here as it is before: converting it")
         forcedTranscode = forceTranscode
         // What the user picked for this show (matched to this episode's streams) or this title.
         var audio = audioIndex

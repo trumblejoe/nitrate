@@ -58,6 +58,21 @@ object DeviceProbe {
         ),
     )
 
+    /**
+     * Profiles in Jellyfin's names (lower case) and the decoder profile that takes each, for the
+     * ones a TV's decoder may lack. HEVC Range Extensions (4:2:2/4:4:4) have no Android profile
+     * constant, so no decoder can claim them: always missing.
+     */
+    private val CHECKED_PROFILES: Map<String, Map<String, Int?>> = mapOf(
+        "video/avc" to mapOf(
+            "high 4:2:2" to MediaCodecInfo.CodecProfileLevel.AVCProfileHigh422,
+            "high 4:2:2 intra" to MediaCodecInfo.CodecProfileLevel.AVCProfileHigh422,
+            "high 4:4:4 predictive" to MediaCodecInfo.CodecProfileLevel.AVCProfileHigh444,
+            "high 4:4:4 intra" to MediaCodecInfo.CodecProfileLevel.AVCProfileHigh444,
+        ),
+        "video/hevc" to mapOf("rext" to null, "scc" to null),
+    )
+
     /** How the FFmpeg audio decoder shows up in capabilities and Playback settings. */
     const val SOFTWARE_AUDIO_DECODER = "FFmpeg (software)"
 
@@ -95,8 +110,11 @@ object DeviceProbe {
                     maxWidth = v.supportedWidths.upper,
                     maxHeight = v.supportedHeights.upper,
                     tenBit = caps.profileLevels.any { it.profile in TEN_BIT_PROFILES[mime].orEmpty() },
+                    missingProfiles = CHECKED_PROFILES[mime].orEmpty().filter { (_, profile) -> profile == null || caps.profileLevels.none { it.profile == profile } }.keys,
                 )
             }.let(VideoCodecCaps::combine)
+                // Profiles the device lacks that Nitrate's software decoder takes (H.264's 4:2:2 and 4:4:4).
+                ?.let { if (software && codec == "h264" && it.missingProfiles.isNotEmpty()) it.copy(softwareProfiles = true) else it }
                 // The device's own decoders, with 10-bit from Nitrate's when they're 8-bit only (Hi10P H.264).
                 ?.let { if (software && !it.tenBit && codec == "h264") it.copy(softwareTenBit = true) else it }
                 // None of its own: Nitrate's software decoder, up to 1080p (10-bit for H.264).

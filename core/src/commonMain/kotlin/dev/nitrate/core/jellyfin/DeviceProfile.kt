@@ -50,7 +50,12 @@ data class DeviceProfileDto(
 
 /** Builds the Jellyfin device profile from [CapabilityRules]. */
 object JellyfinDeviceProfile {
-    private const val DIRECT_PLAY_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts"
+    /**
+     * What Media3 reads itself: MP4, Matroska, MPEG-TS, and (Media3's AVI, MPEG program stream and
+     * FLV extractors) AVI, .mpg/.vob and FLV, so those play as they are instead of being repackaged
+     * by the server. The codecs inside still have to be ones the device decodes.
+     */
+    private const val DIRECT_PLAY_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts,avi,mpg,mpeg,vob,flv"
     private const val MPV_VIDEO_CONTAINERS = "mp4,m4v,mov,mkv,webm,ts,mpegts,m2ts,avi,wmv,asf,flv,mpg,mpeg,vob,ogv,3gp"
     private const val AUDIO_CONTAINERS = "mp3,flac,m4a,mp4,aac,ogg,oga,opus,webm,wav,mka"
     private const val APPLE_VIDEO_CONTAINERS = "mp4,m4v,mov"
@@ -99,8 +104,25 @@ object JellyfinDeviceProfile {
                         ProfileConditionDto("EqualsAny", "VideoRangeType", ranges.joinToString("|")),
                         // Software decoding doesn't deinterlace; the server does when converting.
                         ProfileConditionDto("NotEquals", "IsInterlaced", "true").takeIf { limit.progressiveOnly },
-                    ),
+                    ) + (if (limit.softwareProfiles) emptyList() else limit.missingProfiles.sorted().map {
+                        // Profiles no decoder here takes (H.264 4:2:2 from cameras, HEVC 4:2:2/4:4:4): converted
+                        // up front, rather than failing and teaching Nitrate to convert the whole codec.
+                        ProfileConditionDto("NotEquals", "VideoProfile", it)
+                    }),
                 ),
+                // Those profiles in Nitrate's software decoder instead, which keeps to 1080p progressive.
+                limit.missingProfiles.takeIf { limit.softwareProfiles && it.isNotEmpty() }?.let { missing ->
+                    CodecProfileDto(
+                        type = "Video",
+                        codec = limit.codec,
+                        applyConditions = listOf(ProfileConditionDto("EqualsAny", "VideoProfile", missing.sorted().joinToString("|"))),
+                        conditions = listOf(
+                            ProfileConditionDto("LessThanEqual", "Width", "1920"),
+                            ProfileConditionDto("LessThanEqual", "Height", CapabilityRules.SOFTWARE_MAX_HEIGHT.toString()),
+                            ProfileConditionDto("NotEquals", "IsInterlaced", "true"),
+                        ),
+                    )
+                },
                 // 10-bit only from the software decoder, which keeps to 1080p.
                 limit.tenBitMaxHeight?.let { h ->
                     CodecProfileDto(
