@@ -1,5 +1,8 @@
 package dev.nitrate.tv
 
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -365,6 +368,8 @@ class TvScreenshotTest {
         check(focusedHasText("Posters")) { "the dialog should open on the current view" }
         press("left", "ok")
         compose.mainClock.advanceTimeBy(1_200); compose.waitForIdle()
+        // The choice is saved and read back: a busy machine can take a moment longer.
+        repeat(10) { if (!focusedHasText("View: Rows")) { Thread.sleep(100); compose.mainClock.advanceTimeBy(300); compose.waitForIdle() } }
         check(focusedHasText("View: Rows")) { "focus should come back to the View button, now on Rows; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() + " " + it.boundsInRoot } }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
@@ -736,7 +741,7 @@ class TvScreenshotTest {
         audioDelayMs = audioDelay, defaultAudioDelayMs = 0, onAudioDelay = {}, onAudioDelayAsDefault = {},
         frameRate = dev.nitrate.core.playback.FrameRateMatch.ALWAYS, defaultFrameRate = dev.nitrate.core.playback.FrameRateMatch.SEAMLESS,
         refreshNote = dev.nitrate.tv.ui.player.refreshNote(23.976f, 59.94f),
-        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch together").map { it to { _: () -> Unit -> androidx.tv.material3.Text(it) } },
+        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch together").map { it to { _: () -> Unit -> androidx.tv.material3.OutlinedButton(onClick = {}) { androidx.tv.material3.Text("$it page") } } },
     )
 
     /** The More panel over the video, opened on [tab]. */
@@ -764,6 +769,45 @@ class TvScreenshotTest {
         }
     }
 
+    /** Settings → More → a page: focus goes into the page, and Back (one press) returns to its chip. */
+    @Test fun moreSettingsPageFocus() = moreSheet("tv-more-settings-page", "settings", "down") {
+        repeat(12) { if (!focusedHasText("Speakers")) press("down") }
+        check(focusedHasText("Speakers")) { "should reach the Speakers… chip" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedHasText("Speakers page")) { "focus should be inside the page" }
+        press("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedHasText("Speakers…")) { "one Back should return to the Speakers… chip; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() } + " / page shown: " + compose.onAllNodes(androidx.compose.ui.test.hasText("Speakers page")).fetchSemanticsNodes().size }
+    }
+
+    /** One Back press from inside More reaches the player's handler (it used to take two). */
+    @Test fun moreOneBack() {
+        var closed = 0
+        shoot("tv-more-one-back", act = {
+            press("down")
+            press("back")
+            check(closed == 1) { "one Back should close More, closed=$closed" }
+        }) { c ->
+            val item by androidx.compose.runtime.produceState<dev.nitrate.core.model.MediaItem?>(null) { value = c.server.getItem("s1e2") }
+            item?.let { current ->
+                Box(Modifier.fillMaxSize().onKeyEvent { e ->
+                    if (e.key != androidx.compose.ui.input.key.Key.Back) return@onKeyEvent false
+                    if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) closed++
+                    true
+                }) {
+                    dev.nitrate.tv.ui.player.MoreSheet(
+                        dev.nitrate.tv.ui.player.moreTabs(
+                            current = current.copy(kind = dev.nitrate.core.model.ItemKind.EPISODE, chapters = sampleChapters), titleStrips = sampleStrips(c, current), cast = emptyList(),
+                            chapterImage = { null }, personImage = { null }, position = 0, onChapter = {}, onPerson = {}, choices = sampleChoices(),
+                        ),
+                        initial = "siblings", onTab = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomStart),
+                    )
+                }
+            }
+        }
+    }
+
     @Test fun moreEpisodes() = moreSheet("tv-more-episodes", "siblings", "down") { check(focusedHasText("Now")) }
     /** The season goes round: ◀ on the first episode lands on the last. */
     @Test fun moreEpisodesWrap() = moreSheet("tv-more-episodes-wrap", "siblings", "down", "left", "left") { check(focusedHasText("Episode title 6")) }
@@ -782,7 +826,7 @@ class TvScreenshotTest {
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {
         keys.forEach { name ->
-            val k = when (name) { "ok" -> androidx.compose.ui.input.key.Key.DirectionCenter; "ff" -> androidx.compose.ui.input.key.Key.MediaFastForward; "rw" -> androidx.compose.ui.input.key.Key.MediaRewind; "menu" -> androidx.compose.ui.input.key.Key.Menu; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
+            val k = when (name) { "ok" -> androidx.compose.ui.input.key.Key.DirectionCenter; "ff" -> androidx.compose.ui.input.key.Key.MediaFastForward; "rw" -> androidx.compose.ui.input.key.Key.MediaRewind; "menu" -> androidx.compose.ui.input.key.Key.Menu; "back" -> androidx.compose.ui.input.key.Key.Back; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
             // With a dialog open, keys go to it (the topmost window).
             val roots = compose.onAllNodes(androidx.compose.ui.test.isRoot())
             (if (roots.fetchSemanticsNodes().size > 1) roots[roots.fetchSemanticsNodes().size - 1] else compose.onRoot()).performKeyInput { pressKey(k) }

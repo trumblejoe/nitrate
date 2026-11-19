@@ -399,7 +399,9 @@ fun PlayerScreen(
     val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE &&
         upNextAt != null && position >= upNextAt
 
-    BackHandler {
+    // Back closes the topmost thing. Handled as a key (below) as well as here: unhandled, Compose's own
+    // Back first moves focus out of the group it's in (More's tabs or row, Info), so it took two presses.
+    fun goBack() {
         when {
             // What's open goes first (a banner appearing meanwhile doesn't take Back from it).
             panel != Panel.NONE -> panel = Panel.NONE
@@ -411,11 +413,18 @@ fun PlayerScreen(
             else -> onExit()
         }
     }
+    BackHandler { goBack() }
 
     Row(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            // Back as a key, after anything inside had its say (a More sub-page goes back one step first).
+            .onKeyEvent { event ->
+                if (event.key != Key.Back && event.key != Key.Escape) return@onKeyEvent false
+                if (event.type == KeyEventType.KeyUp) goBack()
+                true
+            }
             // Ctrl + a panel's key toggles it from anywhere, including while typing in it.
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) return@onPreviewKeyEvent false

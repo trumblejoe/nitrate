@@ -1,6 +1,8 @@
 package dev.nitrate.tv.ui.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -195,19 +197,54 @@ internal val SLEEP_MINUTES = listOf(15, 30, 45, 60, 90)
 @Composable
 internal fun PlayerChoicesTab(choices: PlayerChoices) {
     var page by remember { mutableStateOf<String?>(null) }
+    // The page last opened, so closing it puts focus back on its chip.
+    var opened by remember { mutableStateOf<String?>(null) }
+    val chipFocus = remember { mutableMapOf<String, FocusRequester>() }
+    fun chip(label: String) = chipFocus.getOrPut(label) { FocusRequester() }
     BackHandler(enabled = page != null) { page = null }
     val open = choices.pages.firstOrNull { it.first == page }
     if (open != null) {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Into the page as it opens (the chip that had focus is gone with the list); Back (as a key)
+        // goes back one step to the list, not out of More.
+        val pageFocus = remember { FocusRequester() }
+        var inside by remember { mutableStateOf(false) }
+        LaunchedEffect(open.first) {
+            repeat(30) {
+                kotlinx.coroutines.android.awaitFrame()
+                if (inside) return@LaunchedEffect
+                runCatching { pageFocus.requestFocus() }
+                kotlinx.coroutines.delay(30)
+            }
+        }
+        Column(
+            Modifier.focusRequester(pageFocus).onFocusChanged { inside = it.hasFocus }.focusGroup()
+                .onKeyEvent { e ->
+                    if (e.key != Key.Back && e.key != Key.Escape) return@onKeyEvent false
+                    if (e.type == KeyEventType.KeyUp) page = null
+                    true
+                }
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             open.second { page = null }
         }
         return
+    }
+    // Back from a page: focus to the chip that opened it.
+    LaunchedEffect(opened, page) {
+        val label = opened?.takeIf { page == null } ?: return@LaunchedEffect
+        repeat(20) {
+            kotlinx.coroutines.android.awaitFrame()
+            if (runCatching { chip(label).requestFocus() }.isSuccess) { opened = null; return@LaunchedEffect }
+            kotlinx.coroutines.delay(30)
+        }
     }
     val scroll = rememberScrollState()
     val first = remember { FocusRequester() }
     Column(
         // ▼ from the tabs lands on the speed that's on (not whichever chip is nearest).
-        Modifier.focusRestorer(first).verticalScroll(scroll),
+        // (Not while coming back from a page: focus goes to that page's chip, not the speed.)
+        Modifier.then(if (opened == null) Modifier.focusRestorer(first) else Modifier).verticalScroll(scroll),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Line("Speed") {
@@ -265,7 +302,7 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
         }
         if (choices.pages.isNotEmpty()) {
             Line("More") {
-                choices.pages.forEach { (label, _) -> DefaultChip("$label…", selected = false, isDefault = false) { page = label } }
+                choices.pages.forEach { (label, _) -> DefaultChip("$label…", selected = false, isDefault = false, modifier = Modifier.focusRequester(chip(label))) { opened = label; page = label } }
             }
         }
     }
