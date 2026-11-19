@@ -105,6 +105,7 @@ fun ShowcaseRow(
 
     LaunchedEffect(active, item.id) { if (active) actions.onFocus(item) }
     val menuSide = dev.nitrate.tv.ui.home.LocalMenuSide.current
+    val reachMenu = dev.nitrate.tv.ui.home.LocalMenuEdge.current
 
     Box(
         modifier
@@ -117,11 +118,14 @@ fun ShowcaseRow(
                     Key.DirectionRight -> when {
                         current < items.lastIndex -> { if (down) onIndexChange(current + 1); true }
                         options.infiniteScroll && items.size > 1 && !menuSide(Key.DirectionRight) -> { if (down) onIndexChange(0); true }
+                        // Straight to the menu: a screen-wide picture has nothing "nearest" that way to search for.
+                        menuSide(Key.DirectionRight) -> { if (down) reachMenu(Key.DirectionRight); true }
                         else -> false
                     }
                     Key.DirectionLeft -> when {
                         current > 0 -> { if (down) onIndexChange(current - 1); true }
                         options.infiniteScroll && items.size > 1 && !menuSide(Key.DirectionLeft) -> { if (down) onIndexChange(items.lastIndex); true }
+                        menuSide(Key.DirectionLeft) -> { if (down) reachMenu(Key.DirectionLeft); true }
                         else -> false
                     }
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {

@@ -425,7 +425,10 @@ private class RowAtBottom(private val gap: Float) : androidx.compose.foundation.
     /** Set while a row asks to come into place; a card's own request (focus landing on it) only scrolls when it's out of view. */
     var rowRequest = false
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
-        !rowRequest && offset >= 0f && offset + size <= containerSize -> 0f
+        // A card's own request never moves the page: its row is already in place (focus arriving in a
+        // row places it), and art cards report their design size, larger than drawn, which pulled the
+        // row up the screen.
+        !rowRequest -> 0f
         size + gap <= containerSize -> offset + size - (containerSize - gap)
         else -> offset
     }

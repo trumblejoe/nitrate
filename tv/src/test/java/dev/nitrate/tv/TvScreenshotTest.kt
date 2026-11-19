@@ -459,6 +459,35 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
     }
 
+    /** Left from a Showcase / Full Showcase row reaches the menu, and Right comes back. */
+    private fun showcaseToMenu(name: String, style: dev.nitrate.core.rows.RowStyle) = shoot(name, setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        c.displaySettings.save("user-1", c.server.homeRows()[1], dev.nitrate.core.rows.RowDisplay(style))
+    }, act = {
+        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        press("down")
+        repeat(4) { press("left") }
+        check(at().left < 60f) { "Left from a ${style.label} row should reach the menu, got ${at()}" }
+        press("right")
+        check(at().left > 100f) { "Right from the menu should return to the row, got ${at()}" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    @Test fun showcaseLeftToMenu() = showcaseToMenu("tv-showcase-left-to-menu", dev.nitrate.core.rows.RowStyle.SHOWCASE)
+    @Test fun fullShowcaseLeftToMenu() = showcaseToMenu("tv-full-showcase-left-to-menu", dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE)
+
+    /** Art rows (design-size cards) stay along the bottom when moved along, not pulled up the page. */
+    @Test fun cressidaStaysAtBottom() = shoot("tv-cressida-stays-at-bottom", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        c.displaySettings.save("user-1", c.server.homeRows()[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.CRESSIDA))
+    }, act = {
+        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        press("down")
+        val first = at()
+        press("right"); press("up"); press("down")
+        check(at().top == first.top) { "The row moved: was $first, now ${at()}" }
+        check(at().bottom > 700f) { "The row should sit along the bottom, got ${at()}" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
     /** A library with more tabs switched on (Genres, and your own) and Genres open. */
     @Test fun libraryGenresTab() = shoot("tv-library-genres-tab", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)
