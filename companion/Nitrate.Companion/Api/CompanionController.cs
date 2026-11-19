@@ -59,6 +59,7 @@ public class CompanionController : ControllerBase
         }
 
         features.Add("scripts");
+        features.Add("devices");
         if (TestClipsCode.TestClipCatalog.All().Count > 0)
         {
             features.Add("testclips");

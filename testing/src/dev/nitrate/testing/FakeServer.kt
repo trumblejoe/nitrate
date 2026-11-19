@@ -355,6 +355,26 @@ class FakeServer : MediaServer {
         val next = eps.first { !it.user.played }
         return dev.nitrate.core.recap.Recaps.forSeries(series, eps, next, dev.nitrate.core.pages.DisplayPrefs(recapAfterDays = 14), now)!!
     }
+    override suspend fun sendDeviceSummary(summary: dev.nitrate.core.playback.DeviceSummary) = Unit
+    override suspend fun forgetHouseholdDevice(userId: String, deviceId: String) = Unit
+    override suspend fun householdDevices(): List<dev.nitrate.core.playback.HouseholdDevice> {
+        val avatar = dev.nitrate.core.playback.SummaryTitle("m1", "Northern Lights (2021)", "Picture converted by the server", "Dolby Vision is tone-mapped to SDR by the server: the display doesn't report Dolby Vision")
+        val reel = dev.nitrate.core.playback.SummaryTitle("m5", "Old Reel (1987)", "Picture converted by the server", "MPEG-4 video isn't something this device decodes")
+        fun summary(name: String, model: String, hdr: List<String>, converted: List<dev.nitrate.core.playback.SummaryTitle>, tests: List<dev.nitrate.core.playback.SummaryTest> = emptyList(), seen: List<dev.nitrate.core.playback.SummaryLine> = emptyList()) =
+            dev.nitrate.core.playback.DeviceSummary(name, model, "Nitrate 0.0.0-dev.54", 0, "All libraries",
+                settings = listOf(dev.nitrate.core.playback.SummaryLine("Bitrate limit", "No limit"), dev.nitrate.core.playback.SummaryLine("Refresh rate", "Always")),
+                displayHdr = hdr,
+                counts = listOf(dev.nitrate.core.playback.SummaryLine("Everything", "240"), dev.nitrate.core.playback.SummaryLine("Plays as it is", "${240 - converted.size}"), dev.nitrate.core.playback.SummaryLine("Picture converted", "${converted.size}"), dev.nitrate.core.playback.SummaryLine("Sound converted", "0")),
+                converted = converted, tests = tests, seen = seen)
+        return listOf(
+            dev.nitrate.core.playback.HouseholdDevice("u1", "joe", "tv-1", "Living room", System.currentTimeMillis() - 2 * 3_600_000, summary("Living room", "AFTKRT", emptyList(), listOf(avatar, reel),
+                tests = listOf(dev.nitrate.core.playback.SummaryTest("m1", "Northern Lights (2021)", "1 thing not as predicted", false, listOf(dev.nitrate.core.playback.SummaryLine("Did the TV switch to HDR while it played?", "No")))),
+                seen = listOf(dev.nitrate.core.playback.SummaryLine("HDR10 · 4K", "No"), dev.nitrate.core.playback.SummaryLine("Dolby TrueHD 5.1", "Yes (sent untouched)")))),
+            dev.nitrate.core.playback.HouseholdDevice("u2", "sam", "phone-1", "Sam's phone", System.currentTimeMillis() - 26 * 3_600_000, summary("Sam's phone", "Pixel 9", listOf("HDR10", "HLG"), listOf(reel))),
+            dev.nitrate.core.playback.HouseholdDevice("u2", "sam", "tv-2", "Bedroom TV", System.currentTimeMillis() - 5 * 60_000, summary("Bedroom TV", "Chromecast HD", listOf("HDR10"), listOf(avatar, reel))),
+        )
+    }
+
     override suspend fun checkClips() = listOf(
         dev.nitrate.core.playback.CheckClip("hdr10", "HDR10 · 4K", "Picture", "HDR10", "The TV shows HDR (or HDR10), or switches to its HDR picture mode."),
         dev.nitrate.core.playback.CheckClip("dolby_vision_81", "Dolby Vision 8.1 · 4K", "Picture", "DOVI", "A Dolby Vision TV shows Dolby Vision; other HDR TVs show HDR10."),

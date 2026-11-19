@@ -67,6 +67,9 @@ like Jellyfin's own.
 | Call | What |
 | --- | --- |
 | `GET /Nitrate/Companion` | `{Version, Features}`; apps use it to tell the plugin is there. |
+| `GET /Nitrate/TestClips` · `GET /Nitrate/TestClips/{id}` | The TV and receiver check clips carried in the plugin (`tools/generate-badge-clips.sh`: HDR10, Dolby Vision 8.1 and 5, HLG; Dolby Digital, DD+, TrueHD, DTS 5.1 and 7.1 PCM, ~20 s each): `{Id, Title, Kind: Picture|Sound, Format, LookFor, ContentType, Size}`, and each file (seekable). Feature `testclips`. |
+| `POST /Nitrate/Devices/Report` | `{DeviceId, DeviceName, Summary}`: the caller's playback summary for one of their devices (the app's own JSON, up to 512 KB), replacing its last. Feature `devices`. |
+| `GET /Nitrate/Devices` · `DELETE /Nitrate/Devices/{userId}/{deviceId}` | Every device's latest summary, newest first (admins only); forgetting one (admins, or its owner). Kept in `nitrate-companion/devices.json`, at most 200. |
 | `GET /Nitrate/Chat/{groupId}/Messages?after=N&waitMs=M` | Messages after `N` (-1: the recent ones), waiting up to `M` ms (at most 30 s) for one: long polling. `{Messages, Latest}`. |
 | `POST /Nitrate/Chat/{groupId}/Messages` | `{Text, Kind: Text|Reaction, PositionMs}`; 400 for an empty, too long (500) or not-one-emoji reaction, 429 when sending too fast. |
 

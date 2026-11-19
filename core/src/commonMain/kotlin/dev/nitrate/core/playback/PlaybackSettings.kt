@@ -108,6 +108,8 @@ data class PlaybackSettings(
      * answer, go back to where the last press was.
      */
     val askStillWatching: Boolean = true,
+    /** Sends this device's playback summary (overview, test plays, TV check) for the server's admin to read (Companion `devices`). */
+    val shareWithAdmin: Boolean = true,
     /**
      * Dual-layer Dolby Vision (profile 7) on a device that decodes profile 8: rewrite its
      * metadata as profile 8.1 while playing, for Dolby Vision instead of HDR10.

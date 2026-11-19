@@ -129,6 +129,10 @@ fun PlaybackOverviewScreen(actions: AppActions) {
                         OutlinedButton(onClick = ::load) { Text("Read again") }
                     }
                     OutlinedButton(onClick = { sample = dev.nitrate.core.playback.TestPlay.sample(o.entries) }) { Text("Test a sample") }
+                    // This device's summary goes to the server's admin (Household devices) unless switched off.
+                    val share = container.playbackSettings.settings.collectAsState(null).value?.shareWithAdmin ?: true
+                    FilterChip(share, { scope.launch { container.playbackSettings.update { it.copy(shareWithAdmin = !share) } } },
+                        label = { Text(if (share) "Shared with your server's admin" else "Not shared with the admin") })
                     sent?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor()) }
                 }
             }

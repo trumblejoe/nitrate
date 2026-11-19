@@ -73,6 +73,7 @@ import kotlinx.serialization.Serializable
 /** Admin: the whole server (tasks, activity, devices, users). */
 @Serializable object ServerAdminRoute
 @Serializable object LibraryHealthRoute
+@Serializable object HouseholdDevicesRoute
 @Serializable object PlaybackOverviewRoute
 @Serializable object ChannelsRoute
 @Serializable object WatchPartnersRoute
@@ -289,6 +290,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }
+            screen<HouseholdDevicesRoute> { HouseholdDevicesScreen(actions) }
             screen<PlaybackOverviewRoute> { PlaybackOverviewScreen(actions) }
             screen<ChannelsRoute> { ChannelsScreen(actions) }
             screen<WatchPartnersRoute> { WatchPartnersScreen(actions) }

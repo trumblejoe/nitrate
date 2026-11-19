@@ -146,6 +146,26 @@ internal data class SsoPollDto(val state: String = "Failed", val message: String
  */
 internal class JellyfinCompanion(private val client: JellyfinClient) {
 
+    suspend fun sendDeviceSummary(deviceId: String, deviceName: String, summary: dev.nitrate.core.playback.DeviceSummary) {
+        client.http.post(client.url("Nitrate", "Devices", "Report")) {
+            with(client) { auth() }
+            contentType(ContentType.Application.Json)
+            setBody(DeviceReportDto(deviceId, deviceName, JellyfinJson.encodeToJsonElement(dev.nitrate.core.playback.DeviceSummary.serializer(), summary)))
+        }
+    }
+
+    suspend fun householdDevices(): List<dev.nitrate.core.playback.HouseholdDevice> =
+        JellyfinJson.decodeFromString<List<HouseholdReportDto>>(client.get("Nitrate", "Devices").bodyAsText()).map { r ->
+            dev.nitrate.core.playback.HouseholdDevice(
+                userId = normalizeId(r.userId), userName = r.userName, deviceId = r.deviceId, deviceName = r.deviceName, atMs = r.at,
+                summary = runCatching { JellyfinJson.decodeFromJsonElement(dev.nitrate.core.playback.DeviceSummary.serializer(), r.summary) }.getOrNull(),
+            )
+        }
+
+    suspend fun forgetHouseholdDevice(userId: String, deviceId: String) {
+        client.http.delete(client.url("Nitrate", "Devices", userId, deviceId)) { with(client) { auth() } }
+    }
+
     suspend fun checkClips(): List<dev.nitrate.core.playback.CheckClip> = try {
         JellyfinJson.decodeFromString(client.get("Nitrate", "TestClips").bodyAsText())
     } catch (e: ClientRequestException) {
@@ -333,3 +353,16 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
         sentAtMs = sentAt?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() } ?: 0L,
     )
 }
+
+@Serializable
+internal data class DeviceReportDto(val deviceId: String, val deviceName: String, val summary: kotlinx.serialization.json.JsonElement)
+
+@Serializable
+internal data class HouseholdReportDto(
+    val userId: String,
+    val userName: String = "",
+    val deviceId: String,
+    val deviceName: String = "",
+    val at: Long = 0,
+    val summary: kotlinx.serialization.json.JsonElement = kotlinx.serialization.json.JsonObject(emptyMap()),
+)

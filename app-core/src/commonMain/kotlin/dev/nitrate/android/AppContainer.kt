@@ -375,7 +375,7 @@ class AppContainer(
         val entries = dev.nitrate.core.playback.PlaybackOverview.build(sources) { item, source ->
             dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, settings, source, itemId = item.id, display = display)
         }
-        return dev.nitrate.core.playback.PlaybackOverview(
+        val overview = dev.nitrate.core.playback.PlaybackOverview(
             entries = entries,
             app = "$clientName $version",
             device = "${capabilities.model} (${platform.identity.deviceName})",
@@ -383,6 +383,9 @@ class AppContainer(
             settings = dev.nitrate.core.playback.PlaybackOverview.settingsSummary(settings),
             library = libraryName,
         )
+        lastOverview = libraryId to overview
+        shareWithAdmin()
+        return overview
     }
 
     /** Saves the overview in the server's logs (Dashboard → Logs), for the admin; returns the file name. */
@@ -416,6 +419,30 @@ class AppContainer(
         loadTestPlays()
         _testPlays.value = _testPlays.value + (result.itemId to result)
         server.currentAccountKey?.let { runCatching { dataCache.write(it, "testplays", _testPlays.value, testPlaySerializer) } }
+        shareWithAdmin()
+    }
+
+    private var shareJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Sends this device's playback summary (its last overview, test plays and TV check) for the
+     * server's admin, a few seconds after the latest change, when the server has the Companion
+     * plugin and this device hasn't switched it off ([dev.nitrate.core.playback.PlaybackSettings.shareWithAdmin]).
+     */
+    fun shareWithAdmin() {
+        shareJob?.cancel()
+        shareJob = networkScope.launch {
+            kotlinx.coroutines.delay(3_000)
+            val settings = playbackSettings.current()
+            if (!settings.shareWithAdmin) return@launch
+            if (companionState.value?.features?.contains("devices") != true) return@launch
+            loadTestPlays()
+            val summary = dev.nitrate.core.playback.DeviceSummary.build(
+                deviceName = platform.identity.deviceName, model = capabilities.model, app = "$clientName $version", atMs = nowMs(),
+                caps = capabilities, settings = settings, overview = lastOverview?.second, tests = testPlays.value.values,
+            )
+            runCatching { server.sendDeviceSummary(summary) }
+        }
     }
 
     /** Forgets every test play. */

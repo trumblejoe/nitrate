@@ -195,6 +195,8 @@ class ScreenshotTest {
 
     @Test fun libraryHealth() = shoot("phone-library-health", setup = { c -> c.checkLibraryHealth(null) }) { dev.nitrate.mobile.ui.LibraryHealthScreen(it) }
 
+    @Test fun householdDevices() = shoot("phone-household-devices") { dev.nitrate.mobile.ui.HouseholdDevicesScreen(it) }
+
     @Test fun playbackTrail() = shoot("phone-playback-trail") {
         androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().padding(16.dp)) { dev.nitrate.mobile.ui.TrailView(dev.nitrate.testing.sampleTrail()) }
     }

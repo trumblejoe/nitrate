@@ -145,6 +145,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         item { SpeedCheckRow(actions) }
         item { DeviceReportRow(actions) }
         if (account?.isAdmin == true) {
+            item { Link("Household devices", "How every device in the house plays the library, its tests and what its users saw at their TVs") { actions.nav.navigate(HouseholdDevicesRoute) } }
             item { Link("Library health", "Missing artwork and details, duplicates, missing episodes, what this phone always converts") { actions.nav.navigate(LibraryHealthRoute) } }
             item { Link("Manage server", "Libraries, tasks, activity, devices and users") { actions.nav.navigate(ServerAdminRoute) } }
         }

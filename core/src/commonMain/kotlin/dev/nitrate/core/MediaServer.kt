@@ -269,6 +269,15 @@ interface MediaServer {
     /** The signed-in user's sessions on other devices that can be controlled from here (any account type). */
     suspend fun controllableSessions(): List<ServerSession> = unsupported()
 
+    /** Sends this device's playback summary for the household's admin (Companion feature `devices`). */
+    suspend fun sendDeviceSummary(summary: dev.nitrate.core.playback.DeviceSummary): Unit = unsupported()
+
+    /** Every household device's latest summary (admins). */
+    suspend fun householdDevices(): List<dev.nitrate.core.playback.HouseholdDevice> = unsupported()
+
+    /** Forgets one device's summary. */
+    suspend fun forgetHouseholdDevice(userId: String, deviceId: String): Unit = unsupported()
+
     /** The Companion plugin's TV and receiver check clips (empty without the plugin). */
     suspend fun checkClips(): List<dev.nitrate.core.playback.CheckClip> = emptyList()
 

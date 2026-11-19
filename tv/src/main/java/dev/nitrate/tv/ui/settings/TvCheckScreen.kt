@@ -101,6 +101,7 @@ fun TvCheckScreen(container: AppContainer) {
                 val check = s.deviceCheck ?: DeviceCheck(System.currentTimeMillis(), container.capabilities.model)
                 s.copy(deviceCheck = check.copy(seen = check.seen + (clip.id to record)))
             }
+            container.shareWithAdmin()
         }
         asking = null
         queue.firstOrNull()?.let { next -> queue = queue.drop(1); play(next) }

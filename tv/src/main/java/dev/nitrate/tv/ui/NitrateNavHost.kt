@@ -105,6 +105,9 @@ import kotlinx.serialization.Serializable
 
 /** Settings → Tools → TV & receiver check (the Companion plugin's clips). */
 @Serializable object TvCheckRoute
+
+/** Settings → Tools → Household devices (admins). */
+@Serializable object HouseholdDevicesRoute
 @Serializable object WatchTogetherRoute
 @Serializable object ChannelsRoute
 @Serializable object WatchPartnersRoute
@@ -377,6 +380,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                             }
                         },
                     ) + (if (account?.isAdmin == true) listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Household devices", "How every device in the house plays the library, its tests and what its users saw at their TVs") { nav.navigate(HouseholdDevicesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Library health", "Missing artwork and details, duplicates, missing episodes, what this TV always converts") { nav.navigate(LibraryHealthRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) },
                     ) else emptyList())),
@@ -468,6 +472,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId, themePreview = { id, on -> if (on) container.themeMusic.show(id) else container.themeMusic.stop() })
         }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
+        composable<HouseholdDevicesRoute> { dev.nitrate.tv.ui.settings.HouseholdDevicesScreen(container, onOpen = { nav.navigate(DetailsRoute(it)) }) }
         composable<TvCheckRoute> { dev.nitrate.tv.ui.settings.TvCheckScreen(container) }
         composable<PlaybackOverviewRoute> {
             dev.nitrate.tv.ui.settings.PlaybackOverviewScreen(

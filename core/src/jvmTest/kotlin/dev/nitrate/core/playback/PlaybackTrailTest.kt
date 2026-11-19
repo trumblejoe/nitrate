@@ -128,4 +128,17 @@ class PlaybackTrailTest {
         val p = ProfileCheck.predict(tv, PlaybackSettings(deviceCheck = DeviceCheck(0, "TV", seen = seen)), film.copy(streams = listOf(film.streams[0].copy(rangeType = "HDR10"), film.streams[1])))
         assertTrue("You saw the TV show HDR10 in the TV check" in p.checked, p.checked.toString())
     }
+
+    @Test fun aDeviceSummaryAndWhatTheHouseholdConvertsMost() {
+        val entries = PlaybackOverview.build(listOf(MediaItem("m1", "Loud", ItemKind.MOVIE) to film)) { _, source -> ProfileCheck.predict(caps(), PlaybackSettings(), source) }
+        val overview = PlaybackOverview(entries, "Nitrate", "TV", "now", emptyList(), "Films")
+        val summary = DeviceSummary.build("TV", "AFTKRT", "Nitrate", 0, caps(), PlaybackSettings(), overview, emptyList())
+        assertEquals(1, summary.converted.size)
+        // The same title converted on two of three devices comes first.
+        fun device(id: String, titles: List<SummaryTitle>) = HouseholdDevice("u", "joe", id, id, 0, summary.copy(converted = titles))
+        val t = summary.converted.single()
+        val other = SummaryTitle("m2", "Other", "Picture converted by the server")
+        val most = Household.mostConverted(listOf(device("a", listOf(t, other)), device("b", listOf(t)), device("c", emptyList())))
+        assertEquals(listOf(t.name to 2), most.map { it.first.name to it.second })
+    }
 }
