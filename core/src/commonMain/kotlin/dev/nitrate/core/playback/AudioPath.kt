@@ -29,6 +29,8 @@ data class AudioPath(
     val upmixedTo: String? = null,
     /** Nitrate's sound processing switched on (night mode, dialogue boost). */
     val processing: List<String> = emptyList(),
+    /** For surround formats a receiver could take untouched but that were decoded here: why. */
+    val decodedWhy: String? = null,
 ) {
     /** Rows for the Info panel, after the general ones. */
     fun rows(): List<Pair<String, String>> = buildList {
@@ -42,6 +44,7 @@ data class AudioPath(
         val out = listOfNotNull(outFormat, channels(outChannels), rate(outRateHz))
         if (out.isNotEmpty()) add("Sound out" to out.joinToString(" · "))
         output?.let { add("Output" to it) }
+        decodedWhy?.takeIf { delivery == AudioDelivery.DECODED }?.let { add("Why decoded" to it) }
         if (delivery == AudioDelivery.DECODED && mixerRateHz != null && outRateHz != null && mixerRateHz != outRateHz) {
             add("Android mixer" to "${rate(mixerRateHz)} (converted to this unless the device sends audio directly)")
         }
@@ -70,4 +73,27 @@ data class AudioPath(
     }
 
     private fun rate(hz: Int?) = hz?.takeIf { it > 0 }?.let { if (it % 1000 == 0) "${it / 1000} kHz" else "${formatOneDecimal(it / 1000.0)} kHz" }
+
+    companion object {
+        /** Formats a TV or receiver can take untouched (bitstream), by the server's codec names. */
+        val BITSTREAM_CODECS = setOf("ac3", "eac3", "dts", "truehd", "mlp")
+
+        /**
+         * Why [codec] sound was decoded here instead of sent untouched: Nitrate's own processing (which
+         * needs decoded sound), a playback speed other than 1×, or Android saying the output doesn't
+         * take it ([outputAccepts]; null when unknown). Null for formats that are always decoded.
+         */
+        fun decodeReason(codec: String?, processing: List<String>, speed: Float, outputAccepts: Boolean?): String? {
+            val c = codec?.lowercase() ?: return null
+            if (c !in BITSTREAM_CODECS) return null
+            val name = when (c) { "ac3" -> "Dolby Digital"; "eac3" -> "Dolby Digital Plus"; "truehd", "mlp" -> "Dolby TrueHD"; else -> "DTS" }
+            return when {
+                processing.isNotEmpty() -> "${processing.joinToString(" and ").replaceFirstChar { it.uppercase() }} is on, and works only on decoded sound; Sound: Normal sends $name untouched."
+                speed != 1f -> "Playing at ${formatOneDecimal(speed.toDouble())}×: sound at another speed has to be decoded."
+                outputAccepts == false -> "Android says this output won't take $name untouched: check the device's own surround setting (Fire TV: Display & Sounds → Audio → Surround Sound, Best Available or Dolby Digital Plus) and that the TV or receiver supports it (over ARC some TVs pass only Dolby Digital)."
+                outputAccepts == true -> "The output takes $name untouched, but the player decoded it; Send log would show why."
+                else -> null
+            }
+        }
+    }
 }

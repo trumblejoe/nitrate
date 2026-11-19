@@ -173,6 +173,7 @@ class PlaybackSession(
     }
 
     @Volatile private var videoFormat: androidx.media3.common.Format? = null
+    @Volatile private var audioInFormat: androidx.media3.common.Format? = null
     @Volatile private var droppedFrames = 0
     @Volatile private var networkBps: Long? = null
 
@@ -613,6 +614,7 @@ class PlaybackSession(
             }
 
             override fun onAudioInputFormatChanged(e: AnalyticsListener.EventTime, format: androidx.media3.common.Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) {
+                audioInFormat = format
                 log("Audio in: ${format.sampleMimeType} ${format.codecs ?: ""} ${format.channelCount}ch ${format.sampleRate}Hz")
                 val stream = _plan.value?.let { p -> p.source.streams.firstOrNull { it.index == p.audioIndex } }
                 _audioPath.value = _audioPath.value.copy(
@@ -641,6 +643,18 @@ class PlaybackSession(
                     mixerRateHz = mixer,
                 )
                 updateProcessing()
+                // Surround that could have gone out untouched but was decoded: say why (Info).
+                val why = if (!decoded) null else {
+                    val path = _audioPath.value
+                    val accepts = audioInFormat?.let { f ->
+                        val encoding = MimeTypes.getEncoding(f.sampleMimeType ?: "", f.codecs)
+                        if (encoding == C.ENCODING_INVALID) null
+                        else runCatching { androidx.media3.exoplayer.audio.AudioCapabilities.getCapabilities(appContext, androidx.media3.common.AudioAttributes.DEFAULT, null).supportsEncoding(encoding) }.getOrNull()
+                    }
+                    dev.nitrate.core.playback.AudioPath.decodeReason(path.inCodec, path.processing, exo.playbackParameters.speed, accepts)
+                        ?.also { log("Decoded rather than passed through: $it") }
+                }
+                _audioPath.value = _audioPath.value.copy(decodedWhy = why)
                 log("Audio out: ${encodingName(config.encoding)} ${Integer.bitCount(config.channelConfig)}ch ${config.sampleRate}Hz${if (config.tunneling) " tunneled" else ""}${if (config.offload) " offloaded" else ""}; mixer ${mixer ?: "?"}Hz")
             }
 
