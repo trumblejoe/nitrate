@@ -194,7 +194,7 @@ private fun PinnedPage(
                 OutlinedButton(onClick = { editing = true }, modifier = Modifier.padding(horizontal = 58.dp)) { Text("Edit rows") }
             }
             fullArt -> FullArtPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, onEditPage = { editing = true }, insets = insets, header = tabs)
-            else -> RowsPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, header = tabs, onEditPage = { editing = true })
+            else -> RowsPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, header = tabs, onEditPage = { editing = true }, editButton = false)
         }
         is RowsState.Error -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text(s.message, Modifier.padding(58.dp), color = MaterialTheme.colorScheme.error) }
         RowsState.Loading -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text("Loading…", Modifier.padding(58.dp)) }

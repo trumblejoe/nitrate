@@ -196,9 +196,21 @@ fun SearchScreen(
     }
 }
 
-/** Everything a person appears in (or, with [studio] or [year], everything from that studio or year), as cards. */
+/**
+ * Everything a person appears in (or, with [studio] or [year], everything from that studio or year):
+ * one row laid out as Home's rows are, its look a press away (Fast-forward/Rewind, held OK) and kept for
+ * every More from page, over the background and theme set for them in Settings → Display → Pages.
+ */
 @Composable
-fun PersonScreen(repository: MediaServer, person: Person, onOpen: (MediaItem) -> Unit, studio: String? = null, year: Int? = null) {
+fun PersonScreen(
+    repository: MediaServer,
+    person: Person,
+    onOpen: (MediaItem) -> Unit,
+    studio: String? = null,
+    year: Int? = null,
+    displaySettings: dev.nitrate.android.storage.DisplaySettingsStore? = null,
+    onPlay: (MediaItem) -> Unit = onOpen,
+) {
     var items by retained<List<MediaItem>?>("person/${person.id}/$studio/$year") { null }
     LaunchedEffect(person.id, studio, year) {
         if (items != null) return@LaunchedEffect
@@ -210,18 +222,31 @@ fun PersonScreen(repository: MediaServer, person: Person, onOpen: (MediaItem) ->
             }
         }.getOrDefault(emptyList())
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(PagePadding)) {
-        item { Text(person.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(bottom = 16.dp)) }
+    val user = repository.userId
+    val overrides by remember(user, displaySettings) {
+        if (user != null && displaySettings != null) displaySettings.overrides(user) else kotlinx.coroutines.flow.flowOf(emptyMap())
+    }.collectAsState(emptyMap())
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val header: @Composable () -> Unit = {
+        Text(person.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = PagePadding, top = 24.dp, bottom = 8.dp))
+    }
+    dev.nitrate.tv.ui.home.ThemedPage(dev.nitrate.core.pages.PageKeys.MORE_FROM) {
         val list = items
-        if (list == null) item { Text("Loading…") } else item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                items(list, key = { it.id }) { item ->
-                    MediaCard(item = item, imageUrl = repository.imageUrl(item, ImageKind.PRIMARY, 360), width = 140.dp, aspectRatio = 2f / 3f, title = item.name, subtitle = item.productionYear?.toString(), onClick = { onOpen(item) })
-                }
-            }
+        when {
+            list == null -> Column { header(); Text("Loading…", Modifier.padding(start = PagePadding)) }
+            list.isEmpty() -> Column { header(); Text("Nothing here.", Modifier.padding(start = PagePadding)) }
+            else -> dev.nitrate.tv.ui.rows.RowsPage(
+                rows = listOf(dev.nitrate.core.rows.MediaRow(MORE_FROM_ROW, person.name, list, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.POSTER))),
+                overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
+                onSaveDisplay = { row, display -> if (user != null && displaySettings != null) scope.launch { displaySettings.save(user, row, display) } },
+                header = header, editButton = false,
+            )
         }
     }
 }
+
+/** The More from pages' one row: its look is kept under this key for them all. */
+private const val MORE_FROM_ROW = "more-from/titles"
 
 /** A line someone says (OK: play from just before it). */
 @Composable

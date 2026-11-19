@@ -133,13 +133,22 @@ fun RowsPage(
         else listState.animateScrollToItem(index)
     }
 
+    // Up to the tabs: the first row back exactly in its place under them (the search for something
+    // above it could leave the list part-scrolled, the row's foot off the screen).
+    LaunchedEffect(focusedRowIndex) {
+        if (oneAtATime && focusedRowIndex == HEADER_FOCUSED && rows.isNotEmpty()) {
+            kotlinx.coroutines.delay(32)
+            listState.animateScrollToItem(0, roomAbove)
+        }
+    }
+
     // "Row: style" for a moment after Fast-forward/Rewind changes one.
     var styleNote by remember { mutableStateOf<Pair<String, Long>?>(null) }
     LaunchedEffect(styleNote) { if (styleNote != null) { kotlinx.coroutines.delay(2_500); styleNote = null } }
     Box(modifier.fillMaxSize()) {
-        if (activeShowcase == null) Backdrop(focused?.let(repository::backdropUrl), Modifier.fillMaxSize())
-        // The page's theme, behind the rows and over the title's picture.
-        dev.nitrate.tv.ui.effects.ThemeBehindSlot()
+        // The title's picture (or the page's chosen background) and the theme over it: drawn by the menu
+        // around the page, so they carry on through tab switches.
+        dev.nitrate.tv.ui.effects.PageBackdropSlot(if (activeShowcase == null) focused?.let(repository::backdropUrl) else null)
         androidx.compose.animation.AnimatedVisibility(
             visible = styleNote != null, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = RowPadding).zIndex(2f),

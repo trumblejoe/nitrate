@@ -327,6 +327,14 @@ class TvScreenshotTest {
     }
     private val rowsLibrary = dev.nitrate.core.pages.DisplayPrefs(tvLibraryLayout = dev.nitrate.core.pages.TvHomeLayout.ROWS)
 
+    /** From the first row back up to the tabs: the row stays whole in its place under them. */
+    @Test fun libraryRowUpToTabs() = libraryShot("tv-library-row-up-to-tabs", rowsLibrary) {
+        press("down")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        press("up")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+    }
+
     /** Choosing All keeps focus on the tabs (it used to fall through to the menu). */
     @Test fun libraryTabSwitch() = libraryShot("tv-library-tab-switch", rowsLibrary) {
         press("right", "ok")
@@ -405,13 +413,13 @@ class TvScreenshotTest {
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.BOUNCE))
     }, act = {
         compose.mainClock.advanceTimeBy(2_000); compose.waitForIdle()
-        press("down", "down")
+        press("down", "down", "down")
         val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
-        check(focused.isNotEmpty() && kotlin.math.abs(focused.first().boundsInRoot.width - 144f) < 2f) { "Down from the bar should catch a poster in the box, got ${focused.map { it.boundsInRoot }}" }
+        check(focused.isNotEmpty() && kotlin.math.abs(focused.first().boundsInRoot.width - 80f) < 2f) { "Down past the set buttons should catch a poster in the box, got ${focused.map { it.boundsInRoot }}" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
     /** A library's All tab in [view]: Down from the bar into it, then Right twice; something in it keeps focus. */
-    private fun showViewShot(view: dev.nitrate.core.pages.BrowseView) = shoot("tv-library-view-${view.name.lowercase()}", setup = { c ->
+    private fun showViewShot(view: dev.nitrate.core.pages.BrowseView, downs: Int = 2, rights: Int = 2) = shoot("tv-library-view-${view.name.lowercase()}", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)
         c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
             dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
@@ -419,7 +427,8 @@ class TvScreenshotTest {
         ))
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = view))
     }, act = {
-        press("down", "down", "right", "right")
+        repeat(downs) { press("down") }
+        repeat(rights) { press("right") }
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
         val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
         check(focused.isNotEmpty() && focused.first().boundsInRoot.top > 200f) { "focus should be in the ${view.label} view, got ${focused.map { it.boundsInRoot }}" }
@@ -430,8 +439,42 @@ class TvScreenshotTest {
     @Test fun libraryTimeline() = showViewShot(dev.nitrate.core.pages.BrowseView.TIMELINE)
     @Test fun libraryWall() = showViewShot(dev.nitrate.core.pages.BrowseView.WALL)
     @Test fun libraryRolodex() = showViewShot(dev.nitrate.core.pages.BrowseView.ROLODEX)
-    @Test fun libraryStarfield() = showViewShot(dev.nitrate.core.pages.BrowseView.STARFIELD)
-    @Test fun libraryDeck() = showViewShot(dev.nitrate.core.pages.BrowseView.DECK)
+    @Test fun libraryStarfield() = showViewShot(dev.nitrate.core.pages.BrowseView.STARFIELD, downs = 3)
+    /** The deck after five deals: the dealt cards lie scattered on the table behind. */
+    @Test fun libraryDeck() = showViewShot(dev.nitrate.core.pages.BrowseView.DECK, downs = 3, rights = 5)
+
+    /** Choosing a new view from the View button leaves focus on it (switching to the box used to drop it to the menu). */
+    @Test fun libraryViewSwitchKeepsFocus() = shoot("tv-library-view-switch", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
+        ))
+    }, act = {
+        press("down")
+        repeat(4) { if (!focusedHasText("View")) press("right") }
+        check(focusedHasText("View")) { "should reach the View button" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        repeat(3) { press("right") }
+        check(focusedHasText("Bouncing box")) { "should reach Bouncing box in the dialog" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(1_200); compose.waitForIdle()
+        check(focusedHasText("View")) { "focus should come back to the View button" }
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
+    /** Home rows over a smart gradient: the page's colour taken from the focused title. */
+    @Test fun homeSmartGradient() = shoot("tv-home-smart-gradient", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(pageBackdrops = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageBackdrop.SMART_GRADIENT)))
+    }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    /** A More from page: one row as Home's are, over the background chosen for these pages. */
+    @Test fun moreFromPage() = shoot("tv-more-from", { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(pageBackdrops = mapOf(PageKeys.MORE_FROM to dev.nitrate.core.effects.PageBackdrop.SUNSET)))
+    }, act = { press("down") }) { c ->
+        WithMenu(c) { dev.nitrate.tv.ui.search.PersonScreen(c.server, dev.nitrate.core.model.Person("", "More from 2023"), onOpen = {}, year = 2023, displaySettings = c.displaySettings) }
+    }
 
     /**
      * Home with tabs (pinned pages), rows one at a time: Right past a row's last card stays in the row (it
@@ -707,7 +750,9 @@ class TvScreenshotTest {
     private fun press(vararg keys: String) {
         keys.forEach { name ->
             val k = when (name) { "ok" -> androidx.compose.ui.input.key.Key.DirectionCenter; "ff" -> androidx.compose.ui.input.key.Key.MediaFastForward; "rw" -> androidx.compose.ui.input.key.Key.MediaRewind; "menu" -> androidx.compose.ui.input.key.Key.Menu; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; "down" -> androidx.compose.ui.input.key.Key.DirectionDown; "left" -> androidx.compose.ui.input.key.Key.DirectionLeft; else -> androidx.compose.ui.input.key.Key.DirectionRight }
-            compose.onRoot().performKeyInput { pressKey(k) }
+            // With a dialog open, keys go to it (the topmost window).
+            val roots = compose.onAllNodes(androidx.compose.ui.test.isRoot())
+            (if (roots.fetchSemanticsNodes().size > 1) roots[roots.fetchSemanticsNodes().size - 1] else compose.onRoot()).performKeyInput { pressKey(k) }
             compose.mainClock.advanceTimeBy(400)
             compose.waitForIdle()
         }

@@ -595,24 +595,37 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     val marked = remember(catalog, current) { catalog.current(current) }
     // "Fade in" used to be its own menu: it's the top/bottom bar, hidden.
     val style = if (prefs.tvMenu == TvMenuStyle.FADE) TvMenuStyle.TOP else prefs.tvMenu
-    val theme = dev.nitrate.core.effects.PageThemes.pageKeyFor(current)?.let { prefs.pageThemes[it] }
+    val pageKey = dev.nitrate.core.effects.PageThemes.pageKeyFor(current)
+    TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
+        ThemedPage(pageKey, insets) { content(insets) }
+    }
+}
+
+/**
+ * What's behind and in front of a page, kept for as long as the page frame shows (so switching tabs
+ * never restarts it): the page's backdrop (the focused title's picture, reported by the page with
+ * `PageBackdropSlot`, or the colour or gradient chosen for [pageKey]), then the back and middle of
+ * its theme and the day's occasion (clear of [insets], where a menu sits; never in the player), the
+ * page, and the theme's front over it. Menu pages get it from `MainMenu`; others (More from…) use it
+ * directly.
+ */
+@Composable
+fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), content: @Composable () -> Unit) {
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val theme = pageKey?.let { prefs.pageThemes[it] }
     val occasion = dev.nitrate.tv.ui.effects.rememberOccasion(prefs.effects)
     val themed = !prefs.easyMode
-    TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
-        // The page's theme and the day's occasion, in layers around the page (kept clear of where the
-        // menu sits; never in the player: it isn't a menu page): its back and middle behind the rows,
-        // drawn by the page just over its own backdrop (ThemeBehindSlot), or under the whole page when
-        // it has none; its front over the page.
-        val clear = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)
-        val behind = remember { dev.nitrate.tv.ui.effects.ThemeBehind() }
-        behind.active = themed && prefs.effects.on && ((theme != null && theme != dev.nitrate.core.effects.PageTheme.NONE) || occasion != null)
-        behind.draw = { m -> if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, m.then(clear), depths = dev.nitrate.tv.ui.effects.BEHIND) }
-        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalThemeBehind provides behind) {
-            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
-                if (behind.claims == 0) behind.draw(Modifier.fillMaxSize())
-                content(insets)
-                if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.INFRONT)
-            }
+    val clear = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)
+    val behind = remember { dev.nitrate.tv.ui.effects.ThemeBehind() }
+    behind.active = themed && prefs.effects.on && ((theme != null && theme != dev.nitrate.core.effects.PageTheme.NONE) || occasion != null)
+    val backdrop = pageKey?.let { prefs.pageBackdrops[it] } ?: dev.nitrate.core.effects.PageBackdrop.ARTWORK
+    androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalThemeBehind provides behind) {
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+            if (behind.titles > 0 || !backdrop.followsTitle) dev.nitrate.tv.ui.effects.PageBackground(backdrop, behind.artwork)
+            if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.BEHIND)
+            if (behind.active && behind.titles > 0) dev.nitrate.tv.ui.effects.ThemeShade()
+            content()
+            if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.INFRONT)
         }
     }
 }

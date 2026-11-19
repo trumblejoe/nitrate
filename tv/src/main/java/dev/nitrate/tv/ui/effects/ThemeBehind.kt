@@ -1,29 +1,39 @@
 package dev.nitrate.tv.ui.effects
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import coil3.toBitmap
+import coil3.request.allowHardware
+import dev.nitrate.core.effects.PageBackdrop
+import dev.nitrate.tv.ui.components.Backdrop
 
 /**
- * The back and middle of the page's theme, offered by `MainMenu` to its page. A page with a backdrop
- * of its own (the rows page, full art) draws it just over that backdrop with [ThemeBehindSlot], so the
- * theme sits between the title's picture and the cards; any other page gets it drawn under the whole
- * page instead ([claims] says whether a page has taken it).
+ * What lies behind a menu page, kept by `MainMenu` for as long as the menu shows, so switching tabs
+ * (or pages) never tears it down: the page's backdrop ([PageBackdrop]: the focused title's picture, a
+ * colour from it, a gradient or a flat colour) and over it the back and middle of the page's theme.
+ * A page with a focused title reports its picture with [PageBackdropSlot]; [titles] says whether one
+ * does (else a picture-based backdrop has nothing to show and the page's own background shows).
  */
 class ThemeBehind {
-    var draw: @Composable (Modifier) -> Unit by mutableStateOf({ _ -> })
-    var claims by mutableIntStateOf(0)
+    var artwork by mutableStateOf<String?>(null)
+    var titles by mutableIntStateOf(0)
     /** Whether there's a theme or occasion showing (the shade over a scene only goes on then). */
     var active by mutableStateOf(false)
 }
@@ -31,18 +41,68 @@ class ThemeBehind {
 val LocalThemeBehind = staticCompositionLocalOf<ThemeBehind?> { null }
 
 /**
- * Where a page draws its theme's back layers: right after its own backdrop, before its text and
- * cards. A soft shade at the top left keeps the focused title's name readable over a busy scene.
+ * Where a page with a focused title puts its backdrop: under a menu, the menu draws it (with the
+ * theme over it, both kept across tab switches), the page only says which picture; with no menu
+ * (previews, tests) the picture is drawn here.
  */
 @Composable
-fun ThemeBehindSlot(modifier: Modifier = Modifier) {
-    val behind = LocalThemeBehind.current ?: return
+fun PageBackdropSlot(url: String?, modifier: Modifier = Modifier) {
+    val behind = LocalThemeBehind.current
+    if (behind == null) {
+        Backdrop(url, modifier.fillMaxSize())
+        return
+    }
     DisposableEffect(behind) {
-        behind.claims++
-        onDispose { behind.claims-- }
+        behind.titles++
+        onDispose { behind.titles--; if (behind.titles == 0) behind.artwork = null }
     }
-    Box(modifier.fillMaxSize()) {
-        behind.draw(Modifier.fillMaxSize())
-        if (behind.active) Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x59000000), Color.Transparent), center = Offset(0f, 0f), radius = 1400f)))
+    SideEffect { behind.artwork = url }
+}
+
+/** The page's backdrop as chosen; [artwork] is the focused title's picture (null: none to follow). */
+@Composable
+fun PageBackground(choice: PageBackdrop, artwork: String?, modifier: Modifier = Modifier) {
+    when (choice.kind) {
+        PageBackdrop.Kind.ARTWORK -> Backdrop(artwork, modifier.fillMaxSize())
+        PageBackdrop.Kind.GRADIENT -> Box(modifier.fillMaxSize().background(Brush.linearGradient(choice.colors.map { Color(it) }, start = Offset.Zero, end = Offset.Infinite)))
+        PageBackdrop.Kind.SOLID -> Box(modifier.fillMaxSize().background(Color(choice.colors.first())))
+        PageBackdrop.Kind.SMART_GRADIENT, PageBackdrop.Kind.SMART_COLOUR -> {
+            val picked = rememberArtColor(artwork) ?: Color(0xFF16181E)
+            val base by animateColorAsState(Color(PageBackdrop.darkened(argbOf(picked)).toInt()), tween(700), label = "smart")
+            if (choice.kind == PageBackdrop.Kind.SMART_COLOUR) Box(modifier.fillMaxSize().background(base))
+            else Box(modifier.fillMaxSize().background(Brush.linearGradient(listOf(lighten(base), base, Color(0xFF050608)), start = Offset.Zero, end = Offset.Infinite)))
+        }
     }
+}
+
+private fun argbOf(c: Color): Long {
+    fun ch(v: Float) = (v * 255f + 0.5f).toLong().coerceIn(0, 255)
+    return (0xFFL shl 24) or (ch(c.red) shl 16) or (ch(c.green) shl 8) or ch(c.blue)
+}
+
+private fun lighten(c: Color) = Color((c.red * 1.7f).coerceAtMost(1f), (c.green * 1.7f).coerceAtMost(1f), (c.blue * 1.7f).coerceAtMost(1f))
+
+/** The main colour of a picture (as Cressida's smart ink picks it), or null until it's read. */
+@Composable
+fun rememberArtColor(url: String?): Color? {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val cache = remember { HashMap<String, Color>() }
+    val colour by produceState<Color?>(url?.let { cache[it] }, url) {
+        if (url == null) return@produceState
+        cache[url]?.let { value = it; return@produceState }
+        val request = coil3.request.ImageRequest.Builder(context).data(url).size(64).allowHardware(false).build()
+        val result = coil3.SingletonImageLoader.get(context).execute(request) as? coil3.request.SuccessResult ?: return@produceState
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val bitmap = result.image.toBitmap().let { if (it.config == android.graphics.Bitmap.Config.ARGB_8888) it else it.copy(android.graphics.Bitmap.Config.ARGB_8888, false) }
+            val pixels = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
+            Color(dev.nitrate.core.rows.InkPalette.smart(pixels, bitmap.width).toInt())
+        }.also { cache[url] = it }
+    }
+    return colour
+}
+
+/** The soft shade at the top left over a theme, so the focused title's name stays readable. */
+@Composable
+fun ThemeShade(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x59000000), Color.Transparent), center = Offset(0f, 0f), radius = 1400f)))
 }

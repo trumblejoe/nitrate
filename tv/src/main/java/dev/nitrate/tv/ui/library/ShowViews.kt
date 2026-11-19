@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -78,6 +79,7 @@ import dev.nitrate.core.pages.BrowseView
 import dev.nitrate.core.pages.hidesDescription
 import dev.nitrate.tv.ui.components.ItemMetaLine
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.floor
@@ -94,7 +96,36 @@ class ShowArgs(
     val onOpen: (MediaItem) -> Unit,
     val onPlay: (MediaItem) -> Unit,
     val onNeedMore: () -> Unit,
+    /** Where a letter's first title is (loading up to it); null when not sorted by name (no A–Z). */
+    val letterAt: (suspend (String) -> Int?)? = null,
+    /** How many titles there are in all (-1 until known). */
+    val total: Int = -1,
 )
+
+/**
+ * The A–Z for a show view: down a side ([vertical]) or along the top. Faint until focus comes into
+ * it; OK on a letter jumps to its first title ([onJump] gets its place) and hands focus back.
+ */
+@Composable
+internal fun ShowLetters(args: ShowArgs, vertical: Boolean, onJump: (Int) -> Unit, modifier: Modifier = Modifier, onLetter: ((String) -> Unit)? = null) {
+    val at = args.letterAt ?: return
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var inside by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val shown by animateFloatAsState(if (inside) 1f else 0.4f, label = "letters")
+    val key: @Composable (String, Modifier) -> Unit = { letter, m ->
+        Surface(
+            onClick = { onLetter?.invoke(letter) ?: scope.launch { at(letter)?.let(onJump) } },
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
+            modifier = m,
+        ) { Box(Modifier.fillMaxSize(), Alignment.Center) { Text(letter, style = if (vertical) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge) } }
+    }
+    val m = modifier.onFocusChanged { inside = it.hasFocus }.graphicsLayer { alpha = shown }
+    if (vertical) Column(m.width(30.dp).fillMaxHeight().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        dev.nitrate.core.pages.Browse.LETTERS.forEach { key(it, Modifier.weight(1f).fillMaxWidth()) }
+    } else Row(m, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        dev.nitrate.core.pages.Browse.LETTERS.forEach { key(it, Modifier.size(width = 22.dp, height = 32.dp)) }
+    }
+}
 
 /** The All tab's show views (everything but the plain grids and list), filling the space under the bar. */
 @Composable
@@ -249,12 +280,16 @@ private fun Rolodex(args: ShowArgs, modifier: Modifier) {
     val pos by animateFloatAsState(index.intValue.toFloat(), spring(dampingRatio = 0.8f, stiffness = 260f), label = "drum")
     var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val current = items.getOrNull(index.intValue)
+    val viewFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    // ▲▼ flip the cards; ▶ goes to the A–Z down the side, ◀ to the menu.
+    Row(modifier) {
     BoxWithConstraints(
-        modifier.onFocusChanged { focused = it.hasFocus }
+        Modifier.weight(1f).fillMaxHeight().onFocusChanged { focused = it.hasFocus }
+            .focusRequester(viewFocus)
             .showKeys(args, current) { k ->
                 when (k) {
-                    Key.DirectionDown, Key.DirectionRight -> index.step(1, items.size) || k == Key.DirectionDown
-                    Key.DirectionUp, Key.DirectionLeft -> index.step(-1, items.size)
+                    Key.DirectionDown -> index.step(1, items.size) || true
+                    Key.DirectionUp -> index.step(-1, items.size)
                     else -> false
                 }
             },
@@ -303,6 +338,8 @@ private fun Rolodex(args: ShowArgs, modifier: Modifier) {
             }
         }
     }
+    ShowLetters(args, vertical = true, onJump = { i -> index.intValue = i; runCatching { viewFocus.requestFocus() } }, modifier = Modifier.padding(start = 10.dp))
+    }
 }
 
 // ---- Shuffle deck ----
@@ -310,13 +347,29 @@ private fun Rolodex(args: ShowArgs, modifier: Modifier) {
 /** A deck of cards: the top one large with its details; ▶ deals it off with a flick, ◀ brings the last one back. */
 @Composable
 private fun Deck(args: ShowArgs, modifier: Modifier) {
-    val items = args.items
-    val index = rememberChoice(args)
+    // Shuffled: the deck's own order of the titles loaded (by id), until a letter is chosen.
+    var order by rememberSaveable { androidx.compose.runtime.mutableStateOf<List<String>?>(null) }
+    val byId = remember(args.items) { args.items.associateBy { it.id } }
+    val items = order?.mapNotNull { byId[it] } ?: args.items
+    val index = rememberChoice(ShowArgs(items, args.repository, args.music, args.titleOf, args.onOpen, args.onPlay, onNeedMore = { if (order == null) args.onNeedMore() }))
     val pos by animateFloatAsState(index.intValue.toFloat(), tween(420), label = "deal")
     var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val current = items.getOrNull(index.intValue)
+    val viewFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Shuffle and the A–Z above the table (▲ from the deck).
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            androidx.tv.material3.OutlinedButton(onClick = {
+                order = args.items.map { it.id }.shuffled()
+                index.intValue = 0
+                runCatching { viewFocus.requestFocus() }
+            }) { Text(if (order == null) "Shuffle the deck" else "Shuffle again") }
+            if (order != null) androidx.tv.material3.OutlinedButton(onClick = { order = null; index.intValue = 0; runCatching { viewFocus.requestFocus() } }) { Text("In order") }
+            ShowLetters(args, vertical = false, onJump = { i -> order = null; index.intValue = i; runCatching { viewFocus.requestFocus() } })
+        }
     BoxWithConstraints(
-        modifier.onFocusChanged { focused = it.hasFocus }
+        Modifier.weight(1f).fillMaxWidth().onFocusChanged { focused = it.hasFocus }
+            .focusRequester(viewFocus)
             .showKeys(args, current) { k -> when (k) { Key.DirectionRight -> index.step(1, items.size); Key.DirectionLeft -> index.step(-1, items.size); else -> false } },
     ) {
         val density = LocalDensity.current
@@ -324,19 +377,34 @@ private fun Deck(args: ShowArgs, modifier: Modifier) {
         val cardW = if (args.music) cardH else cardH * 2f / 3f
         val left = maxWidth * 0.12f
         val wPx = with(density) { maxWidth.toPx() }
-        val first = (floor(pos).toInt() - 1).coerceAtLeast(0)
+        val hPx = with(density) { maxHeight.toPx() }
+        val leftPx = with(density) { left.toPx() }
+        val cardWPx = with(density) { cardW.toPx() }
+        val cardHPx = with(density) { cardH.toPx() }
+        // The cards dealt so far lie where they landed, thrown across the table behind the deck.
+        val firstDealt = (floor(pos).toInt() - DISCARDS).coerceAtLeast(0)
         val last = (floor(pos).toInt() + 6).coerceAtMost(items.lastIndex)
-        for (i in last downTo first) {
+        for (i in last downTo firstDealt) {
             val d = i - pos
+            // Where a dealt card comes to rest: anywhere on the table, at its own angle, half size.
+            // (The left of the table: the details take the right.)
+            val restX = wPx * (rnd(i, 21) * 0.5f) - leftPx - cardWPx * 0.25f
+            val restY = hPx * (rnd(i, 22) * 0.5f) - cardHPx * 0.2f
+            val restTurn = rnd(i, 23) * 70f - 35f
             Box(
-                Modifier.offset(x = left).padding(top = 8.dp).width(cardW).height(cardH).zIndex(-d)
+                Modifier.offset(x = left).padding(top = 8.dp).width(cardW).height(cardH).zIndex(if (d <= -1f) -100f - d else -d)
                     .graphicsLayer {
                         if (d < 0f) {
-                            // Dealt: flicked off to the right, turning as it goes.
-                            translationX = -d * wPx * 0.75f
-                            translationY = d * 40f
-                            rotationZ = -d * 26f
-                            alpha = (1f + d).coerceIn(0f, 1f)
+                            // Flicked off the top, turning as it flies, and landing face up on the table.
+                            val t = (-d).coerceAtMost(1f)
+                            val arc = sin(t * 3.1416f) * -hPx * 0.12f
+                            translationX = restX * t
+                            translationY = restY * t + arc
+                            rotationZ = restTurn * t
+                            val sc = 1f - 0.5f * t
+                            scaleX = sc; scaleY = sc
+                            // Older discards sink into the table's shade.
+                            alpha = (1f - ((-d - 1f) / DISCARDS).coerceIn(0f, 1f) * 0.6f)
                         } else {
                             // In the deck: each a little askew, further down the pile a little smaller.
                             val k = min(d, 5f)
@@ -348,17 +416,27 @@ private fun Deck(args: ShowArgs, modifier: Modifier) {
                     }
                     .background(Color(0xFFF7F2E7), RoundedCornerShape(14.dp))
                     .then(if (abs(d) < 0.5f && focused) Modifier.border(3.dp, Color.White, RoundedCornerShape(14.dp)) else Modifier)
+                    .drawWithContent { drawContent(); if (d <= -0.5f) drawRect(Color.Black.copy(alpha = 0.35f)) }
                     .padding(8.dp),
             ) { Poster(items[i], args, Modifier.fillMaxSize()) }
         }
         current?.let {
-            Column(Modifier.align(Alignment.CenterEnd).fillMaxWidth(0.42f).padding(end = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(
+                Modifier.align(Alignment.CenterEnd).fillMaxWidth(0.42f).zIndex(10f)
+                    .background(Brush.horizontalGradient(listOf(Color(0x80080A10), Color(0xF2080A10), Color(0xF2080A10))), RoundedCornerShape(14.dp))
+                    .padding(start = 36.dp, end = 24.dp, top = 18.dp, bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
                 Details(it, args, lines = 6)
                 Text("▶ deals the next card · ◀ takes one back · ${index.intValue + 1} of ${items.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
+    }
 }
+
+/** How many dealt cards stay on the table. */
+private const val DISCARDS = 14
 
 // ---- Starfield ----
 
@@ -377,9 +455,14 @@ private fun Starfield(args: ShowArgs, modifier: Modifier) {
     val arrive = remember { Animatable(1f) }
     LaunchedEffect(index.intValue) { arrive.snapTo(0f); arrive.animateTo(1f, tween(650)) }
     val current = items.getOrNull(index.intValue)
+    val viewFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    // The A–Z along the top, under the bar (▲ from the stars).
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ShowLetters(args, vertical = false, onJump = { i -> index.intValue = i; runCatching { viewFocus.requestFocus() } })
     BoxWithConstraints(
-        modifier.clip(RoundedCornerShape(18.dp))
+        Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))
             .onFocusChanged { focused = it.hasFocus }
+            .focusRequester(viewFocus)
             .showKeys(args, current) { k -> when (k) { Key.DirectionRight -> index.step(1, items.size); Key.DirectionLeft -> index.step(-1, items.size); else -> false } },
     ) {
         Canvas(Modifier.fillMaxSize()) { with(dev.nitrate.tv.ui.effects.ShowStars) { draw(t * 0.35f) } }
@@ -409,6 +492,7 @@ private fun Starfield(args: ShowArgs, modifier: Modifier) {
                 Details(it, args, Modifier.weight(1f).background(Brush.horizontalGradient(listOf(Color(0xCC02030A), Color(0x9902030A), Color.Transparent)), RoundedCornerShape(12.dp)).padding(14.dp), lines = 5)
             }
         }
+    }
     }
 }
 

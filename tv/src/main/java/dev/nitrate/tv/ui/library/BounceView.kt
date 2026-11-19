@@ -1,6 +1,26 @@
 package dev.nitrate.tv.ui.library
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.tv.material3.OutlinedButton
+import coil3.compose.AsyncImage
+import dev.nitrate.core.pages.Browse
+import dev.nitrate.core.pages.hidesDescription
+import dev.nitrate.tv.ui.components.ItemMetaLine
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,46 +58,106 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** How many titles fly at once: enough to be lively, few enough to pick one out. */
-const val BOUNCE_MAX = 16
+/** How many titles fly at once: small posters, so plenty to pick from. */
+const val BOUNCE_MAX = 50
 
 /** One poster's place and speed in the box (px, px per second). */
 private class Flyer(var x: Float, var y: Float, var vx: Float, var vy: Float)
 
 /**
- * The library as posters flying round a box: each drifts in its own direction, bouncing off the
- * walls and off each other. The one with focus stops still and grows; while focus is in the box the
- * rest slow down, so one can be caught. ◀▶▲▼ go to the nearest poster that way (they're laid out
- * where they're drawn, so the TV's own focus search finds them), OK opens, ▶ plays. With "Reduce
- * motion" they barely drift. [titleOf] gives each card's name (ticks while selecting).
+ * The library as small posters flying round a box: each drifts its own way, bouncing off the walls
+ * and each other. The one with focus stops still and is shown large beside the box with its details;
+ * while focus is in the box the rest slow down, so one can be caught. ◀▶▲▼ go to the nearest poster
+ * that way (they're laid out where they're drawn, so the TV's focus search finds them); on past the
+ * right-hand ones is the A–Z, and a letter fills the box with that letter's titles. Above the box:
+ * the previous and next set of [BOUNCE_MAX] (of everything, or of the letter) and a fresh random set.
+ * OK opens, ▶ plays. With "Reduce motion" they barely drift.
  */
 @Composable
-fun BounceBox(
-    items: List<MediaItem>,
-    total: Int,
-    repository: MediaServer,
-    music: Boolean,
-    titleOf: (MediaItem) -> String,
-    onOpen: (MediaItem) -> Unit,
-    onPlay: (MediaItem) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val shown = items.take(BOUNCE_MAX)
+fun BounceBox(args: ShowArgs, modifier: Modifier = Modifier) {
+    val items = args.items
+    var letter by rememberSaveable { mutableStateOf<String?>(null) }
+    var start by rememberSaveable { mutableIntStateOf(0) }
+    // A random set (by id) in place of the next in order, until the next/previous set is asked for.
+    var picked by rememberSaveable { mutableStateOf<List<String>?>(null) }
+    val pool = remember(items, letter) { letter?.let { l -> items.filter { Browse.letterOf(it) == l } } ?: items }
+    val byId = remember(items) { items.associateBy { it.id } }
+    val shown = picked?.mapNotNull { byId[it] } ?: pool.drop(start).take(BOUNCE_MAX)
+    // Titles still to come for this set (or letter): asked for from the server as they're needed.
+    LaunchedEffect(start, pool.size, letter, items.size) {
+        val lastLetter = items.lastOrNull()?.let(Browse::letterOf)
+        val more = if (letter == null) start + BOUNCE_MAX * 2 > pool.size else lastLetter == letter
+        if (more && (args.total < 0 || items.size < args.total)) args.onNeedMore()
+    }
+    val scope = rememberCoroutineScope()
+    var focusedIndex by remember { mutableStateOf(-1) }
+    val featured = shown.getOrNull(focusedIndex) ?: shown.firstOrNull()
     val calm = LocalDisplayPrefs.current.effects.reduceMotion
+    val total = if (letter == null && args.total >= 0) args.total else pool.size
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = { picked = null; start = (start - BOUNCE_MAX).coerceAtLeast(0) }, enabled = picked != null || start > 0) { Text("◀ Previous ${BOUNCE_MAX}") }
+            OutlinedButton(onClick = { picked = pool.shuffled().take(BOUNCE_MAX).map { it.id } }) { Text("New set") }
+            OutlinedButton(onClick = { picked = null; if (start + BOUNCE_MAX < pool.size) start += BOUNCE_MAX }, enabled = picked != null || start + BOUNCE_MAX < pool.size) { Text("Next ${BOUNCE_MAX} ▶") }
+            if (letter != null) OutlinedButton(onClick = { letter = null; picked = null; start = 0 }) { Text("All letters") }
+            Text(
+                when {
+                    picked != null -> "A random ${shown.size}" + (letter?.let { " from $it" } ?: "")
+                    shown.isEmpty() -> "Nothing here"
+                    else -> (letter?.let { "$it · " } ?: "") + "${start + 1}–${start + shown.size} of $total"
+                },
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Flyers(shown, args, calm, onFocused = { focusedIndex = it }, modifier = Modifier.weight(1f).fillMaxHeight())
+            // On past the box: the A–Z (only when sorted by name).
+            args.letterAt?.let { at ->
+                ShowLetters(args, vertical = true, onJump = { _ -> }, modifier = Modifier, onLetter = { l ->
+                    scope.launch { at(l); letter = l; picked = null; start = 0 }
+                })
+            }
+            featured?.let { Featured(it, args, Modifier.width(300.dp).fillMaxHeight()) }
+        }
+    }
+}
+
+/** The chosen (or first) title large beside the box, with its details. */
+@Composable
+private fun Featured(item: MediaItem, args: ShowArgs, modifier: Modifier) {
+    Column(modifier.background(Color(0x99080A10), RoundedCornerShape(16.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // As large as the room left by the text allows, at the poster's own shape.
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+            Box(Modifier.fillMaxHeight().aspectRatio(if (args.music) 1f else 2f / 3f, matchHeightConstraintsFirst = true).clip(RoundedCornerShape(12.dp)).background(Color(0xFF1E2230))) {
+                AsyncImage(args.repository.imageUrl(item, ImageKind.PRIMARY, 480), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Text(args.titleOf(item), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        ItemMetaLine(item)
+        val prefs = LocalDisplayPrefs.current
+        if (prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** The box itself, its posters flying. */
+@Composable
+private fun Flyers(shown: List<MediaItem>, args: ShowArgs, calm: Boolean, onFocused: (Int) -> Unit, modifier: Modifier) {
     BoxWithConstraints(
         modifier
             .background(Brush.radialGradient(listOf(Color(0x22FFFFFF), Color(0x08FFFFFF))), RoundedCornerShape(18.dp))
             .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp)),
     ) {
         val density = LocalDensity.current
-        // Small enough that the box is half empty: room to fly.
-        val cardW = if (music) 84.dp else 72.dp
-        val cardH = (if (music) 84.dp else 108.dp) + 46.dp // poster plus its caption
+        // Small enough for fifty with room to fly.
+        val cardW = if (args.music) 46.dp else 40.dp
+        val cardH = if (args.music) 46.dp else 60.dp
         val wPx = with(density) { maxWidth.toPx() }
         val hPx = with(density) { maxHeight.toPx() }
         val cw = with(density) { cardW.toPx() }
         val ch = with(density) { cardH.toPx() }
-        val pad = with(density) { 10.dp.toPx() }
+        val pad = with(density) { 8.dp.toPx() }
         // Each title starts somewhere of its own and sets off its own way (the same each time).
         val flyers = remember(shown.map { it.id }, wPx, hPx) {
             // Spread over a loose grid to start (nothing on top of anything), each nudged within its
@@ -88,7 +168,7 @@ fun BounceBox(
             val cellH = (hPx - 2 * pad) / rows.coerceAtLeast(1)
             shown.mapIndexed { i, item ->
                 val r = Random(item.id.hashCode())
-                val speed = with(density) { (55 + r.nextInt(70)).dp.toPx() }
+                val speed = with(density) { (40 + r.nextInt(60)).dp.toPx() }
                 val a = r.nextDouble(0.0, 2 * Math.PI)
                 Flyer(
                     x = pad + (i % cols) * cellW + r.nextFloat() * (cellW - cw).coerceAtLeast(0f),
@@ -120,26 +200,23 @@ fun BounceBox(
                     .offset { tick.let { IntOffset(f.x.roundToInt(), f.y.roundToInt()) } }
                     .zIndex(if (focused) 1f else 0f)
                     .width(cardW)
-                    .onFocusChanged { if (it.hasFocus) focusedIndex = i else if (focusedIndex == i) focusedIndex = -1 },
+                    .onFocusChanged {
+                        if (it.hasFocus) { focusedIndex = i; onFocused(i) }
+                        else if (focusedIndex == i) { focusedIndex = -1; onFocused(-1) }
+                    },
             ) {
                 MediaCard(
                     item = item,
-                    title = titleOf(item),
-                    imageUrl = repository.imageUrl(item, ImageKind.PRIMARY, 240),
+                    title = null,
+                    imageUrl = args.repository.imageUrl(item, ImageKind.PRIMARY, 160),
                     width = cardW,
-                    aspectRatio = if (music) 1f else 2f / 3f,
-                    onClick = { onOpen(item) },
-                    onPlay = { if (item.isPlayable) onPlay(item) else onOpen(item) },
+                    aspectRatio = if (args.music) 1f else 2f / 3f,
+                    onClick = { args.onOpen(item) },
+                    onPlay = { if (item.isPlayable) args.onPlay(item) else args.onOpen(item) },
+                    showProgress = false,
+                    modifier = Modifier.semantics { contentDescription = args.titleOf(item) },
                 )
             }
-        }
-        if (total > shown.size) {
-            Text(
-                "${shown.size} of $total in the box · sort or filter to change which",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-            )
         }
     }
 }

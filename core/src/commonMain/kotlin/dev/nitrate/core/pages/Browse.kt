@@ -8,8 +8,8 @@ import kotlinx.serialization.Serializable
 /** How a library's full list is shown: a grid of posters or of artwork, or a list with details. */
 @Serializable
 /** How a library's All view lays titles out. [tvOnly] views need the TV's own screen (the phone shows its grid instead). */
-enum class BrowseView(val label: String, val tvOnly: Boolean = false) {
-    GRID("Posters"), ARTWORK("Artwork"), LIST("List"),
+enum class BrowseView(val label: String, val tvOnly: Boolean = false, val columnChoices: IntRange = IntRange.EMPTY) {
+    GRID("Posters", columnChoices = 4..10), ARTWORK("Artwork", columnChoices = 2..6), LIST("List", columnChoices = 1..3),
     /** Posters flying round a box, bouncing off its walls and each other; the one focused stops still. */
     BOUNCE("Bouncing box", tvOnly = true),
     /** One big cover in the middle, its neighbours tilted away either side. */
@@ -25,7 +25,15 @@ enum class BrowseView(val label: String, val tvOnly: Boolean = false) {
     /** Posters drifting towards you out of deep space; the chosen one parked up front. */
     STARFIELD("Starfield", tvOnly = true),
     /** A deck of cards: each one dealt off the top with a flick. */
-    DECK("Shuffle deck", tvOnly = true),
+    DECK("Shuffle deck", tvOnly = true);
+
+    /** The grid's own column count (album covers are square, so fit more). */
+    fun defaultColumns(music: Boolean): Int = when (this) {
+        GRID -> if (music) 6 else 7
+        ARTWORK -> if (music) 6 else 4
+        LIST -> 2
+        else -> 7
+    }
 }
 
 /**
@@ -56,7 +64,12 @@ data class BrowseOptions(
     val officialRatings: List<String> = emptyList(),
     /** Tags, any of. */
     val tags: List<String> = emptyList(),
+    /** Columns chosen for a grid view (by view; missing = [BrowseView.defaultColumns]). */
+    val columns: Map<BrowseView, Int> = emptyMap(),
 ) {
+    /** How many columns [view] shows: the user's choice for it, else its own default. */
+    fun columnsFor(view: BrowseView, music: Boolean): Int = columns[view]?.takeIf { it in view.columnChoices } ?: view.defaultColumns(music)
+
     /** How many filters narrow the list, for a badge on the Filter button. */
     val filterCount: Int
         get() = listOf(watched != WatchFilter.ANY, favoritesOnly, genres.isNotEmpty(), decade != null, minRating != null, resolution != ResolutionFilter.ANY, videoCodecs.isNotEmpty(), audioCodecs.isNotEmpty(), bitDepths.isNotEmpty(), videoRanges.isNotEmpty(), officialRatings.isNotEmpty(), tags.isNotEmpty()).count { it }

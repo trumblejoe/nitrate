@@ -8,6 +8,8 @@ import dev.nitrate.android.viewmodel.RowsViewModel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -164,7 +166,7 @@ fun LibraryScreen(
             lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
             empty = "No rows here yet. Add some in Settings → Display → Pages → ${lib.name}.",
         )
-        dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, tabs, onOpen) }
+        dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay) }
         dev.nitrate.core.pages.LibraryTabKind.UNWATCHED -> Box(padded) {
             BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin,
                 viewKey = "browse/${lib.id}/unwatched",
@@ -221,24 +223,85 @@ private fun TabRows(
     }
 }
 
-/** The server's collections (box sets) as a grid, under the tabs. */
+/**
+ * The server's collections (box sets), under the tabs, in any of the All tab's views (the grids with
+ * their column choice, or a show view), saved for the tab.
+ */
 @Composable
-private fun CollectionsGrid(repository: MediaServer, tabs: @Composable () -> Unit, onOpen: (MediaItem) -> Unit) {
+private fun CollectionsGrid(
+    repository: MediaServer,
+    displaySettings: DisplaySettingsStore,
+    lib: MediaItem,
+    tabs: @Composable () -> Unit,
+    onOpen: (MediaItem) -> Unit,
+    onPlay: (MediaItem) -> Unit,
+) {
     val collections by produceState<List<MediaItem>?>(null) { value = runCatching { repository.collections() }.getOrDefault(emptyList()) }
+    val userId = repository.userId
+    val key = "browse/${lib.id}/collections"
+    val options by remember(userId, key) {
+        userId?.let { displaySettings.view(it, key, dev.nitrate.core.pages.BrowseOptions()) } ?: kotlinx.coroutines.flow.flowOf(dev.nitrate.core.pages.BrowseOptions())
+    }.collectAsStateWithLifecycle(dev.nitrate.core.pages.BrowseOptions())
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun save(change: (dev.nitrate.core.pages.BrowseOptions) -> dev.nitrate.core.pages.BrowseOptions) {
+        val user = userId ?: return
+        scope.launch { displaySettings.saveView(user, key, change(options)) }
+    }
+    var choosing by remember { mutableStateOf(false) }
+    val viewButton = remember { androidx.compose.ui.focus.FocusRequester() }
+    var changed by remember { mutableStateOf(0) }
+    LaunchedEffect(changed) {
+        if (changed == 0) return@LaunchedEffect
+        repeat(12) { kotlinx.coroutines.android.awaitFrame(); if (runCatching { viewButton.requestFocus() }.isSuccess) return@LaunchedEffect; kotlinx.coroutines.delay(30) }
+    }
+    val view = options.view
+    val columns = options.columnsFor(view, music = false)
+    val bar: @Composable () -> Unit = {
+        androidx.tv.material3.OutlinedButton(onClick = { choosing = true }, modifier = Modifier.focusRequester(viewButton)) {
+            Text("View: ${view.label}" + if (view.columnChoices.isEmpty()) "" else " · $columns")
+        }
+    }
+    if (choosing) ViewDialog(view, columns,
+        onPick = { v -> save { it.copy(view = v) }; choosing = false; changed++ },
+        onColumns = { n -> save { it.copy(columns = it.columns + (it.view to n)) } },
+        onDismiss = { choosing = false; changed++ })
+    val list = collections
+    if (view.tvOnly) {
+        Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            tabs(); bar()
+            when {
+                list == null -> Text("Loading…")
+                list.isEmpty() -> Text("No collections on this server yet.")
+                else -> {
+                    val args = ShowArgs(list, repository, music = false, titleOf = { it.name }, onOpen = onOpen, onPlay = onPlay, onNeedMore = {}, total = list.size)
+                    if (view == dev.nitrate.core.pages.BrowseView.BOUNCE) BounceBox(args, Modifier.weight(1f).fillMaxWidth())
+                    else ShowView(view, args, Modifier.weight(1f).fillMaxWidth())
+                }
+            }
+        }
+        return
+    }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(7),
+        columns = GridCells.Fixed(columns),
         contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
         horizontalArrangement = Arrangement.spacedBy(18.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) { tabs() }
-        val list = collections
+        item(span = { GridItemSpan(maxLineSpan) }) { bar() }
         when {
             list == null -> item(span = { GridItemSpan(maxLineSpan) }) { Text("Loading…") }
             list.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Text("No collections on this server yet.") }
             else -> items(list, key = { it.id }) { c ->
-                MediaCard(item = c, imageUrl = repository.imageUrl(c, ImageKind.PRIMARY, 360), width = null, aspectRatio = 2f / 3f, title = c.name, onClick = { onOpen(c) })
+                val artwork = view == dev.nitrate.core.pages.BrowseView.ARTWORK
+                if (view == dev.nitrate.core.pages.BrowseView.LIST) {
+                    MediaCard(item = c, imageUrl = repository.backdropUrl(c, 640) ?: repository.imageUrl(c, ImageKind.PRIMARY, 360), width = null, aspectRatio = 16f / 9f, title = c.name, subtitle = c.overview?.take(80), onClick = { onOpen(c) })
+                } else MediaCard(
+                    item = c,
+                    imageUrl = if (artwork) repository.imageUrl(c, ImageKind.THUMB, 360) ?: repository.backdropUrl(c, 640) else repository.imageUrl(c, ImageKind.PRIMARY, 360),
+                    width = null, aspectRatio = if (artwork) 16f / 9f else 2f / 3f, title = c.name, onClick = { onOpen(c) },
+                )
             }
         }
     }

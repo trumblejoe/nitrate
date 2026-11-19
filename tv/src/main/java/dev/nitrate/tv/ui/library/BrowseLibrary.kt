@@ -123,11 +123,18 @@ fun BrowseLibrary(
 
     // Album covers are square.
     val music = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
-    val columns = when (options.view) {
-        BrowseView.GRID -> if (music) 6 else 7
-        BrowseView.ARTWORK -> if (music) 6 else 4
-        BrowseView.LIST -> 2
-        else -> 7 // the show views lay themselves out
+    val columns = options.columnsFor(options.view, music)
+    // Changing the view rebuilds the page around it (a show view isn't a grid): focus goes back to the
+    // View button, else it fell through to the menu.
+    val viewButton = remember { FocusRequester() }
+    var viewChanged by remember { mutableStateOf(0) }
+    LaunchedEffect(viewChanged) {
+        if (viewChanged == 0) return@LaunchedEffect
+        repeat(12) {
+            kotlinx.coroutines.android.awaitFrame()
+            if (runCatching { viewButton.requestFocus() }.isSuccess) return@LaunchedEffect
+            kotlinx.coroutines.delay(30)
+        }
     }
     // The A–Z bar: above the titles, down one side (the user's choice, away from the menu by
     // default) or off. Above, it's one of the grid's first items with the header and options bar.
@@ -147,8 +154,8 @@ fun BrowseLibrary(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { dialog = "sort" }) { Text("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}") }
                 OutlinedButton(onClick = { dialog = "filters" }) { Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") }
-                OutlinedButton(onClick = { dialog = "view" }) {
-                    Text("View: ${options.view.label}")
+                OutlinedButton(onClick = { dialog = "view" }, modifier = Modifier.focusRequester(viewButton)) {
+                    Text("View: ${options.view.label}" + if (options.view.columnChoices.isEmpty()) "" else " · $columns")
                 }
                 if (options.filterCount > 0) OutlinedButton(onClick = { update { it.clearFilters() } }) { Text("Clear filters") }
                 if (state.total >= 0) Text("${state.total} items", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -172,21 +179,18 @@ fun BrowseLibrary(
                 state.error != null && state.items.isEmpty() -> Column { Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error); Button(onClick = vm::retry) { Text("Try again") } }
                 state.loading -> Text("Loading…")
                 state.items.isEmpty() -> Text(if (options.filterCount > 0) "Nothing matches these filters." else "Nothing here yet.", style = MaterialTheme.typography.titleMedium)
-                options.view == BrowseView.BOUNCE -> BounceBox(
-                    state.items, state.total, repository, music,
-                    titleOf = { item -> if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else item.name },
-                    onOpen = ::tap, onPlay = onPlay,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
-                else -> ShowView(
-                    options.view,
-                    ShowArgs(
+                else -> {
+                    val args = ShowArgs(
                         state.items, repository, music,
                         titleOf = { item -> if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else item.name },
                         onOpen = ::tap, onPlay = onPlay, onNeedMore = vm::loadMore,
-                    ),
-                    Modifier.weight(1f).fillMaxWidth(),
-                )
+                        // A–Z: where a letter's first title is (loading up to it), when sorted by name.
+                        letterAt = if (options.alphabetical) vm::positionOf else null,
+                        total = state.total,
+                    )
+                    if (options.view == BrowseView.BOUNCE) BounceBox(args, Modifier.weight(1f).fillMaxWidth())
+                    else ShowView(options.view, args, Modifier.weight(1f).fillMaxWidth())
+                }
             }
         }
     } else
@@ -256,7 +260,12 @@ fun BrowseLibrary(
             dialog = null
             if (changed) { selecting = false; selected = emptySet(); vm.reload() }
         }
-        "view" -> ViewDialog(options.view, onPick = { v -> update { it.copy(view = v) }; dialog = null }, onDismiss = { dialog = null })
+        "view" -> ViewDialog(
+            options.view, columns,
+            onPick = { v -> update { it.copy(view = v) }; dialog = null; viewChanged++ },
+            onColumns = { n -> vm.update { it.copy(columns = it.columns + (it.view to n)) } },
+            onDismiss = { dialog = null; viewChanged++ },
+        )
         "sort" -> SortDialog(options, onPick = { change -> update(change); dialog = null }, onDismiss = { dialog = null })
         "filters" -> FilterDialog(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
     }
@@ -323,7 +332,7 @@ private fun SortDialog(options: BrowseOptions, onPick: ((BrowseOptions) -> Brows
 /** Every way to lay the titles out: the plain ones, then the show views. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ViewDialog(current: BrowseView, onPick: (BrowseView) -> Unit, onDismiss: () -> Unit) {
+internal fun ViewDialog(current: BrowseView, columns: Int, onPick: (BrowseView) -> Unit, onColumns: (Int) -> Unit, onDismiss: () -> Unit) {
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
         Column(Modifier.width(620.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -331,6 +340,13 @@ private fun ViewDialog(current: BrowseView, onPick: (BrowseView) -> Unit, onDism
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 BrowseView.entries.forEach { v ->
                     FilterChip(selected = v == current, onClick = { onPick(v) }, modifier = if (v == current) Modifier.focusRequester(first) else Modifier) { Text(v.label) }
+                }
+            }
+            // The plain grids: how many titles across (kept per view).
+            if (!current.columnChoices.isEmpty()) {
+                Text("Columns", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    current.columnChoices.forEach { n -> FilterChip(selected = n == columns, onClick = { onColumns(n) }) { Text("$n") } }
                 }
             }
             LaunchedEffect(Unit) { kotlinx.coroutines.android.awaitFrame(); runCatching { first.requestFocus() } }

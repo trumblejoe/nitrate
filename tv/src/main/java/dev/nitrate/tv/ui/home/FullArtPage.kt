@@ -149,9 +149,8 @@ fun FullArtPage(
             .focusRequester(pageFocus)
             .focusable(),
     ) {
-        Backdrop(repository.backdropUrl(item), Modifier.fillMaxSize())
-        // The page's theme, over the picture and under the title and controls.
-        dev.nitrate.tv.ui.effects.ThemeBehindSlot()
+        // The picture (or the page's chosen background) and the theme over it, drawn by the menu.
+        dev.nitrate.tv.ui.effects.PageBackdropSlot(repository.backdropUrl(item))
 
         val pad = Modifier.padding(start = 58.dp + insets.start, end = 58.dp + insets.end)
         // Captioned as the screensaver is: the row and place as a small label, the title, a quiet line

@@ -159,7 +159,7 @@ fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, 
                     Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            RowsPage(s.rows, overrides, container.server, onOpen, onPlay, vm::save, header = header, onEditPage = { editing = true })
+            RowsPage(s.rows, overrides, container.server, onOpen, onPlay, vm::save, header = header, onEditPage = { editing = true }, editButton = false)
         }
         is RowsState.Error -> Column { header(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
         RowsState.Loading -> Column { header(); Text("Loading…", Modifier.padding(PagePadding)) }

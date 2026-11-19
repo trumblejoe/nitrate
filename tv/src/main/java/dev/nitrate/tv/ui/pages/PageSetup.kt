@@ -1,5 +1,13 @@
 package dev.nitrate.tv.ui.pages
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -59,6 +67,7 @@ fun PageSetupScreen(container: AppContainer, onHome: () -> Unit, onLibrary: (Med
     val libraries by produceState(emptyList<MediaItem>()) { value = runCatching { container.server.views() }.getOrDefault(emptyList()) }
     val shown = libraries.filter { it.collection != CollectionKind.LIVE_TV && it.collection != CollectionKind.PLAYLISTS }
     fun themeOf(key: String) = (prefs.pageThemes[key] ?: PageTheme.NONE).label
+    var moreFrom by remember { mutableStateOf<String?>(null) }
     LazyColumn(contentPadding = PaddingValues(horizontal = Padding, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
         item { SetupHeader("Pages", "Each page's theme, its tabs and their rows. Home and every library are set up the same way.") }
         item {
@@ -78,6 +87,14 @@ fun PageSetupScreen(container: AppContainer, onHome: () -> Unit, onLibrary: (Med
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
             )
         }
+        // The pages a title's studio, year or cast open: one look for them all.
+        item { Text("More from… pages", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 18.dp, bottom = 4.dp)) }
+        item { ThemeItem(prefs.pageThemes[PageKeys.MORE_FROM], null) { moreFrom = "theme" } }
+        item { BackgroundItem(prefs.pageBackdrops[PageKeys.MORE_FROM]) { moreFrom = "background" } }
+    }
+    when (moreFrom) {
+        "theme" -> ThemeChoice(container, PageKeys.MORE_FROM, "More from… pages") { moreFrom = null }
+        "background" -> BackgroundChoice(container, PageKeys.MORE_FROM, "More from… pages") { moreFrom = null }
     }
     LaunchedEffect(Unit) { kotlinx.coroutines.android.awaitFrame(); runCatching { first.requestFocus() } }
 }
@@ -104,9 +121,12 @@ fun HomeSetupScreen(container: AppContainer) {
     var editingHome by remember { mutableStateOf(false) }
     var editingPage by remember { mutableStateOf<CustomPage?>(null) }
     if (choosingTheme) ThemeChoice(container, PageKeys.HOME, "Home") { choosingTheme = false }
+    var choosingBackground by remember { mutableStateOf(false) }
+    if (choosingBackground) BackgroundChoice(container, PageKeys.HOME, "Home") { choosingBackground = false }
 
     SetupPage("Home", first) {
         item { ThemeItem(prefs.pageThemes[PageKeys.HOME], first) { choosingTheme = true } }
+        item { BackgroundItem(prefs.pageBackdrops[PageKeys.HOME]) { choosingBackground = true } }
         item { TabsLabel() }
         item { TabItem("Home", "Its rows: order, hide, rename, and add your own", shown = null) { actingHome = true } }
         items(pages, key = { it.id }) { page ->
@@ -186,12 +206,12 @@ private fun SetupPage(title: String, @Suppress("UNUSED_PARAMETER") first: FocusR
 }
 
 @Composable
-private fun ThemeItem(theme: PageTheme?, focus: FocusRequester, onClick: () -> Unit) {
+private fun ThemeItem(theme: PageTheme?, focus: FocusRequester?, onClick: () -> Unit) {
     // Focus starts here, once: asked for after the row is built (asking earlier does nothing), and
     // never again (a list loading later used to pull focus back here, even out of an open picker).
     var taken by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) { if (!taken) { kotlinx.coroutines.android.awaitFrame(); runCatching { focus.requestFocus() }; taken = true } }
-    val modifier = Modifier.focusRequester(focus)
+    if (focus != null) LaunchedEffect(Unit) { if (!taken) { kotlinx.coroutines.android.awaitFrame(); runCatching { focus.requestFocus() }; taken = true } }
+    val modifier = if (focus != null) Modifier.focusRequester(focus) else Modifier
     ListItem(
         selected = false, onClick = onClick,
         headlineContent = { Text("Theme") },
@@ -287,9 +307,12 @@ fun LibraryTabsScreen(container: AppContainer, libraryId: String) {
     var choosingTheme by remember { mutableStateOf(false) }
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     if (choosingTheme) ThemeChoice(container, PageKeys.library(libraryId), lib?.name ?: "Library") { choosingTheme = false }
+    var choosingBackground by remember { mutableStateOf(false) }
+    if (choosingBackground) BackgroundChoice(container, PageKeys.library(libraryId), lib?.name ?: "Library") { choosingBackground = false }
 
     SetupPage(lib?.name ?: "Library", first) {
         item { ThemeItem(prefs.pageThemes[PageKeys.library(libraryId)], first) { choosingTheme = true } }
+        item { BackgroundItem(prefs.pageBackdrops[PageKeys.library(libraryId)]) { choosingBackground = true } }
         item { TabsLabel() }
         items(tabs, key = { it.id }) { tab ->
             TabItem(tab.label, if (tab.title != null && tab.kind != LibraryTabKind.OWN) "${tab.kind.label} · ${tab.kind.detail}" else tab.kind.detail, shown = !tab.hidden) { acting = tab }
@@ -357,6 +380,61 @@ private fun ThemeChoice(container: AppContainer, pageKey: String, name: String, 
         if (u != null) scope.launch { container.displaySettings.savePrefs(u, prefs.withTheme(pageKey, theme)) }
         onDone()
     }, onDismiss = onDone)
+}
+
+/** The page's background: the title's picture, a colour from it, a gradient or a flat colour. */
+@Composable
+private fun BackgroundItem(choice: dev.nitrate.core.effects.PageBackdrop?, onClick: () -> Unit) {
+    val c = choice ?: dev.nitrate.core.effects.PageBackdrop.ARTWORK
+    ListItem(
+        selected = false, onClick = onClick,
+        headlineContent = { Text("Background") },
+        supportingContent = { Text("Behind everything (and any theme): the title's picture, a smart colour from it, a gradient or a flat colour") },
+        leadingContent = { Swatch(c) },
+        trailingContent = { Text("${c.label}  ›", color = MaterialTheme.colorScheme.primary) },
+    )
+}
+
+/** A small sample of a background (the smart ones in a stand-in colour). */
+@Composable
+private fun Swatch(choice: dev.nitrate.core.effects.PageBackdrop) {
+    Box(Modifier.size(width = 54.dp, height = 32.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF2A2D36))) {
+        when (choice.kind) {
+            dev.nitrate.core.effects.PageBackdrop.Kind.ARTWORK -> Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF6B4A2B), Color(0xFF24324A)))))
+            dev.nitrate.core.effects.PageBackdrop.Kind.SMART_GRADIENT -> Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF7A3B52), Color(0xFF2E1520), Color(0xFF050608)))))
+            dev.nitrate.core.effects.PageBackdrop.Kind.SMART_COLOUR -> Box(Modifier.fillMaxSize().background(Color(0xFF3A2131)))
+            else -> dev.nitrate.tv.ui.effects.PageBackground(choice, null)
+        }
+    }
+}
+
+/** Picks [pageKey]'s background and saves it in the display profile. */
+@Composable
+private fun BackgroundChoice(container: AppContainer, pageKey: String, name: String, onDone: () -> Unit) {
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val scope = rememberCoroutineScope()
+    val now = prefs.pageBackdrops[pageKey] ?: dev.nitrate.core.effects.PageBackdrop.ARTWORK
+    val focus = remember { FocusRequester() }
+    TvDialog(onDismiss = onDone, width = 640) {
+        Text("$name: background", style = MaterialTheme.typography.headlineSmall)
+        dev.nitrate.core.effects.PageBackdrop.entries.forEach { b ->
+            ListItem(
+                selected = b == now,
+                onClick = {
+                    val u = container.server.userId
+                    if (u != null) scope.launch {
+                        container.displaySettings.savePrefs(u, prefs.copy(pageBackdrops = if (b == dev.nitrate.core.effects.PageBackdrop.ARTWORK) prefs.pageBackdrops - pageKey else prefs.pageBackdrops + (pageKey to b)))
+                    }
+                    onDone()
+                },
+                headlineContent = { Text(b.label) },
+                supportingContent = { Text(b.detail) },
+                leadingContent = { Swatch(b) },
+                modifier = if (b == now) Modifier.focusRequester(focus) else Modifier,
+            )
+        }
+    }
+    LaunchedEffect(Unit) { kotlinx.coroutines.android.awaitFrame(); runCatching { focus.requestFocus() } }
 }
 
 /** A name to type (TV keyboard on OK), with Save and Cancel. */

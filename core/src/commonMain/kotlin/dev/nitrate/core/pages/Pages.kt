@@ -134,6 +134,8 @@ data class CustomPage(val id: String, val title: String, val pinned: Boolean = t
 /** Page keys: what layouts are saved against. */
 object PageKeys {
     const val HOME = "home"
+    /** The "More from <studio/year/person>" pages (one setting for them all). */
+    const val MORE_FROM = "more-from"
     fun library(id: String) = "library/$id"
     fun custom(id: String) = "custom/$id"
 }

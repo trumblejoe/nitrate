@@ -68,8 +68,11 @@ class BrowseViewModel(
     /** Changes the options (saved, so they're there next time and on other devices). */
     fun update(change: (BrowseOptions) -> BrowseOptions) {
         val next = change(_state.value.options)
-        if (next == _state.value.options) return
-        restart(next)
+        val now = _state.value.options
+        if (next == now) return
+        // Only the look changed (view, columns): the same titles, kept, no reload.
+        if (next.query(library.id, library.collection) == now.query(library.id, library.collection)) _state.update { it.copy(options = next) }
+        else restart(next)
         val user = userId ?: return
         viewModelScope.launch { store.saveView(user, key, next) }
     }
