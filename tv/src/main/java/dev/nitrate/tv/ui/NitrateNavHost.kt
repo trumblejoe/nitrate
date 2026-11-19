@@ -369,6 +369,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } }),
                     dev.nitrate.tv.ui.settings.SettingsSection("Tools", listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Checking how things play", "A guide to these tools: which to use, how, and what to do about washed-out HDR, missing surround or stutter") { nav.navigate(GuideRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Advanced playback settings", "The formats this TV plays (Always, Never), learned failures, Dolby Vision profile 7, tunneling: what the tools' fixes change") { nav.navigate(AdvancedPlaybackRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Playback test", "Plays short samples to find what this TV really plays") { nav.navigate(PlaybackTestRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Audio channel test", "A voice from each speaker in turn") { nav.navigate(AudioChannelTestRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("TV & receiver check", "Clips that should make the TV show HDR or Dolby Vision and the receiver its sound format: say what you see") { nav.navigate(TvCheckRoute) },

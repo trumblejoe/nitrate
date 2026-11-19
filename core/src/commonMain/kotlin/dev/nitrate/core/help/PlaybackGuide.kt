@@ -31,6 +31,7 @@ object PlaybackGuide {
                 "Not sure your TV or receiver shows HDR, Dolby Vision or surround: Settings → Tools → TV & receiver check.",
                 "Still stuck: send a log (player Info, or Settings → Tools → Send device report). It's saved on your server for its admin.",
             ),
+            tips = listOf("The settings these tools change (a format set to Always or Never, failures it learned, direct play) are in Settings → Tools → Advanced playback settings, the same page as Picture & sound → Advanced."),
         ),
         GuideSection(
             "info", "While it plays: Info and its Path",
@@ -95,7 +96,7 @@ object PlaybackGuide {
             "That's an HDR picture turned into an ordinary (SDR) one badly. Path's Picture steps say who converted it.",
             steps = listOf(
                 "\"Tone-mapped to SDR by the server\": your server converted it. Its reason says why: often HDR10 or Dolby Vision set to Never on this device, or the display not reporting HDR.",
-                "If the TV can show HDR (check with the TV & receiver check), set HDR10 and Dolby Vision to Always in Settings → Picture & sound → Advanced.",
+                "If the TV can show HDR (check with the TV & receiver check), set HDR10 and Dolby Vision to Always in Settings → Tools → Advanced playback settings.",
                 "If it really can't, the server's tone mapping needs to be on: an admin can check it in Server-side settings → Converting on the server.",
                 "\"Converted to SDR by this device\": the device did it itself because Android reports no HDR. The picture is usually fine. For real HDR, see the next section.",
             ),
