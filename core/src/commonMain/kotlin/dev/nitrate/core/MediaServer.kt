@@ -269,6 +269,9 @@ interface MediaServer {
     /** The signed-in user's sessions on other devices that can be controlled from here (any account type). */
     suspend fun controllableSessions(): List<ServerSession> = unsupported()
 
+    /** What the server reports doing with this device's stream right now (null: not converting, or not known). */
+    suspend fun serverConversion(): dev.nitrate.core.playback.ServerConversion? = null
+
     /** Switches the audio or subtitles (-1: off) playing on another device. */
     suspend fun setSessionTrack(sessionId: String, kind: dev.nitrate.core.model.StreamKind, index: Int): Unit = unsupported()
 

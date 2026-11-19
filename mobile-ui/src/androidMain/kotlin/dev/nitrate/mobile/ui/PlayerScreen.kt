@@ -85,6 +85,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.nitrate.android.playback.PlaybackSession
+import dev.nitrate.android.playback.runTestPlay
 import dev.nitrate.core.model.PlayMethod
 import dev.nitrate.core.model.StreamKind
 import dev.nitrate.core.playback.TrackChoice
@@ -163,33 +164,10 @@ actual fun PlayerScreen(
     // A test play: a short stretch a few minutes in, then what happened on the way out, for the overview.
     var testLeft by remember { mutableStateOf<Long?>(null) }
     if (testPlay != null) LaunchedEffect(session) {
-        val runtime = runCatching { actions.server.getItem(itemId).runtimeMs }.getOrNull()
-        val from = dev.nitrate.core.playback.TestPlay.startAt(runtime)
-        val to = from + dev.nitrate.core.playback.TestPlay.PLAY_MS
-        session.loadClip(itemId, from, to)
-        val began = System.currentTimeMillis()
-        var failed: String? = null
-        while (true) {
-            kotlinx.coroutines.delay(250)
-            val at = session.progress.value.positionMs
-            if (session.plan.value != null) testLeft = (to - at).coerceIn(0, dev.nitrate.core.playback.TestPlay.PLAY_MS)
-            failed = session.error.value
-            if (failed != null || (session.plan.value != null && at >= to - 600)) break
-            if (System.currentTimeMillis() - began > dev.nitrate.core.playback.TestPlay.PLAY_MS + 90_000) { failed = "It didn't get going within two minutes"; break }
-        }
-        val trail = runCatching { session.trail(actions.container.capabilities) }.getOrNull()
-        testPlay(
-            dev.nitrate.core.playback.TestPlayResult(
-                itemId = itemId,
-                name = trail?.title ?: session.item.value?.name ?: itemId,
-                atMs = System.currentTimeMillis(),
-                trail = trail,
-                droppedFrames = session.droppedFrameCount,
-                playedMs = (session.progress.value.positionMs - from).coerceAtLeast(0),
-                error = failed,
-            ),
-        )
-        if (failed != null) onExit()
+        val caps = actions.container.capabilities
+        val result = session.runTestPlay(actions.server, itemId, caps) { testLeft = it }
+        testPlay(result)
+        if (result.error != null) onExit()
     }
     // Watch-together chat, while this device watches in a group (Companion plugin on the server).
     val syncGroup = actions.container.syncPlay.group.collectAsState().value

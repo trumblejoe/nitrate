@@ -50,6 +50,28 @@ data class TrailInput(
     val displayHzBefore: Float? = null,
     /** The refresh-rate choice for this playback. */
     val frameRateMatch: FrameRateMatch? = null,
+    /** What the server itself reported doing while this played (its session's conversion), when it converted. */
+    val serverReport: ServerConversion? = null,
+    /** Smoothness measured while it played. */
+    val smoothness: Smoothness? = null,
+)
+
+/** How smoothly it went: start-up, stalls, the network against what the stream needs, and a seek. */
+@Serializable
+data class Smoothness(
+    /** From asking to play to the first picture. */
+    val startMs: Long? = null,
+    /** Times it stopped to wait for data after starting, and for how long in all. */
+    val stalls: Int = 0,
+    val stalledMs: Long = 0,
+    val droppedFrames: Int = 0,
+    /** The network as measured, and what the stream needs. */
+    val networkBps: Long? = null,
+    val streamBps: Long? = null,
+    /** A test play's seek: how long until it played again, and whether surround still went out untouched after. */
+    val seekResumeMs: Long? = null,
+    val seekFailed: Boolean = false,
+    val passthroughAfterSeek: Boolean? = null,
 )
 
 /**
@@ -89,6 +111,7 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
                 audio?.let { sound(it) },
                 subtitles(subtitle),
                 video?.frameRate?.takeIf { it > 0 && displayHzBefore != null }?.let { refresh(it) },
+                smoothness?.let { smooth(it) },
             ))
         }
 
@@ -158,6 +181,12 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
                 TrailStep("Asked for", TrailActor.NITRATE, asked, "HDR: $ranges"),
                 TrailStep("Server", TrailActor.SERVER, serverWhat, plan?.transcodeReasons?.takeIf { it.isNotEmpty() }?.joinToString("; ") { reasonText(it) },
                     differs = if (expected != null && actual != null && expected != actual) "predicted: ${expected.label.lowercase()}" else null),
+                serverReport?.let { r ->
+                    val keeps = r.keepsUp(v.frameRate)
+                    TrailStep("Server reported", TrailActor.SERVER, r.describe(v.frameRate),
+                        r.reasons.takeIf { it.isNotEmpty() }?.joinToString("; ") { reasonText(it) },
+                        differs = if (keeps == false) "too slow for real time: it will pause to catch up" else null)
+                },
                 TrailStep("Arrived", TrailActor.MEASURED, arrived ?: "Not yet",
                     differs = if (keptHdr && !converted && video?.inRange == "SDR") "the file is HDR but SDR arrived" else null),
                 TrailStep("Decoded by", TrailActor.MEASURED, videoDecoder?.let { "$it (${decoderTier?.label?.lowercase()})" } ?: "Not yet",
@@ -249,9 +278,36 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
             ))
         }
 
+        private fun TrailInput.smooth(m: Smoothness): Trail {
+            fun mbps(b: Long) = "${dev.nitrate.core.model.formatOneDecimal(b / 1_000_000.0)} Mbps"
+            val slowNet = m.networkBps != null && m.streamBps != null && m.networkBps < m.streamBps
+            return Trail("Smoothness", listOfNotNull(
+                m.startMs?.let { TrailStep("Start", TrailActor.MEASURED, "First picture after ${dev.nitrate.core.model.formatOneDecimal(it / 1000.0)} s", "includes any refresh-rate switch",
+                    differs = if (it > 15_000) "slow to start" else null) },
+                TrailStep("Stalls", TrailActor.MEASURED,
+                    if (m.stalls == 0) "None: it never stopped to wait for data" else "${m.stalls} stall${if (m.stalls == 1) "" else "s"}, ${dev.nitrate.core.model.formatOneDecimal(m.stalledMs / 1000.0)} s in all",
+                    if (m.stalls > 0 && slowNet) "The network is slower than the stream needs" else null,
+                    differs = if (m.stalls > 0) "stopped to buffer" else null),
+                TrailStep("Dropped frames", TrailActor.MEASURED, "${m.droppedFrames}",
+                    differs = if (m.droppedFrames > TestPlay.DROPPED_OK) "more than a few: the picture stuttered" else null),
+                m.networkBps?.let { n -> TrailStep("Network", TrailActor.MEASURED, mbps(n) + (m.streamBps?.let { " (the stream needs ${mbps(it)})" } ?: ""),
+                    if (slowNet) "Slower than the stream: it plays only while the buffer lasts" else null) },
+                if (m.seekResumeMs != null || m.seekFailed) TrailStep("Seek", TrailActor.MEASURED,
+                    if (m.seekFailed) "Jumped ahead but didn't play again" else "Jumped ahead and played again after ${dev.nitrate.core.model.formatOneDecimal(m.seekResumeMs!! / 1000.0)} s",
+                    m.passthroughAfterSeek?.let { if (it) "Surround still went out untouched after it" else "Surround was decoded after it" },
+                    differs = when {
+                        m.seekFailed -> "seeking failed"
+                        m.passthroughAfterSeek == false -> "lost untouched surround after seeking"
+                        (m.seekResumeMs ?: 0) > 10_000 -> "slow to play again"
+                        else -> null
+                    }) else null,
+            ))
+        }
+
         private fun TrailInput.videoConverted(): Boolean {
             val p = plan ?: return false
             if (p.method != PlayMethod.TRANSCODE) return false
+            serverReport?.videoDirect?.let { return !it }
             if (p.transcodeReasons.isEmpty()) return true
             return p.transcodeReasons.any { it.startsWith("Video") || it.startsWith("Subtitle") || "Bitrate" in it || it == "DirectPlayError" || it == "UnknownVideoStreamInfo" }
         }

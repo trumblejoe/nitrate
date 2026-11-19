@@ -72,7 +72,7 @@ class JellyfinContractTest {
             path.endsWith("/RemoteImages") -> """{"Images":[{"Url":"http://x/a.jpg","ProviderName":"TheMovieDb","Width":1000,"Height":1500,"Language":"en","CommunityRating":7.5}],"TotalRecordCount":1}"""
             path.endsWith("/ScheduledTasks") -> """[{"Id":"t1","Name":"Scan media library","Category":"Library","State":"Running","CurrentProgressPercentage":42.0,"LastExecutionResult":{"Status":"Completed","EndTimeUtc":"2026-01-01T00:00:00Z"}}]"""
             path.endsWith("/ActivityLog/Entries") -> """{"Items":[{"Id":1,"Name":"joe signed in","Type":"SessionStarted","Date":"2026-01-01T00:00:00Z","Severity":"Information"}],"TotalRecordCount":1}"""
-            path.endsWith("/Sessions") -> """[{"Id":"s1","UserName":"joe","Client":"Nitrate","DeviceName":"TV","PlayState":{"PositionTicks":600000000,"IsPaused":true,"PlayMethod":"DirectPlay"},"NowPlayingItem":$ITEM,"SupportsRemoteControl":true}]"""
+            path.endsWith("/Sessions") -> """[{"Id":"s1","UserName":"joe","Client":"Nitrate","DeviceName":"TV","PlayState":{"PositionTicks":600000000,"IsPaused":true,"PlayMethod":"DirectPlay"},"NowPlayingItem":$ITEM,"SupportsRemoteControl":true,"TranscodingInfo":{"IsVideoDirect":false,"IsAudioDirect":true,"VideoCodec":"hevc","HardwareAccelerationType":"qsv","Framerate":41.5,"Width":3840,"Height":2160,"TranscodeReasons":["VideoRangeTypeNotSupported"]}}]"""
             path.endsWith("/ClientLog/Document") -> """{"FileName":"upload_nitrate.log"}"""
             path.endsWith("/System/Info/Public") -> """{"ServerName":"Home","Version":"10.11.0","Id":"$HEX"}"""
             path.endsWith("/Users/Public") -> """[{"Id":"$HEX","Name":"joe","HasPassword":true,"PrimaryImageTag":"t"}]"""
@@ -249,6 +249,9 @@ class JellyfinContractTest {
         client.queryPage(browse.copy(videoCodecs = listOf("hevc"), audioCodecs = listOf("dts")), 0, 10)
         client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(DASHED, dev.nitrate.core.model.CollectionKind.TV_SHOWS), 0, 10)
         client.followedSeries()
+        // What the server reports doing with this device's stream.
+        val conversion = client.serverConversion()!!
+        assertEquals("Picture converted to HEVC 3840×2160 on Intel Quick Sync at 41 fps (the film is 23.976 fps: keeps up); sound copied untouched", conversion.describe(23.976f))
         client.watchedSeries()
         // An admin also gets how the server converts, with tone mapping off flagged.
         val converting = client.serverSettings().groups.single { it.title == "Converting on the server" }

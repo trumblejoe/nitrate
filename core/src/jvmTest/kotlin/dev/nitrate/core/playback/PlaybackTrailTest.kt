@@ -77,4 +77,41 @@ class PlaybackTrailTest {
         assertEquals(2, sample.size)
         assertEquals("MKV · HEVC 4K 10-bit Dolby Vision · Dolby TrueHD 7.1", TestPlay.describe(film))
     }
+
+    @Test fun answersLeadToTheRightAdvice() {
+        val trail = PlaybackTrail.build(
+            TrailInput(
+                title = "Avatar", source = film, plan = plan(PlayMethod.DIRECT_STREAM), caps = tv, settings = PlaybackSettings(),
+                audio = AudioPath(inCodec = "truehd", inChannels = 8, delivery = AudioDelivery.BITSTREAM, outFormat = "Dolby TrueHD", outChannels = 8),
+            ),
+        )
+        val result = TestPlayResult("a", "Avatar", 0, trail)
+        assertEquals(listOf(TestPlay.TV, TestPlay.RECEIVER), TestPlay.questions(result).map { it.id })
+        // HDR10 set to Never: offered back to Automatic.
+        val settings = PlaybackSettings(overrides = mapOf(PlaybackSettings.hdrId("HDR10") to Override.NEVER))
+        assertEquals(listOf("Set HDR10 back to Automatic"), TestPlay.advice(result, settings, tv.copy(hdr = setOf("HDR10"))).mapNotNull { it.changeLabel })
+        // The TV showed HDR though Android reports none: both offered Always (Never included).
+        val advice = TestPlay.advice(result.copy(answers = mapOf(TestPlay.TV to Answer.YES)), settings, tv)
+        assertEquals(listOf("Set Dolby Vision to Always", "Set HDR10 to Always"), advice.mapNotNull { it.changeLabel })
+        // The TV didn't switch: advice about the HDMI chain, no setting.
+        val no = TestPlay.advice(result.copy(answers = mapOf(TestPlay.TV to Answer.NO)), PlaybackSettings(), tv)
+        assertTrue(no.single().text.startsWith("The TV didn't switch to HDR, and Android reports no HDR here"), no.toString())
+    }
+
+    @Test fun smoothnessAndTheServersOwnReportAreInTheTrail() {
+        val trail = PlaybackTrail.build(
+            TrailInput(
+                title = "Film", source = film, plan = plan(PlayMethod.TRANSCODE, listOf("VideoRangeTypeNotSupported")), caps = tv, settings = PlaybackSettings(),
+                serverReport = ServerConversion(videoDirect = false, audioDirect = true, videoCodec = "hevc", hardware = "none", fps = 14f),
+                smoothness = Smoothness(startMs = 4_200, stalls = 2, stalledMs = 6_300, networkBps = 30_000_000, streamBps = 60_000_000, seekResumeMs = 2_100, passthroughAfterSeek = false),
+            ),
+        )
+        val d = trail.differences.joinToString("\n")
+        assertTrue("too slow for real time" in d, d)
+        assertTrue("stopped to buffer" in d, d)
+        assertTrue("lost untouched surround after seeking" in d, d)
+        val text = trail.render()
+        assertTrue("Picture converted to HEVC on the processor at 14 fps (the film is 23.976 fps: can't keep up, expect pauses)" in text, text)
+        assertTrue("2 stalls, 6.3 s in all" in text, text)
+    }
 }

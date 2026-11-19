@@ -576,6 +576,28 @@ class JellyfinClient(
         settings.copy(groups = settings.groups + listOfNotNull(encoding?.let(JellyfinServerSettings::converting)) + dev.nitrate.core.account.CompanionStatus.group(companion.await(), indexed.await()))
     }
 
+    override suspend fun serverConversion(): dev.nitrate.core.playback.ServerConversion? {
+        val sessions = get("Sessions", query = mapOf("deviceId" to identity.deviceId, "activeWithinSeconds" to 120)).decode<kotlinx.serialization.json.JsonArray>()
+        val info = sessions.firstNotNullOfOrNull { (it as? JsonObject)?.get("TranscodingInfo") as? JsonObject } ?: return null
+        fun str(k: String) = (info[k] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+        fun prim(k: String) = info[k] as? kotlinx.serialization.json.JsonPrimitive
+        return dev.nitrate.core.playback.ServerConversion(
+            videoDirect = prim("IsVideoDirect")?.content?.toBooleanStrictOrNull(),
+            audioDirect = prim("IsAudioDirect")?.content?.toBooleanStrictOrNull(),
+            videoCodec = str("VideoCodec"),
+            audioCodec = str("AudioCodec"),
+            container = str("Container"),
+            width = prim("Width")?.content?.toIntOrNull(),
+            height = prim("Height")?.content?.toIntOrNull(),
+            audioChannels = prim("AudioChannels")?.content?.toIntOrNull(),
+            bitrate = prim("Bitrate")?.content?.toIntOrNull(),
+            hardware = str("HardwareAccelerationType"),
+            fps = prim("Framerate")?.content?.toFloatOrNull(),
+            completion = prim("CompletionPercentage")?.content?.toDoubleOrNull(),
+            reasons = (info["TranscodeReasons"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty(),
+        )
+    }
+
     override suspend fun watchedSeries(): Set<String> =
         // A show's user data counts its watched episodes, so one light list covers every show.
         get("Items", query = mapOf("userId" to userId, "includeItemTypes" to "Series", "recursive" to true, "enableImages" to false))

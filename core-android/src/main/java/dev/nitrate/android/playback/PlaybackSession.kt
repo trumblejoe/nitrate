@@ -566,6 +566,10 @@ class PlaybackSession(
         }
 
         override fun onPlaybackStateChanged(state: Int) {
+            // Smoothness: a stall is waiting for data after the first picture, other than just after a seek.
+            val now = System.currentTimeMillis()
+            if (state == Player.STATE_BUFFERING && firstFrameAt != null && now - seekedAt > 3_000) stallFrom = now
+            if (state == Player.STATE_READY) stallFrom?.let { from -> stalls++; stalledMs += now - from; stallFrom = null }
             log("State ${when (state) { Player.STATE_BUFFERING -> "buffering"; Player.STATE_READY -> "ready"; Player.STATE_ENDED -> "ended"; else -> "idle" }} at ${exo.currentPosition}ms")
             group?.onPlayerState()
             if (state != Player.STATE_ENDED) return
@@ -705,6 +709,14 @@ class PlaybackSession(
 
             override fun onBandwidthEstimate(e: AnalyticsListener.EventTime, totalLoadTimeMs: Int, totalBytesLoaded: Long, bitrateEstimate: Long) {
                 networkBps = bitrateEstimate
+            }
+
+            override fun onRenderedFirstFrame(e: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+                if (firstFrameAt == null) firstFrameAt = System.currentTimeMillis()
+            }
+
+            override fun onPositionDiscontinuity(e: AnalyticsListener.EventTime, oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) seekedAt = System.currentTimeMillis()
             }
 
             override fun onDroppedVideoFrames(e: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
@@ -988,6 +1000,46 @@ class PlaybackSession(
     }
 
     @Volatile private var displayHzBefore: Float? = null
+    @Volatile private var askedAt = System.currentTimeMillis()
+    @Volatile private var firstFrameAt: Long? = null
+    @Volatile private var seekedAt = 0L
+    @Volatile private var stallFrom: Long? = null
+    @Volatile private var stalls = 0
+    @Volatile private var stalledMs = 0L
+    @Volatile private var serverReport: dev.nitrate.core.playback.ServerConversion? = null
+    private var serverReportJob: kotlinx.coroutines.Job? = null
+
+    /** Whether the first picture has been shown for this title. */
+    val hasShownPicture: Boolean get() = firstFrameAt != null
+
+    /** How smoothly it's gone so far ([extra] adds what a test play measured, e.g. its seek). */
+    fun smoothness(): dev.nitrate.core.playback.Smoothness {
+        val p = _plan.value
+        val streamBps = serverReport?.bitrate?.toLong()?.takeIf { it > 0 }
+            ?: p?.let { dev.nitrate.core.playback.VideoPath.convertingTo(it.url)?.let { _ -> Regex("[?&]VideoBitrate=(\\d+)", RegexOption.IGNORE_CASE).find(it.url)?.groupValues?.get(1)?.toLongOrNull() } }
+            ?: p?.source?.bitrate?.toLong()?.takeIf { it > 0 }
+        return dev.nitrate.core.playback.Smoothness(
+            startMs = firstFrameAt?.let { it - askedAt },
+            stalls = stalls,
+            stalledMs = stalledMs,
+            droppedFrames = droppedFrames,
+            networkBps = networkBps?.takeIf { p?.url?.startsWith("/") != true },
+            streamBps = streamBps?.takeIf { p?.url?.startsWith("/") != true },
+        )
+    }
+
+    /** While the server converts or repackages: what it reports doing, every few seconds (for the trail). */
+    private fun followServerReport(p: PlaybackPlan) {
+        serverReportJob?.cancel()
+        if (p.method == PlayMethod.DIRECT_PLAY || p.url.startsWith("/") && !p.url.contains("://")) return
+        serverReportJob = scope.launch {
+            delay(3_000)
+            while (isActive) {
+                runCatching { server.serverConversion() }.getOrNull()?.let { serverReport = it }
+                delay(5_000)
+            }
+        }
+    }
     @Volatile private var frameRateChoice: dev.nitrate.core.playback.FrameRateMatch? = null
 
     /** Frames dropped since this title started. */
@@ -998,7 +1050,10 @@ class PlaybackSession(
      * Nitrate asked for, what the server did, what arrived, the decoder, Nitrate's processing and
      * what went out, each marked where it differs from the prediction (the Info's Path, test plays).
      */
-    suspend fun trail(caps: dev.nitrate.core.playback.DeviceCapabilities): dev.nitrate.core.playback.PlaybackTrail? {
+    suspend fun trail(
+        caps: dev.nitrate.core.playback.DeviceCapabilities,
+        extra: (dev.nitrate.core.playback.Smoothness) -> dev.nitrate.core.playback.Smoothness = { it },
+    ): dev.nitrate.core.playback.PlaybackTrail? {
         val p = _plan.value ?: return null
         val s = settings.current()
         val prediction = runCatching {
@@ -1024,6 +1079,8 @@ class PlaybackSession(
                 audioDecoder = _audioDecoder.value,
                 displayHzBefore = displayHzBefore,
                 frameRateMatch = frameRateChoice,
+                serverReport = serverReport,
+                smoothness = extra(smoothness()),
             ),
         )
     }
@@ -1051,6 +1108,12 @@ class PlaybackSession(
     private fun forgetItemState() {
         videoFormat = null
         droppedFrames = 0
+        firstFrameAt = null
+        stalls = 0
+        stalledMs = 0
+        stallFrom = null
+        serverReport = null
+        askedAt = System.currentTimeMillis()
         _audioPath.value = dev.nitrate.core.playback.AudioPath()
         secondJob?.cancel()
         _secondSubtitle.value = null
@@ -1122,6 +1185,7 @@ class PlaybackSession(
             if (_plan.value?.itemId != p.itemId) displayHzBefore = DisplayInfo.read(appContext)?.hz
             beforePlay?.let { gate -> runCatching { gate(p) }.onFailure { e -> if (e is kotlinx.coroutines.CancellationException) throw e; log("Before play: ${e.message}") } }
             play(p, startMs, current.name)
+            followServerReport(p)
             if (!quiet) {
                 server.reportStart(p, startMs)
                 startProgressReports(p)

@@ -218,6 +218,7 @@ fun PlaybackOverviewScreen(container: AppContainer, onOpen: (String) -> Unit, on
         TvDialog(onDismiss = { showTrail = null }, width = 1000) {
             Text("Test play: ${t.name}", style = MaterialTheme.typography.headlineSmall)
             Text(listOfNotNull(t.summary, "${t.playedMs / 1000} s played", "${t.droppedFrames} dropped frames").joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
+            TestQuestionsAndAdvice(container, t) { showTrail = it }
             t.trail?.let { trail -> ScrollingTrail(trail) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 8.dp)) {
                 Button(onClick = { showTrail = null }) { Text("Close") }
@@ -258,4 +259,45 @@ private fun ScrollingTrail(trail: dev.nitrate.core.playback.PlaybackTrail) {
         dev.nitrate.tv.ui.player.TrailView(trail)
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+
+
+/**
+ * What the app can't see on its own, asked of the user (did the TV switch to HDR, what did the
+ * receiver show), then what to do: settings to change (applied at once) and advice.
+ */
+@Composable
+private fun TestQuestionsAndAdvice(container: AppContainer, t: dev.nitrate.core.playback.TestPlayResult, onChanged: (dev.nitrate.core.playback.TestPlayResult) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val settings by container.playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+    var applied by remember(t) { mutableStateOf(emptySet<String>()) }
+    dev.nitrate.core.playback.TestPlay.questions(t).forEach { q ->
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 6.dp)) {
+            Text(q.text, style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                dev.nitrate.core.playback.Answer.entries.forEach { a ->
+                    FilterChip(t.answers[q.id] == a, {
+                        val updated = t.copy(answers = t.answers + (q.id to a))
+                        onChanged(updated)
+                        scope.launch { container.saveTestPlay(updated) }
+                    }) { Text(a.label) }
+                }
+            }
+        }
+    }
+    val advice = dev.nitrate.core.playback.TestPlay.advice(t, settings, container.capabilities)
+    if (advice.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
+        Text("What to do", style = MaterialTheme.typography.titleMedium)
+        advice.forEach { a ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(a.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                val change = a.change
+                if (change != null) {
+                    val key = a.changeLabel ?: a.text
+                    if (key in applied) Text("Done: test again to see", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    else OutlinedButton(onClick = { scope.launch { container.playbackSettings.update(change::apply); applied = applied + key } }) { Text(a.changeLabel ?: "Change it") }
+                }
+            }
+        }
+    }
 }

@@ -77,6 +77,7 @@ data class PlaybackOverview(
             appendLine("== Test plays (${tests.size}) ==")
             tests.sortedBy { it.name }.forEach { t ->
                 appendLine("- ${t.name}: ${t.summary}")
+                TestPlay.questions(t).forEach { q -> t.answers[q.id]?.let { appendLine("    Asked: ${q.text} ${it.label}") } }
                 t.trail?.render()?.lines()?.filter { it.isNotBlank() }?.forEach { appendLine("    $it") }
             }
         }
