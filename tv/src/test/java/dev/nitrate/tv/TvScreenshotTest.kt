@@ -420,6 +420,11 @@ class TvScreenshotTest {
             compose.mainClock.advanceTimeBy(100); compose.waitForIdle()
             waited += 100
         } while (waited < 4000 && compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        // Part of the swap runs on real time: under a busy machine, keep stepping until it settles.
+        compose.waitUntil(timeoutMillis = 15_000) {
+            compose.mainClock.advanceTimeBy(100)
+            compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
         check(!focusedHasText("Home") && !focusedHasText("Settings") && !focusedHasText("Search")) { "focus went to the menu after more steps" }
         // Never left with nothing focused (on a TV that hands focus to the menu), never on the rail at the left edge.
         val after = compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes()
@@ -664,6 +669,15 @@ class TvScreenshotTest {
 
     @Test fun libraryHealth() = shoot("tv-library-health", setup = { c -> c.checkLibraryHealth(null) }) { c ->
         dev.nitrate.tv.ui.settings.LibraryHealthScreen(c, onOpen = {}, onManage = {})
+    }
+
+    @Test fun guide() = shoot("tv-guide") { _ -> dev.nitrate.tv.ui.settings.GuideScreen(admin = true) }
+
+    /** The trail as a test result shows it: in a dialog 900 wide, with room for two columns. */
+    @Test fun playbackTrailInDialog() = shoot("tv-playback-trail-dialog") { _ ->
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.compose.foundation.layout.Box(Modifier.width(852.dp)) { dev.nitrate.tv.ui.player.TrailView(dev.nitrate.testing.sampleTrail()) }
+        }
     }
 
     @Test fun householdDevices() = shoot("tv-household-devices") { c -> dev.nitrate.tv.ui.settings.HouseholdDevicesScreen(c, onOpen = {}) }

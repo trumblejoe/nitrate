@@ -164,12 +164,15 @@ fun PlaybackOverviewScreen(container: AppContainer, onOpen: (String) -> Unit, on
         }
     }
     detail?.let { e ->
-        TvDialog(onDismiss = { detail = null }, width = 760) {
+        TvDialog(onDismiss = { detail = null }, width = 860) {
             Text(e.name, style = MaterialTheme.typography.headlineSmall)
-            e.prediction.rows().forEach { (label, text) ->
-                Row {
-                    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(140.dp))
-                    Text(text, style = MaterialTheme.typography.bodyMedium)
+            // The text scrolls in its own box, so it stays readable above the buttons.
+            dev.nitrate.tv.ui.lists.ScrollBox(maxHeight = 380) {
+                e.prediction.rows().forEach { (label, text) ->
+                    Row {
+                        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(150.dp))
+                        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    }
                 }
             }
             tests[e.item.id]?.let { t ->
@@ -220,7 +223,7 @@ fun PlaybackOverviewScreen(container: AppContainer, onOpen: (String) -> Unit, on
         }
     }
     showTrail?.let { t ->
-        TvDialog(onDismiss = { showTrail = null }, width = 1000) {
+        TvDialog(onDismiss = { showTrail = null }, width = 900) {
             Text("Test play: ${t.name}", style = MaterialTheme.typography.headlineSmall)
             Text(listOfNotNull(t.summary, "${t.playedMs / 1000} s played", "${t.droppedFrames} dropped frames").joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
             TestQuestionsAndAdvice(container, t) { showTrail = it }
@@ -234,38 +237,11 @@ fun PlaybackOverviewScreen(container: AppContainer, onOpen: (String) -> Unit, on
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
-/** A trail in a box that scrolls with ▲▼ while it has focus (text alone can't take focus on a TV). */
+/** A trail in a box that scrolls with ▲▼ (text alone can't take focus on a TV). */
 @Composable
 private fun ScrollingTrail(trail: dev.nitrate.core.playback.PlaybackTrail) {
-    val scroll = androidx.compose.foundation.rememberScrollState()
-    val scope = rememberCoroutineScope()
-    val focus = remember { FocusRequester() }
-    var focused by remember { mutableStateOf(false) }
-    Column(
-        Modifier
-            .heightIn(max = 420.dp)
-            .border(if (focused) 2.dp else 0.dp, if (focused) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
-            .focusRequester(focus)
-            .onFocusChanged { focused = it.isFocused }
-            .onKeyEvent { e ->
-                if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-                when (e.key) {
-                    // Down past the end goes on to the buttons.
-                    Key.DirectionDown -> if (scroll.value < scroll.maxValue) { scope.launch { scroll.animateScrollBy(160f) }; true } else false
-                    Key.DirectionUp -> if (scroll.value > 0) { scope.launch { scroll.animateScrollBy(-160f) }; true } else false
-                    else -> false
-                }
-            }
-            .focusable()
-            .verticalScroll(scroll)
-            .padding(10.dp),
-    ) {
-        Text(if (scroll.maxValue > 0) "▲▼ to scroll" else "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        dev.nitrate.tv.ui.player.TrailView(trail)
-    }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    dev.nitrate.tv.ui.lists.ScrollBox(maxHeight = 420, takeFocus = true) { dev.nitrate.tv.ui.player.TrailView(trail) }
 }
-
 
 /**
  * What the app can't see on its own, asked of the user (did the TV switch to HDR, what did the

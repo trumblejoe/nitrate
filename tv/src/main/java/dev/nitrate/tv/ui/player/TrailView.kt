@@ -30,10 +30,16 @@ fun TrailView(trail: PlaybackTrail, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodyMedium,
             color = if (differences.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else Differs,
         )
-        trail.trails.chunked(2).forEach { pair ->
-            Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                pair.forEach { t -> TrailColumn(t, Modifier.weight(1f)) }
-                if (pair.size == 1) Column(Modifier.weight(1f)) {}
+        // Side by side only where each column still has room for its words; else one under another.
+        androidx.compose.foundation.layout.BoxWithConstraints {
+            val perRow = if (maxWidth >= 840.dp) 2 else 1
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                trail.trails.chunked(perRow).forEach { group ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                        group.forEach { t -> TrailColumn(t, Modifier.weight(1f)) }
+                        if (group.size < perRow) Column(Modifier.weight(1f)) {}
+                    }
+                }
             }
         }
     }
@@ -45,7 +51,7 @@ private fun TrailColumn(t: Trail, modifier: Modifier) {
         Text(t.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 2.dp))
         t.steps.forEachIndexed { i, s ->
             Row {
-                Text("${i + 1}. ${s.step}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(150.dp))
+                Text("${i + 1}. ${s.step}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(140.dp))
                 Column(Modifier.weight(1f)) {
                     Text(s.what, style = MaterialTheme.typography.bodyMedium, color = if (s.differs != null) Differs else MaterialTheme.colorScheme.onSurface)
                     Text(listOfNotNull(s.who.label, s.why).joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

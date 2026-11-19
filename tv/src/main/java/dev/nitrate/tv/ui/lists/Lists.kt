@@ -1,6 +1,14 @@
 package dev.nitrate.tv.ui.lists
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,7 +47,8 @@ import kotlinx.coroutines.launch
 /** A dialog panel with the TV look. */
 @Composable
 fun TvDialog(onDismiss: () -> Unit, width: Int = 620, content: @Composable () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
+    // Android caps dialogs at its own default width: wider ones (a trail, a title's details) take theirs.
+    Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = width <= 620)) {
         Column(
             // Some open from a long press: the held OK mustn't click the first choice.
             Modifier.ignoreHeldSelect().width(width.dp).heightIn(max = 620.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp).verticalScroll(rememberScrollState()),
@@ -197,3 +206,42 @@ fun PlaylistEntryDialog(
         LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     }
 }
+
+
+/**
+ * Text that can be read on a TV however long it is: a box of at most [maxHeight] that takes focus
+ * (text alone can't) and scrolls with ▲▼, handing focus on past its ends. Inside a dialog, put the
+ * buttons after it, so the text stays in view above them.
+ */
+@Composable
+fun ScrollBox(maxHeight: Int = 400, takeFocus: Boolean = false, content: @Composable () -> Unit) {
+    val scroll = rememberScrollState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+    var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(max = maxHeight.dp)
+            .border(2.dp, if (focused) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(10.dp))
+            .focusRequester(focus)
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent { e ->
+                if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onKeyEvent false
+                when (e.key) {
+                    androidx.compose.ui.input.key.Key.DirectionDown -> if (scroll.value < scroll.maxValue) { scope.launch { scroll.animateScrollBy(160f) }; true } else false
+                    androidx.compose.ui.input.key.Key.DirectionUp -> if (scroll.value > 0) { scope.launch { scroll.animateScrollBy(-160f) }; true } else false
+                    else -> false
+                }
+            }
+            .focusable()
+            .verticalScroll(scroll)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (scroll.maxValue > 0) Text("▲▼ to scroll", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        content()
+    }
+    if (takeFocus) androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+

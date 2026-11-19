@@ -74,6 +74,7 @@ import kotlinx.serialization.Serializable
 @Serializable object ServerAdminRoute
 @Serializable object LibraryHealthRoute
 @Serializable object HouseholdDevicesRoute
+@Serializable object GuideRoute
 @Serializable object PlaybackOverviewRoute
 @Serializable object ChannelsRoute
 @Serializable object WatchPartnersRoute
@@ -291,6 +292,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }
             screen<HouseholdDevicesRoute> { HouseholdDevicesScreen(actions) }
+            screen<GuideRoute> { GuideScreen(admin = actions.container.account.collectAsState().value?.isAdmin == true) }
             screen<PlaybackOverviewRoute> { PlaybackOverviewScreen(actions) }
             screen<ChannelsRoute> { ChannelsScreen(actions) }
             screen<WatchPartnersRoute> { WatchPartnersScreen(actions) }

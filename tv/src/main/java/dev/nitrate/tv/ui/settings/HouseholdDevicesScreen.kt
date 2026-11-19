@@ -109,9 +109,11 @@ fun HouseholdDevicesScreen(container: AppContainer, onOpen: (String) -> Unit) {
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 
     open?.let { d ->
-        dev.nitrate.tv.ui.lists.TvDialog(onDismiss = { open = null }, width = 1000) {
+        dev.nitrate.tv.ui.lists.TvDialog(onDismiss = { open = null }, width = 900) {
             val s = d.summary
             Text("${d.userName} · ${d.deviceName}", style = MaterialTheme.typography.headlineSmall)
+            // Everything scrolls in its own box, so it stays readable above the buttons.
+            dev.nitrate.tv.ui.lists.ScrollBox(maxHeight = 440, takeFocus = true) {
             if (s == null) Text("This device's app sent a summary this one can't read: update Nitrate on it.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             s?.let {
                 Rows("Device", listOf("Model" to it.model, "App" to it.app, "Sent" to agoLabel(d.atMs, now), "HDR Android reports" to it.displayHdr.joinToString().ifEmpty { "none" }))
@@ -133,6 +135,7 @@ fun HouseholdDevicesScreen(container: AppContainer, onOpen: (String) -> Unit) {
                     Text("Converted here (${it.converted.size})", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                     it.converted.take(60).forEach { c -> Text(listOfNotNull(c.name, c.reason).joinToString(": "), style = MaterialTheme.typography.bodySmall) }
                 }
+            }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 10.dp)) {
                 OutlinedButton(onClick = { open = null }) { Text("Close") }

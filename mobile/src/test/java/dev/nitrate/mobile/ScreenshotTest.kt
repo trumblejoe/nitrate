@@ -195,6 +195,8 @@ class ScreenshotTest {
 
     @Test fun libraryHealth() = shoot("phone-library-health", setup = { c -> c.checkLibraryHealth(null) }) { dev.nitrate.mobile.ui.LibraryHealthScreen(it) }
 
+    @Test fun guide() = shoot("phone-guide") { dev.nitrate.mobile.ui.GuideScreen(admin = true) }
+
     @Test fun householdDevices() = shoot("phone-household-devices") { dev.nitrate.mobile.ui.HouseholdDevicesScreen(it) }
 
     @Test fun playbackTrail() = shoot("phone-playback-trail") {

@@ -106,6 +106,9 @@ import kotlinx.serialization.Serializable
 /** Settings → Tools → TV & receiver check (the Companion plugin's clips). */
 @Serializable object TvCheckRoute
 
+/** Settings → Tools → Checking how things play (the guide to the playback tools). */
+@Serializable object GuideRoute
+
 /** Settings → Tools → Household devices (admins). */
 @Serializable object HouseholdDevicesRoute
 @Serializable object WatchTogetherRoute
@@ -365,6 +368,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     ) else emptyList()) +
                         enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } }),
                     dev.nitrate.tv.ui.settings.SettingsSection("Tools", listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Checking how things play", "A guide to these tools: which to use, how, and what to do about washed-out HDR, missing surround or stutter") { nav.navigate(GuideRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Playback test", "Plays short samples to find what this TV really plays") { nav.navigate(PlaybackTestRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Audio channel test", "A voice from each speaker in turn") { nav.navigate(AudioChannelTestRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("TV & receiver check", "Clips that should make the TV show HDR or Dolby Vision and the receiver its sound format: say what you see") { nav.navigate(TvCheckRoute) },
@@ -473,6 +477,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
         composable<HouseholdDevicesRoute> { dev.nitrate.tv.ui.settings.HouseholdDevicesScreen(container, onOpen = { nav.navigate(DetailsRoute(it)) }) }
+        composable<GuideRoute> { dev.nitrate.tv.ui.settings.GuideScreen(admin = account?.isAdmin == true) }
         composable<TvCheckRoute> { dev.nitrate.tv.ui.settings.TvCheckScreen(container) }
         composable<PlaybackOverviewRoute> {
             dev.nitrate.tv.ui.settings.PlaybackOverviewScreen(
