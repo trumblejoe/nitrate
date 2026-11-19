@@ -145,3 +145,6 @@ expect fun toImageBitmap(image: coil3.Image): androidx.compose.ui.graphics.Image
 
 /** A request whose image can be read pixel by pixel (Android: not a hardware bitmap). */
 expect fun softwareImage(builder: coil3.request.ImageRequest.Builder): coil3.request.ImageRequest.Builder
+
+/** Whether the player here can run a test play for the playback overview (Android's; not Apple's yet). */
+expect val canTestPlay: Boolean

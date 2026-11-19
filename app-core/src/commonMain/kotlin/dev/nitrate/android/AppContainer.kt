@@ -1,5 +1,6 @@
 package dev.nitrate.android
 
+import kotlinx.serialization.builtins.serializer
 import kotlinx.coroutines.launch
 
 import dev.nitrate.android.remote.RemoteControlHub
@@ -386,7 +387,42 @@ class AppContainer(
 
     /** Saves the overview in the server's logs (Dashboard → Logs), for the admin; returns the file name. */
     suspend fun sendPlaybackOverview(overview: dev.nitrate.core.playback.PlaybackOverview): Result<String> =
-        runCatching { server.sendClientLog(overview.report()) }
+        runCatching { server.sendClientLog(overview.report(testPlays.value.values)) }
+
+    /** The last overview read (library id → overview), so coming back from a test play doesn't read the library again. */
+    var lastOverview: Pair<String?, dev.nitrate.core.playback.PlaybackOverview>? = null
+
+    private val _testPlays = kotlinx.coroutines.flow.MutableStateFlow<Map<String, dev.nitrate.core.playback.TestPlayResult>>(emptyMap())
+    private var testPlaysAccount: String? = null
+
+    /**
+     * Test plays from the playback overview (by item id): what really happened when each title
+     * played for a short while here. Kept per account on this device and in its overview reports.
+     */
+    val testPlays: kotlinx.coroutines.flow.StateFlow<Map<String, dev.nitrate.core.playback.TestPlayResult>> = _testPlays
+
+    private val testPlaySerializer = kotlinx.serialization.builtins.MapSerializer(String.serializer(), dev.nitrate.core.playback.TestPlayResult.serializer())
+
+    /** Reads this account's saved test plays (once per account). */
+    suspend fun loadTestPlays() {
+        val account = server.currentAccountKey ?: return
+        if (testPlaysAccount == account) return
+        testPlaysAccount = account
+        _testPlays.value = runCatching { dataCache.read(account, "testplays", testPlaySerializer) }.getOrNull().orEmpty()
+    }
+
+    /** Keeps a test play's result (replacing an earlier one of the same title). */
+    suspend fun saveTestPlay(result: dev.nitrate.core.playback.TestPlayResult) {
+        loadTestPlays()
+        _testPlays.value = _testPlays.value + (result.itemId to result)
+        server.currentAccountKey?.let { runCatching { dataCache.write(it, "testplays", _testPlays.value, testPlaySerializer) } }
+    }
+
+    /** Forgets every test play. */
+    suspend fun clearTestPlays() {
+        _testPlays.value = emptyMap()
+        server.currentAccountKey?.let { runCatching { dataCache.write(it, "testplays", _testPlays.value, testPlaySerializer) } }
+    }
 
     /** How [itemId] would play here, worked out on the device alone (no call to the server's playback decision). */
     suspend fun predictPlayback(itemId: String, source: dev.nitrate.core.model.MediaSource, audioIndex: Int? = null, subtitleIndex: Int? = null): dev.nitrate.core.playback.PlaybackPrediction =

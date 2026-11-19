@@ -47,6 +47,7 @@ fun PlaybackInfoPanel(
     modifier: Modifier = Modifier,
     audio: dev.nitrate.core.playback.AudioPath? = null,
     video: dev.nitrate.core.playback.VideoPath? = null,
+    trail: dev.nitrate.core.playback.PlaybackTrail? = null,
 ) {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
@@ -75,7 +76,8 @@ fun PlaybackInfoPanel(
             Text("Playback info", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             Text(if (scroll.maxValue > 0) "▲▼ scroll  ·  Back closes" else "Back closes", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(Modifier.verticalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        Column(Modifier.verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Picture", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
                 InfoRows(plan.infoRows(videoDecoder, audioDecoder) + video?.rows().orEmpty())
@@ -85,6 +87,14 @@ fun PlaybackInfoPanel(
                 Text("Sound", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
                 InfoRows(sound)
             }
+        }
+        // Every decision from the file to what left the device, and who made it.
+        trail?.let {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Path: from the file to the screen", style = MaterialTheme.typography.titleLarge)
+                TrailView(it)
+            }
+        }
         }
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }

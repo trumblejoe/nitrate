@@ -139,6 +139,11 @@ fun PlayerScreen(
     /** "Still watching?" (episodes rolling on with nothing pressed), and putting things back. */
     stillWatching: dev.nitrate.core.playback.StillWatching? = null,
     stillWatchingRewind: ((dev.nitrate.core.playback.StillWatching.Rewind?, (MediaItem?) -> Unit) -> Unit)? = null,
+    /**
+     * A test play from the playback overview: [TestPlay.PLAY_MS] of the title a few minutes in,
+     * unreported (like a recap clip), then its trail is handed here before the player leaves.
+     */
+    testPlay: ((dev.nitrate.core.playback.TestPlayResult) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
@@ -164,7 +169,8 @@ fun PlayerScreen(
     val session = remember(itemId) {
         PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory, describedAudio = describedAudio)
             .also {
-                if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)
+                if (testPlay != null) Unit // loaded below, once the title's length is known
+                else if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)
                 else {
                     syncPlay?.let(it::followGroup)
                     it.load(itemId, fromStart, startMs, audioIndex, subtitleIndex)
@@ -177,6 +183,38 @@ fun PlayerScreen(
             if (remote?.active === session) remote.active = null
             session.release()
         }
+    }
+    // A test play: a short stretch a few minutes in, then what happened on the way out, for the overview.
+    var testLeft by remember { mutableStateOf<Long?>(null) }
+    if (testPlay != null) LaunchedEffect(session) {
+        val runtime = runCatching { repository.getItem(itemId).runtimeMs }.getOrNull()
+        val from = dev.nitrate.core.playback.TestPlay.startAt(runtime)
+        val to = from + dev.nitrate.core.playback.TestPlay.PLAY_MS
+        session.loadClip(itemId, from, to)
+        val began = System.currentTimeMillis()
+        var failed: String? = null
+        while (true) {
+            kotlinx.coroutines.delay(250)
+            val at = session.progress.value.positionMs
+            if (session.plan.value != null) testLeft = (to - at).coerceIn(0, dev.nitrate.core.playback.TestPlay.PLAY_MS)
+            failed = session.error.value
+            // Done just before the clip's own end (which leaves the player), on an error, or if it never got going.
+            if (failed != null || (session.plan.value != null && at >= to - 600)) break
+            if (System.currentTimeMillis() - began > dev.nitrate.core.playback.TestPlay.PLAY_MS + 90_000) { failed = "It didn't get going within two minutes"; break }
+        }
+        val trail = capabilities?.let { caps -> runCatching { session.trail(caps) }.getOrNull() }
+        testPlay(
+            dev.nitrate.core.playback.TestPlayResult(
+                itemId = itemId,
+                name = trail?.title ?: session.item.value?.name ?: itemId,
+                atMs = System.currentTimeMillis(),
+                trail = trail,
+                droppedFrames = session.droppedFrameCount,
+                playedMs = (session.progress.value.positionMs - from).coerceAtLeast(0),
+                error = failed,
+            ),
+        )
+        if (failed != null) onExit()
     }
     val settingsNow by playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
     val assTrack by session.assTrack.collectAsState()
@@ -252,13 +290,13 @@ fun PlayerScreen(
     // Started by itself (rolled on) or asked for; any key after is a press.
     LaunchedEffect(item?.id) {
         val i = item ?: return@LaunchedEffect
-        if (clipEndMs == null) stillWatching?.started(i.id, i.user.positionMs, i.user.played)
+        if (clipEndMs == null && testPlay == null) stillWatching?.started(i.id, i.user.positionMs, i.user.played)
     }
     var lastPress by remember { mutableLongStateOf(0L) }
     fun pressed() {
         val i = item ?: return
         val now = System.currentTimeMillis()
-        if (now - lastPress < 2_000 || clipEndMs != null) return
+        if (now - lastPress < 2_000 || clipEndMs != null || testPlay != null) return
         lastPress = now
         stillWatching?.input(i.id, player.currentPosition, i.user.played)
     }
@@ -653,7 +691,14 @@ fun PlayerScreen(
         if (panel == Panel.INFO && p != null) {
             // Over the video with the controls out of the way; ▲▼ scroll it, Back closes it.
             PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.Center).padding(horizontal = 32.dp, vertical = 24.dp), audio = session.audioPath.collectAsState().value,
-                video = androidx.compose.runtime.produceState<dev.nitrate.core.playback.VideoPath?>(null, session) { session.videoPath().collect { value = it } }.value)
+                video = androidx.compose.runtime.produceState<dev.nitrate.core.playback.VideoPath?>(null, session) { session.videoPath().collect { value = it } }.value,
+                trail = androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackTrail?>(null, session, capabilities) {
+                    val caps = capabilities ?: return@produceState
+                    while (true) {
+                        value = session.trail(caps)
+                        kotlinx.coroutines.delay(2_000)
+                    }
+                }.value)
         }
 
         (logMessage ?: notice)?.let {
@@ -667,6 +712,12 @@ fun PlayerScreen(
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.Center))
         }
+        if (testPlay != null) Text(
+            testLeft?.let { "Test play · ${(it + 999) / 1000} s left · Back stops it" } ?: "Test play · starting…",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.align(Alignment.TopEnd).padding(32.dp)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), MaterialTheme.shapes.medium).padding(horizontal = 16.dp, vertical = 10.dp),
+        )
     }
         val shownPanel = openPanel
         if (shownPanel != null && pluginContext != null) {

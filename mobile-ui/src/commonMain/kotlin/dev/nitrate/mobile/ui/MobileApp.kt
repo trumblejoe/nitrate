@@ -86,7 +86,11 @@ import kotlinx.serialization.Serializable
 
 /** [queue] is comma-separated item ids to play after [itemId]; [local] plays the downloaded file. */
 /** [clipEndMs] >= 0: a recap clip from [startMs] to there, not reported to the server. */
-@Serializable data class PlayerRoute(val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false, val startMs: Long = -1, val clipEndMs: Long = -1)
+@Serializable data class PlayerRoute(
+    val itemId: String, val fromStart: Boolean = false, val queue: String = "", val local: Boolean = false, val startMs: Long = -1, val clipEndMs: Long = -1,
+    /** A test play from the playback overview; [queue] then holds the titles still to test. */
+    val test: Boolean = false,
+)
 
 /** "Last time": the recap in [AppContainer.pendingRecap], before playing on. */
 @Serializable object RecapRoute
@@ -320,13 +324,16 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     startMs = route.startMs.takeIf { it >= 0 },
                     clipEndMs = route.clipEndMs.takeIf { it >= 0 },
                     // Playlists queue their own next item; single episodes get Up Next (not a recap clip).
-                    onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0) { next -> nav.popBackStack(); actions.play(next, false) } else null,
+                    onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { next -> nav.popBackStack(); actions.play(next, false) } else null,
                     onExit = { nav.popBackStack() },
                     onEnded = {
                         val next = route.queue.split(',').filter(String::isNotBlank)
                         nav.popBackStack()
-                        if (next.isNotEmpty()) actions.playQueue(next)
+                        // A sample test goes on to the next kind of file; a queue plays on.
+                        if (route.test && next.isNotEmpty()) nav.navigate(PlayerRoute(next.first(), queue = next.drop(1).joinToString(","), test = true))
+                        else if (next.isNotEmpty()) actions.playQueue(next)
                     },
+                    testPlay = if (route.test) { result -> appScope.launch { actions.container.saveTestPlay(result) } } else null,
                 )
             }
         }

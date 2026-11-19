@@ -140,3 +140,5 @@ actual fun rememberScriptTransfer(store: dev.nitrate.android.writing.WritingStor
 actual fun toImageBitmap(image: coil3.Image): androidx.compose.ui.graphics.ImageBitmap = image.toBitmap().asImageBitmap()
 
 actual fun softwareImage(builder: ImageRequest.Builder): ImageRequest.Builder = builder.allowHardware(false)
+
+actual val canTestPlay: Boolean = true

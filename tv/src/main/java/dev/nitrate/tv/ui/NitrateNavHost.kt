@@ -122,6 +122,8 @@ sealed interface TvRequest {
 @Serializable data class PlayerRoute(
     val itemId: String, val fromStart: Boolean = false, val queue: String = "", val startMs: Long = -1, val clipEndMs: Long = -1,
     val audioIndex: Int = NO_TRACK, val subtitleIndex: Int = NO_TRACK,
+    /** A test play from the playback overview; [queue] then holds the titles still to test. */
+    val test: Boolean = false,
 )
 
 const val NO_TRACK = -2
@@ -463,7 +465,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
         composable<PlaybackOverviewRoute> {
-            dev.nitrate.tv.ui.settings.PlaybackOverviewScreen(container, onOpen = { nav.navigate(DetailsRoute(it)) })
+            dev.nitrate.tv.ui.settings.PlaybackOverviewScreen(
+                container,
+                onOpen = { nav.navigate(DetailsRoute(it)) },
+                // Test plays go straight to the player: no guards, recaps or pre-rolls.
+                onTest = { ids -> ids.firstOrNull()?.let { nav.navigate(PlayerRoute(it, queue = ids.drop(1).joinToString(","), test = true)) } },
+            )
         }
         composable<LibraryHealthRoute> {
             dev.nitrate.tv.ui.settings.LibraryHealthScreen(container, onOpen = { nav.navigate(DetailsRoute(it)) }, onManage = { nav.navigate(ManageItemRoute(it)) })
@@ -570,7 +577,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 startMs = entry.savedStateHandle.get<Long>(RESUME_AT) ?: route.startMs.takeIf { it >= 0 },
                 clipEndMs = route.clipEndMs.takeIf { it >= 0 },
                 // An extra plays on top; Back or its end comes back here, at the same spot.
-                onPlayExtra = if (route.clipEndMs < 0) { extra, at ->
+                onPlayExtra = if (route.clipEndMs < 0 && !route.test) { extra, at ->
                     entry.savedStateHandle[RESUME_AT] = at
                     nav.navigate(PlayerRoute(extra.id, fromStart = true))
                 } else null,
@@ -578,16 +585,21 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 subtitleIndex = route.subtitleIndex.takeIf { it != NO_TRACK },
                 describedAudio = container::prefersDescribedAudio,
                 // Up Next (episodes, a film's collection) only outside queues and recap clips.
-                onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0) { next -> nav.popBackStack(); gate.play(next) } else null,
-                syncPlay = container.syncPlay,
+                onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { next -> nav.popBackStack(); gate.play(next) } else null,
+                syncPlay = container.syncPlay.takeIf { !route.test },
                 stillWatching = container.stillWatching,
                 stillWatchingRewind = container::stillWatchingRewind,
                 sendLog = { session -> container.sendPlaybackReport(session) },
                 capabilities = container.capabilities,
                 chat = container.chat,
+                testPlay = if (route.test) { result -> scope.launch { container.saveTestPlay(result) } } else null,
                 onEnded = {
                     val next = route.queue.split(',').filter(String::isNotBlank)
-                    if (next.isEmpty()) {
+                    if (route.test && next.isNotEmpty()) {
+                        // A sample test: on to the next kind of file.
+                        nav.popBackStack()
+                        nav.navigate(PlayerRoute(next.first(), queue = next.drop(1).joinToString(","), test = true))
+                    } else if (next.isEmpty()) {
                         nav.popBackStack()
                     } else {
                         nav.popBackStack()

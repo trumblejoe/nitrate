@@ -22,6 +22,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,7 +54,21 @@ fun PlaybackOverviewScreen(actions: AppActions) {
         value = runCatching { actions.server.views() }.getOrDefault(emptyList()).filter { it.collection == CollectionKind.MOVIES || it.collection == CollectionKind.TV_SHOWS }
     }
     var libraryId by rememberSaveable { mutableStateOf<String?>(null) }
-    var overview by remember { mutableStateOf<PlaybackOverview?>(null) }
+    var overview by remember { mutableStateOf(container.lastOverview?.takeIf { it.first == libraryId }?.second) }
+    val tests by container.testPlays.collectAsState()
+    LaunchedEffect(Unit) { container.loadTestPlays() }
+    // The titles of the test (or sample) that was started, shown together once back here.
+    var testing by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var testStarted by rememberSaveable { mutableStateOf(0L) }
+    var sample by remember { mutableStateOf<List<OverviewEntry>?>(null) }
+    var showTrail by remember { mutableStateOf<dev.nitrate.core.playback.TestPlayResult?>(null) }
+    fun startTests(ids: List<String>) {
+        if (ids.isEmpty()) return
+        testing = ids
+        testStarted = dev.nitrate.android.nowMs()
+        // Straight to the player: no guards, recaps or Up Next.
+        actions.nav.navigate(PlayerRoute(ids.first(), queue = ids.drop(1).joinToString(","), test = true))
+    }
     var reading by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf(OverviewFilter.ALL) }
@@ -66,12 +81,12 @@ fun PlaybackOverviewScreen(actions: AppActions) {
         scope.launch {
             val name = libraries.firstOrNull { it.id == libraryId }?.name ?: "All libraries"
             runCatching { container.playbackOverview(libraryId, name) { done, total -> reading = done to total } }
-                .onSuccess { overview = it }
+                .onSuccess { overview = it; container.lastOverview = libraryId to it }
                 .onFailure { error = it.message ?: "Couldn't read the library" }
             reading = null
         }
     }
-    LaunchedEffect(libraryId) { load() }
+    LaunchedEffect(libraryId) { if (overview == null || container.lastOverview?.first != libraryId) load() }
 
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         item {
@@ -113,6 +128,7 @@ fun PlaybackOverviewScreen(actions: AppActions) {
                         }) { Text("Send to server log") }
                         OutlinedButton(onClick = ::load) { Text("Read again") }
                     }
+                    OutlinedButton(onClick = { sample = dev.nitrate.core.playback.TestPlay.sample(o.entries) }) { Text("Test a sample") }
                     sent?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor()) }
                 }
             }
@@ -123,6 +139,7 @@ fun PlaybackOverviewScreen(actions: AppActions) {
                     Text(e.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text(e.prediction.summary, style = MaterialTheme.typography.bodySmall)
                     e.prediction.reasons.firstOrNull()?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2) }
+                    tests[e.item.id]?.let { t -> Text("Tested: ${t.summary}", style = MaterialTheme.typography.bodySmall, color = if (t.ok) accentColor() else androidx.compose.ui.graphics.Color(0xFFFFB74D)) }
                 }
             }
         }
@@ -135,10 +152,68 @@ fun PlaybackOverviewScreen(actions: AppActions) {
             text = {
                 Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     e.prediction.rows().forEach { (label, text) -> Text("$label: $text", style = MaterialTheme.typography.bodyMedium) }
+                    tests[e.item.id]?.let { t ->
+                        Text("Last test play: ${t.summary}", style = MaterialTheme.typography.bodyMedium, color = if (t.ok) accentColor() else androidx.compose.ui.graphics.Color(0xFFFFB74D), modifier = Modifier.padding(top = 6.dp))
+                        TextButton(onClick = { detail = null; showTrail = t }) { Text("See what happened") }
+                    }
+                    if (dev.nitrate.mobile.platform.canTestPlay) TextButton(onClick = { detail = null; startTests(listOf(e.item.id)) }) { Text("Test play (30 s)") }
                 }
             },
             confirmButton = { TextButton(onClick = { detail = null; actions.nav.navigate(DetailsRoute(e.item.id)) }) { Text("Open") } },
             dismissButton = { TextButton(onClick = { detail = null }) { Text("Close") } },
+        )
+    }
+    sample?.let { list ->
+        AlertDialog(
+            onDismissRequest = { sample = null },
+            title = { Text("Test a sample") },
+            text = {
+                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "${list.size} kinds of file. One title of each plays for 30 seconds, a few minutes in, through the normal path (nothing is marked watched).",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    list.forEach { e ->
+                        Text(e.source?.let(dev.nitrate.core.playback.TestPlay::describe) ?: e.name, style = MaterialTheme.typography.bodyMedium)
+                        Text("${e.name} · ${e.prediction.delivery.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            },
+            confirmButton = { if (dev.nitrate.mobile.platform.canTestPlay) TextButton(onClick = { sample = null; startTests(list.map { it.item.id }) }) { Text("Start") } },
+            dismissButton = { TextButton(onClick = { sample = null }) { Text("Close") } },
+        )
+    }
+    // Back from a test: what each one did.
+    val finished = testing.mapNotNull { id -> tests[id]?.takeIf { it.atMs >= testStarted } }
+    if (testing.isNotEmpty() && finished.isNotEmpty() && showTrail == null) {
+        if (finished.size == 1 && testing.size == 1) LaunchedEffect(finished) { showTrail = finished.single(); testing = emptyList() }
+        else AlertDialog(
+            onDismissRequest = { testing = emptyList() },
+            title = { Text("Test plays: ${finished.size} of ${testing.size}") },
+            text = {
+                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                    finished.forEach { t ->
+                        Column(Modifier.fillMaxWidth().clickable { showTrail = t }.padding(vertical = 6.dp)) {
+                            Text(t.name, style = MaterialTheme.typography.titleSmall)
+                            Text(t.summary, style = MaterialTheme.typography.bodySmall, color = if (t.ok) accentColor() else androidx.compose.ui.graphics.Color(0xFFFFB74D))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { testing = emptyList() }) { Text("Close") } },
+        )
+    }
+    showTrail?.let { t ->
+        AlertDialog(
+            onDismissRequest = { showTrail = null },
+            title = { Text("Test play: ${t.name}") },
+            text = {
+                Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(listOf(t.summary, "${t.playedMs / 1000} s played", "${t.droppedFrames} dropped frames").joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
+                    t.trail?.let { TrailView(it) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTrail = null }) { Text("Close") } },
         )
     }
 }

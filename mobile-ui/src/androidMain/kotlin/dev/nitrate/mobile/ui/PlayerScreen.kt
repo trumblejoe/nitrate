@@ -118,6 +118,7 @@ actual fun PlayerScreen(
     startMs: Long?,
     onPlayNext: ((MediaItem) -> Unit)?,
     clipEndMs: Long?,
+    testPlay: ((dev.nitrate.core.playback.TestPlayResult) -> Unit)?,
 ) {
     val context = LocalContext.current
     val downloads = actions.container.downloads
@@ -151,12 +152,44 @@ actual fun PlayerScreen(
             trackMemory = actions.container.trackMemory, describedAudio = actions.container::prefersDescribedAudio,
         )
             .also {
-                if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)
+                if (testPlay != null) Unit // loaded below, once the title's length is known
+                else if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)
                 else if (!local) {
                     it.followGroup(actions.container.syncPlay)
                     it.load(itemId, fromStart, startMs)
                 }
             }
+    }
+    // A test play: a short stretch a few minutes in, then what happened on the way out, for the overview.
+    var testLeft by remember { mutableStateOf<Long?>(null) }
+    if (testPlay != null) LaunchedEffect(session) {
+        val runtime = runCatching { actions.server.getItem(itemId).runtimeMs }.getOrNull()
+        val from = dev.nitrate.core.playback.TestPlay.startAt(runtime)
+        val to = from + dev.nitrate.core.playback.TestPlay.PLAY_MS
+        session.loadClip(itemId, from, to)
+        val began = System.currentTimeMillis()
+        var failed: String? = null
+        while (true) {
+            kotlinx.coroutines.delay(250)
+            val at = session.progress.value.positionMs
+            if (session.plan.value != null) testLeft = (to - at).coerceIn(0, dev.nitrate.core.playback.TestPlay.PLAY_MS)
+            failed = session.error.value
+            if (failed != null || (session.plan.value != null && at >= to - 600)) break
+            if (System.currentTimeMillis() - began > dev.nitrate.core.playback.TestPlay.PLAY_MS + 90_000) { failed = "It didn't get going within two minutes"; break }
+        }
+        val trail = runCatching { session.trail(actions.container.capabilities) }.getOrNull()
+        testPlay(
+            dev.nitrate.core.playback.TestPlayResult(
+                itemId = itemId,
+                name = trail?.title ?: session.item.value?.name ?: itemId,
+                atMs = System.currentTimeMillis(),
+                trail = trail,
+                droppedFrames = session.droppedFrameCount,
+                playedMs = (session.progress.value.positionMs - from).coerceAtLeast(0),
+                error = failed,
+            ),
+        )
+        if (failed != null) onExit()
     }
     // Watch-together chat, while this device watches in a group (Companion plugin on the server).
     val syncGroup = actions.container.syncPlay.group.collectAsState().value
@@ -489,6 +522,12 @@ actual fun PlayerScreen(
             )
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.Center).padding(24.dp)) }
+        if (testPlay != null) Text(
+            testLeft?.let { "Test play · ${(it + 999) / 1000} s left" } ?: "Test play · starting…",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 16.dp)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), MaterialTheme.shapes.medium).padding(horizontal = 12.dp, vertical = 8.dp),
+        )
         if (chatGroup != null && dialog != PlayerDialog.CHAT) ChatToasts(actions.container.chat, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
     }
 
@@ -543,6 +582,17 @@ actual fun PlayerScreen(
                     if (sound.isNotEmpty()) {
                         Text("Sound", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                         rows(sound)
+                    }
+                    // Every decision from the file to what left the device, and who made it.
+                    val trail by androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackTrail?>(null, session) {
+                        while (true) {
+                            value = runCatching { session.trail(actions.container.capabilities) }.getOrNull()
+                            kotlinx.coroutines.delay(2_000)
+                        }
+                    }
+                    trail?.let {
+                        Text("Path: from the file to the screen", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                        TrailView(it)
                     }
                     logMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor(), modifier = Modifier.padding(top = 10.dp)) }
                     androidx.compose.material3.OutlinedButton(onClick = { dialog = PlayerDialog.MEDIA_INFO }, modifier = Modifier.padding(top = 12.dp)) {

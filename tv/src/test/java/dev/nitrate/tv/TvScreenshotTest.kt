@@ -666,6 +666,10 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.settings.LibraryHealthScreen(c, onOpen = {}, onManage = {})
     }
 
+    @Test fun playbackTrail() = shoot("tv-playback-trail") { _ ->
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().padding(40.dp)) { dev.nitrate.tv.ui.player.TrailView(dev.nitrate.testing.sampleTrail()) }
+    }
+
     @Test fun playbackOverview() = shoot("tv-playback-overview") { c ->
         dev.nitrate.tv.ui.settings.PlaybackOverviewScreen(c, onOpen = {})
     }

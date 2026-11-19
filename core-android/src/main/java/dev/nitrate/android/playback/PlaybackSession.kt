@@ -157,6 +157,7 @@ class PlaybackSession(
      * switches the display mode itself, or the user turned it off).
      */
     fun setFrameRateMatch(match: dev.nitrate.core.playback.FrameRateMatch) {
+        frameRateChoice = match
         exo.videoChangeFrameRateStrategy = if (match == dev.nitrate.core.playback.FrameRateMatch.SEAMLESS) C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
         else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
     }
@@ -986,6 +987,47 @@ class PlaybackSession(
         return dev.nitrate.core.playback.PlaybackDoctor.diagnose(p, caps, settings.current(), forcedTranscode)
     }
 
+    @Volatile private var displayHzBefore: Float? = null
+    @Volatile private var frameRateChoice: dev.nitrate.core.playback.FrameRateMatch? = null
+
+    /** Frames dropped since this title started. */
+    val droppedFrameCount: Int get() = droppedFrames
+
+    /**
+     * Every decision from the file to what left this device, as far as it's gone: the file, what
+     * Nitrate asked for, what the server did, what arrived, the decoder, Nitrate's processing and
+     * what went out, each marked where it differs from the prediction (the Info's Path, test plays).
+     */
+    suspend fun trail(caps: dev.nitrate.core.playback.DeviceCapabilities): dev.nitrate.core.playback.PlaybackTrail? {
+        val p = _plan.value ?: return null
+        val s = settings.current()
+        val prediction = runCatching {
+            dev.nitrate.core.jellyfin.ProfileCheck.predict(caps, s, p.source, p.audioIndex, p.subtitleIndex.takeIf { it >= 0 }, p.itemId)
+        }.getOrNull()
+        val name = _item.value?.let { i ->
+            if (i.kind == dev.nitrate.core.model.ItemKind.EPISODE) listOfNotNull(i.seriesName, "S${i.seasonNumber ?: "?"} E${i.indexNumber ?: "?"}").joinToString(" · ")
+            else i.name + (i.productionYear?.let { " ($it)" } ?: "")
+        } ?: p.itemId
+        return dev.nitrate.core.playback.PlaybackTrail.build(
+            dev.nitrate.core.playback.TrailInput(
+                title = name,
+                source = p.source,
+                plan = p,
+                caps = caps,
+                settings = s,
+                prediction = prediction,
+                video = videoSnapshot(),
+                audio = _audioPath.value,
+                arrivedVideoCodec = videoFormat?.sampleMimeType,
+                arrivedAudioCodec = audioInFormat?.sampleMimeType,
+                videoDecoder = _videoDecoder.value,
+                audioDecoder = _audioDecoder.value,
+                displayHzBefore = displayHzBefore,
+                frameRateMatch = frameRateChoice,
+            ),
+        )
+    }
+
     /** Applies a fix from [diagnosis] and asks the server again from the same spot. */
     fun applyFix(fix: dev.nitrate.core.playback.PlaybackFix) {
         val p = _plan.value ?: return
@@ -1076,6 +1118,8 @@ class PlaybackSession(
             // The TV's refresh-rate switch, before the player sets anything up: the HDMI link drops
             // while the TV changes mode, and sound prepared then is decoded (the output takes only
             // PCM for that moment). The gate keeps its own time limits.
+            // The display before any switch, for the trail's refresh-rate step.
+            if (_plan.value?.itemId != p.itemId) displayHzBefore = DisplayInfo.read(appContext)?.hz
             beforePlay?.let { gate -> runCatching { gate(p) }.onFailure { e -> if (e is kotlinx.coroutines.CancellationException) throw e; log("Before play: ${e.message}") } }
             play(p, startMs, current.name)
             if (!quiet) {

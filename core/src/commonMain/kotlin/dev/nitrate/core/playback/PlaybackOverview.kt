@@ -5,7 +5,7 @@ import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.MediaSource
 
 /** One film or episode and how it would play here. */
-data class OverviewEntry(val item: MediaItem, val prediction: PlaybackPrediction) {
+data class OverviewEntry(val item: MediaItem, val prediction: PlaybackPrediction, val source: MediaSource? = null) {
     /** "Film (2021)" or "Show · S1 E2". */
     val name: String
         get() = if (item.kind == ItemKind.EPISODE)
@@ -51,7 +51,7 @@ data class PlaybackOverview(
     fun count(filter: OverviewFilter) = entries.count(filter::matches)
 
     /** The overview as text for the server's logs (Dashboard → Logs): settings, counts, then each title not playing as it is. */
-    fun report(): String = buildString {
+    fun report(tests: Collection<TestPlayResult> = emptyList()): String = buildString {
         appendLine("Nitrate library playback overview")
         appendLine("App: $app")
         appendLine("Device: $device")
@@ -72,6 +72,14 @@ data class PlaybackOverview(
                 if (f == OverviewFilter.SOUND_DECODED) e.prediction.soundDetail?.let { appendLine("    $it") }
             }
         }
+        if (tests.isNotEmpty()) {
+            appendLine()
+            appendLine("== Test plays (${tests.size}) ==")
+            tests.sortedBy { it.name }.forEach { t ->
+                appendLine("- ${t.name}: ${t.summary}")
+                t.trail?.render()?.lines()?.filter { it.isNotBlank() }?.forEach { appendLine("    $it") }
+            }
+        }
         appendLine()
         appendLine("== Every title ==")
         entries.forEach { e -> appendLine("- ${e.name}: ${e.prediction.summary}") }
@@ -80,7 +88,7 @@ data class PlaybackOverview(
     companion object {
         /** Predicts every title in [sources] with [predict] (the profile check, for this device). */
         fun build(sources: List<Pair<MediaItem, MediaSource>>, predict: (MediaItem, MediaSource) -> PlaybackPrediction): List<OverviewEntry> =
-            sources.map { (item, source) -> OverviewEntry(item, predict(item, source)) }
+            sources.map { (item, source) -> OverviewEntry(item, predict(item, source), source) }
 
         /** This device's settings that decide how things play, for the report's header. */
         fun settingsSummary(s: PlaybackSettings): List<Pair<String, String>> = buildList {

@@ -31,6 +31,8 @@ expect fun PlayerScreen(
     onPlayNext: ((MediaItem) -> Unit)? = null,
     /** A recap clip: plays from [startMs] to here, unreported, then ends. */
     clipEndMs: Long? = null,
+    /** A test play from the playback overview: a short stretch, then what happened (Android; ignored elsewhere). */
+    testPlay: ((dev.nitrate.core.playback.TestPlayResult) -> Unit)? = null,
 )
 
 @Composable

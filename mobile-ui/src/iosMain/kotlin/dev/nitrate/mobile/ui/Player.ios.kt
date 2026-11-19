@@ -61,6 +61,7 @@ actual fun PlayerScreen(
     startMs: Long?,
     onPlayNext: ((MediaItem) -> Unit)?,
     clipEndMs: Long?,
+    testPlay: ((dev.nitrate.core.playback.TestPlayResult) -> Unit)?,
 ) {
     val container = actions.container
     val session = remember(itemId) { ApplePlayerSession(container, reported = clipEndMs == null) }

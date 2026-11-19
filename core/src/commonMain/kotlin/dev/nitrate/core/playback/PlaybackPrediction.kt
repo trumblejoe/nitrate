@@ -256,7 +256,7 @@ object PlaybackPredictor {
         }
     }
 
-    private fun describe(v: MediaStream): String = listOfNotNull(
+    internal fun describe(v: MediaStream): String = listOfNotNull(
         codecLabel(v.codec),
         v.height?.let { h -> when { h >= 2000 -> "4K"; h >= 1000 -> "1080" + if (v.isInterlaced) "i" else "p"; h >= 700 -> "720p"; else -> "${h}" + if (v.isInterlaced) "i" else "p" } },
         v.bitDepth?.takeIf { it > 8 }?.let { "$it-bit" },
@@ -264,10 +264,10 @@ object PlaybackPredictor {
         v.frameRate?.let { "${hz(it)} fps" },
     ).joinToString(" ")
 
-    private fun channels(n: Int?) = when (n) { null, 0 -> null; 1 -> "mono"; 2 -> "stereo"; 6 -> "5.1"; 8 -> "7.1"; else -> "$n ch" }
+    internal fun channels(n: Int?) = when (n) { null, 0 -> null; 1 -> "mono"; 2 -> "stereo"; 6 -> "5.1"; 8 -> "7.1"; else -> "$n ch" }
 
     /** 23.976, 24, 59.94. */
-    private fun hz(v: Float): String {
+    internal fun hz(v: Float): String {
         val millis = kotlin.math.round(v * 1000).toLong()
         val whole = millis / 1000
         val frac = (millis % 1000).toString().padStart(3, '0').trimEnd('0')
