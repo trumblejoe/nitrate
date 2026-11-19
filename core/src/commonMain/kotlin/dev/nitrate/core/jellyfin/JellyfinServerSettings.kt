@@ -105,6 +105,73 @@ internal object JellyfinServerSettings {
         return ServerSettings(listOfNotNull(languages, playback, home, account, server))
     }
 
+    /**
+     * How the server converts what a device can't play (Dashboard → Playback → Transcoding,
+     * `System/Configuration/encoding`, admins only), with the settings that decide how HDR looks
+     * when it's tone-mapped for a screen without it.
+     */
+    fun converting(enc: JsonObject): ServerSettingsGroup {
+        fun text(key: String) = (enc[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+        fun flag(key: String) = (enc[key] as? JsonPrimitive)?.booleanOrNull
+        fun onOff(v: Boolean?) = when (v) { true -> "On"; false -> "Off"; null -> "Not set" }
+        val accel = text("HardwareAccelerationType") ?: "none"
+        val hardware = accel != "none"
+        val decodes = (enc["HardwareDecodingCodecs"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.lowercase() }.orEmpty()
+        val hevc = "hevc" in decodes
+        val hevc10 = flag("EnableDecodingColorDepth10Hevc") == true
+        val toneMapping = flag("EnableTonemapping") == true
+        val vpp = flag("EnableVppTonemapping") == true && accel in setOf("qsv", "vaapi")
+        val algorithm = text("TonemappingAlgorithm") ?: "none"
+        return ServerSettingsGroup(
+            "Converting on the server", "Jellyfin dashboard → Playback → Transcoding",
+            listOfNotNull(
+                ServerSetting("Hardware acceleration", ACCELERATION[accel] ?: accel, APPLIES,
+                    if (hardware) "Converting is done by the graphics chip: fast enough for 4K HDR."
+                    else "Check: the processor does all converting. A 4K HDR film converted and tone-mapped on the processor is often too slow to play smoothly."),
+                if (hardware) ServerSetting("Hardware decoding", decodes.ifEmpty { listOf("none") }.joinToString(", ") { CODECS[it] ?: it }, APPLIES,
+                    if (!hevc) "Check: HEVC isn't decoded by the graphics chip, so 4K HDR films are read on the processor first."
+                    else null) else null,
+                if (hardware && hevc) ServerSetting("10-bit HEVC decoding", onOff(hevc10), APPLIES,
+                    if (!hevc10) "Check: off means every HDR film (10-bit HEVC) is decoded on the processor." else null) else null,
+                if (hardware) ServerSetting("Hardware encoding", onOff(flag("EnableHardwareEncoding")), APPLIES) else null,
+                ServerSetting("Tone mapping", onOff(toneMapping), APPLIES,
+                    when {
+                        hardware && !toneMapping -> "Check: off means HDR films sent to screens without HDR come out washed out, with grey, muted colours. Turn it on."
+                        !hardware -> "Without hardware acceleration Jellyfin tone-maps on the processor, which is slow at 4K."
+                        else -> "HDR films sent to screens without HDR are converted to look right in SDR."
+                    }),
+                if (vpp) ServerSetting("Intel VPP tone mapping", "On", APPLIES,
+                    "Faster, but it only handles HDR10 and usually looks flatter than Jellyfin's own tone mapping. Try it off if converted HDR looks dull.") else null,
+                if (toneMapping) ServerSetting("Tone-mapping algorithm", ALGORITHMS[algorithm] ?: algorithm, APPLIES,
+                    when (algorithm) {
+                        "bt2390" -> "Recommended: the most natural brightness and colour."
+                        "none", "clip", "linear" -> "Check: this one crushes highlights or flattens the picture. BT.2390 is the recommended choice."
+                        else -> "BT.2390 usually looks most natural."
+                    }) else null,
+                if (toneMapping) ServerSetting("Tone-mapping mode / range", "${text("TonemappingMode") ?: "?"} / ${text("TonemappingRange") ?: "?"}", APPLIES,
+                    "Auto / Auto unless something looks wrong.") else null,
+                if (toneMapping) text("TonemappingDesat")?.let { d ->
+                    ServerSetting("Desaturation", d, APPLIES,
+                        if ((d.toDoubleOrNull() ?: 0.0) > 0.5) "Check: high values wash colours out in bright scenes. 0 keeps them." else null)
+                } else null,
+                if (toneMapping) text("TonemappingPeak")?.let { ServerSetting("Target peak (nits)", it, APPLIES, "100 suits most SDR screens.") } else null,
+                ServerSetting("HEVC encoding allowed", onOff(flag("AllowHevcEncoding")), APPLIES,
+                    "Off: converted video is sent as H.264, which needs a higher bitrate for the same picture."),
+                text("EncoderPreset")?.let { ServerSetting("Encoder preset", it, APPLIES, "Slower presets give a better picture for the same bitrate, if the server keeps up.") },
+            ),
+        )
+    }
+
+    private val ACCELERATION = mapOf(
+        "none" to "None (processor only)", "qsv" to "Intel Quick Sync", "vaapi" to "VA-API", "nvenc" to "NVIDIA NVENC",
+        "amf" to "AMD AMF", "videotoolbox" to "Apple VideoToolbox", "v4l2m2m" to "V4L2", "rkmpp" to "Rockchip MPP",
+    )
+    private val CODECS = mapOf("h264" to "H.264", "hevc" to "HEVC", "vp9" to "VP9", "av1" to "AV1", "mpeg2video" to "MPEG-2", "vc1" to "VC-1", "vp8" to "VP8", "mpeg4" to "MPEG-4")
+    private val ALGORITHMS = mapOf(
+        "bt2390" to "BT.2390", "hable" to "Hable", "reinhard" to "Reinhard", "mobius" to "Möbius",
+        "gamma" to "Gamma", "linear" to "Linear", "clip" to "Clip", "none" to "None",
+    )
+
     /** What Jellyfin's remembering does, next to Nitrate's own. */
     private const val REMEMBER_NOTE = "The server keeps your last pick for each title (by track number) and offers it next time, in any app. " +
         "Nitrate's own picks come first: per show, so the next episode follows, matched by language and track name."

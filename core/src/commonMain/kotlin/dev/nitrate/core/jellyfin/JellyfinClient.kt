@@ -568,8 +568,12 @@ class JellyfinClient(
         val libraries = async { runCatching { items("UserViews", query = mapOf("includeHidden" to true)).associate { it.id to it.name } }.getOrDefault(emptyMap()) }
         val companion = async { runCatching { companionApi.info() } }
         val indexed = async { runCatching { diaryApi.linesStatus() }.getOrNull() }
-        val settings = JellyfinServerSettings.from(me.await(), info.await(), libraries.await())
-        settings.copy(groups = settings.groups + dev.nitrate.core.account.CompanionStatus.group(companion.await(), indexed.await()))
+        val user = me.await()
+        // How the server converts (admins only: everyone else is refused it).
+        val admin = ((user["Policy"] as? JsonObject)?.get("IsAdministrator") as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
+        val encoding = if (admin) runCatching { get("System", "Configuration", "encoding").decode<JsonObject>() }.getOrNull() else null
+        val settings = JellyfinServerSettings.from(user, info.await(), libraries.await())
+        settings.copy(groups = settings.groups + listOfNotNull(encoding?.let(JellyfinServerSettings::converting)) + dev.nitrate.core.account.CompanionStatus.group(companion.await(), indexed.await()))
     }
 
     override suspend fun watchedSeries(): Set<String> =

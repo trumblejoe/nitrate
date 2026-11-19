@@ -59,6 +59,7 @@ class JellyfinContractTest {
         val json = when {
             path.endsWith("/Users/Me") || path.endsWith("/Users/$HEX") || path.endsWith("/Users/$DASHED") || path.endsWith("/Users/New") -> USER
             path.endsWith("/Users") -> "[$USER]"
+            path.endsWith("/System/Configuration/encoding") -> """{"HardwareAccelerationType":"qsv","EnableTonemapping":false,"HardwareDecodingCodecs":["h264","hevc"],"EnableDecodingColorDepth10Hevc":true,"TonemappingAlgorithm":"bt2390"}"""
             path.contains("/RemoteSearch/Subtitles/") -> """[{"Id":"os-1","Name":"Nitrate.2023.srt","ThreeLetterISOLanguageName":"eng","ProviderName":"Open Subtitles","Format":"srt","DownloadCount":900,"IsHashMatch":true}]"""
             path.contains("/Items/RemoteSearch/") && !path.contains("/Apply/") -> """[{"Name":"Nitrate","ProductionYear":2023,"ProviderIds":{"Tmdb":"1"},"SearchProviderName":"TheMovieDb","ImageUrl":"http://x/i.jpg"}]"""
             (path.endsWith("/Collections") || path.endsWith("/Playlists")) && request.method.value == "POST" -> """{"Id":"$HEX"}"""
@@ -249,7 +250,9 @@ class JellyfinContractTest {
         client.queryPage(dev.nitrate.core.pages.BrowseOptions(videoCodecs = listOf("h264")).query(DASHED, dev.nitrate.core.model.CollectionKind.TV_SHOWS), 0, 10)
         client.followedSeries()
         client.watchedSeries()
-        client.serverSettings()
+        // An admin also gets how the server converts, with tone mapping off flagged.
+        val converting = client.serverSettings().groups.single { it.title == "Converting on the server" }
+        kotlin.test.assertTrue(converting.settings.single { it.label == "Tone mapping" }.note!!.startsWith("Check: off means HDR films"))
         assertEquals("upload_nitrate.log", client.sendClientLog("Nitrate playback report"))
         client.searchHints("nitr")
         client.additionalParts(DASHED)
