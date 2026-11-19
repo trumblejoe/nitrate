@@ -114,4 +114,18 @@ class PlaybackTrailTest {
         assertTrue("Picture converted to HEVC on the processor at 14 fps (the film is 23.976 fps: can't keep up, expect pauses)" in text, text)
         assertTrue("2 stalls, 6.3 s in all" in text, text)
     }
+
+    @Test fun theTvCheckLeadsToSettingsAndIsQuoted() {
+        val seen = mapOf(
+            "hdr10" to SeenClip(Answer.YES, "HDR10", "HDR10 · 4K", 1),
+            "dolby_vision_81" to SeenClip(Answer.NO, "DOVI", "Dolby Vision 8.1 · 4K", 1),
+            "dolby_truehd_51" to SeenClip(Answer.NO, "truehd", "Dolby TrueHD 5.1", 1, passthrough = true),
+        )
+        val advice = TvCheck.advice(seen, tv, PlaybackSettings())
+        // HDR10 seen though Android reports none: Always. TrueHD sent untouched but not shown: advice only.
+        assertEquals(listOf("Set HDR10 to Always"), advice.mapNotNull { it.changeLabel })
+        assertTrue(advice.any { it.text.startsWith("Dolby TrueHD 5.1 went out untouched, but the receiver didn't show it") }, advice.toString())
+        val p = ProfileCheck.predict(tv, PlaybackSettings(deviceCheck = DeviceCheck(0, "TV", seen = seen)), film.copy(streams = listOf(film.streams[0].copy(rangeType = "HDR10"), film.streams[1])))
+        assertTrue("You saw the TV show HDR10 in the TV check" in p.checked, p.checked.toString())
+    }
 }

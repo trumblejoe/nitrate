@@ -167,7 +167,7 @@ object PlaybackPredictor {
             soundDetail = soundDetail,
             refresh = refresh,
             subtitles = subtitles,
-            checked = check?.let { checked(it, if (converted) null else video, outCodec, audioCodec, sound) }.orEmpty(),
+            checked = check?.let { checked(it, if (converted) null else video, outCodec, audioCodec, sound, video?.rangeType) }.orEmpty(),
         )
     }
 
@@ -228,7 +228,7 @@ object PlaybackPredictor {
     }
 
     /** What the device check says about this kind of file. */
-    private fun checked(check: DeviceCheck, video: MediaStream?, outCodec: String?, audioCodec: String?, sound: SoundRoute): List<String> = buildList {
+    private fun checked(check: DeviceCheck, video: MediaStream?, outCodec: String?, audioCodec: String?, sound: SoundRoute, fileRange: String?): List<String> = buildList {
         val clips = PlaybackTest.CLIPS.associateBy { it.asset }
         val codec = video?.codec?.lowercase() ?: outCodec
         if (codec != null) {
@@ -242,6 +242,9 @@ object PlaybackPredictor {
                 .firstOrNull()
             match?.let { (c, r) -> add("${c.label}: ${r.outcome.label.lowercase()}" + (r.decoder?.let { " ($it)" } ?: "")) }
         }
+        // What the user saw at the TV and receiver for this kind of file (the TV & receiver check).
+        val hdrKind = fileRange?.let { r -> when { r.startsWith("DOVI") -> "DOVI"; r.startsWith("HDR10") -> "HDR10"; r == "HLG" -> "HLG"; else -> null } }
+        addAll(TvCheck.quoted(check.seen, hdrKind, audioCodec.takeIf { sound == SoundRoute.PASSTHROUGH }))
         if (audioCodec != null) {
             check.clips.entries.firstOrNull { (asset, _) -> clips[asset]?.let { it.kind == ClipKind.AUDIO && it.codec == audioCodec } == true }?.let { (asset, r) ->
                 val label = clips.getValue(asset).label

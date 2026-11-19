@@ -666,6 +666,13 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.settings.LibraryHealthScreen(c, onOpen = {}, onManage = {})
     }
 
+    @Test fun tvCheck() = shoot("tv-tv-check", setup = { c ->
+        c.playbackSettings.update { it.copy(deviceCheck = dev.nitrate.core.playback.DeviceCheck(0, "TV", seen = mapOf(
+            "hdr10" to dev.nitrate.core.playback.SeenClip(dev.nitrate.core.playback.Answer.YES, "HDR10", "HDR10 · 4K", 1),
+            "dolby_truehd_51" to dev.nitrate.core.playback.SeenClip(dev.nitrate.core.playback.Answer.NO, "truehd", "Dolby TrueHD 5.1", 1, passthrough = true),
+        ))) }
+    }) { c -> dev.nitrate.tv.ui.settings.TvCheckScreen(c) }
+
     @Test fun playbackTrail() = shoot("tv-playback-trail") { _ ->
         androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().padding(40.dp)) { dev.nitrate.tv.ui.player.TrailView(dev.nitrate.testing.sampleTrail()) }
     }

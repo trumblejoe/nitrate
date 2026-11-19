@@ -59,6 +59,11 @@ public class CompanionController : ControllerBase
         }
 
         features.Add("scripts");
+        if (TestClipsCode.TestClipCatalog.All().Count > 0)
+        {
+            features.Add("testclips");
+        }
+
         features.Add("channels");
         features.Add("partners");
         if (Plugin.Instance?.Configuration.EnableDiary ?? true)

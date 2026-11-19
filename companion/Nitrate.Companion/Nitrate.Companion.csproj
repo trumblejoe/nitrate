@@ -23,6 +23,8 @@
   <ItemGroup>
     <None Remove="Configuration/configPage.html" />
     <EmbeddedResource Include="Configuration/configPage.html" />
+    <!-- The TV and receiver check clips (tools/generate-badge-clips.sh), served at /Nitrate/TestClips. -->
+    <EmbeddedResource Include="TestClips/*" LogicalName="Nitrate.Companion.TestClips.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

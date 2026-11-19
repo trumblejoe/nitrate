@@ -146,6 +146,12 @@ internal data class SsoPollDto(val state: String = "Failed", val message: String
  */
 internal class JellyfinCompanion(private val client: JellyfinClient) {
 
+    suspend fun checkClips(): List<dev.nitrate.core.playback.CheckClip> = try {
+        JellyfinJson.decodeFromString(client.get("Nitrate", "TestClips").bodyAsText())
+    } catch (e: ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound) emptyList() else throw e
+    }
+
     suspend fun info(): CompanionInfo? = try {
         val dto: CompanionInfoDto = JellyfinJson.decodeFromString(client.get("Nitrate", "Companion").bodyAsText())
         CompanionInfo(dto.version, dto.features.toSet())

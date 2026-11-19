@@ -1199,6 +1199,8 @@ class JellyfinClient(
     override suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean) = channelsApi.save(channel, startOver)
     override suspend fun deleteChannel(channelId: String) = channelsApi.delete(channelId)
     override suspend fun companion() = companionApi.info()
+    override suspend fun checkClips() = companionApi.checkClips()
+    override fun checkClipUrl(id: String): String = url("Nitrate", "TestClips", id)
     override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int) = companionApi.messages(groupId, after, waitMs)
     override suspend fun sendChat(groupId: String, kind: dev.nitrate.core.companion.ChatKind, text: String, positionMs: Long?) =
         companionApi.send(groupId, kind, text, positionMs)

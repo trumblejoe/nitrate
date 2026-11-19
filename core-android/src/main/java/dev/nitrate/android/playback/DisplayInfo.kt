@@ -6,7 +6,7 @@ import android.os.Build
 import android.view.Display
 
 /** The display's current mode (size, refresh rate) and the HDR kinds it takes, for the Info panel. */
-internal data class DisplayInfo(val width: Int, val height: Int, val hz: Float, val hdr: Set<String>) {
+data class DisplayInfo(val width: Int, val height: Int, val hz: Float, val hdr: Set<String>) {
     companion object {
         fun read(context: Context): DisplayInfo? = runCatching {
             val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY) ?: return null

@@ -355,6 +355,12 @@ class FakeServer : MediaServer {
         val next = eps.first { !it.user.played }
         return dev.nitrate.core.recap.Recaps.forSeries(series, eps, next, dev.nitrate.core.pages.DisplayPrefs(recapAfterDays = 14), now)!!
     }
+    override suspend fun checkClips() = listOf(
+        dev.nitrate.core.playback.CheckClip("hdr10", "HDR10 · 4K", "Picture", "HDR10", "The TV shows HDR (or HDR10), or switches to its HDR picture mode."),
+        dev.nitrate.core.playback.CheckClip("dolby_vision_81", "Dolby Vision 8.1 · 4K", "Picture", "DOVI", "A Dolby Vision TV shows Dolby Vision; other HDR TVs show HDR10."),
+        dev.nitrate.core.playback.CheckClip("dolby_truehd_51", "Dolby TrueHD 5.1", "Sound", "truehd", "The receiver shows Dolby TrueHD, and each speaker plays when it's named."),
+    )
+
     override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners", "diary", "lines"))
 
     /** A few weeks of watching, for the diary. */

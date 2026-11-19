@@ -102,6 +102,9 @@ import kotlinx.serialization.Serializable
 @Serializable object ServerAdminRoute
 @Serializable object LibraryHealthRoute
 @Serializable object PlaybackOverviewRoute
+
+/** Settings → Tools → TV & receiver check (the Companion plugin's clips). */
+@Serializable object TvCheckRoute
 @Serializable object WatchTogetherRoute
 @Serializable object ChannelsRoute
 @Serializable object WatchPartnersRoute
@@ -361,6 +364,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     dev.nitrate.tv.ui.settings.SettingsSection("Tools", listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Playback test", "Plays short samples to find what this TV really plays") { nav.navigate(PlaybackTestRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Audio channel test", "A voice from each speaker in turn") { nav.navigate(AudioChannelTestRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("TV & receiver check", "Clips that should make the TV show HDR or Dolby Vision and the receiver its sound format: say what you see") { nav.navigate(TvCheckRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Library playback overview", "Every film and episode you can see, and how each plays on this TV: as it is, converted, and why") { nav.navigate(PlaybackOverviewRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Server speed check", "Is slowness the network, the server or this TV? Times it and shows you") { nav.navigate(SpeedCheckRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Send device report", "What this TV plays and how it's set, saved in your server's logs for troubleshooting") {
@@ -464,6 +468,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId, themePreview = { id, on -> if (on) container.themeMusic.show(id) else container.themeMusic.stop() })
         }
         composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
+        composable<TvCheckRoute> { dev.nitrate.tv.ui.settings.TvCheckScreen(container) }
         composable<PlaybackOverviewRoute> {
             dev.nitrate.tv.ui.settings.PlaybackOverviewScreen(
                 container,

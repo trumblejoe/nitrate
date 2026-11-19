@@ -15,6 +15,8 @@ data class DeviceCheck(
     val clips: Map<String, CheckedClip> = emptyMap(),
     /** A real refresh-rate switch, on a TV that offers one. */
     val refresh: RefreshCheck? = null,
+    /** The TV and receiver check: what the user saw for each of the plugin's clips (by clip id). */
+    val seen: Map<String, SeenClip> = emptyMap(),
 )
 
 @Serializable

@@ -269,6 +269,12 @@ interface MediaServer {
     /** The signed-in user's sessions on other devices that can be controlled from here (any account type). */
     suspend fun controllableSessions(): List<ServerSession> = unsupported()
 
+    /** The Companion plugin's TV and receiver check clips (empty without the plugin). */
+    suspend fun checkClips(): List<dev.nitrate.core.playback.CheckClip> = emptyList()
+
+    /** Where to stream a check clip (with [authorizationHeader]). */
+    fun checkClipUrl(id: String): String? = null
+
     /** What the server reports doing with this device's stream right now (null: not converting, or not known). */
     suspend fun serverConversion(): dev.nitrate.core.playback.ServerConversion? = null
 
