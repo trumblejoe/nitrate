@@ -71,7 +71,9 @@ data class VideoPath(
             displayHdr == null -> ""
             range in displayHdr -> ", shown as $range"
             range == "Dolby Vision" && "HDR10" in displayHdr -> ", shown as HDR10 (the display doesn't take Dolby Vision)"
-            else -> ", shown as SDR (the display doesn't take $range)"
+            // Not the server: the video arrived as HDR and this device converts it on its way out.
+            else -> ", converted to SDR by this device on its way out (Android reports " +
+                (if (displayHdr.isEmpty()) "no HDR" else "only ${displayHdr.sorted().joinToString(", ")}") + " on this display)"
         }
         return "$from$range$how$shown"
     }

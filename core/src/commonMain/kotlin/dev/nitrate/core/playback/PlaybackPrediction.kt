@@ -195,12 +195,14 @@ object PlaybackPredictor {
         val dv = CapabilityRules.hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
         return when {
             range.startsWith("DOVIWithEL") || v.dvProfile == 7 -> "Dolby Vision profile 7 " + CapabilityRules.profile7(caps, settings).label
-            range.startsWith("DOVI") && dv -> "Dolby Vision" + (v.dvProfile?.let { " (profile $it)" } ?: "")
+            range.startsWith("DOVI") && dv -> "Dolby Vision" + (v.dvProfile?.let { " (profile $it)" } ?: "") +
+                (if ("DOVI" !in caps.hdr) " as it is from the server; this device converts it on its way out (Android reports ${caps.hdr.sorted().joinToString().ifEmpty { "no HDR" }} on this display)" else "")
             range == "DOVIWithHDR10" || range == "DOVIWithHDR10Plus" -> "HDR10 (Dolby Vision's base layer; this display doesn't take Dolby Vision)"
             range == "DOVIWithHLG" -> "HLG (Dolby Vision's base layer)"
             range == "DOVIWithSDR" -> "SDR (Dolby Vision's base layer)"
             range == "HDR10Plus" && "HDR10Plus" in allowed -> "HDR10+"
             range == "HDR10Plus" -> "HDR10 (without the HDR10+ extras)"
+            range in allowed && range !in caps.hdr -> "$range as it is from the server; this device converts it to SDR on its way out (Android reports ${caps.hdr.sorted().joinToString().ifEmpty { "no HDR" }} on this display)"
             range in allowed -> "$range as it is"
             else -> range
         }
