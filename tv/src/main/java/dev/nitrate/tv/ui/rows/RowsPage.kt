@@ -88,8 +88,8 @@ fun RowsPage(
     footer: LazyListScope.() -> Unit = {},
     /** Opens the page editor (order, hide, rename, own rows); without it, only row looks can change. */
     onEditPage: (() -> Unit)? = null,
-    /** The "Edit page" button after the rows (library pages leave it to Settings → Display → Pages). */
-    editButton: Boolean = true,
+    /** An "Edit page" button after the rows: off everywhere now (Settings → Display → Pages does it; holding OK on a row offers it too). */
+    editButton: Boolean = false,
 ) {
     var focused by remember { mutableStateOf<MediaItem?>(null) }
     var activeShowcase by remember { mutableStateOf<String?>(null) }
@@ -341,7 +341,7 @@ fun RowsPage(
                                             val edge = if (rowTop) Alignment.TopStart else Alignment.BottomStart
                                             if (capTop == rowTop) {
                                                 // On the same line: the row starts beside the caption (part way, always).
-                                                androidx.compose.foundation.layout.Row(Modifier.align(edge).padding(top = if (rowTop) 8.dp else 0.dp), verticalAlignment = if (rowTop) Alignment.Top else Alignment.Bottom) {
+                                                androidx.compose.foundation.layout.Row(Modifier.align(edge).padding(top = if (rowTop) 8.dp else 0.dp, bottom = if (rowTop) 0.dp else RowFoot), verticalAlignment = if (rowTop) Alignment.Top else Alignment.Bottom) {
                                                     if (!capEnd) caption(Modifier)
                                                     Box(Modifier.weight(1f)) { cards() }
                                                     if (capEnd) caption(Modifier)
@@ -349,7 +349,7 @@ fun RowsPage(
                                             } else {
                                                 caption(Modifier.align(corner(capTop, capEnd)))
                                                 Box(Modifier.align(if (rowTop) (if (partial && capEnd) Alignment.TopEnd else Alignment.TopStart) else (if (partial && capEnd) Alignment.BottomEnd else Alignment.BottomStart))
-                                                    .padding(top = if (rowTop) 8.dp else 0.dp, bottom = if (rowTop) 0.dp else 10.dp)
+                                                    .padding(top = if (rowTop) 8.dp else 0.dp, bottom = if (rowTop) 0.dp else RowFoot)
                                                     .fillMaxWidth(if (partial) PartialShare else 1f)) { cards() }
                                             }
                                         } else {
@@ -458,6 +458,9 @@ private object WholeRowInView : androidx.compose.foundation.gestures.BringIntoVi
         else -> offset
     }
 }
+
+/** A little room under a row along the bottom, so a focused (enlarged) card stays on screen. */
+private val RowFoot = 14.dp
 
 /** How much of the page a row part way takes (one at a time). */
 private const val PartialShare = 0.62f

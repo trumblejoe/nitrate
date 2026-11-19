@@ -57,7 +57,8 @@ fun CardRow(
         if (LocalRowTitle.current) Text(row.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = RowPadding, bottom = 12.dp))
         LazyRow(
             state = state,
-            contentPadding = PaddingValues(horizontal = RowPadding),
+            // A few dp above and below, so a focused card's growth isn't cut off by the row's edge.
+            contentPadding = PaddingValues(horizontal = RowPadding, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->

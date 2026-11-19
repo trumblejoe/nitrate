@@ -332,18 +332,24 @@ private fun SortDialog(options: BrowseOptions, onPick: ((BrowseOptions) -> Brows
 /** Every way to lay the titles out: the plain ones, then the show views. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ViewDialog(current: BrowseView, columns: Int, onPick: (BrowseView) -> Unit, onColumns: (Int) -> Unit, onDismiss: () -> Unit) {
+internal fun ViewDialog(
+    current: BrowseView, columns: Int, onPick: (BrowseView) -> Unit, onColumns: (Int) -> Unit, onDismiss: () -> Unit,
+    /** For a page of rows: whether it shows as rows now (null: no Rows choice), and choosing it. */
+    rows: Boolean? = null, onRows: () -> Unit = {},
+) {
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
         Column(Modifier.width(620.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("View", style = MaterialTheme.typography.headlineSmall)
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (rows != null) FilterChip(selected = rows, onClick = onRows, modifier = if (rows) Modifier.focusRequester(first) else Modifier) { Text("Rows") }
                 BrowseView.entries.forEach { v ->
-                    FilterChip(selected = v == current, onClick = { onPick(v) }, modifier = if (v == current) Modifier.focusRequester(first) else Modifier) { Text(v.label) }
+                    val on = rows != true && v == current
+                    FilterChip(selected = on, onClick = { onPick(v) }, modifier = if (on) Modifier.focusRequester(first) else Modifier) { Text(v.label) }
                 }
             }
             // The plain grids: how many titles across (kept per view).
-            if (!current.columnChoices.isEmpty()) {
+            if (rows != true && !current.columnChoices.isEmpty()) {
                 Text("Columns", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     current.columnChoices.forEach { n -> FilterChip(selected = n == columns, onClick = { onColumns(n) }) { Text("$n") } }

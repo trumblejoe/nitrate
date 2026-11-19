@@ -335,6 +335,39 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
     }
 
+    /** Recommended shown as its titles in a view (Artwork, 5 across) instead of rows. */
+    @Test fun libraryRecommendedAsView() = shoot("tv-library-recommended-as-view", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveView("user-1", "rows/" + PageKeys.library("lib-movies"),
+            dev.nitrate.core.pages.TabView(rows = false, view = dev.nitrate.core.pages.BrowseView.ARTWORK, columns = mapOf(dev.nitrate.core.pages.BrowseView.ARTWORK to 5)))
+    }, act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("View: Artwork · 5")).fetchSemanticsNodes().isNotEmpty()) { "the View button should say the view" }
+    }) { c ->
+        WithMenu(c) {
+            dev.nitrate.tv.ui.home.MainMenu("lib-movies", overlay = false) { insets ->
+                dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}, insets = insets)
+            }
+        }
+    }
+
+    /** Back from a view to rows through the View button: Rows, and focus stays on the button. */
+    @Test fun libraryViewBackToRows() = shoot("tv-library-view-back-to-rows", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveView("user-1", "rows/" + PageKeys.library("lib-movies"), dev.nitrate.core.pages.TabView(rows = false))
+    }, act = {
+        // Down from the tabs into the titles, along to the first, Up to the View button above it.
+        press("down")
+        repeat(4) { if (!focusedHasText("Nitrate")) press("left") }
+        press("up")
+        check(focusedHasText("View")) { "Up from the first title should reach the View button" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(focusedHasText("Posters")) { "the dialog should open on the current view" }
+        press("left", "ok")
+        compose.mainClock.advanceTimeBy(1_200); compose.waitForIdle()
+        check(focusedHasText("View: Rows")) { "focus should come back to the View button, now on Rows; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() + " " + it.boundsInRoot } }
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
     /** Choosing All keeps focus on the tabs (it used to fall through to the menu). */
     @Test fun libraryTabSwitch() = libraryShot("tv-library-tab-switch", rowsLibrary) {
         press("right", "ok")
@@ -400,7 +433,7 @@ class TvScreenshotTest {
         c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
     }, act = {
         press("down", "up")
-        check(focusedHasText("Recommended") || focusedHasText("All")) { "Up from the showcase should reach the tabs" }
+        check(focusedHasText("Recommended") || focusedHasText("All") || focusedHasText("View")) { "Up from the showcase should reach the tabs (or the View button among them)" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
     /** The All view as a bouncing box: posters flying round it; Down from the bar catches one. */

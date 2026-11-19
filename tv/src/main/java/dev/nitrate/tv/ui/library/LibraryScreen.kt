@@ -31,6 +31,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -208,15 +209,16 @@ private fun TabRows(
     when (val s = state) {
         is RowsState.Loaded -> when {
             s.rows.none { it.items.isNotEmpty() } -> Column { tabs(); Text(empty, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            // As Home can be: one title at a time, the tabs top right.
-            fullArt -> dev.nitrate.tv.ui.home.FullArtPage(
-                rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
-                onSaveDisplay = vm::save, onEditPage = { editing = true }, insets = insets, header = tabs,
-            )
-            else -> RowsPage(
-                onEditPage = { editing = true }, rows = s.rows, overrides = overrides, repository = repository,
-                onOpen = onOpen, onPlay = onPlay, onSaveDisplay = vm::save, header = tabs, editButton = false,
-            )
+            // As its rows (laid out as Home can be), or its titles in one of the All tab's views.
+            else -> RowsOrTitles("rows/$pageKey", s.rows, repository, displaySettings, tabs, onOpen, onPlay, music = lib.collection == CollectionKind.MUSIC) { header ->
+                if (fullArt) dev.nitrate.tv.ui.home.FullArtPage(
+                    rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
+                    onSaveDisplay = vm::save, onEditPage = { editing = true }, insets = insets, header = header,
+                ) else RowsPage(
+                    onEditPage = { editing = true }, rows = s.rows, overrides = overrides, repository = repository,
+                    onOpen = onOpen, onPlay = onPlay, onSaveDisplay = vm::save, header = header,
+                )
+            }
         }
         is RowsState.Error -> Column { tabs(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
         RowsState.Loading -> Column { tabs(); Text("Loading…", Modifier.padding(PagePadding)) }
@@ -250,14 +252,22 @@ private fun CollectionsGrid(
     var choosing by remember { mutableStateOf(false) }
     val viewButton = remember { androidx.compose.ui.focus.FocusRequester() }
     var changed by remember { mutableStateOf(0) }
-    LaunchedEffect(changed) {
+    var buttonFocused by remember { mutableStateOf(false) }
+    // Also after the saved choice comes back (it swaps the layout, and the button, again).
+    LaunchedEffect(changed, options.view) {
         if (changed == 0) return@LaunchedEffect
-        repeat(12) { kotlinx.coroutines.android.awaitFrame(); if (runCatching { viewButton.requestFocus() }.isSuccess) return@LaunchedEffect; kotlinx.coroutines.delay(30) }
+        buttonFocused = false
+        repeat(40) {
+            kotlinx.coroutines.android.awaitFrame()
+            if (buttonFocused) return@LaunchedEffect
+            runCatching { viewButton.requestFocus() }
+            kotlinx.coroutines.delay(30)
+        }
     }
     val view = options.view
     val columns = options.columnsFor(view, music = false)
     val bar: @Composable () -> Unit = {
-        androidx.tv.material3.OutlinedButton(onClick = { choosing = true }, modifier = Modifier.focusRequester(viewButton)) {
+        androidx.tv.material3.OutlinedButton(onClick = { choosing = true }, modifier = Modifier.focusRequester(viewButton).onFocusChanged { buttonFocused = it.isFocused }) {
             Text("View: ${view.label}" + if (view.columnChoices.isEmpty()) "" else " · $columns")
         }
     }

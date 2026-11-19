@@ -172,3 +172,17 @@ object Browse {
         return if (first in 'A'..'Z') first.toString() else "#"
     }
 }
+
+/**
+ * How a page of rows (Home, a pinned page, a library's Recommended, Genres, Studios, Decades or own
+ * tab) is shown on TV: as its rows (each with its own look), or its titles together in one of the
+ * All tab's views, with the grids' column choice. Saved per page with `saveView`.
+ */
+@Serializable
+data class TabView(
+    val rows: Boolean = true,
+    val view: BrowseView = BrowseView.GRID,
+    val columns: Map<BrowseView, Int> = emptyMap(),
+) {
+    fun columnsFor(music: Boolean): Int = columns[view]?.takeIf { it in view.columnChoices } ?: view.defaultColumns(music)
+}

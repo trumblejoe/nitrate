@@ -127,26 +127,20 @@ fun HomeScreen(
                 }
             }
         }
-        is RowsState.Loaded -> if (fullArt) FullArtPage(
-            rows = s.rows,
-            overrides = overrides,
-            repository = repository,
-            onOpen = onOpen,
-            onPlay = onPlay,
-            onSaveDisplay = vm::save,
-            onEditPage = { editing = true },
-            insets = insets,
-            header = tabs,
-        ) else RowsPage(
-            rows = s.rows,
-            overrides = overrides,
-            repository = repository,
-            onOpen = onOpen,
-            onPlay = onPlay,
-            onSaveDisplay = vm::save,
-            onEditPage = { editing = true },
-            header = tabs,
-        )
+        is RowsState.Loaded -> {
+            val page: @Composable (header: (@Composable () -> Unit)?) -> Unit = { header ->
+                if (fullArt) FullArtPage(
+                    rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
+                    onSaveDisplay = vm::save, onEditPage = { editing = true }, insets = insets, header = header,
+                ) else RowsPage(
+                    rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
+                    onSaveDisplay = vm::save, onEditPage = { editing = true }, header = header,
+                )
+            }
+            // With tabs (pinned pages), Home is one of them: rows, or its titles in a view.
+            if (tabs == null) page(null)
+            else dev.nitrate.tv.ui.library.RowsOrTitles("rows/${PageKeys.HOME}", s.rows, repository, displaySettings, tabs, onOpen, onPlay) { header -> page(header) }
+        }
     }
     }
     }
@@ -193,8 +187,10 @@ private fun PinnedPage(
                     Modifier.padding(horizontal = 58.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = { editing = true }, modifier = Modifier.padding(horizontal = 58.dp)) { Text("Edit rows") }
             }
-            fullArt -> FullArtPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, onEditPage = { editing = true }, insets = insets, header = tabs)
-            else -> RowsPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, header = tabs, onEditPage = { editing = true }, editButton = false)
+            else -> dev.nitrate.tv.ui.library.RowsOrTitles("rows/${PageKeys.custom(page.id)}", s.rows, repository, displaySettings, tabs, onOpen, onPlay) { header ->
+                if (fullArt) FullArtPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, onEditPage = { editing = true }, insets = insets, header = header)
+                else RowsPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, header = header, onEditPage = { editing = true })
+            }
         }
         is RowsState.Error -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text(s.message, Modifier.padding(58.dp), color = MaterialTheme.colorScheme.error) }
         RowsState.Loading -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text("Loading…", Modifier.padding(58.dp)) }
