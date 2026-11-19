@@ -224,6 +224,12 @@ interface MediaServer {
      * show with its artwork, description, matches and files' streams, and episodes known missing.
      */
     suspend fun healthScan(libraryId: String?): dev.nitrate.core.diagnostics.HealthScan = unsupported()
+
+    /**
+     * Every film and episode the user can see (in [libraryId], or all) with its file's details, for the
+     * playback overview: read a page at a time, [onProgress] (read so far, total) after each.
+     */
+    suspend fun playbackSources(libraryId: String?, onProgress: (Int, Int) -> Unit = { _, _ -> }): List<Pair<MediaItem, dev.nitrate.core.model.MediaSource>> = unsupported()
     suspend fun itemImages(itemId: String): List<ItemImage> = unsupported()
     suspend fun remoteImages(itemId: String, type: ImageType): List<RemoteImage> = unsupported()
     suspend fun downloadRemoteImage(itemId: String, type: ImageType, url: String): Unit = unsupported()

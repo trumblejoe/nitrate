@@ -1514,6 +1514,27 @@ class JellyfinClient(
         )
     }
 
+    override suspend fun playbackSources(libraryId: String?, onProgress: (Int, Int) -> Unit): List<Pair<MediaItem, MediaSource>> {
+        val out = mutableListOf<Pair<MediaItem, MediaSource>>()
+        var start = 0
+        while (true) {
+            val page = get(
+                "Items",
+                query = mapOf(
+                    "userId" to userId, "parentId" to libraryId, "recursive" to true, "includeItemTypes" to "Movie,Episode",
+                    "fields" to "MediaSources", "startIndex" to start, "limit" to OVERVIEW_PAGE, "enableUserData" to false,
+                    "enableImages" to false, "isMissing" to false,
+                    "sortBy" to "SeriesSortName,ParentIndexNumber,IndexNumber,SortName", "sortOrder" to "Ascending",
+                ),
+            ).decode<QueryResultDto<ItemDto>>()
+            page.items.forEach { dto -> dto.mediaSources?.firstOrNull()?.let { out += dto.toMediaItem() to it.toMediaSource() } }
+            start += page.items.size
+            onProgress(start, page.totalRecordCount)
+            if (page.items.size < OVERVIEW_PAGE || start >= page.totalRecordCount) break
+        }
+        return out
+    }
+
     override suspend fun themeSongs(itemId: String): List<MediaItem> =
         items("Items", itemId, "ThemeSongs", query = mapOf("userId" to userId, "inheritFromParent" to true))
 
@@ -1759,6 +1780,8 @@ class JellyfinClient(
         /** How long a library's codec index is reused before it's read again. */
         const val CODEC_INDEX_TTL_MS = 15 * 60_000L
         const val HEALTH_PAGE = 500
+        /** Items read per page for the playback overview (each carries its file's streams). */
+        const val OVERVIEW_PAGE = 300
         /** Online databases a title counts as identified by. */
         val MATCH_PROVIDERS = setOf("tmdb", "imdb", "tvdb", "tvmaze", "tmdbcollection")
         const val CODEC_INDEX_PAGE = 1000

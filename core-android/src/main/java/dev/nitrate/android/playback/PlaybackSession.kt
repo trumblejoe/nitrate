@@ -364,6 +364,15 @@ class PlaybackSession(
         }
     }
 
+    /**
+     * Runs once the server's answer is in and before the player is given it (and so before any
+     * sound is set up): the TV switches its refresh rate here. Null: straight on.
+     */
+    @Volatile var beforePlay: (suspend (PlaybackPlan) -> Unit)? = null
+
+    /** What the device check found here (refresh-rate switch timings, for the matcher). */
+    suspend fun deviceCheck(): dev.nitrate.core.playback.DeviceCheck? = runCatching { settings.current().deviceCheck }.getOrNull()
+
     /** What the player did recently, oldest first. */
     fun eventLog(): List<String> = synchronized(events) { events.toList() }
 
@@ -1064,6 +1073,10 @@ class PlaybackSession(
                 server.reportStopped(old, exo.currentPosition)
             }
             log("Server: ${p.method}" + (if (p.transcodeReasons.isNotEmpty()) " because ${p.transcodeReasons.joinToString(", ")}" else "") + "; ${dev.nitrate.core.playback.PlaybackReport.streamSummary(p)}")
+            // The TV's refresh-rate switch, before the player sets anything up: the HDMI link drops
+            // while the TV changes mode, and sound prepared then is decoded (the output takes only
+            // PCM for that moment). The gate keeps its own time limits.
+            beforePlay?.let { gate -> runCatching { gate(p) }.onFailure { e -> if (e is kotlinx.coroutines.CancellationException) throw e; log("Before play: ${e.message}") } }
             play(p, startMs, current.name)
             if (!quiet) {
                 server.reportStart(p, startMs)

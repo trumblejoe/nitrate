@@ -141,6 +141,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         item { Link("Control a device", "Play, pause, seek and change volume on your TV or another app") { open(SettingsPage.REMOTE) } }
 
         group("Tools")
+        item { Link("Library playback overview", "Every film and episode you can see, and how each plays on this phone: as it is, converted, and why") { actions.nav.navigate(PlaybackOverviewRoute) } }
         item { SpeedCheckRow(actions) }
         item { DeviceReportRow(actions) }
         if (account?.isAdmin == true) {

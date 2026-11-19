@@ -261,6 +261,25 @@ class FakeServer : MediaServer {
         dev.nitrate.core.companion.ChatMessage(4, "user-3", "jo", dev.nitrate.core.companion.ChatKind.REACTION, "😱", 3_721_000, 0),
     )
 
+    /** A small library for the playback overview: plays as it is, sound converted, picture converted, software decoded. */
+    override suspend fun playbackSources(libraryId: String?, onProgress: (Int, Int) -> Unit): List<Pair<dev.nitrate.core.model.MediaItem, dev.nitrate.core.model.MediaSource>> {
+        fun v(codec: String, h: Int, bits: Int = 8, range: String = "SDR", profile: String? = null, fps: Float = 23.976f) =
+            dev.nitrate.core.model.MediaStream(0, dev.nitrate.core.model.StreamKind.VIDEO, codec = codec, profile = profile, width = h * 16 / 9, height = h, bitDepth = bits, rangeType = range, frameRate = fps)
+        fun a(codec: String, ch: Int = 6) = dev.nitrate.core.model.MediaStream(1, dev.nitrate.core.model.StreamKind.AUDIO, codec = codec, channels = ch, isDefault = true)
+        fun src(vararg s: dev.nitrate.core.model.MediaStream, container: String = "mkv", bitrate: Int = 20_000_000) = dev.nitrate.core.model.MediaSource("s", container, bitrate, s.toList())
+        fun movie(id: String, name: String, year: Int) = dev.nitrate.core.model.MediaItem(id, name, dev.nitrate.core.model.ItemKind.MOVIE, productionYear = year)
+        fun ep(n: Int) = dev.nitrate.core.model.MediaItem("o-e$n", "Episode $n", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "o-show", seriesName = "Harbour Lights", seasonNumber = 1, indexNumber = n)
+        val list = listOf(
+            movie("o-1", "Northern Lights", 2021) to src(v("hevc", 2160, 10, "HDR10"), a("eac3"), bitrate = 72_000_000),
+            movie("o-2", "Silver Screen", 2019) to src(v("h264", 1080), a("truehd", 8)),
+            movie("o-3", "Gate Weave", 2024) to src(v("hevc", 1080, 10, profile = "Rext"), a("aac", 2)),
+            movie("o-4", "Persistence", 2020) to src(v("vc1", 1080), a("dts"), container = "mkv"),
+            movie("o-5", "Old Reel", 1987) to src(v("mpeg4", 480, fps = 25f), a("mp3", 2), container = "avi"),
+        ) + (1..3).map { ep(it) to src(v("h264", 1080, fps = 29.97f), a("ac3")) }
+        onProgress(list.size, list.size)
+        return list
+    }
+
     /** A library with a few things to fix, for the library health screens. */
     override suspend fun healthScan(libraryId: String?): dev.nitrate.core.diagnostics.HealthScan {
         fun streams(codec: String, audio: String = "aac", ranges: Set<String> = setOf("sdr")) =

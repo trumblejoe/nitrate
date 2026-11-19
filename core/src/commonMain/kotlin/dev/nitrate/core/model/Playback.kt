@@ -39,6 +39,10 @@ data class MediaStream(
     val rangeType: String? = null,
     /** Frames per second (video), e.g. 23.976. */
     val frameRate: Float? = null,
+    /** Interlaced video (made for old TVs; software decoders don't deinterlace). */
+    val isInterlaced: Boolean = false,
+    /** Dolby Vision profile (5, 7, 8...), for Dolby Vision video. */
+    val dvProfile: Int? = null,
 )
 
 @Serializable

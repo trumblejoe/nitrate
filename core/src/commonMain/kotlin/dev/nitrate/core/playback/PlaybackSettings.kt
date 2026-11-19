@@ -60,6 +60,8 @@ data class PlaybackSettings(
     val learnedFailures: Map<String, LearnedFailure> = emptyMap(),
     /** Titles (by item id) that failed to play here as they are, converted from then on. */
     val failedTitles: Map<String, TitleFailure> = emptyMap(),
+    /** What the device check found here (null until it's run). */
+    val deviceCheck: DeviceCheck? = null,
     /** Per video codec: largest height to direct play, e.g. 1080 when 4K decodes too slowly. */
     val codecMaxHeight: Map<String, Int> = emptyMap(),
     /** Video codecs limited to 8-bit even if the device reports 10-bit support. */

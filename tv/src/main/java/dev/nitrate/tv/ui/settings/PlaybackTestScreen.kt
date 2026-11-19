@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import dev.nitrate.android.playback.DeviceProbe
+import dev.nitrate.tv.ui.player.findActivity
 import dev.nitrate.core.playback.ClipKind
 import dev.nitrate.core.playback.ClipResult
 import dev.nitrate.core.playback.DeviceCapabilities
@@ -78,6 +80,8 @@ fun PlaybackTestScreen(
 ) {
     val context = LocalContext.current
     var decoder by remember { mutableStateOf<String?>(null) }
+    // How the last clip's sound went out: untouched (bitstream) or decoded.
+    var audioEncoding by remember { mutableStateOf<Int?>(null) }
     val player = remember {
         ExoPlayer.Builder(context)
             // Same fallback as real playback, so results match what playback would do.
@@ -92,12 +96,20 @@ fun PlaybackTestScreen(
                     override fun onAudioDecoderInitialized(e: AnalyticsListener.EventTime, name: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
                         if (decoder == null) decoder = name
                     }
+                    override fun onAudioTrackInitialized(e: AnalyticsListener.EventTime, config: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig) {
+                        audioEncoding = config.encoding
+                    }
                 })
             }
     }
     DisposableEffect(player) { onDispose { player.release() } }
 
     val results = remember { mutableStateListOf<ClipResult>() }
+    val passthrough = remember { mutableMapOf<String, Boolean>() }
+    var refresh by remember { mutableStateOf<dev.nitrate.core.playback.RefreshCheck?>(null) }
+    var testingRefresh by remember { mutableStateOf(false) }
+    val saved by store.settings.collectAsState(initial = null)
+    val activity = remember(context) { context.findActivity() }
     var running by remember { mutableStateOf<TestClip?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
     var applied by remember { mutableStateOf(0) }
@@ -109,13 +121,33 @@ fun PlaybackTestScreen(
         job?.cancel()
         results.clear()
         job = scope.launch {
+            passthrough.clear()
+            refresh = null
             for (clip in PlaybackTest.CLIPS) {
                 running = clip
                 decoder = null
-                results += player.runClip(clip) { decoder }
+                audioEncoding = null
+                val result = player.runClip(clip) { decoder }
+                results += result
+                if (clip.kind == ClipKind.AUDIO && result.ok) audioEncoding?.let { passthrough[clip.asset] = it !in PCM_ENCODINGS }
             }
             running = null
             player.stop()
+            // One real refresh-rate switch: how long it takes, and whether surround passthrough comes back.
+            activity?.let { a ->
+                testingRefresh = true
+                refresh = runCatching { dev.nitrate.tv.ui.player.refreshCheck(a) }.getOrNull()
+                testingRefresh = false
+            }
+            // Kept, so How it plays and the playback overview can say what's confirmed here.
+            store.update { s ->
+                s.copy(deviceCheck = dev.nitrate.core.playback.DeviceCheck(
+                    atMs = System.currentTimeMillis(),
+                    model = capabilities.model,
+                    clips = results.associate { r -> r.clip.asset to dev.nitrate.core.playback.CheckedClip(r.outcome, r.decoder, passthrough[r.clip.asset], r.framesRendered, r.framesDropped) },
+                    refresh = refresh,
+                ))
+            }
         }
     }
 
@@ -173,6 +205,29 @@ fun PlaybackTestScreen(
                 }
             }
 
+            item(key = "refresh") {
+                val shown = refresh ?: saved?.deviceCheck?.refresh.takeIf { results.isEmpty() }
+                ListItem(
+                    selected = false, onClick = {},
+                    headlineContent = { Text("Refresh-rate switch") },
+                    supportingContent = {
+                        Text(when {
+                            testingRefresh -> "Switching the TV to a film's rate and back…"
+                            shown == null -> "Tested after the clips: how long the TV goes black, and whether surround sound still passes through afterwards"
+                            else -> refreshText(shown)
+                        }, style = MaterialTheme.typography.bodySmall)
+                    },
+                )
+            }
+            saved?.deviceCheck?.takeIf { running == null && !testingRefresh }?.let { check ->
+                item(key = "saved") {
+                    Text(
+                        "Results saved " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(check.atMs)) +
+                            ": How it plays and the playback overview quote them.",
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+            }
             items(PlaybackTest.CLIPS, key = { it.asset }) { clip ->
                 ResultRow(clip, results.firstOrNull { it.clip == clip }, clip.claimed(capabilities), clip == running)
             }
@@ -194,6 +249,27 @@ fun PlaybackTestScreen(
             }
         }
     }
+}
+
+/** Media3's decoded (PCM) sound encodings; anything else went out untouched. */
+private val PCM_ENCODINGS = setOf(
+    androidx.media3.common.C.ENCODING_PCM_16BIT, androidx.media3.common.C.ENCODING_PCM_FLOAT, androidx.media3.common.C.ENCODING_PCM_24BIT,
+    androidx.media3.common.C.ENCODING_PCM_32BIT, androidx.media3.common.C.ENCODING_PCM_8BIT,
+)
+
+/** The refresh-rate test in words. */
+internal fun refreshText(r: dev.nitrate.core.playback.RefreshCheck): String {
+    fun hz(v: Float) = "%.3f".format(v).trimEnd('0').trimEnd('.')
+    if (r.fromHz == r.toHz) return "This TV offers no film rate (23.976 or 24 Hz) to switch to from ${hz(r.fromHz)} Hz"
+    if (!r.switched) return "Asked for ${hz(r.toHz)} Hz, but the TV stayed at ${hz(r.fromHz)} Hz" + if (dev.nitrate.tv.ui.player.isFireTv()) " (on Fire TV, turn on Match Original Frame Rate)" else ""
+    val black = r.blackMs?.let { "about %.1f s".format(it / 1000.0) } ?: "a moment"
+    val back = r.surroundBackMs
+    val surround = when {
+        r.surroundBefore.isEmpty() -> "no surround passthrough to lose"
+        back != null -> "surround passthrough back after %.1f s".format(back / 1000.0)
+        else -> "surround passthrough didn't come back within the wait"
+    }
+    return "${hz(r.fromHz)} → ${hz(r.toHz)} Hz: $black of black; $surround"
 }
 
 @Composable

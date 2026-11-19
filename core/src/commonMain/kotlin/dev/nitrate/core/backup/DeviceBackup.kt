@@ -76,6 +76,7 @@ object DeviceBackups {
             overrides = current.playback.overrides,
             learnedFailures = current.playback.learnedFailures,
             failedTitles = current.playback.failedTitles,
+            deviceCheck = current.playback.deviceCheck,
             codecMaxHeight = current.playback.codecMaxHeight,
             eightBitOnly = current.playback.eightBitOnly,
             tenBitAllowed = current.playback.tenBitAllowed,

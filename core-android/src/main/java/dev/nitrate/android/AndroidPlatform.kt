@@ -30,6 +30,13 @@ class AndroidPlatform(context: Context, clientName: String, version: String) : A
         else -> DeviceKind.PHONE
     }
     override val identity = androidIdentity(appContext, clientName, version)
+
+    override fun displaySnapshot(): dev.nitrate.core.playback.DisplaySnapshot? {
+        if (deviceKind != DeviceKind.TV) return null
+        val display = appContext.getSystemService(android.hardware.display.DisplayManager::class.java)?.getDisplay(android.view.Display.DEFAULT_DISPLAY) ?: return null
+        fun mode(m: android.view.Display.Mode) = dev.nitrate.core.playback.DisplayMode(m.modeId, m.physicalWidth, m.physicalHeight, m.refreshRate)
+        return dev.nitrate.core.playback.DisplaySnapshot(mode(display.mode), display.supportedModes.map(::mode))
+    }
     override val appKind: String = if (appContext.packageName.contains(".tv")) "tv" else "mobile"
     override val stores = AppStores(
         display = appContext.displayDataStore,

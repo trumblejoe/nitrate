@@ -57,6 +57,12 @@ interface AppPlatform {
 
     /** Now, as "yyyy-MM-dd HH:mm:ss Z" in the device's time zone, for reports. */
     fun timestamp(): String
+
+    /**
+     * The display's mode and the modes it offers, where Nitrate matches the refresh rate (TV);
+     * null elsewhere (phones, iPad), so predictions say nothing about it.
+     */
+    fun displaySnapshot(): dev.nitrate.core.playback.DisplaySnapshot? = null
 }
 
 /** What a player contributes to a playback report. */

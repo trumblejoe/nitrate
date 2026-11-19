@@ -54,6 +54,20 @@ fun PlaybackFixDialog(
                         Text("Nothing on this device can change that.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // On this device: decoder, HDR, sound, refresh rate, subtitles (the server's part is above).
+                        diagnosis.prediction?.rows()?.filter { it.first != "Server" }?.takeIf { it.isNotEmpty() }?.let { rows ->
+                            item {
+                                Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("On this device", style = MaterialTheme.typography.titleMedium)
+                                    rows.forEach { (label, text) ->
+                                        androidx.compose.foundation.layout.Row {
+                                            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(130.dp))
+                                            Text(text, style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         diagnosis.findings.forEach { f ->
                             item {
                                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {

@@ -50,6 +50,17 @@ fun PlaybackFixDialog(
                 diagnosis == null -> Text("Asking the server…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> LazyColumn(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     item { Text(diagnosis.summary, style = MaterialTheme.typography.bodyLarge) }
+                    // On this device: decoder, HDR, sound, subtitles (the server's part is the summary above).
+                    diagnosis.prediction?.rows()?.filter { it.first != "Server" }?.takeIf { it.isNotEmpty() }?.let { rows ->
+                        item {
+                            Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("On this device", style = MaterialTheme.typography.titleSmall, color = accentColor())
+                                rows.forEach { (label, text) ->
+                                    Text("$label: $text", style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
                     if (diagnosis.findings.isEmpty() && diagnosis.quality != PlaybackQuality.ORIGINAL) {
                         item { Text("Nothing on this device can change that.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }

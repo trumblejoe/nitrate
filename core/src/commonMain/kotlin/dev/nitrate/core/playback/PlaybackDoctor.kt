@@ -94,6 +94,8 @@ data class PlaybackDiagnosis(
     val findings: List<PlaybackFinding>,
     /** What the server answered, for the media information. */
     val plan: dev.nitrate.core.model.PlaybackPlan? = null,
+    /** How it plays on this device: decoder, HDR, sound, refresh rate, subtitles (How it plays). */
+    val prediction: PlaybackPrediction? = null,
 ) {
     /** True when there's anything to show beyond "it plays as it is". */
     val hasAdvice get() = findings.isNotEmpty()

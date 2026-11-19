@@ -355,8 +355,42 @@ class AppContainer(
             itemId = itemId, isAudio = isAudio, startMs = 0, forceTranscode = false,
             audioIndex = tracks?.audioIndex, subtitleIndex = tracks?.subtitleIndex, mediaSourceId = dev.nitrate.android.playback.VersionChoices[itemId],
         )
-        return dev.nitrate.core.playback.PlaybackDoctor.diagnose(plan, capabilities, playbackSettings.current()).copy(plan = plan)
+        val settings = playbackSettings.current()
+        // The device's part (decoder, HDR, sound, refresh rate), for the file and tracks the server answered for.
+        val prediction = runCatching {
+            dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, settings, plan.source, plan.audioIndex, plan.subtitleIndex, itemId, platform.displaySnapshot())
+        }.getOrNull()
+        return dev.nitrate.core.playback.PlaybackDoctor.diagnose(plan, capabilities, settings).copy(plan = plan, prediction = prediction)
     }
+
+    /**
+     * How every film and episode the user can see (in [libraryId], or all) would play on this device,
+     * worked out here from each file's details: Settings → Library playback overview.
+     */
+    suspend fun playbackOverview(libraryId: String?, libraryName: String, onProgress: (Int, Int) -> Unit = { _, _ -> }): dev.nitrate.core.playback.PlaybackOverview {
+        val settings = playbackSettings.current()
+        val display = platform.displaySnapshot()
+        val sources = server.playbackSources(libraryId, onProgress)
+        val entries = dev.nitrate.core.playback.PlaybackOverview.build(sources) { item, source ->
+            dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, settings, source, itemId = item.id, display = display)
+        }
+        return dev.nitrate.core.playback.PlaybackOverview(
+            entries = entries,
+            app = "$clientName $version",
+            device = "${capabilities.model} (${platform.identity.deviceName})",
+            createdAt = platform.timestamp(),
+            settings = dev.nitrate.core.playback.PlaybackOverview.settingsSummary(settings),
+            library = libraryName,
+        )
+    }
+
+    /** Saves the overview in the server's logs (Dashboard → Logs), for the admin; returns the file name. */
+    suspend fun sendPlaybackOverview(overview: dev.nitrate.core.playback.PlaybackOverview): Result<String> =
+        runCatching { server.sendClientLog(overview.report()) }
+
+    /** How [itemId] would play here, worked out on the device alone (no call to the server's playback decision). */
+    suspend fun predictPlayback(itemId: String, source: dev.nitrate.core.model.MediaSource, audioIndex: Int? = null, subtitleIndex: Int? = null): dev.nitrate.core.playback.PlaybackPrediction =
+        dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, playbackSettings.current(), source, audioIndex, subtitleIndex, itemId, platform.displaySnapshot())
 
     /** Applies a fix found by [checkPlayback] (settings and versions; tracks are chosen in the player). */
     suspend fun applyPlaybackFix(itemId: String, fix: dev.nitrate.core.playback.PlaybackFix) {

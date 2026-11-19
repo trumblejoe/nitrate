@@ -29,6 +29,7 @@ data class TestClip(
     }
 }
 
+@kotlinx.serialization.Serializable
 enum class Outcome(val label: String) {
     PASSED("Plays"),
 

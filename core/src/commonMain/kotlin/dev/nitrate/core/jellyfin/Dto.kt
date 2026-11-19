@@ -127,6 +127,7 @@ internal data class MediaStreamDto(
     val videoRangeType: String? = null,
     /** Dolby Vision profile (5, 7, 8...), when the stream carries Dolby Vision. */
     val dvProfile: Int? = null,
+    val isInterlaced: Boolean = false,
     val realFrameRate: Float? = null,
     val averageFrameRate: Float? = null,
 )
