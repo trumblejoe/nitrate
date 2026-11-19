@@ -334,6 +334,36 @@ class PlaybackSession(
         )
     }
 
+    /**
+     * After the display changed mode (a refresh-rate switch re-syncs HDMI): if surround sound the
+     * output takes as it is was decoded only because the output briefly took nothing but PCM, the
+     * sound is rebuilt so it's passed through again (a moment's silence). Checked a few times, as
+     * the receiver's abilities come back a little after the picture.
+     */
+    fun recheckAudioOutput() {
+        scope.launch {
+            for (wait in listOf(0L, 1_500L, 3_000L)) {
+                delay(wait)
+                val f = audioInFormat ?: return@launch
+                if (_audioPath.value.delivery != dev.nitrate.core.playback.AudioDelivery.DECODED) return@launch
+                // Decoded on purpose: Night/Clearer dialogue or another speed.
+                if (nightMode.active || exo.playbackParameters.speed != 1f) return@launch
+                val encoding = MimeTypes.getEncoding(f.sampleMimeType ?: return@launch, f.codecs)
+                if (encoding == C.ENCODING_INVALID) return@launch
+                val accepts = runCatching {
+                    androidx.media3.exoplayer.audio.AudioCapabilities.getCapabilities(appContext, androidx.media3.common.AudioAttributes.DEFAULT, null).supportsEncoding(encoding)
+                }.getOrDefault(false)
+                if (!accepts) continue
+                log("The output takes ${f.sampleMimeType} again after the display change: rebuilding the sound to pass it through")
+                val params = exo.trackSelectionParameters
+                exo.trackSelectionParameters = params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+                delay(60)
+                exo.trackSelectionParameters = params
+                return@launch
+            }
+        }
+    }
+
     /** What the player did recently, oldest first. */
     fun eventLog(): List<String> = synchronized(events) { events.toList() }
 
@@ -584,7 +614,11 @@ class PlaybackSession(
         scope.launch {
             val on = settings.current().tunneling
             (exo.trackSelector as? androidx.media3.exoplayer.trackselection.DefaultTrackSelector)?.let { selector ->
-                selector.parameters = selector.buildUponParameters().setTunnelingEnabled(on).build()
+                // Re-choose the tracks' handling when the output's abilities change: a refresh-rate switch
+                // drops the HDMI link for a moment (the output takes only PCM meanwhile), and without
+                // this surround sound stayed decoded after the receiver came back.
+                selector.parameters = selector.buildUponParameters().setTunnelingEnabled(on)
+                    .setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true).build()
             }
             if (on) log("Tunneled playback on")
         }

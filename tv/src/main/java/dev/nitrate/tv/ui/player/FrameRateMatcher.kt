@@ -96,6 +96,9 @@ fun FrameRateMatcher(session: PlaybackSession, match: FrameRateMatch?): Boolean 
             if (switched) {
                 // Android reports the change before the TV shows a picture again: let it settle.
                 kotlinx.coroutines.delay(SETTLE_MS)
+                // HDMI re-synced: sound set up meanwhile may have been decoded (the output took only
+                // PCM for that moment); put passthrough back if the receiver takes it again.
+                session.recheckAudioOutput()
             } else {
                 // Fire TV only lets apps change the rate with its own setting on.
                 session.tell(if (isFireTv()) "The TV stayed at ${hz(now.refreshRate)} Hz. On Fire TV, turn on Match Original Frame Rate in Settings → Display & Sounds → Display."
