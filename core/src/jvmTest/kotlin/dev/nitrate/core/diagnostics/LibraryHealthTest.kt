@@ -57,7 +57,7 @@ class LibraryHealthTest {
         assertEquals("AV1 video", LibraryHealth.whyConverts(streams(codec = "av1"), device, PlaybackSettings()))
         assertEquals("Dolby Vision on this display", LibraryHealth.whyConverts(streams(codec = "hevc", ranges = setOf("dovi")), device, PlaybackSettings()))
         // Dolby Vision with an HDR10 base layer plays as HDR10.
-        assertNull(LibraryHealth.whyConverts(streams(codec = "hevc", ranges = setOf("dovi", "hdr10")), device, PlaybackSettings()))
+        assertNull(LibraryHealth.whyConverts(streams(codec = "hevc", ranges = setOf("dovi", "hdr10base")), device, PlaybackSettings()))
         assertEquals("TrueHD/DTS sound", LibraryHealth.whyConverts(streams(audio = setOf("truehd", "dts")), device, PlaybackSettings()))
         assertNull(LibraryHealth.whyConverts(streams(audio = setOf("truehd", "ac3")), device, PlaybackSettings()))
         val eightBit = caps(video = listOf(video("h264"), video("hevc", tenBit = false)))

@@ -1,5 +1,7 @@
 package dev.nitrate.core.jellyfin
 
+import dev.nitrate.core.playback.Override
+
 import dev.nitrate.core.model.MediaSource
 import dev.nitrate.core.model.MediaStream
 import dev.nitrate.core.model.StreamKind
@@ -38,7 +40,7 @@ object ProfileCheck {
         val videoListed = videoCodec == null || direct.any { videoCodec in list(it.videoCodec) }
         val containerOk = containers.isEmpty() || direct.any { p -> containers.any { it in list(p.container) } && (videoCodec == null || videoCodec in list(p.videoCodec)) }
         val audioOk = audioCodec == null || direct.any { audioCodec in list(it.audioCodec) }
-        val pictureLimits = video?.let { pictureFailures(profile, it) }.orEmpty()
+        val pictureLimits = video?.let { pictureFailures(profile, it, caps, settings) }.orEmpty()
         val bitrateOk = (source.bitrate ?: 0) <= profile.maxStreamingBitrate
         val burns = subtitle != null && burnsIn(profile, subtitle)
         val titleFailed = itemId != null && settings.convertsTitle(itemId)
@@ -71,7 +73,7 @@ object ProfileCheck {
     }
 
     /** The picture's limits from the profile's codec rules that this video breaks, in plain words. */
-    private fun pictureFailures(profile: DeviceProfileDto, video: MediaStream): List<String> {
+    private fun pictureFailures(profile: DeviceProfileDto, video: MediaStream, caps: DeviceCapabilities, settings: PlaybackSettings): List<String> {
         val codec = video.codec?.lowercase() ?: return emptyList()
         val name = codecLabel(codec)
         return profile.codecProfiles.filter { it.type == "Video" && codec in list(it.codec) && it.applyConditions.all { c -> holds(c, video) } }
@@ -81,7 +83,7 @@ object ProfileCheck {
                 when (c.property) {
                     "Width", "Height" -> "${video.height ?: "?"}p $name is more than this device decodes it at (up to ${if (c.property == "Height") c.value else (c.value.toIntOrNull()?.let { it * 9 / 16 } ?: c.value)}p)"
                     "VideoBitDepth" -> "${video.bitDepth}-bit $name isn't something this device decodes"
-                    "VideoRangeType" -> "${rangeName(video.rangeType)} can't be shown as it is on this display, so the server tone-maps it"
+                    "VideoRangeType" -> rangeReason(video.rangeType, caps, settings)
                     "IsInterlaced" -> "It's interlaced, which the software decoder can't show; the server deinterlaces it"
                     "VideoProfile" -> "$name ${video.profile} (4:2:2/4:4:4) isn't something any decoder here takes"
                     else -> "$name ${c.property} isn't within this device's limits"
@@ -120,6 +122,36 @@ object ProfileCheck {
 
     private fun list(s: String?) = s.orEmpty().split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
     private fun mbps(bps: Int?) = bps?.let { dev.nitrate.core.playback.formatBitrate(it) } ?: "?"
+    /**
+     * Why an HDR picture is tone-mapped, naming the real cause for each format that could have
+     * shown it (the file's own, then the base layer it falls back to): set to Never, turned off
+     * after failures here, or not reported by the display.
+     */
+    internal fun rangeReason(range: String?, caps: DeviceCapabilities, settings: PlaybackSettings): String {
+        val formats = when (range) {
+            "HDR10" -> listOf("HDR10")
+            "HDR10Plus" -> listOf("HDR10Plus", "HDR10")
+            "HLG" -> listOf("HLG")
+            "DOVI", "DOVIInvalid" -> listOf("DOVI")
+            "DOVIWithHDR10", "DOVIWithEL" -> listOf("DOVI", "HDR10")
+            "DOVIWithHDR10Plus", "DOVIWithELHDR10Plus" -> listOf("DOVI", "HDR10Plus", "HDR10")
+            "DOVIWithHLG" -> listOf("DOVI", "HLG")
+            else -> emptyList()
+        }
+        fun name(f: String) = when (f) { "DOVI" -> "Dolby Vision"; "HDR10Plus" -> "HDR10+"; else -> f }
+        fun names(fs: List<String>) = fs.map(::name).let { if (it.size <= 1) it.joinToString() else it.dropLast(1).joinToString(", ") + " and " + it.last() }
+        val never = formats.filter { settings.overrides[PlaybackSettings.hdrId(it)] == Override.NEVER }
+        val failed = formats.filter { it !in never && settings.overrides[PlaybackSettings.hdrId(it)] == null && settings.useLearnedFailures && settings.learnedFailures[PlaybackSettings.hdrId(it)]?.blocksFormat == true }
+        val unreported = formats.filter { it !in never && it !in failed && it !in caps.hdr && settings.overrides[PlaybackSettings.hdrId(it)] == null }
+        val causes = buildList {
+            if (never.isNotEmpty()) add("${names(never)} ${if (never.size == 1) "is" else "are"} set to Never (Picture & sound → Advanced)")
+            if (failed.isNotEmpty()) add("${names(failed)} ${if (failed.size == 1) "was" else "were"} turned off after failing here (Advanced → learned failures)")
+            if (unreported.isNotEmpty()) add("the display doesn't report ${names(unreported)} (Android says it shows ${caps.hdr.sorted().joinToString { name(it) }.ifEmpty { "no HDR" }})")
+        }
+        return if (causes.isEmpty()) "${rangeName(range)} isn't shown as it is here, so the server tone-maps it to SDR"
+        else "${rangeName(range)} is tone-mapped to SDR by the server: ${causes.joinToString("; ")}"
+    }
+
     private fun rangeName(range: String?) = when {
         range == null -> "HDR"
         range.startsWith("DOVI") -> "Dolby Vision"

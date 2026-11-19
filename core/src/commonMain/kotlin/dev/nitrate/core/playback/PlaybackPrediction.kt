@@ -171,7 +171,7 @@ object PlaybackPredictor {
         )
     }
 
-    private fun tonemapped(verdict: DeliveryVerdict) = verdict.reasons.any { "tone-maps" in it }
+    private fun tonemapped(verdict: DeliveryVerdict) = verdict.reasons.any { "tone-map" in it }
 
     /** Which decoder takes the picture: hardware first, then Android's software one, then Nitrate's. */
     private fun tier(codec: String?, video: MediaStream?, caps: DeviceCapabilities): Pair<DecoderTier, String?> {
@@ -190,7 +190,7 @@ object PlaybackPredictor {
     private fun hdrPath(v: MediaStream, verdict: DeliveryVerdict, caps: DeviceCapabilities, settings: PlaybackSettings): String? {
         val range = v.rangeType ?: return null
         if (range == "SDR" || range == "Unknown") return null
-        if (tonemapped(verdict)) return "Tone-mapped to SDR by the server (this display doesn't show it as it is)"
+        if (tonemapped(verdict)) return "Tone-mapped to SDR by the server (see why above)"
         val allowed = CapabilityRules.allowedRangeTypes(caps, settings).toSet()
         val dv = CapabilityRules.hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
         return when {

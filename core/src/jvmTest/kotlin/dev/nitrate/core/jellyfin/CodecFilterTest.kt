@@ -94,8 +94,9 @@ class CodecFilterTest {
         fun q(o: BrowseOptions) = o.query("lib", CollectionKind.MOVIES)
         // HEVC, 10-bit, SDR: only Alpha (Charlie is HEVC 10-bit but Dolby Vision over HDR10).
         assertEquals(listOf(id(1)), names(client.queryPage(q(BrowseOptions(videoCodecs = listOf("hevc"), bitDepths = listOf(10), videoRanges = listOf("sdr"))), 0, 10)))
-        // Dolby Vision files count as their base layer too.
-        assertEquals(listOf(id(3)), names(client.queryPage(q(BrowseOptions(videoRanges = listOf("hdr10"))), 0, 10)))
+        // HDR10 is plain HDR10 only; a Dolby Vision file over HDR10 is "HDR10 compatible".
+        assertEquals(emptyList<String>(), names(client.queryPage(q(BrowseOptions(videoRanges = listOf("hdr10"))), 0, 10)))
+        assertEquals(listOf(id(3)), names(client.queryPage(q(BrowseOptions(videoRanges = listOf("hdr10base"))), 0, 10)))
         assertEquals(listOf(id(3)), names(client.queryPage(q(BrowseOptions(videoRanges = listOf("dovi"))), 0, 10)))
         // 8-bit anything.
         assertEquals(listOf(id(2), id(4)), names(client.queryPage(q(BrowseOptions(bitDepths = listOf(8))), 0, 10)))
@@ -105,14 +106,16 @@ class CodecFilterTest {
         assertEquals("pcm", Codecs.normalize("pcm_s24le"))
         assertEquals("dts", Codecs.normalize("DCA"))
         assertEquals("hevc", Codecs.normalize("h265"))
-        assertEquals(setOf("dovi", "dovi7", "hdr10plus", "hdr10"), Codecs.rangeTags("DOVIWithELHDR10Plus"))
+        assertEquals(setOf("dovi", "dovi7", "hdr10base"), Codecs.rangeTags("DOVIWithELHDR10Plus"))
         // Dolby Vision by profile: the stream's own DvProfile when Jellyfin gives it, else from the range type.
-        assertEquals(setOf("dovi", "dovi7", "hdr10"), Codecs.rangeTags("DOVIWithEL"))
-        assertEquals(setOf("dovi", "dovi8", "hdr10"), Codecs.rangeTags("DOVIWithHDR10"))
-        assertEquals(setOf("dovi", "dovi7", "hdr10"), Codecs.rangeTags("DOVIWithHDR10", dvProfile = 7))
+        assertEquals(setOf("dovi", "dovi7", "hdr10base"), Codecs.rangeTags("DOVIWithEL"))
+        assertEquals(setOf("dovi", "dovi8", "hdr10base"), Codecs.rangeTags("DOVIWithHDR10"))
+        assertEquals(setOf("dovi", "dovi7", "hdr10base"), Codecs.rangeTags("DOVIWithHDR10", dvProfile = 7))
         assertEquals(setOf("dovi", "dovi5"), Codecs.rangeTags("DOVI"))
-        assertEquals(setOf("dovi", "dovi8", "hlg"), Codecs.rangeTags("DOVIWithHLG"))
-        assertEquals(setOf("hdr10"), Codecs.rangeTags("HDR10", dvProfile = 0))
+        assertEquals(setOf("dovi", "dovi8", "hlgbase"), Codecs.rangeTags("DOVIWithHLG"))
+        assertEquals(setOf("hdr10", "hdr10base"), Codecs.rangeTags("HDR10", dvProfile = 0))
+        // HDR10 doesn't take in HDR10+ (it's under its own name and "HDR10 compatible").
+        assertEquals(setOf("hdr10plus", "hdr10base"), Codecs.rangeTags("HDR10Plus"))
         // UHD Blu-ray Dolby Vision alone: only profile 7 streams.
         val p7 = dev.nitrate.core.pages.StreamInfo(setOf(dev.nitrate.core.pages.VideoStreamInfo("hevc", 10, Codecs.rangeTags("DOVIWithEL"))), setOf("truehd"))
         val p8 = dev.nitrate.core.pages.StreamInfo(setOf(dev.nitrate.core.pages.VideoStreamInfo("hevc", 10, Codecs.rangeTags("DOVIWithHDR10"))), setOf("eac3"))

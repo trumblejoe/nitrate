@@ -50,7 +50,21 @@ class PlaybackPredictionTest {
         val p = ProfileCheck.predict(tv.copy(hdr = emptySet()), PlaybackSettings(), film())
         assertEquals(PredictedDelivery.CONVERTED, p.delivery)
         assertTrue(p.hdr!!.startsWith("Tone-mapped to SDR"), p.hdr)
-        assertTrue(p.reasons.any { "tone-maps" in it })
+        assertTrue(p.reasons.any { "the display doesn't report HDR10 (Android says it shows no HDR)" in it }, p.reasons.toString())
+    }
+
+    @Test fun toneMappingNamesTheSettingWhenItIsASetting() {
+        // The display takes HDR10, but it's set to Never: say so rather than blame the display.
+        val settings = PlaybackSettings(overrides = mapOf(PlaybackSettings.hdrId("HDR10") to Override.NEVER))
+        val p = ProfileCheck.predict(tv.copy(hdr = setOf("HDR10")), settings, film())
+        assertEquals(listOf("HDR10 is tone-mapped to SDR by the server: HDR10 is set to Never (Picture & sound → Advanced)"), p.reasons)
+        // Dolby Vision over HDR10 on a display with neither, HDR10 also set to Never: both causes.
+        val dv = film(video = MediaStream(0, StreamKind.VIDEO, codec = "hevc", width = 3840, height = 2160, bitDepth = 10, rangeType = "DOVIWithHDR10"))
+        val both = ProfileCheck.predict(tv.copy(hdr = emptySet()), settings, dv)
+        assertEquals(
+            "Dolby Vision is tone-mapped to SDR by the server: HDR10 is set to Never (Picture & sound → Advanced); the display doesn't report Dolby Vision (Android says it shows no HDR)",
+            both.reasons.single(),
+        )
     }
 
     @Test fun profilesNoDecoderTakesAreConvertedUpFront() {
@@ -119,5 +133,13 @@ class PlaybackPredictionTest {
         assertTrue("- Loud:" in report, report)
         assertTrue("converted to AAC converted" !in report, report)
         assertTrue("Bitrate limit: No limit" in report, report)
+    }
+
+    @Test fun anOldTenBitTestResultKeepsSoftwareTenBitAt1080p() {
+        // The Fire TV case: 8-bit hardware H.264, 10-bit in Nitrate's FFmpeg, and an old "10-bit allowed by test".
+        val h264 = video("h264", tenBit = false).copy(softwareTenBit = true)
+        val limit = CapabilityRules.videoLimits(caps().copy(video = mapOf("h264" to h264)), PlaybackSettings(tenBitAllowed = setOf("h264"))).single()
+        assertTrue(limit.tenBit)
+        assertEquals(CapabilityRules.SOFTWARE_MAX_HEIGHT, limit.tenBitMaxHeight)
     }
 }

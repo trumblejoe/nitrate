@@ -129,7 +129,7 @@ object PlaybackTest {
 
             // The TV says 8-bit only, but a 10-bit clip played: let the server send 10-bit.
             val tenBitPass = sdr.firstOrNull { it.ok && it.clip.tenBit }
-            if (tenBitPass != null && caps.video[codec]?.tenBit == false && codec !in current.tenBitAllowed && codec !in current.eightBitOnly) {
+            if (tenBitPass != null && caps.video[codec]?.tenBit == false && caps.video[codec]?.softwareTenBit != true && codec !in current.tenBitAllowed && codec !in current.eightBitOnly) {
                 out += Suggestion("Allow 10-bit $name: ${tenBitPass.clip.label} played, though the TV doesn't report 10-bit") {
                     it.copy(tenBitAllowed = it.tenBitAllowed + codec)
                 }

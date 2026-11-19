@@ -34,10 +34,11 @@ object Codecs {
     val BIT_DEPTHS = listOf(8, 10, 12)
 
     /**
-     * Dynamic ranges offered. Dolby Vision files also count as their base layer (HDR10, HLG or
-     * SDR), and HDR10+ files as HDR10, since that's what they play as without the extra layer.
-     * Dolby Vision is also offered by profile: 5 (streaming, no base layer), 7 (UHD Blu-ray, dual
-     * layer) and 8 (single layer over HDR10, HLG or SDR).
+     * Dynamic ranges offered. Each format is matched as itself: HDR10 is plain HDR10 only, not HDR10+
+     * or Dolby Vision. "HDR10 compatible" gathers every file an HDR10-only TV shows in HDR (HDR10,
+     * HDR10+, Dolby Vision over an HDR10 base, profile 7 included). Dolby Vision is also offered by
+     * profile: 5 (streaming, no base layer), 7 (UHD Blu-ray, dual layer) and 8 (single layer over
+     * HDR10, HLG or SDR).
      */
     val RANGES = listOf(
         "sdr" to "SDR",
@@ -48,6 +49,7 @@ object Codecs {
         "dovi5" to "DV profile 5",
         "dovi7" to "DV profile 7",
         "dovi8" to "DV profile 8",
+        "hdr10base" to "HDR10 compatible",
     )
 
     /**
@@ -69,14 +71,15 @@ object Codecs {
 
     private fun baseRangeTags(videoRangeType: String?): Set<String> = when (videoRangeType) {
         "SDR" -> setOf("sdr")
-        "HDR10" -> setOf("hdr10")
-        "HDR10Plus" -> setOf("hdr10plus", "hdr10")
+        "HDR10" -> setOf("hdr10", "hdr10base")
+        "HDR10Plus" -> setOf("hdr10plus", "hdr10base")
         "HLG" -> setOf("hlg")
         "DOVI", "DOVIInvalid" -> setOf("dovi")
-        "DOVIWithHDR10", "DOVIWithEL" -> setOf("dovi", "hdr10")
-        "DOVIWithHDR10Plus", "DOVIWithELHDR10Plus" -> setOf("dovi", "hdr10plus", "hdr10")
-        "DOVIWithHLG" -> setOf("dovi", "hlg")
-        "DOVIWithSDR" -> setOf("dovi", "sdr")
+        "DOVIWithHDR10", "DOVIWithEL" -> setOf("dovi", "hdr10base")
+        "DOVIWithHDR10Plus", "DOVIWithELHDR10Plus" -> setOf("dovi", "hdr10base")
+        // Not offered as filters: they keep what a Dolby Vision file plays as without it (LibraryHealth).
+        "DOVIWithHLG" -> setOf("dovi", "hlgbase")
+        "DOVIWithSDR" -> setOf("dovi", "sdrbase")
         else -> emptySet()
     }
 

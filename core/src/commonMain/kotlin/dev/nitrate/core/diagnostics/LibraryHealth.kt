@@ -105,7 +105,8 @@ object LibraryHealth {
         return HealthCheck.entries.mapNotNull { c -> out[c]?.sortedBy { it.item.name.lowercase() }?.let { c to it } }.toMap()
     }
 
-    private val RANGE_TYPES = mapOf("sdr" to "SDR", "hdr10" to "HDR10", "hdr10plus" to "HDR10Plus", "hlg" to "HLG", "dovi" to "DOVI")
+    private val RANGE_TYPES = mapOf("sdr" to "SDR", "hdr10" to "HDR10", "hdr10plus" to "HDR10Plus", "hlg" to "HLG", "dovi" to "DOVI",
+        "hdr10base" to "HDR10", "hlgbase" to "HLG", "sdrbase" to "SDR")
     private val RANGE_NAMES = mapOf("dovi" to "Dolby Vision", "hdr10plus" to "HDR10+", "hdr10" to "HDR10", "hlg" to "HLG")
 
     private fun key(name: String) = name.lowercase().filter { it.isLetterOrDigit() }

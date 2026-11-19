@@ -81,7 +81,8 @@ data class PlaybackReport(
         CapabilityRules.videoLimits(caps, settings).forEach { l ->
             line("Video ${l.codec}: up to ${l.maxWidth}x${l.maxHeight}, ${if (l.tenBit) "10-bit" else "8-bit"}")
         }
-        line("Video off: ${CapabilityRules.videoCodecs(caps, settings).filterNot { it.allowed }.joinToString(", ") { it.id }.ifEmpty { "none" }}")
+        CapabilityRules.videoCodecs(caps, settings).filterNot { it.allowed }.takeIf { it.isNotEmpty() }
+            ?.let { off -> line("Video codecs not allowed (the server converts them): ${off.joinToString(", ") { it.id }}") }
         line("Audio: ${CapabilityRules.audioCodecs(caps, settings).filter { it.allowed }.joinToString(", ") { it.id }}")
         line("Ranges shown as they are: ${CapabilityRules.allowedRangeTypes(caps, settings).joinToString(", ")}")
         line("Max bitrate ${settings.maxBitrate / 1_000_000} Mbps, max resolution ${settings.maxResolution.label}, direct play ${settings.allowDirectPlay}, direct stream ${settings.allowDirectStream}")

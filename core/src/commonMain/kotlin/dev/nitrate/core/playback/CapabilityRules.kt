@@ -90,7 +90,10 @@ object CapabilityRules {
             // "Always" for the codec lifts it (the user, or the playback test, knows better).
             val softCap = if (c != null && !c.hardware && settings.overrides[cap.id] != Override.ALWAYS) SOFTWARE_MAX_HEIGHT else Int.MAX_VALUE
             val maxHeight = minOf(c?.maxHeight ?: maxOf(caps.displayHeight, 2160), userHeight, settings.codecMaxHeight[cap.id] ?: Int.MAX_VALUE, softCap)
-            val tenBit = (c?.tenBit ?: true || cap.id in settings.tenBitAllowed) && cap.id !in settings.eightBitOnly
+            // "10-bit allowed by test" lifts an 8-bit-only hardware report, unless Nitrate's own software
+            // decoder is what played the 10-bit clip: then 10-bit stays at its 1080p limit (below).
+            val byTest = cap.id in settings.tenBitAllowed && c?.softwareTenBit != true
+            val tenBit = (c?.tenBit ?: true || byTest) && cap.id !in settings.eightBitOnly
             // The hardware is 8-bit only but Nitrate's software decoder takes 10-bit up to 1080p.
             val softTenBit = !tenBit && c?.softwareTenBit == true && cap.id !in settings.eightBitOnly && maxHeight > 0
             VideoLimit(
