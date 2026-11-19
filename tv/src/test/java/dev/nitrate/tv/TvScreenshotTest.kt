@@ -414,7 +414,12 @@ class TvScreenshotTest {
         check(!focusedHasText("Home") && !focusedHasText("Settings") && !focusedHasText("Search")) { "focus went to the menu" }
         // And again, through a style of a different height.
         press("ff", "ff")
-        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        // Focus waits on a holder while the cards are swapped: give it time on a slow machine.
+        var waited = 0
+        do {
+            compose.mainClock.advanceTimeBy(100); compose.waitForIdle()
+            waited += 100
+        } while (waited < 4000 && compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         check(!focusedHasText("Home") && !focusedHasText("Settings") && !focusedHasText("Search")) { "focus went to the menu after more steps" }
         // Never left with nothing focused (on a TV that hands focus to the menu), never on the rail at the left edge.
         val after = compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes()
