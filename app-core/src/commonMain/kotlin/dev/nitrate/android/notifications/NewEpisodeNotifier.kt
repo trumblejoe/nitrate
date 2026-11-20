@@ -19,6 +19,15 @@ interface NewEpisodeNotifier {
     /** Keeps the background check scheduled (or not) to match the settings; call at startup. */
     suspend fun ensureScheduled()
 
+    /** Watch-together invites and watch-partner requests, each its own switch (on until switched off). */
+    val invitesEnabled: Flow<Boolean> get() = MutableStateFlow(false)
+    val partnerRequestsEnabled: Flow<Boolean> get() = MutableStateFlow(false)
+    suspend fun setInvitesEnabled(on: Boolean) = Unit
+    suspend fun setPartnerRequestsEnabled(on: Boolean) = Unit
+
+    /** Looks for invites and partner requests not notified yet (every 15 minutes in the background). */
+    suspend fun checkInvites() = Unit
+
     /** The server added things: check in a moment. */
     fun checkSoon()
     suspend fun check()
@@ -37,5 +46,8 @@ interface NewEpisodeNotifier {
     companion object {
         /** The item a tapped notification opens (an Android Intent extra). */
         const val EXTRA_OPEN_ITEM = "dev.nitrate.OPEN_ITEM"
+
+        /** A tapped invite or request notification: the app opens and its prompt asks. */
+        const val EXTRA_OPEN_INVITES = "dev.nitrate.OPEN_INVITES"
     }
 }

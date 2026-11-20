@@ -637,6 +637,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     dev.nitrate.tv.ui.settings.BackupPrompt(container.backups)
     dev.nitrate.tv.ui.player.SpeakersSetupPrompt(container)
     if (partnersOn) dev.nitrate.tv.ui.partners.PartnerRequestPrompt(container)
+    if (companion?.features?.contains("together") == true) dev.nitrate.tv.ui.together.WatchInvitePrompt(container)
     LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.
     var message by remember { mutableStateOf<Pair<String, String>?>(null) }

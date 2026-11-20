@@ -22,6 +22,25 @@ data class WatchGroup(val id: String, val seriesId: String, val seriesName: Stri
 }
 
 /**
+ * An invite to join someone's watch-together group right now ([groupId], a SyncPlay group), with
+ * what's playing when known. Open for a few hours on the server; joining or turning it down
+ * dismisses it.
+ */
+@kotlinx.serialization.Serializable
+data class WatchInvite(
+    val id: String,
+    val fromUserId: String,
+    val fromName: String,
+    val groupId: String,
+    val itemId: String?,
+    val itemName: String?,
+    val atMs: Long,
+) {
+    /** "Will invited you to watch Nitrate together" (or "to watch together" when nothing's playing yet). */
+    val text: String get() = "$fromName invited you to watch " + (itemName?.let { "$it together" } ?: "together")
+}
+
+/**
  * An invite someone sent the user: into [groupId], or a new group with them (null).
  * [willSee] is everyone who learns the user's name and progress by accepting.
  */

@@ -403,6 +403,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         BackupPrompt(container.backups)
         SpeakersSetupPrompt(container)
         PartnerRequestPrompt(actions)
+        WatchInvitePrompt(actions)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }
 
         pending?.let { (ask, answer) ->

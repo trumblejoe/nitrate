@@ -31,6 +31,8 @@ import kotlin.time.Instant
 @Serializable internal data class ProgressDto(val groupId: String, val userId: String, val userName: String = "", val watched: List<String> = emptyList(), val last: String? = null, val nextId: String? = null)
 @Serializable internal data class TogetherDto(val itemId: String, val groupId: String)
 @Serializable internal data class TogetherOutDto(val markedFor: List<String> = emptyList())
+@Serializable internal data class InviteDto(val id: String, val fromUserId: String, val fromName: String = "", val groupId: String, val itemId: String? = null, val itemName: String? = null, val at: String? = null)
+@Serializable internal data class InvitePostDto(val userIds: List<String>, val groupId: String, val itemId: String?, val itemName: String?)
 
 /** The Companion plugin's watch partners and privacy (`/Nitrate/Partners`, `/Nitrate/Privacy`); outside the OpenAPI contract test. */
 internal class JellyfinPartners(private val client: JellyfinClient) {
@@ -79,6 +81,24 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
 
     suspend fun together(itemId: String, groupId: String): List<String> =
         call { client.http.post(client.url("Nitrate", "Partners", "Together")) { json(TogetherDto(itemId, groupId)) } }.decode<TogetherOutDto>().markedFor.map(::normalizeId)
+
+    /** Invites people to a watch-together group (`/Nitrate/Together/Invites`); always "sent". */
+    suspend fun invite(groupId: String, userIds: List<String>, itemId: String?, itemName: String?) {
+        call { client.http.post(client.url("Nitrate", "Together", "Invites")) { json(InvitePostDto(userIds, groupId, itemId, itemName)) } }
+    }
+
+    /** The signed-in user's open watch-together invites (none without a plugin that has them). */
+    suspend fun invites(): List<dev.nitrate.core.partners.WatchInvite> = try {
+        client.get("Nitrate", "Together", "Invites").decode<List<InviteDto>>().map {
+            dev.nitrate.core.partners.WatchInvite(it.id, normalizeId(it.fromUserId), it.fromName, it.groupId, it.itemId?.let(::normalizeId), it.itemName, ms(it.at))
+        }
+    } catch (e: ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound) emptyList() else throw e
+    }
+
+    suspend fun dismissInvite(id: String) {
+        call { client.http.delete(client.url("Nitrate", "Together", "Invites", id)) { with(client) { auth() } } }
+    }
 
     private inline fun <reified T> io.ktor.client.request.HttpRequestBuilder.json(body: T) {
         with(client) { auth() }

@@ -444,6 +444,15 @@ interface MediaServer {
     suspend fun leaveGroup(groupId: String): Unit = unsupported()
 
     /** Where the other members of the user's groups on a show are (empty: none, or no Companion plugin). */
+    /** Invites people (from [partnerPeople]) to join watch-together group [groupId] (Companion feature `together`); always "sent". */
+    suspend fun inviteToWatch(groupId: String, userIds: List<String>, itemId: String?, itemName: String?): Unit = unsupported()
+
+    /** The signed-in user's open watch-together invites, newest first. */
+    suspend fun watchInvites(): List<dev.nitrate.core.partners.WatchInvite> = emptyList()
+
+    /** Dismisses an invite (joined or turned down). */
+    suspend fun dismissWatchInvite(id: String): Unit = unsupported()
+
     suspend fun partnerProgress(seriesId: String): List<dev.nitrate.core.partners.PartnerProgress> = emptyList()
 
     /** Marks an episode watched for the rest of the group the user watched it with; returns who it counted for. */

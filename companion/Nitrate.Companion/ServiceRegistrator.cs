@@ -43,6 +43,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Devices.DeviceHub(
             new Nitrate.Companion.Devices.FileDeviceReportStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "devices.json")),
             sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Together.InviteHub(sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new SsoService(
             () => SsoSettings.From(Plugin.Instance?.Configuration),
             new JellyfinSsoAccounts(sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IDeviceManager>(), sp.GetRequiredService<ISessionManager>()),

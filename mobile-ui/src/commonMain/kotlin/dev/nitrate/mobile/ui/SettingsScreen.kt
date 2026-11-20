@@ -353,6 +353,8 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                 item { ScopeTag(dev.nitrate.core.settings.SettingScope.DEVICE) }
                 item { NewEpisodesToggle(actions) }
                 item { NewSeasonsToggle(actions) }
+                item { InvitesToggle(actions) }
+                item { PartnerRequestsToggle(actions) }
             }
             SettingsPage.BACKUP -> {
                 item {
@@ -597,6 +599,30 @@ private fun NewSeasonsToggle(actions: AppActions) {
     val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setSeasonsEnabled(true) } }
     Toggle("New seasons", "When a show you follow or have watched before starts a new season", on) { want ->
         if (want) askPermission { scope.launch { notifier.setSeasonsEnabled(true) } } else scope.launch { notifier.setSeasonsEnabled(false) }
+    }
+}
+
+/** Watch-together invites (on until switched off; asks for permission like the others). */
+@Composable
+private fun InvitesToggle(actions: AppActions) {
+    val notifier = actions.container.newEpisodes
+    val scope = rememberCoroutineScope()
+    val on by notifier.invitesEnabled.collectAsState(false)
+    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setInvitesEnabled(true) } }
+    Toggle("Watch together invites", "When someone invites you to join their group (checked every 15 minutes in the background)", on) { want ->
+        if (want) askPermission { scope.launch { notifier.setInvitesEnabled(true) } } else scope.launch { notifier.setInvitesEnabled(false) }
+    }
+}
+
+/** Watch-partner requests (on until switched off). */
+@Composable
+private fun PartnerRequestsToggle(actions: AppActions) {
+    val notifier = actions.container.newEpisodes
+    val scope = rememberCoroutineScope()
+    val on by notifier.partnerRequestsEnabled.collectAsState(false)
+    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setPartnerRequestsEnabled(true) } }
+    Toggle("Watch partner requests", "When someone asks to watch a show with you", on) { want ->
+        if (want) askPermission { scope.launch { notifier.setPartnerRequestsEnabled(true) } } else scope.launch { notifier.setPartnerRequestsEnabled(false) }
     }
 }
 

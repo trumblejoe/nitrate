@@ -88,8 +88,88 @@ private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup, first: F
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        OutlinedButton(onClick = { scope.launch { syncPlay.leave() } }, modifier = Modifier.focusRequester(first)) { Text("Leave group") }
+        val container = dev.nitrate.tv.ui.pages.LocalTvContainer.current
+        var inviting by remember { mutableStateOf(false) }
+        androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = { scope.launch { syncPlay.leave() } }, modifier = Modifier.focusRequester(first)) { Text("Leave group") }
+            if (container?.invitesAvailable() == true) OutlinedButton(onClick = { inviting = true }) { Text("Invite people") }
+        }
+        if (inviting && container != null) InvitePeopleDialog(container, group) { inviting = false }
     }
+}
+
+/** Invites people (the server's people list; private accounts are never in it) to this group. */
+@Composable
+fun InvitePeopleDialog(container: dev.nitrate.android.AppContainer, group: SyncPlayGroup, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val me = container.server.userId
+    val people by androidx.compose.runtime.produceState<List<dev.nitrate.core.writing.UserRef>?>(null) {
+        value = runCatching { container.server.partnerPeople() }.getOrDefault(emptyList()).filter { it.id != me }
+    }
+    var chosen by remember { mutableStateOf(emptySet<String>()) }
+    var sent by remember { mutableStateOf(false) }
+    val queue by container.syncPlay.queue.collectAsState()
+    val focus = remember { FocusRequester() }
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 620) {
+        Text(if (sent) "Invites sent" else "Invite to ${group.name}", style = MaterialTheme.typography.headlineSmall)
+        when {
+            sent -> Text("They'll see it on their phone or when they open Nitrate.")
+            people == null -> Text("Loading…")
+            people!!.isEmpty() -> Text("Nobody else to invite on this server.")
+            else -> people!!.forEachIndexed { i, p ->
+                androidx.tv.material3.ListItem(
+                    selected = p.id in chosen,
+                    onClick = { chosen = if (p.id in chosen) chosen - p.id else chosen + p.id },
+                    headlineContent = { Text(p.name) },
+                    trailingContent = { androidx.tv.material3.Switch(checked = p.id in chosen, onCheckedChange = null) },
+                    modifier = if (i == 0) Modifier.focusRequester(focus) else Modifier,
+                )
+            }
+        }
+        androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (sent) androidx.tv.material3.Button(onClick = onDismiss) { Text("Done") }
+            else {
+                androidx.tv.material3.Button(enabled = chosen.isNotEmpty(), onClick = {
+                    scope.launch {
+                        val itemId = queue?.let { q -> q.itemIds.getOrNull(q.index) }
+                        val itemName = itemId?.let { runCatching { container.server.getItem(it).displayTitle }.getOrNull() }
+                        runCatching { container.server.inviteToWatch(group.id, chosen.toList(), itemId, itemName) }
+                        sent = true
+                    }
+                }) { Text("Invite") }
+                OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
+    }
+    LaunchedEffect(people) { if (!people.isNullOrEmpty()) runCatching { focus.requestFocus() } }
+}
+
+/**
+ * A watch-together invite waiting (checked every 30 s while the app is open; TVs show no
+ * notifications): Join puts this TV in the group, Not now turns it down.
+ */
+@Composable
+fun WatchInvitePrompt(container: dev.nitrate.android.AppContainer) {
+    val companion by container.companion.collectAsState()
+    LaunchedEffect(companion) {
+        while (true) {
+            container.refreshInvites()
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    val invites by container.watchInvites.collectAsState()
+    val scope = rememberCoroutineScope()
+    val invite = invites.firstOrNull() ?: return
+    val focus = remember(invite.id) { FocusRequester() }
+    dev.nitrate.tv.ui.lists.TvDialog({ scope.launch { container.dismissInvite(invite) } }, width = 640) {
+        Text("Watch together?", style = MaterialTheme.typography.headlineSmall)
+        Text(invite.text + ". Joining puts this TV in their group: what they play, plays here.")
+        androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            androidx.tv.material3.Button(onClick = { scope.launch { runCatching { container.joinInvite(invite) } } }, modifier = Modifier.focusRequester(focus)) { Text("Join") }
+            OutlinedButton(onClick = { scope.launch { container.dismissInvite(invite) } }) { Text("Not now") }
+        }
+    }
+    LaunchedEffect(invite.id) { kotlinx.coroutines.delay(50); runCatching { focus.requestFocus() } }
 }
 
 @Composable

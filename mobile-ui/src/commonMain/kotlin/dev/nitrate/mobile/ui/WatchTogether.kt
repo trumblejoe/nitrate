@@ -55,7 +55,9 @@ fun WatchTogetherPanel(actions: AppActions, defaultName: String) {
     // Chat needs the Nitrate Companion plugin on the server.
     var chatting by remember { mutableStateOf<SyncPlayGroup?>(null) }
     val canChat = companion?.chat == true
-    if (current != null) InGroup(syncPlay, current, onChat = { chatting = current }.takeIf { canChat })
+    var inviting by remember { mutableStateOf(false) }
+    if (current != null) InGroup(syncPlay, current, onChat = { chatting = current }.takeIf { canChat },
+        onInvite = { inviting = true }.takeIf { actions.container.invitesAvailable() })
     else {
         // A phone beside the TV: chats for this account's devices in the group, without playing.
         val alongside: (SyncPlayGroup) -> Unit = { g ->
@@ -64,6 +66,7 @@ fun WatchTogetherPanel(actions: AppActions, defaultName: String) {
         }
         FindGroup(syncPlay, defaultName, myName = account?.name, onChatAlongside = alongside.takeIf { canChat })
     }
+    if (inviting && current != null) InvitePeopleDialog(actions, current) { inviting = false }
     chatting?.let { g ->
         ChatSheet(actions.container.chat, "Chat · ${g.name}", positionMs = { null }) {
             if (current == null) actions.container.chatAlongside(null)
@@ -73,7 +76,7 @@ fun WatchTogetherPanel(actions: AppActions, defaultName: String) {
 }
 
 @Composable
-private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup, onChat: (() -> Unit)?) {
+private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup, onChat: (() -> Unit)?, onInvite: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     val queue by syncPlay.queue.collectAsState()
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -93,6 +96,7 @@ private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup, onChat: 
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             onChat?.let { Button(onClick = it) { Text("Chat") } }
+            onInvite?.let { OutlinedButton(onClick = it) { Text("Invite people") } }
             OutlinedButton(onClick = { scope.launch { syncPlay.leave() } }) { Text("Leave group") }
         }
     }
@@ -169,4 +173,78 @@ fun WatchTogetherDialog(actions: AppActions, onDismiss: () -> Unit) {
 fun defaultGroupName(actions: AppActions): String {
     val account by actions.container.account.collectAsState()
     return account?.name?.let { "$it's group" } ?: "Movie night"
+}
+
+/**
+ * Invites people (the server's people list: private accounts are never in it) to this group. They
+ * get a notification, or a prompt in the app, and joining puts them in the group.
+ */
+@Composable
+fun InvitePeopleDialog(actions: AppActions, group: SyncPlayGroup, onDismiss: () -> Unit) {
+    val container = actions.container
+    val scope = rememberCoroutineScope()
+    val me = container.server.userId
+    val people by produceState<List<dev.nitrate.core.writing.UserRef>?>(null) {
+        value = runCatching { container.server.partnerPeople() }.getOrDefault(emptyList()).filter { it.id != me }
+    }
+    var chosen by remember { mutableStateOf(emptySet<String>()) }
+    var sent by remember { mutableStateOf(false) }
+    val queue by container.syncPlay.queue.collectAsState()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (sent) "Invites sent" else "Invite to ${group.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                when {
+                    sent -> Text("They'll see it on their phone or when they open Nitrate.")
+                    people == null -> Text("Loading…")
+                    people!!.isEmpty() -> Text("Nobody else to invite on this server.")
+                    else -> people!!.forEach { p ->
+                        Row(Modifier.fillMaxWidth().clickable { chosen = if (p.id in chosen) chosen - p.id else chosen + p.id }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(checked = p.id in chosen, onCheckedChange = null)
+                            Text(p.name, Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (sent) TextButton(onClick = onDismiss) { Text("Done") }
+            else TextButton(enabled = chosen.isNotEmpty(), onClick = {
+                scope.launch {
+                    val itemId = queue?.let { q -> q.itemIds.getOrNull(q.index) }
+                    val itemName = itemId?.let { runCatching { container.server.getItem(it).displayTitle }.getOrNull() }
+                    runCatching { container.server.inviteToWatch(group.id, chosen.toList(), itemId, itemName) }
+                    sent = true
+                }
+            }) { Text("Invite") }
+        },
+        dismissButton = { if (!sent) TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * A watch-together invite waiting (checked every 30 s while the app is open): Join puts this
+ * device in the group, Not now turns it down.
+ */
+@Composable
+fun WatchInvitePrompt(actions: AppActions) {
+    val container = actions.container
+    val companion by container.companion.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(companion) {
+        while (true) {
+            container.refreshInvites()
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    val invites by container.watchInvites.collectAsState()
+    val scope = rememberCoroutineScope()
+    val invite = invites.firstOrNull() ?: return
+    AlertDialog(
+        onDismissRequest = { scope.launch { container.dismissInvite(invite) } },
+        title = { Text("Watch together?") },
+        text = { Text(invite.text + ". Joining puts you in their group: what they play, plays for you.") },
+        confirmButton = { TextButton(onClick = { scope.launch { runCatching { container.joinInvite(invite) } } }) { Text("Join") } },
+        dismissButton = { TextButton(onClick = { scope.launch { container.dismissInvite(invite) } }) { Text("Not now") } },
+    )
 }

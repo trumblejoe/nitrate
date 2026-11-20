@@ -1171,6 +1171,9 @@ class JellyfinClient(
     override suspend fun leaveGroup(groupId: String) = partnersApi.leave(groupId)
     override suspend fun partnerProgress(seriesId: String) = partnersApi.progress(seriesId)
     override suspend fun watchedTogether(itemId: String, groupId: String) = partnersApi.together(itemId, groupId)
+    override suspend fun inviteToWatch(groupId: String, userIds: List<String>, itemId: String?, itemName: String?) = partnersApi.invite(groupId, userIds, itemId, itemName)
+    override suspend fun watchInvites() = partnersApi.invites()
+    override suspend fun dismissWatchInvite(id: String) = partnersApi.dismissInvite(id)
 
     /**
      * "Up next together": for each show watched with a partner, the next episode someone hasn't

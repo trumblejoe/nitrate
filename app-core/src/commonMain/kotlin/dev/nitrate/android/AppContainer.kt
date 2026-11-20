@@ -255,6 +255,31 @@ class AppContainer(
         runCatching { server.partners() }.onSuccess { partnersState.value = it }
     }
 
+    private val invitesState = MutableStateFlow<List<dev.nitrate.core.partners.WatchInvite>>(emptyList())
+
+    /** Watch-together invites waiting for this user (Companion feature `together`), newest first. */
+    val watchInvites: StateFlow<List<dev.nitrate.core.partners.WatchInvite>> = invitesState
+
+    /** Whether the server can carry watch-together invites. */
+    fun invitesAvailable(): Boolean = companion.value?.features?.contains("together") == true
+
+    suspend fun refreshInvites() {
+        if (!invitesAvailable()) { invitesState.value = emptyList(); return }
+        runCatching { server.watchInvites() }.onSuccess { invitesState.value = it }
+    }
+
+    /** Joins the invite's group (its player opens when the group plays) and clears the invite. */
+    suspend fun joinInvite(invite: dev.nitrate.core.partners.WatchInvite) {
+        syncPlay.join(invite.groupId)
+        dismissInvite(invite)
+    }
+
+    /** Turns an invite down (or clears one already acted on). */
+    suspend fun dismissInvite(invite: dev.nitrate.core.partners.WatchInvite) {
+        invitesState.value = invitesState.value.filterNot { it.id == invite.id }
+        runCatching { server.dismissWatchInvite(invite.id) }
+    }
+
     /** After leaving a player: counts what was just watched with partners (in case no live update came). */
     fun settleTogether() {
         refreshGroupStandings(3_000)
