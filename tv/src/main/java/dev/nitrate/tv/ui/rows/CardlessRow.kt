@@ -58,21 +58,23 @@ import dev.nitrate.core.model.MediaItem
 private const val ROTATE_INTERVAL_MS = 8_000L
 
 /**
- * One item at a time. Collapsed it is a banner; focused it fills the screen with the item's
- * artwork and details, and Left/Right step through the row without moving focus.
+ * Artwork with its cards hidden: one title at a time, its picture as the page's own background
+ * (reported through [onArtwork], so the page's backdrop choice and theme layer over it as for any
+ * focused title) with its caption; Left/Right step through the row without moving focus.
+ * [expanded] false (rows stacked, this one not in use) shows it as a banner instead.
  */
 @Composable
-fun ShowcaseRow(
+fun CardlessRow(
     row: MediaRow,
     display: RowDisplay,
     repository: MediaServer,
     actions: RowActions,
     index: Int,
     onIndexChange: (Int) -> Unit,
-    active: Boolean,
     onActiveChange: (Boolean) -> Unit,
-    /** Full Showcase: the full-screen view even without focus. */
-    alwaysExpanded: Boolean = false,
+    expanded: Boolean,
+    /** The picture to show behind the page while this row is in use. */
+    onArtwork: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val items = row.items
@@ -81,6 +83,7 @@ fun ShowcaseRow(
     val item = items[current]
     val options = display.showcase
     var longPressHandled by remember { mutableStateOf(false) }
+    var active by remember { mutableStateOf(false) }
 
     // Rotate through backdrops; restart whenever the item changes.
     val backdrops = remember(item.id) { repository.backdropUrls(item).ifEmpty { listOfNotNull(repository.backdropUrl(item)) } }
@@ -99,7 +102,7 @@ fun ShowcaseRow(
     LaunchedEffect(current, items) {
         val near = (listOf(current - 1) + (current + 1..current + 3)).mapNotNull { items.getOrNull(it) }
         ImagePrefetch.enqueue(context, near.flatMap { n ->
-            listOf(repository.backdropUrls(n).firstOrNull() ?: repository.backdropUrl(n), wideImage(repository, n), if (options.showLogo) repository.logoUrl(n) else null)
+            listOf(repository.backdropUrls(n).firstOrNull() ?: repository.backdropUrl(n), wideImage(repository, n), repository.logoUrl(n))
         })
     }
 
@@ -109,7 +112,7 @@ fun ShowcaseRow(
 
     Box(
         modifier
-            .onFocusChanged { onActiveChange(it.isFocused) }
+            .onFocusChanged { active = it.isFocused; onActiveChange(it.isFocused) }
             .onPreviewKeyEvent { event ->
                 val down = event.type == KeyEventType.KeyDown
                 when (event.key) {
@@ -147,9 +150,9 @@ fun ShowcaseRow(
             .returnFocus(item.id)
             .focusable(),
     ) {
-        if (active || alwaysExpanded) {
-            // Full Showcase has no thumbnail strip: the picture is the whole screen.
-            Expanded(row, item, current, artwork, display, repository, strip = !alwaysExpanded)
+        if (expanded) {
+            androidx.compose.runtime.SideEffect { onArtwork(artwork) }
+            Expanded(row, item, current, repository)
         } else {
             Collapsed(row, item, artwork, display)
         }
@@ -192,65 +195,21 @@ private fun Collapsed(row: MediaRow, item: MediaItem, artwork: String?, display:
 }
 
 @Composable
-private fun Expanded(
-    row: MediaRow,
-    item: MediaItem,
-    index: Int,
-    artwork: String?,
-    display: RowDisplay,
-    repository: MediaServer,
-    strip: Boolean = true,
-) {
-    val options = display.showcase
-    // Room for the strip below the text, or just a margin without it.
-    val bottom = if (strip) 150.dp else 56.dp
+private fun Expanded(row: MediaRow, item: MediaItem, index: Int, repository: MediaServer) {
     Box(Modifier.fillMaxSize()) {
-        // The picture is the item here: sparks go over it, and the click plays on the title.
-        Backdrop(artwork, Modifier.fillMaxSize().cardFx(item.id, click = false))
+        // The picture is the page's background here: sparks go over the whole of it, the click on the title.
+        Box(Modifier.fillMaxSize().cardFx(item.id, click = false))
 
         // Captioned as the screensaver is: the row and place as a small label, the title, a quiet line
-        // or two, in a bottom corner that alternates side from one title to the next.
+        // or two, in the corner the user chose (alternating side from one title to the next).
         val (capTop, end) = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCaptionCorner.resolve(index)
         dev.nitrate.tv.ui.components.ArtCaptionShade()
         if (capTop) dev.nitrate.tv.ui.components.ArtCaptionShade(top = true)
         dev.nitrate.tv.ui.components.ArtCaption(
             item, label = "${row.title}  ·  ${index + 1} / ${row.items.size}", end = end,
-            logoUrl = if (options.showLogo) repository.logoUrl(item) else null,
-            showDetails = options.showDetails, showRatings = options.showRatings, showOverview = options.showOverview,
+            logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, item),
             modifier = Modifier.align(when { capTop && end -> Alignment.TopEnd; capTop -> Alignment.TopStart; end -> Alignment.BottomEnd; else -> Alignment.BottomStart })
-                .padding(start = RowPadding, end = RowPadding, top = if (capTop) 72.dp else 0.dp, bottom = if (capTop) 0.dp else bottom).cardFx(item.id, spark = false),
+                .padding(start = RowPadding, end = RowPadding, top = if (capTop) 72.dp else 0.dp, bottom = if (capTop) 0.dp else 56.dp).cardFx(item.id, spark = false),
         )
-
-        if (strip) Filmstrip(row, index, repository, Modifier.align(Alignment.BottomStart).padding(bottom = 36.dp))
-    }
-}
-
-/** Slim, non-focusable strip of thumbnails showing where you are in the row. */
-@Composable
-private fun Filmstrip(row: MediaRow, index: Int, repository: MediaServer, modifier: Modifier) {
-    val state = rememberLazyListState()
-    LaunchedEffect(index) { state.animateScrollToItem((index - 2).coerceAtLeast(0)) }
-    LazyRow(
-        state = state,
-        userScrollEnabled = false,
-        contentPadding = PaddingValues(horizontal = RowPadding),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { i, it ->
-            val selected = i == index
-            val alpha by animateFloatAsState(if (selected) 1f else 0.45f, label = "filmstrip")
-            Box(
-                Modifier
-                    .height(if (selected) 78.dp else 64.dp)
-                    .aspectRatio(16f / 9f)
-                    .alpha(alpha)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp)) else Modifier),
-            ) {
-                AsyncImage(wideImage(repository, it), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
-        }
     }
 }

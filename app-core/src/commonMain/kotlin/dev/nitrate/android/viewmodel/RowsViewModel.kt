@@ -67,6 +67,8 @@ class RowsViewModel(
 
     val overrides: StateFlow<Map<String, RowDisplay>> =
         (userId?.let(store::overrides) ?: emptyFlow())
+            // Retired styles show as what replaced them; what's stored stays as it is until changed.
+            .map { all -> all.mapValues { it.value.normalized() } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     /** Every entry on the page, hidden ones included, in order: what the editor shows. */
@@ -92,7 +94,7 @@ class RowsViewModel(
         // fresh page replaces them once it has arrived.
         viewModelScope.launch {
             cache?.read(account, pageKey)?.let { cached ->
-                if (builtIn.value == null && cached.builtIn.isNotEmpty()) builtIn.value = Result.success(cached.builtIn.map { it.copy(defaultDisplay = defaults(it)) })
+                if (builtIn.value == null && cached.builtIn.isNotEmpty()) builtIn.value = Result.success(cached.builtIn.map { it.copy(defaultDisplay = defaults(it).normalized()) })
                 if (custom.value.isEmpty()) custom.value = cached.custom
             }
             refresh()
@@ -126,7 +128,7 @@ class RowsViewModel(
                             latest?.let(::showPartial)
                         }
                         progressive().collect { raw ->
-                            val fresh = raw.rows.map { it.copy(defaultDisplay = defaults(it)) }
+                            val fresh = raw.rows.map { it.copy(defaultDisplay = defaults(it).normalized()) }
                             fresh.forEach { knownTitles[it.key] = it.title }
                             val p = raw.copy(rows = fresh)
                             latest = p
@@ -154,7 +156,7 @@ class RowsViewModel(
         }
         viewModelScope.launch {
             _refreshing.value = true
-            val result = runCatching { loadBuiltIn().map { it.copy(defaultDisplay = defaults(it)) } }
+            val result = runCatching { loadBuiltIn().map { it.copy(defaultDisplay = defaults(it).normalized()) } }
             result.getOrNull()?.forEach { knownTitles[it.key] = it.title }
             // Keep showing old rows if a background refresh fails.
             if (result.isSuccess || builtIn.value?.isSuccess != true) builtIn.value = result
@@ -176,7 +178,7 @@ class RowsViewModel(
                         is RowSource.BuiltIn -> emptyList()
                     }
                 }.getOrNull()
-                items?.let { e.id to MediaRow(e.rowKey, e.title ?: defaultTitle(e), it, e.display ?: PageComposer.defaultDisplay(e.source)) }
+                items?.let { e.id to MediaRow(e.rowKey, e.title ?: defaultTitle(e), it, (e.display ?: PageComposer.defaultDisplay(e.source)).normalized()) }
             }
         }.awaitAll().filterNotNull().toMap()
         // Keep earlier results for rows that failed this time.

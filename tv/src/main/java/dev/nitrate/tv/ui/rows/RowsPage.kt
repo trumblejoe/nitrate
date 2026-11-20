@@ -57,7 +57,6 @@ import dev.nitrate.core.MediaServer
 import dev.nitrate.core.rows.MediaRow
 import dev.nitrate.core.rows.RowDisplay
 import dev.nitrate.core.rows.RowStyle
-import dev.nitrate.core.rows.isShowcase
 import dev.nitrate.tv.ui.components.Backdrop
 import dev.nitrate.tv.ui.components.ItemMetaLine
 import dev.nitrate.core.model.MediaItem
@@ -109,6 +108,8 @@ fun RowsPage(
     // The room above the first row (one at a time), so any row can sit at the bottom; px.
     var roomAbove by remember { mutableStateOf(0) }
     val showcaseIndex = remember { mutableStateMapOf<String, Int>() }
+    // The picture each cards-hidden row is showing (its title's, or the one its rotation reached).
+    val cardlessArt = remember { mutableStateMapOf<String, String?>() }
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     var listingRows by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -148,7 +149,10 @@ fun RowsPage(
     Box(modifier.fillMaxSize()) {
         // The title's picture (or the page's chosen background) and the theme over it: drawn by the menu
         // around the page, so they carry on through tab switches.
-        dev.nitrate.tv.ui.effects.PageBackdropSlot(if (activeShowcase == null) focused?.let(repository::backdropUrl) else null)
+        // A row with its cards hidden, in use, puts its own title's picture there instead.
+        val usedRow = if (focusedRowIndex in rows.indices) focusedRowIndex else 0
+        val artKey = activeShowcase ?: rows.getOrNull(usedRow)?.takeIf { oneAtATime && (overrides[it.key] ?: it.defaultDisplay).normalized().cardsHidden }?.key
+        dev.nitrate.tv.ui.effects.PageBackdropSlot(artKey?.let { cardlessArt[it] } ?: focused?.let(repository::backdropUrl))
         androidx.compose.animation.AnimatedVisibility(
             visible = styleNote != null, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = RowPadding).zIndex(2f),
@@ -226,13 +230,13 @@ fun RowsPage(
                                 val by = when (e.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
                                 if (by == 0) return@onPreviewKeyEvent false
                                 if (e.type == KeyEventType.KeyDown) {
-                                    val now = overrides[row.key] ?: row.defaultDisplay
-                                    val next = now.copy(style = now.style.step(by))
+                                    val now = (overrides[row.key] ?: row.defaultDisplay).normalized()
+                                    val next = now.stepped(by)
                                     if (activeShowcase == row.key) activeShowcase = null
                                     holding = true
                                     runCatching { holder.requestFocus() }
                                     onSaveDisplay(row, next)
-                                    styleNote = "${row.title}: ${next.style.label}" to System.nanoTime()
+                                    styleNote = "${row.title}: ${next.styleLabel}" to System.nanoTime()
                                 }
                                 true
                             },
@@ -242,9 +246,9 @@ fun RowsPage(
                                 .focusProperties { canFocus = holding }.focusable(),
                         )
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowsScroll) {
-                        val display = overrides[row.key] ?: row.defaultDisplay
+                        val display = (overrides[row.key] ?: row.defaultDisplay).normalized()
                         // The new style is on screen: into it, and the whole row back in view at its new height.
-                        LaunchedEffect(display.style) {
+                        LaunchedEffect(display.style, display.cards) {
                             if (!holding) return@LaunchedEffect
                             kotlinx.coroutines.delay(80)
                             runCatching { content.requestFocus() }
@@ -283,26 +287,29 @@ fun RowsPage(
                             }
                             .focusGroup()) {
                         val hidden = activeShowcase != null && activeShowcase != row.key
-                        if (display.style.isShowcase) {
+                        if (display.cardsHidden) {
                             val active = activeShowcase == row.key
-                            // Full Showcase fills the screen even before it has focus.
-                            val full = display.style == RowStyle.FULL_SHOWCASE && rowIndex >= focusedRowIndex && focusedRowIndex != HEADER_FOCUSED
-                            ShowcaseRow(
+                            // One at a time it's the screen whenever it's the row in use; stacked, while it has focus
+                            // (the others step aside), else a banner.
+                            val expanded = active || (oneAtATime && rowIndex == current)
+                            CardlessRow(
                                 row = row,
                                 display = display,
                                 repository = repository,
                                 actions = actions,
                                 index = showcaseIndex[row.key] ?: 0,
                                 onIndexChange = { showcaseIndex[row.key] = it },
-                                active = active,
                                 onActiveChange = { isActive ->
-                                    if (isActive) activeShowcase = row.key
+                                    // One at a time every row has the screen to itself already: nothing to step aside.
+                                    if (oneAtATime) Unit
+                                    else if (isActive) activeShowcase = row.key
                                     else if (activeShowcase == row.key) activeShowcase = null
                                 },
-                                alwaysExpanded = full,
+                                expanded = expanded,
+                                onArtwork = { cardlessArt[row.key] = it },
                                 modifier = Modifier.alpha(if (hidden) 0f else 1f)
                                     // The screen's height (not the list's: one at a time it has a screen's room above its rows).
-                                    .then(if (active || full) Modifier.height(with(density) { viewport.toDp() }) else Modifier),
+                                    .then(if (expanded || oneAtATime) Modifier.height(with(density) { viewport.toDp() }) else Modifier),
                             )
                         } else {
                             val cards: @Composable () -> Unit = {
@@ -321,13 +328,14 @@ fun RowsPage(
                                 val p = LocalDisplayPrefs.current
                                 val place = p.tvRowPlace
                                 val (capTop, capEnd) = p.tvCaptionCorner.resolve(rowIndex, place)
-                                val compact = p.tvCaptionSize == dev.nitrate.core.pages.CaptionSize.COMPACT
+                                val compact = p.tvCaptionSize != dev.nitrate.core.pages.CaptionSize.NORMAL
                                 val shownItem = focused?.takeIf { f -> row.items.any { it.id == f.id } } ?: row.items.firstOrNull()
                                 val number = shownItem?.let { f -> row.items.indexOfFirst { it.id == f.id } + 1 } ?: 0
                                 val captionPad = Modifier.padding(start = if (capEnd) 0.dp else RowPadding, end = if (capEnd) RowPadding else 0.dp, top = if (capTop) 12.dp else 0.dp, bottom = if (capTop) 0.dp else 10.dp)
                                 val caption: @Composable (Modifier) -> Unit = { m ->
                                     if (shownItem != null) dev.nitrate.tv.ui.components.ArtCaption(
-                                        shownItem, label = "${row.title}  ·  $number / ${row.items.size}", end = capEnd, logoUrl = null,
+                                        shownItem, label = "${row.title}  ·  $number / ${row.items.size}", end = capEnd,
+                                        logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, shownItem),
                                         compact = compact, modifier = m.then(captionPad).width(dev.nitrate.tv.ui.components.captionWidth(compact)),
                                     )
                                 }
@@ -393,7 +401,7 @@ fun RowsPage(
     editing?.let { row ->
         RowSettingsDialog(
             row = row,
-            display = overrides[row.key] ?: row.defaultDisplay,
+            display = (overrides[row.key] ?: row.defaultDisplay).normalized(),
             onChange = { onSaveDisplay(row, it) },
             // Back returns to the row list if that is where the user came from.
             onDismiss = { editing = null },

@@ -117,7 +117,7 @@ fun PageEditor(pageTitle: String, vm: RowsViewModel, repository: MediaServer, li
                             if (by == 0 || shownRow == null) return@onPreviewKeyEvent false
                             if (k.type == KeyEventType.KeyDown) {
                                 val now = e.display ?: overrides[e.rowKey] ?: shownRow.defaultDisplay
-                                vm.save(shownRow, now.copy(style = now.style.step(by)))
+                                vm.save(shownRow, now.stepped(by))
                             }
                             true
                         },
@@ -157,7 +157,7 @@ fun PageEditor(pageTitle: String, vm: RowsViewModel, repository: MediaServer, li
             entry = e,
             title = vm.titleOf(e),
             row = row,
-            display = e.display ?: overrides[e.rowKey] ?: row?.defaultDisplay,
+            display = (e.display ?: overrides[e.rowKey] ?: row?.defaultDisplay)?.normalized(),
             repository = repository,
             libraryId = libraryId,
             onRename = { vm.rename(e.id, it) },
@@ -204,18 +204,18 @@ private fun EntryDialog(
                 // The artwork style straight from here (OK for the next; Fast-forward/Rewind either way).
                 ListItem(
                     selected = false,
-                    onClick = { onDisplay(row, display.copy(style = display.style.step(1))) },
+                    onClick = { onDisplay(row, display.stepped(1)) },
                     headlineContent = { Text("Artwork style") },
                     supportingContent = { Text("OK for the next · ◀◀ ▶▶ either way") },
-                    trailingContent = { Text("${display.style.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                    trailingContent = { Text("${display.styleLabel}  ›", color = MaterialTheme.colorScheme.primary) },
                     modifier = Modifier.onPreviewKeyEvent { k ->
                         val by = when (k.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
                         if (by == 0) return@onPreviewKeyEvent false
-                        if (k.type == KeyEventType.KeyDown) onDisplay(row, display.copy(style = display.style.step(by)))
+                        if (k.type == KeyEventType.KeyDown) onDisplay(row, display.stepped(by))
                         true
                     },
                 )
-                ListItem(selected = false, onClick = { look = true }, headlineContent = { Text("Look") }, supportingContent = { Text("${display.style.label} · ${display.size.label}" + if (display.clickEffect != dev.nitrate.core.effects.ClickEffect.NONE || display.cardSpark != dev.nitrate.core.effects.CardSpark.NONE) " · effects" else "") })
+                ListItem(selected = false, onClick = { look = true }, headlineContent = { Text("Look") }, supportingContent = { Text("${display.styleLabel} · ${display.size.label}" + if (display.clickEffect != dev.nitrate.core.effects.ClickEffect.NONE || display.cardSpark != dev.nitrate.core.effects.CardSpark.NONE) " · effects" else "") })
             }
             if (entry.isCustom) {
                 ListItem(selected = false, onClick = { contents = true }, headlineContent = { Text("Change contents") })

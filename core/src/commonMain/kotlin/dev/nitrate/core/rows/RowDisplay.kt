@@ -12,10 +12,10 @@ enum class RowStyle(val label: String) {
     /** 16:9 Thumb images, falling back to backdrops. */
     WIDE("Artwork"),
 
-    /** Big artwork, one item at a time (TV: full screen while focused; phone: large swipeable cards). */
+    /** Retired: shown as [WIDE] (see [RowDisplay.normalized]); kept so saved settings still read. */
     SHOWCASE("Showcase"),
 
-    /** Showcase that always fills the whole screen: one title at a time, its artwork as the background. */
+    /** Retired: shown as [WIDE] with its cards hidden (see [RowDisplay.normalized]). */
     FULL_SHOWCASE("Full Showcase"),
 
     /** A tilted strip of film; the frame in the gate (focused, or centred on a phone) is named below it. */
@@ -26,6 +26,18 @@ enum class RowStyle(val label: String) {
 
     /** Half colour, half monochrome under tattoo-like linework, with the title up the edge. */
     CRESSIDA("Cressida"),
+    ;
+
+    /** Moves through the styles that can be chosen, round from the last to the first. */
+    fun step(by: Int): RowStyle {
+        val i = choices.indexOf(this).let { if (it < 0) choices.indexOf(WIDE) else it }
+        return choices[(i + by).mod(choices.size)]
+    }
+
+    companion object {
+        /** The styles offered in pickers, Fast-forward/Rewind and the row menus. */
+        val choices: List<RowStyle> = listOf(POSTER, WIDE, FILM_STRIP, LIGHTNING, CRESSIDA)
+    }
 }
 
 /** Shapes the decorative row styles share, so the phone and TV draw them alike. Fractions of the card. */
@@ -73,7 +85,40 @@ data class RowDisplay(
     /** What now and then happens to a card while browsing, and how often. */
     val cardSpark: dev.nitrate.core.effects.CardSpark = dev.nitrate.core.effects.CardSpark.NONE,
     val sparkRate: dev.nitrate.core.effects.SparkRate = dev.nitrate.core.effects.SparkRate.SOMETIMES,
-)
+    /**
+     * Artwork only: false hides the cards, leaving the focused title's picture as the page's
+     * background with its caption, stepped through with ◀▶ (what Full Showcase was).
+     */
+    val cards: Boolean = true,
+) {
+    /**
+     * The look [by] places on, round the list: each style in [RowStyle.choices], Artwork followed by
+     * Artwork with its cards hidden (Fast-forward/Rewind and the Edit page's quick choice).
+     */
+    fun stepped(by: Int): RowDisplay {
+        val looks = RowStyle.choices.flatMap { if (it == RowStyle.WIDE) listOf(it to true, it to false) else listOf(it to true) }
+        val now = normalized()
+        val i = looks.indexOf(now.style to (now.cards || now.style != RowStyle.WIDE)).coerceAtLeast(0)
+        val (style, cards) = looks[(i + by).mod(looks.size)]
+        return now.copy(style = style, cards = cards)
+    }
+
+    /** What the style is called, the cards-hidden form of Artwork included. */
+    val styleLabel: String get() = if (cardsHidden) "Artwork, cards hidden" else style.label
+
+    /** Artwork with its cards hidden: one title at a time over the page's background. */
+    val cardsHidden: Boolean get() = style == RowStyle.WIDE && !cards
+
+    /**
+     * The retired showcase styles as they show now, the stored value left as it is: Showcase is
+     * plain Artwork, Full Showcase is Artwork with the cards hidden.
+     */
+    fun normalized(): RowDisplay = when (style) {
+        RowStyle.SHOWCASE -> copy(style = RowStyle.WIDE)
+        RowStyle.FULL_SHOWCASE -> copy(style = RowStyle.WIDE, cards = false)
+        else -> this
+    }
+}
 
 @Serializable
 enum class InkTint(val label: String) {
@@ -114,11 +159,10 @@ data class ShowcaseOptions(
     val rotateArtwork: Boolean = false,
 )
 
-/** Defaults that put artwork first: "Latest" rows as showcases, other poster rows as titled artwork. */
+/** Defaults that put artwork first: poster rows as titled artwork. */
 object ArtworkFirst {
     fun display(row: MediaRow): RowDisplay = when {
         row.defaultDisplay.style != RowStyle.POSTER -> row.defaultDisplay
-        row.key.startsWith("home/latest/") -> row.defaultDisplay.copy(style = RowStyle.SHOWCASE)
         else -> row.defaultDisplay.copy(style = RowStyle.WIDE, showTitles = true)
     }
 }
@@ -161,6 +205,3 @@ data class PlaylistPageView(
     /** Large header for the focused item over its backdrop. */
     val cinematic: Boolean = true,
 )
-
-/** Both showcase styles: one title at a time, with the showcase options. */
-val RowStyle.isShowcase: Boolean get() = this == RowStyle.SHOWCASE || this == RowStyle.FULL_SHOWCASE

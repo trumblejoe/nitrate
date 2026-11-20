@@ -80,12 +80,12 @@ fun RowListDialog(
         DialogPanel("Customize rows", "Choose a row to change how it looks") {
             LazyColumn {
                 items(rows, key = { it.key }) { row ->
-                    val display = overrides[row.key] ?: row.defaultDisplay
+                    val display = (overrides[row.key] ?: row.defaultDisplay).normalized()
                     ListItem(
                         selected = false,
                         onClick = { onPick(row) },
                         headlineContent = { Text(row.title) },
-                        supportingContent = { Text(display.style.label) },
+                        supportingContent = { Text(display.styleLabel) },
                         modifier = if (row == rows.first()) Modifier.focusRequester(first) else Modifier,
                     )
                 }
@@ -150,12 +150,14 @@ fun RowSettingsDialog(
                         }
                     }
                 }
-                if (display.style == RowStyle.SHOWCASE || display.style == RowStyle.FULL_SHOWCASE) {
-                    item { ToggleItem("Show logo", display.showcase.showLogo) { showcase { copy(showLogo = it) } } }
-                    item { ToggleItem("Show details", display.showcase.showDetails) { showcase { copy(showDetails = it) } } }
-                    item { ToggleItem("Show ratings", display.showcase.showRatings) { showcase { copy(showRatings = it) } } }
-                    item { ToggleItem("Show overview", display.showcase.showOverview) { showcase { copy(showOverview = it) } } }
-                    item { ToggleItem("Infinite scroll", display.showcase.infiniteScroll) { showcase { copy(infiniteScroll = it) } } }
+                if (display.style == RowStyle.WIDE) {
+                    item {
+                        ChoiceItem("Cards", if (display.cards) "Shown" else "Hidden") { onChange(display.copy(cards = !display.cards)) }
+                    }
+                }
+                if (display.cardsHidden) {
+                    // One title at a time over the page's background: ◀▶ step through the row.
+                    item { ToggleItem("Wrap round", display.showcase.infiniteScroll) { showcase { copy(infiniteScroll = it) } } }
                     item { ToggleItem("Rotate artwork", display.showcase.rotateArtwork) { showcase { copy(rotateArtwork = it) } } }
                 } else {
                     item { ToggleItem("Show titles", display.showTitles) { onChange(display.copy(showTitles = it)) } }
@@ -170,9 +172,9 @@ fun RowSettingsDialog(
                 onEditPage?.let { edit ->
                     item { ListItem(selected = false, onClick = edit, headlineContent = { Text("Edit page") }, supportingContent = { Text("Order, hide, rename and add rows") }) }
                 }
-                if (display != row.defaultDisplay) {
+                if (display != row.defaultDisplay.normalized()) {
                     item {
-                        ListItem(selected = false, onClick = { onChange(row.defaultDisplay) }, headlineContent = { Text("Reset to default") })
+                        ListItem(selected = false, onClick = { onChange(row.defaultDisplay.normalized()) }, headlineContent = { Text("Reset to default") })
                     }
                 }
             }
@@ -204,9 +206,6 @@ private fun ToggleItem(label: String, checked: Boolean, modifier: Modifier = Mod
 }
 
 private fun RowStyle.next() = step(1)
-
-/** The style [by] places on (round the list): Fast-forward/Rewind and the Edit page's quick choice. */
-internal fun RowStyle.step(by: Int) = RowStyle.entries[(ordinal + by).mod(RowStyle.entries.size)]
 private fun RowSize.next() = RowSize.entries[(ordinal + 1) % RowSize.entries.size]
 
 internal inline fun <reified E : Enum<E>> E.cycle(): E = enumValues<E>().let { it[(ordinal + 1) % it.size] }

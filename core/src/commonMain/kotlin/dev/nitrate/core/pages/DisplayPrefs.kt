@@ -133,7 +133,12 @@ enum class CaptionCorner(val label: String) {
 
 /** A title's caption on TV: [COMPACT] is the label, a smaller title and its facts, no description. */
 @Serializable
-enum class CaptionSize(val label: String) { NORMAL("Normal"), COMPACT("Compact") }
+enum class CaptionSize(val label: String, val detail: String) {
+    NORMAL("Normal", "The title, its facts and a two-line description"),
+    COMPACT("Compact", "A smaller title and its facts, no description: more of the picture"),
+    /** The title's logo in place of its name (when it has one), its facts, no description. */
+    MINIMAL("Minimal", "The title's logo, its facts and no description: the least over the picture"),
+}
 
 /** Where the row in use sits, one row at a time: along the top or bottom, or as a column down the left or right. */
 @Serializable

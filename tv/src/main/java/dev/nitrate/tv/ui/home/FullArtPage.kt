@@ -163,7 +163,7 @@ fun FullArtPage(
                 val end = capEnd
                 dev.nitrate.tv.ui.components.ArtCaption(
                     it, label = "${row.title}  ·  ${current + 1} / ${row.items.size}", end = end,
-                    logoUrl = if (showcase.showLogo) repository.logoUrl(it) else null,
+                    logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, it, showcase.showLogo),
                     showDetails = showcase.showDetails, showRatings = showcase.showRatings, showOverview = showcase.showOverview,
                     modifier = Modifier.align(when { capTop && end -> Alignment.TopEnd; capTop -> Alignment.TopStart; end -> Alignment.BottomEnd; else -> Alignment.BottomStart })
                         .then(pad).padding(top = if (capTop) 84.dp + insets.top else 0.dp, bottom = if (capTop) 0.dp else 56.dp + insets.bottom),

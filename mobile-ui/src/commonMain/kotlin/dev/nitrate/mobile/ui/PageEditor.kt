@@ -217,7 +217,8 @@ private fun EntryDialog(
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf(entry.title ?: "") }
-    var style by remember { mutableStateOf(display.style) }
+    var style by remember { mutableStateOf(display.normalized().style) }
+    var cards by remember { mutableStateOf(display.normalized().cards) }
     var ink by remember { mutableStateOf(display.ink) }
     var inkColours by remember { mutableStateOf(display) }
     var colouring by remember { mutableStateOf(false) }
@@ -234,7 +235,16 @@ private fun EntryDialog(
                 OutlinedTextField(name, { name = it }, label = { Text("Name") }, placeholder = { Text(title) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text("Style", style = MaterialTheme.typography.titleSmall)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RowStyle.entries.forEach { s -> FilterChip(selected = style == s, onClick = { style = s }, label = { Text(s.label) }) }
+                    RowStyle.choices.forEach { s -> FilterChip(selected = style == s, onClick = { style = s }, label = { Text(s.label) }) }
+                }
+                if (style == RowStyle.WIDE) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Show cards")
+                            Text("Off: one title at a time filling the screen, swiped through", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = cards, onCheckedChange = { cards = it })
+                    }
                 }
                 if (style == RowStyle.CRESSIDA) {
                     Text("Ink", style = MaterialTheme.typography.titleSmall)
@@ -267,7 +277,7 @@ private fun EntryDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                val d = display.copy(style = style, showTitles = titles, ink = ink, inkTint = inkColours.inkTint, inkArgb = inkColours.inkArgb)
+                val d = display.copy(style = style, cards = cards || style != RowStyle.WIDE, showTitles = titles, ink = ink, inkTint = inkColours.inkTint, inkArgb = inkColours.inkArgb)
                 onSave(entry.copy(title = name.ifBlank { null }, source = source, display = if (entry.isCustom) d else entry.display), d)
             }) { Text("Save") }
         },

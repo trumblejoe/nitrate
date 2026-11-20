@@ -28,7 +28,7 @@ import dev.nitrate.core.pages.CaptionSize
 import dev.nitrate.core.pages.hidesDescription
 
 /**
- * The caption on a full-screen picture (Showcase, Full Showcase, full-art pages), laid out like the
+ * The caption on a full-screen picture (rows one at a time, Artwork with its cards hidden, full-art pages), laid out like the
  * screensaver's: a small label in capitals (the row, and where in it), the title in bold (or its logo,
  * kept modest), then a quiet line or two, in a bottom corner, [end] = the right one. Pages alternate
  * the side from one title to the next, so nothing sits in one place and the picture shows.
@@ -43,7 +43,9 @@ fun ArtCaption(
     showDetails: Boolean = true,
     showRatings: Boolean = true,
     showOverview: Boolean = true,
-    compact: Boolean = LocalDisplayPrefs.current.tvCaptionSize == CaptionSize.COMPACT,
+    compact: Boolean = LocalDisplayPrefs.current.tvCaptionSize != CaptionSize.NORMAL,
+    /** Minimal: the logo (passed as [logoUrl] when the title has one) and facts, never a description. */
+    minimal: Boolean = LocalDisplayPrefs.current.tvCaptionSize == CaptionSize.MINIMAL,
 ) {
     val prefs = LocalDisplayPrefs.current
     val align = if (end) Alignment.End else Alignment.Start
@@ -66,12 +68,17 @@ fun ArtCaption(
             Text("👥 ${st.long}", style = MaterialTheme.typography.titleSmall, maxLines = 1,
                 color = if (st.catchUp) Color(0xFFFFC94D) else Color(0xDDFFFFFF))
         }
-        if (!compact && showOverview && prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
+        if (!compact && !minimal && showOverview && prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = Color.White.copy(alpha = 0.8f), textAlign = textAlign, modifier = Modifier.padding(top = 2.dp))
         }
     }
 }
+
+/** The logo a caption shows: always with the Minimal caption, else as [wanted]. */
+@Composable
+fun captionLogo(repository: dev.nitrate.core.MediaServer, item: MediaItem, wanted: Boolean = false): String? =
+    if (wanted || LocalDisplayPrefs.current.tvCaptionSize == CaptionSize.MINIMAL) repository.logoUrl(item) else null
 
 /** How wide a caption may run: kept narrow so the picture shows. */
 fun captionWidth(compact: Boolean): Dp = if (compact) 260.dp else 340.dp

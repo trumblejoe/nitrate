@@ -195,25 +195,20 @@ class TvScreenshotTest {
     @Test fun rowsBottomCompactTopLeft() = rowLayout("tv-rows-bottom-compact-top-left", rowsHome.copy(
         tvCaptionCorner = dev.nitrate.core.pages.CaptionCorner.TOP_LEFT, tvCaptionSize = dev.nitrate.core.pages.CaptionSize.COMPACT))
 
+    /** The Minimal caption: the title's logo and facts, no description. */
+    @Test fun rowsMinimalCaption() = rowLayout("tv-rows-minimal-caption", rowsHome.copy(tvCaptionSize = dev.nitrate.core.pages.CaptionSize.MINIMAL))
+
     @Test fun rowsDownTheRight() = rowLayout("tv-rows-right-caption-bottom-left", rowsHome.copy(
         tvRowPlace = dev.nitrate.core.pages.RowPlace.RIGHT, tvCaptionCorner = dev.nitrate.core.pages.CaptionCorner.BOTTOM_LEFT), down = true)
 
     @Test fun rowsDownTheLeftSameSide() = rowLayout("tv-rows-left-caption-top-left", rowsHome.copy(
         tvRowPlace = dev.nitrate.core.pages.RowPlace.LEFT, tvCaptionCorner = dev.nitrate.core.pages.CaptionCorner.TOP_LEFT, tvCaptionSize = dev.nitrate.core.pages.CaptionSize.COMPACT))
 
-    /** A Showcase row reached with a theme on: it shows over the theme's back layers. */
-    @Test fun showcaseOverTheme() = shoot("tv-showcase-over-theme", { c ->
+    /** Artwork with its cards hidden, reached with a theme on: the title's picture is the page's backdrop, the theme over it. */
+    @Test fun cardsHiddenOverTheme() = shoot("tv-cards-hidden-over-theme", { c ->
         c.displaySettings.savePrefs("user-1", rowsHome.copy(pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.ROSES)))
         val rows = c.server.homeRows()
-        c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.SHOWCASE))
-    }, act = { press("down") }) { c ->
-        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
-    }
-
-    @Test fun fullShowcaseOverTheme() = shoot("tv-full-showcase-over-theme", { c ->
-        c.displaySettings.savePrefs("user-1", rowsHome.copy(pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.ROSES)))
-        val rows = c.server.homeRows()
-        c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
+        c.displaySettings.save("user-1", rows[1], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false))
     }, act = { press("down") }) { c ->
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
@@ -440,15 +435,15 @@ class TvScreenshotTest {
 
     @Test fun homeSetup() = shoot("tv-home-setup", { c -> c.displaySettings.saveCustomPages("user-1", listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids"), dev.nitrate.core.pages.CustomPage("uhd", "4K films", pinned = false))) }) { c -> dev.nitrate.tv.ui.pages.HomeSetupScreen(c) }
 
-    /** Up from a Full Showcase to a library's tabs: the showcase shows as its banner, not cut off under them. */
-    @Test fun libraryFullShowcaseUpToTabs() = shoot("tv-library-full-showcase-up-to-tabs", setup = { c ->
+    /** Up from a cards-hidden row to a library's tabs. */
+    @Test fun libraryCardsHiddenUpToTabs() = shoot("tv-library-cards-hidden-up-to-tabs", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)
         val lib = c.server.views().first { it.id == "lib-movies" }
         val rows = c.server.libraryRows(lib)
-        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false))
     }, act = {
         press("down", "up")
-        check(focusedHasText("Recommended") || focusedHasText("All") || focusedHasText("View")) { "Up from the showcase should reach the tabs (or the View button among them)" }
+        check(focusedHasText("Recommended") || focusedHasText("All") || focusedHasText("View")) { "Up from the row should reach the tabs (or the View button among them)" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
     /** The All view as a bouncing box: posters flying round it; Down from the bar catches one. */
@@ -550,21 +545,22 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
     }
 
-    /** Left from a Showcase / Full Showcase row reaches the menu, and Right comes back. */
-    private fun showcaseToMenu(name: String, style: dev.nitrate.core.rows.RowStyle) = shoot(name, setup = { c ->
+    /** Left from a cards-hidden row reaches the menu, and Right comes back. */
+    private fun cardsHiddenToMenu(name: String, display: dev.nitrate.core.rows.RowDisplay) = shoot(name, setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)
-        c.displaySettings.save("user-1", c.server.homeRows()[1], dev.nitrate.core.rows.RowDisplay(style))
+        c.displaySettings.save("user-1", c.server.homeRows()[1], display)
     }, act = {
         fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
         press("down")
         repeat(4) { press("left") }
-        check(at().left < 60f) { "Left from a ${style.label} row should reach the menu, got ${at()}" }
+        check(at().left < 60f) { "Left from a ${display.styleLabel} row should reach the menu, got ${at()}" }
         press("right")
         check(at().left > 100f) { "Right from the menu should return to the row, got ${at()}" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
-    @Test fun showcaseLeftToMenu() = showcaseToMenu("tv-showcase-left-to-menu", dev.nitrate.core.rows.RowStyle.SHOWCASE)
-    @Test fun fullShowcaseLeftToMenu() = showcaseToMenu("tv-full-showcase-left-to-menu", dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE)
+    @Test fun cardsHiddenLeftToMenu() = cardsHiddenToMenu("tv-cards-hidden-left-to-menu", dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false))
+    /** A row saved as Full Showcase before it was retired shows (and behaves) as Artwork with its cards hidden. */
+    @Test fun savedFullShowcaseLeftToMenu() = cardsHiddenToMenu("tv-saved-full-showcase-left-to-menu", dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
 
     /** Art rows (design-size cards) stay along the bottom when moved along, not pulled up the page. */
     @Test fun cressidaStaysAtBottom() = shoot("tv-cressida-stays-at-bottom", setup = { c ->
@@ -982,48 +978,40 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
-    /** A Full Showcase row lower on the page fills the screen when scrolled to, before it has focus. */
-    @Test fun homeFullShowcase() = shoot("tv-home-full-showcase", { c ->
+    /** The first row with its cards hidden: its title's picture behind the page, the caption over it. */
+    @Test fun homeCardsHidden() = shoot("tv-home-cards-hidden", { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)
         val rows = c.server.homeRows()
-        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false))
     }) { c ->
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
-    /** Full Showcase takes the row's effects: the browsing effect lands on the title showing, and only on it. */
-    @Test fun fullShowcaseSpark() {
+    /** A cards-hidden row takes the row's effects: the browsing effect lands on the title showing, and only on it. */
+    @Test fun cardsHiddenSpark() {
         val fx = dev.nitrate.tv.ui.effects.CardFx(dev.nitrate.core.effects.ClickEffect.POP, dev.nitrate.core.effects.CardSpark.FIREWORKS, 1f).apply { holdAt = 0.35f }
         lateinit var row: dev.nitrate.core.rows.MediaRow
-        shoot("tv-full-showcase-spark", { c -> row = c.server.homeRows().first { it.items.size > 1 } }, act = {
+        shoot("tv-cards-hidden-spark", { c -> row = c.server.homeRows().first { it.items.size > 1 } }, act = {
             compose.runOnIdle {
                 check(fx.shown.toList() == listOf(row.items[0].id)) { "sparks should pick only the title showing, got ${fx.shown.toList()}" }
                 fx.sparking[row.items[0].id] = 7L
             }
         }) { c ->
             androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalCardFx provides fx) {
-                dev.nitrate.tv.ui.rows.ShowcaseRow(
-                    row, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE), c.server,
-                    dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}), index = 0, onIndexChange = {}, active = false, onActiveChange = {},
-                    alwaysExpanded = true,
+                dev.nitrate.tv.ui.rows.CardlessRow(
+                    row, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false), c.server,
+                    dev.nitrate.tv.ui.rows.RowActions({}, {}, {}, {}), index = 0, onIndexChange = {}, onActiveChange = {},
+                    expanded = true, onArtwork = {},
                 )
             }
         }
     }
 
-    /** Down from a showcase row to the next: nothing of the showcase may be left over the row below. */
-    @Test fun showcaseThenDown() = shoot("tv-showcase-then-down", { c ->
+    /** Down from a cards-hidden row to the next: nothing of it may be left over the row below. */
+    @Test fun cardsHiddenThenDown() = shoot("tv-cards-hidden-then-down", { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)
         val rows = c.server.homeRows()
-        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.SHOWCASE))
-    }, act = { press("down") }) { c ->
-        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
-    }
-
-    @Test fun fullShowcaseThenDown() = shoot("tv-full-showcase-then-down", { c ->
-        c.displaySettings.savePrefs("user-1", rowsHome)
-        val rows = c.server.homeRows()
-        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false))
     }, act = { press("down") }) { c ->
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }

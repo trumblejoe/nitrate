@@ -38,16 +38,18 @@ object ImagePrefetch {
     }
 }
 
-/** The widest picture for an item: backdrop, then thumb, then its poster (Showcase and the art rows). */
+/** The widest picture for an item: backdrop, then thumb, then its poster (the art rows). */
 fun MediaServer.wideArtwork(item: MediaItem): String? =
     backdropUrl(item, 1280) ?: imageUrl(item, ImageKind.THUMB, 720) ?: imageUrl(item, maxHeight = 720)
 
-/** The picture a row card of [style] shows: the same address the card asks for, so it's ready. */
-fun MediaServer.rowCardImage(item: MediaItem, style: RowStyle, portrait: Boolean = true): String? = when (style) {
-    RowStyle.POSTER -> cardImage(item, CardShape.POSTER)
-    RowStyle.FULL_SHOWCASE -> fullShowcaseImage(item, portrait)
-    RowStyle.WIDE -> cardImage(item, CardShape.WIDE)
-    else -> wideArtwork(item)
+/** The picture a row card in [display] shows: the same address the card asks for, so it's ready. */
+fun MediaServer.rowCardImage(item: MediaItem, display: RowDisplay, portrait: Boolean = true): String? = display.normalized().let { d ->
+    when {
+        d.cardsHidden -> fullShowcaseImage(item, portrait)
+        d.style == RowStyle.POSTER -> cardImage(item, CardShape.POSTER)
+        d.style == RowStyle.WIDE -> cardImage(item, CardShape.WIDE)
+        else -> wideArtwork(item)
+    }
 }
 
 /** Within a row: the next [ahead] cards past the last one on screen. */
@@ -85,15 +87,15 @@ fun PrefetchRows(
             .collect { lastKey ->
                 val last = keys.indexOf(lastKey)
                 rows.drop(last + 1).take(rowsAhead).forEach { row ->
-                    val style = (overrides[row.key] ?: row.defaultDisplay).style
-                    ImagePrefetch.enqueue(context, row.items.take(perRow).map { server.rowCardImage(it, style, portrait) })
+                    val display = overrides[row.key] ?: row.defaultDisplay
+                    ImagePrefetch.enqueue(context, row.items.take(perRow).map { server.rowCardImage(it, display, portrait) })
                 }
             }
     }
 }
 
 /**
- * The background of a Full Showcase page, filling the screen: upright, the poster (an episode
+ * The background of a cards-hidden Artwork row's page, filling the screen: upright, the poster (an episode
  * uses its show's backdrop, so an unwatched still never shows); sideways, the 1920px backdrop.
  */
 fun MediaServer.fullShowcaseImage(item: MediaItem, portrait: Boolean): String? =

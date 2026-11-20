@@ -266,7 +266,7 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 selected = false,
                 onClick = { update { it.copy(tvCaptionSize = dev.nitrate.core.pages.CaptionSize.entries[(it.tvCaptionSize.ordinal + 1) % dev.nitrate.core.pages.CaptionSize.entries.size]) } },
                 headlineContent = { Text("Caption size") },
-                supportingContent = { Text(if (prefs.tvCaptionSize == dev.nitrate.core.pages.CaptionSize.COMPACT) "A smaller title and its facts, no description: more of the picture" else "The title, its facts and a two-line description") },
+                supportingContent = { Text(prefs.tvCaptionSize.detail) },
                 trailingContent = { Text("${prefs.tvCaptionSize.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }

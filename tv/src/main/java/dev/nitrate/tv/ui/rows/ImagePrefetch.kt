@@ -40,11 +40,14 @@ object ImagePrefetch {
 }
 
 /** The picture a row card shows for [item] in [display]: the same address the card asks for. */
-internal fun MediaServer.rowCardImages(item: MediaItem, display: RowDisplay): List<String?> = when (display.style) {
-    RowStyle.POSTER -> listOf(imageUrl(item, ImageKind.PRIMARY, display.size.posterHeightDp * 2))
-    RowStyle.WIDE -> listOf(wideImage(this, item))
-    RowStyle.SHOWCASE, RowStyle.FULL_SHOWCASE -> listOf(backdropUrls(item).firstOrNull() ?: backdropUrl(item), wideImage(this, item))
-    else -> listOf(artwork(item))
+internal fun MediaServer.rowCardImages(item: MediaItem, display: RowDisplay): List<String?> = display.normalized().let { d ->
+    when {
+        // Cards hidden: the picture behind the page, and the logo a Minimal caption shows.
+        d.cardsHidden -> listOf(backdropUrls(item).firstOrNull() ?: backdropUrl(item), logoUrl(item))
+        d.style == RowStyle.POSTER -> listOf(imageUrl(item, ImageKind.PRIMARY, d.size.posterHeightDp * 2))
+        d.style == RowStyle.WIDE -> listOf(wideImage(this, item))
+        else -> listOf(artwork(item))
+    }
 }
 
 /** Within a row: the next [ahead] cards past the last one on screen. */

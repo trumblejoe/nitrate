@@ -185,25 +185,26 @@ fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVec
 }
 
 /**
- * A row as posters, artwork (wide pictures) or a showcase (big swipeable artwork cards), per the
- * row's [display]. With [onDisplay], the header offers the choice.
+ * A row as posters, artwork (wide pictures; with its cards hidden, one title at a time filling the
+ * screen) or one of the art styles, per the row's [display]. With [onDisplay], the header offers the choice.
  */
 @Composable
-fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
+fun CinematicRow(row: MediaRow, shownAs: RowDisplay, actions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
+    // Retired styles show as what replaced them (Showcase as Artwork, Full Showcase with the cards hidden).
+    val display = shownAs.normalized()
     // Poster and Artwork rows: the next cards' pictures load before they scroll in (the other styles do their own).
     val cardState = rememberLazyListState()
     if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) {
-        PrefetchAlongRow(cardState, row.items) { listOf(actions.server.rowCardImage(it, display.style)) }
+        PrefetchAlongRow(cardState, row.items) { listOf(actions.server.rowCardImage(it, display)) }
     }
-    // Full Showcase is the whole screen, with its own header over the artwork.
-    if (display.style == RowStyle.FULL_SHOWCASE) {
+    // Cards hidden: the whole screen, with its own header over the artwork.
+    if (display.cardsHidden) {
         FullShowcaseRow(row, display, actions, onDisplay)
         return
     }
     Column {
         SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(display, onDisplay) }
         when (display.style) {
-            RowStyle.SHOWCASE, RowStyle.FULL_SHOWCASE -> ShowcaseRow(row, actions)
             RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
             RowStyle.LIGHTNING -> LightningRow(row, actions)
             RowStyle.CRESSIDA -> CressidaRow(row, actions, display)
@@ -222,7 +223,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
                     )
                 }
             }
-            RowStyle.POSTER -> LazyRow(state = cardState, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            else -> LazyRow(state = cardState, contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                     val key = "${row.key}-${item.id}"
                     MediaCard(
@@ -241,7 +242,7 @@ fun CinematicRow(row: MediaRow, display: RowDisplay, actions: AppActions, onDisp
     }
 }
 
-/** The row's look, changed in place: Posters, Artwork or Showcase, and titles. */
+/** The row's look, changed in place: its style, cards shown or hidden (Artwork), and titles. */
 @Composable
 private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit) {
     var open by remember { mutableStateOf(false) }
@@ -249,17 +250,25 @@ private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit)
     if (colouring) InkColourDialog(display, onSave = { onDisplay(it); colouring = false }, onDismiss = { colouring = false })
     Box {
         Text(
-            display.style.label,
+            display.styleLabel,
             style = MaterialTheme.typography.labelLarge,
             color = accentColor(),
             modifier = Modifier.clip(RoundedCornerShape(14.dp)).pressable({ open = true }).padding(horizontal = 10.dp, vertical = 6.dp),
         )
         DropdownMenu(open, onDismissRequest = { open = false }) {
-            RowStyle.entries.forEach { style ->
+            RowStyle.choices.forEach { style ->
                 DropdownMenuItem(
                     text = { Text(style.label) },
                     trailingIcon = { if (style == display.style) Icon(Icons.Default.Check, null) },
-                    onClick = { onDisplay(display.copy(style = style)); open = false },
+                    onClick = { onDisplay(display.copy(style = style, cards = true)); open = false },
+                )
+            }
+            if (display.style == RowStyle.WIDE) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Show cards") },
+                    trailingIcon = { if (display.cards) Icon(Icons.Default.Check, null) },
+                    onClick = { onDisplay(display.copy(cards = !display.cards)); open = false },
                 )
             }
             if (display.style == RowStyle.CRESSIDA) {
@@ -278,7 +287,7 @@ private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit)
                     onClick = { colouring = true; open = false },
                 )
             }
-            if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) {
+            if (display.style == RowStyle.POSTER || (display.style == RowStyle.WIDE && display.cards)) {
                 HorizontalDivider()
                 DropdownMenuItem(
                     text = { Text("Titles under pictures") },
@@ -290,29 +299,8 @@ private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit)
     }
 }
 
-/** Big artwork cards, one screen-width at a time: logo or title, facts and Play over the picture. */
-@Composable
-private fun ShowcaseRow(row: MediaRow, actions: AppActions) {
-    val state = rememberLazyListState()
-    PrefetchAlongRow(state, row.items, ahead = 3) { listOf(actions.server.wideArtwork(it)) }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val cardWidth = (maxWidth - ScreenPadding * 2).coerceAtMost(560.dp)
-        LazyRow(
-            state = state,
-            contentPadding = PaddingValues(horizontal = ScreenPadding),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(state),
-        ) {
-            itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
-                val key = "${row.key}-${item.id}"
-                ShowcaseCard(item, actions, key, Modifier.width(cardWidth))
-            }
-        }
-    }
-}
-
 /**
- * Full Showcase: the row fills the screen, one title at a time with its artwork as the whole
+ * Artwork with its cards hidden: the row fills the screen, one title at a time with its artwork as the whole
  * background (the poster upright, the backdrop sideways); swipe sideways through the titles and
  * scroll on to the next row. The row's name and style choice sit over the artwork.
  */
@@ -382,35 +370,6 @@ private fun FullShowcasePage(item: MediaItem, sharedKey: String, display: RowDis
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
                 PillButton(if (item.kind == ItemKind.SERIES) "Watch" else if (item.user.positionMs > 0) "Resume" else "Play", Icons.Default.PlayArrow, primary = true, onClick = { actions.playOrOpen(item) })
                 PillButton("Details", null, primary = false, onClick = { actions.open(item, sharedKey) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun ShowcaseCard(item: MediaItem, actions: AppActions, sharedKey: String, modifier: Modifier) {
-    val server = actions.server
-    val prefs = LocalDisplayPrefs.current
-    Box(modifier.aspectRatio(4f / 3f).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.06f)).pressable({ actions.open(item, sharedKey) })) {
-        AsyncImage(
-            server.wideArtwork(item),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey),
-        )
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color(0xE6000000))))
-        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            val logo = server.logoUrl(item)?.takeIf { prefs.logos }
-            if (logo != null) {
-                AsyncImage(logo, item.displayTitle, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart, modifier = Modifier.widthIn(max = 220.dp).heightIn(max = 72.dp))
-            } else {
-                Text(item.displayTitle, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            item.episodeLabel?.let { Text(it, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge) }
-            val facts = prefs.facts(item)
-            if (facts.isNotEmpty()) Text(facts.take(4).joinToString("  ·  "), color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 2.dp)) {
-                PillButton(if (item.kind == ItemKind.SERIES) "Watch" else if (item.user.positionMs > 0) "Resume" else "Play", Icons.Default.PlayArrow, primary = true, onClick = { actions.playOrOpen(item) })
             }
         }
     }
