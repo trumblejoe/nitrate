@@ -562,6 +562,27 @@ class TvScreenshotTest {
     /** A row saved as Full Showcase before it was retired shows (and behaves) as Artwork with its cards hidden. */
     @Test fun savedFullShowcaseLeftToMenu() = cardsHiddenToMenu("tv-saved-full-showcase-left-to-menu", dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE))
 
+    /** Up/Down from the tilted film strip go to the rows above and below; only Left/Right move along it. */
+    @Test fun filmStripUpDownLeaveRow() = shoot("tv-film-strip-up-down", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvRowsStacked = true))
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[2], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FILM_STRIP))
+    }, act = {
+        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        press("down", "down")
+        val strip = at()
+        press("right")
+        val next = at()
+        check(next.left > strip.right - 20f && kotlin.math.abs(next.top - strip.top) < 60f) { "Right should move along the strip, got $next from $strip" }
+        // The frames either side sit only a little higher or lower on the tilted strip: Up/Down must not pick them.
+        press("up")
+        check(at().top < next.top - 100f) { "Up from the strip should go to the row above, got ${at()} from $next" }
+        press("down")
+        check(at().width > at().height) { "Down should come back to the strip, got ${at()}" }
+        press("down")
+        check(at().height > at().width) { "Down from the strip should reach the poster row below, got ${at()}" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
     /** Art rows (design-size cards) stay along the bottom when moved along, not pulled up the page. */
     @Test fun cressidaStaysAtBottom() = shoot("tv-cressida-stays-at-bottom", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

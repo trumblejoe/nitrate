@@ -71,6 +71,12 @@ import dev.nitrate.core.rows.RowArt
 import dev.nitrate.core.rows.RowSize
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.tv.ui.components.onPlayKey
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.focus.focusProperties
 
 internal fun MediaServer.artwork(item: MediaItem) = backdropUrl(item, 960) ?: imageUrl(item, ImageKind.THUMB, 720) ?: imageUrl(item, ImageKind.PRIMARY, 720)
 
@@ -128,7 +134,24 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
     var gate by remember(row.key) { mutableIntStateOf(0) }
     val accent = MaterialTheme.colorScheme.primary
     val prefs = LocalDisplayPrefs.current
-    Column {
+    // The strip is tilted, so the frame beside the focused one sits a little above or below it and
+    // Up/Down would "find" it. Up/Down search with the other frames switched off: they always go to
+    // the row above or below, and only Left/Right move along the strip. (Read when focus searches,
+    // so a plain flag is enough.)
+    val upDown = remember { BooleanArray(1) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    Column(Modifier.onPreviewKeyEvent { e ->
+        val dir = when (e.key) {
+            Key.DirectionUp -> androidx.compose.ui.focus.FocusDirection.Up
+            Key.DirectionDown -> androidx.compose.ui.focus.FocusDirection.Down
+            else -> return@onPreviewKeyEvent false
+        }
+        if (e.type == KeyEventType.KeyDown) {
+            upDown[0] = true
+            try { focusManager.moveFocus(dir) } finally { upDown[0] = false }
+        }
+        true
+    }) {
         RowTitle(row)
         // Clipped to the row, so the tilted strip never reaches under the menu rail beside the page.
         BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds().designScale(stripScale(size)).height(250.dp)) {
@@ -149,6 +172,7 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
                                     border = accentBorder(shape),
                                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
                                     modifier = Modifier.cardFx(item.id).returnFocus(item.id).fillMaxWidth().height(135.dp).alpha(if (inGate) 1f else 0.55f)
+                                        .focusProperties { canFocus = !upDown[0] || inGate }
                                         .onFocusChanged { if (it.isFocused) { gate = i; actions.onFocus(item) } }.onPlayKey { actions.onPlay(item) },
                                 ) {
                                     AsyncImage(repository.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
