@@ -101,10 +101,12 @@ fun RowsPage(
     // cut off by the scroll (that left a strip of it over the rows below).
     var focusedRowIndex by remember { mutableStateOf(-1) }
     // The card last focused (its row and item), to come back to from the menu.
-    var lastCard by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    // Saved with the page (it outlives a visit to a details page and back, which recomposes the page):
+    // coming back puts focus on that card again rather than the page's start.
+    var lastCard by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = LastCardSaver) { mutableStateOf<Pair<Int, String>?>(null) }
     // The card last focused in each row: moving Up/Down back into a row lands on it again, whatever
     // happened in other rows meanwhile (nearest-on-screen depended on the other row's card sizes).
-    val rowLast = remember { mutableStateMapOf<String, String>() }
+    val rowLast = androidx.compose.runtime.saveable.rememberSaveable(saver = RowLastSaver) { mutableStateMapOf<String, String>() }
     // Each row's own requester (it enters the row at its remembered card): the page is entered at a row.
     val rowEntry = remember { mutableMapOf<String, androidx.compose.ui.focus.FocusRequester>() }
     val returnRequester = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -123,6 +125,17 @@ fun RowsPage(
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     var listingRows by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    // Back on the page (from a details page): focus to the card left, once its row is composed.
+    val cameBackTo = remember { lastCard }
+    LaunchedEffect(cameBackTo, rows.isNotEmpty()) {
+        if (cameBackTo == null || rows.isEmpty()) return@LaunchedEffect
+        repeat(40) {
+            kotlinx.coroutines.delay(50)
+            runCatching { returnRequester.requestFocus() }
+            kotlinx.coroutines.delay(30)
+            if (focused?.id == cameBackTo.second) return@LaunchedEffect
+        }
+    }
     PrefetchRows(listState, rows, overrides, repository)
 
     val actions = remember(onOpen, onPlay) {
@@ -542,3 +555,15 @@ private fun corner(top: Boolean, end: Boolean) = when {
 
 /** [RowsPage]'s focused row while the page's header (its tabs) has focus. */
 private const val HEADER_FOCUSED = Int.MAX_VALUE
+
+/** The card last focused (row index, item id), kept with the page's saved state. */
+private val LastCardSaver = androidx.compose.runtime.saveable.Saver<Pair<Int, String>?, String>(
+    save = { c -> c?.let { "${it.first}|${it.second}" } ?: "" },
+    restore = { v -> v.takeIf { it.isNotEmpty() }?.let { it.substringBefore('|').toInt() to it.substringAfter('|') } },
+)
+
+/** Each row's last card (row key to item id), kept with the page's saved state. */
+private val RowLastSaver = androidx.compose.runtime.saveable.Saver<androidx.compose.runtime.snapshots.SnapshotStateMap<String, String>, ArrayList<String>>(
+    save = { m -> ArrayList(m.flatMap { listOf(it.key, it.value) }) },
+    restore = { l -> mutableStateMapOf<String, String>().apply { l.chunked(2).forEach { (k, v) -> put(k, v) } } },
+)

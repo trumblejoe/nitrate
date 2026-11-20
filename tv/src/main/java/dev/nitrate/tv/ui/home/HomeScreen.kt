@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.getValue
@@ -76,7 +77,9 @@ fun HomeScreen(
     }
 
     val content = remember { FocusRequester() }
-    var focusedOnce by remember { mutableStateOf(false) }
+    // Saved with the page: coming back (from a details page) leaves focus to the rows, which put it on the card left.
+    var focusedOnce by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var homeHasFocus by remember { mutableStateOf(false) }
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val fullArt = prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
     val pinnedPages = customPages.filter { it.pinned }
@@ -94,6 +97,10 @@ fun HomeScreen(
             if (runCatching { tabFocus(key).requestFocus() }.isSuccess) return@LaunchedEffect
         }
     }
+    // Back on a pinned page goes to Home's own tab first (as on a library's other tabs).
+    androidx.activity.compose.BackHandler(enabled = openPage != null) {
+        pageTab = null; switched = "home#" + System.nanoTime()
+    }
     val tabs: (@Composable () -> Unit)? = if (pinnedPages.isEmpty()) null else {
         {
             Row(Modifier.padding(start = 58.dp, end = 58.dp, top = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -107,7 +114,7 @@ fun HomeScreen(
         }
     }
     MainMenu(dev.nitrate.core.pages.MenuStops.HOME, overlay = fullArt) { insets ->
-    Box(Modifier.fillMaxSize().focusRequester(content).focusGroup()) {
+    Box(Modifier.fillMaxSize().onFocusChanged { homeHasFocus = it.hasFocus }.focusRequester(content).focusGroup()) {
     if (openPage != null) {
         // The page draws its tabs again as it goes from loading to its rows: keep focus on the tab
         // chosen through that (only just after choosing it, so later reloads never take focus).
@@ -146,9 +153,14 @@ fun HomeScreen(
     }
     // Start on the rows, not the menu (the menu is a press to the left).
     LaunchedEffect(state is RowsState.Loaded) {
-        if (state is RowsState.Loaded && !focusedOnce) {
+        if (state !is RowsState.Loaded) return@LaunchedEffect
+        if (!focusedOnce) {
             kotlinx.coroutines.delay(50)
             focusedOnce = runCatching { content.requestFocus() }.getOrDefault(false)
+        } else {
+            // Back on Home: the rows put focus on the card left; with none to go back to, the first row.
+            kotlinx.coroutines.delay(1_200)
+            if (!homeHasFocus) runCatching { content.requestFocus() }
         }
     }
 }

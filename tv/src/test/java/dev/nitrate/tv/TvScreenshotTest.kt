@@ -632,6 +632,69 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
     }
 
+    /** To a details page and Back: Home comes back with focus on the card left, not its start. */
+    @Test fun backFromDetailsKeepsPlace() {
+        var onDetails by androidx.compose.runtime.mutableStateOf(false)
+        shoot("tv-back-from-details", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+            fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+            press("down", "down", "right")
+            val left = at()
+            compose.runOnIdle { onDetails = true }
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            compose.runOnIdle { onDetails = false }
+            runCatching { compose.waitUntil(timeoutMillis = 10_000) {
+                compose.mainClock.advanceTimeBy(100)
+                compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().firstOrNull()?.boundsInRoot == left
+            } }
+            check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().firstOrNull()?.boundsInRoot == left) {
+                "should come back to $left, focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().map { it.boundsInRoot }
+            }
+            check(!focusedHasText("Home") && !focusedHasText("Kids")) { "came back onto the tabs" }
+        }) { c ->
+            val holder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+            val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
+            if (onDetails) androidx.tv.material3.Text("Details") else holder.SaveableStateProvider("home") {
+                WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
+            }
+        }
+    }
+
+    /** A library's title, its details page and Back: focus back on that title, not the tabs. */
+    @Test fun libraryBackFromDetailsKeepsPlace() {
+        var onDetails by androidx.compose.runtime.mutableStateOf(false)
+        shoot("tv-library-back-from-details", setup = { c -> c.displaySettings.savePrefs("user-1", rowsLibrary) }, act = {
+            fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+            press("down", "right")
+            val left = at()
+            check(!focusedHasText("Recommended")) { "should be on a title" }
+            compose.runOnIdle { onDetails = true }
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            compose.runOnIdle { onDetails = false }
+            runCatching { compose.waitUntil(timeoutMillis = 10_000) {
+                compose.mainClock.advanceTimeBy(100)
+                compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().firstOrNull()?.boundsInRoot == left
+            } }
+            check(at() == left) { "should come back to $left, got ${at()}" }
+        }) { c ->
+            val holder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+            if (onDetails) androidx.tv.material3.Text("Details") else holder.SaveableStateProvider("library") {
+                WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) }
+            }
+        }
+    }
+
+    /** In a library on a tab other than the first, Back goes to the first tab (not out of the library). */
+    @Test fun libraryBackToFirstTab() = libraryShot("tv-library-back-to-first-tab", rowsLibrary) {
+        press("right", "ok")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(focusedHasText("All")) { "should be on the All tab" }
+        // The remote's Back reaches the app as the activity's back press.
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(focusedHasText("Recommended")) { "Back should go to the first tab" }
+    }
+
     /** Home with tabs: Up from the second row lands on the first row's card, not the tabs. */
     @Test fun upToFirstRowNotTabs() = shoot("tv-up-to-first-row", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

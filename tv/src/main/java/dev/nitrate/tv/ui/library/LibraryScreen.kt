@@ -115,8 +115,23 @@ fun LibraryScreen(
         }
     }
     fun switchTo(key: String, change: () -> Unit) { change(); switched = key + "#" + System.nanoTime() }
-    // Opening the library: focus starts on its current tab, on the page (not left in the menu).
-    LaunchedEffect(lib.id) { switched = tab.id + "#open" }
+    // Opening the library: focus starts on its current tab, on the page (not left in the menu). Coming
+    // back to it (from a details page) leaves focus to the page, which puts it on the title left.
+    var opened by rememberSaveable(lib.id) { mutableStateOf(false) }
+    var pageHasFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(lib.id) {
+        if (!opened) { opened = true; switched = tab.id + "#open" }
+        else {
+            // A page that can't say where it was (a grid view) still gets its tab rather than nothing.
+            kotlinx.coroutines.delay(1_500)
+            if (!pageHasFocus) switched = tab.id + "#back"
+        }
+    }
+    // Back on a tab other than the first goes to the first (the library's own page); Back there leaves.
+    val firstTab = shownTabs.first()
+    androidx.activity.compose.BackHandler(enabled = tab.id != firstTab.id) {
+        switchTo(firstTab.id) { tabId = firstTab.id }
+    }
 
     val tabs: @Composable () -> Unit = {
         Row(
@@ -143,37 +158,39 @@ fun LibraryScreen(
     val padded = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)
     val types = dev.nitrate.core.pages.LibraryTabs.typesFor(lib.collection)
 
-    when (tab.kind) {
-        dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED -> TabRows(
-            "library-rows-$libraryId", PageKeys.library(lib.id), { repository.libraryRows(lib) }, { repository.libraryRowsProgress(lib) },
-            lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
-        )
-        dev.nitrate.core.pages.LibraryTabKind.GENRES, dev.nitrate.core.pages.LibraryTabKind.STUDIOS, dev.nitrate.core.pages.LibraryTabKind.DECADES -> TabRows(
-            "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab),
-            {
-                dev.nitrate.core.pages.LibraryTabs.rows(
-                    lib.id, tab.kind, types,
-                    genres = { repository.genres(lib.id) },
-                    studios = { repository.studios(lib.id) },
-                    years = { repository.libraryFilters(lib.id, types).years },
-                    load = repository::queryItems,
-                )
-            },
-            null, lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
-        )
-        // The user's own page of rows (made in Settings → Display → Pages).
-        dev.nitrate.core.pages.LibraryTabKind.OWN -> TabRows(
-            "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab), { emptyList() }, null,
-            lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
-            empty = "No rows here yet. Add some in Settings → Display → Pages → ${lib.name}.",
-        )
-        dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay) }
-        dev.nitrate.core.pages.LibraryTabKind.UNWATCHED -> Box(padded) {
-            BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin,
-                viewKey = "browse/${lib.id}/unwatched",
-                startWith = dev.nitrate.core.pages.BrowseOptions(watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, sort = dev.nitrate.core.pages.QuerySort.DATE_ADDED, descending = true))
+    androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { pageHasFocus = it.hasFocus }) {
+        when (tab.kind) {
+            dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED -> TabRows(
+                "library-rows-$libraryId", PageKeys.library(lib.id), { repository.libraryRows(lib) }, { repository.libraryRowsProgress(lib) },
+                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+            )
+            dev.nitrate.core.pages.LibraryTabKind.GENRES, dev.nitrate.core.pages.LibraryTabKind.STUDIOS, dev.nitrate.core.pages.LibraryTabKind.DECADES -> TabRows(
+                "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab),
+                {
+                    dev.nitrate.core.pages.LibraryTabs.rows(
+                        lib.id, tab.kind, types,
+                        genres = { repository.genres(lib.id) },
+                        studios = { repository.studios(lib.id) },
+                        years = { repository.libraryFilters(lib.id, types).years },
+                        load = repository::queryItems,
+                    )
+                },
+                null, lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+            )
+            // The user's own page of rows (made in Settings → Display → Pages).
+            dev.nitrate.core.pages.LibraryTabKind.OWN -> TabRows(
+                "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab), { emptyList() }, null,
+                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+                empty = "No rows here yet. Add some in Settings → Display → Pages → ${lib.name}.",
+            )
+            dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay) }
+            dev.nitrate.core.pages.LibraryTabKind.UNWATCHED -> Box(padded) {
+                BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin,
+                    viewKey = "browse/${lib.id}/unwatched",
+                    startWith = dev.nitrate.core.pages.BrowseOptions(watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, sort = dev.nitrate.core.pages.QuerySort.DATE_ADDED, descending = true))
+            }
+            dev.nitrate.core.pages.LibraryTabKind.ALL -> Box(padded) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin) }
         }
-        dev.nitrate.core.pages.LibraryTabKind.ALL -> Box(padded) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin) }
     }
 }
 
