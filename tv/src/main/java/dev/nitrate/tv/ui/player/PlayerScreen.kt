@@ -201,7 +201,8 @@ fun PlayerScreen(
     var frameRateOverride by remember { mutableStateOf<dev.nitrate.core.playback.FrameRateMatch?>(null) }
     // Null until the device's settings have loaded (the default read first would hand a kept rate back).
     val savedFrameRate by playbackSettings.settings.map<dev.nitrate.core.playback.PlaybackSettings, dev.nitrate.core.playback.FrameRateMatch?> { it.frameRateMatch }.collectAsState(null)
-    val matchingRate = FrameRateMatcher(session, frameRateOverride ?: savedFrameRate)
+    val refreshHold by playbackSettings.settings.map { it.refreshHold }.collectAsState(dev.nitrate.core.playback.RefreshHold.ALWAYS)
+    val matchingRate = FrameRateMatcher(session, frameRateOverride ?: savedFrameRate, refreshHold)
     var sleepAt by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(sleepAt) {
         val at = sleepAt ?: return@LaunchedEffect

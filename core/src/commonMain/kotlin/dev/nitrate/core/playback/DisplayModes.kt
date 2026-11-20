@@ -11,6 +11,18 @@ enum class FrameRateMatch(val label: String, val detail: String, val shortLabel:
     ALWAYS("Always", "Switches the TV to match each video (a second or two of blank screen while it changes)", "Always"),
 }
 
+/**
+ * How long the TV stays at a film's rate after the player closes, while Nitrate is in use
+ * ([keepMs]; null: until Nitrate is left or another video needs a different rate). Never still
+ * keeps it a few seconds, so the next episode or an extra doesn't switch twice.
+ */
+@kotlinx.serialization.Serializable
+enum class RefreshHold(val label: String, val detail: String, val keepMs: Long?) {
+    ALWAYS("Always", "Stays at the film's rate while you're in Nitrate: no switch back to the menus, none for the next film at that rate. Menus move a little less smoothly at 24 Hz.", null),
+    FIFTEEN_MINUTES("15 minutes", "Stays at the film's rate for 15 minutes after the player closes, long enough to pick the next one, then goes back.", 15 * 60_000L),
+    NEVER("Never", "Goes back to the TV's usual rate a few seconds after the player closes: smoothest menus, one more switch per film.", 15_000L),
+}
+
 /** One display mode a TV offers. */
 data class DisplayMode(val id: Int, val width: Int, val height: Int, val refreshRate: Float)
 

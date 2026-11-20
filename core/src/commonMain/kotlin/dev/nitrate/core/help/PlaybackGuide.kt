@@ -126,7 +126,8 @@ object PlaybackGuide {
             "stutter", "Stutter, judder or stopping to buffer",
             "Path's Smoothness and Refresh rate parts say which it is.",
             steps = listOf(
-                "Judder (uneven motion in slow pans): the TV's refresh rate doesn't suit the film. Set Refresh rate to Always in Picture & sound.",
+                "Judder (uneven motion in slow pans): the TV's refresh rate doesn't suit the film. Set Match frame rate to Always in Picture & sound.",
+                "Tired of the screen going black when you leave a film? Stay at the film's rate (Picture & sound) keeps it for the menus: Always (until you leave Nitrate), 15 minutes, or Never.",
                 "Stops to buffer with \"the network is slower than the stream needs\": use a wired connection or 5 GHz Wi-Fi. A bitrate limit makes the server send it smaller instead.",
                 "\"Too slow for real time\" from the server: its converting needs hardware acceleration (an admin's setting).",
                 "Many dropped frames with a software decoder: this device can't decode that format smoothly. Another version of the title may play better.",

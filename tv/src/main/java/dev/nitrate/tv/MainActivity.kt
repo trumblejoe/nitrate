@@ -24,6 +24,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         (application as NitrateApp).container.themeMusic.onAppHidden()
+        // A film's refresh rate kept for the menus ends with Nitrate: the TV's usual rate when it's back.
+        dev.nitrate.tv.ui.player.resetRefreshRate(this)
         super.onStop()
     }
 

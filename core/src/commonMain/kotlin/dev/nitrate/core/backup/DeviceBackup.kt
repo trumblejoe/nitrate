@@ -123,6 +123,7 @@ object DeviceBackups {
         playback("Ask \"Still watching?\"", onOff(a.askStillWatching), onOff(n.askStillWatching))
         playback("Tunneled playback", onOff(a.tunneling), onOff(n.tunneling))
         playback("Match frame rate", a.frameRateMatch.label, n.frameRateMatch.label)
+        playback("Stay at the film's rate", a.refreshHold.label, n.refreshHold.label)
         playback("3D films", a.threeD.label, n.threeD.label)
         playback("Dolby Vision profile 7 as 8.1", onOff(a.convertProfile7), onOff(n.convertProfile7))
         playback("Audio sync", dev.nitrate.core.playback.AudioSync.label(a.audioDelayMs), dev.nitrate.core.playback.AudioSync.label(n.audioDelayMs))

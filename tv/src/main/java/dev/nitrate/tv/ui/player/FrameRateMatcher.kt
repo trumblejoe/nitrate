@@ -36,12 +36,13 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   follows later);
  * - playback waits, behind a quiet "Matching the TV…" screen, until the TV has changed and settled
  *   ([SETTLE_MS]), so nothing is missed;
- * - the TV keeps the rate between players for [KEEP_MS] (the next episode, an extra, Up Next), so
- *   a run of episodes switches once rather than back and forth.
+ * - the TV keeps the rate after the player closes for as long as [hold] says (Always: while
+ *   Nitrate is in use; 15 minutes; Never: [KEEP_MS], so the next episode, an extra or Up Next
+ *   doesn't switch twice), and gets its usual rate back when Nitrate is left ([resetRefreshRate]).
  * [match] is null until the settings have loaded. Returns whether it's switching now, for that screen.
  */
 @Composable
-fun FrameRateMatcher(session: PlaybackSession, match: FrameRateMatch?): Boolean {
+fun FrameRateMatcher(session: PlaybackSession, match: FrameRateMatch?, hold: dev.nitrate.core.playback.RefreshHold = dev.nitrate.core.playback.RefreshHold.NEVER): Boolean {
     val context = LocalContext.current
     val activity = context.findActivity() ?: return false
     val fileFps by session.videoFrameRate.collectAsState()
@@ -152,8 +153,9 @@ fun FrameRateMatcher(session: PlaybackSession, match: FrameRateMatch?): Boolean 
         // Usually already done before playing; this catches the file's own rate and a change mid-film.
         rate?.let { switch(it, pause = true) }
     }
-    // Leaving the player: the TV keeps the rate a little while, in case another video follows.
-    DisposableEffect(activity) { onDispose { ModeHold.release(activity) } }
+    // Leaving the player: the TV keeps the rate as long as the user chose (in case another video follows).
+    val keep by androidx.compose.runtime.rememberUpdatedState(hold.keepMs)
+    DisposableEffect(activity) { onDispose { ModeHold.release(activity, keep) } }
     return switching
 }
 
@@ -181,8 +183,11 @@ internal suspend fun awaitPassthrough(context: Context, before: Set<Int>, waitMs
 /** After Android reports the new mode, how long the TV takes to show a picture again. */
 private const val SETTLE_MS = 1_200L
 
-/** How long the TV keeps a matched rate after the player closes (next episode, an extra). */
+/** The least time the TV keeps a matched rate after the player closes (next episode, an extra). */
 private const val KEEP_MS = 15_000L
+
+/** Gives the TV its usual refresh rate back at once: Nitrate going out of view. */
+fun resetRefreshRate(activity: Activity) = ModeHold.resetNow(activity)
 
 /** The matched rate, kept across players and handed back to the TV a while after the last one. */
 private object ModeHold {
@@ -194,11 +199,13 @@ private object ModeHold {
         pending = null
     }
 
-    fun release(activity: Activity) {
+    /** Hands the rate back after [keepMs] (null: kept until Nitrate is left or another video changes it). */
+    fun release(activity: Activity, keepMs: Long? = KEEP_MS) {
         claim()
+        if (keepMs == null) return
         val reset = Runnable { pending = null; resetNow(activity) }
         pending = reset
-        main.postDelayed(reset, KEEP_MS)
+        main.postDelayed(reset, maxOf(keepMs, KEEP_MS))
     }
 
     fun resetNow(activity: Activity) {

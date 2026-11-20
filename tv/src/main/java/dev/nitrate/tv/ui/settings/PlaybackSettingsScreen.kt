@@ -67,6 +67,14 @@ fun PlaybackSettingsScreen(
     val scope = rememberCoroutineScope()
     val update: ((PlaybackSettings) -> PlaybackSettings) -> Unit = { f -> scope.launch { store.update(f) } }
     val first = remember { FocusRequester() }
+    // A film's rate kept for the menus goes as soon as it's no longer wanted.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(settings.frameRateMatch, settings.refreshHold) {
+        if (settings.frameRateMatch != dev.nitrate.core.playback.FrameRateMatch.ALWAYS || settings.refreshHold == dev.nitrate.core.playback.RefreshHold.NEVER) {
+            (context as? android.app.Activity ?: (context as? android.content.ContextWrapper)?.baseContext as? android.app.Activity)
+                ?.let { dev.nitrate.tv.ui.player.resetRefreshRate(it) }
+        }
+    }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 
     LazyColumn(
@@ -139,6 +147,13 @@ private fun LazyListScope.mainPage(
         ChoiceRow("Match frame rate", m.label, m.detail + ". Keep it on for smoother motion in films.") {
             val all = dev.nitrate.core.playback.FrameRateMatch.entries
             update { it.copy(frameRateMatch = all[(m.ordinal + 1) % all.size]) }
+        }
+    }
+    if (settings.frameRateMatch == dev.nitrate.core.playback.FrameRateMatch.ALWAYS) item {
+        val h = settings.refreshHold
+        ChoiceRow("Stay at the film's rate", h.label, h.detail) {
+            val all = dev.nitrate.core.playback.RefreshHold.entries
+            update { it.copy(refreshHold = all[(h.ordinal + 1) % all.size]) }
         }
     }
     item {
