@@ -1203,6 +1203,7 @@ class JellyfinClient(
     override suspend fun deleteChannel(channelId: String) = channelsApi.delete(channelId)
     override suspend fun companion() = companionApi.info()
     override suspend fun checkClips() = companionApi.checkClips()
+    override suspend fun serverCreditScenes(itemId: String) = companionApi.creditScenes(itemId)
     override suspend fun sendDeviceSummary(summary: dev.nitrate.core.playback.DeviceSummary) = companionApi.sendDeviceSummary(identity.deviceId, identity.deviceName, summary)
     override suspend fun householdDevices() = companionApi.householdDevices()
     override suspend fun forgetHouseholdDevice(userId: String, deviceId: String) = companionApi.forgetHouseholdDevice(userId, deviceId)

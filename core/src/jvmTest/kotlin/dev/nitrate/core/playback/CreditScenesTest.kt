@@ -29,6 +29,17 @@ class CreditScenesTest {
         assertFalse(CreditScenes.looksLikeCredits(darkScene()))
     }
 
+    @Test fun serverFindings() {
+        val skip = CreditSkip(5_000_000, 5_300_000, afterCredits = true)
+        // Matching the tag: sure enough to skip by itself; without a tag, only offered.
+        val tagged = CreditScenes.info(6_000_000, listOf("aftercreditsstinger"), emptyList(), emptyList(), fromServer = listOf(skip))
+        assertEquals(CreditCertainty.CONFIRMED, tagged.certainty)
+        assertEquals(listOf(skip), tagged.skips)
+        assertEquals(CreditCertainty.GUESSED, CreditScenes.info(6_000_000, emptyList(), emptyList(), emptyList(), fromServer = listOf(skip)).certainty)
+        // Checked and nothing there: no skips (the device doesn't look again).
+        assertTrue(CreditScenes.info(6_000_000, emptyList(), emptyList(), emptyList(), fromServer = emptyList()).skips.isEmpty())
+    }
+
     @Test fun tagsAlone() {
         val i = CreditScenes.info(runtime, listOf("superhero", "aftercreditsstinger"), emptyList(), emptyList())
         assertTrue(i.taggedAfter)

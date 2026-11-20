@@ -88,6 +88,8 @@ object CreditScenes {
         chapters: List<Chapter>,
         frames: List<FrameLuma>? = null,
         frameIntervalMs: Long = 10_000,
+        /** What the server found (the same reading of the video, done once for every device); empty = none there. */
+        fromServer: List<CreditSkip>? = null,
     ): CreditScenesInfo {
         val lower = tags.map { it.lowercase().replace(" ", "") }
         val during = TAG_DURING in lower
@@ -96,7 +98,7 @@ object CreditScenes {
             ?: chapters.firstOrNull { c -> c.startMs > runtimeMs / 2 && CREDIT_CHAPTERS.any { c.name.contains(it, ignoreCase = true) } }?.startMs
         val marked = fromMarkers(runtimeMs, segments, chapters)
         if (marked.isNotEmpty()) return CreditScenesInfo(marked, CreditCertainty.MARKED, during, after, creditsStart ?: marked.first().creditsStartMs)
-        val read = frames?.let { fromFrames(runtimeMs, it, frameIntervalMs) }.orEmpty()
+        val read = fromServer ?: frames?.let { fromFrames(runtimeMs, it, frameIntervalMs) }.orEmpty()
         if (read.isNotEmpty()) {
             val certainty = if ((after && read.any { it.afterCredits }) || (during && read.any { !it.afterCredits })) CreditCertainty.CONFIRMED else CreditCertainty.GUESSED
             return CreditScenesInfo(read, certainty, during, after, creditsStart ?: read.first().creditsStartMs)

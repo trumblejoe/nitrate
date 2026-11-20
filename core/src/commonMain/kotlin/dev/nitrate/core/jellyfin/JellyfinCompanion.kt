@@ -144,6 +144,9 @@ internal data class SsoPollDto(val state: String = "Failed", val message: String
  * Calls to the Nitrate Companion server plugin (companion/ in this repository): not Jellyfin's
  * own API, so it isn't in the OpenAPI contract test; its README lists the calls.
  */
+@kotlinx.serialization.Serializable internal data class CreditSkipDto(val creditsStartMs: Long, val sceneStartMs: Long, val afterCredits: Boolean)
+@kotlinx.serialization.Serializable internal data class CreditsDto(val skips: List<CreditSkipDto> = emptyList())
+
 internal class JellyfinCompanion(private val client: JellyfinClient) {
 
     suspend fun sendDeviceSummary(deviceId: String, deviceName: String, summary: dev.nitrate.core.playback.DeviceSummary) {
@@ -170,6 +173,14 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
         JellyfinJson.decodeFromString(client.get("Nitrate", "TestClips").bodyAsText())
     } catch (e: ClientRequestException) {
         if (e.response.status == HttpStatusCode.NotFound) emptyList() else throw e
+    }
+
+    /** What the server found in [itemId]'s credits (feature `credits`); null when not checked yet (or no plugin). */
+    suspend fun creditScenes(itemId: String): List<dev.nitrate.core.playback.CreditSkip>? = try {
+        JellyfinJson.decodeFromString<CreditsDto>(client.get("Nitrate", "Credits", itemId).bodyAsText())
+            .skips.map { dev.nitrate.core.playback.CreditSkip(it.creditsStartMs, it.sceneStartMs, it.afterCredits) }
+    } catch (e: ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound) null else throw e
     }
 
     suspend fun info(): CompanionInfo? = try {

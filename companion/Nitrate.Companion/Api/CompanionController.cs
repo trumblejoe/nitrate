@@ -68,6 +68,7 @@ public class CompanionController : ControllerBase
         features.Add("channels");
         features.Add("partners");
         features.Add("together");
+        features.Add("credits");
         if (Plugin.Instance?.Configuration.EnableDiary ?? true)
         {
             features.Add("diary");

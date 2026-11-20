@@ -444,6 +444,12 @@ interface MediaServer {
     suspend fun leaveGroup(groupId: String): Unit = unsupported()
 
     /** Where the other members of the user's groups on a show are (empty: none, or no Companion plugin). */
+    /**
+     * Scenes in [itemId]'s credits as the server found them (Companion feature `credits`, its
+     * nightly "Find scenes in the credits"): empty = checked, none; null = not checked yet.
+     */
+    suspend fun serverCreditScenes(itemId: String): List<dev.nitrate.core.playback.CreditSkip>? = null
+
     /** Invites people (from [partnerPeople]) to join watch-together group [groupId] (Companion feature `together`); always "sent". */
     suspend fun inviteToWatch(groupId: String, userIds: List<String>, itemId: String?, itemName: String?): Unit = unsupported()
 

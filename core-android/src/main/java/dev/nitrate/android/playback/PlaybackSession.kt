@@ -868,6 +868,15 @@ class PlaybackSession(
         _creditScenes.value = first
         if (first.skips.isNotEmpty() || !thumbnails) return
         if (item.kind != dev.nitrate.core.model.ItemKind.MOVIE && !first.tagged) return
+        // The server's reading (done once for every device, from the video itself) when it has one.
+        val found = runCatching { server.serverCreditScenes(itemId) }.getOrNull()
+        if (found != null) {
+            if (_item.value?.id != itemId) return
+            val read = dev.nitrate.core.playback.CreditScenes.info(runtime, item.tags, _segments.value, item.chapters, fromServer = found)
+            log("Credit scenes from the server: ${read.skips} (${read.certainty})")
+            _creditScenes.value = read
+            return
+        }
         val info = server.trickplay(itemId, _plan.value?.mediaSourceId) ?: return
         val frames = withContext(Dispatchers.IO) { CreditFrames.read(server, itemId, info, runtime) } ?: return
         if (_item.value?.id != itemId) return
