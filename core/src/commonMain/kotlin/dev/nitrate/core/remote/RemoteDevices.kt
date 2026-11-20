@@ -8,8 +8,11 @@ object RemoteDevices {
      * Sessions that take remote playback, other than [thisDevice], newest first per device: the
      * ones playing something first, then Nitrate's own apps (which act on every command), then by name.
      */
-    fun controllable(sessions: List<ServerSession>, thisDevice: String?): List<ServerSession> =
+    fun controllable(sessions: List<ServerSession>, thisDevice: String?, userId: String? = null): List<ServerSession> =
         sessions.filter { it.supportsMediaControl && it.deviceId != thisDevice }
+            // Only the signed-in account's own: an admin may control everyone's sessions, but another
+            // person's playing isn't this account's to show (or take over) from here.
+            .filter { userId == null || it.userId?.equals(userId, ignoreCase = true) == true }
             // A device can have an old session left over: keep its most recent (ISO times sort as text).
             .sortedByDescending { it.lastActivity.orEmpty() }
             .distinctBy { it.deviceId ?: it.id }
@@ -18,8 +21,8 @@ object RemoteDevices {
             )
 
     /** Devices playing something right now (for "Playing on…" while browsing). */
-    fun playing(sessions: List<ServerSession>, thisDevice: String?): List<ServerSession> =
-        controllable(sessions, thisDevice).filter { it.nowPlaying != null }
+    fun playing(sessions: List<ServerSession>, thisDevice: String?, userId: String? = null): List<ServerSession> =
+        controllable(sessions, thisDevice, userId).filter { it.nowPlaying != null }
 
     fun name(s: ServerSession): String = s.deviceName ?: s.client ?: "Device"
 }

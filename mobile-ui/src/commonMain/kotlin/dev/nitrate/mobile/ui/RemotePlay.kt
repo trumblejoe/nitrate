@@ -51,7 +51,7 @@ import kotlinx.coroutines.launch
 fun rememberRemoteDevices(actions: AppActions, refreshMs: Long? = null): Result<List<ServerSession>>? {
     val found by produceState<Result<List<ServerSession>>?>(null) {
         while (true) {
-            value = runCatching { RemoteDevices.controllable(actions.server.controllableSessions(), actions.server.deviceId) }
+            value = runCatching { RemoteDevices.controllable(actions.server.controllableSessions(), actions.server.deviceId, actions.server.userId) }
             delay(refreshMs ?: return@produceState)
         }
     }
@@ -128,9 +128,11 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
 @Composable
 fun PlayingElsewhereBar(actions: AppActions, modifier: Modifier = Modifier, onShown: (Boolean) -> Unit = {}) {
     var tick by remember { mutableIntStateOf(0) }
-    val playing by produceState<ServerSession?>(null, tick) {
+    // Keyed on the account: switching clears it at once (and asks again as the new one).
+    val account = actions.server.currentAccountKey ?: actions.server.userId
+    val playing by produceState<ServerSession?>(null, tick, account) {
         while (true) {
-            value = runCatching { RemoteDevices.playing(actions.server.controllableSessions(), actions.server.deviceId).firstOrNull() }.getOrNull()
+            value = runCatching { RemoteDevices.playing(actions.server.controllableSessions(), actions.server.deviceId, actions.server.userId).firstOrNull() }.getOrNull()
             delay(if (value != null) 5_000 else 20_000)
         }
     }

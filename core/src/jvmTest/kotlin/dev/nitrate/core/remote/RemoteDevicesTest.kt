@@ -25,4 +25,11 @@ class RemoteDevicesTest {
         assertEquals(listOf("bed", "tv", "web"), list.map { it.id })
         assertEquals(listOf("bed"), RemoteDevices.playing(list, "phone").map { it.id })
     }
+
+    @Test fun `only the signed-in account's own sessions, even for an admin`() {
+        val mine = s("tv", "tv", "Nitrate TV", playing = true).copy(userId = "u-admin")
+        val theirs = s("tv2", "tv2", "Nitrate TV", playing = true).copy(userId = "u-kid")
+        assertEquals(listOf("tv"), RemoteDevices.playing(listOf(mine, theirs), "phone", "u-admin").map { it.id })
+        assertEquals(listOf("tv2"), RemoteDevices.playing(listOf(mine, theirs), "phone", "u-kid").map { it.id })
+    }
 }
