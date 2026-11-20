@@ -19,10 +19,12 @@ class MainActivity : ComponentActivity() {
     // Theme music never plays while Nitrate is out of view.
     override fun onStart() {
         super.onStart()
+        dev.nitrate.tv.ui.ambient.TvIdle.shown()
         (application as NitrateApp).container.themeMusic.onAppShown()
     }
 
     override fun onStop() {
+        dev.nitrate.tv.ui.ambient.TvIdle.hidden()
         (application as NitrateApp).container.themeMusic.onAppHidden()
         // A film's refresh rate kept for the menus ends with Nitrate: the TV's usual rate when it's back.
         dev.nitrate.tv.ui.player.resetRefreshRate(this)

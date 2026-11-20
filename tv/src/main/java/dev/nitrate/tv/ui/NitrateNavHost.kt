@@ -664,15 +664,19 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     var ambient by remember { mutableStateOf<List<dev.nitrate.core.ambient.AmbientSlide>?>(null) }
     val watching = currentEntry?.destination?.let { it.hasRoute(PlayerRoute::class) || it.hasRoute(RecapRoute::class) } == true
     val signedInNow = currentEntry != null && nav.currentBackStack.value.any { it.destination.hasRoute(HomeRoute::class) }
-    LaunchedEffect(ambientMinutes, watching, signedInNow) {
-        if (!signedInNow || ambientMinutes == 0 || watching) return@LaunchedEffect
+    // Leaving the app closes the screensaver, so coming back never finds it on (it used to come on
+    // while the app was in the background and still be showing on return).
+    val appVisible by dev.nitrate.tv.ui.ambient.TvIdle.visible.collectAsState()
+    LaunchedEffect(appVisible) { if (!appVisible) ambient = null }
+    LaunchedEffect(ambientMinutes, watching, signedInNow, appVisible) {
+        if (!signedInNow || ambientMinutes == 0 || watching || !appVisible) return@LaunchedEffect
         while (true) {
             kotlinx.coroutines.delay(10_000)
             if (ambient != null || !dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) continue
             val rows = runCatching { container.server.homeRows() }.getOrNull() ?: continue
             val slides = dev.nitrate.core.ambient.Ambient.slides(rows) { container.server.backdropUrl(it) != null }
             // Still nothing pressed while Home's rows were fetched.
-            if (slides.isNotEmpty() && dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) {
+            if (slides.isNotEmpty() && dev.nitrate.tv.ui.ambient.TvIdle.visible.value && dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) {
                 container.themeMusic.onAppHidden()
                 ambient = slides
             }

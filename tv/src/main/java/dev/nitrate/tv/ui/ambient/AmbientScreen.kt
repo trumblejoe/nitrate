@@ -44,11 +44,17 @@ import dev.nitrate.core.model.MediaItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 
-/** When the remote was last pressed (any key, anywhere in the app). */
+/** When the remote was last pressed (any key, anywhere in the app), and whether the app is on screen. */
 object TvIdle {
     private val last = MutableStateFlow(System.currentTimeMillis())
+    /** The app is on screen (started): the screensaver never comes on while it's in the background. */
+    val visible = MutableStateFlow(true)
     fun press() { last.value = System.currentTimeMillis() }
     fun idleMs(): Long = System.currentTimeMillis() - last.value
+
+    /** Coming back to the app counts as a press, and closes a screensaver left showing. */
+    fun shown() { press(); visible.value = true }
+    fun hidden() { visible.value = false }
 }
 
 /**
