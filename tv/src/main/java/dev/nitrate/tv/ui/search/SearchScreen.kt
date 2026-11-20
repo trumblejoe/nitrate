@@ -230,17 +230,26 @@ fun PersonScreen(
     val header: @Composable () -> Unit = {
         Text(person.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = PagePadding, top = 24.dp, bottom = 8.dp))
     }
+    // The row's look through the Customize panel (holding OK): a rows model that only saves looks
+    // (the page has one row, so nothing to move, hide or add).
+    val moreFromRows = displaySettings?.let { store ->
+        androidx.lifecycle.viewmodel.compose.viewModel(key = "more-from") {
+            dev.nitrate.android.viewmodel.RowsViewModel(dev.nitrate.core.pages.PageKeys.MORE_FROM, { emptyList() }, store, repository)
+        }
+    }
     dev.nitrate.tv.ui.home.ThemedPage(dev.nitrate.core.pages.PageKeys.MORE_FROM) {
         val list = items
         when {
             list == null -> Column { header(); Text("Loading…", Modifier.padding(start = PagePadding)) }
             list.isEmpty() -> Column { header(); Text("Nothing here.", Modifier.padding(start = PagePadding)) }
-            else -> dev.nitrate.tv.ui.rows.RowsPage(
-                rows = listOf(dev.nitrate.core.rows.MediaRow(MORE_FROM_ROW, person.name, list, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.POSTER))),
-                overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
-                onSaveDisplay = { row, display -> if (user != null && displaySettings != null) scope.launch { displaySettings.save(user, row, display) } },
-                header = header, editButton = false,
-            )
+            else -> androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.pages.LocalPageRows provides moreFromRows) {
+                dev.nitrate.tv.ui.rows.RowsPage(
+                    rows = listOf(dev.nitrate.core.rows.MediaRow(MORE_FROM_ROW, person.name, list, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.POSTER))),
+                    overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
+                    onSaveDisplay = { row, display -> if (user != null && displaySettings != null) scope.launch { displaySettings.save(user, row, display) } },
+                    header = header, editButton = false,
+                )
+            }
         }
     }
 }

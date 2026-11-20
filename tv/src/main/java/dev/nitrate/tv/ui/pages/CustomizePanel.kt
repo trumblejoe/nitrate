@@ -208,7 +208,8 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
         var open by remember { mutableStateOf<String?>(null) }
         val libraryId = owner.removePrefix("library/").takeIf { owner.startsWith("library/") }
         Column {
-            if (vm != null) ListItem(
+            // More from… pages are one row: nothing to arrange.
+            if (vm != null && owner != PageKeys.MORE_FROM) ListItem(
                 selected = false, onClick = { open = "rows" },
                 headlineContent = { Text("Rows") }, supportingContent = { Text("Order, hide, rename and add your own") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
@@ -221,7 +222,7 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
                 modifier = if (vm == null) Modifier.focusRequester(first) else Modifier,
             )
-            ThemeItem(prefs.pageThemes[owner], null) { open = "theme" }
+            ThemeItem(prefs.pageThemes[owner], first.takeIf { owner == PageKeys.MORE_FROM }) { open = "theme" }
             BackgroundItem(prefs.pageBackdrops[owner]) { open = "background" }
         }
         when (open) {
