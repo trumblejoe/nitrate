@@ -214,6 +214,11 @@ fun RowsPage(
                     val content = remember { androidx.compose.ui.focus.FocusRequester() }
                     val rowReturn = remember { androidx.compose.ui.focus.FocusRequester() }
                     var holding by remember { mutableStateOf(false) }
+                    // The holder has focus (a style change waiting for its cards).
+                    var holderFocused by remember { mutableStateOf(false) }
+                    // The look a Fast-forward/Rewind asked for and not yet saved: quick presses step on from
+                    // it, not from the saved look (two presses used to pick the same style).
+                    var pendingLook by remember { mutableStateOf<RowDisplay?>(null) }
                     // One at a time: only the row in use shows (the first while the tabs have focus).
                     val current = if (focusedRowIndex in rows.indices) focusedRowIndex else 0
                     val shown by androidx.compose.animation.core.animateFloatAsState(if (!oneAtATime || rowIndex == current) 1f else 0f, label = "row")
@@ -234,8 +239,9 @@ fun RowsPage(
                                 val by = when (e.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
                                 if (by == 0) return@onPreviewKeyEvent false
                                 if (e.type == KeyEventType.KeyDown) {
-                                    val now = (overrides[row.key] ?: row.defaultDisplay).normalized()
+                                    val now = pendingLook ?: (overrides[row.key] ?: row.defaultDisplay).normalized()
                                     val next = now.stepped(by)
+                                    pendingLook = next
                                     if (activeShowcase == row.key) activeShowcase = null
                                     holding = true
                                     runCatching { holder.requestFocus() }
@@ -246,19 +252,36 @@ fun RowsPage(
                             },
                     ) {
                         androidx.compose.foundation.layout.Box(
-                            Modifier.size(1.dp).focusRequester(holder)
+                            Modifier.size(1.dp).focusRequester(holder).onFocusChanged { holderFocused = it.isFocused }
                                 .focusProperties { canFocus = holding }.focusable(),
                         )
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowsScroll) {
                         val display = (overrides[row.key] ?: row.defaultDisplay).normalized()
                         // The new style is on screen: into it, and the whole row back in view at its new height.
                         LaunchedEffect(display.style, display.cards) {
+                            // Only the look the last press asked for takes focus: an earlier one arriving
+                            // late (quick presses) leaves it on the holder for the next.
+                            val waited = pendingLook
+                            if (waited != null && waited != display) return@LaunchedEffect
                             if (!holding) return@LaunchedEffect
-                            kotlinx.coroutines.delay(80)
-                            runCatching { content.requestFocus() }
+                            // Some styles lay their cards out a beat later (the film strip): keep asking
+                            // until one of them has taken focus from the holder.
+                            var tries = 0
+                            do {
+                                kotlinx.coroutines.delay(80)
+                                if (pendingLook != null && pendingLook != display) return@LaunchedEffect
+                                runCatching { content.requestFocus() }
+                            } while (holderFocused && ++tries < 25)
+                            pendingLook = null
                             holding = false
                             kotlinx.coroutines.delay(60)
                             wholeRow.placeRow(spec)
+                        }
+                        // Never left on the holder: if no new look arrived to take focus, give it back to the row.
+                        LaunchedEffect(holding) {
+                            if (!holding) return@LaunchedEffect
+                            kotlinx.coroutines.delay(2_500)
+                            if (holding) { runCatching { content.requestFocus() }; holding = false; pendingLook = null }
                         }
                         val prefs = LocalDisplayPrefs.current
                         val fx = dev.nitrate.tv.ui.effects.rememberCardFx(display, prefs.effects, prefs.easyMode)
