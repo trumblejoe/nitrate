@@ -334,9 +334,14 @@ class TvScreenshotTest {
     }
 
     /** Recommended shown as its titles in a view (Artwork, 5 across) instead of rows. */
-    @Test fun libraryRecommendedAsView() = shoot("tv-library-recommended-as-view", setup = { c ->
+    @Test fun libraryGenresAsView() = shoot("tv-library-genres-as-view", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)
-        c.displaySettings.saveView("user-1", "rows/" + PageKeys.library("lib-movies"),
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+            dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES),
+            dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
+            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
+        ))
+        c.displaySettings.saveView("user-1", "rows/" + dev.nitrate.core.pages.LibraryTabs.pageKey("lib-movies", dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES)),
             dev.nitrate.core.pages.TabView(rows = false, view = dev.nitrate.core.pages.BrowseView.ARTWORK, columns = mapOf(dev.nitrate.core.pages.BrowseView.ARTWORK to 5)))
     }, act = {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("View: Artwork · 5")).fetchSemanticsNodes().isNotEmpty()) { "the View button should say the view" }
@@ -348,10 +353,20 @@ class TvScreenshotTest {
         }
     }
 
+    /** A library's main page (Recommended) has no View button: that's only on its other tabs. */
+    @Test fun libraryRecommendedNoViewButton() = libraryShot("tv-library-recommended-no-view", rowsLibrary) {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("View", substring = true)).fetchSemanticsNodes().isEmpty()) { "Recommended shouldn't have a View button" }
+    }
+
     /** Back from a view to rows through the View button: Rows, and focus stays on the button. */
     @Test fun libraryViewBackToRows() = shoot("tv-library-view-back-to-rows", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)
-        c.displaySettings.saveView("user-1", "rows/" + PageKeys.library("lib-movies"), dev.nitrate.core.pages.TabView(rows = false))
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+            dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES),
+            dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
+            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
+        ))
+        c.displaySettings.saveView("user-1", "rows/" + dev.nitrate.core.pages.LibraryTabs.pageKey("lib-movies", dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES)), dev.nitrate.core.pages.TabView(rows = false))
     }, act = {
         // Down from the tabs into the titles, along to the first, Up to the View button above it.
         press("down")
@@ -603,6 +618,37 @@ class TvScreenshotTest {
         press("up", "up")
         check(at() == first) { "Continue Watching should still be on its second card: ${at()} vs $first" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** Home with tabs opens (or is come back to, e.g. Back from a library) on the first row's card, not the tabs. */
+    @Test fun homeWithTabsOpensOnRows() = shoot("tv-home-tabs-opens-on-rows", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+    }, act = {
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "something should have focus" }
+        check(!focusedHasText("Home") && !focusedHasText("Kids")) { "Home opened with focus on the tabs" }
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot.top > 400f) { "focus should be on the row along the bottom" }
+    }) { c ->
+        val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
+    }
+
+    /** Home with tabs: Up from the second row lands on the first row's card, not the tabs. */
+    @Test fun upToFirstRowNotTabs() = shoot("tv-up-to-first-row", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+    }, act = {
+        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        press("down")
+        val first = at()
+        press("down")
+        val second = at()
+        check(second != first) { "Down should reach Next Up" }
+        press("up")
+        check(!focusedHasText("Home") && !focusedHasText("Kids") && !focusedHasText("View")) { "Up from Next Up went to the tabs" }
+        check(at() == first) { "Up should come back to Continue Watching's card: ${at()} vs $first" }
+    }) { c ->
+        val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
+    }
 
     /** Art rows (design-size cards) stay along the bottom when moved along, not pulled up the page. */
     @Test fun cressidaStaysAtBottom() = shoot("tv-cressida-stays-at-bottom", setup = { c ->

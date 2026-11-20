@@ -134,12 +134,12 @@ fun HomeScreen(
                     onSaveDisplay = vm::save, onEditPage = { editing = true }, insets = insets, header = header,
                 ) else RowsPage(
                     rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
-                    onSaveDisplay = vm::save, onEditPage = { editing = true }, header = header,
+                    onSaveDisplay = vm::save, onEditPage = { editing = true }, header = header, startOnRows = true,
                 )
             }
-            // With tabs (pinned pages), Home is one of them: rows, or its titles in a view.
-            if (tabs == null) page(null)
-            else dev.nitrate.tv.ui.library.RowsOrTitles("rows/${PageKeys.HOME}", s.rows, repository, displaySettings, tabs, onOpen, onPlay) { header -> page(header) }
+            // Home itself is always its rows, under the tabs (pinned pages) when it has them: the View
+            // button (titles in a view) is only on the other tabs.
+            page(tabs)
         }
     }
     }

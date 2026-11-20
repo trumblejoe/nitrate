@@ -210,14 +210,20 @@ private fun TabRows(
         is RowsState.Loaded -> when {
             s.rows.none { it.items.isNotEmpty() } -> Column { tabs(); Text(empty, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             // As its rows (laid out as Home can be), or its titles in one of the All tab's views.
-            else -> RowsOrTitles("rows/$pageKey", s.rows, repository, displaySettings, tabs, onOpen, onPlay, music = lib.collection == CollectionKind.MUSIC) { header ->
-                if (fullArt) dev.nitrate.tv.ui.home.FullArtPage(
-                    rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
-                    onSaveDisplay = vm::save, onEditPage = { editing = true }, insets = insets, header = header,
-                ) else RowsPage(
-                    onEditPage = { editing = true }, rows = s.rows, overrides = overrides, repository = repository,
-                    onOpen = onOpen, onPlay = onPlay, onSaveDisplay = vm::save, header = header,
-                )
+            else -> {
+                val page: @Composable (header: @Composable () -> Unit) -> Unit = { header ->
+                    if (fullArt) dev.nitrate.tv.ui.home.FullArtPage(
+                        rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
+                        onSaveDisplay = vm::save, onEditPage = { editing = true }, insets = insets, header = header,
+                    ) else RowsPage(
+                        onEditPage = { editing = true }, rows = s.rows, overrides = overrides, repository = repository,
+                        onOpen = onOpen, onPlay = onPlay, onSaveDisplay = vm::save, header = header,
+                    )
+                }
+                // The library's main page (Recommended) is always its rows; the other row tabs get the
+                // View button (as their rows, or their titles in one of the All tab's views).
+                if (pageKey == dev.nitrate.core.pages.PageKeys.library(lib.id)) page(tabs)
+                else RowsOrTitles("rows/$pageKey", s.rows, repository, displaySettings, tabs, onOpen, onPlay, music = lib.collection == CollectionKind.MUSIC) { header -> page(header) }
             }
         }
         is RowsState.Error -> Column { tabs(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }

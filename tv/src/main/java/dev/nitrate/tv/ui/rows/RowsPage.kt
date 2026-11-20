@@ -89,6 +89,11 @@ fun RowsPage(
     onEditPage: (() -> Unit)? = null,
     /** An "Edit page" button after the rows: off everywhere now (Settings → Display → Pages does it; holding OK on a row offers it too). */
     editButton: Boolean = false,
+    /**
+     * Focus coming into the page goes to the card left, else the first row, never the tabs above them
+     * (Home: opening it or coming back to it). Library pages keep it off: they open on their tab.
+     */
+    startOnRows: Boolean = false,
 ) {
     var focused by remember { mutableStateOf<MediaItem?>(null) }
     var activeShowcase by remember { mutableStateOf<String?>(null) }
@@ -100,6 +105,8 @@ fun RowsPage(
     // The card last focused in each row: moving Up/Down back into a row lands on it again, whatever
     // happened in other rows meanwhile (nearest-on-screen depended on the other row's card sizes).
     val rowLast = remember { mutableStateMapOf<String, String>() }
+    // Each row's own requester (it enters the row at its remembered card): the page is entered at a row.
+    val rowEntry = remember { mutableMapOf<String, androidx.compose.ui.focus.FocusRequester>() }
     val returnRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     val focusReturn = LocalFocusReturn.current
     DisposableEffect(focusReturn) {
@@ -149,7 +156,18 @@ fun RowsPage(
     // "Row: style" for a moment after Fast-forward/Rewind changes one.
     var styleNote by remember { mutableStateOf<Pair<String, Long>?>(null) }
     LaunchedEffect(styleNote) { if (styleNote != null) { kotlinx.coroutines.delay(2_500); styleNote = null } }
-    Box(modifier.fillMaxSize()) {
+    // Focus coming into the page (opening it, coming back to it) goes to the card left, else the first
+    // row: never the tabs above them, which are the first thing on the page (see startOnRows).
+    Box(modifier.fillMaxSize()
+        .focusProperties {
+            if (startOnRows) enter = {
+                when {
+                    lastCard != null -> returnRequester
+                    else -> rows.firstOrNull { it.items.isNotEmpty() }?.let { rowEntry[it.key] } ?: androidx.compose.ui.focus.FocusRequester.Default
+                }
+            }
+        }
+        .focusGroup()) {
         // The title's picture (or the page's chosen background) and the theme over it: drawn by the menu
         // around the page, so they carry on through tab switches.
         // A row with its cards hidden, in use, puts its own title's picture there instead.
@@ -213,6 +231,7 @@ fun RowsPage(
                     val holder = remember { androidx.compose.ui.focus.FocusRequester() }
                     val content = remember { androidx.compose.ui.focus.FocusRequester() }
                     val rowReturn = remember { androidx.compose.ui.focus.FocusRequester() }
+                    DisposableEffect(row.key) { rowEntry[row.key] = content; onDispose { if (rowEntry[row.key] === content) rowEntry.remove(row.key) } }
                     var holding by remember { mutableStateOf(false) }
                     // The holder has focus (a style change waiting for its cards).
                     var holderFocused by remember { mutableStateOf(false) }
@@ -308,9 +327,11 @@ fun RowsPage(
                         androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }.focusRequester(content)
                             .focusProperties {
                                 // Into the row: the card left in it, if it's still there; else the nearest as usual.
+                                // (Redirected, not requested here: cancelling the move sent an Up on to the tabs.)
                                 enter = {
                                     val requester = if (lastCard?.first == rowIndex) returnRequester else rowReturn
-                                    if (rowLast[row.key] != null && runCatching { requester.requestFocus() }.getOrDefault(false)) androidx.compose.ui.focus.FocusRequester.Cancel
+                                    val left = rowLast[row.key]
+                                    if (left != null && row.items.any { it.id == left }) requester
                                     else androidx.compose.ui.focus.FocusRequester.Default
                                 }
                                 exit = { d ->
