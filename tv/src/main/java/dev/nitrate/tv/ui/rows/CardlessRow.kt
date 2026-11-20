@@ -152,7 +152,7 @@ fun CardlessRow(
     ) {
         if (expanded) {
             androidx.compose.runtime.SideEffect { onArtwork(artwork) }
-            Expanded(row, item, current, repository)
+            Expanded(row, item, current, repository, display.captionSize ?: dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCaptionSize)
         } else {
             Collapsed(row, item, artwork, display)
         }
@@ -195,7 +195,7 @@ private fun Collapsed(row: MediaRow, item: MediaItem, artwork: String?, display:
 }
 
 @Composable
-private fun Expanded(row: MediaRow, item: MediaItem, index: Int, repository: MediaServer) {
+private fun Expanded(row: MediaRow, item: MediaItem, index: Int, repository: MediaServer, captionSize: dev.nitrate.core.pages.CaptionSize) {
     Box(Modifier.fillMaxSize()) {
         // The picture is the page's background here: sparks go over the whole of it, the click on the title.
         Box(Modifier.fillMaxSize().cardFx(item.id, click = false))
@@ -207,7 +207,7 @@ private fun Expanded(row: MediaRow, item: MediaItem, index: Int, repository: Med
         if (capTop) dev.nitrate.tv.ui.components.ArtCaptionShade(top = true)
         dev.nitrate.tv.ui.components.ArtCaption(
             item, label = "${row.title}  ·  ${index + 1} / ${row.items.size}", end = end,
-            logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, item),
+            logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, item, size = captionSize), size = captionSize,
             modifier = Modifier.align(when { capTop && end -> Alignment.TopEnd; capTop -> Alignment.TopStart; end -> Alignment.BottomEnd; else -> Alignment.BottomStart })
                 .padding(start = RowPadding, end = RowPadding, top = if (capTop) 72.dp else 0.dp, bottom = if (capTop) 0.dp else 56.dp).cardFx(item.id, spark = false),
         )

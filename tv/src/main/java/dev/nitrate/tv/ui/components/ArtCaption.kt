@@ -43,9 +43,11 @@ fun ArtCaption(
     showDetails: Boolean = true,
     showRatings: Boolean = true,
     showOverview: Boolean = true,
-    compact: Boolean = LocalDisplayPrefs.current.tvCaptionSize != CaptionSize.NORMAL,
+    /** The row's own caption size, else the page's. */
+    size: CaptionSize = LocalDisplayPrefs.current.tvCaptionSize,
+    compact: Boolean = size != CaptionSize.NORMAL,
     /** Minimal: the logo (passed as [logoUrl] when the title has one) and facts, never a description. */
-    minimal: Boolean = LocalDisplayPrefs.current.tvCaptionSize == CaptionSize.MINIMAL,
+    minimal: Boolean = size == CaptionSize.MINIMAL,
 ) {
     val prefs = LocalDisplayPrefs.current
     val align = if (end) Alignment.End else Alignment.Start
@@ -77,8 +79,8 @@ fun ArtCaption(
 
 /** The logo a caption shows: always with the Minimal caption, else as [wanted]. */
 @Composable
-fun captionLogo(repository: dev.nitrate.core.MediaServer, item: MediaItem, wanted: Boolean = false): String? =
-    if (wanted || LocalDisplayPrefs.current.tvCaptionSize == CaptionSize.MINIMAL) repository.logoUrl(item) else null
+fun captionLogo(repository: dev.nitrate.core.MediaServer, item: MediaItem, wanted: Boolean = false, size: CaptionSize = LocalDisplayPrefs.current.tvCaptionSize): String? =
+    if (wanted || size == CaptionSize.MINIMAL) repository.logoUrl(item) else null
 
 /** How wide a caption may run: kept narrow so the picture shows. */
 fun captionWidth(compact: Boolean): Dp = if (compact) 260.dp else 340.dp

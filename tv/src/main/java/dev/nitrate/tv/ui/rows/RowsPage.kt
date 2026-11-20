@@ -405,15 +405,17 @@ fun RowsPage(
                                 val p = LocalDisplayPrefs.current
                                 val place = p.tvRowPlace
                                 val (capTop, capEnd) = p.tvCaptionCorner.resolve(rowIndex, place)
-                                val compact = p.tvCaptionSize != dev.nitrate.core.pages.CaptionSize.NORMAL
+                                // The row's own caption size, else the page's.
+                                val capSize = display.captionSize ?: p.tvCaptionSize
+                                val compact = capSize != dev.nitrate.core.pages.CaptionSize.NORMAL
                                 val shownItem = focused?.takeIf { f -> row.items.any { it.id == f.id } } ?: row.items.firstOrNull()
                                 val number = shownItem?.let { f -> row.items.indexOfFirst { it.id == f.id } + 1 } ?: 0
                                 val captionPad = Modifier.padding(start = if (capEnd) 0.dp else RowPadding, end = if (capEnd) RowPadding else 0.dp, top = if (capTop) 12.dp else 0.dp, bottom = if (capTop) 0.dp else 10.dp)
                                 val caption: @Composable (Modifier) -> Unit = { m ->
                                     if (shownItem != null) dev.nitrate.tv.ui.components.ArtCaption(
                                         shownItem, label = "${row.title}  ·  $number / ${row.items.size}", end = capEnd,
-                                        logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, shownItem),
-                                        compact = compact, modifier = m.then(captionPad).width(dev.nitrate.tv.ui.components.captionWidth(compact)),
+                                        logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, shownItem, size = capSize),
+                                        size = capSize, compact = compact, modifier = m.then(captionPad).width(dev.nitrate.tv.ui.components.captionWidth(compact)),
                                     )
                                 }
                                 val partial = p.tvRowExtent == dev.nitrate.core.pages.RowExtent.PARTIAL

@@ -634,6 +634,18 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
     }
 
+    /** A row's own caption size wins over the page's: Compact on this row, so no description. */
+    @Test fun rowCaptionSize() = shoot("tv-row-caption-compact", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, showTitles = true, captionSize = dev.nitrate.core.pages.CaptionSize.COMPACT))
+    }, act = {
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("projectionist discovers", substring = true)).fetchSemanticsNodes().isEmpty()) { "the row's compact caption shouldn't show a description" }
+        press("down")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
     /** Customize → Layout over Home: a change is this page's own, every other page keeps its layout. */
     @Test fun customizeLayoutPerPage() {
         lateinit var container: AppContainer

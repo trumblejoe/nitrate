@@ -90,6 +90,8 @@ data class RowDisplay(
      * background with its caption, stepped through with ◀▶ (what Full Showcase was).
      */
     val cards: Boolean = true,
+    /** TV: this row's caption (for the title in focus); null = the page's (`DisplayPrefs.tvCaptionSize`). */
+    val captionSize: dev.nitrate.core.pages.CaptionSize? = null,
 ) {
     /**
      * The look [by] places on, round the list: each style in [RowStyle.choices], Artwork followed by

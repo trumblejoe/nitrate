@@ -140,6 +140,7 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.rowLookItems(
                     item { ToggleItem("Show details", display.showcase.showDetails) { showcase { copy(showDetails = it) } } }
                     item { ToggleItem("Show ratings", display.showcase.showRatings) { showcase { copy(showRatings = it) } } }
                     item { ToggleItem("Show overview", display.showcase.showOverview) { showcase { copy(showOverview = it) } } }
+                    item { captionChoice(display, onChange) }
                 } else {
                 item {
                     ChoiceItem("Style", display.style.label, firstMod) {
@@ -149,6 +150,7 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.rowLookItems(
                 item {
                     ChoiceItem("Size", display.size.label) { onChange(display.copy(size = display.size.next())) }
                 }
+                item { captionChoice(display, onChange) }
                 if (display.style == RowStyle.CRESSIDA) {
                     item {
                         ChoiceItem("Ink", display.ink.label) {
@@ -196,6 +198,19 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.rowLookItems(
                         ListItem(selected = false, onClick = { onChange(row.defaultDisplay.normalized()) }, headlineContent = { Text("Reset to default") })
                     }
                 }
+}
+
+/**
+ * The row's caption (the title in focus, wherever a caption is drawn: rows one at a time, cards
+ * hidden, full art): the page's, or a size of its own. Page's → Normal → Compact → Minimal.
+ */
+@Composable
+private fun captionChoice(display: RowDisplay, onChange: (RowDisplay) -> Unit) {
+    val page = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCaptionSize
+    val order = listOf<dev.nitrate.core.pages.CaptionSize?>(null) + dev.nitrate.core.pages.CaptionSize.entries
+    ChoiceItem("Caption", display.captionSize?.label ?: "Page's (${page.label})") {
+        onChange(display.copy(captionSize = order[(order.indexOf(display.captionSize) + 1) % order.size]))
+    }
 }
 
 @Composable
