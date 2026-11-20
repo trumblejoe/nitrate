@@ -216,6 +216,8 @@ fun RowsPage(
                     var holding by remember { mutableStateOf(false) }
                     // The holder has focus (a style change waiting for its cards).
                     var holderFocused by remember { mutableStateOf(false) }
+                    // A card in the row (not the holder) has focus.
+                    var contentFocused by remember { mutableStateOf(false) }
                     // The look a Fast-forward/Rewind asked for and not yet saved: quick presses step on from
                     // it, not from the saved look (two presses used to pick the same style).
                     var pendingLook by remember { mutableStateOf<RowDisplay?>(null) }
@@ -263,24 +265,25 @@ fun RowsPage(
                             // late (quick presses) leaves it on the holder for the next.
                             val waited = pendingLook
                             if (waited != null && waited != display) return@LaunchedEffect
-                            if (!holding) return@LaunchedEffect
+                            if (!holding && waited == null) return@LaunchedEffect
                             // Some styles lay their cards out a beat later (the film strip): keep asking
-                            // until one of them has taken focus from the holder.
+                            // until one of them has focus.
                             var tries = 0
                             do {
                                 kotlinx.coroutines.delay(80)
                                 if (pendingLook != null && pendingLook != display) return@LaunchedEffect
                                 runCatching { content.requestFocus() }
-                            } while (holderFocused && ++tries < 25)
+                            } while (!contentFocused && ++tries < 50)
                             pendingLook = null
                             holding = false
                             kotlinx.coroutines.delay(60)
                             wholeRow.placeRow(spec)
                         }
-                        // Never left on the holder: if no new look arrived to take focus, give it back to the row.
+                        // Never left on the holder: if the look asked for never arrives (its save failed), give
+                        // focus back to the row. A slow save is waited for: the look takes focus when it comes.
                         LaunchedEffect(holding) {
                             if (!holding) return@LaunchedEffect
-                            kotlinx.coroutines.delay(2_500)
+                            kotlinx.coroutines.delay(10_000)
                             if (holding) { runCatching { content.requestFocus() }; holding = false; pendingLook = null }
                         }
                         val prefs = LocalDisplayPrefs.current
@@ -302,7 +305,7 @@ fun RowsPage(
                         val menuSide = dev.nitrate.tv.ui.home.LocalMenuSide.current
                         val reachMenu = dev.nitrate.tv.ui.home.LocalMenuEdge.current
                         val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
-                        androidx.compose.foundation.layout.Box(Modifier.focusRequester(content)
+                        androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }.focusRequester(content)
                             .focusProperties {
                                 // Into the row: the card left in it, if it's still there; else the nearest as usual.
                                 enter = {
