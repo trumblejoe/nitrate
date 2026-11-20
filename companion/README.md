@@ -148,3 +148,11 @@ its settings: never change it.
 
 GPL-3.0-or-later (see `LICENSE`), because it builds on Jellyfin's own GPL libraries. This covers
 only this folder; the Nitrate apps talk to it over HTTP.
+
+## Smart collections
+
+Admins add rules on the plugin's settings page (Dashboard → Plugins → Nitrate Companion). Each rule keeps an ordinary
+Jellyfin collection up to date: every condition filled in must hold (films or shows, libraries, genres, tags, studios, age
+ratings, release years, community rating, running time, added in the last N days, 4K only, HDR only), and in a list any
+one entry will do. The "Update smart collections" task runs nightly and ten minutes after titles are added or removed;
+"Update now" on the settings page runs it at once. Removing a rule leaves its collection as an ordinary one.

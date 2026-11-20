@@ -65,5 +65,8 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
 #pragma warning disable CA1819 // Jellyfin's XML settings need an array.
     public string[] PrivateUserIds { get; set; } = Array.Empty<string>();
+
+    /// <summary>Gets or sets the rule-based collections the plugin keeps up to date.</summary>
+    public Nitrate.Companion.SmartCollections.SmartRule[] SmartCollections { get; set; } = Array.Empty<Nitrate.Companion.SmartCollections.SmartRule>();
 #pragma warning restore CA1819
 }

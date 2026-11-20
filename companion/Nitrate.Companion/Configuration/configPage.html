@@ -5,7 +5,7 @@
     <title>Nitrate Companion</title>
 </head>
 <body>
-<div id="NitrateCompanionConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
+<div id="NitrateCompanionConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-select">
     <div data-role="content">
         <div class="content-primary">
             <form id="NitrateCompanionConfigForm">
@@ -40,6 +40,19 @@
                         <span>Show everyone's names when sharing a script</span>
                     </label>
                     <div class="fieldDescription">Off: people invite others by typing an exact user name.</div>
+                </div>
+
+                <h3>Smart collections</h3>
+                <div class="fieldDescription" style="margin-bottom:1em">
+                    Ordinary Jellyfin collections that keep themselves up to date from rules: every condition you fill in must
+                    hold, and in a list (genres, tags, studios, age ratings) any one will do. They're updated every night and
+                    ten minutes after titles are added or removed (Scheduled tasks → "Update smart collections"). Removing a
+                    rule leaves its collection as an ordinary one.
+                </div>
+                <div id="SmartRules"></div>
+                <div style="display:flex;gap:.5em;margin:1em 0 2em">
+                    <button is="emby-button" type="button" id="AddSmartRule" class="raised emby-button"><span>Add a collection</span></button>
+                    <button is="emby-button" type="button" id="UpdateSmartNow" class="raised emby-button"><span>Update now</span></button>
                 </div>
 
                 <h3>Private accounts</h3>
@@ -149,11 +162,136 @@
                 });
             });
             page.querySelector('#SsoPublicUrl').addEventListener('input', redirect);
+
+            // Smart collections: one card per rule.
+            var libraries = [];
+            function listText(v) { return (v || []).join(', '); }
+            function listOf(v) { return v.split(',').map(function (x) { return x.trim(); }).filter(function (x) { return x; }); }
+            function numberOf(v) { return v === '' ? null : Number(v); }
+            function field(card, label, cls, value, type) {
+                var box = document.createElement('div');
+                box.className = 'inputContainer';
+                var input = document.createElement('input');
+                input.setAttribute('is', 'emby-input');
+                input.type = type || 'text';
+                input.className = cls;
+                input.setAttribute('label', label);
+                input.value = value === null || value === undefined ? '' : value;
+                box.appendChild(input);
+                card.appendChild(box);
+            }
+            function check(card, label, cls, on) {
+                var l = document.createElement('label');
+                l.className = 'emby-checkbox-label';
+                l.style.display = 'block';
+                var i = document.createElement('input');
+                i.type = 'checkbox';
+                i.setAttribute('is', 'emby-checkbox');
+                i.className = cls;
+                i.checked = !!on;
+                var t = document.createElement('span');
+                t.textContent = label;
+                l.appendChild(i);
+                l.appendChild(t);
+                card.appendChild(l);
+            }
+            function addRule(r) {
+                r = r || { Enabled: true };
+                var card = document.createElement('div');
+                card.className = 'smartRule paperList';
+                card.style.padding = '1em';
+                card.style.marginBottom = '1em';
+                card.dataset.id = r.Id || '';
+                field(card, 'Collection name', 'srName', r.Name);
+                check(card, 'On', 'srEnabled', r.Enabled !== false);
+                var types = document.createElement('select');
+                types.setAttribute('is', 'emby-select');
+                types.className = 'srTypes';
+                [['', 'Films and shows'], ['Movie', 'Films'], ['Series', 'Shows']].forEach(function (o) {
+                    var opt = document.createElement('option');
+                    opt.value = o[0];
+                    opt.textContent = o[1];
+                    types.appendChild(opt);
+                });
+                types.value = (r.Types || []).length === 1 ? r.Types[0] : '';
+                card.appendChild(types);
+                var libs = document.createElement('div');
+                libs.className = 'srLibraries';
+                libs.style.margin = '.5em 0';
+                libraries.forEach(function (lib) {
+                    check(libs, lib.Name, 'srLibrary', (r.LibraryIds || []).some(function (x) { return x.replace(/-/g, '').toLowerCase() === lib.ItemId.replace(/-/g, '').toLowerCase(); }));
+                    libs.lastChild.querySelector('input').dataset.id = lib.ItemId;
+                });
+                card.appendChild(libs);
+                field(card, 'Genres (any; comma between)', 'srGenres', listText(r.Genres));
+                field(card, 'Tags (any)', 'srTags', listText(r.Tags));
+                field(card, 'Studios (any)', 'srStudios', listText(r.Studios));
+                field(card, 'Age ratings (any, e.g. PG, PG-13)', 'srAgeRatings', listText(r.AgeRatings));
+                field(card, 'Released from (year)', 'srYearFrom', r.YearFrom, 'number');
+                field(card, 'Released up to (year)', 'srYearTo', r.YearTo, 'number');
+                field(card, 'Community rating at least (0–10)', 'srMinRating', r.MinRating, 'number');
+                field(card, 'Films up to (minutes)', 'srMaxMinutes', r.MaxMinutes, 'number');
+                field(card, 'Added in the last (days)', 'srAddedWithinDays', r.AddedWithinDays, 'number');
+                check(card, 'Only 4K', 'srOnly4K', r.Only4K);
+                check(card, 'Only HDR (HDR10, HDR10+, HLG, Dolby Vision)', 'srOnlyHdr', r.OnlyHdr);
+                field(card, 'At most (newest added first; empty: no limit)', 'srLimit', r.Limit || '', 'number');
+                var remove = document.createElement('button');
+                remove.type = 'button';
+                remove.setAttribute('is', 'emby-button');
+                remove.className = 'emby-button';
+                remove.textContent = 'Remove this rule';
+                remove.addEventListener('click', function () { card.remove(); });
+                card.appendChild(remove);
+                page.querySelector('#SmartRules').appendChild(card);
+            }
+            function readRules() {
+                return Array.prototype.map.call(page.querySelectorAll('.smartRule'), function (c) {
+                    var q = function (k) { return c.querySelector('.' + k); };
+                    var rule = {
+                        Name: q('srName').value.trim(),
+                        Enabled: q('srEnabled').checked,
+                        Types: q('srTypes').value ? [q('srTypes').value] : [],
+                        LibraryIds: Array.prototype.filter.call(c.querySelectorAll('.srLibrary'), function (i) { return i.checked; }).map(function (i) { return i.dataset.id; }),
+                        Genres: listOf(q('srGenres').value),
+                        Tags: listOf(q('srTags').value),
+                        Studios: listOf(q('srStudios').value),
+                        AgeRatings: listOf(q('srAgeRatings').value),
+                        YearFrom: numberOf(q('srYearFrom').value),
+                        YearTo: numberOf(q('srYearTo').value),
+                        MinRating: numberOf(q('srMinRating').value),
+                        MaxMinutes: numberOf(q('srMaxMinutes').value),
+                        AddedWithinDays: numberOf(q('srAddedWithinDays').value),
+                        Only4K: q('srOnly4K').checked,
+                        OnlyHdr: q('srOnlyHdr').checked,
+                        Limit: numberOf(q('srLimit').value) || 0
+                    };
+                    if (c.dataset.id) { rule.Id = c.dataset.id; }
+                    return rule;
+                }).filter(function (r) { return r.Name; });
+            }
+            page.querySelector('#AddSmartRule').addEventListener('click', function () { addRule(null); });
+            page.querySelector('#UpdateSmartNow').addEventListener('click', function () {
+                ApiClient.getScheduledTasks().then(function (tasks) {
+                    var task = tasks.filter(function (t) { return t.Key === 'NitrateUpdateSmartCollections'; })[0];
+                    if (task) { ApiClient.startScheduledTask(task.Id).then(function () { Dashboard.alert('Updating smart collections (save your rules first).'); }); }
+                });
+            });
+            page.addEventListener('pageshow', function () {
+                ApiClient.getJSON(ApiClient.getUrl('Library/VirtualFolders')).then(function (folders) {
+                    libraries = (folders || []).filter(function (f) { return f.CollectionType === 'movies' || f.CollectionType === 'tvshows' || !f.CollectionType; });
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        var box = page.querySelector('#SmartRules');
+                        box.innerHTML = '';
+                        (config.SmartCollections || []).forEach(addRule);
+                    });
+                });
+            });
             page.querySelector('#NitrateCompanionConfigForm').addEventListener('submit', function (e) {
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     checks.forEach(function (k) { config[k] = page.querySelector('#' + k).checked; });
                     texts.forEach(function (k) { config[k] = page.querySelector('#' + k).value; });
+                    config.SmartCollections = readRules();
                     config.PrivateUserIds = Array.prototype.filter.call(page.querySelectorAll('.privateUser'), function (i) { return i.checked; })
                         .map(function (i) { return i.dataset.id; });
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
