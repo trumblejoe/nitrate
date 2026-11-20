@@ -174,7 +174,7 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
                 video?.inRange == null || video.inRange == "SDR" -> "SDR"
                 video.displayHdr?.contains(video.inRange) == true -> video.inRange
                 video.inRange == "Dolby Vision" && video.displayHdr?.contains("HDR10") == true -> "HDR10"
-                else -> "SDR (converted by this device)"
+                else -> "${video.inRange} if this device sends it as HDR, else SDR (Android reports no HDR here)"
             }
             return Trail("Picture", listOfNotNull(
                 TrailStep("File", TrailActor.FILE, PlaybackPredictor.describe(v) + (source.container?.let { " in ${it.uppercase()}" } ?: "")),

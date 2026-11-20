@@ -98,7 +98,7 @@ object PlaybackGuide {
                 "\"Tone-mapped to SDR by the server\": your server converted it. Its reason says why: often HDR10 or Dolby Vision set to Never on this device, or the display not reporting HDR.",
                 "If the TV can show HDR (check with the TV & receiver check), set HDR10 and Dolby Vision to Always in Settings → Tools → Advanced playback settings.",
                 "If it really can't, the server's tone mapping needs to be on: an admin can check it in Server-side settings → Converting on the server.",
-                "\"Converted to SDR by this device\": the device did it itself because Android reports no HDR. The picture is usually fine. For real HDR, see the next section.",
+                "\"Sent as HDR. Android reports no HDR\": Nitrate sent the HDR on, but Android says the display doesn't take it, so the device may turn it into SDR itself (Fire TV does in Adaptive). If the picture looks dim, try Fire TV's Always HDR (Display & Sounds → Display → Dynamic Range Settings). For real HDR, see the next section.",
             ),
         ),
         GuideSection(

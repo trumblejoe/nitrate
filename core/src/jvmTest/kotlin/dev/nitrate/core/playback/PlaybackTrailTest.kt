@@ -44,8 +44,8 @@ class PlaybackTrailTest {
         assertEquals("Repackaged it (direct stream): the picture copied untouched", picture.getValue("Server").what)
         assertTrue("Dolby Vision allowed (set to Always)" in picture.getValue("Asked for").why!!, picture.getValue("Asked for").why)
         assertEquals("HEVC (Dolby Vision) · 3840×2160 · 23.976 fps · Dolby Vision", picture.getValue("Arrived").what)
-        assertTrue("converted to SDR by this device" in picture.getValue("Went out").what, picture.getValue("Went out").what)
-        assertEquals("Expect SDR (converted by this device)", picture.getValue("At the TV").what)
+        assertTrue("Android reports no HDR on this display" in picture.getValue("Went out").what, picture.getValue("Went out").what)
+        assertEquals("Expect Dolby Vision if this device sends it as HDR, else SDR (Android reports no HDR here)", picture.getValue("At the TV").what)
         val refresh = trail.trails.first { it.title == "Refresh rate" }.steps.last()
         assertEquals("Switched the TV from 59.94 Hz to 23.976 Hz", refresh.what)
         val sound = trail.trails.first { it.title == "Sound" }.steps.associateBy { it.step }

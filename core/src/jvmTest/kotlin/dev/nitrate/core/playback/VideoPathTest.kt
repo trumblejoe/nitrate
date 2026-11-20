@@ -33,7 +33,9 @@ class VideoPathTest {
             "Dolby Vision (profile 7) → HDR10 (its base layer), shown as HDR10",
             VideoPath(inRange = "HDR10", fileRange = "Dolby Vision (profile 7)", profile7 = Profile7Playback.BASE_LAYER, displayHdr = setOf("HDR10")).hdrPath(),
         )
-        assertEquals("HDR10, converted to SDR by this device on its way out (Android reports no HDR on this display)", VideoPath(inRange = "HDR10", displayHdr = emptySet()).hdrPath())
+        assertEquals("HDR10, sent as HDR. Android reports no HDR on this display (if the picture looks dim, try setting this device to always send HDR).", VideoPath(inRange = "HDR10", displayHdr = emptySet()).hdrPath())
+        assertEquals("HDR10, sent as HDR. Android reports no HDR, but your TV showed it in the TV check (if the picture looks dim, try setting Fire TV to Always HDR).",
+            VideoPath(inRange = "HDR10", displayHdr = emptySet(), tvShowedHdr = true, fireTv = true).hdrPath())
         assertNull(VideoPath(inRange = "SDR").hdrPath())
     }
 

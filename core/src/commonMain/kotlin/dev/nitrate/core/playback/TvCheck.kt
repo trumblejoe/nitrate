@@ -65,6 +65,10 @@ object TvCheck {
     }
 
     /** What the check says about a file of [hdr] ("HDR10", "DOVI", "HLG") and [audioCodec], for How it plays. */
+    /** The user said the TV showed one of the HDR or Dolby Vision clips. */
+    fun showedHdr(seen: Map<String, SeenClip>): Boolean =
+        seen.values.any { it.format in setOf("HDR10", "HLG", "DOVI") && it.answer == Answer.YES }
+
     fun quoted(seen: Map<String, SeenClip>, hdr: String?, audioCodec: String?): List<String> = buildList {
         hdr?.let { f -> seen.values.filter { it.format == f }.maxByOrNull { it.atMs }?.let { s ->
             add(when (s.answer) {

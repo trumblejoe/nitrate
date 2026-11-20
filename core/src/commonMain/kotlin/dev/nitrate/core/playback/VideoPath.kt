@@ -37,6 +37,10 @@ data class VideoPath(
     val secondSubtitle: String? = null,
     /** What the server converts to, when it does ("H.264 · 1920 px wide · 8 Mbps"). */
     val convertingTo: String? = null,
+    /** The TV check's answers say the TV showed an HDR clip (`TvCheck.showedHdr`). */
+    val tvShowedHdr: Boolean = false,
+    /** An Amazon Fire TV, whose Dynamic Range setting decides what goes out. */
+    val fireTv: Boolean = false,
 ) {
     fun rows(): List<Pair<String, String>> = buildList {
         val shown = listOfNotNull(inCodec?.uppercase(), size(inWidth, inHeight), inFps?.takeIf { it > 0 }?.let { "${fps(it)} fps" }, inRange)
@@ -71,9 +75,8 @@ data class VideoPath(
             displayHdr == null -> ""
             range in displayHdr -> ", shown as $range"
             range == "Dolby Vision" && "HDR10" in displayHdr -> ", shown as HDR10 (the display doesn't take Dolby Vision)"
-            // Not the server: the video arrived as HDR and this device converts it on its way out.
-            else -> ", converted to SDR by this device on its way out (Android reports " +
-                (if (displayHdr.isEmpty()) "no HDR" else "only ${displayHdr.sorted().joinToString(", ")}") + " on this display)"
+            // Nitrate sends it on as HDR; what the device does with it Android doesn't say.
+            else -> ", " + hdrUnreported(displayHdr, tvShowedHdr, fireTv).replaceFirstChar { it.lowercase() }
         }
         return "$from$range$how$shown"
     }
@@ -94,6 +97,18 @@ data class VideoPath(
 
     companion object {
         const val DROPPED_WARN = 30
+
+        /**
+         * HDR sent on to a display Android says doesn't take it. Nitrate can't see the HDMI signal
+         * and Android doesn't say whether the device converts it to SDR (Fire TV's Adaptive) or sends
+         * it as HDR anyway (Always HDR), so it says what it knows, the TV check's answer, and the tip.
+         */
+        fun hdrUnreported(displayHdr: Set<String>, tvShowedHdr: Boolean, fireTv: Boolean): String {
+            val reports = if (displayHdr.isEmpty()) "no HDR" else "only ${displayHdr.sorted().joinToString(", ")}"
+            val tip = "if the picture looks dim, try setting " + (if (fireTv) "Fire TV to Always HDR" else "this device to always send HDR")
+            return if (tvShowedHdr) "Sent as HDR. Android reports $reports, but your TV showed it in the TV check ($tip)."
+            else "Sent as HDR. Android reports $reports on this display ($tip)."
+        }
         const val LOW_BUFFER_MS = 5_000L
 
         /**

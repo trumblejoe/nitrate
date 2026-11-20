@@ -183,8 +183,11 @@ class PlaybackSession(
      * gets, HDR and how it's shown, the display's mode, smoothness and how subtitles are drawn.
      */
     fun videoPath(): kotlinx.coroutines.flow.Flow<dev.nitrate.core.playback.VideoPath> = kotlinx.coroutines.flow.flow {
+        // What the user saw in the TV check: HDR going to a display Android says doesn't take it is
+        // described with it (Nitrate can't see the HDMI signal).
+        val showedHdr = deviceCheck()?.seen?.let(dev.nitrate.core.playback.TvCheck::showedHdr) == true
         while (true) {
-            emit(videoSnapshot())
+            emit(videoSnapshot().copy(tvShowedHdr = showedHdr, fireTv = android.os.Build.MANUFACTURER.equals("Amazon", ignoreCase = true)))
             delay(1_000)
         }
     }
@@ -1071,7 +1074,10 @@ class PlaybackSession(
                 caps = caps,
                 settings = s,
                 prediction = prediction,
-                video = videoSnapshot(),
+                video = videoSnapshot().copy(
+                    tvShowedHdr = s.deviceCheck?.seen?.let(dev.nitrate.core.playback.TvCheck::showedHdr) == true,
+                    fireTv = android.os.Build.MANUFACTURER.equals("Amazon", ignoreCase = true),
+                ),
                 audio = _audioPath.value,
                 arrivedVideoCodec = videoFormat?.sampleMimeType,
                 arrivedAudioCodec = audioInFormat?.sampleMimeType,
