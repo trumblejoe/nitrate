@@ -108,19 +108,41 @@ fun RowSettingsDialog(
     fullArt: Boolean = false,
 ) {
     val first = remember { FocusRequester() }
-    fun showcase(update: ShowcaseOptions.() -> ShowcaseOptions) = onChange(display.copy(showcase = display.showcase.update()))
-
     Dialog(onDismissRequest = onDismiss) {
         DialogPanel(row.title) {
             LazyColumn {
+                rowLookItems(row, display, onChange, first, fullArt)
+                onEditPage?.let { edit ->
+                    item { ListItem(selected = false, onClick = edit, headlineContent = { Text("Edit page") }, supportingContent = { Text("Order, hide, rename and add rows") }) }
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+}
+
+/**
+ * A row's look as list items: style, size, its style's own choices, effects and Reset. The row's
+ * long-press dialog and the Customize panel (pages/CustomizePanel) both show these.
+ */
+internal fun androidx.compose.foundation.lazy.LazyListScope.rowLookItems(
+    row: MediaRow,
+    display: RowDisplay,
+    onChange: (RowDisplay) -> Unit,
+    first: FocusRequester? = null,
+    fullArt: Boolean = false,
+) {
+    fun showcase(update: ShowcaseOptions.() -> ShowcaseOptions) = onChange(display.copy(showcase = display.showcase.update()))
+    val firstMod = first?.let { Modifier.focusRequester(it) } ?: Modifier
+
                 if (fullArt) {
-                    item { ToggleItem("Show logo", display.showcase.showLogo, Modifier.focusRequester(first)) { showcase { copy(showLogo = it) } } }
+                    item { ToggleItem("Show logo", display.showcase.showLogo, firstMod) { showcase { copy(showLogo = it) } } }
                     item { ToggleItem("Show details", display.showcase.showDetails) { showcase { copy(showDetails = it) } } }
                     item { ToggleItem("Show ratings", display.showcase.showRatings) { showcase { copy(showRatings = it) } } }
                     item { ToggleItem("Show overview", display.showcase.showOverview) { showcase { copy(showOverview = it) } } }
                 } else {
                 item {
-                    ChoiceItem("Style", display.style.label, Modifier.focusRequester(first)) {
+                    ChoiceItem("Style", display.style.label, firstMod) {
                         onChange(display.copy(style = display.style.next()))
                     }
                 }
@@ -169,22 +191,15 @@ fun RowSettingsDialog(
                 if (display.cardSpark != dev.nitrate.core.effects.CardSpark.NONE) {
                     item { ChoiceItem("How often", display.sparkRate.label) { onChange(display.copy(sparkRate = display.sparkRate.cycle())) } }
                 }
-                onEditPage?.let { edit ->
-                    item { ListItem(selected = false, onClick = edit, headlineContent = { Text("Edit page") }, supportingContent = { Text("Order, hide, rename and add rows") }) }
-                }
                 if (display != row.defaultDisplay.normalized()) {
                     item {
                         ListItem(selected = false, onClick = { onChange(row.defaultDisplay.normalized()) }, headlineContent = { Text("Reset to default") })
                     }
                 }
-            }
-        }
-    }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
 @Composable
-private fun ChoiceItem(label: String, value: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun ChoiceItem(label: String, value: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     ListItem(
         selected = false,
         onClick = onClick,
@@ -195,7 +210,7 @@ private fun ChoiceItem(label: String, value: String, modifier: Modifier = Modifi
 }
 
 @Composable
-private fun ToggleItem(label: String, checked: Boolean, modifier: Modifier = Modifier, onToggle: (Boolean) -> Unit) {
+internal fun ToggleItem(label: String, checked: Boolean, modifier: Modifier = Modifier, onToggle: (Boolean) -> Unit) {
     ListItem(
         modifier = modifier,
         selected = false,

@@ -611,7 +611,8 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
  */
 @Composable
 fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), content: @Composable () -> Unit) {
-    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    // The page's own layout (core PageLooks): everything inside reads it as the display prefs.
+    val prefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, pageKey)
     val theme = pageKey?.let { prefs.pageThemes[it] }
     val occasion = dev.nitrate.tv.ui.effects.rememberOccasion(prefs.effects)
     val themed = !prefs.easyMode
@@ -624,7 +625,15 @@ fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), content: @Co
             if (behind.titles > 0 || !backdrop.followsTitle) dev.nitrate.tv.ui.effects.PageBackground(backdrop, behind.artwork)
             if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.BEHIND)
             if (behind.active && behind.titles > 0) dev.nitrate.tv.ui.effects.ThemeShade()
-            content()
+            // The page's own layout, and the Customize panel held here so it outlives the page's
+            // redraws (a row's new style, rows ↔ full-screen artwork).
+            val customize = remember { dev.nitrate.tv.ui.pages.CustomizeHost() }
+            androidx.compose.runtime.CompositionLocalProvider(
+                dev.nitrate.tv.ui.components.LocalDisplayPrefs provides prefs,
+                dev.nitrate.tv.ui.pages.LocalLayoutPage provides pageKey,
+                dev.nitrate.tv.ui.pages.LocalCustomizeHost provides customize.takeIf { pageKey != null },
+            ) { content() }
+            if (pageKey != null) dev.nitrate.tv.ui.pages.CustomizeLayer(customize, pageKey)
             if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.INFRONT)
         }
     }

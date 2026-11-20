@@ -132,7 +132,11 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
                         item(key = "pages") { PinnedPages(actions) }
                         items(s.rows, key = { it.key }) { row ->
                             // Rows added or removed by a reload slide and fade rather than jump.
-                            Box(Modifier.animateItem()) { CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) }) }
+                            Box(Modifier.animateItem()) {
+                                androidx.compose.runtime.CompositionLocalProvider(LocalPagePanel provides remember(vm) { PagePanel("Home", vm, null) }) {
+                                    CinematicRow(row, overrides[row.key] ?: row.defaultDisplay, actions, onDisplay = { vm.save(row, it) })
+                                }
+                            }
                         }
                         item(key = "edit") {
                             Box(Modifier.fillMaxWidth(), Alignment.Center) { PillButton("Edit Home", Icons.Default.Edit, primary = false, onClick = { editing = true }) }
@@ -203,7 +207,7 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, actions: AppActions, onDisp
         return
     }
     Column {
-        SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(display, onDisplay) }
+        SectionHeader(row.title) { if (onDisplay != null) RowStylePicker(row, display, onDisplay, actions) }
         when (display.style) {
             RowStyle.FILM_STRIP -> FilmStripRow(row, actions)
             RowStyle.LIGHTNING -> LightningRow(row, actions)
@@ -244,7 +248,20 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, actions: AppActions, onDisp
 
 /** The row's look, changed in place: its style, cards shown or hidden (Artwork), and titles. */
 @Composable
-private fun RowStylePicker(display: RowDisplay, onDisplay: (RowDisplay) -> Unit) {
+private fun RowStylePicker(row: MediaRow, display: RowDisplay, onDisplay: (RowDisplay) -> Unit, actions: AppActions) {
+    // On a page of rows: Customize (this row and this page) in a sheet; elsewhere the quick menu.
+    val panel = LocalPagePanel.current
+    if (panel != null) {
+        var customizing by remember { mutableStateOf(false) }
+        Text(
+            display.styleLabel,
+            style = MaterialTheme.typography.labelLarge,
+            color = accentColor(),
+            modifier = Modifier.clip(RoundedCornerShape(14.dp)).pressable({ customizing = true }).padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+        if (customizing) CustomizeSheet(row, panel, actions, onDismiss = { customizing = false })
+        return
+    }
     var open by remember { mutableStateOf(false) }
     var colouring by remember { mutableStateOf(false) }
     if (colouring) InkColourDialog(display, onSave = { onDisplay(it); colouring = false }, onDismiss = { colouring = false })
@@ -325,7 +342,7 @@ private fun FullShowcaseRow(row: MediaRow, display: RowDisplay, actions: AppActi
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(row.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
-            if (onDisplay != null) RowStylePicker(display, onDisplay)
+            if (onDisplay != null) RowStylePicker(row, display, onDisplay, actions)
         }
         Text(
             "${pager.currentPage + 1} / ${row.items.size}",

@@ -103,7 +103,7 @@ private fun PageCard(title: String, modifier: Modifier = Modifier, onClick: () -
 }
 
 @Composable
-private fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+internal fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var name by remember { mutableStateOf(initial) }
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
@@ -159,7 +159,9 @@ fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, 
                     Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            RowsPage(s.rows, overrides, container.server, onOpen, onPlay, vm::save, header = header, onEditPage = { editing = true }, editButton = false)
+            androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.pages.LocalPageRows provides vm) {
+                RowsPage(s.rows, overrides, container.server, onOpen, onPlay, vm::save, header = header, onEditPage = { editing = true }, editButton = false)
+            }
         }
         is RowsState.Error -> Column { header(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
         RowsState.Loading -> Column { header(); Text("Loading…", Modifier.padding(PagePadding)) }
@@ -235,10 +237,17 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                     }
                 }
         item {
+            // Every page's layout; a page can have its own (Customize → Layout, or Pages below).
+            Column(Modifier.padding(top = 14.dp, bottom = 2.dp)) {
+                Text("Layout for every page", style = MaterialTheme.typography.titleMedium)
+                Text("A page can have its own: hold OK on one of its rows → Customize → Layout, or Pages below", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
             ListItem(
                 selected = false,
                 onClick = { update { it.copy(tvHome = dev.nitrate.core.pages.TvHomeLayout.entries[(it.tvHome.ordinal + 1) % dev.nitrate.core.pages.TvHomeLayout.entries.size]) } },
-                headlineContent = { Text("Home") },
+                headlineContent = { Text("Arrangement") },
                 supportingContent = { Text(if (prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART) "One title at a time across the screen: ◀ ▶ through a row, ▲ ▼ between rows" else "Rows of cards under the focused title") },
                 trailingContent = { Text("${prefs.tvHome.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )

@@ -542,7 +542,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             val libraryId = entry.toRoute<LibraryRoute>().libraryId
             val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
             // Library pages are laid out like Home unless set otherwise; full art has the menu over it.
-            val libraryFullArt = (prefs.tvLibraryLayout ?: prefs.tvHome) == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
+            val libraryFullArt = dev.nitrate.core.pages.PageLooks.forPage(prefs, dev.nitrate.core.pages.PageKeys.library(libraryId)).tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library(libraryId), overlay = libraryFullArt) { insets ->
                 LibraryScreen(
                     fullArt = libraryFullArt,

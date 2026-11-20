@@ -50,6 +50,8 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.width
 import org.junit.Rule
@@ -125,7 +127,7 @@ class TvScreenshotTest {
     private fun WithMenu(c: AppContainer, content: @Composable () -> Unit) {
         val libraries by androidx.compose.runtime.produceState(emptyList<dev.nitrate.core.model.MediaItem>()) { value = c.server.views() }
         val catalog = dev.nitrate.tv.ui.home.menuCatalog(libraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions())
-        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, content = content)
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, dev.nitrate.tv.ui.pages.LocalTvContainer provides c, content = content)
     }
 
     private fun prefsShot(name: String, prefs: dev.nitrate.core.pages.DisplayPrefs, check: () -> Unit = {}, content: @Composable (AppContainer) -> Unit) =
@@ -630,6 +632,42 @@ class TvScreenshotTest {
     }) { c ->
         val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
+    }
+
+    /** Customize → Layout over Home: a change is this page's own, every other page keeps its layout. */
+    @Test fun customizeLayoutPerPage() {
+        lateinit var container: AppContainer
+        shoot("tv-customize-layout", setup = { c -> container = c; c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+            check(focusedHasText("Arrangement")) { "the Layout section should open on its first choice" }
+            press("down", "ok")
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+            val stored = runBlocking { container.displaySettings.prefs("user-1").first() }
+            check(stored.pageLooks["home"]?.stacked == true) { "Home should have stacked rows of its own: ${stored.pageLooks}" }
+            check(!stored.tvRowsStacked) { "every page's layout should be unchanged" }
+            check(compose.onAllNodes(androidx.compose.ui.test.hasText("Stacked down the page", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the choice should show" }
+        }) { c ->
+            WithMenu(c) {
+                HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+                dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.HOME, dev.nitrate.tv.ui.pages.CustomizeRequest(null, null, dev.nitrate.tv.ui.pages.CustomizeSection.LAYOUT)) {}
+            }
+        }
+    }
+
+    /** Customize on a row: the row's look, where it sits, its name and hiding it, with the page beside. */
+    @Test fun customizeRow() = shoot("tv-customize-row", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(focusedHasText("Style")) { "the row section should open on Style" }
+    }) { c ->
+        val vm = androidx.lifecycle.viewmodel.compose.viewModel(key = "test-home") {
+            dev.nitrate.android.viewmodel.RowsViewModel(PageKeys.HOME, c.server::homeRows, c.displaySettings, c.server)
+        }
+        val state by vm.state.collectAsState()
+        val row = (state as? dev.nitrate.android.viewmodel.RowsState.Loaded)?.rows?.getOrNull(1)
+        WithMenu(c) {
+            HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+            if (row != null) dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.HOME, dev.nitrate.tv.ui.pages.CustomizeRequest(row, vm, dev.nitrate.tv.ui.pages.CustomizeSection.ROW)) {}
+        }
     }
 
     /** To a details page and Back: Home comes back with focus on the card left, not its start. */

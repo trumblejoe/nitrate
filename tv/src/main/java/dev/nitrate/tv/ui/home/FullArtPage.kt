@@ -84,6 +84,8 @@ fun FullArtPage(
     val rowIndex = shown.indexOfFirst { it.key == rowKey }.takeIf { it >= 0 } ?: 0
     val itemIndex = androidx.compose.runtime.saveable.rememberSaveable(saver = PositionsSaver) { mutableStateMapOf<String, Int>() }
     var editing by remember { mutableStateOf<MediaRow?>(null) }
+    val customize = dev.nitrate.tv.ui.pages.LocalCustomizeHost.current
+    val pageRows = dev.nitrate.tv.ui.pages.LocalPageRows.current
     var longPressHandled by remember { mutableStateOf(false) }
     val reachMenu = LocalMenuEdge.current
     val reportRows = LocalMenuRows.current
@@ -135,7 +137,8 @@ fun FullArtPage(
                         if (down && event.nativeKeyEvent.repeatCount == 0) longPressHandled = false
                         if (down && event.nativeKeyEvent.repeatCount > 0 && !longPressHandled) {
                             longPressHandled = true
-                            editing = row
+                            // The Customize panel when the page's rows are known, else the row's dialog.
+                            customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row }
                         } else if (!down) {
                             if (!longPressHandled) onOpen(item)
                             longPressHandled = false

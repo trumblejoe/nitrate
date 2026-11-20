@@ -91,6 +91,8 @@ data class DisplayPrefs(
     /** Rows one at a time: where the row in use sits, and whether it runs the page's full length. */
     val tvRowPlace: RowPlace = RowPlace.BOTTOM,
     val tvRowExtent: RowExtent = RowExtent.FULL,
+    /** Pages with a layout of their own (by top-level page key, [PageLooks.ownerOf]); the rest use the fields above. */
+    val pageLooks: Map<String, PageLook> = emptyMap(),
     /** The menu's stops in order (rail and bars), as [MenuStops] ids; null until arranged. */
     val tvMenuStops: List<String>? = null,
     /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */

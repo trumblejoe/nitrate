@@ -80,7 +80,8 @@ fun HomeScreen(
     // Saved with the page: coming back (from a details page) leaves focus to the rows, which put it on the card left.
     var focusedOnce by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var homeHasFocus by remember { mutableStateOf(false) }
-    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    // Home's own layout (it may differ from every page's: core PageLooks).
+    val prefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, PageKeys.HOME)
     val fullArt = prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
     val pinnedPages = customPages.filter { it.pinned }
     // Pinned pages are Home's other tabs (as a library's tabs are): "Home" first, then each page.
@@ -146,7 +147,7 @@ fun HomeScreen(
             }
             // Home itself is always its rows, under the tabs (pinned pages) when it has them: the View
             // button (titles in a view) is only on the other tabs.
-            page(tabs)
+            androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.pages.LocalPageRows provides vm) { page(tabs) }
         }
     }
     }
@@ -200,8 +201,10 @@ private fun PinnedPage(
                 OutlinedButton(onClick = { editing = true }, modifier = Modifier.padding(horizontal = 58.dp)) { Text("Edit rows") }
             }
             else -> dev.nitrate.tv.ui.library.RowsOrTitles("rows/${PageKeys.custom(page.id)}", s.rows, repository, displaySettings, tabs, onOpen, onPlay) { header ->
+                androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.pages.LocalPageRows provides vm) {
                 if (fullArt) FullArtPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, onEditPage = { editing = true }, insets = insets, header = header)
                 else RowsPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, header = header, onEditPage = { editing = true })
+                }
             }
         }
         is RowsState.Error -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text(s.message, Modifier.padding(58.dp), color = MaterialTheme.colorScheme.error) }

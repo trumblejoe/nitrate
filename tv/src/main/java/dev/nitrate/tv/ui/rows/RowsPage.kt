@@ -138,12 +138,16 @@ fun RowsPage(
     }
     PrefetchRows(listState, rows, overrides, repository)
 
-    val actions = remember(onOpen, onPlay) {
+    // Holding OK on a row opens the Customize panel (pages/CustomizePanel) when the page's rows are
+    // known; else the row's own dialog.
+    val customize = dev.nitrate.tv.ui.pages.LocalCustomizeHost.current
+    val pageRows = dev.nitrate.tv.ui.pages.LocalPageRows.current
+    val actions = remember(onOpen, onPlay, customize, pageRows) {
         RowActions(
             onFocus = { focused = it },
             onOpen = onOpen,
             onPlay = { if (it.isPlayable) onPlay(it) else onOpen(it) },
-            onEditRow = { editing = it },
+            onEditRow = { row -> customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row } },
         )
     }
 

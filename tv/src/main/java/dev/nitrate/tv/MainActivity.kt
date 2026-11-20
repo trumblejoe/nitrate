@@ -37,7 +37,10 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) take(intent)
         setContent {
             NitrateTheme {
-                NitrateNavHost(container, requests)
+                // Screens deep in a page (the Customize panel) save settings through the container.
+                androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.pages.LocalTvContainer provides container) {
+                    NitrateNavHost(container, requests)
+                }
             }
         }
     }

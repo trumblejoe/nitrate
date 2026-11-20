@@ -229,6 +229,7 @@ private fun TabRows(
             // As its rows (laid out as Home can be), or its titles in one of the All tab's views.
             else -> {
                 val page: @Composable (header: @Composable () -> Unit) -> Unit = { header ->
+                    androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.pages.LocalPageRows provides vm) {
                     if (fullArt) dev.nitrate.tv.ui.home.FullArtPage(
                         rows = s.rows, overrides = overrides, repository = repository, onOpen = onOpen, onPlay = onPlay,
                         onSaveDisplay = vm::save, onEditPage = { editing = true }, insets = insets, header = header,
@@ -236,6 +237,7 @@ private fun TabRows(
                         onEditPage = { editing = true }, rows = s.rows, overrides = overrides, repository = repository,
                         onOpen = onOpen, onPlay = onPlay, onSaveDisplay = vm::save, header = header,
                     )
+                    }
                 }
                 // The library's main page (Recommended) is always its rows; the other row tabs get the
                 // View button (as their rows, or their titles in one of the All tab's views).
