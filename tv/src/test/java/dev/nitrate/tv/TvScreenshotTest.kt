@@ -583,6 +583,27 @@ class TvScreenshotTest {
         check(at().height > at().width) { "Down from the strip should reach the poster row below, got ${at()}" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
+    /** Leaving a row and coming back lands on the card left in it, whatever was done in other rows meanwhile. */
+    @Test fun rowsRememberTheirCard() = shoot("tv-rows-remember-card", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[2], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.LIGHTNING))
+    }, act = {
+        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        press("right")
+        val first = at()
+        press("down", "down", "right", "right")
+        val bill = at()
+        press("up")
+        check(at() != bill) { "Up should leave the lightning row" }
+        press("down")
+        check(at() == bill) { "Back down should land on the same side of the same card: ${at()} vs $bill" }
+        press("down", "up")
+        check(at() == bill) { "Back up should land on it too: ${at()} vs $bill" }
+        press("up", "up")
+        check(at() == first) { "Continue Watching should still be on its second card: ${at()} vs $first" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
     /** Art rows (design-size cards) stay along the bottom when moved along, not pulled up the page. */
     @Test fun cressidaStaysAtBottom() = shoot("tv-cressida-stays-at-bottom", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

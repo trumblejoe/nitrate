@@ -97,6 +97,9 @@ fun RowsPage(
     var focusedRowIndex by remember { mutableStateOf(-1) }
     // The card last focused (its row and item), to come back to from the menu.
     var lastCard by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    // The card last focused in each row: moving Up/Down back into a row lands on it again, whatever
+    // happened in other rows meanwhile (nearest-on-screen depended on the other row's card sizes).
+    val rowLast = remember { mutableStateMapOf<String, String>() }
     val returnRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     val focusReturn = LocalFocusReturn.current
     DisposableEffect(focusReturn) {
@@ -209,6 +212,7 @@ fun RowsPage(
                     // row meanwhile (else it falls to the menu), then goes into the new style.
                     val holder = remember { androidx.compose.ui.focus.FocusRequester() }
                     val content = remember { androidx.compose.ui.focus.FocusRequester() }
+                    val rowReturn = remember { androidx.compose.ui.focus.FocusRequester() }
                     var holding by remember { mutableStateOf(false) }
                     // One at a time: only the row in use shows (the first while the tabs have focus).
                     val current = if (focusedRowIndex in rows.indices) focusedRowIndex else 0
@@ -259,12 +263,15 @@ fun RowsPage(
                         val prefs = LocalDisplayPrefs.current
                         val fx = dev.nitrate.tv.ui.effects.rememberCardFx(display, prefs.effects, prefs.easyMode)
                         val rowActions = remember(actions, rowIndex) {
-                            RowActions(onFocus = { item -> lastCard = rowIndex to item.id; actions.onFocus(item) }, onOpen = actions.onOpen, onPlay = actions.onPlay, onEditRow = actions.onEditRow)
+                            RowActions(onFocus = { item -> lastCard = rowIndex to item.id; rowLast[row.key] = item.id; actions.onFocus(item) }, onOpen = actions.onOpen, onPlay = actions.onPlay, onEditRow = actions.onEditRow)
                         }
                         val actions = fx?.wrap(rowActions) ?: rowActions
                         androidx.compose.runtime.CompositionLocalProvider(
                             dev.nitrate.tv.ui.effects.LocalCardFx provides fx,
-                            LocalReturnTarget provides lastCard?.takeIf { it.first == rowIndex }?.let { ReturnTarget(it.second, returnRequester) },
+                            // The card left in this row takes a requester: the page's own (for the menu) when it
+                            // was the last card anywhere, else the row's (for coming back into the row).
+                            LocalReturnTarget provides (lastCard?.takeIf { it.first == rowIndex }?.let { ReturnTarget(it.second, returnRequester) }
+                                ?: rowLast[row.key]?.let { ReturnTarget(it, rowReturn) }),
                         ) {
                         // Left/Right stay in the row: past its end nothing happens (it used to jump to
                         // whatever was nearest that way, the tabs or a hidden row), except towards the
@@ -274,6 +281,12 @@ fun RowsPage(
                         val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
                         androidx.compose.foundation.layout.Box(Modifier.focusRequester(content)
                             .focusProperties {
+                                // Into the row: the card left in it, if it's still there; else the nearest as usual.
+                                enter = {
+                                    val requester = if (lastCard?.first == rowIndex) returnRequester else rowReturn
+                                    if (rowLast[row.key] != null && runCatching { requester.requestFocus() }.getOrDefault(false)) androidx.compose.ui.focus.FocusRequester.Cancel
+                                    else androidx.compose.ui.focus.FocusRequester.Default
+                                }
                                 exit = { d ->
                                     val key = when (d) { androidx.compose.ui.focus.FocusDirection.Left -> Key.DirectionLeft; androidx.compose.ui.focus.FocusDirection.Right -> Key.DirectionRight; else -> null }
                                     when {
