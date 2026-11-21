@@ -394,10 +394,9 @@ private fun Header(
             // What "Play" means depends on the type: resume a movie, or the next episode of a series.
             val playTarget: MediaItem? = if (item.kind == ItemKind.SERIES) state.nextUp ?: state.episodes.firstOrNull() else item
             val resumeMs = playTarget?.user?.positionMs ?: 0L
-            val readPage = (item.user.positionMs / dev.nitrate.core.comics.ComicProgress.MS_PER_PAGE).toInt()
             val playLabel = when {
                 // A comic: Read (or where it was left), opened in the reader.
-                item.kind == ItemKind.BOOK -> if (readPage > 0 && !item.user.played) "Continue from page ${readPage + 1}" else "Read"
+                item.kind == ItemKind.BOOK -> dev.nitrate.core.comics.ComicProgress.readLabel(item)
                 playTarget == null -> "Play"
                 item.kind == ItemKind.SERIES && resumeMs > 0 -> "Resume S${playTarget.seasonNumber}:E${playTarget.indexNumber}"
                 item.kind == ItemKind.SERIES -> "Play S${playTarget.seasonNumber}:E${playTarget.indexNumber}"

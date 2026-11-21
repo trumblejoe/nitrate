@@ -53,6 +53,23 @@ interface PdfPages {
     fun render(path: String, index: Int, widthPx: Int, outPath: String)
 }
 
+/** A book ready to read: a comic for the page reader, or an EPUB file for the book reader. */
+sealed interface OpenedBook {
+    class Comic(val book: ComicBook) : OpenedBook
+
+    /**
+     * An EPUB on the device at [path]: start at [locator] (the reader's own position, JSON, from
+     * this device) else at [progression] (0–1, from the server); [save] keeps both as it's read.
+     */
+    class Epub(val path: String, val title: String, val locator: String?, val progression: Double, val save: suspend (locator: String, progression: Double) -> Unit) : OpenedBook
+}
+
+/** Opens EPUB books in the platform's book reader (Android: Readium). */
+interface EpubReaderHost {
+    /** Shows [book]; returns once the reader is on screen (it saves as the user reads). */
+    suspend fun open(book: OpenedBook.Epub)
+}
+
 /** Where the user is in catalog books, kept on the device (by catalog and book). */
 interface CatalogPositions {
     suspend fun get(catalogId: String, bookId: String): Int?
@@ -141,7 +158,11 @@ class ComicLibrary(
      * Opens [item]: page by page from the plugin when it serves the book, else from its file (on
      * the device already, or fetched first: [onProgress] 0–1 meanwhile).
      */
-    suspend fun open(item: MediaItem, onProgress: (Float) -> Unit = {}): ComicBook = withContext(Dispatchers.IO) {
+    suspend fun open(item: MediaItem, onProgress: (Float) -> Unit = {}): ComicBook =
+        (prepare(item, onProgress) as? OpenedBook.Comic)?.book ?: throw ComicException("This book is an EPUB, read in the book reader.")
+
+    /** Opens [item] as a comic, or fetches it for the EPUB reader when it's an EPUB. */
+    suspend fun prepare(item: MediaItem, onProgress: (Float) -> Unit = {}): OpenedBook = withContext(Dispatchers.IO) {
         val dir = root / item.id
         fs.createDirectories(dir)
         // When it was last opened, for keeping the most recent ones.
@@ -153,16 +174,36 @@ class ComicLibrary(
         val listing = if (fs.exists(file)) null else runCatching { server.comicListing(item.id) }
             .onSuccess { l -> if (l != null) runCatching { fs.write(kept) { writeUtf8(json.encodeToString(ComicListing.serializer(), l)) } } }
             .getOrElse { runCatching { json.decodeFromString(ComicListing.serializer(), fs.read(kept) { readUtf8() }) }.getOrNull() }
+        val meta = jellyfin(item)
         val book = when {
-            listing != null && listing.paged -> streamed(jellyfin(item), listing, dir) { i -> server.comicPageUrl(item.id, i) }
-            listing?.format == "epub" -> throw ComicException("EPUB books open in a later update.")
+            listing != null && listing.paged -> OpenedBook.Comic(streamed(meta, listing, dir) { i -> server.comicPageUrl(item.id, i) })
             else -> {
                 if (!fs.exists(file)) fetch(server.fileUrl(item.id), server.authorizationHeader(), dir, file, onProgress)
-                fromFile(jellyfin(item), file, dir)
+                if (kind(file) == Kind.EPUB) epub(file, dir, meta.title, epubJellyfin(item)) else OpenedBook.Comic(fromFile(meta, file, dir))
             }
         }
         prune(keep = item.id)
         book
+    }
+
+    /** Where an EPUB's reader is kept in Jellyfin: the share read as the position (1,000,000 = the end), read at the end. */
+    private fun epubJellyfin(item: MediaItem) = EpubProgress(
+        start = if (item.user.played) 0.0 else (item.user.positionMs / EPUB_SCALE.toDouble()).coerceIn(0.0, 1.0),
+        save = { progression -> 
+            val finished = progression >= EPUB_FINISHED
+            server.saveUserData(item.id, if (finished) 0 else (progression * EPUB_SCALE).toLong(), finished || item.user.played, now())
+        },
+    )
+
+    private class EpubProgress(val start: Double, val save: suspend (Double) -> Unit)
+
+    private fun epub(file: Path, dir: Path, title: String, progress: EpubProgress): OpenedBook.Epub {
+        val locatorFile = dir / "locator.json"
+        val locator = runCatching { fs.read(locatorFile) { readUtf8() } }.getOrNull()
+        return OpenedBook.Epub(file.toString(), title, locator, progress.start) { json, progression ->
+            runCatching { fs.write(locatorFile) { writeUtf8(json) } }
+            runCatching { progress.save(progression) }
+        }
     }
 
     /**
@@ -175,7 +216,16 @@ class ComicLibrary(
         book: dev.nitrate.core.catalogs.CatalogBook,
         positions: CatalogPositions,
         onProgress: (Float) -> Unit = {},
-    ): ComicBook = withContext(Dispatchers.IO) {
+    ): ComicBook = (prepareCatalog(client, book, positions, onProgress) as? OpenedBook.Comic)?.book
+        ?: throw ComicException("This book is an EPUB, read in the book reader.")
+
+    /** [openCatalog], or the file for the EPUB reader when the book is an EPUB. */
+    suspend fun prepareCatalog(
+        client: dev.nitrate.core.catalogs.CatalogClient,
+        book: dev.nitrate.core.catalogs.CatalogBook,
+        positions: CatalogPositions,
+        onProgress: (Float) -> Unit = {},
+    ): OpenedBook = withContext(Dispatchers.IO) {
         val key = "cat-" + client.catalog.id + "-" + safeName(book.id)
         val dir = root / key
         fs.createDirectories(dir)
@@ -196,15 +246,20 @@ class ComicLibrary(
             template != null && count != null && count > 0 -> {
                 runCatching { fs.write(dir / "count") { writeUtf8(count.toString()) } }
                 val link = dev.nitrate.core.opds.OpdsLink(dev.nitrate.core.opds.Opds.PSE_STREAM, template, null)
-                ComicBook(
-                    null, book.title, (0 until count).map { "page-$it.jpg" }, null, emptySet(), meta.start(count),
-                    { i, out -> fetch(dev.nitrate.core.opds.Opds.pageUrl(link, i, STREAM_WIDTH_PX), client.authorization, dir, out) {} },
-                    dir, meta.save,
+                OpenedBook.Comic(
+                    ComicBook(
+                        null, book.title, (0 until count).map { "page-$it.jpg" }, null, emptySet(), meta.start(count),
+                        { i, out -> fetch(dev.nitrate.core.opds.Opds.pageUrl(link, i, STREAM_WIDTH_PX), client.authorization, dir, out) {} },
+                        dir, meta.save,
+                    ),
                 )
             }
             book.fileUrl != null -> {
                 if (!fs.exists(file)) fetch(book.fileUrl!!, client.authorization, dir, file, onProgress)
-                fromFile(meta, file, dir).also { b -> runCatching { fs.write(dir / "count") { writeUtf8(b.pageCount.toString()) } } }
+                if (kind(file) == Kind.EPUB) {
+                    // EPUB position on the device, as thousandths of the book.
+                    epub(file, dir, book.title, EpubProgress((saved ?: 0) / 1000.0) { p -> positions.set(client.catalog.id, book.id, (p * 1000).toInt()) })
+                } else OpenedBook.Comic(fromFile(meta, file, dir).also { b -> runCatching { fs.write(dir / "count") { writeUtf8(b.pageCount.toString()) } } })
             }
             else -> throw ComicException("The catalog doesn't offer this book for reading.")
         }
@@ -271,6 +326,7 @@ class ComicLibrary(
                 { i, out -> renderer.render(file.toString(), i, PDF_WIDTH_PX, out.toString()) }, dir, meta.save,
             )
         }
+        Kind.EPUB -> throw ComicException("This book is an EPUB, read in the book reader.")
         Kind.RAR -> throw ComicException("This comic is a CBR (RAR) file. Install the Nitrate Companion plugin on the server to read CBR, CB7 and CBT, or convert it to CBZ (CLU can convert a whole library).")
         Kind.OTHER -> throw ComicException("This file isn't a comic Nitrate can open.")
     }
@@ -306,12 +362,14 @@ class ComicLibrary(
         fs.atomicMove(part, file)
     }
 
-    private enum class Kind { ZIP, RAR, PDF, OTHER }
+    private enum class Kind { ZIP, EPUB, RAR, PDF, OTHER }
 
     private fun kind(file: Path): Kind {
         val head = fs.read(file) { readByteArray(minOf(4L, fs.metadata(file).size ?: 0)) }
         return when {
-            head.size >= 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte() -> Kind.ZIP
+            head.size >= 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte() ->
+                // An EPUB is a zip whose "mimetype" entry says so.
+                if (runCatching { fs.openZip(file).read("mimetype".toPath()) { readUtf8().trim() } }.getOrNull() == "application/epub+zip") Kind.EPUB else Kind.ZIP
             head.decodeToString() == "Rar!" -> Kind.RAR
             head.decodeToString() == "%PDF" -> Kind.PDF
             else -> Kind.OTHER
@@ -340,6 +398,12 @@ class ComicLibrary(
 
         /** How wide PDF pages are drawn: sharp on a 4K TV's half and a tablet alike. */
         const val PDF_WIDTH_PX = 1800
+
+        /** An EPUB's position in Jellyfin: the share read, as this many milliseconds for the whole book. */
+        const val EPUB_SCALE = 1_000_000L
+
+        /** Read this far, an EPUB counts as finished (the last page is rarely a full one). */
+        const val EPUB_FINISHED = 0.995
 
         /** How wide streamed catalog pages are asked for. */
         const val STREAM_WIDTH_PX = 2000

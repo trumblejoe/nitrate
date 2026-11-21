@@ -144,4 +144,22 @@ class ComicLibraryTest {
         // Next time it starts where this device left off.
         assertEquals(3, library.openCatalog(client, book, positions).startPage)
     }
+
+    @Test fun anEpubGoesToTheBookReaderAndSavesItsShare() = runBlocking {
+        val dir = File(cache, "comics/e1").apply { mkdirs() }
+        ZipOutputStream(File(dir, "book").outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("mimetype")); zip.write("application/epub+zip".toByteArray()); zip.closeEntry()
+            zip.putNextEntry(ZipEntry("META-INF/container.xml")); zip.write("<container/>".toByteArray()); zip.closeEntry()
+        }
+        val item = MediaItem("e1", "Moby-Dick", ItemKind.BOOK, user = dev.nitrate.core.model.UserState(positionMs = 250_000))
+        val opened = library().prepare(item) as OpenedBook.Epub
+        assertEquals(0.25, opened.progression, 1e-9)
+        assertEquals(null, opened.locator)
+        opened.save("{\"href\":\"c2.xhtml\"}", 0.5)
+        assertEquals(Triple(500_000L, false, "e1"), saved.last())
+        assertEquals("{\"href\":\"c2.xhtml\"}", (library().prepare(item) as OpenedBook.Epub).locator)
+        // Near the very end counts as read.
+        opened.save("{}", 0.999)
+        assertEquals(Triple(0L, true, "e1"), saved.last())
+    }
 }

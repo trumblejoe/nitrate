@@ -148,3 +148,11 @@ expect fun softwareImage(builder: coil3.request.ImageRequest.Builder): coil3.req
 
 /** Whether the player here can run a test play for the playback overview (Android's; not Apple's yet). */
 expect val canTestPlay: Boolean
+
+/**
+ * Nitrate's own EPUB reader, for platforms without Readium yet (iPhone and iPad): chapter by
+ * chapter in the system's web view, dark and readable, saving where the reader is as they scroll.
+ * On Android books open in Readium instead, so this is never shown there.
+ */
+@androidx.compose.runtime.Composable
+expect fun EpubScreen(book: dev.nitrate.android.comics.OpenedBook.Epub, onExit: () -> Unit)

@@ -27,6 +27,8 @@ data class MediaItem(
     val genres: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     val collection: CollectionKind? = null,
+    /** The file's kind, where the server says (books: "epub", "cbz", "pdf"…). */
+    val container: String? = null,
     /** The folder (or season, album…) the server lists it under. */
     val parentId: String? = null,
     // Episodes and seasons

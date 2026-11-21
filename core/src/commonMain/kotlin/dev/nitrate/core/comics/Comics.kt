@@ -137,6 +137,13 @@ object ComicProgress {
     /** Finished: on the last page (or spread holding it). */
     fun finished(page: Int, pageCount: Int) = pageCount > 0 && page >= pageCount - 1
 
+    /** The Read button for a book: "Continue from page 13", "Continue (34%)" for an EPUB, else "Read". */
+    fun readLabel(book: dev.nitrate.core.model.MediaItem): String {
+        if (book.user.played || book.user.positionMs <= 0) return "Read"
+        return if (book.container == "epub") "Continue (${(book.user.positionMs * 100 / 1_000_000L).coerceIn(1, 99)}%)"
+        else "Continue from page ${book.user.positionMs / MS_PER_PAGE + 1}"
+    }
+
     /** "12 / 24". */
     fun label(page: Int, pageCount: Int) = "${page + 1} / $pageCount"
 }

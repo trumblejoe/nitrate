@@ -9,6 +9,12 @@
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <application>
+        <!-- EPUB books (Readium), opened from either app's book pages. -->
+        <activity
+            android:name="dev.nitrate.android.books.EpubReaderActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
         <receiver
             android:name="dev.nitrate.android.update.InstallResultReceiver"
             android:exported="false" />

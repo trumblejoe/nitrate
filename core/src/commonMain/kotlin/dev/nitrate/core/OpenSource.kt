@@ -51,6 +51,11 @@ object OpenSource {
         OpenSourceComponent("AndroidX Media3 (ExoPlayer, FFmpeg extension)", APACHE, "Apache-2.0.txt", "https://github.com/androidx/media"),
         OpenSourceComponent("AndroidX and Jetpack Compose", APACHE, "Apache-2.0.txt", "https://developer.android.com/jetpack/androidx"),
         OpenSourceComponent(
+            "Readium Kotlin Toolkit (Android)", "BSD 3-Clause License", "BSD-3-Readium.txt", "https://github.com/readium/kotlin-toolkit",
+            note = "Opens and lays out EPUB books on Android phones, tablets and TVs (3.4.0, with Readium CSS). Its own " +
+                "dependencies keep their licences (jsoup: MIT; AndroidX: Apache 2.0).",
+        ),
+        OpenSourceComponent(
             "mpv, via MPVKit (iPhone and iPad)", "GNU LGPL 3.0 (the LGPL build)", "LGPL-3.0.txt", "https://github.com/mpvkit/MPVKit",
             note = "The iPhone/iPad app only: plays what Apple's player can't (styled subtitles exactly, DTS and TrueHD, " +
                 "Hi10P, MKV and other containers as they are). MPVKit 1.1.0-n9.0.2's LGPL product, never its GPL one: " +

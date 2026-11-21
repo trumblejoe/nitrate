@@ -142,3 +142,9 @@ actual fun toImageBitmap(image: coil3.Image): androidx.compose.ui.graphics.Image
 actual fun softwareImage(builder: ImageRequest.Builder): ImageRequest.Builder = builder.allowHardware(false)
 
 actual val canTestPlay: Boolean = true
+
+@androidx.compose.runtime.Composable
+actual fun EpubScreen(book: dev.nitrate.android.comics.OpenedBook.Epub, onExit: () -> Unit) {
+    // Android reads EPUBs in Readium (the platform's EpubReaderHost); nothing to show here.
+    androidx.compose.runtime.LaunchedEffect(Unit) { onExit() }
+}

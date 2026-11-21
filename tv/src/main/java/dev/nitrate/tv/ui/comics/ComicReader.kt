@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ComicReaderScreen(container: AppContainer, itemId: String, onExit: () -> Unit, onNext: (String) -> Unit = {}) {
-    ComicLoader(container, itemId, { progress -> container.comics.open(container.server.getItem(itemId), progress) }, onExit, onNext)
+    ComicLoader(container, itemId, { progress -> container.comics.prepare(container.server.getItem(itemId), progress) }, onExit, onNext)
 }
 
 /** Reads a book from a comic catalog (OPDS or CLU) the same way. */
@@ -78,18 +78,27 @@ fun ComicReaderScreen(container: AppContainer, itemId: String, onExit: () -> Uni
 fun CatalogReaderScreen(container: AppContainer, catalogId: String, book: dev.nitrate.core.catalogs.CatalogBook, onExit: () -> Unit) {
     ComicLoader(container, catalogId + "|" + book.id, { progress ->
         val catalog = container.catalogs.catalog(catalogId) ?: throw dev.nitrate.android.comics.ComicException("This catalog was removed.")
-        container.comics.openCatalog(container.catalogs.client(catalog), book, container.catalogs, progress)
+        container.comics.prepareCatalog(container.catalogs.client(catalog), book, container.catalogs, progress)
     }, onExit, {})
 }
 
 @Composable
-private fun ComicLoader(container: AppContainer, key: String, load: suspend ((Float) -> Unit) -> ComicBook, onExit: () -> Unit, onNext: (String) -> Unit) {
+private fun ComicLoader(container: AppContainer, key: String, load: suspend ((Float) -> Unit) -> dev.nitrate.android.comics.OpenedBook, onExit: () -> Unit, onNext: (String) -> Unit) {
     var book by remember { mutableStateOf<ComicBook?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(key) {
-        runCatching { book = load { progress = it } }
-            .onFailure { error = it.message ?: "Couldn't open this comic." }
+        runCatching {
+            when (val opened = load { progress = it }) {
+                is dev.nitrate.android.comics.OpenedBook.Comic -> book = opened.book
+                // An EPUB opens in the book reader (Readium), and this screen steps aside.
+                is dev.nitrate.android.comics.OpenedBook.Epub -> {
+                    val reader = container.platform.epubReader() ?: throw dev.nitrate.android.comics.ComicException("EPUB books can't be read on this device.")
+                    reader.open(opened)
+                    onExit()
+                }
+            }
+        }.onFailure { error = it.message ?: "Couldn't open this book." }
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val b = book
@@ -103,7 +112,7 @@ private fun ComicLoader(container: AppContainer, key: String, load: suspend ((Fl
                 LaunchedEffect(Unit) { delay(50); runCatching { back.requestFocus() } }
             }
             b == null -> Text(
-                if (progress > 0f) "Getting the comic… ${(progress * 100).toInt()}%" else "Getting the comic…",
+                if (progress > 0f) "Getting the book… ${(progress * 100).toInt()}%" else "Getting the book…",
                 style = MaterialTheme.typography.titleLarge, color = Color.White, modifier = Modifier.align(Alignment.Center),
             )
             else -> TvComicPages(container, b, onExit, onNext)

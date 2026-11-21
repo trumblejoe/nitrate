@@ -44,6 +44,13 @@ dependencies {
     // Drawing helpers shared by both apps' decorative row styles (paths and DrawScope only).
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
+    // EPUB books (Readium, BSD-3-Clause): opening, laying out and paging them.
+    implementation(libs.readium.shared)
+    implementation(libs.readium.streamer)
+    implementation(libs.readium.navigator)
+    // Readium's reader is a fragment in an AppCompat screen.
+    implementation(libs.androidx.fragment)
+    implementation(libs.androidx.appcompat)
     testImplementation(libs.junit)
     testImplementation(libs.ktor.client.mock)
 }

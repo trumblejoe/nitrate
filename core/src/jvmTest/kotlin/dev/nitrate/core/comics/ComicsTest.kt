@@ -83,4 +83,12 @@ class ComicsTest {
         assertTrue(listing.paged)
         assertFalse(ComicListing("pdf", emptyList(), null).paged)
     }
+
+    @Test fun theReadButtonSaysWhereTheReaderIs() {
+        val book = dev.nitrate.core.model.MediaItem("b", "B", dev.nitrate.core.model.ItemKind.BOOK)
+        assertEquals("Read", ComicProgress.readLabel(book))
+        assertEquals("Continue from page 13", ComicProgress.readLabel(book.copy(user = dev.nitrate.core.model.UserState(positionMs = 12_000))))
+        assertEquals("Continue (34%)", ComicProgress.readLabel(book.copy(container = "epub", user = dev.nitrate.core.model.UserState(positionMs = 340_000))))
+        assertEquals("Read", ComicProgress.readLabel(book.copy(user = dev.nitrate.core.model.UserState(played = true, positionMs = 5_000))))
+    }
 }

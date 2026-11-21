@@ -12,6 +12,7 @@ media3 = "1.11.1"
 work = "2.11.2"
 tvprovider = "1.1.0"
 coil = "3.6.3"
+readium = "3.4.0"
 zxing = "3.5.3"
 kotlinx-serialization = "1.12.0"
 junit = "4.13.2"
@@ -52,6 +53,11 @@ media3-test-utils-robolectric = { module = "androidx.media3:media3-test-utils-ro
 media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
 
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+androidx-fragment = { module = "androidx.fragment:fragment-ktx", version = "1.9.0" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version = "1.8.0" }
+readium-shared = { module = "org.readium.kotlin-toolkit:readium-shared", version.ref = "readium" }
+readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", version.ref = "readium" }
+readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
