@@ -61,7 +61,8 @@ class WatchPartnersTest {
     @Test fun aheadOfThePartner() {
         val k = KeepUp.of("bear", eps.map { if (it.id != "e1-4") it.copy(user = UserState(played = true)) else it }, listOf(kim))
         val s = WatchPartners.standing(eps[0].copy(kind = ItemKind.SERIES, id = "bear"), k)!!
-        assertEquals("Kim catching up", s.short)
+        assertEquals("You're 2 episodes ahead of Kim", s.short)
+        assertEquals("You're ahead. Kim is on S1 E1, 2 episodes behind you", s.long)
         assertFalse(s.catchUp)
     }
 

@@ -162,7 +162,10 @@ object WatchPartners {
         if (behind.isNotEmpty()) {
             val who = names(behind.map { it.first.userName })
             if (k.single) return Standing("$who ${if (behind.size == 1) "hasn't" else "haven't"} seen it", "You've seen it; $who ${if (behind.size == 1) "hasn't" else "haven't"} yet", catchUp = false)
-            return Standing("$who catching up", "You're ahead: $who ${if (behind.size == 1) "is" else "are"} catching up (${behind.joinToString(", ") { (p, c) -> "${p.userName} by $c" }})", catchUp = false)
+            // How far ahead, so nobody binges further without seeing it.
+            val short = if (behind.size == 1) "You're ${count(behind[0].second, k.noun)} ahead of $who" else "You're ahead of $who"
+            val where = behind.joinToString("; ") { (p, c) -> "${p.userName} is ${p.last?.let { "on $it" } ?: "not started"}, ${count(c, k.noun)} behind you" }
+            return Standing(short, "You're ahead. $where", catchUp = false)
         }
         val who = names(members.map { it.userName })
         return Standing("In step with $who", "You and $who are at the same place", catchUp = false)
