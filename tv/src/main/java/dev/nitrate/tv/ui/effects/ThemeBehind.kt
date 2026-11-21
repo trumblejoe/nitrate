@@ -33,6 +33,11 @@ import dev.nitrate.tv.ui.components.Backdrop
  */
 class ThemeBehind {
     var artwork by mutableStateOf<String?>(null)
+    /**
+     * The page captions its title in a corner with its own shade (rows one at a time, full art), so
+     * the picture is drawn as the screensaver draws it: whole and unwashed.
+     */
+    var clean by mutableStateOf(false)
     var titles by mutableIntStateOf(0)
     /** Whether there's a theme or occasion showing (the shade over a scene only goes on then). */
     var active by mutableStateOf(false)
@@ -46,24 +51,24 @@ val LocalThemeBehind = staticCompositionLocalOf<ThemeBehind?> { null }
  * (previews, tests) the picture is drawn here.
  */
 @Composable
-fun PageBackdropSlot(url: String?, modifier: Modifier = Modifier) {
+fun PageBackdropSlot(url: String?, modifier: Modifier = Modifier, clean: Boolean = false) {
     val behind = LocalThemeBehind.current
     if (behind == null) {
-        Backdrop(url, modifier.fillMaxSize())
+        if (clean) dev.nitrate.tv.ui.components.CleanBackdrop(url, modifier.fillMaxSize()) else Backdrop(url, modifier.fillMaxSize())
         return
     }
     DisposableEffect(behind) {
         behind.titles++
         onDispose { behind.titles--; if (behind.titles == 0) behind.artwork = null }
     }
-    SideEffect { behind.artwork = url }
+    SideEffect { behind.artwork = url; behind.clean = clean }
 }
 
 /** The page's backdrop as chosen; [artwork] is the focused title's picture (null: none to follow). */
 @Composable
-fun PageBackground(choice: PageBackdrop, artwork: String?, modifier: Modifier = Modifier) {
+fun PageBackground(choice: PageBackdrop, artwork: String?, modifier: Modifier = Modifier, clean: Boolean = false) {
     when (choice.kind) {
-        PageBackdrop.Kind.ARTWORK -> Backdrop(artwork, modifier.fillMaxSize())
+        PageBackdrop.Kind.ARTWORK -> if (clean) dev.nitrate.tv.ui.components.CleanBackdrop(artwork, modifier.fillMaxSize()) else Backdrop(artwork, modifier.fillMaxSize())
         PageBackdrop.Kind.GRADIENT -> Box(modifier.fillMaxSize().background(Brush.linearGradient(choice.colors.map { Color(it) }, start = Offset.Zero, end = Offset.Infinite)))
         PageBackdrop.Kind.SOLID -> Box(modifier.fillMaxSize().background(Color(choice.colors.first())))
         PageBackdrop.Kind.SMART_GRADIENT, PageBackdrop.Kind.SMART_COLOUR -> {

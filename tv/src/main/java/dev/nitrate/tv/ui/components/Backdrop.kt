@@ -42,3 +42,14 @@ fun Backdrop(url: String?, modifier: Modifier = Modifier, strength: Float = 1f) 
         }
     }
 }
+
+/**
+ * Full-bleed artwork drawn as the screensaver draws it: centred, whole and unwashed, for pages whose
+ * caption brings its own shade (`ArtCaptionShade`). Cross-fades when [url] changes.
+ */
+@Composable
+fun CleanBackdrop(url: String?, modifier: Modifier = Modifier) {
+    Crossfade(targetState = url, animationSpec = tween(400), label = "backdrop", modifier = modifier) { target ->
+        if (target != null) AsyncImage(model = target, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+    }
+}
