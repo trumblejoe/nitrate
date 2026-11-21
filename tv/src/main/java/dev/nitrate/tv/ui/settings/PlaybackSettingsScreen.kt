@@ -135,6 +135,13 @@ private fun LazyListScope.mainPage(
         dev.nitrate.tv.ui.player.SpeakersSettings(settings, output, update)
     }
     item {
+        // Music: songs evened out in loudness, from Jellyfin's own measurement of each.
+        val levelling = dev.nitrate.core.music.Levelling.entries
+        ChoiceRow("Music loudness", settings.levelling.label, settings.levelling.note + ". Only ever quieter, never boosted.") {
+            update { it.copy(levelling = levelling[(it.levelling.ordinal + 1) % levelling.size]) }
+        }
+    }
+    item {
         // Coarse steps here; the player's menu fine-tunes while you listen.
         val steps = listOf(-300, -200, -100, -50, 0, 50, 100, 200, 300)
         ChoiceRow("Audio sync", dev.nitrate.core.playback.AudioSync.label(settings.audioDelayMs), "Change it if lips and voices don't line up, usually because a soundbar or receiver adds lag. Fine-tune in the player's More menu.") {

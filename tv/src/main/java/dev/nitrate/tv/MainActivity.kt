@@ -62,6 +62,13 @@ class MainActivity : ComponentActivity() {
             requests.value = TvRequest.Search("", voice = true)
             return true
         }
+        // Media keys nothing on screen used (no video open): they work the music, from any page.
+        val listening = (application as NitrateApp).container.listening
+        if (listening != null && listening.state.value.active) when (keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> { listening.toggle(); return true }
+            KeyEvent.KEYCODE_MEDIA_NEXT -> { listening.next(); return true }
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> { listening.previous(); return true }
+        }
         return super.onKeyDown(keyCode, event)
     }
 

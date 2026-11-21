@@ -1269,6 +1269,23 @@ class TvScreenshotTest {
         }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
     }
 
+    /** Now Playing on TV: the cover beside the song, the controls (Play/Pause focused), then what's up next. */
+    @Test fun nowPlaying() {
+        lateinit var player: dev.nitrate.testing.FakeListening
+        shoot("tv-now-playing", setup = { c ->
+            player = dev.nitrate.testing.FakeListening(
+                dev.nitrate.core.music.ListenState(c.server.albumTracks("al1"), index = 1, playing = true, durationMs = 197_000, repeat = dev.nitrate.core.music.Repeat.ALL),
+                position = 72_000,
+            )
+        }, act = {
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            check(focusedHasText("Pause")) { "Play/Pause should take focus" }
+            // Right to Next and OK; Right again stays among the controls (to Repeat), never into the list.
+            press("right", "ok")
+            check("next" in player.asked) { player.asked.toString() }
+        }) { c -> dev.nitrate.tv.ui.music.NowPlayingScreen(player, c.server, onBack = {}) }
+    }
+
     /** Every tab style in the picker, each drawn with "Recommended" open and "All" focused. */
     @Test fun tabStyles() = shoot("tv-tab-styles") { dev.nitrate.tv.ui.components.TabStyleChoices(dev.nitrate.core.pages.TabStyle.CHIPS) {} }
 

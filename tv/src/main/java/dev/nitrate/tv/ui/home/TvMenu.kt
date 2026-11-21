@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.home
 
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -113,6 +114,7 @@ object NavIcons {
     val profile = Icons.Filled.AccountCircle
     val channels = Icons.Filled.DateRange
     val comics = Icons.Filled.Star
+    val music = Icons.Filled.PlayArrow
 
     fun library(item: MediaItem): ImageVector = when (item.collection) {
         CollectionKind.TV_SHOWS -> Icons.Filled.DateRange
@@ -547,12 +549,14 @@ class MenuActions(
     val onProfiles: () -> Unit = {},
     /** Long press on "Switch user": switch straight from the menu. */
     val onQuickSwitch: (() -> Unit)? = null,
+    /** Back to the listening player; its stop shows only while music plays. */
+    val onNowPlaying: () -> Unit = {},
 )
 
 /** Every stop the menu can have, by [MenuStops] id, and the order it starts in. */
-class MenuCatalog(val entries: Map<String, NavEntry>, val defaults: List<String>) {
+class MenuCatalog(val entries: Map<String, NavEntry>, val defaults: List<String>, val nowPlaying: NavEntry? = null) {
     /** The same stops with [id] underlined as the page you're on. */
-    fun current(id: String) = MenuCatalog(entries.mapValues { (k, e) -> e.copy(selected = k == id) }, defaults)
+    fun current(id: String) = MenuCatalog(entries.mapValues { (k, e) -> e.copy(selected = k == id) }, defaults, nowPlaying)
 
     /** The rail's or bar's stops as the user arranged them. */
     fun stops(prefs: dev.nitrate.core.pages.DisplayPrefs): List<NavEntry> =
@@ -581,8 +585,12 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
         list.associateBy { it.id },
         // Pinned pages are Home's tabs, so they aren't stops by default (they can still be added in Menu stops).
         MenuStops.defaults(libraries.map { it.id }, emptyList()),
+        nowPlaying = NavEntry("Now playing", NavIcons.music, id = NOW_PLAYING_STOP, onClick = actions.onNowPlaying),
     )
 }
+
+/** The menu stop that leads back to the listening player (not one the user arranges). */
+const val NOW_PLAYING_STOP = "now-playing"
 
 /** The app's menu, provided once by the nav host so every top-level page shows the same one. */
 val LocalMenuCatalog = androidx.compose.runtime.staticCompositionLocalOf<MenuCatalog?> { null }
@@ -600,7 +608,11 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     // "Fade in" used to be its own menu: it's the top/bottom bar, hidden.
     val style = if (prefs.tvMenu == TvMenuStyle.FADE) TvMenuStyle.TOP else prefs.tvMenu
     val pageKey = dev.nitrate.core.effects.PageThemes.pageKeyFor(current)
-    TvMenu(style, marked.stops(prefs), marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
+    // While music plays, a "Now playing" stop first: the way back to it from anywhere.
+    val listening = dev.nitrate.tv.ui.pages.LocalTvContainer.current?.listening
+    val music = listening?.state?.collectAsState()?.value?.active == true
+    val stops = marked.stops(prefs).let { s -> if (music && marked.nowPlaying != null) listOf(marked.nowPlaying) + s else s }
+    TvMenu(style, stops, marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
         ThemedPage(pageKey, insets) { content(insets) }
     }
 }

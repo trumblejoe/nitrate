@@ -66,6 +66,8 @@ import kotlinx.serialization.Serializable
 @Serializable object ConnectRoute
 @Serializable data class LoginRoute(val serverUrl: String, val serverName: String)
 @Serializable object HomeRoute
+/** The listening player (music). */
+@Serializable object NowPlayingRoute
 @Serializable object OfflineRoute
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null)
 @Serializable object SettingsRoute
@@ -182,10 +184,23 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     // Before a title starts from the top: the user's pre-rolls (verse, scene, intros), when switched on.
     val displayPrefs by androidx.compose.runtime.rememberUpdatedState(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current)
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Songs go to the listening player (which carries on while browsing), anything else to the player.
+    fun listen(items: List<dev.nitrate.core.model.MediaItem>, start: Int = 0, shuffle: Boolean = false) {
+        val listening = container.listening
+        if (listening != null && items.isNotEmpty() && items.all { it.kind == dev.nitrate.core.model.ItemKind.AUDIO }) {
+            listening.play(items, start, shuffle)
+            nav.navigate(NowPlayingRoute) { launchSingleTop = true }
+        } else nav.playQueue((if (shuffle) items.drop(start).shuffled() else items.drop(start)).map { it.id })
+    }
     val gate = rememberPlaybackGate(container.plugins) { item, fromStart, startMs ->
         scope.launch {
             // A book opens in the reader, from wherever Play was pressed.
             if (item.kind == dev.nitrate.core.model.ItemKind.BOOK) nav.navigate(ComicRoute(item.id))
+            // A song plays in the listening player, its album queued around it.
+            else if (item.kind == dev.nitrate.core.model.ItemKind.AUDIO && container.listening != null) {
+                val album = item.albumId?.let { runCatching { container.server.albumTracks(it) }.getOrNull() }.orEmpty()
+                listen(album.ifEmpty { listOf(item) }, album.indexOfFirst { it.id == item.id }.coerceAtLeast(0))
+            }
             else if (startMs != null) nav.navigate(PlayerRoute(item.id, fromStart = false, startMs = startMs))
             else if (!fromStart && container.recapBefore(item) != null) nav.navigate(RecapRoute)
             else {
@@ -236,6 +251,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onSettings = { nav.navigate(SettingsHubRoute, fromHome) },
                 onProfiles = { nav.navigate(ProfilesRoute) },
                 onQuickSwitch = { quickSwitch = true },
+                onNowPlaying = { nav.navigate(NowPlayingRoute) { launchSingleTop = true } },
             ),
         )
     }
@@ -313,7 +329,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onOpen = nav::openItem,
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
-                onPlayQueue = { items -> nav.playQueue(items.map { it.id }) },
+                onPlayQueue = { items -> listen(items) },
                 onBrowse = { title, studio, year -> nav.navigate(PersonRoute("", title, studio, year)) },
                 checkPlayback = { item -> container.checkPlayback(item.id, item.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO, item) },
                 trackSetup = { item -> container.trackSetup(item) },
@@ -595,7 +611,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 repository = container.server,
                 settings = container.displaySettings,
                 playlistId = entry.toRoute<PlaylistRoute>().playlistId,
-                onPlayQueue = { items -> nav.playQueue(items.map { it.id }) },
+                onPlayQueue = { items -> listen(items) },
                 onOpen = nav::openItem,
                 onDeleted = { nav.popBackStack() },
                 onContinue = { pl, next, rest ->
@@ -606,8 +622,17 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onStoryOrder = { id, on -> scope.launch { container.setRecapPlaylist(id, on) } },
             )
         }
+        composable<NowPlayingRoute> {
+            val listening = container.listening
+            if (listening == null) LaunchedEffect(Unit) { nav.popBackStack() }
+            else dev.nitrate.tv.ui.music.NowPlayingScreen(listening, container.server, onBack = { nav.popBackStack() })
+        }
         composable<PlayerRoute> { entry ->
-            LaunchedEffect(Unit) { container.themeMusic.stop() }
+            LaunchedEffect(Unit) {
+                container.themeMusic.stop()
+                // A video takes over from the music.
+                container.listening?.pause()
+            }
             // Leaving the player: what was watched with partners counts for them too.
             androidx.compose.runtime.DisposableEffect(Unit) { onDispose { container.afterWatching() } }
             val route = entry.toRoute<PlayerRoute>()
