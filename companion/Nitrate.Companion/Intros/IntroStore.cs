@@ -6,7 +6,8 @@ namespace Nitrate.Companion.Intros;
 /// <param name="Version">The episode's file and change date when read (a new file is read again).</param>
 /// <param name="Intro">Its intro (null: read, none found).</param>
 /// <param name="Checked">When.</param>
-public record IntroResult(string Version, Intro? Intro, DateTimeOffset Checked);
+/// <param name="Recap">Its "Previously on…" recap (null: none found).</param>
+public record IntroResult(string Version, Intro? Intro, DateTimeOffset Checked, Intro? Recap = null);
 
 /// <summary>
 /// Results in the server's data folder (intros.json), and each episode's fingerprint beside them

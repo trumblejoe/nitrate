@@ -106,49 +106,55 @@ public static class AudioPrint
     {
         (int, int, int, int)? best = null;
         var bestLength = minFrames - 1;
+        Scan(a, b, () => bestLength, (aStart, aEnd, bStart, bEnd) =>
+        {
+            if (aEnd - aStart > bestLength)
+            {
+                bestLength = aEnd - aStart;
+                best = (aStart, aEnd, bStart, bEnd);
+            }
+        });
+        return best;
+    }
+
+    /// <summary>
+    /// Every stretch at least [minFrames] long that [a] shares with [b] (at any alignment), as
+    /// frame ranges in each (end exclusive). Recaps are many short clips, so all of them count.
+    /// </summary>
+    public static List<(int AStart, int AEnd, int BStart, int BEnd)> SharedRuns(uint[] a, uint[] b, int minFrames)
+    {
+        var runs = new List<(int, int, int, int)>();
+        Scan(a, b, () => minFrames - 1, (aStart, aEnd, bStart, bEnd) => runs.Add((aStart, aEnd, bStart, bEnd)));
+        return runs;
+    }
+
+    /// <summary>
+    /// Lines [a] and [b] up at every shift and reports each shared stretch longer than [shorter]()
+    /// frames (gaps of up to <see cref="MaxGap"/>, at least <see cref="MinDensity"/> matching, ends
+    /// trimmed to where matches are dense).
+    /// </summary>
+    private static void Scan(uint[] a, uint[] b, Func<int> shorter, Action<int, int, int, int> found)
+    {
+        var hits = new List<int>();
         for (var shift = -(b.Length - 1); shift < a.Length; shift++)
         {
             var i0 = Math.Max(0, shift);
             var j0 = i0 - shift;
             var length = Math.Min(a.Length - i0, b.Length - j0);
-            if (length <= bestLength)
+            if (length <= shorter())
             {
                 continue;
             }
 
-            var hits = new List<int>();
+            hits.Clear();
             void Close()
             {
-                if (hits.Count == 0 || hits[^1] - hits[0] + 1 <= bestLength || hits.Count < (hits[^1] - hits[0] + 1) * MinDensity)
+                if (Trimmed(hits) is not { } run || run.Last - run.First + 1 <= shorter())
                 {
                     return;
                 }
 
-                // Chance matches just outside the shared part can stretch it: it starts and ends where
-                // matches are dense.
-                var first = 0;
-                while (first < hits.Count && Dense(hits, first, 1) < EdgeHits)
-                {
-                    first++;
-                }
-
-                var end = hits.Count - 1;
-                while (end > first && Dense(hits, end, -1) < EdgeHits)
-                {
-                    end--;
-                }
-
-                if (first >= end)
-                {
-                    return;
-                }
-
-                var run = hits[end] - hits[first] + 1;
-                if (run > bestLength)
-                {
-                    bestLength = run;
-                    best = (i0 + hits[first], i0 + hits[end] + 1, j0 + hits[first], j0 + hits[end] + 1);
-                }
+                found(i0 + run.First, i0 + run.Last + 1, j0 + run.First, j0 + run.Last + 1);
             }
 
             for (var k = 0; k < length; k++)
@@ -169,8 +175,32 @@ public static class AudioPrint
 
             Close();
         }
+    }
 
-        return best;
+    /// <summary>
+    /// A run of matching frames, if dense enough, from where matches are dense at its start to
+    /// where they are at its end (chance matches just outside a shared part would stretch it).
+    /// </summary>
+    private static (int First, int Last)? Trimmed(List<int> hits)
+    {
+        if (hits.Count == 0 || hits.Count < (hits[^1] - hits[0] + 1) * MinDensity)
+        {
+            return null;
+        }
+
+        var first = 0;
+        while (first < hits.Count && Dense(hits, first, 1) < EdgeHits)
+        {
+            first++;
+        }
+
+        var end = hits.Count - 1;
+        while (end > first && Dense(hits, end, -1) < EdgeHits)
+        {
+            end--;
+        }
+
+        return first >= end ? null : (hits[first], hits[end]);
     }
 
     /// <summary>A shared stretch's ends need this many matches among the <see cref="EdgeWindow"/> frames beside them.</summary>

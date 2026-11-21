@@ -101,7 +101,10 @@ object CreditScenes {
         val read = fromServer ?: frames?.let { fromFrames(runtimeMs, it, frameIntervalMs) }.orEmpty()
         if (read.isNotEmpty()) {
             val certainty = if ((after && read.any { it.afterCredits }) || (during && read.any { !it.afterCredits })) CreditCertainty.CONFIRMED else CreditCertainty.GUESSED
-            return CreditScenesInfo(read, certainty, during, after, creditsStart ?: read.first().creditsStartMs)
+            // An Outro may be only the final credits, after the scene (the Companion's never holds one):
+            // the credits start where they first do.
+            val start = listOfNotNull(creditsStart, read.minOf { it.creditsStartMs }).min()
+            return CreditScenesInfo(read, certainty, during, after, start)
         }
         return CreditScenesInfo(emptyList(), null, during, after, creditsStart)
     }

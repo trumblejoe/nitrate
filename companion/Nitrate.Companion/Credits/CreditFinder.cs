@@ -66,6 +66,61 @@ public static class CreditFinder
         return skips;
     }
 
+    /// <summary>The final stretch of credits (to the end, after any scene) is at least this long.</summary>
+    public const long MinFinalCreditsMs = 15_000;
+
+    /// <summary>
+    /// Where the final stretch of credits starts: credits that run to the title's end with no scene
+    /// after them (a short logo or black at the very end is fine), from [frames] as for
+    /// <see cref="Find"/>. Breaks shorter than a scene (a picture card) don't end it; a scene does,
+    /// so a mid- or post-credits scene is never inside it. Null when the title doesn't end on credits.
+    /// </summary>
+    public static long? FinalCredits(long runtimeMs, long startMs, IReadOnlyList<byte[]> frames, long intervalMs)
+    {
+        if (runtimeMs <= 0 || intervalMs <= 0 || frames.Count == 0)
+        {
+            return null;
+        }
+
+        var credits = frames.Select(LooksLikeCredits).ToArray();
+        var minScene = Math.Max(1, (int)(MinSceneMs / intervalMs)) + 1;
+        var from = (long)(runtimeMs * CreditsFrom);
+        long At(int i) => startMs + (i * intervalMs);
+
+        // Back from the end: past a short tail that isn't credits, then over credits and short breaks.
+        var i = credits.Length - 1;
+        var tail = 0;
+        while (i >= 0 && !credits[i])
+        {
+            i--;
+            tail++;
+        }
+
+        if (i < 0 || tail >= minScene)
+        {
+            return null;
+        }
+
+        var first = i;
+        var gap = 0;
+        for (; i >= 0; i--)
+        {
+            if (credits[i])
+            {
+                first = i;
+                gap = 0;
+            }
+            else if (++gap >= minScene)
+            {
+                break;
+            }
+        }
+
+        var startAt = At(first);
+        var length = At(credits.Length - tail) - startAt;
+        return startAt >= from && length >= MinFinalCreditsMs ? startAt : null;
+    }
+
     /// <summary>Credits: almost all black with crisp near-white marks (a dark scene has soft mid-tones).</summary>
     public static bool LooksLikeCredits(byte[] frame)
     {

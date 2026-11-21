@@ -6,7 +6,14 @@ namespace Nitrate.Companion.Credits;
 /// <param name="Version">The title's file and change date when checked (a new file is checked again).</param>
 /// <param name="Skips">Scenes found (none: checked, nothing there).</param>
 /// <param name="Checked">When.</param>
-public record CreditResult(string Version, IReadOnlyList<CreditSkip> Skips, DateTimeOffset Checked);
+/// <param name="OutroStartMs">Where the final stretch of credits starts (to the end, after any scene), if it ends on credits.</param>
+/// <param name="OutroEndMs">The title's end, when [OutroStartMs] is known.</param>
+/// <param name="Format">How it was read: older results (without the final credits) are read again.</param>
+public record CreditResult(string Version, IReadOnlyList<CreditSkip> Skips, DateTimeOffset Checked, long? OutroStartMs = null, long? OutroEndMs = null, int Format = 0)
+{
+    /// <summary>What results are read as now.</summary>
+    public const int CurrentFormat = 2;
+}
 
 /// <summary>Results kept in the server's data folder (credits.json), one per title.</summary>
 public class CreditStore
@@ -33,7 +40,7 @@ public class CreditStore
     }
 
     /// <summary>Whether [item] needs checking (never checked, or checked as another version).</summary>
-    public bool Needs(Guid item, string version) => Get(item)?.Version != version;
+    public bool Needs(Guid item, string version) => Get(item) is not { } r || r.Version != version || r.Format < CreditResult.CurrentFormat;
 
     /// <summary>Keeps [item]'s result.</summary>
     public void Put(Guid item, CreditResult result)

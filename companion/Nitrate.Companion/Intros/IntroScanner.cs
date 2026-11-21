@@ -16,7 +16,8 @@ namespace Nitrate.Companion.Intros;
 /// "Find intros" (Dashboard → Scheduled tasks, nightly): reads the opening minutes of every
 /// episode's sound once through the server's own ffmpeg, compares each season's episodes
 /// (<see cref="IntroFinder"/>) and hands what it finds to Jellyfin as Intro segments
-/// (<see cref="IntroSegmentProvider"/>), so Skip Intro works in every app. A season is looked at
+/// (<see cref="Segments.CompanionSegmentProvider"/>), with any "Previously on…" recap
+/// (<see cref="RecapFinder"/>), so Skip Intro and Skip Recap work in every app. A season is looked at
 /// again only when one of its episodes is new or changed; fingerprints are kept, so that costs
 /// only the new file's read.
 /// </summary>
@@ -69,36 +70,48 @@ public class IntroScanner : IScheduledTask
             IsVirtualItem = false,
         }).OfType<Episode>().Where(e => !string.IsNullOrEmpty(e.Path)).ToList();
         _store.KeepOnly(new HashSet<Guid>(episodes.Select(e => e.Id)));
-        // Seasons (specials left out), episodes in order.
-        var seasons = episodes
+        // Each show's episodes in order (specials left out), and its seasons that need looking at.
+        var shows = episodes
             .Where(e => (e.ParentIndexNumber ?? 0) != 0)
-            .GroupBy(e => (e.SeriesId, e.ParentIndexNumber))
-            .Select(g => g.OrderBy(e => e.IndexNumber ?? int.MaxValue).ToList())
-            .Where(s => s.Count >= 2 && s.Any(e => _store.Needs(e.Id, VersionOf(e))))
+            .GroupBy(e => e.SeriesId)
+            .Select(g => g.OrderBy(e => e.ParentIndexNumber).ThenBy(e => e.IndexNumber ?? int.MaxValue).ToList())
+            .ToList();
+        var work = shows
+            .SelectMany(show => show.GroupBy(e => e.ParentIndexNumber)
+                .Select(g => (Show: show, Season: g.ToList()))
+                .Where(x => x.Season.Count >= 2 && x.Season.Any(e => _store.Needs(e.Id, VersionOf(e)))))
             .ToList();
         var done = 0;
-        foreach (var season in seasons)
+        foreach (var group in work.GroupBy(w => w.Show))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            progress.Report(100.0 * done++ / Math.Max(1, seasons.Count));
-            try
+            // Whole-episode fingerprints for recaps, only while this show is being looked at.
+            var whole = new Dictionary<Guid, uint[]>();
+            foreach (var (show, season) in group)
             {
-                await ScanSeasonAsync(season, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception e)
-            {
-                _log.LogWarning("Intros: couldn't check {Series} season {Season}: {Message}", season[0].SeriesName, season[0].ParentIndexNumber, e.Message);
+                cancellationToken.ThrowIfCancellationRequested();
+                progress.Report(100.0 * done++ / Math.Max(1, work.Count));
+                try
+                {
+                    await ScanSeasonAsync(show, season, whole, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception e)
+                {
+                    _log.LogWarning("Intros: couldn't check {Series} season {Season}: {Message}", season[0].SeriesName, season[0].ParentIndexNumber, e.Message);
+                }
             }
         }
 
         progress.Report(100);
     }
 
-    private async Task ScanSeasonAsync(List<Episode> season, CancellationToken cancellationToken)
+    /// <summary>How many episodes before one its recap is looked for in (the previous season's too).</summary>
+    public const int RecapFrom = 3;
+
+    private async Task ScanSeasonAsync(List<Episode> show, List<Episode> season, Dictionary<Guid, uint[]> whole, CancellationToken cancellationToken)
     {
         var prints = new List<uint[]>();
         var kept = new List<Episode>();
@@ -110,7 +123,7 @@ public class IntroScanner : IScheduledTask
             {
                 try
                 {
-                    print = await ReadAsync(e, cancellationToken).ConfigureAwait(false);
+                    print = await ReadAsync(e, opening: true, cancellationToken).ConfigureAwait(false);
                     _store.SavePrint(e.Id, version, print);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -129,9 +142,10 @@ public class IntroScanner : IScheduledTask
         for (var i = 0; i < kept.Count; i++)
         {
             var e = kept[i];
-            var before = _store.Get(e.Id)?.Intro;
-            _store.Put(e.Id, new IntroResult(VersionOf(e), found[i], DateTimeOffset.UtcNow));
-            if (found[i] != null && found[i] != before)
+            var before = _store.Get(e.Id);
+            var recap = await RecapAsync(show, e, prints[i], found[i], whole, cancellationToken).ConfigureAwait(false);
+            _store.Put(e.Id, new IntroResult(VersionOf(e), found[i], DateTimeOffset.UtcNow, recap));
+            if ((found[i] != null || recap != null) && (found[i] != before?.Intro || recap != before?.Recap))
             {
                 // Jellyfin asks every segment provider again (others' segments are made afresh too).
                 await _segments.RunSegmentPluginProviders(e, _library.GetLibraryOptions(e), true, cancellationToken).ConfigureAwait(false);
@@ -139,11 +153,43 @@ public class IntroScanner : IScheduledTask
         }
     }
 
-    /// <summary>The fingerprint of the opening of [episode]'s sound (<see cref="IntroFinder.SearchMs"/>).</summary>
-    private async Task<uint[]> ReadAsync(Episode episode, CancellationToken cancellationToken)
+    /// <summary>[episode]'s recap, from the <see cref="RecapFrom"/> episodes before it (read whole, kept in [whole] meanwhile).</summary>
+    private async Task<Intro?> RecapAsync(List<Episode> show, Episode episode, uint[] opening, Intro? intro, Dictionary<Guid, uint[]> whole, CancellationToken cancellationToken)
+    {
+        var at = show.IndexOf(episode);
+        if (at <= 0)
+        {
+            return null;
+        }
+
+        var earlier = new List<RecapFinder.Earlier>();
+        foreach (var e in show.Skip(Math.Max(0, at - RecapFrom)).Take(Math.Min(RecapFrom, at)))
+        {
+            if (!whole.TryGetValue(e.Id, out var print))
+            {
+                try
+                {
+                    print = await ReadAsync(e, opening: false, cancellationToken).ConfigureAwait(false);
+                    whole[e.Id] = print;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _log.LogWarning("Intros: couldn't read {Name} for recaps: {Message}", e.Name, ex.Message);
+                    continue;
+                }
+            }
+
+            earlier.Add(new RecapFinder.Earlier(print, _store.Get(e.Id)?.Intro));
+        }
+
+        return RecapFinder.Find(opening, intro, earlier);
+    }
+
+    /// <summary>The fingerprint of [episode]'s sound: its opening (<see cref="IntroFinder.SearchMs"/>), or all of it.</summary>
+    private async Task<uint[]> ReadAsync(Episode episode, bool opening, CancellationToken cancellationToken)
     {
         var runtimeMs = (episode.RunTimeTicks ?? 0) / TimeSpan.TicksPerMillisecond;
-        var searchMs = IntroFinder.SearchMs(runtimeMs > 0 ? runtimeMs : 30 * 60_000);
+        var searchMs = opening ? IntroFinder.SearchMs(runtimeMs > 0 ? runtimeMs : 30 * 60_000) : (runtimeMs > 0 ? runtimeMs + 60_000 : 4 * 60 * 60_000);
         var info = new ProcessStartInfo(_encoder.EncoderPath)
         {
             RedirectStandardOutput = true,

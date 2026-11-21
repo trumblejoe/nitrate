@@ -41,13 +41,64 @@ public class CreditTests
     }
 
     [Fact]
+    public void FinalCreditsNeverHoldAScene()
+    {
+        const long interval = 5_000;
+        const long runtime = 100 * 60_000L;
+        var start = 70 * 60_000L;
+        IEnumerable<byte[]> Of(Func<byte[]> f, int n) => Enumerable.Repeat(f(), n);
+
+        // No scene: all the credits, a short logo at the very end included.
+        var plain = Of(Picture, 120).Concat(Of(Credits, 48)).Concat(Of(Picture, 2)).ToList();
+        Assert.Equal(start + (120 * interval), CreditFinder.FinalCredits(runtime, start, plain, interval));
+
+        // Post-credits scene then a few final cards: only the cards after the scene.
+        var post = Of(Picture, 120).Concat(Of(Credits, 40)).Concat(Of(Picture, 12)).Concat(Of(Credits, 6)).ToList();
+        Assert.Equal(start + (172 * interval), CreditFinder.FinalCredits(runtime, start, post, interval));
+
+        // Mid-credits scene: the credits after it, past a picture card shorter than a scene.
+        var mid = Of(Picture, 120).Concat(Of(Credits, 20)).Concat(Of(Picture, 12)).Concat(Of(Credits, 10)).Concat(Of(Picture, 1)).Concat(Of(Credits, 10)).ToList();
+        Assert.Equal(start + (152 * interval), CreditFinder.FinalCredits(runtime, start, mid, interval));
+
+        // Ending on a scene: no final credits; nor too short a stretch.
+        Assert.Null(CreditFinder.FinalCredits(runtime, start, Of(Picture, 120).Concat(Of(Credits, 40)).Concat(Of(Picture, 12)).ToList(), interval));
+        Assert.Null(CreditFinder.FinalCredits(runtime, start, Of(Picture, 120).Concat(Of(Credits, 2)).ToList(), interval));
+    }
+
+    [Fact]
+    public void OldResultsAreReadAgainForTheFinalCredits()
+    {
+        var store = new CreditStore(null);
+        var id = Guid.NewGuid();
+        store.Put(id, new CreditResult("v1", Array.Empty<CreditSkip>(), DateTimeOffset.UtcNow));
+        Assert.True(store.Needs(id, "v1"));
+        store.Put(id, new CreditResult("v1", Array.Empty<CreditSkip>(), DateTimeOffset.UtcNow, Format: CreditResult.CurrentFormat));
+        Assert.False(store.Needs(id, "v1"));
+    }
+
+    [Fact]
+    public void SegmentsForJellyfin()
+    {
+        var id = Guid.NewGuid();
+        var segments = Nitrate.Companion.Segments.CompanionSegmentProvider.For(
+            id,
+            new Nitrate.Companion.Intros.IntroResult("v", new Nitrate.Companion.Intros.Intro(40_000, 70_000), DateTimeOffset.UtcNow, new Nitrate.Companion.Intros.Intro(0, 35_000)),
+            new CreditResult("v", Array.Empty<CreditSkip>(), DateTimeOffset.UtcNow, 2_500_000, 2_700_000, CreditResult.CurrentFormat));
+        Assert.Equal(
+            new[] { "Recap 0-35000", "Intro 40000-70000", "Outro 2500000-2700000" },
+            segments.Select(s => $"{s.Type} {s.StartTicks / TimeSpan.TicksPerMillisecond}-{s.EndTicks / TimeSpan.TicksPerMillisecond}"));
+        Assert.All(segments, s => Assert.Equal(id, s.ItemId));
+        Assert.Empty(Nitrate.Companion.Segments.CompanionSegmentProvider.For(id, null, null));
+    }
+
+    [Fact]
     public void ResultsAreKeptPerVersionAndForgottenWhenGone()
     {
         var path = Path.Combine(Path.GetTempPath(), "nitrate-credits-" + Guid.NewGuid().ToString("N") + ".json");
         var item = Guid.NewGuid();
         var store = new CreditStore(path);
         Assert.True(store.Needs(item, "a"));
-        store.Put(item, new CreditResult("a", new[] { new CreditSkip(1, 2, true) }, DateTimeOffset.UnixEpoch));
+        store.Put(item, new CreditResult("a", new[] { new CreditSkip(1, 2, true) }, DateTimeOffset.UnixEpoch, Format: CreditResult.CurrentFormat));
         var again = new CreditStore(path);
         Assert.False(again.Needs(item, "a"));
         Assert.True(again.Needs(item, "b"));

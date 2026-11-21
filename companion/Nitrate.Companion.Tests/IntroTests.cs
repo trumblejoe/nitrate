@@ -86,6 +86,34 @@ public class IntroTests
     }
 
     [Fact]
+    public void PreviouslyOnIsClipsFromEarlierEpisodes()
+    {
+        // Two earlier episodes, each the theme then its own story.
+        var story1 = Sound(201, 240);
+        var story2 = Sound(202, 240);
+        var earlier = new[]
+        {
+            new RecapFinder.Earlier(AudioPrint.Of(Episode(1, 1, Theme, story1)), new Intro(0, 30_000)),
+            new RecapFinder.Earlier(AudioPrint.Of(Episode(2, 1, Theme, story2)), new Intro(0, 30_000)),
+        };
+        short[] Clip(short[] from, double atSeconds, double seconds) => from.Skip((int)(atSeconds * Rate)).Take((int)(seconds * Rate)).ToArray();
+
+        // "Previously on…" (a voice), then clips from both, the theme, the new story.
+        var recap = new[] { Sound(300, 2.5), Clip(story1, 100, 6), Sound(301, 1.5), Clip(story2, 40, 8), Clip(story2, 180, 7), Sound(302, 1) };
+        var parts = recap.Concat(new[] { Theme, Sound(303, 120) }).ToArray();
+        var opening = AudioPrint.Of(Episode(3, 0.9, parts));
+        var recapMs = (long)(recap.Sum(p => p.Length) * 1000.0 / Rate);
+        var found = RecapFinder.Find(opening, new Intro(recapMs, recapMs + 30_000), earlier);
+        Assert.NotNull(found);
+        Assert.Equal(0, found!.StartMs);
+        Assert.InRange(found.EndMs, recapMs - 2_500, recapMs);
+
+        // The theme alone (heard in every earlier episode) is no recap; nor is a new cold open.
+        Assert.Null(RecapFinder.Find(AudioPrint.Of(Episode(4, 1, Theme, Sound(304, 120))), null, earlier));
+        Assert.Null(RecapFinder.Find(AudioPrint.Of(Episode(5, 1, Sound(305, 40), Theme, Sound(306, 60))), new Intro(40_000, 70_000), earlier));
+    }
+
+    [Fact]
     public void HowMuchOfEachEpisodeIsRead()
     {
         Assert.Equal(3 * 60_000, IntroFinder.SearchMs(8 * 60_000));

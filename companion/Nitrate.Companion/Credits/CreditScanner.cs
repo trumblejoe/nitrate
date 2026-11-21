@@ -34,14 +34,16 @@ public class CreditScanner : IScheduledTask
     private readonly CreditStore _store;
     private readonly ILibraryManager _library;
     private readonly IMediaEncoder _encoder;
+    private readonly MediaBrowser.Controller.MediaSegments.IMediaSegmentManager _segments;
     private readonly ILogger<CreditScanner> _log;
 
     /// <summary>Initializes a new instance of the <see cref="CreditScanner"/> class.</summary>
-    public CreditScanner(CreditStore store, ILibraryManager library, IMediaEncoder encoder, ILogger<CreditScanner> log)
+    public CreditScanner(CreditStore store, ILibraryManager library, IMediaEncoder encoder, MediaBrowser.Controller.MediaSegments.IMediaSegmentManager segments, ILogger<CreditScanner> log)
     {
         _store = store;
         _library = library;
         _encoder = encoder;
+        _segments = segments;
         _log = log;
     }
 
@@ -92,8 +94,14 @@ public class CreditScanner : IScheduledTask
 
             try
             {
-                var skips = await FindAsync(item, cancellationToken).ConfigureAwait(false);
-                _store.Put(item.Id, new CreditResult(version, skips, DateTimeOffset.UtcNow));
+                var before = _store.Get(item.Id)?.OutroStartMs;
+                var result = await FindAsync(item, version, cancellationToken).ConfigureAwait(false);
+                _store.Put(item.Id, result);
+                if (result.OutroStartMs != null && result.OutroStartMs != before)
+                {
+                    // The final credits go to Jellyfin as an Outro segment (Segments/CompanionSegmentProvider).
+                    await _segments.RunSegmentPluginProviders(item, _library.GetLibraryOptions(item), true, cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -109,17 +117,18 @@ public class CreditScanner : IScheduledTask
         progress.Report(100);
     }
 
-    private async Task<IReadOnlyList<CreditSkip>> FindAsync(BaseItem item, CancellationToken cancellationToken)
+    private async Task<CreditResult> FindAsync(BaseItem item, string version, CancellationToken cancellationToken)
     {
         var runtimeMs = (item.RunTimeTicks ?? 0) / TimeSpan.TicksPerMillisecond;
         if (runtimeMs < MinRuntimeMs || string.IsNullOrEmpty(item.Path) || !File.Exists(item.Path))
         {
-            return Array.Empty<CreditSkip>();
+            return new CreditResult(version, Array.Empty<CreditSkip>(), DateTimeOffset.UtcNow, Format: CreditResult.CurrentFormat);
         }
 
         var startMs = (long)(runtimeMs * CreditFinder.CreditsFrom);
         var frames = await SampleAsync(item.Path, startMs, runtimeMs, cancellationToken).ConfigureAwait(false);
-        return CreditFinder.Find(runtimeMs, startMs, frames, IntervalMs);
+        var outro = CreditFinder.FinalCredits(runtimeMs, startMs, frames, IntervalMs);
+        return new CreditResult(version, CreditFinder.Find(runtimeMs, startMs, frames, IntervalMs), DateTimeOffset.UtcNow, outro, outro == null ? null : runtimeMs, CreditResult.CurrentFormat);
     }
 
     /// <summary>

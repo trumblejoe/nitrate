@@ -40,6 +40,19 @@ class CreditScenesTest {
         assertTrue(CreditScenes.info(6_000_000, emptyList(), emptyList(), emptyList(), fromServer = emptyList()).skips.isEmpty())
     }
 
+    @Test fun theCompanionsOutroIsOnlyTheFinalCreditsAndChangesNothing() {
+        val skip = CreditSkip(5_000_000, 5_300_000, afterCredits = true)
+        // The plugin's Outro: the last cards after the scene, to the very end.
+        val outro = MediaSegment(dev.nitrate.core.model.SegmentKind.OUTRO, 5_400_000, 6_000_000)
+        val i = CreditScenes.info(6_000_000, listOf("aftercreditsstinger"), listOf(outro), emptyList(), fromServer = listOf(skip))
+        assertEquals(listOf(skip), i.skips)
+        assertEquals(CreditCertainty.CONFIRMED, i.certainty)
+        // The credits still start where they first do, not at the final cards.
+        assertEquals(5_000_000, i.creditsStartMs)
+        // Not read as a scene marker (it runs to the end).
+        assertTrue(CreditScenes.fromMarkers(6_000_000, listOf(outro), emptyList()).isEmpty())
+    }
+
     @Test fun tagsAlone() {
         val i = CreditScenes.info(runtime, listOf("superhero", "aftercreditsstinger"), emptyList(), emptyList())
         assertTrue(i.taggedAfter)
