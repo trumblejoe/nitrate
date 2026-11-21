@@ -134,7 +134,12 @@ class AppContainer(
 
     /** Library or watch-state changes pushed by the server, for pages to reload. */
     val serverChanges: kotlinx.coroutines.flow.Flow<Unit>
-        get() = remote.events.filter { it is ServerEvent.LibraryChanged || it is ServerEvent.UserDataChanged }.map { }
+        get() = kotlinx.coroutines.flow.merge(remote.events.filter { it is ServerEvent.LibraryChanged || it is ServerEvent.UserDataChanged }.map { }, localChanges)
+
+    private val localChanges = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Pages reload as for a server push: after something done here changes what they show (an invite answered...). */
+    fun pagesChanged() { localChanges.tryEmit(Unit) }
 
     /** Watch together: this device's SyncPlay group, if any. */
     val syncPlay by lazy {
@@ -197,7 +202,7 @@ class AppContainer(
         if (companionState.value?.features?.contains("scripts") == true) syncScripts()
         if (companionState.value?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) == true) {
             refreshPartners()
-            followTogether()
+            followStandings()
         }
         chat
     }
@@ -226,7 +231,7 @@ class AppContainer(
     }
 
     /** Watching shows with partners (see [dev.nitrate.core.partners.WatchPartnersPlugin]). */
-    val watchPartners = dev.nitrate.core.partners.WatchPartnersPlugin(dev.nitrate.core.partners.TogetherSessions(::nowMs), ::nowMs)
+    val watchPartners = dev.nitrate.core.partners.WatchPartnersPlugin()
 
     private val partnersState = MutableStateFlow<dev.nitrate.core.partners.PartnersInfo?>(null)
 
@@ -280,35 +285,69 @@ class AppContainer(
         runCatching { server.dismissWatchInvite(invite.id) }
     }
 
-    /** After leaving a player: counts what was just watched with partners (in case no live update came). */
-    fun settleTogether() {
-        refreshGroupStandings(3_000)
-        if (watchPartners.sessions.all().isEmpty()) return
+    /** After leaving a player: where the user stands in shared shows has likely moved. */
+    fun afterWatching() = refreshGroupStandings(3_000)
+
+    private var followingStandings = false
+
+    /** Once the user's watched state changes, refreshes where they stand in shared shows. */
+    private fun followStandings() {
+        if (followingStandings) return
+        followingStandings = true
         networkScope.launch {
-            kotlinx.coroutines.delay(2_000)
-            runCatching { watchPartners.settle(server) }
+            remote.events.filter { it is ServerEvent.UserDataChanged }.collect { refreshGroupStandings(2_500) }
         }
     }
 
-    /** Stops watching [seriesId] with partners. */
-    fun stopTogether(seriesId: String) = watchPartners.sessions.stop(seriesId)
-
-    private var followingTogether = false
-
-    /** Once the user's watched state changes, counts episodes watched with partners for them too. */
-    private fun followTogether() {
-        if (followingTogether) return
-        followingTogether = true
-        networkScope.launch {
-            remote.events.filter { it is ServerEvent.UserDataChanged }.collect {
-                refreshGroupStandings(2_500)
-                if (watchPartners.sessions.all().isNotEmpty()) {
-                    // Let the server finish saving the stop first.
-                    kotlinx.coroutines.delay(1_500)
-                    runCatching { watchPartners.settle(server) }
+    /**
+     * Carries out a choice from a "Watching together" card ([dev.nitrate.core.partners.TogetherRow]):
+     * answering an invite, catching up, counting an episode for a group, spoilers by the user's own
+     * progress, leaving a group. Choices that open something (Start, Invite, OpenShow, WatchNow's
+     * player) are each app's. Home and the standings reload after. Returns an error message, if any.
+     */
+    suspend fun runTogether(choice: dev.nitrate.core.partners.TogetherChoice): String? {
+        val result = runCatching {
+            when (choice) {
+                is dev.nitrate.core.partners.TogetherChoice.Accept -> { server.acceptPartner(choice.request.id); Unit }
+                is dev.nitrate.core.partners.TogetherChoice.Decline -> server.declinePartner(choice.request.id)
+                is dev.nitrate.core.partners.TogetherChoice.CatchUp -> choice.episodeIds.forEach { server.setPlayed(it, true) }
+                is dev.nitrate.core.partners.TogetherChoice.WatchedWith -> { server.watchedTogether(choice.episodeId, choice.groupId); Unit }
+                is dev.nitrate.core.partners.TogetherChoice.OwnSpoilers -> {
+                    val user = server.userId ?: return null
+                    val prefs = displaySettings.prefs(user).first()
+                    val shows = if (choice.on) prefs.ownSpoilerShows + choice.seriesId else prefs.ownSpoilerShows - choice.seriesId
+                    displaySettings.savePrefs(user, prefs.copy(ownSpoilerShows = shows))
                 }
+                is dev.nitrate.core.partners.TogetherChoice.Leave -> server.leaveGroup(choice.group.id)
+                is dev.nitrate.core.partners.TogetherChoice.WatchNow -> startWatchingNow(choice)
+                else -> Unit
             }
         }
+        refreshPartners()
+        refreshGroupStandings(1_000)
+        pagesChanged()
+        return result.exceptionOrNull()?.let { it.message ?: "That didn't work" }
+    }
+
+    /** Shows to start watching with someone: the ones watched last, or those matching [query]. */
+    suspend fun togetherShows(query: String): List<dev.nitrate.core.model.MediaItem> = runCatching {
+        if (query.isBlank()) server.queryItems(
+            dev.nitrate.core.pages.ItemQuery(types = listOf(dev.nitrate.core.model.ItemKind.SERIES), sort = dev.nitrate.core.pages.QuerySort.DATE_PLAYED, limit = 12),
+        ) else server.searchHints(query).shows.take(12)
+    }.getOrDefault(emptyList())
+
+    /**
+     * "Watch it together now": a watch-together group named for the show, the group's members
+     * invited into it (when the server carries invites). The app then plays the episode, which
+     * becomes the group's.
+     */
+    private suspend fun startWatchingNow(choice: dev.nitrate.core.partners.TogetherChoice.WatchNow) {
+        if (!syncPlay.inGroup) {
+            syncPlay.create("${choice.episode.seriesName ?: choice.episode.name} with ${choice.names}")
+            kotlinx.coroutines.withTimeoutOrNull(5_000) { syncPlay.group.first { it != null } }
+        }
+        val group = syncPlay.group.value ?: error("Couldn't start watching together")
+        if (invitesAvailable()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
     }
 
     /** Theme music behind details pages (each app's details screens ask for it; players stop it). */
@@ -647,8 +686,7 @@ class AppContainer(
         accountState.value = null
         chatOnlyGroup.value = null
         companionState.value = null
-        // "Watching with" and group standings belong to the account that's leaving.
-        watchPartners.sessions.clear()
+        // Group standings belong to the account that's leaving.
         standingsState.value = emptyMap()
         writing.account = null
         scriptSyncJob?.cancel()

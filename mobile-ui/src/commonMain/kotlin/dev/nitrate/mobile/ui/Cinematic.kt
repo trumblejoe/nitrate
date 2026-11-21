@@ -118,14 +118,26 @@ fun Modifier.sharedArtwork(key: String?): Modifier {
 
 // ---- Touch feel ----
 
-/** Shrinks slightly while pressed, then springs back. */
+/** Shrinks slightly while pressed, then springs back; [onLongClick] (with a small buzz) when given. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun Modifier.pressable(onClick: () -> Unit, role: Role = Role.Button): Modifier {
+fun Modifier.pressable(onClick: () -> Unit, role: Role = Role.Button, onLongClick: (() -> Unit)? = null): Modifier {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.95f else 1f, label = "press")
-    return this.graphicsLayer { scaleX = scale; scaleY = scale }.clickable(source, indication = null, role = role, onClick = onClick)
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val scaled = this.graphicsLayer { scaleX = scale; scaleY = scale }
+    if (onLongClick == null) return scaled.clickable(source, indication = null, role = role, onClick = onClick)
+    return scaled.combinedClickable(
+        interactionSource = source, indication = null, role = role, onClick = onClick,
+        onLongClick = { haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLongClick() },
+    )
 }
+
+/** A card's press: [onClick], and holding it offers the "Watching together" choices when [actions] carries them. */
+@Composable
+fun Modifier.cardPress(actions: AppActions, item: dev.nitrate.core.model.MediaItem, onClick: () -> Unit): Modifier =
+    pressable(onClick, onLongClick = actions.cards?.let { c -> { c.hold(item) } })
 
 // ---- Floating glass navigation ----
 

@@ -115,7 +115,7 @@ fun FilmStripRow(row: MediaRow, actions: AppActions) {
                         val inGate = i == gate
                         Box(
                             Modifier.width(frameWidth).fillMaxHeight()
-                                .pressable({ if (inGate) actions.open(item, "${row.key}-${item.id}") else scope.launch { state.animateScrollToItem(i) } }),
+                                .cardPress(actions, item) { if (inGate) actions.open(item, "${row.key}-${item.id}") else scope.launch { state.animateScrollToItem(i) } },
                         ) {
                             Canvas(Modifier.fillMaxSize()) { drawSprockets(14.dp.toPx(), 10.dp.toPx(), 24.dp.toPx(), 8.dp.toPx()) }
                             Column(Modifier.padding(top = 30.dp)) {
@@ -198,7 +198,7 @@ private fun DoubleBill(left: MediaItem, right: MediaItem, actions: AppActions, m
 /** The odd one out at the end of a lightning row: a whole card to itself. */
 @Composable
 private fun SingleBill(item: MediaItem, actions: AppActions, modifier: Modifier) {
-    Box(modifier.aspectRatio(0.92f).clip(RoundedCornerShape(24.dp)).pressable({ actions.open(item) })) {
+    Box(modifier.aspectRatio(0.92f).clip(RoundedCornerShape(24.dp)).cardPress(actions, item) { actions.open(item) }) {
         AsyncImage(actions.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xCC000000))))
         Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
@@ -229,7 +229,7 @@ fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String, displa
     val accent = accentColor()
     val art = actions.artwork(item)
     val inkColor = dev.nitrate.mobile.platform.rememberInkColor(art, display, accent)
-    BoxWithConstraints(modifier.height(440.dp).clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = 0.06f)).pressable({ actions.open(item, sharedKey) })) {
+    BoxWithConstraints(modifier.height(440.dp).clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = 0.06f)).cardPress(actions, item) { actions.open(item, sharedKey) }) {
         // Narrow cards (small phones, galleries) get a round play button instead of a pill.
         val compact = maxWidth < 300.dp
         AsyncImage(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey))

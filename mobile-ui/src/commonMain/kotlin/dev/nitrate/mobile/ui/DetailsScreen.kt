@@ -38,7 +38,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -196,9 +195,6 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         if (sendable != null) RoundAction(NitrateIcons.Tv, "Play on…", onClick = { playingOn = true })
                         if (playingOn && sendable != null) PlayOnDialog(actions, sendable, sendable.user.positionMs, onDismiss = { playingOn = false })
                         // Watch partners: ask someone to keep this show in step with you.
-                        var watchWith by remember { mutableStateOf(false) }
-                        if (item.kind == ItemKind.SERIES && partnersAvailable(actions)) RoundAction(Icons.Default.Face, "Watch with", onClick = { watchWith = true })
-                        if (watchWith) WatchWithDialog(actions, item) { watchWith = false }
                         if (checking) CheckPlaybackDialog(actions, item) { checking = false }
                     }
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }

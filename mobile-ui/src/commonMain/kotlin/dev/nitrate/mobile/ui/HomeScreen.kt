@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -114,6 +115,7 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
         onPauseOrDispose { }
     }
 
+    TogetherHost(actions, partnersAvailable(actions)) {
     when (val s = state) {
         RowsState.Loading -> Loading(modifier)
         is RowsState.Error -> ErrorMessage(s.message, vm::refresh, modifier)
@@ -158,6 +160,7 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
             }
         }
     }
+    }
 }
 
 /** NITRATE, letter-spaced, with an accent dot. */
@@ -193,7 +196,14 @@ fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVec
  * screen) or one of the art styles, per the row's [display]. With [onDisplay], the header offers the choice.
  */
 @Composable
-fun CinematicRow(row: MediaRow, shownAs: RowDisplay, actions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
+fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
+    // Home's "Watching together" row: invites and the start card answer a tap themselves, a long press
+    // offers the show's choices, and the cards say whose turn it is.
+    val cards = if (row.key == dev.nitrate.core.partners.TogetherRow.KEY) LocalTogetherCards.current else null
+    val actions = if (cards != null) rowActions.withCards(cards) else rowActions
+    val partnersInfo by rowActions.container.partners.collectAsState()
+    val standings by rowActions.container.groupStandings.collectAsState()
+    fun line(item: dev.nitrate.core.model.MediaItem) = if (cards == null) null else dev.nitrate.core.partners.TogetherRow.line(item, partnersInfo, standings)?.short
     // Retired styles show as what replaced them (Showcase as Artwork, Full Showcase with the cards hidden).
     val display = shownAs.normalized()
     // Poster and Artwork rows: the next cards' pictures load before they scroll in (the other styles do their own).
@@ -221,9 +231,10 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, actions: AppActions, onDisp
                         shape = CardShape.WIDE,
                         width = 272.dp,
                         title = item.displayTitle.takeIf { display.showTitles },
-                        subtitle = listOfNotNull(dev.nitrate.core.model.AirDates.status(item, dev.nitrate.android.nowMs()) ?: item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · ").takeIf { display.showTitles },
+                        subtitle = line(item) ?: listOfNotNull(dev.nitrate.core.model.AirDates.status(item, dev.nitrate.android.nowMs()) ?: item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · ").takeIf { display.showTitles },
                         sharedKey = key,
                         onClick = { actions.open(item, key) },
+                        onLongClick = cards?.let { c -> { c.hold(item) } },
                     )
                 }
             }
@@ -236,9 +247,10 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, actions: AppActions, onDisp
                         shape = CardShape.POSTER,
                         width = 128.dp,
                         title = item.name.takeIf { display.showTitles },
-                        subtitle = item.productionYear?.toString().takeIf { display.showTitles },
+                        subtitle = line(item) ?: item.productionYear?.toString().takeIf { display.showTitles },
                         sharedKey = key,
                         onClick = { actions.open(item, key) },
+                        onLongClick = cards?.let { c -> { c.hold(item) } },
                     )
                 }
             }
@@ -357,7 +369,7 @@ private fun FullShowcasePage(item: MediaItem, sharedKey: String, display: RowDis
     val server = actions.server
     val prefs = LocalDisplayPrefs.current
     val options = display.showcase
-    Box(Modifier.fillMaxSize().background(Color.Black).pressable({ actions.open(item, sharedKey) })) {
+    Box(Modifier.fillMaxSize().background(Color.Black).cardPress(actions, item) { actions.open(item, sharedKey) }) {
         AsyncImage(
             server.fullShowcaseImage(item, portrait),
             contentDescription = null,

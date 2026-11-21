@@ -686,8 +686,8 @@ class JellyfinClient(
             dev.nitrate.core.rows.RowJob("Next Up") {
                 items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
             },
-            dev.nitrate.core.rows.RowJob("Up next together") {
-                upNextTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/up_next_together", "Up next together", it, WIDE_DEFAULT)) }
+            dev.nitrate.core.rows.RowJob("Watching together") {
+                watchingTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.partners.TogetherRow.KEY, dev.nitrate.core.partners.TogetherRow.TITLE, it, WIDE_DEFAULT)) }
             },
             dev.nitrate.core.rows.RowJob.showing("Latest in each library") { show ->
                 coroutineScope {
@@ -1176,17 +1176,27 @@ class JellyfinClient(
     override suspend fun dismissWatchInvite(id: String) = partnersApi.dismissInvite(id)
 
     /**
-     * "Up next together": for each show watched with a partner, the next episode someone hasn't
-     * seen. Nothing without the Companion plugin's partners.
+     * Home's "Watching together" row ([dev.nitrate.core.partners.TogetherRow]): invites waiting, then
+     * each shared show's next episode for the user by whose turn it is. Nothing without the
+     * Companion plugin's partners.
      */
-    private suspend fun upNextTogether(): List<MediaItem> = coroutineScope {
+    private suspend fun watchingTogether(): List<MediaItem> = coroutineScope {
         if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyList()
-        val shows = partners().groups.map { it.seriesId }.distinct()
-        shows.map { id ->
+        val info = partners()
+        suspend fun series(id: String, name: String) = runCatching { getItem(id) }.getOrElse { MediaItem(id, name, ItemKind.SERIES) }
+        val invites = info.incoming.distinctBy { it.seriesId }.map { r -> async { series(r.seriesId, r.seriesName) } }
+        val shows = info.groups.distinctBy { it.seriesId }.map { g ->
             async {
-                runCatching { dev.nitrate.core.partners.WatchPartners.nextPerGroup(allEpisodes(id), partnerProgress(id)) }.getOrDefault(emptyList())
+                runCatching {
+                    val episodes = allEpisodes(g.seriesId)
+                    val k = dev.nitrate.core.partners.KeepUp.of(g.seriesId, episodes, partnerProgress(g.seriesId))
+                    // The show itself only for a card with no episode of the user's left (waiting on the others).
+                    val needsSeries = dev.nitrate.core.partners.TogetherRow.yourNext(episodes) == null
+                    dev.nitrate.core.partners.SharedShow(if (needsSeries) series(g.seriesId, g.seriesName) else null, episodes, k)
+                }.getOrNull()
             }
-        }.flatMap { it.await() }.distinctBy { it.id }
+        }
+        dev.nitrate.core.partners.TogetherRow.items(invites.map { it.await() }, shows.mapNotNull { it.await() })
     }
 
     override suspend fun groupStandings(): Map<String, dev.nitrate.core.partners.KeepUp> = coroutineScope {

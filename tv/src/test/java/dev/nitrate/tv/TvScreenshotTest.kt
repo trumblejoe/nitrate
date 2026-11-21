@@ -1424,7 +1424,13 @@ class TvScreenshotTest {
     }
 
     @Test fun partnerRequest() = shoot("tv-partner-request", setup = { c -> c.refreshCompanionForTests() }) { c ->
-        dev.nitrate.tv.ui.partners.PartnerRequestPrompt(c)
+        dev.nitrate.tv.ui.partners.InviteAnswerDialog(c, (c.server as dev.nitrate.testing.FakeServer).partnerInfo.incoming.first()) {}
+    }
+
+    @Test fun togetherChoices() = shoot("tv-together-choices", setup = { c -> c.refreshCompanionForTests() }) { c ->
+        val info by c.partners.collectAsState()
+        val episode = dev.nitrate.core.model.MediaItem("ep-together", "The Long Night", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 1, indexNumber = 4)
+        dev.nitrate.tv.ui.partners.TogetherChoicesDialog(c, episode, info, onPlay = {}, onOpenShow = {}, onStart = {}, onCustomize = {}) {}
     }
 
     @Test fun recap() = shoot("tv-recap", setup = { c -> c.pendingRecap = (c.server as dev.nitrate.testing.FakeServer).sampleRecap() }) { c ->

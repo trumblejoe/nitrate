@@ -146,33 +146,6 @@ fun WatchWithDialog(actions: AppActions, series: MediaItem, groupId: String? = n
     )
 }
 
-/** Requests waiting for an answer, one at a time, when the app opens. */
-@Composable
-fun PartnerRequestPrompt(actions: AppActions) {
-    val container = actions.container
-    if (!partnersAvailable(actions)) return
-    val info by container.partners.collectAsState()
-    val later by container.partnerRequestsLater.collectAsState()
-    val scope = rememberCoroutineScope()
-    val r = info?.incoming?.firstOrNull { it.id !in later } ?: return
-    fun answer(accept: Boolean) = scope.launch {
-        runCatching { if (accept) container.server.acceptPartner(r.id) else container.server.declinePartner(r.id) }
-        container.refreshPartners()
-    }
-    AlertDialog(
-        onDismissRequest = { container.partnerRequestsLater.value = later + r.id },
-        title = { Text("Watch ${r.seriesName} together?") },
-        text = { Text(inviteText(r)) },
-        confirmButton = { TextButton(onClick = { answer(true) }) { Text("Accept") } },
-        dismissButton = {
-            Row {
-                TextButton(onClick = { container.partnerRequestsLater.value = later + r.id }) { Text("Later") }
-                TextButton(onClick = { answer(false) }) { Text("Decline") }
-            }
-        },
-    )
-}
-
 /** What an invite means, including exactly who learns the user's name and progress by accepting. */
 fun inviteText(r: dev.nitrate.core.partners.IncomingRequest): String {
     val others = r.willSee.filter { it != r.fromName }
@@ -192,7 +165,7 @@ fun WatchPartnersScreen(actions: AppActions) {
     var error by remember { mutableStateOf<String?>(null) }
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
-    var watching by remember { mutableStateOf(container.watchPartners.sessions.all()) }
+    var starting by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         container.refreshPartners()
         privacy = runCatching { container.server.privacy() }.getOrNull()
@@ -205,7 +178,7 @@ fun WatchPartnersScreen(actions: AppActions) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = ScreenPadding, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Watch partners", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
-            "Watch a show with a group, and everyone in it sees each other's progress. Nitrate checks before you watch ahead alone, and episodes you watch together count for the whole group. One show can have several groups. Start one from a show's page (Watch with…).",
+            "Watch a show with a group, and everyone in it sees each other's progress. Home's Watching together row shows whose turn it is; press and hold a card there for more. One show can have several groups.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -239,14 +212,8 @@ fun WatchPartnersScreen(actions: AppActions) {
             }
         }
 
-        watching.forEach { s ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Watching with ${WatchPartners.names(s.names)} until ${dev.nitrate.mobile.platform.formatTime(s.untilMs)}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { container.stopTogether(s.seriesId); watching = container.watchPartners.sessions.all() }) { Text("Stop") }
-            }
-        }
-
         SectionTitleSmall("Your groups")
+        TextButton(onClick = { starting = true }) { Text("Watch a show with someone") }
         val groups = info?.groups.orEmpty()
         if (groups.isEmpty()) Text(if (info == null) "Loading…" else "None yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         groups.forEach { g ->
@@ -285,6 +252,145 @@ fun WatchPartnersScreen(actions: AppActions) {
     inviting?.let { g ->
         WatchWithDialog(actions, MediaItem(g.seriesId, g.seriesName, dev.nitrate.core.model.ItemKind.SERIES), g.id) { inviting = null }
     }
+    if (starting) StartTogetherDialog(actions) { starting = false }
+}
+
+/**
+ * Home's "Watching together" row's own handling of its cards. [select]: a tap; true when it took
+ * it (an invite, the start card), else the card opens as usual. [hold]: a long press.
+ */
+class TogetherCards(val select: (MediaItem) -> Boolean, val hold: (MediaItem) -> Unit)
+
+val LocalTogetherCards = staticCompositionLocalOf<TogetherCards?> { null }
+
+/** Provides [LocalTogetherCards] for Home and shows what the row's cards open. */
+@Composable
+fun TogetherHost(actions: AppActions, enabled: Boolean, content: @Composable () -> Unit) {
+    val container = actions.container
+    var answering by remember { mutableStateOf<dev.nitrate.core.partners.IncomingRequest?>(null) }
+    var holding by remember { mutableStateOf<MediaItem?>(null) }
+    var starting by remember { mutableStateOf(false) }
+    val cards = remember(enabled) {
+        if (!enabled) null else TogetherCards(
+            select = { item ->
+                when {
+                    dev.nitrate.core.partners.TogetherRow.isStart(item) -> { starting = true; true }
+                    else -> dev.nitrate.core.partners.TogetherRow.inviteFor(item, container.partners.value)?.let { answering = it; true } ?: false
+                }
+            },
+            hold = { holding = it },
+        )
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalTogetherCards provides cards) { content() }
+    answering?.let { r -> InviteAnswerDialog(actions, r) { answering = null } }
+    holding?.let { item -> TogetherChoicesSheet(actions, item, onStart = { starting = true }) { holding = null } }
+    if (starting) StartTogetherDialog(actions) { starting = false }
+}
+
+/** A tap on an invite's card: who's asking, who'd see the user, and the answer. */
+@Composable
+fun InviteAnswerDialog(actions: AppActions, r: dev.nitrate.core.partners.IncomingRequest, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    fun answer(choice: dev.nitrate.core.partners.TogetherChoice) = scope.launch { actions.container.runTogether(choice); onDismiss() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Watch ${r.seriesName} together?") },
+        text = { Text(inviteText(r)) },
+        confirmButton = { TextButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Accept(r)) }) { Text("Accept") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDismiss) { Text("Not now") }
+                TextButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Decline(r)) }) { Text("Decline") }
+            }
+        },
+    )
+}
+
+/** A long press on a "Watching together" card: [dev.nitrate.core.partners.TogetherRow.choices] in a sheet. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Unit, onDismiss: () -> Unit) {
+    val container = actions.container
+    val scope = rememberCoroutineScope()
+    val info by container.partners.collectAsState()
+    val standings by container.groupStandings.collectAsState()
+    val prefs = LocalDisplayPrefs.current
+    val series = dev.nitrate.core.partners.TogetherRow.seriesOf(item)
+    val episodes by produceState(emptyList<MediaItem>(), series) {
+        value = if (series == null || dev.nitrate.core.partners.TogetherRow.isStart(item)) emptyList()
+        else runCatching { container.server.allEpisodes(series) }.getOrDefault(emptyList())
+    }
+    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, series?.let { standings[it] }, episodes, container.invitesAvailable(), prefs.ownSpoilerShows)
+    var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
+    var inviting by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    fun run(c: dev.nitrate.core.partners.TogetherChoice) {
+        when (c) {
+            is dev.nitrate.core.partners.TogetherChoice.Start -> { onDismiss(); onStart() }
+            is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); actions.nav.navigate(DetailsRoute(c.seriesId)) }
+            is dev.nitrate.core.partners.TogetherChoice.Invite -> inviting = c.groupId
+            is dev.nitrate.core.partners.TogetherChoice.Leave -> leaving = c.group
+            is dev.nitrate.core.partners.TogetherChoice.WatchNow -> scope.launch {
+                val e = container.runTogether(c)
+                if (e != null) error = e else { onDismiss(); actions.play(c.episode, false) }
+            }
+            else -> scope.launch { val e = container.runTogether(c); if (e != null) error = e else onDismiss() }
+        }
+    }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(item.seriesName ?: item.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            dev.nitrate.core.partners.TogetherRow.line(item, info, standings)?.let { Text(it.long, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            choices.forEach { c ->
+                TextButton(onClick = { run(c) }) {
+                    Text(c.label, color = if (c is dev.nitrate.core.partners.TogetherChoice.Leave) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+    leaving?.let { g ->
+        AlertDialog(
+            onDismissRequest = { leaving = null },
+            title = { Text("Leave ${g.seriesName} with ${g.label}?") },
+            text = { Text(if (g.others.size == 1) "The group ends. Nothing you've watched changes." else "The others carry on without you. Nothing you've watched changes.") },
+            confirmButton = { TextButton(onClick = { scope.launch { container.runTogether(dev.nitrate.core.partners.TogetherChoice.Leave(g)); leaving = null; onDismiss() } }) { Text("Leave") } },
+            dismissButton = { TextButton(onClick = { leaving = null }) { Text("Stay") } },
+        )
+    }
+    inviting?.let { groupId ->
+        val name = info?.groups?.firstOrNull { it.id == groupId }?.seriesName ?: item.seriesName ?: item.name
+        WatchWithDialog(actions, MediaItem(series ?: item.id, name, dev.nitrate.core.model.ItemKind.SERIES), groupId) { inviting = null; onDismiss() }
+    }
+}
+
+/** "Watch with someone": pick a show (watched last, or searched), then who to ask ([WatchWithDialog]). */
+@Composable
+fun StartTogetherDialog(actions: AppActions, onDismiss: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    var picked by remember { mutableStateOf<MediaItem?>(null) }
+    val shows by produceState(emptyList<MediaItem>(), query) {
+        kotlinx.coroutines.delay(if (query.isBlank()) 0 else 350)
+        value = actions.container.togetherShows(query)
+    }
+    picked?.let { s -> WatchWithDialog(actions, s) { onDismiss() }; return }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Watch a show with someone") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Pick the show, then who to ask. They'll see who's in the group before they accept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(query, { query = it }, label = { Text("Find a show") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(if (query.isBlank()) "Watched lately" else "Shows", style = MaterialTheme.typography.labelLarge)
+                if (shows.isEmpty()) Text(if (query.isBlank()) "Type a show's name." else "No shows found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                shows.forEach { s ->
+                    TextButton(onClick = { picked = s }) { Text(listOfNotNull(s.name, s.productionYear?.toString()).joinToString(" · ")) }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

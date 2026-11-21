@@ -16,13 +16,13 @@ val LocalDisplayPrefs = compositionLocalOf { DisplayPrefs() }
 /** Where the user stands in each show they watch with a group, by series id (empty without any). */
 val LocalGroupStandings = compositionLocalOf { emptyMap<String, dev.nitrate.core.partners.KeepUp>() }
 
-/** The line about [item]'s show and the user's group, if it's a shared show. */
+/** The user's watch groups and invites (null: none known, or no watch partners). */
+val LocalPartnersInfo = compositionLocalOf<dev.nitrate.core.partners.PartnersInfo?> { null }
+
+/** The line about [item]'s show and the user's group (or an invite to watch it), if there is one. */
 @Composable
-fun groupStanding(item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.partners.Standing? {
-    val series = if (item.kind == dev.nitrate.core.model.ItemKind.SERIES) item.id else item.seriesId ?: return null
-    val k = LocalGroupStandings.current[series] ?: return null
-    return dev.nitrate.core.partners.WatchPartners.standing(item, k)
-}
+fun groupStanding(item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.partners.Standing? =
+    dev.nitrate.core.partners.TogetherRow.line(item, LocalPartnersInfo.current, LocalGroupStandings.current)
 
 @Composable
 fun ProvideDisplayPrefs(container: AppContainer, userId: String?, content: @Composable () -> Unit) {
@@ -32,5 +32,6 @@ fun ProvideDisplayPrefs(container: AppContainer, userId: String?, content: @Comp
     val density = androidx.compose.ui.platform.LocalDensity.current
     val scaled = if (prefs.easyMode) androidx.compose.ui.unit.Density(density.density, density.fontScale * 1.2f) else density
     val standings by container.groupStandings.collectAsState()
-    CompositionLocalProvider(LocalDisplayPrefs provides prefs, LocalGroupStandings provides standings, androidx.compose.ui.platform.LocalDensity provides scaled) { content() }
+    val partners by container.partners.collectAsState()
+    CompositionLocalProvider(LocalDisplayPrefs provides prefs, LocalGroupStandings provides standings, LocalPartnersInfo provides partners, androidx.compose.ui.platform.LocalDensity provides scaled) { content() }
 }

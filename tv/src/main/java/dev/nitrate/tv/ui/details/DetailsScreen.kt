@@ -90,7 +90,7 @@ fun DetailsScreen(
     /** How an item would play here and why (the fixer); null shows the server's raw decision. */
     checkPlayback: (suspend (MediaItem) -> dev.nitrate.core.playback.PlaybackDiagnosis)? = null,
     applyPlaybackFix: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit = { _, _ -> },
-    /** The server has watch partners (Companion plugin): shows partners' progress and "Watch with…". */
+    /** The server has watch partners (Companion plugin): shows partners' progress. */
     watchPartners: Boolean = false,
     /** The tracks a title will start with, and picking others (remembered like a pick in the player). */
     trackSetup: (suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup)? = null,
@@ -415,8 +415,6 @@ private fun Header(
                 if (adding) dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect) { adding = false }
             }
             if (onManage != null) OutlinedButton(onClick = { onManage(item.id) }) { Text("Manage") }
-            val watchWith = dev.nitrate.tv.ui.partners.LocalWatchWith.current
-            if (watchWith != null && item.kind == ItemKind.SERIES) OutlinedButton(onClick = { watchWith(item) }) { Text("Watch with…") }
         }
         val partners = dev.nitrate.tv.ui.partners.LocalPartnerProgress.current
         partners.groupBy { it.groupId }.values.forEach { group ->

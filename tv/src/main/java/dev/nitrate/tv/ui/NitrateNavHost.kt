@@ -264,6 +264,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             )
         }
         composable<HomeRoute> {
+            dev.nitrate.tv.ui.partners.TogetherHost(container, partnersOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id -> nav.navigate(DetailsRoute(id)) }) {
             HomeScreen(
                 repository = container.server,
                 displaySettings = container.displaySettings,
@@ -283,6 +284,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     }
                 },
             )
+            }
         }
         composable<DetailsRoute> { entry ->
             // Theme music while on details pages (on by default on TV).
@@ -293,8 +295,6 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onDispose { container.themeMusic.hide(themeId) }
             }
             val route = entry.toRoute<DetailsRoute>()
-            var watchWith by remember { mutableStateOf<dev.nitrate.core.model.MediaItem?>(null) }
-            androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.partners.LocalWatchWith provides (if (partnersOn) ({ s -> watchWith = s }) else null)) {
             DetailsScreen(
                 repository = container.server,
                 itemId = route.itemId,
@@ -311,8 +311,6 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 applyPlaybackFix = { item, fix -> container.applyPlaybackFix(item.id, fix) },
                 watchPartners = partnersOn,
             )
-            }
-            watchWith?.let { s -> dev.nitrate.tv.ui.partners.WatchWithDialog(container, s) { watchWith = null } }
         }
         composable<RecapRoute> {
             dev.nitrate.tv.ui.player.RecapScreen(container, onPlayOn = { recap ->
@@ -577,7 +575,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<PlayerRoute> { entry ->
             LaunchedEffect(Unit) { container.themeMusic.stop() }
             // Leaving the player: what was watched with partners counts for them too.
-            androidx.compose.runtime.DisposableEffect(Unit) { onDispose { container.settleTogether() } }
+            androidx.compose.runtime.DisposableEffect(Unit) { onDispose { container.afterWatching() } }
             val route = entry.toRoute<PlayerRoute>()
             PlayerScreen(
                 repository = container.server,
@@ -636,7 +634,6 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)
     dev.nitrate.tv.ui.settings.BackupPrompt(container.backups)
     dev.nitrate.tv.ui.player.SpeakersSetupPrompt(container)
-    if (partnersOn) dev.nitrate.tv.ui.partners.PartnerRequestPrompt(container)
     if (companion?.features?.contains("together") == true) dev.nitrate.tv.ui.together.WatchInvitePrompt(container)
     LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.

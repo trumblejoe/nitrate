@@ -114,7 +114,12 @@ class AppActions(
     /** Plays from a moment (a line found by "search what people say"), with plugin checks. */
     private val playAt: ((MediaItem, Long) -> Unit)? = null,
     val play: (MediaItem, Boolean) -> Unit,
+    /** Home's "Watching together" row: its cards' own taps and long presses (null elsewhere). */
+    val cards: TogetherCards? = null,
 ) {
+    /** The same, with a row's own handling of its cards. */
+    fun withCards(cards: TogetherCards) = AppActions(container, nav, scope, playAt, play, cards)
+
     /** Plays [item] from [startMs] (falls back to resuming). */
     fun playFrom(item: MediaItem, startMs: Long) = playAt?.invoke(item, startMs) ?: play(item, false)
 
@@ -122,6 +127,7 @@ class AppActions(
 
     /** Where tapping an item goes. Seasons open their series with that season selected. */
     fun open(item: MediaItem, artKey: String? = null) {
+        if (cards?.select(item) == true) return
         val series = item.seriesId
         when {
             item.kind == ItemKind.SEASON && series != null -> nav.navigate(DetailsRoute(series, seasonId = item.id))
@@ -133,6 +139,7 @@ class AppActions(
 
     /** Plays a movie or episode (resuming), a show's next episode, or opens anything else. */
     fun playOrOpen(item: MediaItem) {
+        if (cards?.select(item) == true) return
         when {
             item.isPlayable -> play(item, false)
             item.kind == ItemKind.SERIES -> scope.launch {
@@ -221,7 +228,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         }
 
         val actions = remember(nav) {
-            AppActions(container, nav, appScope, playAt = { item, ms -> guarded(item, false, ms) }) { item, fromStart -> guarded(item, fromStart, null) }
+            AppActions(container, nav, appScope, playAt = { item, ms -> guarded(item, false, ms) }, play = { item, fromStart -> guarded(item, fromStart, null) })
         }
 
         // The user is known only after sign-in, so their display choices (accent, true black) apply here.
@@ -319,7 +326,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 val route = entry.toRoute<PlayerRoute>()
                 androidx.compose.runtime.LaunchedEffect(Unit) { actions.container.themeMusic.stop() }
                 // Leaving the player: what was watched with partners counts for them too.
-                androidx.compose.runtime.DisposableEffect(Unit) { onDispose { actions.container.settleTogether() } }
+                androidx.compose.runtime.DisposableEffect(Unit) { onDispose { actions.container.afterWatching() } }
                 PlayerScreen(
                     actions = actions,
                     itemId = route.itemId,
@@ -402,7 +409,6 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         UpdatePrompt(container.updater)
         BackupPrompt(container.backups)
         SpeakersSetupPrompt(container)
-        PartnerRequestPrompt(actions)
         WatchInvitePrompt(actions)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }
 

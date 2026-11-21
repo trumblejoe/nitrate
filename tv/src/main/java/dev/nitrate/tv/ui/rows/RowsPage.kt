@@ -142,12 +142,25 @@ fun RowsPage(
     // known; else the row's own dialog.
     val customize = dev.nitrate.tv.ui.pages.LocalCustomizeHost.current
     val pageRows = dev.nitrate.tv.ui.pages.LocalPageRows.current
-    val actions = remember(onOpen, onPlay, customize, pageRows) {
+    // Home's "Watching together" row: its invite and start cards answer OK themselves, and holding OK
+    // on any of its cards offers the show's choices (with Customize this row among them).
+    val together = dev.nitrate.tv.ui.partners.LocalTogetherCards.current
+    val currentRows by androidx.compose.runtime.rememberUpdatedState(rows)
+    fun inTogetherRow() = lastCard?.first?.let { currentRows.getOrNull(it)?.key } == dev.nitrate.core.partners.TogetherRow.KEY
+    val actions = remember(onOpen, onPlay, customize, pageRows, together) {
+        fun customizeRow(row: MediaRow) { customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row } }
         RowActions(
             onFocus = { focused = it },
-            onOpen = onOpen,
-            onPlay = { if (it.isPlayable) onPlay(it) else onOpen(it) },
-            onEditRow = { row -> customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row } },
+            onOpen = { item -> if (together == null || !inTogetherRow() || !together.select(item)) onOpen(item) },
+            onPlay = { item ->
+                if (together != null && inTogetherRow() && together.select(item)) Unit
+                else if (item.isPlayable) onPlay(item) else onOpen(item)
+            },
+            onEditRow = { row ->
+                val card = focused
+                if (together != null && row.key == dev.nitrate.core.partners.TogetherRow.KEY && card != null && inTogetherRow()) together.hold(card) { customizeRow(row) }
+                else customizeRow(row)
+            },
         )
     }
 

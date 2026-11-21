@@ -40,14 +40,18 @@ import dev.nitrate.tv.ui.components.TvTextField
 import dev.nitrate.tv.ui.lists.TvDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.DateFormat
-import java.util.Date
 
 /** Where the user's watch partners are in the show on screen (empty: none). */
 val LocalPartnerProgress = staticCompositionLocalOf<List<PartnerProgress>> { emptyList() }
 
-/** Opens "Watch with…" for a show (null: no watch partners on this server). */
-val LocalWatchWith = staticCompositionLocalOf<((MediaItem) -> Unit)?> { null }
+/**
+ * Home's "Watching together" row's own handling of its cards (null: no watch partners here).
+ * [select]: OK on a card; true when it took it (an invite, the start card), else the card opens
+ * or plays as usual. [hold]: holding OK on a card, with the row's usual Customize to offer too.
+ */
+class TogetherCards(val select: (MediaItem) -> Boolean, val hold: (MediaItem, customize: () -> Unit) -> Unit)
+
+val LocalTogetherCards = staticCompositionLocalOf<TogetherCards?> { null }
 
 /** Whether an episode still is blurred: unwatched by the user, or (on a shared show) by a partner. */
 @Composable
@@ -126,30 +130,6 @@ fun inviteText(r: dev.nitrate.core.partners.IncomingRequest): String {
     return "$into If you accept, ${WatchPartners.names(r.willSee)} will see your name and your progress in it, and episodes you watch together count for everyone."
 }
 
-/** Requests waiting for an answer, one at a time, when the app opens. */
-@Composable
-fun PartnerRequestPrompt(container: AppContainer) {
-    val info by container.partners.collectAsState()
-    val later by container.partnerRequestsLater.collectAsState()
-    val scope = rememberCoroutineScope()
-    val r = info?.incoming?.firstOrNull { it.id !in later } ?: return
-    val focus = remember(r.id) { FocusRequester() }
-    fun answer(accept: Boolean) = scope.launch {
-        runCatching { if (accept) container.server.acceptPartner(r.id) else container.server.declinePartner(r.id) }
-        container.refreshPartners()
-    }
-    TvDialog({ container.partnerRequestsLater.value = later + r.id }, width = 720) {
-        Text("Watch ${r.seriesName} together?", style = MaterialTheme.typography.headlineSmall)
-        Text(inviteText(r))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { answer(true) }, modifier = Modifier.focusRequester(focus)) { Text("Accept") }
-            OutlinedButton(onClick = { container.partnerRequestsLater.value = later + r.id }) { Text("Later") }
-            OutlinedButton(onClick = { answer(false) }) { Text("Decline") }
-        }
-    }
-    LaunchedEffect(r.id) { delay(50); runCatching { focus.requestFocus() } }
-}
-
 /** Settings → Watch partners: privacy, requests, partners and their shows. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -160,7 +140,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
-    var watching by remember { mutableStateOf(container.watchPartners.sessions.all()) }
+    var starting by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         container.refreshPartners()
@@ -171,13 +151,12 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
         runCatching { block() }.onFailure { error = it.message }
         container.refreshPartners()
     }
-    val clock = DateFormat.getTimeInstance(DateFormat.SHORT)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 58.dp, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Watch partners", style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    "Watch a show with a group, and everyone in it sees each other's progress. Nitrate checks before you watch ahead alone, and episodes you watch together count for the whole group. One show can have several groups. Start one from a show's page (Watch with…).",
+                    "Watch a show with a group, and everyone in it sees each other's progress. Home's Watching together row shows whose turn it is; hold OK on a card there for more. One show can have several groups.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -212,15 +191,8 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
                 }
             }
         }
-        watching.forEach { s ->
-            item(key = "w-${s.seriesId}") {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Watching with ${WatchPartners.names(s.names)} until ${clock.format(Date(s.untilMs))}", modifier = Modifier.width(560.dp))
-                    OutlinedButton(onClick = { container.stopTogether(s.seriesId); watching = container.watchPartners.sessions.all() }) { Text("Stop") }
-                }
-            }
-        }
         item { Text("Your groups", style = MaterialTheme.typography.titleLarge) }
+        item { OutlinedButton(onClick = { starting = true }) { Text("Watch a show with someone") } }
         val groups = info?.groups.orEmpty()
         if (groups.isEmpty()) item { Text(if (info == null) "Loading…" else "None yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         groups.forEach { g ->
@@ -265,4 +237,143 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
     inviting?.let { g ->
         WatchWithDialog(container, MediaItem(g.seriesId, g.seriesName, dev.nitrate.core.model.ItemKind.SERIES), g.id) { inviting = null }
     }
+    if (starting) StartTogetherDialog(container) { starting = false }
+}
+
+/**
+ * Provides [LocalTogetherCards] for Home and shows what its cards open: an invite's answer, the
+ * choices for a shared show, picking a show to start with, inviting, leaving.
+ */
+@Composable
+fun TogetherHost(container: AppContainer, enabled: Boolean, onPlay: (MediaItem) -> Unit, onOpenShow: (String) -> Unit, content: @Composable () -> Unit) {
+    var answering by remember { mutableStateOf<dev.nitrate.core.partners.IncomingRequest?>(null) }
+    var holding by remember { mutableStateOf<Pair<MediaItem, () -> Unit>?>(null) }
+    var starting by remember { mutableStateOf(false) }
+    val info by container.partners.collectAsState()
+    val cards = remember(enabled) {
+        if (!enabled) null else TogetherCards(
+            select = { item ->
+                when {
+                    dev.nitrate.core.partners.TogetherRow.isStart(item) -> { starting = true; true }
+                    else -> dev.nitrate.core.partners.TogetherRow.inviteFor(item, container.partners.value)?.let { answering = it; true } ?: false
+                }
+            },
+            hold = { item, customize -> holding = item to customize },
+        )
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalTogetherCards provides cards) { content() }
+    answering?.let { r -> InviteAnswerDialog(container, r) { answering = null } }
+    holding?.let { (item, customize) ->
+        TogetherChoicesDialog(container, item, info, onPlay = onPlay, onOpenShow = onOpenShow, onStart = { starting = true }, onCustomize = customize) { holding = null }
+    }
+    if (starting) StartTogetherDialog(container) { starting = false }
+}
+
+/** OK on an invite's card: who's asking, who'd see the user, and the answer. */
+@Composable
+fun InviteAnswerDialog(container: AppContainer, r: dev.nitrate.core.partners.IncomingRequest, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val focus = remember { FocusRequester() }
+    fun answer(choice: dev.nitrate.core.partners.TogetherChoice) = scope.launch { container.runTogether(choice); onDismiss() }
+    TvDialog(onDismiss, width = 720) {
+        Text("Watch ${r.seriesName} together?", style = MaterialTheme.typography.headlineSmall)
+        Text(inviteText(r))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Accept(r)) }, modifier = Modifier.focusRequester(focus)) { Text("Accept") }
+            OutlinedButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Decline(r)) }) { Text("Decline") }
+            OutlinedButton(onClick = onDismiss) { Text("Not now") }
+        }
+    }
+    LaunchedEffect(Unit) { delay(50); runCatching { focus.requestFocus() } }
+}
+
+/** Holding OK on a "Watching together" card: [dev.nitrate.core.partners.TogetherRow.choices], then Customize this row. */
+@Composable
+fun TogetherChoicesDialog(
+    container: AppContainer,
+    item: MediaItem,
+    info: dev.nitrate.core.partners.PartnersInfo?,
+    onPlay: (MediaItem) -> Unit,
+    onOpenShow: (String) -> Unit,
+    onStart: () -> Unit,
+    onCustomize: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val standings by container.groupStandings.collectAsState()
+    val prefs = LocalDisplayPrefs.current
+    val series = dev.nitrate.core.partners.TogetherRow.seriesOf(item)
+    val episodes by produceState(emptyList<MediaItem>(), series) {
+        value = if (series == null || dev.nitrate.core.partners.TogetherRow.isStart(item)) emptyList()
+        else runCatching { container.server.allEpisodes(series) }.getOrDefault(emptyList())
+    }
+    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, series?.let { standings[it] }, episodes, container.invitesAvailable(), prefs.ownSpoilerShows)
+    var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
+    var inviting by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val focus = remember { FocusRequester() }
+    fun run(c: dev.nitrate.core.partners.TogetherChoice) {
+        when (c) {
+            is dev.nitrate.core.partners.TogetherChoice.Start -> { onDismiss(); onStart() }
+            is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); onOpenShow(c.seriesId) }
+            is dev.nitrate.core.partners.TogetherChoice.Invite -> inviting = c.groupId
+            is dev.nitrate.core.partners.TogetherChoice.Leave -> leaving = c.group
+            is dev.nitrate.core.partners.TogetherChoice.WatchNow -> scope.launch {
+                val e = container.runTogether(c)
+                if (e != null) error = e else { onDismiss(); onPlay(c.episode) }
+            }
+            else -> scope.launch { val e = container.runTogether(c); if (e != null) error = e else onDismiss() }
+        }
+    }
+    if (leaving == null && inviting == null) TvDialog(onDismiss, width = 720) {
+        Text(item.seriesName ?: item.name, style = MaterialTheme.typography.headlineSmall)
+        dev.nitrate.core.partners.TogetherRow.line(item, info, standings)?.let { Text(it.long, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        choices.forEachIndexed { i, c ->
+            val m = if (i == 0) Modifier.focusRequester(focus) else Modifier
+            if (c is dev.nitrate.core.partners.TogetherChoice.Leave) OutlinedButton(onClick = { run(c) }, modifier = m) { Text(c.label) }
+            else Button(onClick = { run(c) }, modifier = m) { Text(c.label) }
+        }
+        OutlinedButton(onClick = { onDismiss(); onCustomize() }, modifier = if (choices.isEmpty()) Modifier.focusRequester(focus) else Modifier) { Text("Customize this row") }
+    }
+    LaunchedEffect(choices.size, leaving, inviting) { delay(60); runCatching { focus.requestFocus() } }
+    leaving?.let { g ->
+        val stay = remember { FocusRequester() }
+        TvDialog({ leaving = null }) {
+            Text("Leave ${g.seriesName} with ${g.label}?", style = MaterialTheme.typography.headlineSmall)
+            Text(if (g.others.size == 1) "The group ends. Nothing you've watched changes." else "The others carry on without you. Nothing you've watched changes.")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = { leaving = null }, modifier = Modifier.focusRequester(stay)) { Text("Stay") }
+                Button(onClick = { scope.launch { container.runTogether(dev.nitrate.core.partners.TogetherChoice.Leave(g)); leaving = null; onDismiss() } }) { Text("Leave") }
+            }
+            LaunchedEffect(Unit) { delay(50); runCatching { stay.requestFocus() } }
+        }
+    }
+    inviting?.let { groupId ->
+        val name = info?.groups?.firstOrNull { it.id == groupId }?.seriesName ?: item.seriesName ?: item.name
+        WatchWithDialog(container, MediaItem(series ?: item.id, name, dev.nitrate.core.model.ItemKind.SERIES), groupId) { inviting = null; onDismiss() }
+    }
+}
+
+/** "Watch with someone": pick a show (watched last, or searched), then who to ask ([WatchWithDialog]). */
+@Composable
+fun StartTogetherDialog(container: AppContainer, onDismiss: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    var picked by remember { mutableStateOf<MediaItem?>(null) }
+    val shows by produceState(emptyList<MediaItem>(), query) {
+        delay(if (query.isBlank()) 0 else 350)
+        value = container.togetherShows(query)
+    }
+    val focus = remember { FocusRequester() }
+    picked?.let { s -> WatchWithDialog(container, s) { onDismiss() }; return }
+    TvDialog(onDismiss, width = 900) {
+        Text("Watch a show with someone", style = MaterialTheme.typography.headlineSmall)
+        Text("Pick the show, then who to ask. They'll see who's in the group before they accept.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TvTextField(query, { query = it }, "Find a show", modifier = Modifier.width(620.dp).focusRequester(focus))
+        Text(if (query.isBlank()) "Watched lately" else "Shows", style = MaterialTheme.typography.titleSmall)
+        if (shows.isEmpty()) Text(if (query.isBlank()) "Type a show's name." else "No shows found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        shows.forEach { s -> OutlinedButton(onClick = { picked = s }) { Text(listOfNotNull(s.name, s.productionYear?.toString()).joinToString(" · ")) } }
+        OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+    }
+    LaunchedEffect(Unit) { delay(60); runCatching { focus.requestFocus() } }
 }

@@ -57,6 +57,8 @@ data class DisplayPrefs(
     /** The same for playlists marked in story order, set separately; 0: never. */
     val playlistRecapAfterDays: Int = 14,
     /** Playlists marked "in story order", which get a recap too (shared on every device, like spoiler hiding). */
+    /** Shared shows whose spoiler hiding goes by the user's own progress, not the furthest-behind member's. */
+    val ownSpoilerShows: Set<String> = emptySet(),
     val recapPlaylists: Set<String> = emptySet(),
     val accent: AccentMode = AccentMode.ARTWORK,
     /** Pure black backgrounds (OLED). */

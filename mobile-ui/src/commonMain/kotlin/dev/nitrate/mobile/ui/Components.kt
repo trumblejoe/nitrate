@@ -70,6 +70,8 @@ fun MediaCard(
     subtitle: String? = null,
     /** Lets the artwork morph into the page this card opens. */
     sharedKey: String? = null,
+    /** Holding the card (the "Watching together" row's choices). */
+    onLongClick: (() -> Unit)? = null,
 ) {
     val prefs = LocalDisplayPrefs.current
     // Titles follow the row unless the user always or never wants them.
@@ -79,7 +81,7 @@ fun MediaCard(
         dev.nitrate.core.pages.CardTitles.BY_ROW -> title
     }
     val shownSubtitle = subtitle.takeIf { prefs.cardTitles != dev.nitrate.core.pages.CardTitles.NEVER }
-    Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()).pressable(onClick)) {
+    Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth()).pressable(onClick, onLongClick = onLongClick)) {
         Box(
             Modifier
                 .fillMaxWidth()
