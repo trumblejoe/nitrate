@@ -24,7 +24,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 
-/** The player that background playback and the media notification control. */
+/** The player that background playback and the media notification control: the video player's, or the listening player's. */
 object BackgroundPlayback {
     @Volatile
     var player: Player? = null
@@ -32,8 +32,10 @@ object BackgroundPlayback {
 
     /** Keeps [player] going with a media notification while the app is in the background. */
     fun start(context: Context, player: Player) {
+        if (this.player === player && controller != null) return
+        // Another player (music after a video, or the reverse): the session follows it.
+        if (controller != null) stop()
         this.player = player
-        if (controller != null) return
         // Connecting a controller starts the service, which shows the notification while playing.
         controller = MediaController.Builder(context, SessionToken(context, ComponentName(context, PlaybackService::class.java))).buildAsync()
     }

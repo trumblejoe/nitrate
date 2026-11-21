@@ -244,6 +244,22 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                     SpeakersSettings(playback, output, updatePlayback)
                 }
                 item {
+                    // Music: songs evened out in loudness, from Jellyfin's own measurement of each.
+                    ListItem(
+                        headlineContent = { Text("Music loudness") },
+                        supportingContent = {
+                            Column {
+                                Text(playback.levelling.note + ". Only ever quieter, never boosted.")
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    dev.nitrate.core.music.Levelling.entries.forEach { l ->
+                                        FilterChip(playback.levelling == l, { updatePlayback { it.copy(levelling = l) } }, label = { Text(l.label) })
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
+                item {
                     ListItem(
                         headlineContent = { Text("Audio sync") },
                         supportingContent = {

@@ -16,6 +16,10 @@ class NitrateApp : Application(), SingletonImageLoader.Factory, AppContainer.Own
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this, clientName = "Nitrate Mobile", version = BuildConfig.VERSION_NAME)
+        // Music keeps playing out of the app, with a media notification and lock-screen controls.
+        (container.listening as? dev.nitrate.android.playback.AndroidListening)?.onPlayer = { player ->
+            dev.nitrate.mobile.platform.BackgroundPlayback.start(this, player)
+        }
         // Keep the new-episode check scheduled to match its setting.
         kotlinx.coroutines.MainScope().launch { container.newEpisodes.ensureScheduled() }
     }

@@ -102,8 +102,10 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
     BackHandler(enabled = tab != Tab.HOME) { tab = Tab.HOME }
 
     var playingElsewhere by remember { mutableStateOf(false) }
+    var listening by remember { mutableStateOf(false) }
     val base = NavBarClearance
-    androidx.compose.runtime.CompositionLocalProvider(LocalPlayingElsewhere provides if (playingElsewhere) 72.dp else 0.dp) {
+    // Room above the nav pill for the bars over it: what's playing here, and on another device.
+    androidx.compose.runtime.CompositionLocalProvider(LocalPlayingElsewhere provides (if (playingElsewhere) 72.dp else 0.dp) + (if (listening) 70.dp else 0.dp)) {
     Box(Modifier.fillMaxSize()) {
         val padded = Modifier.fillMaxSize().padding(bottom = NavBarClearance)
         when (tab) {
@@ -115,7 +117,9 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
             Tab.SETTINGS -> SettingsScreen(actions, onSignedOut, padded)
         }
         // Something playing on your TV (or another device): what, with a tap to its remote.
-        PlayingElsewhereBar(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = base - 8.dp), onShown = { playingElsewhere = it })
+        // The song playing here, just above the nav pill.
+        MiniPlayer(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = base - 8.dp), onShown = { listening = it })
+        PlayingElsewhereBar(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = base - 8.dp + (if (listening) 70.dp else 0.dp)), onShown = { playingElsewhere = it })
         GlassNavBar(
             tabs = tabs.map { NavTab(it.label, it.icon) },
             selected = tabs.indexOf(tab),

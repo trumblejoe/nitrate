@@ -270,11 +270,11 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     val tracks = state.tracks
                     androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (tracks.isNotEmpty()) {
-                            PillButton("Play", Icons.Default.PlayArrow, primary = true, onClick = { actions.playQueue(tracks.map { it.id }) })
-                            PillButton("Shuffle", null, primary = false, onClick = { actions.playQueue(tracks.shuffled().map { it.id }) })
+                            PillButton("Play", Icons.Default.PlayArrow, primary = true, onClick = { actions.playItems(tracks) })
+                            PillButton("Shuffle", null, primary = false, onClick = { actions.playItems(tracks, shuffle = true) })
                         }
                         PillButton("Instant mix", null, primary = tracks.isEmpty(), onClick = {
-                            scope.launch { vm.instantMix().takeIf { it.isNotEmpty() }?.let { mix -> actions.playQueue(mix.map { it.id }) } }
+                            scope.launch { vm.instantMix().takeIf { it.isNotEmpty() }?.let { mix -> actions.playItems(mix) } }
                         })
                     }
                 }
@@ -284,7 +284,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                 items(state.tracks.size, key = { "track-" + state.tracks[it].id }) { i ->
                     val t = state.tracks[i]
                     Row(
-                        Modifier.fillMaxWidth().pressable({ actions.playQueue(state.tracks.drop(i).map { it.id }) }).padding(horizontal = ScreenPadding, vertical = 10.dp),
+                        Modifier.fillMaxWidth().pressable({ actions.playItems(state.tracks, start = i) }).padding(horizontal = ScreenPadding, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {

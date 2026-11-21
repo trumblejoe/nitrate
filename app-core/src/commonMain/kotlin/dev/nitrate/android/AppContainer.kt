@@ -702,6 +702,8 @@ class AppContainer(
     private suspend fun leaveSession() {
         if (syncPlay.inGroup) syncPlay.leave()
         remote.stop()
+        // The music belongs to the account that's leaving (its reports, its library).
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { listening?.stop() }
         accountState.value = null
         chatOnlyGroup.value = null
         companionState.value = null

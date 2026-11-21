@@ -154,6 +154,17 @@ class AppActions(
         }
     }
 
+    /**
+     * Plays [items] from [start] ([shuffle]: in a random order). Songs go to the listening player,
+     * which carries on while browsing (the mini player shows it); anything else to the player.
+     */
+    fun playItems(items: List<MediaItem>, start: Int = 0, shuffle: Boolean = false) {
+        val listening = container.listening
+        if (listening != null && items.isNotEmpty() && items.all { it.kind == ItemKind.AUDIO }) return listening.play(items, start, shuffle)
+        val rest = items.drop(start)
+        playQueue((if (shuffle) rest.shuffled() else rest).map { it.id })
+    }
+
     /** Plays the first id, queueing the rest; queues start from the beginning and skip plugin checks. */
     fun playQueue(ids: List<String>) {
         val first = ids.firstOrNull() ?: return
@@ -207,6 +218,13 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         suspend fun go(target: dev.nitrate.core.model.MediaItem, fromStart: Boolean) {
             // A book opens in the reader, from wherever Play was pressed.
             if (target.kind == dev.nitrate.core.model.ItemKind.BOOK) return nav.navigate(ComicRoute(target.id))
+            // A song plays in the listening player, its album queued around it.
+            val listening = container.listening
+            if (target.kind == dev.nitrate.core.model.ItemKind.AUDIO && listening != null) {
+                val album = target.albumId?.let { runCatching { container.server.albumTracks(it) }.getOrNull() }.orEmpty()
+                val at = album.indexOfFirst { it.id == target.id }
+                return if (at >= 0) listening.play(album, at) else listening.play(listOf(target))
+            }
             val recap = if (fromStart) null else container.recapBefore(target)
             if (recap != null) nav.navigate(RecapRoute) else nav.navigate(playerRoute(target.id, fromStart))
         }
@@ -330,6 +348,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 SettingsPageScreen(actions, page)
             }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
+            screen<NowPlayingRoute> { NowPlayingScreen(actions, onBack = { nav.popBackStack() }) }
             screen<StatsRoute> { StatsScreen(actions) }
             screen<DiaryRoute> { DiaryScreen(actions) }
             screen<CustomPageRoute> { entry ->
@@ -342,7 +361,11 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             }
             screen<PlayerRoute> { entry ->
                 val route = entry.toRoute<PlayerRoute>()
-                androidx.compose.runtime.LaunchedEffect(Unit) { actions.container.themeMusic.stop() }
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    actions.container.themeMusic.stop()
+                    // A video takes over from the music.
+                    actions.container.listening?.pause()
+                }
                 // Leaving the player: what was watched with partners counts for them too.
                 androidx.compose.runtime.DisposableEffect(Unit) { onDispose { actions.container.afterWatching() } }
                 PlayerScreen(

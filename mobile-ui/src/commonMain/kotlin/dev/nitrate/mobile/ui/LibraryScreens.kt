@@ -234,11 +234,11 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                             OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
                             OutlinedButton(onClick = { deleting = true }) { Text("Delete playlist", color = MaterialTheme.colorScheme.error) }
                         } else {
-                            Button(onClick = { actions.playQueue(list.map { it.id }) }, enabled = list.isNotEmpty()) {
+                            Button(onClick = { actions.playItems(list) }, enabled = list.isNotEmpty()) {
                                 Icon(Icons.Default.PlayArrow, null)
                                 Text("Play all")
                             }
-                            OutlinedButton(onClick = { actions.playQueue(list.shuffled().map { it.id }) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
+                            OutlinedButton(onClick = { actions.playItems(list, shuffle = true) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
                         }
                     }
                     // Story order: carries on from the first unwatched item, with a "Last time" recap after a break.

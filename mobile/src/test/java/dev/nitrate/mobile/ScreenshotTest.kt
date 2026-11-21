@@ -1,5 +1,8 @@
 package dev.nitrate.mobile
 
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -344,6 +347,38 @@ class ScreenshotTest {
     @Test
     @Config(qualifiers = "w411dp-h1600dp-night-xxhdpi")
     fun stats() = shoot("phone-stats") { actions -> dev.nitrate.mobile.ui.StatsScreen(actions) }
+
+    private suspend fun listeningTo(c: AppContainer, playing: Boolean = true) = dev.nitrate.testing.FakeListening(
+        dev.nitrate.core.music.ListenState(c.server.albumTracks("al1"), index = 1, playing = playing, durationMs = 197_000, shuffle = true, repeat = dev.nitrate.core.music.Repeat.ALL),
+        position = 72_000,
+    )
+
+    /** The song playing, above the nav pill: cover, title, artist, play/pause, next and how far through. */
+    @Test
+    fun miniPlayer() {
+        lateinit var player: dev.nitrate.testing.FakeListening
+        shoot("phone-mini-player", setup = { player = listeningTo(it) }) { actions ->
+            Box(Modifier.fillMaxSize()) {
+                dev.nitrate.mobile.ui.MiniPlayer(actions, Modifier.align(Alignment.BottomCenter).padding(12.dp), player = player)
+            }
+        }
+        compose.onNodeWithContentDescription("Pause").performClick()
+        compose.waitForIdle()
+        check("toggle" in player.asked) { player.asked.toString() }
+    }
+
+    /** Now Playing: the cover, the song, a seek bar, the controls and what's up next. */
+    @Test
+    fun nowPlaying() {
+        lateinit var player: dev.nitrate.testing.FakeListening
+        shoot("phone-now-playing", setup = { player = listeningTo(it) }) { actions ->
+            dev.nitrate.mobile.ui.NowPlayingScreen(actions, onBack = {}, player = player)
+        }
+        compose.onNodeWithContentDescription("Next song").performClick()
+        compose.onNodeWithText("Lamp House").performClick()
+        compose.waitForIdle()
+        check(player.asked.containsAll(listOf("next", "skip 2"))) { player.asked.toString() }
+    }
 
     /** Timed lyrics over a song's cover, the line being sung bright. */
     @Test

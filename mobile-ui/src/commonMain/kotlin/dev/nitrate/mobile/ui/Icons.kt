@@ -15,6 +15,11 @@ object NitrateIcons {
     /** The writing pane's split: a picture beside lines of text. */
     val SplitView = icon("SplitView", "M3,15h8v-2H3v2zM3,19h8v-2H3v2zM3,11h8V9H3v2zM3,5v2h8V5H3zM13,5h8v14h-8z")
     val Pause = icon("Pause", "M6,19h4V5H6v14zM14,5v14h4V5h-4z")
+    val SkipNext = icon("SkipNext", "M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z")
+    val SkipPrevious = icon("SkipPrevious", "M6,6h2v12H6zM9.5,12l8.5,6V6z")
+    val Shuffle = icon("Shuffle", "M10.59,9.17L5.41,4 4,5.41l5.17,5.17 1.42,-1.41zM14.5,4l2.04,2.04L4,18.59 5.41,20 17.96,7.46 20,9.5V4h-5.5zM14.83,13.41l-1.41,1.41 3.13,3.13L14.5,20H20v-5.5l-2.04,2.04 -3.13,-3.13z")
+    val Repeat = icon("Repeat", "M7,7h10v3l4,-4 -4,-4v3H5v6h2V7zM17,17H7v-3l-4,4 4,4v-3h12v-6h-2v4z")
+    val RepeatOne = icon("RepeatOne", "M7,7h10v3l4,-4 -4,-4v3H5v6h2V7zM17,17H7v-3l-4,4 4,4v-3h12v-6h-2v4zM13,15V9h-1l-2,1v1h1.5v4H13z")
     /** Play on another screen. */
     val Tv = icon("Tv", "M21,3H3c-1.11,0 -2,0.89 -2,2v12c0,1.1 0.89,2 2,2h5v2h8v-2h5c1.1,0 1.99,-0.9 1.99,-2L23,5c0,-1.11 -0.9,-2 -2,-2zM21,17H3V5h18v12z")
     val CloudOff = icon(
