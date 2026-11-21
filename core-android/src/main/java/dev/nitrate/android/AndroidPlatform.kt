@@ -72,8 +72,8 @@ class AndroidPlatform(context: Context, clientName: String, version: String) : A
     override fun themeMusic(server: MediaServer) = AndroidThemeMusic(appContext, server)
     override fun newEpisodes(server: MediaServer) = AndroidNewEpisodeNotifier(appContext, server)
     override fun pdfPages(): dev.nitrate.android.comics.PdfPages = dev.nitrate.android.comics.AndroidPdfPages()
-    override fun listening(server: MediaServer, settings: dev.nitrate.android.storage.PlaybackSettingsStore) =
-        dev.nitrate.android.playback.AndroidListening(appContext, server, settings)
+    override fun listening(server: MediaServer, settings: dev.nitrate.android.storage.PlaybackSettingsStore, downloads: dev.nitrate.core.music.ListenDownloads) =
+        dev.nitrate.android.playback.AndroidListening(appContext, server, settings, downloads)
 
     override fun pictureReader(): dev.nitrate.android.comics.PictureReader = dev.nitrate.android.comics.AndroidPictureReader()
 

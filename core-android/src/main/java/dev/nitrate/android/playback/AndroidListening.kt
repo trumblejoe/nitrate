@@ -53,6 +53,8 @@ class AndroidListening(
     private val context: Context,
     private val server: MediaServer,
     private val settings: PlaybackSettingsStore,
+    /** Downloaded songs, played from the device (null: always from the server). */
+    private val downloads: dev.nitrate.core.music.ListenDownloads? = null,
 ) : Listening {
     /** Called with the player whenever listening starts, for the background service and its notification. */
     var onPlayer: ((Player) -> Unit)? = null
@@ -68,6 +70,7 @@ class AndroidListening(
     private val albumGains = HashMap<String, Double?>()
     private var reported: Pair<String, String>? = null
     private val leftAt = HashMap<String, Long>()
+    private val localSongs = HashSet<String>()
     private var reporter: Job? = null
 
     private var authHeader = server.authorizationHeader()
@@ -214,12 +217,15 @@ class AndroidListening(
     private fun remember(item: Item) { songs[item.id] = item; sessions.getOrPut(item.id) { UUID.randomUUID().toString().replace("-", "") } }
 
     private fun mediaItem(item: Item): MediaItem {
-        val convert = item.id in converted || !ListenStream.direct(item)
+        // Downloaded: from the device, online or not.
+        val local = downloads?.file(item.id)?.takeIf { item.id !in converted }
+        if (local != null) localSongs += item.id else localSongs -= item.id
+        val convert = local == null && (item.id in converted || !ListenStream.direct(item))
         if (convert) converted += item.id
         val art = server.imageUrl(item, ImageKind.PRIMARY, 600)
         return MediaItem.Builder()
             .setMediaId(item.id)
-            .setUri(server.listenUrl(item.id, convert, sessions.getOrPut(item.id) { UUID.randomUUID().toString().replace("-", "") }))
+            .setUri(local?.let { Uri.fromFile(java.io.File(it)) } ?: Uri.parse(server.listenUrl(item.id, convert, sessions.getOrPut(item.id) { UUID.randomUUID().toString().replace("-", "") })))
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(item.name)
@@ -304,6 +310,11 @@ class AndroidListening(
         reporter?.cancel()
         val at = leftAt.remove(id) ?: if (player.currentMediaItem?.mediaId == id) player.currentPosition else 0
         server.reportListenStopped(id, session, at)
+        // A downloaded song also keeps its play on the device, for the server when it's next reachable.
+        if (id in localSongs) songs[id]?.let { song ->
+            val duration = song.runtimeMs ?: 0
+            scope.launch { runCatching { downloads?.played(id, at, duration, ended = duration > 0 && at >= duration - 2_000) } }
+        }
         // A song played again later is a new play.
         sessions[id] = UUID.randomUUID().toString().replace("-", "")
     }

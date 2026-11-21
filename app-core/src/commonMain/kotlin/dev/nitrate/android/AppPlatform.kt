@@ -68,7 +68,7 @@ interface AppPlatform {
     fun pdfPages(): dev.nitrate.android.comics.PdfPages? = null
 
     /** The listening player (music); null where there is none yet (iOS). */
-    fun listening(server: MediaServer, settings: dev.nitrate.android.storage.PlaybackSettingsStore): dev.nitrate.core.music.Listening? = null
+    fun listening(server: MediaServer, settings: dev.nitrate.android.storage.PlaybackSettingsStore, downloads: dev.nitrate.core.music.ListenDownloads): dev.nitrate.core.music.Listening? = null
 
     /** Reads comic pages small and grey, for finding panels (guided view); null where it can't. */
     fun pictureReader(): dev.nitrate.android.comics.PictureReader? = null

@@ -58,7 +58,13 @@ class AppContainer(
     val playbackSettings = PlaybackSettingsStore(platform.stores.playback)
 
     /** The listening player (music): lives as long as the app, so browsing never stops it. */
-    val listening: dev.nitrate.core.music.Listening? by lazy { platform.listening(server, playbackSettings) }
+    val listening: dev.nitrate.core.music.Listening? by lazy {
+        platform.listening(server, playbackSettings, object : dev.nitrate.core.music.ListenDownloads {
+            override fun file(itemId: String) = downloads.find(itemId)?.let(downloads::videoPath)
+            override suspend fun played(itemId: String, positionMs: Long, durationMs: Long, ended: Boolean) =
+                downloads.recordPlayback(itemId, positionMs, durationMs, ended)
+        })
+    }
 
     /** Probed once: decoder lists don't change while the app runs. */
     val capabilities: DeviceCapabilities by lazy { platform.probeCapabilities() }

@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import dev.nitrate.core.model.ItemKind
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -239,6 +240,7 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                                 Text("Play all")
                             }
                             OutlinedButton(onClick = { actions.playItems(list, shuffle = true) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
+                            if (list.isNotEmpty() && list.all { it.kind == ItemKind.AUDIO }) MusicDownloadButton(actions, list, "playlist")
                         }
                     }
                     // Story order: carries on from the first unwatched item, with a "Last time" recap after a break.

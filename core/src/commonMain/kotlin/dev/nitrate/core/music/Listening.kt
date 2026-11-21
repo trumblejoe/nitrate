@@ -111,3 +111,12 @@ object ListenRules {
     /** How often the server hears how a song is going. */
     const val REPORT_EVERY_MS = 10_000L
 }
+
+/** Songs on the device: played from their file (online or not), their plays kept to send later. */
+interface ListenDownloads {
+    /** The song's downloaded file, when it's on the device. */
+    fun file(itemId: String): String?
+
+    /** A downloaded song stopped at [positionMs] of [durationMs]; kept for the server, as films are. */
+    suspend fun played(itemId: String, positionMs: Long, durationMs: Long, ended: Boolean)
+}

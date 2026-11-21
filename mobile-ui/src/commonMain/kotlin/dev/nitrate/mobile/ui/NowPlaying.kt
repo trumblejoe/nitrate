@@ -51,6 +51,7 @@ import dev.nitrate.core.music.Listening
 import dev.nitrate.core.music.Repeat
 import dev.nitrate.mobile.platform.rememberArtworkColor
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 /** The listening player's full screen. */
@@ -200,4 +201,36 @@ fun NowPlayingScreen(actions: AppActions, onBack: () -> Unit, player: Listening?
             }
         }
     }
+}
+
+
+/**
+ * Downloads an album's or playlist's songs as they are (no conversion: music is small), for the
+ * listening player to play from the device. Says how many are down; tapping again when all are
+ * removes them.
+ */
+@Composable
+fun MusicDownloadButton(actions: AppActions, songs: List<dev.nitrate.core.model.MediaItem>, what: String) {
+    val records by actions.container.downloads.downloads.collectAsState(emptyList())
+    val ids = remember(songs) { songs.map { it.id }.toSet() }
+    val mine = records.filter { it.itemId in ids }
+    val done = mine.count { it.state == dev.nitrate.core.downloads.DownloadState.COMPLETED }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val label = when {
+        done == songs.size -> "Downloaded"
+        mine.isNotEmpty() -> "Downloading $done/${songs.size}"
+        else -> "Download"
+    }
+    var confirming by remember { mutableStateOf(false) }
+    PillButton(label, NitrateIcons.Download, primary = false, onClick = {
+        if (done == songs.size) confirming = true
+        else scope.launch { actions.container.downloads.enqueue(songs, dev.nitrate.core.downloads.DownloadQuality.ORIGINAL, hevc = false) }
+    }, modifier = Modifier.labelled(if (done == songs.size) "Remove this $what's downloads" else "Download this $what"))
+    if (confirming) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { confirming = false },
+        title = { Text("Remove the downloaded songs?") },
+        text = { Text("The ${songs.size} songs of this $what come off this device. They stay on your server.") },
+        confirmButton = { TextButton(onClick = { confirming = false; scope.launch { songs.forEach { actions.container.downloads.remove(it.id) } } }) { Text("Remove") } },
+        dismissButton = { TextButton(onClick = { confirming = false }) { Text("Keep") } },
+    )
 }

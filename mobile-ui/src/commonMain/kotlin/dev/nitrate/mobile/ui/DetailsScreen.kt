@@ -276,6 +276,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         PillButton("Instant mix", null, primary = tracks.isEmpty(), onClick = {
                             scope.launch { vm.instantMix().takeIf { it.isNotEmpty() }?.let { mix -> actions.playItems(mix) } }
                         })
+                        // The album's songs as they are, to play with no connection.
+                        if (tracks.isNotEmpty()) MusicDownloadButton(actions, tracks, "album")
                     }
                 }
             }

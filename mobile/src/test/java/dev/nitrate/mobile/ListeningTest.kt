@@ -45,11 +45,18 @@ class ListeningTest {
         while (System.currentTimeMillis() < end && !what()) { ShadowLooper.idleMainLooper(20, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(10) }
     }
 
-    private fun run(server: (File) -> Server, body: (AndroidListening, Server) -> Unit) {
+    /** Downloaded songs: their files, and the plays kept for the server. */
+    private class Downloads(val files: Map<String, String>) : dev.nitrate.core.music.ListenDownloads {
+        val played = mutableListOf<String>()
+        override fun file(itemId: String) = files[itemId]
+        override suspend fun played(itemId: String, positionMs: Long, durationMs: Long, ended: Boolean) { played += itemId }
+    }
+
+    private fun run(server: (File) -> Server, downloads: (File) -> Downloads? = { null }, body: (AndroidListening, Server) -> Unit) {
         ActivityScenario.launch(ComponentActivity::class.java).onActivity { activity ->
             val s = server(activity.cacheDir)
             val container = AppContainer(activity, "test", "0", serverOverride = s)
-            val listening = AndroidListening(activity, s, container.playbackSettings)
+            val listening = AndroidListening(activity, s, container.playbackSettings, downloads(activity.cacheDir))
             body(listening, s)
             listening.stop()
             listening.player.release()
@@ -93,6 +100,20 @@ class ListeningTest {
         until { l.player.playbackState == Player.STATE_READY }
         assertEquals("x", l.state.value.current?.id)
         assertTrue(server.reports.toString(), "start x converted" in server.reports)
+    }
+
+    @Test fun aDownloadedSongPlaysFromTheDeviceAndKeepsItsPlay() {
+        lateinit var d: Downloads
+        run({ Server(it, broken = setOf("x")) }, { dir -> Downloads(mapOf("x" to wav(File(dir, "downloaded-x.wav")).absolutePath)).also { d = it } }) { l, server ->
+            l.play(listOf(song("x"), song("y")))
+            until { l.player.playbackState == Player.STATE_READY }
+            // The server's copy would fail: the device's file plays, nothing converted.
+            assertEquals("x", l.state.value.current?.id)
+            assertTrue(server.reports.toString(), "start x" in server.reports && "start x converted" !in server.reports)
+            l.next()
+            until { d.played.isNotEmpty() }
+            assertEquals(listOf("x"), d.played)
+        }
     }
 
     companion object {
