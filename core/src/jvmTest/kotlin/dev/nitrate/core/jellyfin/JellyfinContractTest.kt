@@ -331,6 +331,9 @@ class JellyfinContractTest {
         client.reportStart(plan, 0)
         client.reportProgress(plan, 5000, isPaused = true)
         client.reportStopped(plan, 9000)
+        client.reportListen(DASHED, "ls1", 0, paused = false, converted = false, start = true)
+        client.reportListen(DASHED, "ls1", 4000, paused = true, converted = true, start = false)
+        client.reportListenStopped(DASHED, "ls1", 8000)
         client.logout()
 
         // Built URLs must be valid GETs too.
@@ -341,6 +344,8 @@ class JellyfinContractTest {
             client.backdropUrl(item),
             client.logoUrl(item),
         ) + client.backdropUrls(item) + plan.externalSubtitles.map { it.url }.filter { "/Subtitles/" !in it } + listOf(
+            client.listenUrl(DASHED, convert = false, playSessionId = "ls1"),
+            client.listenUrl(DASHED, convert = true, playSessionId = "ls1"),
             client.downloadUrl(DASHED, source, null, 1, "s1"),
             client.downloadUrl(DASHED, source, dev.nitrate.core.downloads.DownloadQuality.LOW.spec(hevc = true), 1, "s2"),
             client.downloadUrl(DASHED, source, dev.nitrate.core.downloads.DownloadQuality.LOW.spec(hevc = true), 1, "s3", burnInSubtitle = 3),

@@ -1650,6 +1650,30 @@ class JellyfinClient(
 
     override fun audioStreamUrl(itemId: String): String = url("Audio", itemId, "stream", query = mapOf("static" to true))
 
+    override fun listenUrl(itemId: String, convert: Boolean, playSessionId: String): String = url(
+        "Audio", itemId, "stream",
+        query = if (!convert) mapOf("static" to true, "playSessionId" to playSessionId, "deviceId" to identity.deviceId, "mediaSourceId" to itemId.replace("-", ""))
+        else mapOf(
+            "container" to dev.nitrate.core.music.ListenStream.CONVERT_CODEC, "audioCodec" to dev.nitrate.core.music.ListenStream.CONVERT_CODEC,
+            "audioBitRate" to dev.nitrate.core.music.ListenStream.CONVERT_BITRATE, "playSessionId" to playSessionId, "deviceId" to identity.deviceId,
+            "mediaSourceId" to itemId.replace("-", ""),
+        ),
+    )
+
+    override suspend fun reportListen(itemId: String, playSessionId: String, positionMs: Long, paused: Boolean, converted: Boolean, start: Boolean) {
+        val body = PlaybackStartDto(
+            itemId, playSessionId, itemId.replace("-", ""), positionMs.msToTicks(), isPaused = paused,
+            playMethod = (if (converted) PlayMethod.TRANSCODE else PlayMethod.DIRECT_PLAY).wire(),
+        )
+        runCatching { if (start) post<PlaybackStartDto>("Sessions", "Playing", body = body) else post<PlaybackStartDto>("Sessions", "Playing", "Progress", body = body) }
+    }
+
+    override fun reportListenStopped(itemId: String, playSessionId: String, positionMs: Long) {
+        appScope.launch {
+            runCatching { post<PlaybackStopDto>("Sessions", "Playing", "Stopped", body = PlaybackStopDto(itemId, playSessionId, itemId.replace("-", ""), positionMs.msToTicks())) }
+        }
+    }
+
     override fun chapterImageUrl(item: MediaItem, index: Int, maxWidth: Int): String? {
         val tag = item.chapters.getOrNull(index)?.imageTag ?: return null
         return url("Items", item.id, "Images", "Chapter", index.toString(), query = mapOf("tag" to tag, "maxWidth" to maxWidth, "quality" to 80))

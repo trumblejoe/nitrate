@@ -57,6 +57,9 @@ class AppContainer(
 
     val playbackSettings = PlaybackSettingsStore(platform.stores.playback)
 
+    /** The listening player (music): lives as long as the app, so browsing never stops it. */
+    val listening: dev.nitrate.core.music.Listening? by lazy { platform.listening(server, playbackSettings) }
+
     /** Probed once: decoder lists don't change while the app runs. */
     val capabilities: DeviceCapabilities by lazy { platform.probeCapabilities() }
 

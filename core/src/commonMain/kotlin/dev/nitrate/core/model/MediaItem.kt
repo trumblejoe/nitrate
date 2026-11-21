@@ -50,6 +50,8 @@ data class MediaItem(
     val badges: List<String> = emptyList(),
     /** Music: the album a track is on, and who made it. */
     val album: String? = null,
+    /** Jellyfin's loudness measurement: the gain in dB that brings this track (or album) to its target. */
+    val normalizationGain: Double? = null,
     val albumId: String? = null,
     val artists: List<String> = emptyList(),
     val albumArtist: String? = null,

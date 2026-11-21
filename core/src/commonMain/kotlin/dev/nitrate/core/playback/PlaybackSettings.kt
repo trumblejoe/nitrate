@@ -108,6 +108,8 @@ data class PlaybackSettings(
      * answer, go back to where the last press was.
      */
     val askStillWatching: Boolean = true,
+    /** Music: evening out loudness between songs (per device). */
+    val levelling: dev.nitrate.core.music.Levelling = dev.nitrate.core.music.Levelling.TRACK,
     /** How long the TV stays at a film's refresh rate after the player closes (with Match frame rate: Always). */
     val refreshHold: RefreshHold = RefreshHold.ALWAYS,
     /** Sends this device's playback summary (overview, test plays, TV check) for the server's admin to read (Companion `devices`). */

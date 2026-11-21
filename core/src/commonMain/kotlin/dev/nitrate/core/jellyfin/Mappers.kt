@@ -63,6 +63,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
         collection = collectionType?.let(::collectionKind),
         parentId = parentId?.let(::normalizeId),
         container = container?.lowercase(),
+        normalizationGain = normalizationGain,
         seriesId = seriesId?.let(::normalizeId),
         seriesName = seriesName,
         seasonId = seasonId?.let(::normalizeId),

@@ -617,6 +617,18 @@ interface MediaServer {
     /** The address to stream an audio file as it is (with [authorizationHeader]). */
     fun audioStreamUrl(itemId: String): String = unsupported()
 
+    /**
+     * A song for the listening player: the file as it is, or converted to AAC ([convert]); fetched
+     * with [authorizationHeader]. [playSessionId] ties it to its reports.
+     */
+    fun listenUrl(itemId: String, convert: Boolean, playSessionId: String): String = unsupported()
+
+    /** Tells the server a song started ([start]) or how it's going, so its history, Now Playing and resume work. */
+    suspend fun reportListen(itemId: String, playSessionId: String, positionMs: Long, paused: Boolean, converted: Boolean, start: Boolean) {}
+
+    /** Tells the server a song stopped (finished, skipped or the player closed) at [positionMs]. */
+    fun reportListenStopped(itemId: String, playSessionId: String, positionMs: Long) {}
+
     /** Where the user stands in each show they watch with a group, by series id (Companion `partners`). */
     suspend fun groupStandings(): Map<String, dev.nitrate.core.partners.KeepUp> = emptyMap()
 

@@ -58,6 +58,7 @@ internal data class ItemDto(
     val type: String? = null,
     val mediaType: String? = null,
     /** The file's kind (books: "epub", "cbz", "pdf"…). */
+    val normalizationGain: Double? = null,
     val container: String? = null,
     val overview: String? = null,
     val providerIds: Map<String, String?>? = null,
