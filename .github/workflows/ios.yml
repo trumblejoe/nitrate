@@ -17,6 +17,13 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      # Kotlin/Native's compiler, LLVM and per-library caches, kept between runs (shared with releases).
+      - name: Kotlin/Native cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
       - name: Xcode
         run: |
           xcodebuild -version

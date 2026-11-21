@@ -200,10 +200,10 @@ jobs:
           added=$(python3 tools/companion-manifest.py add repo/manifest.json "$COMPANION_VERSION" "12.4.0.0" companion.zip "$url" "$source_hash" "Built with $title")
           if [ "$added" = "added" ]; then gh release upload "$repo_tag" repo/manifest.json --clobber; fi
 
-  # The iPhone/iPad app: built on macOS after the release exists, and added to it as an unsigned
-  # .ipa (each person signs it when sideloading). Its checksum joins SHA256SUMS.
+  # The iPhone/iPad app: built on macOS at the same time as the Android apps (it only needs the
+  # release's name, worked out the same way), then added to the release by ios-publish as an
+  # unsigned .ipa (each person signs it when sideloading). Its checksum joins SHA256SUMS.
   ios:
-    needs: release
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -212,6 +212,26 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      # Kotlin/Native's compiler, LLVM and per-library caches: downloaded and built once, kept
+      # between runs until the Kotlin or library versions change.
+      - name: Kotlin/Native cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Version
+        id: version
+        env:
+          # The same rule as the release job: a tag makes a release only with the release key.
+          HAS_KEY: ${{ secrets.NITRATE_KEYSTORE_BASE64 != '' && secrets.NITRATE_KEYSTORE_PASSWORD != '' && secrets.NITRATE_KEY_ALIAS != '' }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$HAS_KEY" = "true" ]; then
+            name="${GITHUB_REF_NAME#v}"
+          else
+            name="0.0.0-dev.$GITHUB_RUN_NUMBER"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
       - name: Xcode
         run: |
           xcodebuild -version
@@ -221,22 +241,43 @@ jobs:
       - name: App
         working-directory: iosApp
         env:
-          NAME: ${{ needs.release.outputs.name }}
+          NAME: ${{ steps.version.outputs.name }}
         run: |
           xcodegen generate
           xcodebuild -project Nitrate.xcodeproj -scheme Nitrate -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
             MARKETING_VERSION="$NAME" CURRENT_PROJECT_VERSION="$((1000 + GITHUB_RUN_NUMBER))" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-      - name: Publish
+      - name: Package
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release.outputs.tag }}
-          NAME: ${{ needs.release.outputs.name }}
+          NAME: ${{ steps.version.outputs.name }}
         run: |
           mkdir -p dist/Payload
           cp -R iosApp/build/Build/Products/Release-iphoneos/Nitrate.app dist/Payload/
           (cd dist && zip -qr "nitrate-ios-$NAME.ipa" Payload && rm -rf Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: dist/*.ipa
+          retention-days: 3
+
+  # Adds the iPhone/iPad app to the release once both exist.
+  ios-publish:
+    needs: [release, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-ipa
+          path: dist
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release.outputs.tag }}
+          NAME: ${{ needs.release.outputs.name }}
+        run: |
+          test -f "dist/nitrate-ios-$NAME.ipa"
           gh release download "$TAG" --pattern SHA256SUMS --dir sums
-          (cd dist && shasum -a 256 "nitrate-ios-$NAME.ipa") >> sums/SHA256SUMS
+          (cd dist && sha256sum "nitrate-ios-$NAME.ipa") >> sums/SHA256SUMS
           gh release upload "$TAG" "dist/nitrate-ios-$NAME.ipa" sums/SHA256SUMS --clobber
