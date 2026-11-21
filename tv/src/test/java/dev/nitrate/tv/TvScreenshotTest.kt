@@ -1286,6 +1286,20 @@ class TvScreenshotTest {
         }) { c -> dev.nitrate.tv.ui.music.NowPlayingScreen(player, c.server, onBack = {}) }
     }
 
+    /** Now Playing for an audiobook on TV: skips, speed and sleep, and its chapters. */
+    @Test fun nowPlayingBook() {
+        val book = dev.nitrate.core.model.MediaItem(
+            "ab1", "The Long Reel", dev.nitrate.core.model.ItemKind.AUDIOBOOK, runtimeMs = 9_000_000, artists = listOf("Ada Lumen"),
+            chapters = listOf("Prologue", "The Booth", "Changeover", "House Lights").mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 1_800_000L, n) },
+        )
+        val player = dev.nitrate.testing.FakeListening(dev.nitrate.core.music.ListenState(listOf(book), 0, playing = true, durationMs = 9_000_000, speed = 1.25f), position = 2_400_000)
+        shoot("tv-now-playing-book", act = {
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            press("right", "right", "ok")
+            check("skip by 30000" in player.asked) { player.asked.toString() }
+        }) { c -> dev.nitrate.tv.ui.music.NowPlayingScreen(player, c.server, onBack = {}) }
+    }
+
     /** Every tab style in the picker, each drawn with "Recommended" open and "All" focused. */
     @Test fun tabStyles() = shoot("tv-tab-styles") { dev.nitrate.tv.ui.components.TabStyleChoices(dev.nitrate.core.pages.TabStyle.CHIPS) {} }
 

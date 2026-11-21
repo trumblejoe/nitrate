@@ -102,12 +102,12 @@ data class MediaItem(
     val episodeLabel get() = if (isEpisode) "S${seasonNumber ?: "?"}:E${indexNumber ?: "?"} · $name" else null
 
     companion object {
-        val PLAYABLE = setOf(ItemKind.MOVIE, ItemKind.EPISODE, ItemKind.VIDEO, ItemKind.MUSIC_VIDEO, ItemKind.AUDIO, ItemKind.TV_CHANNEL)
+        val PLAYABLE = setOf(ItemKind.MOVIE, ItemKind.EPISODE, ItemKind.VIDEO, ItemKind.MUSIC_VIDEO, ItemKind.AUDIO, ItemKind.TV_CHANNEL, ItemKind.AUDIOBOOK)
     }
 }
 
 @Serializable
-enum class ItemKind { MOVIE, SERIES, SEASON, EPISODE, VIDEO, MUSIC_VIDEO, AUDIO, MUSIC_ALBUM, MUSIC_ARTIST, TV_CHANNEL, PLAYLIST, BOX_SET, LIBRARY, FOLDER, PERSON, OTHER, BOOK }
+enum class ItemKind { MOVIE, SERIES, SEASON, EPISODE, VIDEO, MUSIC_VIDEO, AUDIO, MUSIC_ALBUM, MUSIC_ARTIST, TV_CHANNEL, PLAYLIST, BOX_SET, LIBRARY, FOLDER, PERSON, OTHER, BOOK, AUDIOBOOK }
 
 @Serializable
 enum class MediaKind { VIDEO, AUDIO }

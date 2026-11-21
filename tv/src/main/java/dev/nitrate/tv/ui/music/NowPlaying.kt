@@ -73,6 +73,7 @@ fun NowPlayingScreen(listening: Listening, server: MediaServer, onBack: () -> Un
     val position by produceState(listening.positionMs(), listening) { while (true) { value = listening.positionMs(); delay(500) } }
     val lyrics by produceState<dev.nitrate.core.music.Lyrics?>(null, song.id) { value = runCatching { server.lyrics(song.id) }.getOrNull() }
     var lyricsShown by remember { mutableStateOf(false) }
+    val book = dev.nitrate.core.music.Audiobooks.isBook(song)
     val play = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(80); runCatching { play.requestFocus() } }
 
@@ -125,12 +126,29 @@ fun NowPlayingScreen(listening: Listening, server: MediaServer, onBack: () -> Un
                     right = if (i < controls.lastIndex) controls[i + 1] else FocusRequester.Default
                 }
                 Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { listening.setShuffle(!state.shuffle) }, modifier = Modifier.inRow(0)) { Text(if (state.shuffle) "Shuffle on" else "Shuffle") }
-                    OutlinedButton(onClick = listening::previous, modifier = Modifier.inRow(1).semantics { contentDescription = "Previous song" }) { Text("⏮") }
+                    // A book: back 15 s and on 30 s where music has shuffle and repeat.
+                    if (book) OutlinedButton(onClick = { listening.skipBy(-dev.nitrate.core.music.Audiobooks.BACK_MS) }, modifier = Modifier.inRow(0)) { Text("−15 s") }
+                    else OutlinedButton(onClick = { listening.setShuffle(!state.shuffle) }, modifier = Modifier.inRow(0)) { Text(if (state.shuffle) "Shuffle on" else "Shuffle") }
+                    OutlinedButton(onClick = listening::previous, modifier = Modifier.inRow(1).semantics { contentDescription = if (book) "Previous chapter" else "Previous song" }) { Text("⏮") }
                     Button(onClick = listening::toggle, modifier = Modifier.inRow(2).focusRequester(play)) { Text(if (state.playing) "Pause" else "Play") }
-                    OutlinedButton(onClick = listening::next, modifier = Modifier.inRow(3).semantics { contentDescription = "Next song" }) { Text("⏭") }
-                    val next = Repeat.entries[(state.repeat.ordinal + 1) % Repeat.entries.size]
-                    OutlinedButton(onClick = { listening.setRepeat(next) }, modifier = Modifier.inRow(4)) { Text(state.repeat.label) }
+                    OutlinedButton(onClick = listening::next, modifier = Modifier.inRow(3).semantics { contentDescription = if (book) "Next chapter" else "Next song" }) { Text("⏭") }
+                    if (book) OutlinedButton(onClick = { listening.skipBy(dev.nitrate.core.music.Audiobooks.FORWARD_MS) }, modifier = Modifier.inRow(4)) { Text("+30 s") }
+                    else {
+                        val next = Repeat.entries[(state.repeat.ordinal + 1) % Repeat.entries.size]
+                        OutlinedButton(onClick = { listening.setRepeat(next) }, modifier = Modifier.inRow(4)) { Text(state.repeat.label) }
+                    }
+                }
+                if (book) Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Speed and sleep step through their choices with OK.
+                    val speeds = dev.nitrate.core.music.Audiobooks.SPEEDS
+                    OutlinedButton(onClick = { listening.setSpeed(speeds[(speeds.indexOf(state.speed).coerceAtLeast(0) + 1) % speeds.size]) }) {
+                        Text("Speed " + dev.nitrate.core.music.Audiobooks.speedLabel(state.speed))
+                    }
+                    val sleeps = listOf<dev.nitrate.core.music.Sleep?>(null) + dev.nitrate.core.music.Sleep.CHOICES
+                    OutlinedButton(onClick = { listening.setSleep(sleeps[(sleeps.indexOf(state.sleep) + 1) % sleeps.size]) }) {
+                        Text("Sleep: " + (state.sleep?.label ?: "off"))
+                    }
+                    Text(dev.nitrate.core.music.Audiobooks.timeLeft(position, state.durationMs, state.speed), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (lyrics != null) OutlinedButton(onClick = { lyricsShown = !lyricsShown }, modifier = Modifier.padding(top = 10.dp)) {
                     Text(if (lyricsShown) "Show what's next" else "Lyrics")
@@ -140,6 +158,22 @@ fun NowPlayingScreen(listening: Listening, server: MediaServer, onBack: () -> Un
             val shown = lyrics
             if (lyricsShown && shown != null) {
                 dev.nitrate.tv.ui.player.LyricsView(shown, position, Modifier.weight(1f).fillMaxHeight())
+            } else if (book) {
+                // The book's chapters: the one playing marked, OK goes there.
+                Column(Modifier.weight(1f)) {
+                    Text("Chapters", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 12.dp))
+                    val at = dev.nitrate.core.music.Audiobooks.chapterAt(song.chapters, position)
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        itemsIndexed(song.chapters, key = { i, c -> "ch$i-${c.startMs}" }) { i, c ->
+                            ListItem(
+                                selected = i == at, onClick = { listening.seekTo(c.startMs) },
+                                headlineContent = { Text(c.name.ifBlank { "Chapter ${i + 1}" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                trailingContent = { Text(formatClock(c.startMs)) },
+                            )
+                        }
+                    }
+                    if (song.chapters.isEmpty()) Text("This book has no chapters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             } else {
                 Column(Modifier.weight(1f)) {
                     Text("Up next", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 12.dp))

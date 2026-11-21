@@ -686,6 +686,12 @@ class JellyfinClient(
             dev.nitrate.core.rows.RowJob("Next Up") {
                 items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
             },
+            dev.nitrate.core.rows.RowJob("Continue Listening") {
+                items(
+                    "UserItems", "Resume",
+                    query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook"),
+                ).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_listening", "Continue Listening", it, RowDisplay())) }
+            },
             dev.nitrate.core.rows.RowJob("Continue Reading") {
                 continueReading(null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
             },
@@ -794,9 +800,13 @@ class JellyfinClient(
         when (library.collection) {
             CollectionKind.BOOKS -> {
                 add("continue_reading", "Continue Reading") { continueReading(id) }
-                add("recently_added", "Recently Added") { query(id, "Book", "DateCreated") }
-                add("unread", "Not Read Yet") { query(id, "Book", "Random", filters = "IsUnplayed") }
-                add("favorites", "Favorites") { query(id, "Book", "SortName", "Ascending", filters = "IsFavorite") }
+                // Audiobooks live in Books libraries too: carried on in the listening player.
+                add("continue_listening", "Continue Listening") {
+                    items("UserItems", "Resume", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook"))
+                }
+                add("recently_added", "Recently Added") { query(id, "Book,AudioBook", "DateCreated") }
+                add("unread", "Not Read Yet") { query(id, "Book,AudioBook", "Random", filters = "IsUnplayed") }
+                add("favorites", "Favorites") { query(id, "Book,AudioBook", "SortName", "Ascending", filters = "IsFavorite") }
             }
             CollectionKind.TV_SHOWS -> {
                 add("continue_watching", "Continue Watching", WIDE_DEFAULT) { resumeItems(id, "Episode") }
@@ -1957,6 +1967,7 @@ internal fun itemTypeName(kind: ItemKind): String? = when (kind) {
     ItemKind.BOX_SET -> "BoxSet"
     ItemKind.PLAYLIST -> "Playlist"
     ItemKind.BOOK -> "Book"
+    ItemKind.AUDIOBOOK -> "AudioBook"
     ItemKind.VIDEO -> "Video"
     ItemKind.MUSIC_VIDEO -> "MusicVideo"
     ItemKind.MUSIC_ALBUM -> "MusicAlbum"

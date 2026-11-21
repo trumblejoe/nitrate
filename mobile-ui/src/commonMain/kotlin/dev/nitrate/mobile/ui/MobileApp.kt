@@ -220,6 +220,12 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             if (target.kind == dev.nitrate.core.model.ItemKind.BOOK) return nav.navigate(ComicRoute(target.id))
             // A song plays in the listening player, its album queued around it.
             val listening = container.listening
+            // A book carries on where it was left (from the start when asked, or once it was finished).
+            if (target.kind == dev.nitrate.core.model.ItemKind.AUDIOBOOK && listening != null) {
+                val from = if (fromStart || target.user.played) 0L else target.user.positionMs
+                listening.play(listOf(target), startMs = from)
+                return nav.navigate(NowPlayingRoute)
+            }
             if (target.kind == dev.nitrate.core.model.ItemKind.AUDIO && listening != null) {
                 val album = target.albumId?.let { runCatching { container.server.albumTracks(it) }.getOrNull() }.orEmpty()
                 val at = album.indexOfFirst { it.id == target.id }

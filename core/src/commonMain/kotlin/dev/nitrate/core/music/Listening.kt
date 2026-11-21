@@ -62,6 +62,11 @@ data class ListenState(
     val repeat: Repeat = Repeat.OFF,
     /** A song that couldn't play, in words (it was skipped). */
     val problem: String? = null,
+    /** Playing speed (audiobooks; music stays at 1). */
+    val speed: Float = 1f,
+    /** The sleep timer set, and when it stops playing (null for the end of the chapter). */
+    val sleep: Sleep? = null,
+    val sleepEndsAtMs: Long? = null,
 ) {
     val current: MediaItem? get() = queue.getOrNull(index)
     val active: Boolean get() = current != null
@@ -78,8 +83,20 @@ interface Listening {
     /** Where in the current song, in ms (read as often as a progress bar needs). */
     fun positionMs(): Long
 
-    /** Plays [items] from [startIndex], replacing the queue ([shuffle]: in a random order). */
-    fun play(items: List<MediaItem>, startIndex: Int = 0, shuffle: Boolean = false)
+    /**
+     * Plays [items] from [startIndex], replacing the queue ([shuffle]: in a random order), from
+     * [startMs] into that one (an audiobook carrying on where it was left).
+     */
+    fun play(items: List<MediaItem>, startIndex: Int = 0, shuffle: Boolean = false, startMs: Long = 0)
+
+    /** Back or on by [ms] within what's playing (audiobooks: −15 s, +30 s). */
+    fun skipBy(ms: Long) {}
+
+    /** Playing speed (audiobooks). */
+    fun setSpeed(speed: Float) {}
+
+    /** Stops by itself after a while or at the end of the chapter; null turns it off. */
+    fun setSleep(sleep: Sleep?) {}
 
     /** After the current song. */
     fun playNext(items: List<MediaItem>)
@@ -89,9 +106,10 @@ interface Listening {
 
     fun toggle()
     fun pause()
+    /** The next song; in an audiobook, the next chapter. */
     fun next()
 
-    /** Back to the start of the song, or to the one before when only just started. */
+    /** Back to the start of the song (or chapter), or to the one before when only just started. */
     fun previous()
     fun seekTo(ms: Long)
     fun skipTo(index: Int)

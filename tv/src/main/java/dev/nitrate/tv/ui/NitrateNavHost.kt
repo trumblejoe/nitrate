@@ -196,6 +196,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         scope.launch {
             // A book opens in the reader, from wherever Play was pressed.
             if (item.kind == dev.nitrate.core.model.ItemKind.BOOK) nav.navigate(ComicRoute(item.id))
+            // A book carries on where it was left in the listening player.
+            else if (item.kind == dev.nitrate.core.model.ItemKind.AUDIOBOOK && container.listening != null) {
+                container.listening!!.play(listOf(item), startMs = if (fromStart || item.user.played) 0L else item.user.positionMs)
+                nav.navigate(NowPlayingRoute) { launchSingleTop = true }
+            }
             // A song plays in the listening player, its album queued around it.
             else if (item.kind == dev.nitrate.core.model.ItemKind.AUDIO && container.listening != null) {
                 val album = item.albumId?.let { runCatching { container.server.albumTracks(it) }.getOrNull() }.orEmpty()

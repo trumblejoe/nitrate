@@ -38,7 +38,7 @@ class ListeningTest {
         override fun reportListenStopped(itemId: String, playSessionId: String, positionMs: Long) { reports += "stop $itemId at $positionMs" }
     }
 
-    private fun song(id: String, gain: Double? = null) = MediaItem(id, "Song $id", ItemKind.AUDIO, runtimeMs = 2_000, normalizationGain = gain, container = "flac")
+    private fun song(id: String, gain: Double? = null) = MediaItem(id, "Song $id", ItemKind.AUDIO, runtimeMs = 30_000, normalizationGain = gain, container = "flac")
 
     private fun until(what: () -> Boolean) {
         val end = System.currentTimeMillis() + 10_000
@@ -116,12 +116,39 @@ class ListeningTest {
         }
     }
 
+    @Test fun aBookResumesStepsByChapterAndSleepsAtTheChaptersEnd() = run({ Server(it) }) { l, _ ->
+        val book = MediaItem(
+            "b", "The Long Reel", ItemKind.AUDIOBOOK, runtimeMs = 30_000, container = "m4b",
+            chapters = listOf(dev.nitrate.core.model.Chapter(0, "One"), dev.nitrate.core.model.Chapter(10_000, "Two"), dev.nitrate.core.model.Chapter(20_000, "Three")),
+        )
+        // Carries on where it was left.
+        l.play(listOf(book), startMs = 4_000)
+        until { l.player.playbackState == Player.STATE_READY }
+        assertTrue("resumed at ${l.player.currentPosition}", l.player.currentPosition in 3_000..9_000)
+        // Next is the next chapter, not the next item.
+        l.next()
+        until { l.player.currentPosition >= 10_000 }
+        assertTrue("at ${l.player.currentPosition}", l.player.currentPosition in 10_000..14_000)
+        // Back 15 s from here is the start.
+        l.skipBy(-15_000)
+        until { l.player.currentPosition < 4_000 }
+        // Sleep at the end of the chapter: playing stops as "One" ends, before "Two" gets far.
+        l.seekTo(8_500)
+        until { l.player.currentPosition >= 8_500 }
+        l.setSpeed(1f)
+        l.setSleep(dev.nitrate.core.music.Sleep.EndOfChapter)
+        l.player.play()
+        until { !l.player.playWhenReady }
+        assertTrue("stopped at ${l.player.currentPosition}", l.player.currentPosition in 8_500..11_000)
+        assertEquals(null, l.state.value.sleep)
+    }
+
     companion object {
-        /** Two seconds of silent 16-bit mono PCM. */
+        /** Thirty seconds of silent 16-bit mono PCM: long enough that nothing ends while a busy machine runs the test. */
         fun wav(file: File): File {
             if (file.exists()) return file
             val rate = 8000
-            val data = ByteArray(rate * 4)
+            val data = ByteArray(rate * 2 * 30)
             fun le32(v: Int) = byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte())
             fun le16(v: Int) = byteArrayOf(v.toByte(), (v shr 8).toByte())
             file.writeBytes(

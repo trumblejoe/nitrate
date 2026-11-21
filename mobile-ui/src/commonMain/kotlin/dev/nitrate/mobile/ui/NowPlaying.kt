@@ -115,6 +115,7 @@ fun NowPlayingScreen(actions: AppActions, onBack: () -> Unit, player: Listening?
     var lyricsShown by remember { mutableStateOf(false) }
     val lyrics by produceState<dev.nitrate.core.music.Lyrics?>(null, song.id) { value = runCatching { actions.server.lyrics(song.id) }.getOrNull() }
     var dragging by remember { mutableStateOf<Float?>(null) }
+    val book = dev.nitrate.core.music.Audiobooks.isBook(song)
     val tint by rememberArtworkColor(actions.server.imageUrl(song, ImageKind.PRIMARY, 300))
     TintedBackdrop(tint) {
         LazyColumn(
@@ -156,10 +157,11 @@ fun NowPlayingScreen(actions: AppActions, onBack: () -> Unit, player: Listening?
                         Text(formatClock(state.durationMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { listening.setShuffle(!state.shuffle) }) {
+                        if (!book) IconButton(onClick = { listening.setShuffle(!state.shuffle) }) {
                             Icon(NitrateIcons.Shuffle, if (state.shuffle) "Shuffle on" else "Shuffle off", tint = if (state.shuffle) accentColor() else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = listening::previous) { Icon(NitrateIcons.SkipPrevious, "Previous song", Modifier.size(32.dp)) }
+                        if (book) TextButton(onClick = { listening.skipBy(-dev.nitrate.core.music.Audiobooks.BACK_MS) }) { Text("−15 s") }
+                        IconButton(onClick = listening::previous) { Icon(NitrateIcons.SkipPrevious, if (book) "Previous chapter" else "Previous song", Modifier.size(32.dp)) }
                         Box(
                             Modifier.size(68.dp).clip(RoundedCornerShape(34.dp)).background(accentColor()).pressable(listening::toggle).labelled(if (state.playing) "Pause" else "Play"),
                             contentAlignment = Alignment.Center,
@@ -167,9 +169,10 @@ fun NowPlayingScreen(actions: AppActions, onBack: () -> Unit, player: Listening?
                             if (state.playing) Icon(NitrateIcons.Pause, null, tint = Color.Black, modifier = Modifier.size(34.dp))
                             else Icon(Icons.Default.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(38.dp))
                         }
-                        IconButton(onClick = listening::next) { Icon(NitrateIcons.SkipNext, "Next song", Modifier.size(32.dp)) }
+                        IconButton(onClick = listening::next) { Icon(NitrateIcons.SkipNext, if (book) "Next chapter" else "Next song", Modifier.size(32.dp)) }
+                        if (book) TextButton(onClick = { listening.skipBy(dev.nitrate.core.music.Audiobooks.FORWARD_MS) }) { Text("+30 s") }
                         val next = Repeat.entries[(state.repeat.ordinal + 1) % Repeat.entries.size]
-                        IconButton(onClick = { listening.setRepeat(next) }) {
+                        if (!book) IconButton(onClick = { listening.setRepeat(next) }) {
                             Icon(
                                 if (state.repeat == Repeat.ONE) NitrateIcons.RepeatOne else NitrateIcons.Repeat, state.repeat.label,
                                 tint = if (state.repeat != Repeat.OFF) accentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -177,7 +180,28 @@ fun NowPlayingScreen(actions: AppActions, onBack: () -> Unit, player: Listening?
                         }
                     }
                     state.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                    if (book) BookChoices(listening, state, position)
                 }
+            }
+            if (book) {
+                // A book's chapters in place of what's up next: the one playing marked, a tap goes there.
+                val chapters = song.chapters
+                if (chapters.isNotEmpty()) {
+                    item { Column(Modifier.fillMaxWidth().padding(top = 16.dp)) { SectionHeader("Chapters") } }
+                    val at = dev.nitrate.core.music.Audiobooks.chapterAt(chapters, position)
+                    itemsIndexed(chapters, key = { i, c -> "ch$i-${c.startMs}" }) { i, c ->
+                        Row(
+                            Modifier.fillMaxWidth().pressable({ listening.seekTo(c.startMs) }).padding(horizontal = ScreenPadding, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(c.name.ifBlank { "Chapter ${i + 1}" }, style = MaterialTheme.typography.bodyMedium, fontWeight = if (i == at) FontWeight.Bold else FontWeight.Normal,
+                                color = if (i == at) accentColor() else MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(formatClock(c.startMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                item { Spacer(Modifier.height(32.dp)) }
+                return@LazyColumn
             }
             val shownLyrics = lyrics
             if (lyricsShown && shownLyrics != null) {
@@ -233,4 +257,26 @@ fun MusicDownloadButton(actions: AppActions, songs: List<dev.nitrate.core.model.
         confirmButton = { TextButton(onClick = { confirming = false; scope.launch { songs.forEach { actions.container.downloads.remove(it.id) } } }) { Text("Remove") } },
         dismissButton = { TextButton(onClick = { confirming = false }) { Text("Keep") } },
     )
+}
+
+
+/** A book's speed and sleep timer, and how long is left at that speed. */
+@Composable
+private fun BookChoices(listening: Listening, state: dev.nitrate.core.music.ListenState, position: Long) {
+    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(dev.nitrate.core.music.Audiobooks.timeLeft(position, state.durationMs, state.speed), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Speed", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+            dev.nitrate.core.music.Audiobooks.SPEEDS.forEach { s ->
+                androidx.compose.material3.FilterChip(state.speed == s, { listening.setSpeed(s) }, label = { Text(dev.nitrate.core.music.Audiobooks.speedLabel(s)) })
+            }
+        }
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Sleep", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+            androidx.compose.material3.FilterChip(state.sleep == null, { listening.setSleep(null) }, label = { Text("Off") })
+            dev.nitrate.core.music.Sleep.CHOICES.forEach { s ->
+                androidx.compose.material3.FilterChip(state.sleep == s, { listening.setSleep(s) }, label = { Text(s.label) })
+            }
+        }
+    }
 }

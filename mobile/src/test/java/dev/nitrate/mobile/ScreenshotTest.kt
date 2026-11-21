@@ -1,5 +1,6 @@
 package dev.nitrate.mobile
 
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -378,6 +379,22 @@ class ScreenshotTest {
         compose.onNodeWithText("Lamp House").performClick()
         compose.waitForIdle()
         check(player.asked.containsAll(listOf("next", "skip 2"))) { player.asked.toString() }
+    }
+
+    /** Now Playing for an audiobook: skips, chapters, speed and the sleep timer instead of shuffle and up next. */
+    @Test
+    fun nowPlayingBook() {
+        val book = MediaItem(
+            "ab1", "The Long Reel", ItemKind.AUDIOBOOK, runtimeMs = 9_000_000, artists = listOf("Ada Lumen"),
+            chapters = listOf("Prologue", "The Booth", "Changeover", "House Lights").mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 1_800_000L, n) },
+        )
+        val player = dev.nitrate.testing.FakeListening(dev.nitrate.core.music.ListenState(listOf(book), 0, playing = true, durationMs = 9_000_000, speed = 1.25f), position = 2_400_000)
+        shoot("phone-now-playing-book") { actions -> dev.nitrate.mobile.ui.NowPlayingScreen(actions, onBack = {}, player = player) }
+        compose.onNodeWithText("+30 s").performClick()
+        compose.onNode(androidx.compose.ui.test.hasScrollAction()).performScrollToNode(androidx.compose.ui.test.hasText("Changeover"))
+        compose.onNodeWithText("Changeover").performClick()
+        compose.waitForIdle()
+        check(player.asked.containsAll(listOf("skip by 30000", "seek 3600000"))) { player.asked.toString() }
     }
 
     /** Timed lyrics over a song's cover, the line being sung bright. */

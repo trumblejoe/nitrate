@@ -147,8 +147,8 @@ class AndroidListening(
 
     override fun positionMs(): Long = if (_state.value.active) player.currentPosition else 0
 
-    override fun play(items: List<Item>, startIndex: Int, shuffle: Boolean) {
-        val playable = items.filter { it.kind == dev.nitrate.core.model.ItemKind.AUDIO }
+    override fun play(items: List<Item>, startIndex: Int, shuffle: Boolean, startMs: Long) {
+        val playable = items.filter { it.kind == dev.nitrate.core.model.ItemKind.AUDIO || it.kind == dev.nitrate.core.model.ItemKind.AUDIOBOOK }
         if (playable.isEmpty()) return
         reportStopped()
         authHeader = server.authorizationHeader()
@@ -156,7 +156,15 @@ class AndroidListening(
         playable.forEach { remember(it) }
         val start = items.getOrNull(startIndex)?.let { s -> playable.indexOfFirst { it.id == s.id } }?.coerceAtLeast(0) ?: 0
         player.shuffleModeEnabled = shuffle
-        player.setMediaItems(playable.map(::mediaItem), if (shuffle) C.INDEX_UNSET else start, 0)
+        player.setMediaItems(playable.map(::mediaItem), if (shuffle) C.INDEX_UNSET else start, startMs.coerceAtLeast(0))
+        // Books: their chapters (rows don't carry them) and their own speed; music plays at 1×.
+        val books = playable.filter(dev.nitrate.core.music.Audiobooks::isBook)
+        player.setPlaybackSpeed(if (books.isEmpty()) 1f else bookSpeed)
+        books.forEach { book ->
+            if (book.chapters.isEmpty()) scope.launch {
+                runCatching { server.getItem(book.id) }.getOrNull()?.let { full -> songs[book.id] = full.copy(user = book.user); publish() }
+            }
+        }
         if (shuffle) player.seekTo(player.currentTimeline.getFirstWindowIndex(true), 0)
         player.prepare()
         player.play()
@@ -178,11 +186,57 @@ class AndroidListening(
 
     override fun toggle() { if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_ENDED) player.seekTo(0, 0); player.prepare(); player.play() } }
     override fun pause() { if (_state.value.active) player.pause() }
-    override fun next() { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
+    override fun next() {
+        // In a book: the next chapter.
+        chapters()?.let { c -> dev.nitrate.core.music.Audiobooks.nextChapterStart(c, player.currentPosition)?.let { return player.seekTo(it) } }
+        if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+    }
 
     override fun previous() {
+        chapters()?.let { c -> return player.seekTo(dev.nitrate.core.music.Audiobooks.previousChapterStart(c, player.currentPosition)) }
         if (player.currentPosition > ListenRules.RESTART_AFTER_MS || !player.hasPreviousMediaItem()) player.seekTo(0) else player.seekToPreviousMediaItem()
     }
+
+    override fun skipBy(ms: Long) {
+        val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
+        player.seekTo((player.currentPosition + ms).coerceIn(0, duration))
+    }
+
+    /** The speed books play at, kept for the next book. */
+    private var bookSpeed = 1f
+
+    override fun setSpeed(speed: Float) {
+        bookSpeed = speed
+        player.setPlaybackSpeed(speed)
+        publish()
+    }
+
+    private var sleeper: Job? = null
+
+    override fun setSleep(sleep: dev.nitrate.core.music.Sleep?) {
+        sleeper?.cancel()
+        val endsAt = (sleep as? dev.nitrate.core.music.Sleep.After)?.let { System.currentTimeMillis() + it.minutes * 60_000L }
+        _state.value = _state.value.copy(sleep = sleep, sleepEndsAtMs = endsAt)
+        if (sleep == null) return
+        sleeper = scope.launch {
+            when (sleep) {
+                is dev.nitrate.core.music.Sleep.After -> delay(sleep.minutes * 60_000L)
+                dev.nitrate.core.music.Sleep.EndOfChapter -> {
+                    // Watch for the chapter (or song) ending: stop right at its end.
+                    val c = chapters()
+                    val end = if (c != null) dev.nitrate.core.music.Audiobooks.chapterEnd(c, player.currentPosition, player.duration) else player.duration
+                    val item = player.currentMediaItemIndex
+                    while (isActive && player.currentMediaItemIndex == item && player.currentPosition < end - 250) delay(250)
+                }
+            }
+            player.pause()
+            _state.value = _state.value.copy(sleep = null, sleepEndsAtMs = null)
+        }
+    }
+
+    /** The current book's chapters, when what's playing is a book that has some. */
+    private fun chapters(): List<dev.nitrate.core.model.Chapter>? =
+        player.currentMediaItem?.mediaId?.let(songs::get)?.takeIf(dev.nitrate.core.music.Audiobooks::isBook)?.chapters?.takeIf { it.isNotEmpty() }
 
     override fun seekTo(ms: Long) = player.seekTo(ms.coerceAtLeast(0))
     override fun skipTo(index: Int) {
@@ -207,6 +261,7 @@ class AndroidListening(
     }
 
     override fun stop() {
+        setSleep(null)
         reportStopped()
         player.stop()
         player.clearMediaItems()
@@ -232,7 +287,7 @@ class AndroidListening(
                     .setArtist(item.artists.joinToString(", ").ifEmpty { null })
                     .setAlbumTitle(item.album)
                     .setArtworkUri(art?.let(Uri::parse))
-                    .setMediaType(MediaMetadata.MEDIA_TYPE_MUSIC)
+                    .setMediaType(if (dev.nitrate.core.music.Audiobooks.isBook(item)) MediaMetadata.MEDIA_TYPE_AUDIO_BOOK else MediaMetadata.MEDIA_TYPE_MUSIC)
                     .build(),
             )
             .build()
@@ -265,12 +320,15 @@ class AndroidListening(
             durationMs = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0) ?: (_state.value.current?.runtimeMs ?: 0),
             shuffle = player.shuffleModeEnabled,
             repeat = when (player.repeatMode) { Player.REPEAT_MODE_ALL -> Repeat.ALL; Player.REPEAT_MODE_ONE -> Repeat.ONE; else -> Repeat.OFF },
+            speed = player.playbackParameters.speed,
         )
     }
 
     /** The song's volume from its (or its album's) loudness. */
     private fun level() {
         val song = player.currentMediaItem?.mediaId?.let(songs::get) ?: return
+        // A book is one voice throughout: no levelling.
+        if (dev.nitrate.core.music.Audiobooks.isBook(song)) { player.volume = 1f; return }
         scope.launch {
             val mode = settings.current().levelling
             val albumGain = if (mode == dev.nitrate.core.music.Levelling.ALBUM) song.albumId?.let { id ->

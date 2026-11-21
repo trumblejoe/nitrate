@@ -11,7 +11,7 @@ class FakeListening(start: ListenState = ListenState(), private val position: Lo
     override val state = MutableStateFlow(start)
     val asked = mutableListOf<String>()
     override fun positionMs() = position
-    override fun play(items: List<MediaItem>, startIndex: Int, shuffle: Boolean) { asked += "play ${items.size} from $startIndex${if (shuffle) " shuffled" else ""}"; state.value = ListenState(items, startIndex, playing = true, durationMs = items.getOrNull(startIndex)?.runtimeMs ?: 0, shuffle = shuffle) }
+    override fun play(items: List<MediaItem>, startIndex: Int, shuffle: Boolean, startMs: Long) { asked += "play ${items.size} from $startIndex${if (shuffle) " shuffled" else ""}"; state.value = ListenState(items, startIndex, playing = true, durationMs = items.getOrNull(startIndex)?.runtimeMs ?: 0, shuffle = shuffle) }
     override fun playNext(items: List<MediaItem>) { asked += "next ${items.size}" }
     override fun addToQueue(items: List<MediaItem>) { asked += "add ${items.size}" }
     override fun toggle() { asked += "toggle"; state.value = state.value.copy(playing = !state.value.playing) }
@@ -24,5 +24,8 @@ class FakeListening(start: ListenState = ListenState(), private val position: Lo
     override fun setRepeat(repeat: Repeat) { asked += "repeat $repeat" }
     override fun remove(index: Int) { asked += "remove $index" }
     override fun move(from: Int, to: Int) { asked += "move $from $to" }
+    override fun skipBy(ms: Long) { asked += "skip by $ms" }
+    override fun setSpeed(speed: Float) { asked += "speed $speed"; state.value = state.value.copy(speed = speed) }
+    override fun setSleep(sleep: dev.nitrate.core.music.Sleep?) { asked += "sleep ${sleep?.label}"; state.value = state.value.copy(sleep = sleep) }
     override fun stop() { asked += "stop"; state.value = ListenState() }
 }
