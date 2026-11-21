@@ -1237,6 +1237,35 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
+    /**
+     * Rows one at a time, two cards-hidden rows: moving between them never draws either as a banner
+     * (its title over a strip of its artwork), not even for a frame while the page slides.
+     */
+    @Test fun cardsHiddenRowsNeverBanner() {
+        lateinit var titles: List<String>
+        shoot("tv-cards-hidden-no-banner", { c ->
+            c.displaySettings.savePrefs("user-1", rowsHome)
+            val rows = c.server.homeRows().filter { it.items.isNotEmpty() }
+            titles = rows.take(2).map { it.title }
+            rows.take(2).forEach { c.displaySettings.save("user-1", it, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false)) }
+        }, act = {
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+            fun noBanner(at: String) {
+                // A banner shows the row's name on its own; the screen's caption says "<row>  ·  n / N".
+                titles.forEach { t ->
+                    check(compose.onAllNodes(androidx.compose.ui.test.hasText(t, substring = false), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) { "\"$t\" drawn as a banner $at" }
+                }
+            }
+            noBanner("at the start")
+            compose.mainClock.autoAdvance = false
+            for ((name, key) in listOf("down" to androidx.compose.ui.input.key.Key.DirectionDown, "up" to androidx.compose.ui.input.key.Key.DirectionUp)) {
+                compose.onRoot().performKeyInput { pressKey(key) }
+                repeat(40) { i -> compose.mainClock.advanceTimeByFrame(); noBanner("$i frames after $name") }
+            }
+            compose.mainClock.autoAdvance = true
+        }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+    }
+
     /** Every tab style in the picker, each drawn with "Recommended" open and "All" focused. */
     @Test fun tabStyles() = shoot("tv-tab-styles") { dev.nitrate.tv.ui.components.TabStyleChoices(dev.nitrate.core.pages.TabStyle.CHIPS) {} }
 

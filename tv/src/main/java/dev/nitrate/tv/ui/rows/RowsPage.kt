@@ -203,9 +203,16 @@ fun RowsPage(
         // A row with its cards hidden, in use, puts its own title's picture there instead.
         val usedRow = if (focusedRowIndex in rows.indices) focusedRowIndex else 0
         val artKey = activeShowcase ?: rows.getOrNull(usedRow)?.takeIf { oneAtATime && (overrides[it.key] ?: it.defaultDisplay).normalized().cardsHidden }?.key
+        // Until that row has said which picture it shows, its own title's (never the last row's), so the
+        // background goes straight to the right picture rather than through another one.
+        val artFor = { key: String ->
+            cardlessArt[key] ?: rows.firstOrNull { it.key == key }?.let { r ->
+                r.items.getOrNull((showcaseIndex[key] ?: 0).coerceIn(0, (r.items.size - 1).coerceAtLeast(0)))
+            }?.let { repository.backdropUrls(it).firstOrNull() ?: repository.backdropUrl(it) }
+        }
         // One at a time the caption sits in a corner with its own shade: the picture whole, as the
         // screensaver shows it. Stacked keeps the wash for the summary over the top left.
-        dev.nitrate.tv.ui.effects.PageBackdropSlot(artKey?.let { cardlessArt[it] } ?: focused?.let(repository::backdropUrl), clean = oneAtATime)
+        dev.nitrate.tv.ui.effects.PageBackdropSlot(artKey?.let(artFor) ?: focused?.let(repository::backdropUrl), clean = oneAtATime)
         androidx.compose.animation.AnimatedVisibility(
             visible = styleNote != null, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = RowPadding).zIndex(2f),
@@ -381,9 +388,11 @@ fun RowsPage(
                         val hidden = activeShowcase != null && activeShowcase != row.key
                         if (display.cardsHidden) {
                             val active = activeShowcase == row.key
-                            // One at a time it's the screen whenever it's the row in use; stacked, while it has focus
-                            // (the others step aside), else a banner.
-                            val expanded = active || (oneAtATime && rowIndex == current)
+                            // One at a time every such row is always a screen of its own, never a banner: rows next to the
+                            // one in use slide in and out as the page moves, and a banner of the row's artwork there
+                            // flashed past on every move. Stacked, it's the screen while it has focus (the others
+                            // step aside), else a banner.
+                            val expanded = active || oneAtATime
                             CardlessRow(
                                 row = row,
                                 display = display,
