@@ -11,6 +11,15 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public bool EnableLines { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether the server is restarted to finish an update of this
+    /// plugin, at <see cref="RestartHour"/> (server time) once nothing is playing.
+    /// </summary>
+    public bool RestartForUpdates { get; set; } = true;
+
+    /// <summary>Gets or sets the hour (0–23, server time) from which such a restart may happen, for two hours.</summary>
+    public int RestartHour { get; set; } = 4;
+
     /// <summary>Gets or sets a value indicating whether each user's watches are kept in a diary.</summary>
     public bool EnableDiary { get; set; } = true;
 

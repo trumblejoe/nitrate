@@ -29,6 +29,8 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             new Nitrate.Companion.Diary.FileDiaryStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "diary")),
             sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddHostedService<Nitrate.Companion.Diary.DiaryRecorder>();
+        // Installs newer versions of itself, and restarts at night to finish them.
+        serviceCollection.AddHostedService<Nitrate.Companion.Updates.SelfUpdater>();
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Lines.LineIndex(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "lines.db")));
         serviceCollection.AddSingleton(sp => new ChannelHub(

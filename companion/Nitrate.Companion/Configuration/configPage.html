@@ -11,6 +11,19 @@
             <form id="NitrateCompanionConfigForm">
                 <h2>Nitrate Companion</h2>
 
+                <h3>Updates</h3>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="RestartForUpdates" type="checkbox" is="emby-checkbox" />
+                        <span>Finish updates by restarting at night</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">The plugin installs its own new versions from this server's plugin repositories every few hours (switch updates off for it on its plugin page to stop that). A new version only runs once the server restarts: with this on, the server restarts itself in the two hours from the hour below when an update is waiting and nothing is playing.</div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="RestartHour">Restart from (hour, server time, 0–23)</label>
+                    <input id="RestartHour" type="number" is="emby-input" min="0" max="23" />
+                </div>
+
                 <h3>Watching</h3>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label class="emby-checkbox-label">
@@ -143,7 +156,7 @@
     <script type="text/javascript">
         (function () {
             var pluginId = '04250121-a5d6-40da-99fc-242a178b3d2c';
-            var checks = ['EnableLines', 'EnableDiary', 'EnableComics', 'EnableChat', 'ListUsersForSharing', 'SsoEnabled', 'OidcMatchByEmail'];
+            var checks = ['RestartForUpdates', 'EnableLines', 'EnableDiary', 'EnableComics', 'EnableChat', 'ListUsersForSharing', 'SsoEnabled', 'OidcMatchByEmail'];
             var texts = ['SsoProviderName', 'OidcIssuer', 'OidcClientId', 'OidcClientSecret', 'OidcScopes', 'OidcUsernameClaim',
                 'OidcRequiredGroup', 'OidcGroupsClaim', 'SsoUserLinks', 'SsoPublicUrl'];
             var page = document.querySelector('#NitrateCompanionConfigPage');
@@ -156,6 +169,7 @@
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     checks.forEach(function (k) { page.querySelector('#' + k).checked = !!config[k]; });
                     texts.forEach(function (k) { page.querySelector('#' + k).value = config[k] || ''; });
+                    page.querySelector('#RestartHour').value = config.RestartHour == null ? 4 : config.RestartHour;
                     redirect();
                     var chosen = config.PrivateUserIds || [];
                     ApiClient.getUsers().then(function (users) {
@@ -353,6 +367,7 @@
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     checks.forEach(function (k) { config[k] = page.querySelector('#' + k).checked; });
                     texts.forEach(function (k) { config[k] = page.querySelector('#' + k).value; });
+                    config.RestartHour = Math.min(23, Math.max(0, parseInt(page.querySelector('#RestartHour').value, 10) || 0));
                     config.SmartCollections = readRules();
                     config.ComicCatalogs = readCatalogs();
                     config.PrivateUserIds = Array.prototype.filter.call(page.querySelectorAll('.privateUser'), function (i) { return i.checked; })
