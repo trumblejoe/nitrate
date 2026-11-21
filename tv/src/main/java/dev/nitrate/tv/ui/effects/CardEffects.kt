@@ -176,30 +176,125 @@ fun Modifier.cardFx(id: String, click: Boolean = true, spark: Boolean = true): M
 }
 
 /**
- * A spark sized for what it's over: a card gets one; an area far larger than a card (a showcase's
- * full-screen picture) gets [BIG_SPOTS] card-sized ones at scattered spots, going off one after another,
- * so it looks the same as on cards rather than spread thin across the screen.
+ * A spark sized for what it's over: a card gets the card one; an area far larger than a card (full
+ * art, a row with its cards hidden) gets the screen's own version ([drawScreenSpark]), drawn at the
+ * screen's scale in the page themes' realistic style rather than card-sized sparks dotted about.
  */
 internal fun DrawScope.drawSparkAnySize(spark: CardSpark, p: Float, k: Float, seed: Int) {
+    if (size.width < BIG_WIDTH_PX || size.height < BIG_HEIGHT_PX) drawSpark(spark, p, k, seed) else drawScreenSpark(spark, p, k, seed)
+}
+
+// Big enough to be the screen (or most of it), not a large card.
+private const val BIG_WIDTH_PX = 1200f
+private const val BIG_HEIGHT_PX = 800f
+
+/**
+ * Each spark at the scale of the whole screen, for progress [p] (0..1): sizes follow the screen's
+ * height, so they look the same on any TV. Lightning strikes down the picture and lights it;
+ * fireworks burst across the sky with streaks; sparkles glint all over; embers rise from the bottom;
+ * shimmer is a sheen of light sweeping across.
+ */
+internal fun DrawScope.drawScreenSpark(spark: CardSpark, p: Float, k: Float, seed: Int) {
     val w = size.width
     val h = size.height
-    if (w < BIG_AREA_PX) return drawSpark(spark, p, k, seed)
-    val cw = w * 0.26f
-    val ch = h * 0.34f
-    for (i in 0 until BIG_SPOTS) {
-        val local = (p * 1.45f - i * 0.15f).coerceIn(0f, 1f)
-        if (local <= 0f || local >= 1f) continue
-        // Columns across the picture, each at its own height, so spots never pile up together.
-        val left = (w - cw) * ((i + rnd(seed + i, 20) * 0.6f) / (BIG_SPOTS - 0.4f)).coerceIn(0f, 1f)
-        val top = (h - ch) * (0.08f + rnd(seed + i, 21) * 0.6f)
-        inset(left, top, w - left - cw, h - top - ch) {
-            drawSpark(spark, local, k, seed * 7 + i)
+    val u = h / 1080f
+    when (spark) {
+        CardSpark.NONE -> Unit
+        CardSpark.LIGHTNING -> {
+            // A real strike's flicker: the stroke, a dip, return strokes, then a fade.
+            val env = when {
+                p < 0.04f -> 1f
+                p < 0.07f -> 0.25f
+                p < 0.11f -> 0.9f
+                p < 0.14f -> 0.35f
+                p < 0.18f -> 0.75f
+                p < 0.6f -> 0.75f * kotlin.math.exp(-(p - 0.18f) * 9f)
+                else -> 0f
+            }
+            if (env <= 0f) return
+            val top = Offset(w * (0.2f + rnd(seed, 1) * 0.6f), -h * 0.02f)
+            drawRect(Color(0xFFCAD6FF).copy(alpha = 0.16f * env), blendMode = androidx.compose.ui.graphics.BlendMode.Plus)
+            glow(top, h * 0.9f, Color(0xFF9FB4FF), alpha = 0.4f * env)
+            if (p < 0.4f) {
+                val ground = Offset(top.x + (rnd(seed, 2) - 0.5f) * w * 0.35f, h * (0.8f + rnd(seed, 3) * 0.2f))
+                lightning(boltSegments(top, ground, seed * 97 + 11), env)
+                // A second, fainter fork now and then.
+                if (rnd(seed, 4) > 0.5f) lightning(boltSegments(top, Offset(ground.x + w * 0.18f * (if (rnd(seed, 5) > 0.5f) 1 else -1), h * 0.62f), seed * 53 + 7), env * 0.5f)
+            }
+        }
+        CardSpark.FIREWORKS -> {
+            val colors = listOf(Color(0xFFFF5A5A), Color(0xFFFFD54F), Color(0xFF64A0FF), Color(0xFF7CF0B0), Color(0xFFE38BFF))
+            val shells = (3 * k).toInt().coerceIn(2, 5)
+            for (b in 0 until shells) {
+                // Staggered bursts across the top half, each streaking out, slowing and falling.
+                val tau = (p * 1.6f - b * 0.22f)
+                if (tau <= 0f || tau >= 1f) continue
+                val at = Offset(w * (0.12f + (b + rnd(seed + b, 3) * 0.8f) / shells * 0.76f), h * (0.12f + rnd(seed + b, 4) * 0.32f))
+                val color = colors[(seed + b).mod(colors.size)]
+                val reach = h * (0.2f + rnd(seed + b, 5) * 0.08f)
+                val fade = kotlin.math.sqrt(1 - tau)
+                if (tau < 0.3f) glow(at, h * 0.5f, color, 0.22f * (1 - tau / 0.3f))
+                val n = 56
+                fun pos(i: Int, t: Float): Offset {
+                    val a = 2 * PI.toFloat() * i / n + rnd(i, seed + b) * 0.12f
+                    val v = reach * kotlin.math.sqrt(0.3f + 0.7f * rnd(i + 7, seed + b))
+                    val e = 1 - kotlin.math.exp(-4f * t)
+                    return at + Offset(kotlin.math.cos(a) * v * e, sin(a) * v * e + t * t * reach * 0.45f)
+                }
+                for (i in 0 until n) {
+                    val head = pos(i, tau)
+                    var prev = head
+                    for (s2 in 1..7) {
+                        val back = pos(i, (tau - s2 * 0.025f).coerceAtLeast(0f))
+                        drawLine(color.copy(alpha = (fade * (1 - s2 / 8f) * 0.8f).coerceIn(0f, 1f)), prev, back, 2.6f * u, androidx.compose.ui.graphics.StrokeCap.Round, blendMode = androidx.compose.ui.graphics.BlendMode.Plus)
+                        prev = back
+                    }
+                    val hot = (1 - tau / 0.25f).coerceIn(0f, 1f)
+                    glow(head, (14f + 10f * hot) * u, color, (fade * 0.9f).coerceIn(0f, 1f))
+                    drawCircle(androidx.compose.ui.graphics.lerp(color, Color.White, 0.35f + 0.65f * hot).copy(alpha = fade.coerceIn(0f, 1f)), (2.4f + 1.4f * hot) * u, head)
+                }
+            }
+        }
+        CardSpark.SPARKLES -> {
+            // Glints all over the picture, each a soft glow with a four-pointed flare.
+            for (s in 0 until (36 * k).toInt().coerceAtLeast(10)) {
+                val local = ((p - rnd(seed + s, 5) * 0.55f) * 2.2f).coerceIn(0f, 1f)
+                val bright = sin(local * PI.toFloat())
+                if (bright <= 0.02f) continue
+                val c = Offset(rnd(seed + s, 6) * w, rnd(seed + s, 7) * h)
+                val r = h * (0.018f + rnd(seed + s, 8) * 0.03f) * bright
+                glow(c, r * 2.2f, Color(0xFFFFF4D6), 0.5f * bright)
+                star(c, r, Color(0xFFFFFBF0).copy(alpha = 0.9f * bright), points = 4, inner = 0.12f, rotation = rnd(seed + s, 9) * 0.6f)
+            }
+        }
+        CardSpark.EMBERS -> {
+            // Sparks rising from a glow along the bottom, drifting as they cool.
+            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFFFF6D00).copy(alpha = 0.28f * sin(p * PI.toFloat()))), startY = h * 0.65f))
+            for (e in 0 until (70 * k).toInt().coerceAtLeast(20)) {
+                val rise = (p * 1.35f - rnd(seed + e, 8) * 0.35f).coerceIn(0f, 1f)
+                if (rise <= 0f || rise >= 1f) continue
+                val x = rnd(seed + e, 9) * w + sin(rise * 7 + e) * h * 0.04f
+                val y = h * (1.02f - rise * (0.45f + rnd(seed + e, 10) * 0.55f))
+                val r = h * (0.003f + rnd(seed + e, 11) * 0.005f)
+                val heat = 1 - rise
+                glow(Offset(x, y), r * 5f, Color(0xFFFF8A1E), 0.55f * heat)
+                drawCircle(Color(0xFFFFC46B).copy(alpha = heat), r, Offset(x, y))
+            }
+        }
+        CardSpark.SHIMMER -> {
+            // A broad soft sheen sweeping across the picture, brightest along its middle.
+            val x = -w * 0.5f + p * w * 2f
+            val band = w * 0.28f
+            drawRect(
+                Brush.linearGradient(
+                    0f to Color.Transparent, 0.4f to Color.White.copy(alpha = 0.08f), 0.5f to Color.White.copy(alpha = 0.26f), 0.6f to Color.White.copy(alpha = 0.08f), 1f to Color.Transparent,
+                    start = Offset(x - band, 0f), end = Offset(x + band, h * 0.6f),
+                ),
+                blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
+            )
         }
     }
 }
-
-private const val BIG_AREA_PX = 1200f
-private const val BIG_SPOTS = 4
 
 /** One spark over the card at progress [p] (0..1). */
 internal fun DrawScope.drawSpark(spark: CardSpark, p: Float, k: Float, seed: Int) {

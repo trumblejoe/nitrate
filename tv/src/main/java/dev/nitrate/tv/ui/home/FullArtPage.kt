@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.home
 
+import dev.nitrate.tv.ui.effects.cardFx
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -112,6 +113,11 @@ fun FullArtPage(
     }
     val showcase = (overrides[row.key] ?: row.defaultDisplay).showcase
     val captionSize = (overrides[row.key] ?: row.defaultDisplay).captionSize ?: dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCaptionSize
+    // The row's effects at the screen's scale: sparks over the whole picture, the click on the caption.
+    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val fx = dev.nitrate.tv.ui.effects.rememberCardFx(overrides[row.key] ?: row.defaultDisplay, prefs.effects, prefs.easyMode)
+    val plainActions = remember(onOpen, onPlay) { dev.nitrate.tv.ui.rows.RowActions(onFocus = {}, onOpen = onOpen, onPlay = onPlay, onEditRow = {}) }
+    val open = (fx?.wrap(plainActions) ?: plainActions).onOpen
 
     Box(
         modifier
@@ -141,7 +147,7 @@ fun FullArtPage(
                             // The Customize panel when the page's rows are known, else the row's dialog.
                             customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row }
                         } else if (!down) {
-                            if (!longPressHandled) onOpen(item)
+                            if (!longPressHandled) open(item)
                             longPressHandled = false
                         }
                         true
@@ -155,6 +161,9 @@ fun FullArtPage(
     ) {
         // The picture (or the page's chosen background) and the theme over it, drawn by the menu.
         dev.nitrate.tv.ui.effects.PageBackdropSlot(repository.backdropUrl(item), clean = true)
+      androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalCardFx provides fx) {
+        // Sparks over the whole picture, under the caption.
+        Box(Modifier.fillMaxSize().then(Modifier.cardFx(item.id, click = false)))
 
         val pad = Modifier.padding(start = 58.dp + insets.start, end = 58.dp + insets.end)
         // Captioned as the screensaver is: the row and place as a small label, the title, a quiet line
@@ -170,10 +179,13 @@ fun FullArtPage(
                     logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, it, showcase.showLogo, captionSize), size = captionSize,
                     showDetails = showcase.showDetails, showRatings = showcase.showRatings, showOverview = showcase.showOverview,
                     modifier = Modifier.align(when { capTop && end -> Alignment.TopEnd; capTop -> Alignment.TopStart; end -> Alignment.BottomEnd; else -> Alignment.BottomStart })
+                        .cardFx(it.id, spark = false)
                         .then(pad).padding(top = if (capTop) 84.dp + insets.top else 0.dp, bottom = if (capTop) 0.dp else 56.dp + insets.bottom),
                 )
             }
         }
+
+      }
 
         header?.let { tabs ->
             Box(
