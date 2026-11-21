@@ -145,6 +145,10 @@ private const val RESUME_AT = "resumeAt"
 
 /** Reading a comic from a Books library. */
 @Serializable data class ComicRoute(val itemId: String)
+@Serializable object CatalogsRoute
+@Serializable data class CatalogFeedRoute(val catalogId: String, val target: String? = null)
+@Serializable data class CatalogBookRoute(val catalogId: String, val book: String)
+private val catalogJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
 /** What plays before [itemId] ([dev.nitrate.tv.ui.preroll.PrerollPlan.steps]): a scene, a verse, then intros. */
 @Serializable data class PrerollRoute(val itemId: String, val fromStart: Boolean = false)
@@ -228,6 +232,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onPages = { nav.navigate(PagesRoute, fromHome) },
                 onTogether = { nav.navigate(WatchTogetherRoute, fromHome) },
                 onChannels = if (channelsOn) ({ nav.navigate(ChannelsRoute, fromHome) }) else null,
+                onComics = { nav.navigate(CatalogsRoute, fromHome) },
                 onSettings = { nav.navigate(SettingsHubRoute, fromHome) },
                 onProfiles = { nav.navigate(ProfilesRoute) },
                 onQuickSwitch = { quickSwitch = true },
@@ -369,6 +374,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl) { if (easy) askSignOut = true else signOut() },
                     )),
                     dev.nitrate.tv.ui.settings.SettingsSection("Your watching", listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Comic catalogs", "Read from an OPDS server (Komga, Kavita, Calibre…) or CLU; add \"Comics\" to the menu in Display → Menu stops") { nav.navigate(CatalogsRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Your year", "What you've watched and listened to: top shows, genres and artists") { nav.navigate(StatsRoute) },
                     ) + (if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) listOf(
                         dev.nitrate.tv.ui.settings.SettingsLink("Watch diary", "Every film and episode you finish, with your ratings and notes") { nav.navigate(DiaryRoute) },
@@ -520,6 +526,23 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<PersonRoute> { entry ->
             val route = entry.toRoute<PersonRoute>()
             dev.nitrate.tv.ui.search.PersonScreen(container.server, dev.nitrate.core.model.Person(route.personId, route.name), onOpen = nav::openItem, studio = route.studio, year = route.year, displaySettings = container.displaySettings)
+        }
+        composable<CatalogsRoute> {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.COMICS, overlay = false) {
+                dev.nitrate.tv.ui.comics.CatalogsScreen(container, onOpen = { id -> nav.navigate(CatalogFeedRoute(id)) })
+            }
+        }
+        composable<CatalogFeedRoute> { entry ->
+            val route = entry.toRoute<CatalogFeedRoute>()
+            dev.nitrate.tv.ui.comics.CatalogFeedScreen(
+                container, route.catalogId, route.target,
+                onOpen = { target -> nav.navigate(CatalogFeedRoute(route.catalogId, target)) },
+                onRead = { book -> nav.navigate(CatalogBookRoute(route.catalogId, catalogJson.encodeToString(dev.nitrate.core.catalogs.CatalogBook.serializer(), book))) },
+            )
+        }
+        composable<CatalogBookRoute> { entry ->
+            val route = entry.toRoute<CatalogBookRoute>()
+            dev.nitrate.tv.ui.comics.CatalogReaderScreen(container, route.catalogId, catalogJson.decodeFromString(dev.nitrate.core.catalogs.CatalogBook.serializer(), route.book), onExit = { nav.popBackStack() })
         }
         composable<ChannelsRoute> {
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.CHANNELS, overlay = false) {

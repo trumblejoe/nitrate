@@ -176,6 +176,8 @@ private fun LibrariesTab(actions: AppActions, modifier: Modifier) {
             items(result.getOrThrow(), key = { it.id }) { view ->
                 MediaCard(view, actions.server.cardImage(view, CardShape.WIDE), CardShape.WIDE, onClick = { actions.open(view) }, title = view.name, sharedKey = "lib-${view.id}")
             }
+            // Comics from other servers (OPDS, CLU), after the libraries.
+            if (!easy) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { CatalogsEntry(actions) }
             // Your own pages come after the libraries, out of the way.
             if (!easy) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 Box(Modifier.padding(top = 12.dp).layout { measurable, constraints ->

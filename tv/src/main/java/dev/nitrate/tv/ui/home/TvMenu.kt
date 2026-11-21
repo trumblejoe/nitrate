@@ -112,6 +112,7 @@ object NavIcons {
     val settings = Icons.Filled.Settings
     val profile = Icons.Filled.AccountCircle
     val channels = Icons.Filled.DateRange
+    val comics = Icons.Filled.Star
 
     fun library(item: MediaItem): ImageVector = when (item.collection) {
         CollectionKind.TV_SHOWS -> Icons.Filled.DateRange
@@ -540,6 +541,7 @@ class MenuActions(
     val onTogether: () -> Unit = {},
     /** Set when the household's channels are available (Companion plugin and the Channels plugin on). */
     val onChannels: (() -> Unit)? = null,
+    val onComics: () -> Unit = {},
     val onSettings: () -> Unit = {},
     val onProfiles: () -> Unit = {},
     /** Long press on "Switch user": switch straight from the menu. */
@@ -569,6 +571,7 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
         pages.forEach { p -> add(NavEntry(p.title, NavIcons.pages, id = MenuStops.page(p.id)) { actions.onPage(p.id) }) }
         actions.onChannels?.let { add(NavEntry("Channels", NavIcons.channels, id = MenuStops.CHANNELS, onClick = it)) }
         add(NavEntry("Your pages", NavIcons.pages, id = MenuStops.PAGES, onClick = actions.onPages))
+        add(NavEntry("Comics", NavIcons.comics, id = MenuStops.COMICS, onClick = actions.onComics))
         add(NavEntry("Watch together", NavIcons.together, id = MenuStops.TOGETHER, onClick = actions.onTogether))
         add(NavEntry("Settings", NavIcons.settings, id = MenuStops.SETTINGS, onClick = actions.onSettings))
         add(NavEntry("Switch user", NavIcons.profile, id = MenuStops.PROFILES, onLongClick = actions.onQuickSwitch, onClick = actions.onProfiles))

@@ -110,4 +110,38 @@ class ComicLibraryTest {
         assertTrue(File(again.page(2)).exists())
         assertEquals(3, asked.size)
     }
+
+    @Test fun catalogBooksStreamAndRememberWhereTheReaderIs() = runBlocking {
+        val saved = mutableListOf<Pair<Int, Int>>()
+        val catalog = dev.nitrate.core.catalogs.ComicCatalog("k", "Komga", "http://k/opds", token = "t")
+        val client = object : dev.nitrate.core.catalogs.CatalogClient {
+            override val catalog = catalog
+            override val authorization = "Bearer t"
+            override suspend fun root() = throw UnsupportedOperationException()
+            override suspend fun open(target: String) = throw UnsupportedOperationException()
+            override suspend fun search(query: String) = null
+            override suspend fun saveProgress(book: dev.nitrate.core.catalogs.CatalogBook, page: Int, pageCount: Int): Boolean { saved += page to pageCount; return true }
+        }
+        val positions = object : CatalogPositions {
+            val map = mutableMapOf<String, Int>()
+            override suspend fun get(catalogId: String, bookId: String) = map["$catalogId|$bookId"]
+            override suspend fun set(catalogId: String, bookId: String, page: Int) { map["$catalogId|$bookId"] = page }
+        }
+        val asked = mutableListOf<String>()
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            asked += request.url.toString() + " " + request.headers["Authorization"]
+            respond(byteArrayOf(9, 9), io.ktor.http.HttpStatusCode.OK)
+        }
+        val library = ComicLibrary(server, cache.path, engine) { 1_000L }
+        val book = dev.nitrate.core.catalogs.CatalogBook("urn:b/1", "Saga 1", pageCount = 5, lastRead = 2, pageTemplate = "http://k/pages/{pageNumber}?w={maxWidth}")
+        val open = library.openCatalog(client, book, positions)
+        assertEquals(2, open.startPage)
+        assertEquals("Saga 1", open.title)
+        open.page(3)
+        assertEquals(listOf("http://k/pages/3?w=2000 Bearer t"), asked)
+        open.saveProgress(3)
+        assertEquals(listOf(3 to 5), saved)
+        // Next time it starts where this device left off.
+        assertEquals(3, library.openCatalog(client, book, positions).startPage)
+    }
 }

@@ -307,6 +307,12 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<GuideRoute> { GuideScreen(admin = actions.container.account.collectAsState().value?.isAdmin == true) }
             screen<PlaybackOverviewRoute> { PlaybackOverviewScreen(actions) }
             screen<ChannelsRoute> { ChannelsScreen(actions) }
+            screen<CatalogsRoute> { CatalogsScreen(actions) }
+            screen<CatalogFeedRoute> { entry -> entry.toRoute<CatalogFeedRoute>().let { CatalogFeedScreen(actions, it.catalogId, it.target) } }
+            screen<CatalogBookRoute> { entry ->
+                val route = entry.toRoute<CatalogBookRoute>()
+                CatalogReaderScreen(actions, route.catalogId, catalogJson.decodeFromString(dev.nitrate.core.catalogs.CatalogBook.serializer(), route.book), onExit = { nav.popBackStack() })
+            }
             screen<WatchPartnersRoute> { WatchPartnersScreen(actions) }
             screen<RecapRoute> { RecapScreen(actions) }
             screen<ComicRoute> { entry -> ComicReaderScreen(

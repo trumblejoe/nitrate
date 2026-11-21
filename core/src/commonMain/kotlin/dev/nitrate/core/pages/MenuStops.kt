@@ -11,6 +11,9 @@ object MenuStops {
     const val PAGES = "pages"
     const val TOGETHER = "together"
     const val CHANNELS = "channels"
+
+    /** Comic catalogs (OPDS, CLU): not in the menu until added in Menu stops. */
+    const val COMICS = "comics"
     const val SETTINGS = "settings"
     const val PROFILES = "profiles"
 

@@ -82,15 +82,27 @@ enum class TwoUp(val label: String) { AUTO("Automatic"), ONE("One page"), TWO("T
  */
 @Composable
 fun ComicReaderScreen(actions: AppActions, itemId: String, onExit: () -> Unit, onNext: (String) -> Unit = {}) {
+    ComicLoader(actions, itemId, { progress -> actions.container.comics.open(actions.server.getItem(itemId), progress) }, onExit, onNext)
+}
+
+/** Reads a book from a comic catalog (OPDS or CLU) the same way. */
+@Composable
+fun CatalogReaderScreen(actions: AppActions, catalogId: String, book: dev.nitrate.core.catalogs.CatalogBook, onExit: () -> Unit) {
     val container = actions.container
+    ComicLoader(actions, catalogId + "|" + book.id, { progress ->
+        val catalog = container.catalogs.catalog(catalogId) ?: throw dev.nitrate.android.comics.ComicException("This catalog was removed.")
+        container.comics.openCatalog(container.catalogs.client(catalog), book, container.catalogs, progress)
+    }, onExit, {})
+}
+
+@Composable
+private fun ComicLoader(actions: AppActions, key: String, load: suspend ((Float) -> Unit) -> ComicBook, onExit: () -> Unit, onNext: (String) -> Unit) {
     var book by remember { mutableStateOf<ComicBook?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(itemId) {
-        runCatching {
-            val item = actions.server.getItem(itemId)
-            book = container.comics.open(item) { progress = it }
-        }.onFailure { error = it.message ?: "Couldn't open this comic." }
+    LaunchedEffect(key) {
+        runCatching { book = load { progress = it } }
+            .onFailure { error = it.message ?: "Couldn't open this comic." }
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val b = book

@@ -70,11 +70,25 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ComicReaderScreen(container: AppContainer, itemId: String, onExit: () -> Unit, onNext: (String) -> Unit = {}) {
+    ComicLoader(container, itemId, { progress -> container.comics.open(container.server.getItem(itemId), progress) }, onExit, onNext)
+}
+
+/** Reads a book from a comic catalog (OPDS or CLU) the same way. */
+@Composable
+fun CatalogReaderScreen(container: AppContainer, catalogId: String, book: dev.nitrate.core.catalogs.CatalogBook, onExit: () -> Unit) {
+    ComicLoader(container, catalogId + "|" + book.id, { progress ->
+        val catalog = container.catalogs.catalog(catalogId) ?: throw dev.nitrate.android.comics.ComicException("This catalog was removed.")
+        container.comics.openCatalog(container.catalogs.client(catalog), book, container.catalogs, progress)
+    }, onExit, {})
+}
+
+@Composable
+private fun ComicLoader(container: AppContainer, key: String, load: suspend ((Float) -> Unit) -> ComicBook, onExit: () -> Unit, onNext: (String) -> Unit) {
     var book by remember { mutableStateOf<ComicBook?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(itemId) {
-        runCatching { book = container.comics.open(container.server.getItem(itemId)) { progress = it } }
+    LaunchedEffect(key) {
+        runCatching { book = load { progress = it } }
             .onFailure { error = it.message ?: "Couldn't open this comic." }
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
