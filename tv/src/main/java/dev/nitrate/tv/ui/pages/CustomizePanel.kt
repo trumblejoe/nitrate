@@ -45,7 +45,7 @@ import dev.nitrate.core.pages.PageLook
 import dev.nitrate.core.pages.PageLooks
 import dev.nitrate.core.pages.RowExtent
 import dev.nitrate.core.pages.RowPlace
-import dev.nitrate.core.pages.TvHomeLayout
+import dev.nitrate.core.pages.PageArrangement
 import dev.nitrate.core.rows.MediaRow
 import dev.nitrate.tv.ui.rows.ChoiceItem
 import dev.nitrate.tv.ui.rows.ignoreHeldSelect
@@ -258,13 +258,10 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
         val look = PageLooks.resolved(prefs, owner)
         val own = PageLooks.hasOwn(prefs, owner)
         fun set(change: (PageLook) -> PageLook) = container.changePrefs(scope) { PageLooks.change(it, owner, change) }
-        val fullArt = look.arrangement == TvHomeLayout.FULL_ART
+        val arrangement = look.arrangement ?: PageArrangement.ROWS
         Column {
-            ChoiceItem("Arrangement", (look.arrangement ?: TvHomeLayout.ROWS).label, first?.let { Modifier.focusRequester(it) } ?: Modifier) {
-                set { it.copy(arrangement = if (fullArt) TvHomeLayout.ROWS else TvHomeLayout.FULL_ART) }
-            }
-            if (!fullArt) ChoiceItem("Rows", if (look.stacked == true) "Stacked down the page" else "One at a time") {
-                set { it.copy(stacked = it.stacked != true) }
+            ChoiceItem("Arrangement", arrangement.label, first?.let { Modifier.focusRequester(it) } ?: Modifier) {
+                set { it.copy(arrangement = (it.arrangement ?: PageArrangement.ROWS).next()) }
             }
             ChoiceItem("Caption corner", (look.captionCorner ?: dev.nitrate.core.pages.CaptionCorner.ALTERNATE).label) {
                 set { it.copy(captionCorner = (it.captionCorner ?: dev.nitrate.core.pages.CaptionCorner.ALTERNATE).cycleNext()) }
@@ -272,7 +269,7 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
             ChoiceItem("Caption size", (look.captionSize ?: dev.nitrate.core.pages.CaptionSize.NORMAL).label) {
                 set { it.copy(captionSize = (it.captionSize ?: dev.nitrate.core.pages.CaptionSize.NORMAL).cycleNext()) }
             }
-            if (!fullArt && look.stacked != true) {
+            if (arrangement.oneAtATime) {
                 ChoiceItem("Row position", (look.rowPlace ?: RowPlace.BOTTOM).label) { set { it.copy(rowPlace = (it.rowPlace ?: RowPlace.BOTTOM).cycleNext()) } }
                 ChoiceItem("Row length", (look.rowExtent ?: RowExtent.FULL).label) { set { it.copy(rowExtent = (it.rowExtent ?: RowExtent.FULL).cycleNext()) } }
             }

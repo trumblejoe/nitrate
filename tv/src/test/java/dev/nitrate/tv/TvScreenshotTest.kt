@@ -115,7 +115,7 @@ class TvScreenshotTest {
         c.displaySettings.saveCustomPages("user-1", listOf(CustomPage("pg1", "Friday night")))
     }
 
-    private val rowsHome = dev.nitrate.core.pages.DisplayPrefs(tvHome = dev.nitrate.core.pages.TvHomeLayout.ROWS)
+    private val rowsHome = dev.nitrate.core.pages.DisplayPrefs(tvArrangement = dev.nitrate.core.pages.PageArrangement.ROWS)
 
     private fun fullArt(menu: dev.nitrate.core.pages.TvMenuStyle) =
         shoot("tv-home-full-art-${menu.name.lowercase()}", { c -> c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = menu)) }) { c ->
@@ -319,13 +319,13 @@ class TvScreenshotTest {
     private fun libraryShot(name: String, prefs: dev.nitrate.core.pages.DisplayPrefs, check: () -> Unit) = prefsShot(name, prefs, check) { c ->
         WithMenu(c) {
             val p = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
-            val fullArt = (p.tvLibraryLayout ?: p.tvHome) == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
+            val fullArt = (p.tvLibraryArrangement ?: p.tvArrangement).fullArt
             dev.nitrate.tv.ui.home.MainMenu("lib-movies", overlay = fullArt) { insets ->
                 dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}, fullArt = fullArt, insets = insets)
             }
         }
     }
-    private val rowsLibrary = dev.nitrate.core.pages.DisplayPrefs(tvLibraryLayout = dev.nitrate.core.pages.TvHomeLayout.ROWS)
+    private val rowsLibrary = dev.nitrate.core.pages.DisplayPrefs(tvLibraryArrangement = dev.nitrate.core.pages.PageArrangement.ROWS)
 
     /** From the first row back up to the tabs: the row stays whole in its place under them. */
     @Test fun libraryRowUpToTabs() = libraryShot("tv-library-row-up-to-tabs", rowsLibrary) {
@@ -581,7 +581,7 @@ class TvScreenshotTest {
 
     /** Up/Down from the tilted film strip go to the rows above and below; only Left/Right move along it. */
     @Test fun filmStripUpDownLeaveRow() = shoot("tv-film-strip-up-down", setup = { c ->
-        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvRowsStacked = true))
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvArrangement = dev.nitrate.core.pages.PageArrangement.STACKED))
         val rows = c.server.homeRows()
         c.displaySettings.save("user-1", rows[2], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.FILM_STRIP))
     }, act = {
@@ -652,17 +652,17 @@ class TvScreenshotTest {
         shoot("tv-customize-layout", setup = { c -> container = c; c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
             compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
             check(focusedHasText("Arrangement")) { "the Layout section should open on its first choice" }
-            press("down", "ok")
+            press("ok")
             // The save lands a beat later on a slow machine: wait for it rather than a fixed time.
             var stored = runBlocking { container.displaySettings.prefs("user-1").first() }
             repeat(50) {
-                if (stored.pageLooks["home"]?.stacked == true) return@repeat
+                if (stored.pageLooks["home"]?.arrangement == dev.nitrate.core.pages.PageArrangement.STACKED) return@repeat
                 compose.mainClock.advanceTimeBy(200); compose.waitForIdle(); Thread.sleep(50)
                 stored = runBlocking { container.displaySettings.prefs("user-1").first() }
             }
-            check(stored.pageLooks["home"]?.stacked == true) { "Home should have stacked rows of its own: ${stored.pageLooks}" }
-            check(!stored.tvRowsStacked) { "every page's layout should be unchanged" }
-            check(compose.onAllNodes(androidx.compose.ui.test.hasText("Stacked down the page", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the choice should show" }
+            check(stored.pageLooks["home"]?.arrangement == dev.nitrate.core.pages.PageArrangement.STACKED) { "Home should have stacked rows of its own: ${stored.pageLooks}" }
+            check(stored.tvArrangement == dev.nitrate.core.pages.PageArrangement.ROWS) { "every page's layout should be unchanged" }
+            check(compose.onAllNodes(androidx.compose.ui.test.hasText("Stacked rows", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the choice should show" }
         }) { c ->
             WithMenu(c) {
                 HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})

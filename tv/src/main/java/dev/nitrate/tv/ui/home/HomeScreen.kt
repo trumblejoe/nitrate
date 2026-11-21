@@ -82,7 +82,7 @@ fun HomeScreen(
     var homeHasFocus by remember { mutableStateOf(false) }
     // Home's own layout (it may differ from every page's: core PageLooks).
     val prefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, PageKeys.HOME)
-    val fullArt = prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART
+    val fullArt = prefs.tvArrangement.fullArt
     val pinnedPages = customPages.filter { it.pinned }
     // Pinned pages are Home's other tabs (as a library's tabs are): "Home" first, then each page.
     var pageTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }

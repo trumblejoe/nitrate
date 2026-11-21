@@ -246,19 +246,10 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
         item {
             ListItem(
                 selected = false,
-                onClick = { update { it.copy(tvHome = dev.nitrate.core.pages.TvHomeLayout.entries[(it.tvHome.ordinal + 1) % dev.nitrate.core.pages.TvHomeLayout.entries.size]) } },
+                onClick = { update { it.copy(tvArrangement = it.tvArrangement.next()) } },
                 headlineContent = { Text("Arrangement") },
-                supportingContent = { Text(if (prefs.tvHome == dev.nitrate.core.pages.TvHomeLayout.FULL_ART) "One title at a time across the screen: ◀ ▶ through a row, ▲ ▼ between rows" else "Rows of cards under the focused title") },
-                trailingContent = { Text("${prefs.tvHome.label}  ›", color = MaterialTheme.colorScheme.primary) },
-            )
-        }
-        item {
-            ListItem(
-                selected = false,
-                onClick = { update { it.copy(tvRowsStacked = !it.tvRowsStacked) } },
-                headlineContent = { Text("Rows") },
-                supportingContent = { Text(if (prefs.tvRowsStacked) "Stacked down the page under the focused title" else "One at a time, the picture around it; the others show as you reach them") },
-                trailingContent = { Text("${if (prefs.tvRowsStacked) "Stacked" else "One at a time"}  ›", color = MaterialTheme.colorScheme.primary) },
+                supportingContent = { Text(prefs.tvArrangement.note) },
+                trailingContent = { Text("${prefs.tvArrangement.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
         item {
@@ -279,7 +270,7 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 trailingContent = { Text("${prefs.tvCaptionSize.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
-        if (!prefs.tvRowsStacked) {
+        if (prefs.tvArrangement.oneAtATime) {
             item {
                 ListItem(
                     selected = false,
@@ -300,15 +291,15 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
             }
         }
         item {
-            // Like Home, or each its own way.
-            val layouts = listOf<dev.nitrate.core.pages.TvHomeLayout?>(null) + dev.nitrate.core.pages.TvHomeLayout.entries
-            val now = prefs.tvLibraryLayout
+            // Like every page, or an arrangement of their own.
+            val layouts = listOf<dev.nitrate.core.pages.PageArrangement?>(null) + dev.nitrate.core.pages.PageArrangement.entries
+            val now = prefs.tvLibraryArrangement
             ListItem(
                 selected = false,
-                onClick = { update { it.copy(tvLibraryLayout = layouts[(layouts.indexOf(it.tvLibraryLayout) + 1) % layouts.size]) } },
+                onClick = { update { it.copy(tvLibraryArrangement = layouts[(layouts.indexOf(it.tvLibraryArrangement) + 1) % layouts.size]) } },
                 headlineContent = { Text("Library pages") },
                 supportingContent = { Text("How a library's Recommended rows are shown") },
-                trailingContent = { Text("${now?.label ?: "Same as Home"}  ›", color = MaterialTheme.colorScheme.primary) },
+                trailingContent = { Text("${now?.label ?: "Same as every page"}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
         item {

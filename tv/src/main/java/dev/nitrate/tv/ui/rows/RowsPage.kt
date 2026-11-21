@@ -116,7 +116,7 @@ fun RowsPage(
         onDispose { focusReturn?.restore = null }
     }
     // One row at a time, along the bottom (the picture gets the rest), unless the user stacks them.
-    val oneAtATime = !LocalDisplayPrefs.current.tvRowsStacked
+    val oneAtATime = !LocalDisplayPrefs.current.tvArrangement.stacked
     // The room above the first row (one at a time), so any row can sit at the bottom; px.
     var roomAbove by remember { mutableStateOf(0) }
     val showcaseIndex = remember { mutableStateMapOf<String, Int>() }

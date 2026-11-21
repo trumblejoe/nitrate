@@ -10,10 +10,8 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class PageLook(
-    /** Full-screen artwork (one title at a time) or rows. */
-    val arrangement: TvHomeLayout? = null,
-    /** Rows stacked down the page, rather than one at a time. */
-    val stacked: Boolean? = null,
+    /** Full art, rows one at a time, or stacked rows. */
+    val arrangement: PageArrangement? = null,
     val captionCorner: CaptionCorner? = null,
     val captionSize: CaptionSize? = null,
     val rowPlace: RowPlace? = null,
@@ -32,8 +30,7 @@ object PageLooks {
 
     /** Every page's layout as it stands, before this page's own choices. */
     fun defaults(prefs: DisplayPrefs, pageKey: String): PageLook = PageLook(
-        arrangement = if (pageKey.startsWith("library/")) prefs.tvLibraryLayout ?: prefs.tvHome else prefs.tvHome,
-        stacked = prefs.tvRowsStacked,
+        arrangement = if (pageKey.startsWith("library/")) prefs.tvLibraryArrangement ?: prefs.tvArrangement else prefs.tvArrangement,
         captionCorner = prefs.tvCaptionCorner,
         captionSize = prefs.tvCaptionSize,
         rowPlace = prefs.tvRowPlace,
@@ -46,7 +43,6 @@ object PageLooks {
         val own = prefs.pageLooks[ownerOf(pageKey)] ?: return base
         return PageLook(
             arrangement = own.arrangement ?: base.arrangement,
-            stacked = own.stacked ?: base.stacked,
             captionCorner = own.captionCorner ?: base.captionCorner,
             captionSize = own.captionSize ?: base.captionSize,
             rowPlace = own.rowPlace ?: base.rowPlace,
@@ -61,12 +57,11 @@ object PageLooks {
     fun forPage(prefs: DisplayPrefs, pageKey: String?): DisplayPrefs {
         if (pageKey == null || prefs.pageLooks[ownerOf(pageKey)] == null) {
             // A library with no layout of its own still follows "Library pages" when that's set.
-            return if (pageKey?.startsWith("library/") == true && prefs.tvLibraryLayout != null) prefs.copy(tvHome = prefs.tvLibraryLayout) else prefs
+            return if (pageKey?.startsWith("library/") == true && prefs.tvLibraryArrangement != null) prefs.copy(tvArrangement = prefs.tvLibraryArrangement) else prefs
         }
         val look = resolved(prefs, pageKey)
         return prefs.copy(
-            tvHome = look.arrangement ?: prefs.tvHome,
-            tvRowsStacked = look.stacked ?: prefs.tvRowsStacked,
+            tvArrangement = look.arrangement ?: prefs.tvArrangement,
             tvCaptionCorner = look.captionCorner ?: prefs.tvCaptionCorner,
             tvCaptionSize = look.captionSize ?: prefs.tvCaptionSize,
             tvRowPlace = look.rowPlace ?: prefs.tvRowPlace,
@@ -82,7 +77,6 @@ object PageLooks {
         // Keep only what differs from every page's layout.
         val own = PageLook(
             arrangement = next.arrangement.takeIf { it != base.arrangement },
-            stacked = next.stacked.takeIf { it != base.stacked },
             captionCorner = next.captionCorner.takeIf { it != base.captionCorner },
             captionSize = next.captionSize.takeIf { it != base.captionSize },
             rowPlace = next.rowPlace.takeIf { it != base.rowPlace },
@@ -100,11 +94,9 @@ object PageLooks {
      */
     fun useEverywhere(prefs: DisplayPrefs, pageKey: String): DisplayPrefs {
         val look = resolved(prefs, pageKey)
-        val arrangement = look.arrangement ?: prefs.tvHome
         return prefs.copy(
-            tvHome = arrangement,
-            tvLibraryLayout = null,
-            tvRowsStacked = look.stacked ?: prefs.tvRowsStacked,
+            tvArrangement = look.arrangement ?: prefs.tvArrangement,
+            tvLibraryArrangement = null,
             tvCaptionCorner = look.captionCorner ?: prefs.tvCaptionCorner,
             tvCaptionSize = look.captionSize ?: prefs.tvCaptionSize,
             tvRowPlace = look.rowPlace ?: prefs.tvRowPlace,

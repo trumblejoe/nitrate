@@ -4,6 +4,7 @@ import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.formatOneDecimal
 import dev.nitrate.core.model.formatRuntime
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -63,10 +64,14 @@ data class DisplayPrefs(
     val accent: AccentMode = AccentMode.ARTWORK,
     /** Pure black backgrounds (OLED). */
     val trueBlack: Boolean = false,
-    /** TV Home: one row at a time across the whole screen, or the classic stack of rows. */
-    val tvHome: TvHomeLayout = TvHomeLayout.FULL_ART,
-    /** TV library pages' Recommended tab: like Home (null), or a layout of their own. */
-    val tvLibraryLayout: TvHomeLayout? = null,
+    /**
+     * How TV pages lay out their rows ([PageArrangement]). Stored under its old name, so Full art
+     * and Rows read as they were; the old separate "stacked" switch is gone, so stacked rows saved
+     * that way come back as Rows one at a time.
+     */
+    @SerialName("tvHome") val tvArrangement: PageArrangement = PageArrangement.FULL_ART,
+    /** TV library pages' Recommended tab: like every page (null), or an arrangement of their own. */
+    @SerialName("tvLibraryLayout") val tvLibraryArrangement: PageArrangement? = null,
     /** How page tabs look on TV (Home's pinned pages, a library's tabs). */
     val tvTabStyle: TabStyle = TabStyle.CHIPS,
     /** Row, page and seasonal effects (TV). */
@@ -85,8 +90,6 @@ data class DisplayPrefs(
     val tvMenuAutoHide: Boolean = false,
     /** The TV menu (rail, bar or dial) on solid black, so it stands out over page themes and art. */
     val tvMenuBlack: Boolean = false,
-    /** TV rows layout: every row stacked down the page, rather than one at a time along the bottom. */
-    val tvRowsStacked: Boolean = false,
     /** Where the title's caption sits (rows one at a time, full art, showcases). */
     val tvCaptionCorner: CaptionCorner = CaptionCorner.ALTERNATE,
     val tvCaptionSize: CaptionSize = CaptionSize.NORMAL,
@@ -173,11 +176,23 @@ enum class TabStyle(val label: String, val detail: String) {
     TICKET("Ticket stubs", "Admit-one tickets, perforated"),
 }
 
+/** How a TV page lays out its rows. */
 @Serializable
-enum class TvHomeLayout(val label: String) {
+enum class PageArrangement(val label: String, val note: String) {
     /** The focused title fills the screen; Left/Right step through a row, Up/Down change rows. */
-    FULL_ART("Full-screen artwork"),
-    ROWS("Rows"),
+    FULL_ART("Full art", "One title at a time across the screen: ◀ ▶ through a row, ▲ ▼ between rows"),
+
+    /** The row in use as a strip of cards, the focused title's picture around it, the caption in a corner. */
+    ROWS("Rows one at a time", "The row in use with the picture around it; the others show as you reach them"),
+
+    /** Every row down the page, the focused title's summary at the top. */
+    STACKED("Stacked rows", "Every row down the page, the focused title's summary above them"),
+    ;
+
+    val fullArt get() = this == FULL_ART
+    val oneAtATime get() = this == ROWS
+    val stacked get() = this == STACKED
+    fun next() = entries[(ordinal + 1) % entries.size]
 }
 
 @Serializable
