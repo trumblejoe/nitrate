@@ -156,7 +156,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Watch partners", style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    "Watch a show with a group, and everyone in it sees each other's progress. Home's Watching together row shows whose turn it is; hold OK on a card there for more. One show can have several groups.",
+                    "Watch a show, film, playlist or collection with a group, and everyone in it sees each other's progress. Home's Watching together row shows whose turn it is; hold OK on a card there for more. One title can have several groups.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -192,7 +192,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
             }
         }
         item { Text("Your groups", style = MaterialTheme.typography.titleLarge) }
-        item { OutlinedButton(onClick = { starting = true }) { Text("Watch a show with someone") } }
+        item { OutlinedButton(onClick = { starting = true }) { Text("Watch something with someone") } }
         val groups = info?.groups.orEmpty()
         if (groups.isEmpty()) item { Text(if (info == null) "Loading…" else "None yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         groups.forEach { g ->
@@ -302,12 +302,12 @@ fun TogetherChoicesDialog(
     val scope = rememberCoroutineScope()
     val standings by container.groupStandings.collectAsState()
     val prefs = LocalDisplayPrefs.current
-    val series = dev.nitrate.core.partners.TogetherRow.seriesOf(item)
+    val series = dev.nitrate.core.partners.TogetherRow.titleOf(item, standings)
     val episodes by produceState(emptyList<MediaItem>(), series) {
         value = if (series == null || dev.nitrate.core.partners.TogetherRow.isStart(item)) emptyList()
-        else runCatching { container.server.allEpisodes(series) }.getOrDefault(emptyList())
+        else runCatching { container.server.titleItems(series) }.getOrDefault(emptyList())
     }
-    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, series?.let { standings[it] }, episodes, container.invitesAvailable(), prefs.ownSpoilerShows)
+    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.invitesAvailable(), prefs.ownSpoilerShows)
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -367,12 +367,12 @@ fun StartTogetherDialog(container: AppContainer, onDismiss: () -> Unit) {
     val focus = remember { FocusRequester() }
     picked?.let { s -> WatchWithDialog(container, s) { onDismiss() }; return }
     TvDialog(onDismiss, width = 900) {
-        Text("Watch a show with someone", style = MaterialTheme.typography.headlineSmall)
-        Text("Pick the show, then who to ask. They'll see who's in the group before they accept.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        TvTextField(query, { query = it }, "Find a show", modifier = Modifier.width(620.dp).focusRequester(focus))
-        Text(if (query.isBlank()) "Watched lately" else "Shows", style = MaterialTheme.typography.titleSmall)
-        if (shows.isEmpty()) Text(if (query.isBlank()) "Type a show's name." else "No shows found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        shows.forEach { s -> OutlinedButton(onClick = { picked = s }) { Text(listOfNotNull(s.name, s.productionYear?.toString()).joinToString(" · ")) } }
+        Text("Watch something with someone", style = MaterialTheme.typography.headlineSmall)
+        Text("Pick what to watch, then who to ask. They'll see who's in the group before they accept.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TvTextField(query, { query = it }, "Find a show, film, playlist or collection", modifier = Modifier.width(620.dp).focusRequester(focus))
+        Text(if (query.isBlank()) "Watched lately" else "Found", style = MaterialTheme.typography.titleSmall)
+        if (shows.isEmpty()) Text(if (query.isBlank()) "Type a name." else "Nothing found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        shows.forEach { s -> OutlinedButton(onClick = { picked = s }) { Text(listOfNotNull(s.name, s.productionYear?.toString(), dev.nitrate.core.partners.TogetherRow.kindLabel(s)).joinToString(" · ")) } }
         OutlinedButton(onClick = onDismiss) { Text("Cancel") }
     }
     LaunchedEffect(Unit) { delay(60); runCatching { focus.requestFocus() } }

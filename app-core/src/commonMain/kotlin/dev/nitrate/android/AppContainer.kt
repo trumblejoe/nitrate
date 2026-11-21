@@ -329,10 +329,13 @@ class AppContainer(
         return result.exceptionOrNull()?.let { it.message ?: "That didn't work" }
     }
 
-    /** Shows to start watching with someone: the ones watched lately, or any in the library matching [query]. */
+    /**
+     * What to start watching with someone (shows, films, playlists, collections): what was watched
+     * lately, or anything in the library matching [query].
+     */
     suspend fun togetherShows(query: String): List<dev.nitrate.core.model.MediaItem> = runCatching {
-        if (query.isBlank()) server.recentlyWatched(20).filter { it.kind == dev.nitrate.core.model.ItemKind.SERIES }
-        else server.findTitles(query, listOf(dev.nitrate.core.model.ItemKind.SERIES), 30)
+        if (query.isBlank()) server.recentlyWatched(20)
+        else server.findTitles(query, dev.nitrate.core.partners.TogetherRow.KINDS, 40)
     }.getOrDefault(emptyList())
 
     /**

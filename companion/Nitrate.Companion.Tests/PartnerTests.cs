@@ -59,7 +59,7 @@ public class PartnerTests
             return new ShowProgress(watched, watched.Count == 0 ? null : $"S1 E{watched.Count}", watched.Count < 2 ? new[] { Ep1, Ep2 }[watched.Count] : null);
         }
 
-        public Guid? SeriesOf(Guid itemId) => itemId == Ep1 || itemId == Ep2 ? Bear : null;
+        public bool Belongs(Guid titleId, Guid itemId, Guid userId) => titleId == Bear && (itemId == Ep1 || itemId == Ep2);
 
         public void MarkWatched(Guid userId, Guid itemId) => Played.Add((userId, itemId));
     }

@@ -6,7 +6,10 @@ import dev.nitrate.core.model.MediaItem
 /** Whose move it is in a shared show: the user's, the user's to catch up, or the others'. */
 enum class Turn { YOURS, CATCH_UP, WAITING }
 
-/** One show the user watches with a group: the series (when known), its episodes, and where everyone is. */
+/**
+ * One title the user watches with a group (a show, a film, a playlist or a collection): the title
+ * itself (when known), what it holds in watching order, and where everyone is.
+ */
 class SharedShow(val series: MediaItem?, val episodes: List<MediaItem>, val keepUp: KeepUp)
 
 /** What holding OK (or a long press) on a card of the row offers. */
@@ -18,9 +21,9 @@ sealed interface TogetherChoice {
 
     data class Decline(val request: IncomingRequest) : TogetherChoice { override val label = "Decline" }
 
-    /** Mark the episodes [who] has seen and the user hasn't as watched for the user. */
-    data class CatchUp(val who: String, val episodeIds: List<String>) : TogetherChoice {
-        override val label = "Catch up to $who (${if (episodeIds.size == 1) "1 episode" else "${episodeIds.size} episodes"})"
+    /** Mark what [who] has seen and the user hasn't as watched for the user. */
+    data class CatchUp(val who: String, val episodeIds: List<String>, val noun: String = "episode") : TogetherChoice {
+        override val label = "Catch up to $who (${WatchPartners.count(episodeIds.size, noun)})"
     }
 
     /** The user watched [episodeId] in the same room as the group: count it for them too. */
@@ -38,22 +41,23 @@ sealed interface TogetherChoice {
         override val label = "Invite someone to watch with $names"
     }
 
-    /** Spoiler hiding for this show by the user's own progress only ([on]), or by the group's again. */
+    /** Spoiler hiding for this show by the user's own progress only ([on]), or by the group's again (shows only). */
     data class OwnSpoilers(val seriesId: String, val on: Boolean) : TogetherChoice {
         override val label = if (on) "Hide spoilers by my progress only" else "Hide spoilers by the group's progress again"
     }
 
-    data class OpenShow(val seriesId: String) : TogetherChoice { override val label = "Open the show" }
+    data class OpenShow(val seriesId: String, override val label: String = "Open the show") : TogetherChoice
 
     /** Leave group [group] (asked to confirm first). */
     data class Leave(val group: WatchGroup) : TogetherChoice { override val label = "Leave the group with ${group.label}" }
 
-    /** Pick a show and people to start watching with ([TogetherRow.start]'s card). */
-    data object Start : TogetherChoice { override val label = "Watch a show with someone" }
+    /** Pick a title and people to start watching with ([TogetherRow.start]'s card). */
+    data object Start : TogetherChoice { override val label = "Watch something with someone" }
 }
 
 /**
- * Home's "Watching together" row: invites waiting first, then each shared show by whose turn it
+ * Home's "Watching together" row: invites waiting first, then each shared title (show, film,
+ * playlist or collection) by whose turn it
  * is (the user's, catching up, waiting on the others), then a card to start watching with
  * someone. Nothing is asked when Play is pressed; this row and the cards' standing lines are
  * where watching with others shows.
@@ -65,13 +69,13 @@ object TogetherRow {
     const val START_ID = "nitrate-together-start"
 
     /** The last card: picks a show and people. Not a server item (no art; the card shows its name). */
-    val start = MediaItem(START_ID, "Watch with someone", ItemKind.OTHER, overview = "Pick a show and the people to watch it with.")
+    val start = MediaItem(START_ID, "Watch with someone", ItemKind.OTHER, overview = "Pick a show, film, playlist or collection and the people to watch it with.")
 
     fun isStart(item: MediaItem) = item.id == START_ID
 
-    private fun real(episodes: List<MediaItem>) = episodes.filter { !it.isMissing && (it.seasonNumber ?: 0) != 0 }
+    private fun real(episodes: List<MediaItem>) = WatchPartners.countable(episodes)
 
-    /** The user's next episode of a show: the first (in order) they haven't finished. */
+    /** The user's next part of a title: the first (in order) they haven't finished. */
     fun yourNext(episodes: List<MediaItem>): MediaItem? = real(episodes).firstOrNull { !it.user.played }
 
     /** Whose move it is: someone ahead (catch up), else someone behind (waiting), else the user's. */
@@ -83,11 +87,11 @@ object TogetherRow {
         return Turn.YOURS
     }
 
-    /** A show's card: the user's next episode, else (waiting, all seen) the show; nothing when everyone's done. */
+    /** A title's card: the user's next part of it, else (waiting, all seen) the title; nothing when everyone's done. */
     fun card(show: SharedShow): MediaItem? {
         yourNext(show.episodes)?.let { return it }
         if (turn(show.keepUp) != Turn.WAITING) return null
-        return show.series ?: MediaItem(show.keepUp.seriesId, show.episodes.firstOrNull()?.seriesName ?: "", ItemKind.SERIES)
+        return show.series
     }
 
     /**
@@ -100,12 +104,20 @@ object TogetherRow {
         return (invites + cards).distinctBy { it.id } + start
     }
 
-    /** The invite a card stands for (a show's card while someone's asking the user to watch it with them). */
+    /** The invite a card stands for (a title's card while someone's asking the user to watch it with them). */
     fun inviteFor(item: MediaItem, info: PartnersInfo?): IncomingRequest? =
-        if (item.kind != ItemKind.SERIES) null else info?.incoming?.firstOrNull { it.seriesId == item.id }
+        if (item.kind == ItemKind.EPISODE || isStart(item)) null else info?.incoming?.firstOrNull { it.seriesId == item.id }
 
-    /** The show a card belongs to. */
-    fun seriesOf(item: MediaItem): String? = if (item.kind == ItemKind.SERIES) item.id else item.seriesId
+    /**
+     * The group title a card belongs to: the title itself, else the shared title holding it (its
+     * show first), else its show.
+     */
+    fun titleOf(item: MediaItem, standings: Map<String, KeepUp>): String? {
+        if (item.id in standings) return item.id
+        item.seriesId?.let { s -> standings[s]?.takeIf { item.id in it.order }?.let { return s } }
+        standings.entries.firstOrNull { item.id in it.value.order }?.let { return it.key }
+        return if (item.kind == ItemKind.SERIES) item.id else item.seriesId
+    }
 
     /**
      * What holding OK on [item] offers: an invite's Accept/Decline; for a shared show, catching up
@@ -117,17 +129,19 @@ object TogetherRow {
     fun choices(
         item: MediaItem,
         info: PartnersInfo?,
-        keepUp: KeepUp?,
+        standings: Map<String, KeepUp>,
         episodes: List<MediaItem>,
         canWatchNow: Boolean,
         ownSpoilers: Set<String>,
     ): List<TogetherChoice> {
         if (isStart(item)) return listOf(TogetherChoice.Start)
-        val series = seriesOf(item) ?: return emptyList()
+        val series = titleOf(item, standings) ?: return emptyList()
+        val keepUp = standings[series]
         inviteFor(item, info)?.let { r ->
-            return listOf(TogetherChoice.Accept(r), TogetherChoice.Decline(r), TogetherChoice.OpenShow(series))
+            return listOf(TogetherChoice.Accept(r), TogetherChoice.Decline(r), TogetherChoice.OpenShow(series, "Open it"))
         }
         val groups = info?.on(series).orEmpty()
+        val isShow = keepUp?.noun != "title" && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.SERIES)
         val out = mutableListOf<TogetherChoice>()
         val ordered = real(episodes)
         if (keepUp != null) {
@@ -136,8 +150,8 @@ object TogetherRow {
                 .map { p -> p to keepUp.order.filter { it in p.watched && it !in keepUp.mine } }
                 .filter { it.second.isNotEmpty() }
                 .sortedByDescending { it.second.size }
-                .forEach { (p, ids) -> out += TogetherChoice.CatchUp(p.userName, ids) }
-            // The user's latest finished episode that someone in a group hasn't: "Sam watched S1:E3 with me".
+                .forEach { (p, ids) -> out += TogetherChoice.CatchUp(p.userName, ids, keepUp.noun) }
+            // The user's latest finished part that someone in a group hasn't: "Sam watched S1:E3 with me".
             val last = ordered.lastOrNull { it.id in keepUp.mine && it.id in inShow }
             if (last != null) groups.forEach { g ->
                 val missing = keepUp.progress.filter { it.groupId == g.id && last.id !in it.watched }
@@ -146,12 +160,12 @@ object TogetherRow {
                 }
             }
         }
-        if (canWatchNow && item.kind == ItemKind.EPISODE) groups.forEach { g ->
+        if (canWatchNow && item.isPlayable) groups.forEach { g ->
             out += TogetherChoice.WatchNow(item, g.id, g.others.map { it.id }, g.label)
         }
         groups.forEach { g -> out += TogetherChoice.Invite(g.id, g.label) }
-        out += TogetherChoice.OwnSpoilers(series, on = series !in ownSpoilers)
-        out += TogetherChoice.OpenShow(series)
+        if (isShow) out += TogetherChoice.OwnSpoilers(series, on = series !in ownSpoilers)
+        out += TogetherChoice.OpenShow(series, if (isShow) "Open the show" else "Open it")
         groups.forEach { g -> out += TogetherChoice.Leave(g) }
         return out
     }
@@ -163,10 +177,22 @@ object TogetherRow {
     fun line(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): Standing? {
         if (isStart(item)) return Standing("Pick a show and people", "Watch a show with someone: pick the show, then who to ask", catchUp = false)
         inviteFor(item, info)?.let { r -> return Standing("${r.fromName} invites you", "${r.fromName} asked you to watch this with them", catchUp = false) }
-        val k = standings[seriesOf(item) ?: return null] ?: return null
+        val k = standings[titleOf(item, standings) ?: return null] ?: return null
         return WatchPartners.standing(item, k)
     }
 
-    /** "S1:E3". */
-    fun shortLabel(e: MediaItem) = "S${e.seasonNumber ?: "?"}:E${e.indexNumber ?: "?"}"
+    /** What kind of title it is, for the picker ("Show", "Film"...). */
+    fun kindLabel(item: MediaItem): String? = when (item.kind) {
+        ItemKind.SERIES -> "Show"
+        ItemKind.MOVIE -> "Film"
+        ItemKind.PLAYLIST -> "Playlist"
+        ItemKind.BOX_SET -> "Collection"
+        else -> null
+    }
+
+    /** What can be watched together: shows, films, playlists and collections. */
+    val KINDS = listOf(ItemKind.SERIES, ItemKind.MOVIE, ItemKind.PLAYLIST, ItemKind.BOX_SET)
+
+    /** "S1:E3" for an episode, else its name. */
+    fun shortLabel(e: MediaItem) = if (e.kind == ItemKind.EPISODE) "S${e.seasonNumber ?: "?"}:E${e.indexNumber ?: "?"}" else e.name
 }

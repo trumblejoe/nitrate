@@ -64,11 +64,23 @@ data class PartnerProgress(val groupId: String, val userId: String, val userName
  * Where the user stands in one shared show: the episodes in order (specials left out), the ones
  * the user has finished, and every group member's progress.
  */
-data class KeepUp(val seriesId: String, val order: List<String>, val mine: Set<String>, val progress: List<PartnerProgress>) {
+data class KeepUp(
+    val seriesId: String,
+    val order: List<String>,
+    val mine: Set<String>,
+    val progress: List<PartnerProgress>,
+    /** What the title's parts are called: "episode" for a show, else "title". */
+    val noun: String = "episode",
+) {
+    /** One film on its own (nothing to keep pace through, only who's seen it). */
+    val single get() = order.size == 1
+
     companion object {
-        fun of(seriesId: String, episodes: List<MediaItem>, progress: List<PartnerProgress>): KeepUp {
-            val real = episodes.filter { !it.isMissing && (it.seasonNumber ?: 0) != 0 }
-            return KeepUp(seriesId, real.map { it.id }, real.filter { it.user.played }.map { it.id }.toSet(), progress)
+        /** [seriesId] is the group's title (a show, film, playlist or collection); [items] what it holds, in order. */
+        fun of(seriesId: String, items: List<MediaItem>, progress: List<PartnerProgress>): KeepUp {
+            val real = WatchPartners.countable(items)
+            val noun = if (real.all { it.kind == ItemKind.EPISODE }) "episode" else "title"
+            return KeepUp(seriesId, real.map { it.id }, real.filter { it.user.played }.map { it.id }.toSet(), progress, noun)
         }
     }
 }
@@ -86,6 +98,13 @@ object WatchPartners {
 
     /** Partners who haven't seen [episode]. */
     fun behind(episode: MediaItem, progress: List<PartnerProgress>): List<PartnerProgress> = progress.filter { episode.id !in it.watched }
+
+    /** What of a title counts: everything but missing episodes and specials. */
+    fun countable(items: List<MediaItem>): List<MediaItem> =
+        items.filter { !it.isMissing && (it.kind != ItemKind.EPISODE || (it.seasonNumber ?: 0) != 0) }
+
+    /** "1 episode", "3 titles". */
+    fun count(n: Int, noun: String) = if (n == 1) "1 $noun" else "$n ${noun}s"
 
     /** "Sam", "Sam and Kim", "Sam, Kim and Lee". */
     fun names(names: List<String>): String = when (names.size) {
@@ -111,10 +130,10 @@ object WatchPartners {
      * user or a partner. Null when everyone's seen everything.
      */
     fun nextTogether(episodes: List<MediaItem>, progress: List<PartnerProgress>): MediaItem? =
-        episodes.filter { !it.isMissing && (it.seasonNumber ?: 0) != 0 }.firstOrNull { e -> !e.user.played || progress.any { e.id !in it.watched } }
+        countable(episodes).firstOrNull { e -> !e.user.played || progress.any { e.id !in it.watched } }
 
     /**
-     * Where the user stands with their group(s) for [item] (an episode or the show): someone ahead
+     * Where the user stands with their group(s) for [item] (part of the title, or the title itself): someone ahead
      * (catch up), an episode nobody's seen (watch it together), the user ahead, or in step.
      */
     fun standing(item: MediaItem, k: KeepUp): Standing? {
@@ -126,12 +145,13 @@ object WatchPartners {
         val ahead = members.map { it to ahead(it) }.filter { it.second > 0 }.sortedByDescending { it.second }
         if (ahead.isNotEmpty()) {
             val (first, n) = ahead.first()
-            val short = if (ahead.size == 1) "${first.userName} is $n ahead" else "${names(ahead.map { it.first.userName })} are ahead"
+            val who = names(ahead.map { it.first.userName })
+            if (k.single) return Standing("$who ${if (ahead.size == 1) "has" else "have"} seen it", "$who ${if (ahead.size == 1) "has" else "have"} seen it; you haven't yet", catchUp = true)
+            val short = if (ahead.size == 1) "${first.userName} is $n ahead" else "$who are ahead"
             val detail = ahead.joinToString(", ") { (p, c) -> "${p.userName} by $c" }
-            val episodes = if (n == 1) "1 episode" else "$n episodes"
-            return Standing(short, "Catch up with your group: $episodes to go ($detail)", catchUp = true)
+            return Standing(short, "Catch up with your group: ${count(n, k.noun)} to go ($detail)", catchUp = true)
         }
-        if (item.kind == ItemKind.EPISODE && item.id !in k.mine) {
+        if (item.id in inShow && item.id !in k.mine) {
             val waiting = members.filter { item.id !in it.watched }
             if (waiting.isNotEmpty()) {
                 val who = names(waiting.map { it.userName })
@@ -141,6 +161,7 @@ object WatchPartners {
         val behind = members.map { it to behindBy(it) }.filter { it.second > 0 }
         if (behind.isNotEmpty()) {
             val who = names(behind.map { it.first.userName })
+            if (k.single) return Standing("$who ${if (behind.size == 1) "hasn't" else "haven't"} seen it", "You've seen it; $who ${if (behind.size == 1) "hasn't" else "haven't"} yet", catchUp = false)
             return Standing("$who catching up", "You're ahead: $who ${if (behind.size == 1) "is" else "are"} catching up (${behind.joinToString(", ") { (p, c) -> "${p.userName} by $c" }})", catchUp = false)
         }
         val who = names(members.map { it.userName })
@@ -156,7 +177,7 @@ object WatchPartners {
 class WatchPartnersPlugin : NitratePlugin {
     override val id = ID
     override val name = "Watch partners"
-    override val description = "Keeps shows you watch with others in step: groups per show who see each other's progress, " +
+    override val description = "Keeps what you watch with others in step (shows, films, playlists and collections): groups who see each other's progress, " +
         "and a Home row of whose turn it is. Needs the Nitrate Companion server plugin."
     override val enabledByDefault = true
 

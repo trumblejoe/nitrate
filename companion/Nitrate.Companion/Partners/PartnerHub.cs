@@ -324,17 +324,30 @@ public class PartnerHub
     }
 
     /// <summary>
-    /// Watched together with a group: marks the episode watched for the group's other members.
-    /// Only for an episode of the group's show, and only by a member. Returns who it was marked for.
+    /// Watched together with a group: marks the item watched for the group's other members. Only
+    /// for part of the group's title (an episode of its show, an item of its list, the film), and
+    /// only by a member. Returns who it was marked for.
     /// </summary>
     public IReadOnlyList<Guid> MarkTogether(Guid user, Guid itemId, Guid groupId)
     {
-        var series = _watch.SeriesOf(itemId) ?? throw new PartnerException(PartnerError.Invalid, "Only episodes of a group's show can be marked together.");
         List<Guid> others;
+        Guid title;
         lock (_lock)
         {
-            var g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user) && x.SeriesId == series);
+            var g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user));
+            title = g?.SeriesId ?? Guid.Empty;
             others = g?.Members.Where(m => m != user && _directory.NameOf(m) is not null).ToList() ?? new List<Guid>();
+        }
+
+        if (title == Guid.Empty)
+        {
+            // Not a member of that group: nobody to mark it for.
+            return Array.Empty<Guid>();
+        }
+
+        if (!_watch.Belongs(title, itemId, user))
+        {
+            throw new PartnerException(PartnerError.Invalid, "Only what's in a group's title can be marked together.");
         }
 
         foreach (var id in others)

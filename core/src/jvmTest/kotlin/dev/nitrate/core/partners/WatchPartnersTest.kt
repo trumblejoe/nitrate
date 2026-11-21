@@ -84,7 +84,7 @@ class WatchPartnersTest {
     private fun show(id: String, mine: Set<String>, vararg partners: PartnerProgress): SharedShow {
         val episodes = eps.map { e -> e.copy(id = e.id.replace("e", id), seriesId = id, user = UserState(played = e.id in mine)) }
         val p = partners.map { pp -> pp.copy(watched = pp.watched.map { it.replace("e", id) }.toSet()) }
-        return SharedShow(null, episodes, KeepUp.of(id, episodes, p))
+        return SharedShow(MediaItem(id, id, ItemKind.SERIES), episodes, KeepUp.of(id, episodes, p))
     }
 
     @Test fun invitesThenYourTurnThenCatchingUpThenWaitingThenStart() {
@@ -113,7 +113,7 @@ class WatchPartnersTest {
         // The user has seen 1 and 2, Kim only 1: count episode 2 for Kim, or watch the next one now.
         val k = keep(setOf("e1-1", "e1-2"), kim)
         val episodes = eps.map { if (it.id in setOf("e1-1", "e1-2")) it.copy(user = UserState(played = true)) else it }
-        val labels = TogetherRow.choices(eps[2], info, k, episodes, canWatchNow = true, ownSpoilers = emptySet()).map { it.label }
+        val labels = TogetherRow.choices(eps[2], info, mapOf("bear" to k), episodes, canWatchNow = true, ownSpoilers = emptySet()).map { it.label }
         assertEquals(
             listOf(
                 "Kim watched S1:E2 with me", "Watch it together now with Kim", "Invite someone to watch with Kim",
@@ -123,7 +123,7 @@ class WatchPartnersTest {
         )
         // Sam ahead by one: catch up first; without invites on the server, no "now".
         val samGroup = group.copy(id = "g1", others = listOf(dev.nitrate.core.writing.UserRef("sam", "Sam")))
-        val c = TogetherRow.choices(eps[1], PartnersInfo(listOf(samGroup), emptyList(), emptyList()), keep(setOf("e1-1"), sam), eps, canWatchNow = false, ownSpoilers = setOf("bear"))
+        val c = TogetherRow.choices(eps[1], PartnersInfo(listOf(samGroup), emptyList(), emptyList()), mapOf("bear" to keep(setOf("e1-1"), sam)), eps, canWatchNow = false, ownSpoilers = setOf("bear"))
         assertEquals(TogetherChoice.CatchUp("Sam", listOf("e1-2")), c.first())
         assertEquals("Catch up to Sam (1 episode)", c.first().label)
         assertTrue(c.none { it is TogetherChoice.WatchNow })
@@ -136,8 +136,52 @@ class WatchPartnersTest {
         val card = MediaItem("dune", "Dune", ItemKind.SERIES)
         assertEquals(r, TogetherRow.inviteFor(card, info))
         assertEquals("Jessica invites you", TogetherRow.line(card, info, emptyMap())?.short)
-        assertEquals(listOf("Accept", "Decline", "Open the show"), TogetherRow.choices(card, info, null, emptyList(), true, emptySet()).map { it.label })
-        assertEquals(listOf(TogetherChoice.Start), TogetherRow.choices(TogetherRow.start, info, null, emptyList(), true, emptySet()))
+        assertEquals(listOf("Accept", "Decline", "Open it"), TogetherRow.choices(card, info, emptyMap(), emptyList(), true, emptySet()).map { it.label })
+        assertEquals(listOf(TogetherChoice.Start), TogetherRow.choices(TogetherRow.start, info, emptyMap(), emptyList(), true, emptySet()))
         assertNull(TogetherRow.inviteFor(MediaItem("e", "E", ItemKind.EPISODE, seriesId = "dune"), info))
+    }
+
+    // ---- Films, playlists and collections ----
+
+    private val film = MediaItem("dune", "Dune", ItemKind.MOVIE)
+
+    @Test fun aFilmIsOneThingToHaveSeen() {
+        val samSaw = PartnerProgress("g", "sam", "Sam", setOf("dune"), "Dune", null)
+        val k = KeepUp.of("dune", listOf(film), listOf(samSaw))
+        assertEquals("title", k.noun)
+        assertEquals("Sam has seen it", WatchPartners.standing(film, k)!!.short)
+        assertEquals(Turn.CATCH_UP, TogetherRow.turn(k))
+        val notYet = PartnerProgress("g", "sam", "Sam", emptySet(), null, null)
+        assertEquals("Watch with Sam", WatchPartners.standing(film, KeepUp.of("dune", listOf(film), listOf(notYet)))!!.short)
+        val seen = film.copy(user = UserState(played = true))
+        assertEquals("Sam hasn't seen it", WatchPartners.standing(seen, KeepUp.of("dune", listOf(seen), listOf(notYet)))!!.short)
+        // Everyone's seen it: no card, the group's done.
+        val both = PartnerProgress("g", "sam", "Sam", setOf("dune"), "Dune", null)
+        assertTrue(TogetherRow.items(emptyList(), listOf(SharedShow(seen, listOf(seen), KeepUp.of("dune", listOf(seen), listOf(both))))).isEmpty())
+    }
+
+    @Test fun aPlaylistKeepsPaceInItsOrder() {
+        val items = listOf(
+            MediaItem("m1", "First", ItemKind.MOVIE, user = UserState(played = true)),
+            MediaItem("m2", "Second", ItemKind.MOVIE),
+            MediaItem("m3", "Third", ItemKind.MOVIE),
+        )
+        val kim = PartnerProgress("g", "kim", "Kim", setOf("m1", "m2", "m3"), "Third", null)
+        val k = KeepUp.of("list", items, listOf(kim))
+        val standings = mapOf("list" to k)
+        // The card is the user's next film; it belongs to the playlist's group.
+        val card = TogetherRow.card(SharedShow(MediaItem("list", "Marathon", ItemKind.PLAYLIST), items, k))
+        assertEquals("m2", card?.id)
+        assertEquals("list", TogetherRow.titleOf(card!!, standings))
+        assertEquals("Kim is 2 ahead", TogetherRow.line(card, null, standings)?.short)
+        val group = WatchGroup("g", "list", "Marathon", listOf(dev.nitrate.core.writing.UserRef("kim", "Kim")), 0)
+        val c = TogetherRow.choices(card, PartnersInfo(listOf(group), emptyList(), emptyList()), standings, items, canWatchNow = false, ownSpoilers = emptySet())
+        assertEquals("Catch up to Kim (2 titles)", c.first().label)
+        assertTrue(c.none { it is TogetherChoice.OwnSpoilers })
+        assertTrue(c.any { it.label == "Open it" })
+    }
+
+    @Test fun findingWhatToWatchWith() {
+        assertEquals(listOf("Show", "Film", "Playlist", "Collection"), TogetherRow.KINDS.map { TogetherRow.kindLabel(MediaItem("x", "x", it)) })
     }
 }

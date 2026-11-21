@@ -2,16 +2,20 @@ using System.Text.Json;
 
 namespace Nitrate.Companion.Partners;
 
-/// <summary>People who watch one show together and see each other's progress in it.</summary>
+/// <summary>
+/// People who watch one title together (a show, a film, a playlist or a collection) and see each
+/// other's progress in it. The title is kept as SeriesId/SeriesName: the names it was stored under
+/// when groups were for shows only.
+/// </summary>
 public class WatchGroup
 {
     /// <summary>Gets or sets its id.</summary>
     public Guid Id { get; set; }
 
-    /// <summary>Gets or sets the show.</summary>
+    /// <summary>Gets or sets the title (a show, film, playlist or collection).</summary>
     public Guid SeriesId { get; set; }
 
-    /// <summary>Gets or sets the show's name.</summary>
+    /// <summary>Gets or sets the title's name.</summary>
     public string SeriesName { get; set; } = string.Empty;
 
     /// <summary>Gets or sets who's in it (two or more).</summary>
@@ -39,10 +43,10 @@ public class PartnerRequest
     /// <summary>Gets or sets the group it invites to (empty: a new group with the asker).</summary>
     public Guid GroupId { get; set; }
 
-    /// <summary>Gets or sets the show.</summary>
+    /// <summary>Gets or sets the title (a show, film, playlist or collection).</summary>
     public Guid SeriesId { get; set; }
 
-    /// <summary>Gets or sets the show's name.</summary>
+    /// <summary>Gets or sets the title's name.</summary>
     public string SeriesName { get; set; } = string.Empty;
 
     /// <summary>Gets or sets when it was asked.</summary>
@@ -127,20 +131,20 @@ public interface IPartnerDirectory
     bool AdminPrivate(Guid id);
 }
 
-/// <summary>Where someone is in a show.</summary>
-/// <param name="Watched">Episodes they've watched.</param>
-/// <param name="Last">The furthest episode they've watched ("S2 E4"), if any.</param>
-/// <param name="NextId">The episode after it (their next up), if any.</param>
+/// <summary>Where someone is in a group's title.</summary>
+/// <param name="Watched">What of it they've watched (episodes, films...).</param>
+/// <param name="Last">The furthest they've got ("S2 E4", or a film's name), if anywhere.</param>
+/// <param name="NextId">What comes after it (their next up), if anything.</param>
 public record ShowProgress(IReadOnlyList<Guid> Watched, string? Last, Guid? NextId);
 
 /// <summary>People's watched state, as partners need it.</summary>
 public interface IWatchState
 {
-    /// <summary>Where <paramref name="userId"/> is in a show.</summary>
-    ShowProgress Progress(Guid userId, Guid seriesId);
+    /// <summary>Where <paramref name="userId"/> is in a group's title (a show, film, playlist or collection).</summary>
+    ShowProgress Progress(Guid userId, Guid titleId);
 
-    /// <summary>The show an episode belongs to.</summary>
-    Guid? SeriesOf(Guid itemId);
+    /// <summary>Whether <paramref name="itemId"/> is part of the title (an episode of the show, an item of the list, the film itself).</summary>
+    bool Belongs(Guid titleId, Guid itemId, Guid userId);
 
     /// <summary>Marks the episode watched for <paramref name="userId"/>.</summary>
     void MarkWatched(Guid userId, Guid itemId);

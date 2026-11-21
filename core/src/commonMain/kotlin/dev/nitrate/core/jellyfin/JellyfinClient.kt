@@ -1188,11 +1188,11 @@ class JellyfinClient(
         val shows = info.groups.distinctBy { it.seriesId }.map { g ->
             async {
                 runCatching {
-                    val episodes = allEpisodes(g.seriesId)
-                    val k = dev.nitrate.core.partners.KeepUp.of(g.seriesId, episodes, partnerProgress(g.seriesId))
-                    // The show itself only for a card with no episode of the user's left (waiting on the others).
-                    val needsSeries = dev.nitrate.core.partners.TogetherRow.yourNext(episodes) == null
-                    dev.nitrate.core.partners.SharedShow(if (needsSeries) series(g.seriesId, g.seriesName) else null, episodes, k)
+                    val items = titleItems(g.seriesId)
+                    val k = dev.nitrate.core.partners.KeepUp.of(g.seriesId, items, partnerProgress(g.seriesId))
+                    // The title itself only for a card with nothing of the user's left (waiting on the others).
+                    val needsTitle = dev.nitrate.core.partners.TogetherRow.yourNext(items) == null
+                    dev.nitrate.core.partners.SharedShow(if (needsTitle) series(g.seriesId, g.seriesName) else null, items, k)
                 }.getOrNull()
             }
         }
@@ -1202,7 +1202,7 @@ class JellyfinClient(
     override suspend fun groupStandings(): Map<String, dev.nitrate.core.partners.KeepUp> = coroutineScope {
         if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyMap()
         partners().groups.map { it.seriesId }.distinct().map { id ->
-            async { runCatching { dev.nitrate.core.partners.KeepUp.of(id, allEpisodes(id), partnerProgress(id)) }.getOrNull() }
+            async { runCatching { dev.nitrate.core.partners.KeepUp.of(id, titleItems(id), partnerProgress(id)) }.getOrNull() }
         }.mapNotNull { it.await() }.associateBy { it.seriesId }
     }
 

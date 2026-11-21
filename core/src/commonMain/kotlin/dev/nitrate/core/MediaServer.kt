@@ -581,6 +581,22 @@ interface MediaServer {
      */
     suspend fun searchHints(query: String): SearchResults = search(query)
 
+    /**
+     * What a title holds, in watching order, for watching it with others: a show's episodes, a
+     * playlist's items, a collection's in release order (shows in either as their episodes), or a
+     * film on its own.
+     */
+    suspend fun titleItems(titleId: String): List<MediaItem> {
+        val title = getItem(titleId)
+        suspend fun expand(items: List<MediaItem>) = items.flatMap { if (it.kind == dev.nitrate.core.model.ItemKind.SERIES) allEpisodes(it.id) else listOf(it) }
+        return when (title.kind) {
+            dev.nitrate.core.model.ItemKind.SERIES -> allEpisodes(titleId)
+            dev.nitrate.core.model.ItemKind.PLAYLIST -> expand(playlistItems(titleId))
+            dev.nitrate.core.model.ItemKind.BOX_SET -> expand(collectionItems(titleId).sortedWith(compareBy({ it.premiereDateMs ?: Long.MAX_VALUE }, { it.productionYear ?: Int.MAX_VALUE })))
+            else -> listOf(title)
+        }
+    }
+
     /** Titles of [kinds] whose name matches [term], from the whole library (not the quick hints, which mix in episodes). */
     suspend fun findTitles(term: String, kinds: List<dev.nitrate.core.model.ItemKind>, limit: Int = 40): List<MediaItem> =
         search(term).let { r -> (r.shows + r.movies + r.collections).filter { it.kind in kinds } }
