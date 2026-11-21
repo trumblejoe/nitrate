@@ -314,7 +314,16 @@ private fun ImagesTab(repository: MediaServer, item: MediaItem, notify: (String)
     val providers by produceState(emptyList<dev.nitrate.core.admin.ImageProvider>(), item.id) { value = runCatching { repository.imageProviders(item.id) }.getOrDefault(emptyList()) }
     var browsing by remember { mutableStateOf<ImageType?>(null) }
     var choosing by remember { mutableStateOf<ItemImage?>(null) }
+    // A found backdrop waiting to be placed: replace the main one, add as main, or just add.
+    var placing by remember { mutableStateOf<Pair<ImageType, String>?>(null) }
     val scope = rememberCoroutineScope()
+    fun place(type: ImageType, url: String, placement: dev.nitrate.core.admin.ImagePlacement) {
+        scope.launch {
+            runCatching { dev.nitrate.core.admin.ImagePlacing.place(repository, item.id, type, placement) { repository.downloadRemoteImage(item.id, type, url) } }
+                .onSuccess { notify(if (dev.nitrate.core.admin.ImagePlacing.holdsSeveral(type)) "${placement.label}: done" else "Image set"); reload++ }
+                .onFailure { notify("${it.message}") }
+        }
+    }
     val offered = providers.flatMap { it.types }.toSet()
     val kinds = ImageType.entries.filter { if (providers.isEmpty()) it in setOf(ImageType.PRIMARY, ImageType.BACKDROP, ImageType.LOGO, ImageType.THUMB, ImageType.BANNER) else it in offered || images.orEmpty().any { i -> i.type == it } }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
@@ -385,7 +394,11 @@ private fun ImagesTab(repository: MediaServer, item: MediaItem, notify: (String)
                     providers.filter { type in it.types }.forEach { p -> FilterChip(selected = provider == p.name, onClick = { provider = p.name }) { Text(p.name) } }
                     FilterChip(selected = allLanguages, onClick = { allLanguages = !allLanguages }) { Text("All languages") }
                 }
-                if (type == ImageType.BACKDROP) Text("Each one you pick is added; Nitrate rotates through them.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    if (type == ImageType.BACKDROP) "Pick one to replace the main backdrop, add it as the main one, or just add it to the set Nitrate rotates through."
+                    else "A title has one ${type.label.lowercase()}: the one you pick replaces it.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 val list = found?.getOrNull()
                 when {
                     found == null -> Text("Searching…")
@@ -399,17 +412,12 @@ private fun ImagesTab(repository: MediaServer, item: MediaItem, notify: (String)
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Card(onClick = {
                                     if (img.url in added) return@Card
-                                    added += img.url
-                                    if (type != ImageType.BACKDROP) browsing = null
-                                    scope.launch {
-                                        runCatching { repository.downloadRemoteImage(item.id, type, img.url) }
-                                            .onSuccess { notify(if (type == ImageType.BACKDROP) "Backdrop added" else "Image set"); reload++ }
-                                            .onFailure { notify("${it.message}") }
-                                    }
+                                    if (dev.nitrate.core.admin.ImagePlacing.holdsSeveral(type)) placing = type to img.url
+                                    else { added += img.url; browsing = null; place(type, img.url, dev.nitrate.core.admin.ImagePlacement.REPLACE_MAIN) }
                                 }, modifier = Modifier.height(300.dp).aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 0.67f)) {
                                     Box {
                                         AsyncImage(img.thumbnailUrl ?: img.url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                        if (img.url in added) Text("Added", Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp), color = Color.White)
+                                        if (img.url in added) Text("Picked", Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp), color = Color.White)
                                     }
                                 }
                                 Text(
@@ -423,6 +431,18 @@ private fun ImagesTab(repository: MediaServer, item: MediaItem, notify: (String)
             }
         }
         LaunchedEffect(type) { runCatching { first.requestFocus() } }
+        placing?.let { (t, url) ->
+            val cancel = remember { FocusRequester() }
+            dev.nitrate.tv.ui.lists.TvDialog({ placing = null }, width = 640) {
+                Text("New backdrop", style = MaterialTheme.typography.headlineSmall)
+                dev.nitrate.core.admin.ImagePlacement.entries.forEach { p ->
+                    ListItem(selected = false, onClick = { placing = null; added += url; place(t, url, p) },
+                        headlineContent = { Text(p.label) }, supportingContent = { Text(p.note) })
+                }
+                OutlinedButton(onClick = { placing = null }, modifier = Modifier.focusRequester(cancel)) { Text("Cancel") }
+                LaunchedEffect(Unit) { kotlinx.coroutines.delay(80); runCatching { cancel.requestFocus() } }
+            }
+        }
     }
 }
 

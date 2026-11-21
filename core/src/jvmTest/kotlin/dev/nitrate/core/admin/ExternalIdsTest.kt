@@ -29,3 +29,29 @@ class ExternalIdsTest {
         assertEquals(false, RemoteImages.isSmall(ImageType.BACKDROP, 1920, 1080))
     }
 }
+
+class ImagePlacingTest {
+    /** A title's backdrops as a list of names; Jellyfin adds at the end and moves by index. */
+    private class Backdrops(vararg names: String) : dev.nitrate.core.MediaServer by stub() {
+        val list = names.toMutableList()
+        override suspend fun itemImages(itemId: String) = list.mapIndexed { i, _ -> ItemImage(ImageType.BACKDROP, i, 1920, 1080, "u$i") }
+        override suspend fun moveImage(itemId: String, type: ImageType, index: Int, newIndex: Int) { list.add(newIndex, list.removeAt(index)) }
+        override suspend fun deleteImage(itemId: String, type: ImageType, index: Int?) { list.removeAt(index!!) }
+    }
+
+    private fun run(placement: ImagePlacement): List<String> = kotlinx.coroutines.runBlocking {
+        val b = Backdrops("main", "second")
+        ImagePlacing.place(b, "i", ImageType.BACKDROP, placement) { b.list += "new" }
+        b.list
+    }
+
+    @Test fun eachPlacementPutsTheNewBackdropWhereAsked() {
+        kotlin.test.assertEquals(listOf("main", "second", "new"), run(ImagePlacement.ADD))
+        kotlin.test.assertEquals(listOf("new", "main", "second"), run(ImagePlacement.ADD_AS_MAIN))
+        kotlin.test.assertEquals(listOf("new", "second"), run(ImagePlacement.REPLACE_MAIN))
+    }
+}
+
+private fun stub(): dev.nitrate.core.MediaServer = java.lang.reflect.Proxy.newProxyInstance(
+    dev.nitrate.core.MediaServer::class.java.classLoader, arrayOf(dev.nitrate.core.MediaServer::class.java),
+) { _, m, _ -> throw UnsupportedOperationException(m.name) } as dev.nitrate.core.MediaServer

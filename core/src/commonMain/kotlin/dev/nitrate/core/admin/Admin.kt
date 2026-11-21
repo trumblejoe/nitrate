@@ -108,6 +108,35 @@ object RemoteImages {
     }
 }
 
+/** Where a new image goes among a kind that holds several (backdrops). */
+enum class ImagePlacement(val label: String, val note: String) {
+    REPLACE_MAIN("Replace main", "Becomes the main one; the old main is deleted"),
+    ADD_AS_MAIN("Add and make main", "Becomes the main one; the old main stays in the rotation"),
+    ADD("Add", "Joins the rotation; the main one stays"),
+}
+
+/** Adding an image where it was asked to go (Jellyfin always adds a backdrop at the end). */
+object ImagePlacing {
+    /** Kinds Jellyfin keeps several of; any other kind holds one image, which a new one replaces. */
+    fun holdsSeveral(type: ImageType) = type == ImageType.BACKDROP
+
+    /**
+     * Runs [add] (a download or upload of a [type] image), then moves the new image to the front
+     * and drops the old main one as [placement] says. For kinds that hold one image, [add] alone
+     * already replaces it.
+     */
+    suspend fun place(server: dev.nitrate.core.MediaServer, itemId: String, type: ImageType, placement: ImagePlacement, add: suspend () -> Unit) {
+        if (!holdsSeveral(type)) return add()
+        val before = server.itemImages(itemId).count { it.type == type }
+        add()
+        if (placement == ImagePlacement.ADD || before == 0) return
+        val newest = server.itemImages(itemId).filter { it.type == type }.maxOfOrNull { it.index ?: 0 } ?: return
+        if (newest > 0) server.moveImage(itemId, type, newest, 0)
+        // The old main one is now second.
+        if (placement == ImagePlacement.REPLACE_MAIN) server.deleteImage(itemId, type, 1)
+    }
+}
+
 /** Image types an item can have. */
 enum class ImageType(val wire: String, val label: String) {
     PRIMARY("Primary", "Poster"),

@@ -482,11 +482,20 @@ private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) ->
     val providers by produceState(emptyList<dev.nitrate.core.admin.ImageProvider>(), item.id) { value = runCatching { server.imageProviders(item.id) }.getOrDefault(emptyList()) }
     var browsing by remember { mutableStateOf<ImageType?>(null) }
     var uploadType by remember { mutableStateOf(ImageType.PRIMARY) }
-    val picker = dev.nitrate.mobile.platform.rememberImagePicker { bytes, mime ->
+    // A backdrop waiting to be placed: replace the main one, add as main, or just add.
+    var placing by remember { mutableStateOf<Pair<ImageType, suspend () -> Unit>?>(null) }
+    fun place(type: ImageType, placement: dev.nitrate.core.admin.ImagePlacement, add: suspend () -> Unit) {
         scope.launch {
-            runCatching { server.uploadImage(item.id, uploadType, bytes, mime) }
-                .onSuccess { notify(if (uploadType == ImageType.BACKDROP) "Backdrop added" else "Uploaded"); reload++ }.onFailure { notify("Upload failed: ${it.message}") }
+            runCatching { dev.nitrate.core.admin.ImagePlacing.place(server, item.id, type, placement, add) }
+                .onSuccess { notify(if (dev.nitrate.core.admin.ImagePlacing.holdsSeveral(type)) "${placement.label}: done" else "Image set"); reload++ }
+                .onFailure { notify("Couldn't set the image: ${it.message}") }
         }
+    }
+    val picker = dev.nitrate.mobile.platform.rememberImagePicker { bytes, mime ->
+        val type = uploadType
+        val upload: suspend () -> Unit = { server.uploadImage(item.id, type, bytes, mime) }
+        if (dev.nitrate.core.admin.ImagePlacing.holdsSeveral(type)) placing = type to upload
+        else place(type, dev.nitrate.core.admin.ImagePlacement.REPLACE_MAIN, upload)
     }
     val list = images?.getOrNull()
     if (list == null) {
@@ -547,14 +556,28 @@ private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) ->
     }
     browsing?.let { type ->
         RemoteImagesDialog(actions, item, type, providers.filter { type in it.types }.map { it.name }, onPick = { url ->
-            // Backdrops add up, so the list stays open to add more; other kinds replace and close.
-            if (type != ImageType.BACKDROP) browsing = null
-            scope.launch {
-                runCatching { server.downloadRemoteImage(item.id, type, url) }
-                    .onSuccess { notify(if (type == ImageType.BACKDROP) "Backdrop added" else "Image set"); reload++ }
-                    .onFailure { notify("Couldn't set image: ${it.message}") }
-            }
+            val download: suspend () -> Unit = { server.downloadRemoteImage(item.id, type, url) }
+            // Backdrops ask where the new one goes, and the list stays open to add more; other kinds replace and close.
+            if (dev.nitrate.core.admin.ImagePlacing.holdsSeveral(type)) placing = type to download
+            else { browsing = null; place(type, dev.nitrate.core.admin.ImagePlacement.REPLACE_MAIN, download) }
         }, onDismiss = { browsing = null })
+    }
+    placing?.let { (type, add) ->
+        AlertDialog(
+            onDismissRequest = { placing = null },
+            title = { Text("New ${type.label.lowercase().removeSuffix("s")}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    dev.nitrate.core.admin.ImagePlacement.entries.forEach { p ->
+                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { placing = null; place(type, p, add) }.padding(vertical = 10.dp, horizontal = 8.dp)) {
+                            Text(p.label, style = MaterialTheme.typography.titleSmall)
+                            Text(p.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { placing = null }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -578,13 +601,14 @@ private fun RemoteImagesDialog(actions: AppActions, item: MediaItem, type: Image
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") }
                 Text("${type.label} from providers", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (type == ImageType.BACKDROP) TextButton(onClick = onDismiss) { Text("Done") }
+            else Text("Replaces the current one", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 12.dp))
             }
             androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 androidx.compose.material3.FilterChip(provider == null, { provider = null }, label = { Text("All providers") })
                 providers.forEach { p -> androidx.compose.material3.FilterChip(provider == p, { provider = p }, label = { Text(p) }) }
                 androidx.compose.material3.FilterChip(allLanguages, { allLanguages = !allLanguages }, label = { Text("All languages") })
             }
-            if (type == ImageType.BACKDROP) Text("Each one you pick is added; Nitrate rotates through them.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding, vertical = 4.dp))
+            if (type == ImageType.BACKDROP) Text("Pick one to replace the main backdrop, add it as the main one, or just add it to the set Nitrate rotates through.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding, vertical = 4.dp))
             val list = found?.getOrNull()
             when {
                 found == null -> Loading()
@@ -602,7 +626,7 @@ private fun RemoteImagesDialog(actions: AppActions, item: MediaItem, type: Image
                             Box(Modifier.fillMaxWidth().aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 1f).clip(RoundedCornerShape(10.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))) {
                                 AsyncImage(img.thumbnailUrl ?: img.url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                if (img.url in picked) Text("Added", style = MaterialTheme.typography.labelMedium, color = Color.White,
+                                if (img.url in picked) Text("Picked", style = MaterialTheme.typography.labelMedium, color = Color.White,
                                     modifier = Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
                             }
                             Text(listOfNotNull(img.providerName, img.language?.uppercase(), listOfNotNull(img.width, img.height).joinToString("×").ifBlank { null }, "small".takeIf { small }).joinToString(" · "),
