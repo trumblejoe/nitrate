@@ -671,6 +671,20 @@ class TvScreenshotTest {
         }
     }
 
+    /** Customize → This page → Tabs opens Home's tabs (it crashed: a lazy list inside a scrolling dialog). */
+    @Test fun customizePageTabs() = shoot("tv-customize-tabs", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(focusedHasText("Tabs")) { "This page should open on Tabs when there's no row list" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Its rows: order, hide", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "Home's tabs should open" }
+    }) { c ->
+        WithMenu(c) {
+            HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+            dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.HOME, dev.nitrate.tv.ui.pages.CustomizeRequest(null, null, dev.nitrate.tv.ui.pages.CustomizeSection.PAGE)) {}
+        }
+    }
+
     /** Customize on a row: the row's look, where it sits, its name and hiding it, with the page beside. */
     @Test fun customizeRow() = shoot("tv-customize-row", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
@@ -227,8 +228,18 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
         }
         when (open) {
             "rows" -> vm?.let { dev.nitrate.tv.ui.rows.PageEditor(name, it, container.server, libraryId = libraryId, onDone = { open = null }) }
-            "tabs" -> dev.nitrate.tv.ui.lists.TvDialog(onDismiss = { open = null }, width = 900) {
-                if (owner == PageKeys.HOME) HomeSetupScreen(container) else LibraryTabsScreen(container, libraryId!!)
+            // A fixed-size dialog, not TvDialog: the tabs page is a lazy list, and TvDialog's
+            // scrolling column would give it endless height, which Compose refuses (a crash).
+            "tabs" -> androidx.compose.ui.window.Dialog(
+                onDismissRequest = { open = null },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.size(width = 900.dp, height = 600.dp)
+                        .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)),
+                ) {
+                    if (owner == PageKeys.HOME) HomeSetupScreen(container) else LibraryTabsScreen(container, libraryId!!)
+                }
             }
             "theme" -> ThemeChoice(container, owner, name) { open = null }
             "background" -> BackgroundChoice(container, owner, name) { open = null }

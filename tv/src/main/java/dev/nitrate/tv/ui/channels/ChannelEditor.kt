@@ -1,6 +1,7 @@
 package dev.nitrate.tv.ui.channels
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -182,7 +183,8 @@ fun ChannelEditorScreen(server: MediaServer, channelId: String?, onDone: () -> U
 private fun BlockDialog(server: MediaServer, block: ChannelBlock, onChange: (ChannelBlock) -> Unit, onDone: () -> Unit) {
     val focus = remember { FocusRequester() }
     TvDialog(onDone, width = 1000) {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // A set height: TvDialog scrolls its contents, and a lazy list given endless height crashes.
+        LazyColumn(Modifier.heightIn(max = 540.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Time slot", style = MaterialTheme.typography.headlineSmall)
