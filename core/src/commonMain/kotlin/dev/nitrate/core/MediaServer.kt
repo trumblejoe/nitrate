@@ -313,6 +313,9 @@ interface MediaServer {
     /** Tells the server this app can be controlled (play, pause, seek, messages) from elsewhere. */
     suspend fun reportCapabilities(): Unit = Unit
 
+    /** Also say this device takes [commands] (the TV: arrows, OK, Back, Home from a phone). */
+    fun acceptCommands(commands: List<String>) = Unit
+
     /** Starts [itemIds] on another client, from [startMs], with these tracks and version when given. */
     suspend fun playOn(
         sessionId: String, itemIds: List<String>, startMs: Long,

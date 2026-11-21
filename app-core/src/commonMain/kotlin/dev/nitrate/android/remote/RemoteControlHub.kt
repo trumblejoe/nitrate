@@ -3,6 +3,7 @@ package dev.nitrate.android.remote
 import dev.nitrate.core.MediaServer
 import dev.nitrate.core.events.ServerEvent
 import dev.nitrate.core.model.StreamKind
+import dev.nitrate.core.remote.RemotePrompt
 import dev.nitrate.core.syncplay.SyncPlayController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,11 @@ class RemoteControlHub(
                     is ServerEvent.Playstate -> active?.handleRemote(e.command, e.seekMs)
                     is ServerEvent.SyncPlayCommand, is ServerEvent.SyncPlayGroupUpdate -> syncPlay?.handle(e)
                     is ServerEvent.LibraryChanged -> if (e.added.isNotEmpty()) onItemsAdded()
+                    // Questions between the user's own TV and phones: never shown as messages.
+                    is ServerEvent.General if e.name == "DisplayMessage" && RemotePrompt.isOurs(e.arguments["Header"]) -> {
+                        prompted(e.arguments["Header"], e.arguments["Text"].orEmpty())
+                        return@collect
+                    }
                     is ServerEvent.General -> when (e.name) {
                         "SetAudioStreamIndex" -> e.arguments["Index"]?.toIntOrNull()?.let { active?.selectTrack(StreamKind.AUDIO, it) }
                         "SetSubtitleStreamIndex" -> e.arguments["Index"]?.toIntOrNull()?.let { active?.selectTrack(StreamKind.SUBTITLE, it) }
@@ -67,6 +73,53 @@ class RemoteControlHub(
                 _events.emit(e)
             }
         }
+    }
+
+    // ---- Questions the TV asks, answered from a phone ----
+
+    private val _prompts = MutableStateFlow<Map<String, Pair<RemotePrompt, Long>>>(emptyMap())
+    /** Phone: questions the user's TVs are asking, by the asking device's id, with when they were last heard. */
+    val prompts: StateFlow<Map<String, Pair<RemotePrompt, Long>>> = _prompts
+
+    /** Phone: what the device [deviceId] is asking now, if heard lately. */
+    fun promptFrom(deviceId: String?, nowMs: Long): RemotePrompt? =
+        _prompts.value[deviceId]?.takeIf { nowMs - it.second < RemotePrompt.FORGET_MS }?.first
+
+    private val _answers = MutableSharedFlow<Pair<String, String>>(extraBufferCapacity = 8)
+    /** TV: answers from a phone, as (question id, choice id). */
+    val answers: SharedFlow<Pair<String, String>> = _answers
+
+    private fun prompted(header: String?, text: String) {
+        when (header) {
+            RemotePrompt.PROMPT -> RemotePrompt.decode(text)?.let { p -> _prompts.value = _prompts.value + (p.deviceId to (p to dev.nitrate.android.nowMs())) }
+            RemotePrompt.PROMPT_GONE -> _prompts.value = _prompts.value.filterValues { it.first.id != text }
+            RemotePrompt.ANSWER -> RemotePrompt.readAnswer(text)?.let { _answers.tryEmit(it) }
+        }
+    }
+
+    /** The user's phones running Nitrate (not this device), which may answer for it. */
+    private suspend fun phones() = server.controllableSessions().filter {
+        it.client == RemotePrompt.PHONE_CLIENT && it.deviceId != server.deviceId && (it.userId == null || it.userId == server.userId)
+    }
+
+    /** TV: tells the user's phones what it's asking (again every [RemotePrompt.REPEAT_MS] while asked from [ask]). */
+    suspend fun offer(prompt: RemotePrompt) {
+        val text = RemotePrompt.encode(prompt)
+        runCatching { phones() }.getOrDefault(emptyList()).forEach { runCatching { server.sendMessage(it.id, RemotePrompt.PROMPT, text) } }
+    }
+
+    /** TV: the question was answered or went away. */
+    suspend fun withdraw(promptId: String) {
+        runCatching { phones() }.getOrDefault(emptyList()).forEach { runCatching { server.sendMessage(it.id, RemotePrompt.PROMPT_GONE, promptId) } }
+    }
+
+    /** TV: [withdraw] without waiting (a question leaving the screen). */
+    fun withdrawSoon(promptId: String) { scope.launch { withdraw(promptId) } }
+
+    /** Phone: answers [prompt] on the device whose session is [sessionId]. */
+    suspend fun answer(sessionId: String, prompt: RemotePrompt, choiceId: String) {
+        _prompts.value = _prompts.value - prompt.deviceId
+        server.sendMessage(sessionId, RemotePrompt.ANSWER, RemotePrompt.answer(prompt.id, choiceId))
     }
 
     fun stop() {

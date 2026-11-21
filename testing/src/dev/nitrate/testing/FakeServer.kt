@@ -114,7 +114,13 @@ class FakeServer : MediaServer {
         series.id -> series
         movies.id -> movies
         shows.id -> shows
-        else -> films.firstOrNull { it.id == id } ?: films[0]
+        else -> Regex("s(\\d)e(\\d)").matchEntire(id)?.let { m ->
+            // An episode, with chapters (as a whole item carries them).
+            episode(m.groupValues[1].toInt(), m.groupValues[2].toInt(), false).copy(
+                chapters = listOf("Cold open" to 0L, "The booth" to 420_000L, "Reel change" to 1_260_000L, "Projection" to 2_100_000L)
+                    .map { (n, at) -> dev.nitrate.core.model.Chapter(at, n) },
+            )
+        } ?: films.firstOrNull { it.id == id } ?: films[0]
     }
     override suspend fun seasons(seriesId: String) = seasonList
     override suspend fun episodes(seriesId: String, seasonId: String) = (1..6).map { episode(2, it, it < 4) }

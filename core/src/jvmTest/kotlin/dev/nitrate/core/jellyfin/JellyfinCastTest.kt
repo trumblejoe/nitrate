@@ -43,11 +43,14 @@ class JellyfinCastTest {
         val seek = JellyfinJson.parseToJsonElement(JellyfinCast.command(signIn, CastCommand.SEEK, 1_500)).jsonObject
         assertEquals("Seek", seek["command"]!!.jsonPrimitive.content)
         assertEquals(15_000_000L, seek["options"]!!.jsonObject["position"]!!.jsonPrimitive.long)
+        val subs = JellyfinJson.parseToJsonElement(JellyfinCast.command(signIn, CastCommand.SUBTITLE_TRACK, -1)).jsonObject
+        assertEquals("SetSubtitleStreamIndex", subs["command"]!!.jsonPrimitive.content)
+        assertEquals(-1, subs["options"]!!.jsonObject["index"]!!.jsonPrimitive.int)
     }
 
     @Test fun theReceiversProgressIsRead() {
         val s = JellyfinCast.status(
-            """{"type":"playbackprogress","data":{"ItemId":"11111111222233334444555555555555","PlayState":{"PositionTicks":600000000,"IsPaused":true},
+            """{"type":"playbackprogress","data":{"ItemId":"11111111222233334444555555555555","PlayState":{"PositionTicks":600000000,"IsPaused":true,"AudioStreamIndex":1,"SubtitleStreamIndex":-1},
                "NowPlayingItem":{"Id":"11111111222233334444555555555555","Name":"Pilot","SeriesName":"The Night Reel","RunTimeTicks":27000000000}}}""",
         )!!
         assertEquals(film.id, s.itemId)
@@ -55,6 +58,8 @@ class JellyfinCastTest {
         assertEquals(60_000, s.positionMs)
         assertEquals(2_700_000, s.durationMs)
         assertTrue(s.paused)
+        assertEquals(1, s.audioIndex)
+        assertEquals(-1, s.subtitleIndex)
         assertEquals(60_000, s.positionAt(5_000)) // paused: it stays put
         assertTrue(JellyfinCast.status("""{"type":"playbackstop","data":{}}""")!!.stopped)
         assertNull(JellyfinCast.status("""{"type":"volumechange","data":{}}"""))

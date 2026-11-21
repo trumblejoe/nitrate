@@ -419,6 +419,8 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
             subtitleIndex = play?.long("SubtitleStreamIndex")?.toInt(),
             volume = play?.long("VolumeLevel")?.toInt(),
             isMuted = play?.bool("IsMuted") == true,
+            supportedCommands = ((o["SupportedCommands"] ?: (o["Capabilities"] as? JsonObject)?.get("SupportedCommands")) as? kotlinx.serialization.json.JsonArray)
+                .orEmpty().mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content },
         )
     }
 

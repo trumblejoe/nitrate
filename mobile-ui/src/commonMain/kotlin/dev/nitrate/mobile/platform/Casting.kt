@@ -35,3 +35,10 @@ interface CastControl {
 /** Casting on this device, or null where it isn't available (no Google Play services, iOS for now). */
 @Composable
 expect fun rememberCast(): CastControl?
+
+/**
+ * Keeps lock-screen and notification controls for what another device ([sessionId]) is playing,
+ * while it plays, even with the app closed (Android); nothing elsewhere yet.
+ */
+@Composable
+expect fun rememberRemoteFollower(): (sessionId: String) -> Unit

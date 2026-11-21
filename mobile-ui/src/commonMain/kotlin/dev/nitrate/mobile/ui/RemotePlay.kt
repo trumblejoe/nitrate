@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +70,7 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
     var sending by remember { mutableStateOf<String?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
     val cast = dev.nitrate.mobile.platform.rememberCast()
+    val follow = dev.nitrate.mobile.platform.rememberRemoteFollower()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Play on…") },
@@ -97,6 +99,7 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
                                             mediaSourceId = dev.nitrate.android.playback.VersionChoices[item.id],
                                         )
                                     }.onSuccess {
+                                        follow(d.id)
                                         onSent()
                                         onDismiss()
                                         actions.nav.navigate(RemoteRoute(d.id))
@@ -125,7 +128,7 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
                     scope.launch {
                         val ok = runCatching { castTo(actions.container, cast, d, castPlayFor(actions.container, item, fromStart = false, startMs = startMs)) }.getOrDefault(false)
                         sending = null
-                        if (ok) { onSent(); onDismiss() } else failed = "Couldn't cast to ${d.name}. Check it's on the same network, then try again."
+                        if (ok) { onSent(); onDismiss(); actions.nav.navigate(RemoteRoute(CAST_REMOTE)) } else failed = "Couldn't cast to ${d.name}. Check it's on the same network, then try again."
                     }
                 }
                 failed?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -163,7 +166,9 @@ fun PlayingElsewhereBar(actions: AppActions, modifier: Modifier = Modifier, onSh
             actions.server.cardImage(item, CardShape.POSTER, 160)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxHeight().aspectRatio(1f)) }
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text("Playing on ${RemoteDevices.name(s)}", style = MaterialTheme.typography.labelMedium, color = accentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // A question waiting on the TV ("Still watching?"…) says so here; the remote answers it.
+            val asking = actions.container.remote.prompts.collectAsState().value[s.deviceId]?.first
+            Text(asking?.let { "${RemoteDevices.name(s)} asks: ${it.title}" } ?: "Playing on ${RemoteDevices.name(s)}", style = MaterialTheme.typography.labelMedium, color = accentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(item.displayTitle + (item.episodeLabel?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         IconButton(onClick = {

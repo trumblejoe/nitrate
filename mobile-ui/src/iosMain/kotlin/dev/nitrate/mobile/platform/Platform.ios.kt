@@ -209,3 +209,7 @@ actual val canTestPlay: Boolean = false
 /** No casting on iPhone and iPad yet. */
 @androidx.compose.runtime.Composable
 actual fun rememberCast(): CastControl? = null
+
+/** No lock-screen controls for another device on iPhone yet. */
+@androidx.compose.runtime.Composable
+actual fun rememberRemoteFollower(): (sessionId: String) -> Unit = { }

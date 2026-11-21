@@ -80,6 +80,11 @@ internal object JellyfinCast {
         CastCommand.PREVIOUS -> message(signIn, "PreviousTrack", null)
         CastCommand.SEEK -> message(signIn, "Seek", buildJsonObject { put("position", ticks(value ?: 0)) })
         CastCommand.SET_VOLUME -> message(signIn, "SetVolume", buildJsonObject { put("volume", (value ?: 0).coerceIn(0, 100)) })
+        CastCommand.VOLUME_UP -> message(signIn, "VolumeUp", null)
+        CastCommand.VOLUME_DOWN -> message(signIn, "VolumeDown", null)
+        CastCommand.TOGGLE_MUTE -> message(signIn, "ToggleMute", null)
+        CastCommand.AUDIO_TRACK -> message(signIn, "SetAudioStreamIndex", buildJsonObject { put("index", value ?: 0) })
+        CastCommand.SUBTITLE_TRACK -> message(signIn, "SetSubtitleStreamIndex", buildJsonObject { put("index", value ?: -1) })
     }
 
     /** A receiver message, or null when it isn't about playback. */
@@ -103,6 +108,8 @@ internal object JellyfinCast {
             positionMs = (state.long("PositionTicks") ?: 0) / 10_000,
             durationMs = item?.long("RunTimeTicks")?.let { it / 10_000 },
             paused = state.bool("IsPaused") ?: false,
+            audioIndex = state.long("AudioStreamIndex")?.toInt(),
+            subtitleIndex = state.long("SubtitleStreamIndex")?.toInt(),
         )
     }
 

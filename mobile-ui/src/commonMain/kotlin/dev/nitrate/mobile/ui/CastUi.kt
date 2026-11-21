@@ -123,7 +123,9 @@ fun CastBar(actions: AppActions, cast: CastControl?, modifier: Modifier = Modifi
     val at = status?.positionAt(now - state.statusAtMs) ?: 0
     fun send(command: CastCommand, value: Long? = null) { actions.server.castCommand(command, value)?.let(cast::send) }
     Row(
-        modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(start = 14.dp, end = 4.dp),
+        modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            // The whole remote: seeking, tracks, chapters, episodes.
+            .pressable({ actions.nav.navigate(RemoteRoute(CAST_REMOTE)) }).padding(start = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(NitrateIcons.Cast, "Casting to ${device.name}", tint = accentColor(), modifier = Modifier.size(22.dp))

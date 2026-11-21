@@ -792,6 +792,22 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         }
                         audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, dir, android.media.AudioManager.FLAG_SHOW_UI)
                     }
+                    // The phone's arrow pad: pressed as if on this TV's own remote.
+                    "MoveUp", "MoveDown", "MoveLeft", "MoveRight", "Select", "Back" -> {
+                        val key = when (e.name) {
+                            "MoveUp" -> android.view.KeyEvent.KEYCODE_DPAD_UP
+                            "MoveDown" -> android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                            "MoveLeft" -> android.view.KeyEvent.KEYCODE_DPAD_LEFT
+                            "MoveRight" -> android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+                            "Select" -> android.view.KeyEvent.KEYCODE_DPAD_CENTER
+                            else -> android.view.KeyEvent.KEYCODE_BACK
+                        }
+                        (context.findActivityOrNull())?.let { a ->
+                            a.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, key))
+                            a.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, key))
+                        }
+                    }
+                    "GoHome" -> nav.navigate(HomeRoute) { popUpTo(HomeRoute) { inclusive = true }; launchSingleTop = true }
                     else -> Unit
                 }
                 else -> Unit
@@ -828,4 +844,12 @@ fun NavController.openItem(item: MediaItem) {
 fun NavController.playQueue(ids: List<String>) {
     val first = ids.firstOrNull() ?: return
     navigate(PlayerRoute(first, fromStart = true, queue = ids.drop(1).joinToString(",")))
+}
+
+
+/** The activity behind [this] context, if any. */
+private tailrec fun android.content.Context.findActivityOrNull(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivityOrNull()
+    else -> null
 }

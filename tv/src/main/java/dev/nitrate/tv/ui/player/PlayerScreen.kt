@@ -589,6 +589,15 @@ fun PlayerScreen(
                 onHide = { upNextHidden = true; refocus() },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
             )
+            // The same question on the phone's remote.
+            val ask = remember(nextUp.id) {
+                dev.nitrate.core.remote.RemotePrompt(
+                    "upnext-${nextUp.id}-${System.currentTimeMillis()}", dev.nitrate.core.remote.RemotePrompt.Kind.UP_NEXT, repository.deviceId.orEmpty(),
+                    "Up next: ${nextUp.displayTitle}", nextUp.episodeLabel,
+                    listOf(dev.nitrate.core.remote.RemotePrompt.Choice("play", "Play now"), dev.nitrate.core.remote.RemotePrompt.Choice("hide", "Not now")),
+                )
+            }
+            AskPhones(remote, ask) { choice -> if (choice == "play") onPlayNext?.invoke(nextUp) else { upNextHidden = true; refocus() } }
         }
 
         SecondSubtitleLine(session, settingsNow.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp))
@@ -610,21 +619,59 @@ fun PlayerScreen(
 
         stillAsk?.let { next ->
             val rewind = remember(next) { stillWatching?.rewind() }
+            val keep = { stillAsk = null; stillWatching?.clear(); onPlayNext?.invoke(next); Unit }
+            val goBack = {
+                stillAsk = null
+                stillWatchingRewind?.invoke(rewind) { back -> if (back != null) onPlayNext?.invoke(back) else onExit() } ?: onExit()
+            }
+            val stop = { stillAsk = null; stillWatching?.clear(); onExit() }
+            val ask = remember(next.id) {
+                dev.nitrate.core.remote.RemotePrompt(
+                    "still-${next.id}-${System.currentTimeMillis()}", dev.nitrate.core.remote.RemotePrompt.Kind.STILL_WATCHING, repository.deviceId.orEmpty(),
+                    "Still watching?", "Up next: ${next.displayTitle}" + (next.episodeLabel?.let { " · $it" } ?: ""),
+                    listOfNotNull(
+                        dev.nitrate.core.remote.RemotePrompt.Choice("keep", "Keep watching"),
+                        dev.nitrate.core.remote.RemotePrompt.Choice("back", "Go back").takeIf { rewind != null },
+                        dev.nitrate.core.remote.RemotePrompt.Choice("stop", "Stop"),
+                    ),
+                )
+            }
+            AskPhones(remote, ask) { choice -> when (choice) { "keep" -> keep(); "back" -> goBack(); else -> stop() } }
             StillWatchingDialog(
                 next = next,
                 rewind = rewind,
-                onKeepWatching = { stillAsk = null; stillWatching?.clear(); onPlayNext?.invoke(next) },
-                onGoBack = {
-                    stillAsk = null
-                    stillWatchingRewind?.invoke(rewind) { back -> if (back != null) onPlayNext?.invoke(back) else onExit() } ?: onExit()
-                },
-                onStop = { stillAsk = null; stillWatching?.clear(); onExit() },
+                onKeepWatching = keep,
+                onGoBack = goBack,
+                onStop = stop,
                 // Dozed off: put things back as they were at the last press, and stop.
                 onNoAnswer = { stillWatchingRewind?.invoke(rewind) { onExit() } ?: onExit() },
             )
         }
 
         creditAction?.takeIf { !showUpNext }?.let { a ->
+            // The banner's button on the phone too.
+            val actLabel = when (a) {
+                is dev.nitrate.core.playback.CreditSkipper.Action.Skip -> "Watch credits"
+                is dev.nitrate.core.playback.CreditSkipper.Action.Offer -> "Skip to it"
+                else -> null
+            }
+            val ask = remember(a) {
+                actLabel?.let {
+                    dev.nitrate.core.remote.RemotePrompt(
+                        "credits-${System.currentTimeMillis()}", dev.nitrate.core.remote.RemotePrompt.Kind.CREDIT_SCENE, repository.deviceId.orEmpty(),
+                        dev.nitrate.core.playback.CreditSkipper.message(a), null, listOf(dev.nitrate.core.remote.RemotePrompt.Choice("act", it)),
+                    )
+                }
+            }
+            AskPhones(remote, ask) {
+                when (a) {
+                    is dev.nitrate.core.playback.CreditSkipper.Action.Skip -> player.seekTo(a.backMs)
+                    is dev.nitrate.core.playback.CreditSkipper.Action.Offer -> player.seekTo(a.toMs)
+                    else -> Unit
+                }
+                creditAction = null
+                refocus()
+            }
             CreditSceneBanner(
                 a,
                 // Never takes focus from More, Info or a dialog; Back closes those first anyway.

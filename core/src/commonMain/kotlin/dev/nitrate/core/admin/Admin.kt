@@ -211,7 +211,12 @@ data class ServerSession(
     val subtitleIndex: Int? = null,
     val volume: Int? = null,
     val isMuted: Boolean = false,
-)
+    /** The general commands it says it takes ("MoveUp", "DisplayMessage"…). */
+    val supportedCommands: List<String> = emptyList(),
+) {
+    /** It can be steered round its menus with arrows, OK, Back and Home. */
+    val navigable: Boolean get() = GeneralCommand.NAVIGATION.all { it.wire in supportedCommands }
+}
 
 /** An account on the server, with the permissions admins usually change. */
 data class UserAccount(
@@ -280,4 +285,13 @@ enum class SessionCommand(val wire: String, val label: String) {
 }
 
 /** Non-playback commands for another client (volume, messages...), by Jellyfin's names. */
-enum class GeneralCommand(val wire: String) { VOLUME_UP("VolumeUp"), VOLUME_DOWN("VolumeDown"), TOGGLE_MUTE("ToggleMute"), GO_HOME("GoHome") }
+enum class GeneralCommand(val wire: String) {
+    VOLUME_UP("VolumeUp"), VOLUME_DOWN("VolumeDown"), TOGGLE_MUTE("ToggleMute"), GO_HOME("GoHome"),
+    // Moving around another app's menus (Nitrate on TV takes these as remote keys).
+    MOVE_UP("MoveUp"), MOVE_DOWN("MoveDown"), MOVE_LEFT("MoveLeft"), MOVE_RIGHT("MoveRight"), SELECT("Select"), BACK("Back");
+
+    companion object {
+        /** What a device must say it takes to be steered round its menus. */
+        val NAVIGATION = listOf(MOVE_UP, MOVE_DOWN, MOVE_LEFT, MOVE_RIGHT, SELECT, BACK, GO_HOME)
+    }
+}

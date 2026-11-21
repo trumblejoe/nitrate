@@ -139,7 +139,11 @@ class AppContainer(
         }
     }
 
-    val remote by lazy { RemoteControlHub(server, syncPlay, onItemsAdded = { newEpisodes.checkSoon() }) }
+    val remote by lazy {
+        // A TV can be steered round its menus from a phone (arrows, OK, Back, Home).
+        if (deviceKind == dev.nitrate.core.pages.DeviceKind.TV) server.acceptCommands(dev.nitrate.core.admin.GeneralCommand.NAVIGATION.map { it.wire })
+        RemoteControlHub(server, syncPlay, onItemsAdded = { newEpisodes.checkSoon() })
+    }
 
     /** Library or watch-state changes pushed by the server, for pages to reload. */
     val serverChanges: kotlinx.coroutines.flow.Flow<Unit>

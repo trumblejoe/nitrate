@@ -1174,13 +1174,17 @@ class JellyfinClient(
 
     override val deviceId: String get() = identity.deviceId
 
+    private var extraCommands: List<String> = emptyList()
+
+    override fun acceptCommands(commands: List<String>) { extraCommands = commands }
+
     override suspend fun reportCapabilities() {
         runCatching {
             post<CapabilitiesDto>(
                 "Sessions", "Capabilities", "Full",
                 body = CapabilitiesDto(
                     playableMediaTypes = listOf("Video", "Audio"),
-                    supportedCommands = listOf("DisplayMessage", "VolumeUp", "VolumeDown", "ToggleMute", "SetAudioStreamIndex", "SetSubtitleStreamIndex", "PlayState", "Play"),
+                    supportedCommands = listOf("DisplayMessage", "VolumeUp", "VolumeDown", "ToggleMute", "SetAudioStreamIndex", "SetSubtitleStreamIndex", "PlayState", "Play") + extraCommands,
                     supportsMediaControl = true,
                 ),
             )

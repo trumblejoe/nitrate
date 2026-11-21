@@ -565,6 +565,34 @@ class ScreenshotTest {
 
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 
+    /** A TV playing an episode asks "Still watching?": answered from the phone; then its arrow pad. */
+    @Test
+    fun remoteAnswersAndSteers() {
+        val target = FakeRemote()
+        shoot("phone-remote-episode") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1", target = target) }
+        compose.onNodeWithText("Keep watching").performClick()
+        compose.waitForIdle()
+        check("answer keep" in target.asked) { target.asked.toString() }
+        compose.onNodeWithText("Still watching?").assertDoesNotExist()
+        // Further down: the chapters and the season's episodes.
+        compose.onNode(androidx.compose.ui.test.hasScrollAction() and androidx.compose.ui.test.hasScrollToNodeAction().not())
+            .performScrollToNode(androidx.compose.ui.test.hasText("Episodes"))
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/phone-remote-lists.png")
+        compose.onNodeWithText("Reel change").performClick()
+        compose.waitForIdle()
+        check("seek 1260000" in target.asked) { target.asked.toString() }
+        compose.onNode(androidx.compose.ui.test.hasScrollAction() and androidx.compose.ui.test.hasScrollToNodeAction().not())
+            .performScrollToNode(androidx.compose.ui.test.hasText("Arrows"))
+        compose.onNodeWithText("Arrows").performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/phone-remote-arrows.png")
+        compose.onNodeWithContentDescription("Up").performClick()
+        compose.onNodeWithText("OK").performClick()
+        compose.waitForIdle()
+        check(target.asked.containsAll(listOf("MoveUp", "Select"))) { target.asked.toString() }
+    }
+
     @Test
     fun transfer() = shoot("phone-writing-transfer") {
         TransferDialog(dev.nitrate.mobile.platform.TransferState(running = true, address = "http://192.168.1.42:8765", pin = "482913"), onToggle = {}, onDismiss = {})

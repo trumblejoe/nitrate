@@ -68,6 +68,12 @@
             </intent-filter>
         </service>
 
+        <!-- Notification and lock-screen controls while another device (the TV) plays. -->
+        <service
+            android:name=".platform.RemoteControlService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <!-- Artwork for Android Auto, which only loads pictures from content addresses. -->
         <provider
             android:name=".platform.CarArt"

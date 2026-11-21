@@ -29,8 +29,8 @@ data class CastPlay(
     val mediaSourceId: String? = null,
 )
 
-/** Controls sent to the receiver. */
-enum class CastCommand { PAUSE, UNPAUSE, STOP, SEEK, NEXT, PREVIOUS, SET_VOLUME }
+/** Controls sent to the receiver; tracks take the stream index as their value (-1: subtitles off). */
+enum class CastCommand { PAUSE, UNPAUSE, STOP, SEEK, NEXT, PREVIOUS, SET_VOLUME, VOLUME_UP, VOLUME_DOWN, TOGGLE_MUTE, AUDIO_TRACK, SUBTITLE_TRACK }
 
 /** What the receiver says it's doing. */
 data class CastStatus(
@@ -41,6 +41,8 @@ data class CastStatus(
     val paused: Boolean = false,
     /** It stopped (or finished): nothing is playing any more. */
     val stopped: Boolean = false,
+    val audioIndex: Int? = null,
+    val subtitleIndex: Int? = null,
 ) {
     /** Where it is now, [sinceMs] after this status arrived while playing. */
     fun positionAt(sinceMs: Long): Long {
