@@ -28,6 +28,8 @@ data class DetailsState(
     val albums: List<MediaItem> = emptyList(),
     /** Trailers first, then behind the scenes, deleted scenes and other extras. */
     val extras: List<MediaItem> = emptyList(),
+    /** A book's series, in reading order (more than just this book). */
+    val issues: List<MediaItem> = emptyList(),
 )
 
 class DetailsViewModel(
@@ -62,6 +64,9 @@ class DetailsViewModel(
             if (item.kind == ItemKind.SERIES) loadSeries(item)
             if (item.kind == ItemKind.MUSIC_ALBUM) _state.update { it.copy(tracks = runCatching { repository.albumTracks(itemId) }.getOrDefault(emptyList())) }
             if (item.kind == ItemKind.MUSIC_ARTIST) _state.update { it.copy(albums = runCatching { repository.artistAlbums(itemId) }.getOrDefault(emptyList())) }
+            if (item.kind == ItemKind.BOOK) {
+                _state.update { it.copy(issues = runCatching { repository.seriesIssues(item) }.getOrDefault(emptyList()).takeIf { l -> l.size > 1 }.orEmpty()) }
+            }
             if (item.kind == ItemKind.BOX_SET) {
                 _state.update { it.copy(contents = runCatching { repository.collectionItems(itemId) }.getOrDefault(emptyList())) }
             }

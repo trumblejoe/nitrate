@@ -190,6 +190,12 @@ interface MediaServer {
      */
     suspend fun comicListing(itemId: String): dev.nitrate.core.comics.ComicListing? = null
 
+    /** Books half read, and the next issue of series read lately ([libraryId] null: every library). */
+    suspend fun continueReading(libraryId: String?): List<MediaItem> = emptyList()
+
+    /** The issues of [book]'s series in reading order ([dev.nitrate.core.comics.ComicSeries]); just [book] when it has none. */
+    suspend fun seriesIssues(book: MediaItem): List<MediaItem> = listOf(book)
+
     /** Page [index] of a book the plugin serves page by page; fetched with [authorizationHeader]. */
     fun comicPageUrl(itemId: String, index: Int): String = unsupported()
 

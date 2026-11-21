@@ -686,6 +686,9 @@ class JellyfinClient(
             dev.nitrate.core.rows.RowJob("Next Up") {
                 items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
             },
+            dev.nitrate.core.rows.RowJob("Continue Reading") {
+                continueReading(null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
+            },
             dev.nitrate.core.rows.RowJob("Watching together") {
                 watchingTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.partners.TogetherRow.KEY, dev.nitrate.core.partners.TogetherRow.TITLE, it, WIDE_DEFAULT)) }
             },
@@ -789,6 +792,12 @@ class JellyfinClient(
         }
 
         when (library.collection) {
+            CollectionKind.BOOKS -> {
+                add("continue_reading", "Continue Reading") { continueReading(id) }
+                add("recently_added", "Recently Added") { query(id, "Book", "DateCreated") }
+                add("unread", "Not Read Yet") { query(id, "Book", "Random", filters = "IsUnplayed") }
+                add("favorites", "Favorites") { query(id, "Book", "SortName", "Ascending", filters = "IsFavorite") }
+            }
             CollectionKind.TV_SHOWS -> {
                 add("continue_watching", "Continue Watching", WIDE_DEFAULT) { resumeItems(id, "Episode") }
                 add("next_up", "Next Up", WIDE_DEFAULT) { items("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS)) }
@@ -812,6 +821,29 @@ class JellyfinClient(
     override fun libraryRowsProgress(library: MediaItem): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(libraryJobs(library))
 
     override suspend fun libraryRows(library: MediaItem): List<MediaRow> = libraryRowsProgress(library).last().rows
+
+    private suspend fun books(parentId: String?, filters: String, limit: Int) = items(
+        "Items",
+        query = mapOf(
+            "userId" to userId, "parentId" to parentId, "includeItemTypes" to "Book", "recursive" to true,
+            "filters" to filters, "sortBy" to "DatePlayed", "sortOrder" to "Descending", "limit" to limit, "fields" to ROW_FIELDS,
+        ),
+    )
+
+    override suspend fun continueReading(libraryId: String?): List<MediaItem> = coroutineScope {
+        val reading = async { books(libraryId, "IsResumable", ROW_LIMIT) }
+        val finished = async { books(libraryId, "IsPlayed", 10) }
+        dev.nitrate.core.comics.ComicSeries.continueReading(reading.await(), finished.await(), issuesOf = ::seriesIssues)
+    }
+
+    override suspend fun seriesIssues(book: MediaItem): List<MediaItem> {
+        val parent = book.parentId ?: return listOf(book)
+        val siblings = items(
+            "Items",
+            query = mapOf("userId" to userId, "parentId" to parent, "includeItemTypes" to "Book", "sortBy" to "SortName", "fields" to ROW_FIELDS, "limit" to 1000),
+        )
+        return dev.nitrate.core.comics.ComicSeries.of(book, siblings.ifEmpty { listOf(book) })
+    }
 
     private suspend fun resumeItems(parentId: String?, types: String?) = items(
         "UserItems", "Resume",

@@ -69,6 +69,7 @@ internal data class ItemDto(
     val genres: List<String>? = null,
     val tags: List<String>? = null,
     val collectionType: String? = null,
+    val parentId: String? = null,
     val seriesId: String? = null,
     val seriesName: String? = null,
     val seasonId: String? = null,

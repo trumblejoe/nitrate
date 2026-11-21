@@ -202,6 +202,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
 
         // Resuming after a break: the "Last time" recap first, when one is due.
         suspend fun go(target: dev.nitrate.core.model.MediaItem, fromStart: Boolean) {
+            // A book opens in the reader, from wherever Play was pressed.
+            if (target.kind == dev.nitrate.core.model.ItemKind.BOOK) return nav.navigate(ComicRoute(target.id))
             val recap = if (fromStart) null else container.recapBefore(target)
             if (recap != null) nav.navigate(RecapRoute) else nav.navigate(playerRoute(target.id, fromStart))
         }
@@ -307,7 +309,10 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ChannelsRoute> { ChannelsScreen(actions) }
             screen<WatchPartnersRoute> { WatchPartnersScreen(actions) }
             screen<RecapRoute> { RecapScreen(actions) }
-            screen<ComicRoute> { entry -> ComicReaderScreen(actions, entry.toRoute<ComicRoute>().itemId, onExit = { nav.popBackStack() }) }
+            screen<ComicRoute> { entry -> ComicReaderScreen(
+                    actions, entry.toRoute<ComicRoute>().itemId, onExit = { nav.popBackStack() },
+                    onNext = { id -> nav.navigate(ComicRoute(id)) { popUpTo<ComicRoute> { inclusive = true } } },
+                ) }
             screen<ChannelEditorRoute> { entry -> ChannelEditorScreen(actions, entry.toRoute<ChannelEditorRoute>().channelId.ifEmpty { null }) }
             screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<LicensesRoute> { LicensesScreen() }

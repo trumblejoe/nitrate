@@ -223,6 +223,30 @@ fun DetailsScreen(
                     }
                 }
             }
+            if (state.issues.isNotEmpty()) {
+                item(key = "issues") {
+                    Column {
+                        RowTitle("In this series")
+                        val start = state.issues.indexOfFirst { it.id == state.item?.id }.coerceAtLeast(0)
+                        LazyRow(
+                            state = androidx.compose.foundation.lazy.rememberLazyListState((start - 1).coerceAtLeast(0)),
+                            contentPadding = PaddingValues(horizontal = PagePadding), horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            items(state.issues, key = { it.id }) { book ->
+                                MediaCard(
+                                    item = book,
+                                    imageUrl = repository.imageUrl(book, ImageKind.PRIMARY, 360),
+                                    width = 140.dp,
+                                    aspectRatio = 2f / 3f,
+                                    title = dev.nitrate.core.comics.ComicSeries.label(book),
+                                    subtitle = when { book.id == state.item?.id -> "This one"; book.user.played -> "Read"; dev.nitrate.core.comics.ComicSeries.inProgress(book) -> "Reading"; else -> null },
+                                    onClick = { if (book.id != state.item?.id) onOpen(book) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (state.contents.isNotEmpty()) {
                 item(key = "contents") {
                     var removing by remember { mutableStateOf<MediaItem?>(null) }

@@ -180,7 +180,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     val context = androidx.compose.ui.platform.LocalContext.current
     val gate = rememberPlaybackGate(container.plugins) { item, fromStart, startMs ->
         scope.launch {
-            if (startMs != null) nav.navigate(PlayerRoute(item.id, fromStart = false, startMs = startMs))
+            // A book opens in the reader, from wherever Play was pressed.
+            if (item.kind == dev.nitrate.core.model.ItemKind.BOOK) nav.navigate(ComicRoute(item.id))
+            else if (startMs != null) nav.navigate(PlayerRoute(item.id, fromStart = false, startMs = startMs))
             else if (!fromStart && container.recapBefore(item) != null) nav.navigate(RecapRoute)
             else {
                 val steps = if (displayPrefs.easyMode) emptyList() else dev.nitrate.tv.ui.preroll.planPrerolls(container, context, item, displayPrefs.prerolls, fromStart)
@@ -302,7 +304,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 repository = container.server,
                 itemId = route.itemId,
                 seasonId = route.seasonId,
-                onPlay = { item, fromStart -> if (item.kind == dev.nitrate.core.model.ItemKind.BOOK) nav.navigate(ComicRoute(item.id)) else gate.play(item, fromStart) },
+                onPlay = { item, fromStart -> gate.play(item, fromStart) },
                 onOpen = nav::openItem,
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
@@ -316,7 +318,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             )
         }
         composable<ComicRoute> { entry ->
-            dev.nitrate.tv.ui.comics.ComicReaderScreen(container, entry.toRoute<ComicRoute>().itemId, onExit = { nav.popBackStack() })
+            dev.nitrate.tv.ui.comics.ComicReaderScreen(
+                container, entry.toRoute<ComicRoute>().itemId, onExit = { nav.popBackStack() },
+                onNext = { id -> nav.navigate(ComicRoute(id)) { popUpTo<ComicRoute> { inclusive = true } } },
+            )
         }
         composable<RecapRoute> {
             dev.nitrate.tv.ui.player.RecapScreen(container, onPlayOn = { recap ->

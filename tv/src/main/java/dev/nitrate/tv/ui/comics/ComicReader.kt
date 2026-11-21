@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
  * the user is goes back to Jellyfin as they read.
  */
 @Composable
-fun ComicReaderScreen(container: AppContainer, itemId: String, onExit: () -> Unit) {
+fun ComicReaderScreen(container: AppContainer, itemId: String, onExit: () -> Unit, onNext: (String) -> Unit = {}) {
     var book by remember { mutableStateOf<ComicBook?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableFloatStateOf(0f) }
@@ -92,13 +92,13 @@ fun ComicReaderScreen(container: AppContainer, itemId: String, onExit: () -> Uni
                 if (progress > 0f) "Getting the comic… ${(progress * 100).toInt()}%" else "Getting the comic…",
                 style = MaterialTheme.typography.titleLarge, color = Color.White, modifier = Modifier.align(Alignment.Center),
             )
-            else -> TvComicPages(container, b, onExit)
+            else -> TvComicPages(container, b, onExit, onNext)
         }
     }
 }
 
 @Composable
-private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () -> Unit) {
+private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () -> Unit, onNext: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var direction by remember { mutableStateOf(book.info?.direction ?: ReadingDirection.LEFT_TO_RIGHT) }
     var twoUp by remember { mutableStateOf(true) }
@@ -118,8 +118,16 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
     LaunchedEffect(index, spreads) { for (i in index..index + 2) spreads.getOrNull(i)?.pages?.forEach { runCatching { book.page(it) } } }
     LaunchedEffect(strip) { if (!strip) { delay(50); runCatching { focus.requestFocus() } } }
 
+    // The issue after this one in its series, offered on the last page.
+    val nextIssue by androidx.compose.runtime.produceState<dev.nitrate.core.model.MediaItem?>(null, book) {
+        value = book.item?.let { item -> runCatching { dev.nitrate.core.comics.ComicSeries.after(item, container.server.seriesIssues(item)) }.getOrNull() }
+    }
+    val atEnd = index == spreads.size - 1
+
     fun turn(right: Boolean) {
-        val next = (index + ReaderKeys.step(right, direction)).coerceIn(0, spreads.size - 1)
+        val step = ReaderKeys.step(right, direction)
+        if (step > 0 && atEnd) nextIssue?.let { n -> scope.launch { container.comics.saveProgress(book, page) }; onNext(n.id); return }
+        val next = (index + step).coerceIn(0, spreads.size - 1)
         if (next != index) { index = next; zoom = false; pan = Offset.Zero }
     }
 
@@ -165,6 +173,13 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
             ComicProgress.label(page, book.pageCount) + if (zoom) "   ·   arrows move, OK zooms out" else "",
             style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.7f),
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).background(Color(0x99000000), MaterialTheme.shapes.small).padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+        val n = nextIssue
+        if (!strip && atEnd && n != null) Text(
+            "Next issue: " + (dev.nitrate.core.comics.ComicSeries.label(n)) +
+                (if (direction == ReadingDirection.RIGHT_TO_LEFT) "   ◀" else "   ▶"),
+            style = MaterialTheme.typography.titleMedium, color = Color.White,
+            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp).background(Color(0xCC000000), MaterialTheme.shapes.small).padding(horizontal = 14.dp, vertical = 8.dp),
         )
         AnimatedVisibility(strip, modifier = Modifier.align(Alignment.BottomCenter)) {
             PageStrip(

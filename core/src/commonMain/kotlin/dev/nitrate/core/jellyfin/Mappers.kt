@@ -61,6 +61,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
         genres = genres.orEmpty(),
         tags = tags.orEmpty(),
         collection = collectionType?.let(::collectionKind),
+        parentId = parentId?.let(::normalizeId),
         seriesId = seriesId?.let(::normalizeId),
         seriesName = seriesName,
         seasonId = seasonId?.let(::normalizeId),

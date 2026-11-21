@@ -311,6 +311,27 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     }
                 }
             }
+            if (state.issues.isNotEmpty()) {
+                item(key = "issues") {
+                    Column(Modifier.padding(top = 28.dp)) {
+                        SectionHeader("In this series")
+                        val start = state.issues.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
+                        LazyRow(
+                            state = androidx.compose.foundation.lazy.rememberLazyListState((start - 1).coerceAtLeast(0)),
+                            contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(state.issues, key = { it.id }) { b ->
+                                val key = "issues-${item.id}-${b.id}"
+                                MediaCard(
+                                    b, server.cardImage(b, CardShape.POSTER), CardShape.POSTER, onClick = { if (b.id != item.id) actions.open(b, key) }, width = 110.dp, sharedKey = key,
+                                    title = dev.nitrate.core.comics.ComicSeries.label(b),
+                                    subtitle = when { b.id == item.id -> "This one"; b.user.played -> "Read"; dev.nitrate.core.comics.ComicSeries.inProgress(b) -> "Reading"; else -> null },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (state.contents.isNotEmpty()) {
                 item(key = "contents") {
                     var removing by remember { mutableStateOf(false) }

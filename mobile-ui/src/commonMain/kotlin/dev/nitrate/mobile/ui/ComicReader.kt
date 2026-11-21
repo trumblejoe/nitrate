@@ -81,7 +81,7 @@ enum class TwoUp(val label: String) { AUTO("Automatic"), ONE("One page"), TWO("T
  * strip for webtoons. Where the user is goes back to Jellyfin as they read.
  */
 @Composable
-fun ComicReaderScreen(actions: AppActions, itemId: String, onExit: () -> Unit) {
+fun ComicReaderScreen(actions: AppActions, itemId: String, onExit: () -> Unit, onNext: (String) -> Unit = {}) {
     val container = actions.container
     var book by remember { mutableStateOf<ComicBook?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -103,14 +103,18 @@ fun ComicReaderScreen(actions: AppActions, itemId: String, onExit: () -> Unit) {
                 Text("Getting the comic…", color = Color.White)
                 if (progress > 0f) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(0.6f)) else CircularProgressIndicator()
             }
-            else -> ComicPages(actions, b, onExit)
+            else -> ComicPages(actions, b, onExit, onNext)
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit) {
+private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit, onNext: (String) -> Unit) {
+    // The issue after this one in its series, offered on the last page.
+    val nextIssue by produceState<dev.nitrate.core.model.MediaItem?>(null, book) {
+        value = book.item?.let { item -> runCatching { dev.nitrate.core.comics.ComicSeries.after(item, actions.server.seriesIssues(item)) }.getOrNull() }
+    }
     val scope = rememberCoroutineScope()
     var direction by remember { mutableStateOf(book.info?.direction ?: ReadingDirection.LEFT_TO_RIGHT) }
     var twoUpChoice by remember { mutableStateOf(TwoUp.AUTO) }
@@ -127,6 +131,8 @@ private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit)
         actions.container.comics.saveProgress(book, page)
     }
     DisposableEffect(book) { onDispose { actions.scope.launch { actions.container.comics.saveProgress(book, page) } } }
+    // The bars (with "Next issue") come up on the last page.
+    LaunchedEffect(page) { if (ComicProgress.finished(page, book.pageCount) && nextIssue != null) chrome = true }
     LaunchedEffect(chrome) { if (chrome) { delay(4_000); if (!settings) chrome = false } }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -178,7 +184,16 @@ private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit)
             }
             AnimatedVisibility(chrome, modifier = Modifier.align(Alignment.BottomCenter)) {
                 Column(Modifier.fillMaxWidth().background(Color(0xCC000000)).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(ComicProgress.label(page, book.pageCount), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(ComicProgress.label(page, book.pageCount), color = Color.White, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                        val n = nextIssue
+                        if (n != null && ComicProgress.finished(page, book.pageCount)) TextButton(onClick = {
+                            actions.scope.launch { actions.container.comics.saveProgress(book, page) }
+                            onNext(n.id)
+                        }) {
+                            Text("Next issue: " + (dev.nitrate.core.comics.ComicSeries.label(n)), color = Color.White)
+                        }
+                    }
                     if (spreads.size > 1) Slider(
                         value = pager.currentPage.toFloat(),
                         onValueChange = { v -> scope.launch { pager.scrollToPage(v.toInt()) } },
