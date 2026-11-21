@@ -143,6 +143,24 @@ class ListeningTest {
         assertEquals(null, l.state.value.sleep)
     }
 
+    @Test fun theCarsRequestsPlayThroughTheListeningPlayer() = run({ Server(it) }) { l, server ->
+        val car = dev.nitrate.mobile.platform.CarPlayer(l.player) { l }
+        // The car asked for song b of an album: it arrives as one stand-in item.
+        val standIn = dev.nitrate.mobile.platform.CarBrowsing.hold(dev.nitrate.core.car.CarQueue(listOf(song("a"), song("b"), song("c")), startIndex = 1))
+        car.setMediaItems(mutableListOf(standIn), 0, 0)
+        car.prepare()
+        car.play()
+        until { l.player.playbackState == Player.STATE_READY && l.state.value.current?.id == "b" }
+        assertEquals(listOf("a", "b", "c"), l.state.value.queue.map { it.id })
+        assertTrue(server.reports.toString(), "start b" in server.reports)
+        // The car's Next is the listening player's.
+        car.seekToNext()
+        until { l.state.value.current?.id == "c" }
+        assertEquals("c", l.state.value.current?.id)
+        // A stand-in is used once.
+        assertEquals(null, dev.nitrate.mobile.platform.CarBrowsing.take(standIn.mediaId))
+    }
+
     companion object {
         /** Thirty seconds of silent 16-bit mono PCM: long enough that nothing ends while a busy machine runs the test. */
         fun wav(file: File): File {

@@ -20,7 +20,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 
@@ -48,17 +48,27 @@ object BackgroundPlayback {
     }
 }
 
-/** Hosts the media session for background audio: notification, lock screen and headset controls. */
+/**
+ * Hosts the media session for background audio (notification, lock screen and headset controls)
+ * and the car's library: Android Auto browses [CarBrowsing] and plays through the listening player,
+ * even when the app hasn't been opened.
+ */
 @OptIn(UnstableApi::class)
-class PlaybackService : MediaSessionService() {
-    private var session: MediaSession? = null
+class PlaybackService : MediaLibraryService() {
+    private var session: MediaLibraryService.MediaLibrarySession? = null
+    private var playing: Player? = null
+    private val scope = kotlinx.coroutines.MainScope()
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        val player = BackgroundPlayback.player ?: return null
+    private fun listening() = (application as? dev.nitrate.android.AppContainer.Owner)?.container?.listening as? dev.nitrate.android.playback.AndroidListening
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibraryService.MediaLibrarySession? {
+        // The player in the background, else the listening player (a car connecting with nothing playing).
+        val player = BackgroundPlayback.player ?: listening()?.player ?: return null
         val existing = session
-        if (existing != null && existing.player === player) return existing
+        if (existing != null && playing === player) return existing
         existing?.release()
-        return MediaSession.Builder(this, player).build().also { session = it }
+        playing = player
+        return MediaLibraryService.MediaLibrarySession.Builder(this, CarPlayer(player, ::listening), CarBrowsing(this, scope)).build().also { session = it }
     }
 
     override fun onTaskRemoved(rootIntent: android.content.Intent?) {
@@ -70,6 +80,8 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         session?.release()
         session = null
+        playing = null
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         super.onDestroy()
     }
 }

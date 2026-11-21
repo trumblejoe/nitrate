@@ -1971,6 +1971,8 @@ internal fun itemTypeName(kind: ItemKind): String? = when (kind) {
     ItemKind.VIDEO -> "Video"
     ItemKind.MUSIC_VIDEO -> "MusicVideo"
     ItemKind.MUSIC_ALBUM -> "MusicAlbum"
+    ItemKind.AUDIO -> "Audio"
+    ItemKind.MUSIC_ARTIST -> "MusicArtist"
     else -> null
 }
 
