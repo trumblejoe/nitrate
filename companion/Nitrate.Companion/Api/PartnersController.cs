@@ -20,7 +20,10 @@ public record PartnersOut(IReadOnlyList<GroupView> Groups, IReadOnlyList<Incomin
 /// An invite: to someone the caller can see (<paramref name="ToUserId"/>) or an exact user name,
 /// into one of the caller's groups (<paramref name="GroupId"/>) or a new one for the show.
 /// </summary>
-public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, string SeriesName, Guid? GroupId = null);
+public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, string SeriesName, Guid? GroupId = null, GroupSchedule? Schedule = null);
+
+/// <summary>A vote on a group's waiting schedule change.</summary>
+public record VotePost(bool Yes);
 
 /// <summary>An episode watched together with a group.</summary>
 public record TogetherPost(Guid ItemId, Guid GroupId);
@@ -75,7 +78,15 @@ public class PartnersController : ControllerBase
     /// <summary>Invites someone to watch a show together. Always answers "sent".</summary>
     [HttpPost("Partners/Requests")]
     public ActionResult<OutgoingView> Ask([FromBody] PartnerRequestPost body) =>
-        Run(me => _partners.Request(me, body.ToUserId, body.ToName, body.SeriesId, body.SeriesName ?? string.Empty, body.GroupId));
+        Run(me => _partners.Request(me, body.ToUserId, body.ToName, body.SeriesId, body.SeriesName ?? string.Empty, body.GroupId, body.Schedule));
+
+    /// <summary>Asks the group to change its schedule (it takes effect once more than half agree).</summary>
+    [HttpPost("Partners/Groups/{id}/Schedule")]
+    public ActionResult ProposeSchedule([FromRoute] Guid id, [FromBody] GroupSchedule body) => Done(me => _partners.ProposeSchedule(me, id, body));
+
+    /// <summary>Says yes or no to the group's waiting schedule change.</summary>
+    [HttpPost("Partners/Groups/{id}/Schedule/{changeId}/Vote")]
+    public ActionResult VoteSchedule([FromRoute] Guid id, [FromRoute] Guid changeId, [FromBody] VotePost body) => Done(me => _partners.Vote(me, id, changeId, body.Yes));
 
     /// <summary>Says yes to an invite.</summary>
     [HttpPost("Partners/Requests/{id}/Accept")]

@@ -13,6 +13,7 @@ public class PartnerTests
     private static readonly Guid Bear = Guid.NewGuid();
     private static readonly Guid Ep1 = Guid.NewGuid();
     private static readonly Guid Ep2 = Guid.NewGuid();
+    private static readonly Guid Ep3 = Guid.NewGuid();
     private readonly FakeTimeProvider _time = new(DateTimeOffset.Parse("2026-11-15T20:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     private readonly MemoryStorage _storage = new();
     private readonly Directory _directory = new();
@@ -53,15 +54,27 @@ public class PartnerTests
     {
         public HashSet<(Guid User, Guid Item)> Played { get; } = new();
 
+        public Dictionary<(Guid User, Guid Item), DateTimeOffset> At { get; } = new();
+
         public ShowProgress Progress(Guid userId, Guid seriesId)
         {
-            var watched = new[] { Ep1, Ep2 }.Where(e => Played.Contains((userId, e))).ToList();
-            return new ShowProgress(watched, watched.Count == 0 ? null : $"S1 E{watched.Count}", watched.Count < 2 ? new[] { Ep1, Ep2 }[watched.Count] : null);
+            var order = new[] { Ep1, Ep2, Ep3 };
+            var watched = order.Where(e => Played.Contains((userId, e))).ToList();
+            var furthest = watched.LastOrDefault();
+            return new ShowProgress(
+                watched, watched.Count == 0 ? null : $"S1 E{watched.Count}", watched.Count < 3 ? order[watched.Count] : null,
+                order, watched.Count == 0 ? null : At.GetValueOrDefault((userId, furthest)));
         }
 
-        public bool Belongs(Guid titleId, Guid itemId, Guid userId) => titleId == Bear && (itemId == Ep1 || itemId == Ep2);
+        public bool Belongs(Guid titleId, Guid itemId, Guid userId) => titleId == Bear && (itemId == Ep1 || itemId == Ep2 || itemId == Ep3);
 
         public void MarkWatched(Guid userId, Guid itemId) => Played.Add((userId, itemId));
+
+        public void Watched(Guid userId, Guid itemId, DateTimeOffset at)
+        {
+            Played.Add((userId, itemId));
+            At[(userId, itemId)] = at;
+        }
     }
 
     private PartnerHub Hub() => new(_storage, _directory, _watch, _time);
@@ -226,5 +239,108 @@ public class PartnerTests
         Assert.True(again.IsPrivate(Kid));
         Assert.Single(again.Groups(Sam));
         Assert.Single(again.Incoming(Kid));
+    }
+
+    // ---- Schedules ----
+
+    private static GroupSchedule Weekly(bool soft = false) => new() { Cadence = GroupSchedule.Weekly, Day = 4, Hour = 19, TimeZone = "UTC", SoftLock = soft };
+
+    [Fact]
+    public void ReleaseTimes()
+    {
+        // 2026-11-15 is a Sunday.
+        var sunday = DateTimeOffset.Parse("2026-11-15T20:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(DateTimeOffset.Parse("2026-11-19T19:00:00Z", System.Globalization.CultureInfo.InvariantCulture), ScheduleRules.NextRelease(Weekly(), sunday));
+        // Every 2 days counts from the day it was set, at the time chosen.
+        var every2 = new GroupSchedule { Cadence = GroupSchedule.Days2, Hour = 19, TimeZone = "UTC", Since = sunday };
+        Assert.Equal(DateTimeOffset.Parse("2026-11-17T19:00:00Z", System.Globalization.CultureInfo.InvariantCulture), ScheduleRules.NextRelease(every2, sunday));
+        Assert.Equal(DateTimeOffset.Parse("2026-11-17T19:00:00Z", System.Globalization.CultureInfo.InvariantCulture), ScheduleRules.NextRelease(every2, sunday.AddHours(-2).AddDays(1)));
+        // Majority: both of two, two of three.
+        Assert.False(ScheduleRules.Passes(1, 2));
+        Assert.True(ScheduleRules.Passes(2, 2));
+        Assert.True(ScheduleRules.Passes(2, 3));
+        Assert.True(ScheduleRules.Fails(1, 2));
+        Assert.True(ScheduleRules.Fails(2, 3));
+        Assert.False(ScheduleRules.Fails(1, 3));
+    }
+
+    [Fact]
+    public void OneNewPartOpensAtATime()
+    {
+        var since = _time.GetUtcNow();
+        var s = Weekly();
+        s.Since = since;
+        var order = new[] { Ep1, Ep2, Ep3 };
+        // Set after the group last watched: the next one is open straight away, the one after waits.
+        Assert.Equal(new ScheduleLock(Ep3, null), ScheduleRules.Of(s, order, 0, since.AddDays(-3), since));
+        // Someone watched it after: the next waits for Thursday 7pm.
+        var thursday = DateTimeOffset.Parse("2026-11-19T19:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(new ScheduleLock(Ep3, thursday), ScheduleRules.Of(s, order, 1, since.AddHours(1), since.AddHours(2)));
+        // Thursday: it's open.
+        Assert.Equal(new ScheduleLock(null, null), ScheduleRules.Of(s, order, 1, since.AddHours(1), thursday));
+        // Binge locks nothing.
+        Assert.Equal(new ScheduleLock(null, null), ScheduleRules.Of(new GroupSchedule(), order, 0, since, since));
+    }
+
+    [Fact]
+    public void TheInviterChoosesTheScheduleAndAcceptingAgreesToIt()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear", schedule: Weekly());
+        var invite = hub.Incoming(Sam).Single();
+        Assert.Equal(GroupSchedule.Weekly, invite.Schedule?.Cadence);
+        hub.Accept(Sam, invite.Id);
+        _watch.Watched(Joe, Ep1, _time.GetUtcNow().AddHours(1));
+        _time.Advance(TimeSpan.FromHours(2));
+        var g = hub.Groups(Sam).Single();
+        Assert.Equal(GroupSchedule.Weekly, g.Schedule?.Cadence);
+        // Joe watched episode 1 after the group started: episode 2 waits for Thursday (Sam can still watch 1).
+        Assert.Equal(Ep2, g.LockedFromId);
+        Assert.Equal(DayOfWeek.Thursday, g.OpensAt?.DayOfWeek);
+    }
+
+    [Fact]
+    public void ChangesNeedMostOfTheGroup()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear", schedule: Weekly());
+        hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        var gid = hub.Groups(Joe).Single().Id;
+        // In a pair both must agree: Joe asking isn't enough.
+        hub.ProposeSchedule(Joe, gid, new GroupSchedule { Cadence = GroupSchedule.Binge });
+        var waiting = hub.Groups(Sam).Single().Pending!;
+        Assert.Equal("joe", waiting.FromName);
+        Assert.False(waiting.Voted);
+        Assert.Equal(GroupSchedule.Weekly, hub.Groups(Joe).Single().Schedule?.Cadence);
+        // Sam can't ask for something else meanwhile.
+        Assert.Throws<PartnerException>(() => hub.ProposeSchedule(Sam, gid, Weekly(soft: true)));
+        hub.Vote(Sam, gid, waiting.Id, yes: true);
+        Assert.Null(hub.Groups(Joe).Single().Schedule);
+        Assert.Null(hub.Groups(Joe).Single().Pending);
+
+        // A soft lock is a change like any other; a no ends it.
+        hub.ProposeSchedule(Sam, gid, Weekly(soft: true));
+        hub.Vote(Joe, gid, hub.Groups(Joe).Single().Pending!.Id, yes: false);
+        Assert.Null(hub.Groups(Joe).Single().Pending);
+        Assert.Null(hub.Groups(Joe).Single().Schedule);
+
+        // Unanswered, it lapses after a week.
+        hub.ProposeSchedule(Sam, gid, Weekly());
+        _time.Advance(TimeSpan.FromDays(8));
+        Assert.Null(hub.Groups(Joe).Single().Pending);
+    }
+
+    [Fact]
+    public void InThreeTwoIsEnough()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        var gid = hub.Groups(Joe).Single().Id;
+        hub.Request(Joe, Kid, null, Bear, "The Bear", gid);
+        hub.Accept(Kid, hub.Incoming(Kid).Single().Id);
+        hub.ProposeSchedule(Kid, gid, Weekly());
+        hub.Vote(Sam, gid, hub.Groups(Sam).Single().Pending!.Id, yes: true);
+        Assert.Equal(GroupSchedule.Weekly, hub.Groups(Joe).Single().Schedule?.Cadence);
     }
 }

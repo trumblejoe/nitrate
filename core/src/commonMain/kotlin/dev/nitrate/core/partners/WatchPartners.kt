@@ -3,17 +3,94 @@ package dev.nitrate.core.partners
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.pages.DisplayPrefs
-import dev.nitrate.core.plugins.NitratePlugin
+import dev.nitrate.core.plugins.GuardAction
+import dev.nitrate.core.plugins.GuardChoice
+import dev.nitrate.core.plugins.GuardDecision
+import dev.nitrate.core.plugins.PlaybackGuard
+import dev.nitrate.core.plugins.PluginHost
 import dev.nitrate.core.writing.UserRef
 
 /**
  * People who watch one show together and see each other's progress in it; [others] are the
  * members besides the user. A pair is a group of two; one show can have several groups.
  */
-data class WatchGroup(val id: String, val seriesId: String, val seriesName: String, val others: List<UserRef>, val sinceMs: Long) {
+data class WatchGroup(
+    val id: String,
+    val seriesId: String,
+    val seriesName: String,
+    val others: List<UserRef>,
+    val sinceMs: Long,
+    /** How the title is let out (null: all at once). */
+    val schedule: GroupSchedule? = null,
+    /** A change to the schedule waiting for votes. */
+    val pending: ScheduleChange? = null,
+    /** The first locked part of the title (it and everything after it are locked), if any. */
+    val lockedFromId: String? = null,
+    val opensAtMs: Long? = null,
+    /** The day [lockedFromId] opens (0 = Sunday), in the schedule's time zone. */
+    val opensDay: Int? = null,
+) {
     /** "Sam", "Frank, Tommy and Jane". */
     val label get() = WatchPartners.names(others.map { it.name })
+
+    /** Whether [itemId] is locked by the schedule, given the title's parts in [order]. */
+    fun locks(itemId: String, order: List<String>): Boolean {
+        val from = lockedFromId?.let(order::indexOf)?.takeIf { it >= 0 } ?: return false
+        val at = order.indexOf(itemId)
+        return at >= from
+    }
+
+    /** When the first locked part opens: "Thursday 7pm". */
+    val opensLabel: String? get() = schedule?.let { s -> opensDay?.let { "${GroupSchedule.DAYS[it]} ${s.clock}" } }
 }
+
+/**
+ * How a group lets its title out: all at once ([BINGE]), or one new part every 2 days, every 3
+ * days or weekly on [day], at [hour]:[minute] in the server's time zone. Anything someone in the
+ * group has seen always stays open; only what nobody's seen yet is rationed. Locked parts can't
+ * be played in Nitrate, or ([softLock]) only after a warning.
+ */
+data class GroupSchedule(
+    val cadence: String = BINGE,
+    val day: Int = 4,
+    val hour: Int = 19,
+    val minute: Int = 0,
+    val softLock: Boolean = false,
+) {
+    val limits get() = cadence == DAYS2 || cadence == DAYS3 || cadence == WEEKLY
+
+    /** "7pm", "7:30pm". */
+    val clock: String get() = clockOf(hour, minute)
+
+    /** "Binge", "Every 2 days, 7pm", "Thursdays 7pm", with ", ask first" for a soft lock. */
+    val label: String get() = when (cadence) {
+        DAYS2 -> "Every 2 days, $clock"
+        DAYS3 -> "Every 3 days, $clock"
+        WEEKLY -> "${DAYS[day.coerceIn(0, 6)]}s $clock"
+        else -> "Binge"
+    } + if (limits && softLock) ", ask first" else ""
+
+    companion object {
+        const val BINGE = "binge"
+        const val DAYS2 = "days2"
+        const val DAYS3 = "days3"
+        const val WEEKLY = "weekly"
+        val CADENCES = listOf(BINGE to "Binge", DAYS2 to "Every 2 days", DAYS3 to "Every 3 days", WEEKLY to "Weekly")
+        val DAYS = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+        /** The times offered. */
+        val HOURS = listOf(12, 17, 18, 19, 20, 21, 22)
+
+        fun clockOf(hour: Int, minute: Int): String {
+            val h = if (hour % 12 == 0) 12 else hour % 12
+            val m = if (minute == 0) "" else ":" + minute.toString().padStart(2, '0')
+            return "$h$m${if (hour < 12) "am" else "pm"}"
+        }
+    }
+}
+
+/** A member's request to change a group's schedule, waiting for votes ([voted]: the user already answered). */
+data class ScheduleChange(val id: String, val fromName: String, val proposed: GroupSchedule, val yes: List<String>, val no: List<String>, val voted: Boolean, val atMs: Long)
 
 /**
  * An invite to join someone's watch-together group right now ([groupId], a SyncPlay group), with
@@ -47,6 +124,8 @@ data class IncomingRequest(
     val groupId: String?,
     val willSee: List<String>,
     val atMs: Long,
+    /** The group's schedule, which accepting agrees to. */
+    val schedule: GroupSchedule? = null,
 )
 
 /** An invite the user sent: always just "waiting" until accepted or lapsed (nothing says whether the account exists). */
@@ -85,8 +164,13 @@ data class KeepUp(
     }
 }
 
-/** A card's line about a shared show ([short]) and the summary's sentence ([long]); [catchUp]: the user is behind. */
-data class Standing(val short: String, val long: String, val catchUp: Boolean)
+/**
+ * Where the user stands in a shared title: one word for them ([word]: Ahead, Behind, Between,
+ * Level), each partner with their own word ([partners]: "Kevin 2 ahead · Jane level · Kim 3
+ * behind"), both together on one line ([short]), the summary's sentence ([long]); [catchUp]:
+ * someone is ahead of the user. Words rather than signs, which are too small to read.
+ */
+data class Standing(val short: String, val long: String, val catchUp: Boolean, val word: String = short, val partners: String = "")
 
 /** Whether the user is private (never listed, not findable by name), and whether an admin made it so. */
 data class Privacy(val isPrivate: Boolean, val byAdmin: Boolean)
@@ -132,57 +216,85 @@ object WatchPartners {
     fun nextTogether(episodes: List<MediaItem>, progress: List<PartnerProgress>): MediaItem? =
         countable(episodes).firstOrNull { e -> !e.user.played || progress.any { e.id !in it.watched } }
 
+    /** Partners shown on a card before "and N more". */
+    const val SHOWN = 3
+
     /**
-     * Where the user stands with their group(s) for [item] (part of the title, or the title itself): someone ahead
-     * (catch up), an episode nobody's seen (watch it together), the user ahead, or in step.
+     * Where the user stands with their group(s) for [item]: their word (Ahead: nobody past them;
+     * Behind: someone past them and nobody behind; Between: both; Level: all at the same place)
+     * and each partner's, by how far through the title each has got. A film on its own reads
+     * "seen" / "not yet".
      */
     fun standing(item: MediaItem, k: KeepUp): Standing? {
         val members = k.progress.distinctBy { it.userId }
         if (members.isEmpty()) return null
-        val inShow = k.order.toSet()
-        fun ahead(p: PartnerProgress) = (p.watched intersect inShow).count { it !in k.mine }
-        fun behindBy(p: PartnerProgress) = k.mine.count { it in inShow && it !in p.watched }
-        val ahead = members.map { it to ahead(it) }.filter { it.second > 0 }.sortedByDescending { it.second }
-        if (ahead.isNotEmpty()) {
-            val (first, n) = ahead.first()
-            val who = names(ahead.map { it.first.userName })
-            if (k.single) return Standing("$who ${if (ahead.size == 1) "has" else "have"} seen it", "$who ${if (ahead.size == 1) "has" else "have"} seen it; you haven't yet", catchUp = true)
-            val short = if (ahead.size == 1) "${first.userName} is $n ahead" else "$who are ahead"
-            val detail = ahead.joinToString(", ") { (p, c) -> "${p.userName} by $c" }
-            return Standing(short, "Catch up with your group: ${count(n, k.noun)} to go ($detail)", catchUp = true)
+        val index = k.order.withIndex().associate { it.value to it.index + 1 }
+        fun reach(watched: Set<String>) = watched.maxOfOrNull { index[it] ?: 0 } ?: 0
+        val me = reach(k.mine)
+        val deltas = members.map { it to reach(it.watched) - me }.sortedByDescending { it.second }
+        val ahead = deltas.any { it.second > 0 }
+        val behind = deltas.any { it.second < 0 }
+        val word = when {
+            ahead && behind -> "Between"
+            ahead -> "Behind"
+            behind -> "Ahead"
+            else -> "Level"
         }
-        if (item.id in inShow && item.id !in k.mine) {
-            val waiting = members.filter { item.id !in it.watched }
-            if (waiting.isNotEmpty()) {
-                val who = names(waiting.map { it.userName })
-                return Standing("Watch with $who", "$who ${if (waiting.size == 1) "hasn't" else "haven't"} seen this yet either: watch it together", catchUp = false)
+        fun says(p: PartnerProgress, d: Int) = when {
+            k.single -> "${p.userName} ${if (k.order.first() in p.watched) "seen" else "not yet"}"
+            d > 0 -> "${p.userName} $d ahead"
+            d < 0 -> "${p.userName} ${-d} behind"
+            else -> "${p.userName} level"
+        }
+        val shown = deltas.take(SHOWN).map { (p, d) -> says(p, d) } + listOfNotNull((deltas.size - SHOWN).takeIf { it > 0 }?.let { "and $it more" })
+        val partners = shown.joinToString(" · ")
+        val myWord = if (k.single) (if (k.order.first() in k.mine) "Seen" else if (ahead) "Not seen" else "Not yet") else word
+        val long = deltas.joinToString("; ") { (p, d) ->
+            val where = p.last?.let { "on $it" } ?: "not started"
+            when {
+                k.single -> says(p, d)
+                d > 0 -> "${p.userName} is $where, ${count(d, k.noun)} ahead of you"
+                d < 0 -> "${p.userName} is $where, ${count(-d, k.noun)} behind you"
+                else -> "${p.userName} is level with you"
             }
         }
-        val behind = members.map { it to behindBy(it) }.filter { it.second > 0 }
-        if (behind.isNotEmpty()) {
-            val who = names(behind.map { it.first.userName })
-            if (k.single) return Standing("$who ${if (behind.size == 1) "hasn't" else "haven't"} seen it", "You've seen it; $who ${if (behind.size == 1) "hasn't" else "haven't"} yet", catchUp = false)
-            // How far ahead, so nobody binges further without seeing it.
-            val short = if (behind.size == 1) "You're ${count(behind[0].second, k.noun)} ahead of $who" else "You're ahead of $who"
-            val where = behind.joinToString("; ") { (p, c) -> "${p.userName} is ${p.last?.let { "on $it" } ?: "not started"}, ${count(c, k.noun)} behind you" }
-            return Standing(short, "You're ahead. $where", catchUp = false)
-        }
-        val who = names(members.map { it.userName })
-        return Standing("In step with $who", "You and $who are at the same place", catchUp = false)
+        return Standing("$myWord · $partners", long, catchUp = ahead, word = myWord, partners = partners)
     }
 }
 
 /**
- * The watch-partners plugin. It never stands between the user and Play: shows watched with
- * others just play, and Home's "Watching together" row ([TogetherRow]) and the cards' standing
- * lines keep everyone in step. Its switch turns the whole feature on or off on this device.
+ * The watch-partners plugin. It doesn't stand between the user and Play, except for a group's
+ * schedule: a part of a title the group hasn't let out yet can't be played in Nitrate (a hard
+ * lock), or only after a warning (a soft lock). Home's "Watching together" row ([TogetherRow])
+ * and the cards' lines keep everyone in step. Its switch turns the whole feature on or off.
  */
-class WatchPartnersPlugin : NitratePlugin {
+class WatchPartnersPlugin : PlaybackGuard {
     override val id = ID
     override val name = "Watch partners"
     override val description = "Keeps what you watch with others in step (shows, films, playlists and collections): groups who see each other's progress, " +
-        "and a Home row of whose turn it is. Needs the Nitrate Companion server plugin."
+        "schedules that let a title out one part at a time, and a Home row of where everyone is. Needs the Nitrate Companion server plugin."
     override val enabledByDefault = true
+
+    override suspend fun beforePlay(item: MediaItem, host: PluginHost): GuardDecision {
+        if (!item.isPlayable) return GuardDecision.Allow
+        if (host.server.companion()?.features?.contains(WatchPartners.FEATURE) != true) return GuardDecision.Allow
+        val scheduled = runCatching { host.server.partners() }.getOrNull()?.groups.orEmpty().filter { it.schedule?.limits == true && it.lockedFromId != null }
+        for (g in scheduled) {
+            val order = runCatching { WatchPartners.countable(host.server.titleItems(g.seriesId)).map { it.id } }.getOrNull() ?: continue
+            if (!g.locks(item.id, order)) continue
+            val s = g.schedule ?: continue
+            val opens = g.opensLabel ?: s.label
+            val what = item.episodeLabel ?: item.name
+            val message = "$what isn't out yet for your group with ${g.label}: ${g.seriesName} follows the group's schedule (${s.label}). It opens $opens."
+            return GuardDecision.Ask(
+                title = "Opens $opens",
+                message = message,
+                choices = if (s.softLock) listOf(GuardChoice("Watch anyway", GuardAction.PlayAnyway), GuardChoice("Not now", GuardAction.Cancel))
+                else listOf(GuardChoice("OK", GuardAction.Cancel)),
+            )
+        }
+        return GuardDecision.Allow
+    }
 
     companion object {
         const val ID = "watch-partners"

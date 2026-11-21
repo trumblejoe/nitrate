@@ -24,14 +24,23 @@ public class PartnerException : Exception
 /// <summary>Someone in a group, as another member sees them.</summary>
 public record MemberView(Guid Id, string Name);
 
-/// <summary>A watch group, as one member sees it: the others in it.</summary>
-public record GroupView(Guid Id, Guid SeriesId, string SeriesName, IReadOnlyList<MemberView> Others, DateTimeOffset Since);
+/// <summary>A change to a group's schedule waiting for votes, as one member sees it.</summary>
+public record ScheduleChangeView(Guid Id, string FromName, GroupSchedule Proposed, IReadOnlyList<string> Yes, IReadOnlyList<string> No, bool Voted, DateTimeOffset At);
+
+/// <summary>
+/// A watch group, as one member sees it: the others in it, its schedule, a change waiting for
+/// votes, and what's locked now (<paramref name="LockedFromId"/> and everything after it in the
+/// title; it opens at <paramref name="OpensAt"/>, or once someone watches the part before it).
+/// </summary>
+public record GroupView(
+    Guid Id, Guid SeriesId, string SeriesName, IReadOnlyList<MemberView> Others, DateTimeOffset Since,
+    GroupSchedule? Schedule = null, ScheduleChangeView? Pending = null, Guid? LockedFromId = null, DateTimeOffset? OpensAt = null, int? OpensDay = null);
 
 /// <summary>
 /// An invite someone sent the caller. <paramref name="WillSee"/> is everyone who learns the
 /// caller's name and progress by accepting (the inviter and the group's other members).
 /// </summary>
-public record IncomingView(Guid Id, Guid FromId, string FromName, Guid SeriesId, string SeriesName, Guid? GroupId, IReadOnlyList<string> WillSee, DateTimeOffset At);
+public record IncomingView(Guid Id, Guid FromId, string FromName, Guid SeriesId, string SeriesName, Guid? GroupId, IReadOnlyList<string> WillSee, DateTimeOffset At, GroupSchedule? Schedule = null);
 
 /// <summary>An invite the caller sent: always shown as waiting until it's accepted or lapses.</summary>
 public record OutgoingView(Guid Id, string To, Guid SeriesId, string SeriesName, Guid? GroupId, DateTimeOffset At);
@@ -117,7 +126,7 @@ public class PartnerHub
     /// can see, or already shares a group with) or by exact name (anyone, private too). Always
     /// "sent": nothing tells the caller whether the account exists.
     /// </summary>
-    public OutgoingView Request(Guid from, Guid? toId, string? toName, Guid seriesId, string seriesName, Guid? groupId = null)
+    public OutgoingView Request(Guid from, Guid? toId, string? toName, Guid seriesId, string seriesName, Guid? groupId = null, GroupSchedule? schedule = null)
     {
         lock (_lock)
         {
@@ -177,6 +186,8 @@ public class PartnerHub
                 {
                     Id = Guid.NewGuid(), From = from, To = to, ToLabel = label, GroupId = gidOrEmpty,
                     SeriesId = seriesId, SeriesName = seriesName.Trim(), At = _time.GetUtcNow(),
+                    // A new group's schedule is the inviter's choice; joining a group takes the group's.
+                    Schedule = group is null && schedule is { Limits: true } ? Valid(schedule) : null,
                 };
                 _state.Requests.Add(existing);
                 _storage.Save(_state);
@@ -198,7 +209,7 @@ public class PartnerHub
                     var group = r.GroupId == Guid.Empty ? null : _state.Groups.FirstOrDefault(g => g.Id == r.GroupId);
                     var willSee = (group?.Members ?? new List<Guid> { r.From }).Append(r.From).Distinct()
                         .Where(id => id != user).Select(id => _directory.NameOf(id)).OfType<string>().ToList();
-                    return new IncomingView(r.Id, r.From, _directory.NameOf(r.From) ?? "Someone", r.SeriesId, r.SeriesName, group?.Id, willSee, r.At);
+                    return new IncomingView(r.Id, r.From, _directory.NameOf(r.From) ?? "Someone", r.SeriesId, r.SeriesName, group?.Id, willSee, r.At, group?.Schedule ?? r.Schedule);
                 })
                 .OrderBy(r => r.At).ToList();
         }
@@ -226,7 +237,13 @@ public class PartnerHub
             WatchGroup group;
             if (r.GroupId == Guid.Empty)
             {
-                group = new WatchGroup { Id = Guid.NewGuid(), SeriesId = r.SeriesId, SeriesName = r.SeriesName, Members = new() { r.From, user }, Since = _time.GetUtcNow() };
+                var schedule = r.Schedule?.Copy();
+                if (schedule is not null)
+                {
+                    schedule.Since = _time.GetUtcNow();
+                }
+
+                group = new WatchGroup { Id = Guid.NewGuid(), SeriesId = r.SeriesId, SeriesName = r.SeriesName, Members = new() { r.From, user }, Since = _time.GetUtcNow(), Schedule = schedule };
                 _state.Groups.Add(group);
             }
             else
@@ -241,7 +258,7 @@ public class PartnerHub
             }
 
             _storage.Save(_state);
-            return View(group, user);
+            return View(group, user, Array.Empty<ShowProgress>());
         }
     }
 
@@ -271,14 +288,113 @@ public class PartnerHub
         }
     }
 
-    /// <summary>The caller's groups.</summary>
+    /// <summary>The caller's groups, each with what its schedule has locked now.</summary>
     public IReadOnlyList<GroupView> Groups(Guid user)
+    {
+        List<WatchGroup> mine;
+        lock (_lock)
+        {
+            PruneChanges();
+            mine = _state.Groups.Where(g => g.Members.Contains(user)).ToList();
+        }
+
+        // Where everyone is, for groups that ration their title (outside the lock: it reads the library).
+        return mine.Select(g => View(g, user, g.Schedule is { Limits: true } ? g.Members.Select(m => _watch.Progress(m, g.SeriesId)).ToList() : Array.Empty<ShowProgress>()))
+            .OrderBy(g => g.SeriesName, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Asks the group to change its schedule ([schedule] Binge: let it all out). The asker counts
+    /// as a yes; it takes effect once more than half the group agrees (both, in a pair), and
+    /// lapses after <see cref="ScheduleRules.ChangeLifetime"/>. A new ask replaces the caller's
+    /// own earlier one; someone else's waiting change must be settled first.
+    /// </summary>
+    public void ProposeSchedule(Guid user, Guid groupId, GroupSchedule schedule)
     {
         lock (_lock)
         {
-            return _state.Groups.Where(g => g.Members.Contains(user)).Select(g => View(g, user))
-                .OrderBy(g => g.SeriesName, StringComparer.OrdinalIgnoreCase).ToList();
+            PruneChanges();
+            var g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user))
+                ?? throw new PartnerException(PartnerError.NotFound, "No such group.");
+            if (g.Pending is { } p && p.From != user)
+            {
+                throw new PartnerException(PartnerError.Invalid, "Another change is waiting for votes: answer that one first.");
+            }
+
+            g.Pending = new ScheduleChange { Id = Guid.NewGuid(), From = user, Proposed = Valid(schedule), Yes = new() { user }, At = _time.GetUtcNow() };
+            Settle(g);
+            _storage.Save(_state);
         }
+    }
+
+    /// <summary>A member's yes or no to the group's waiting change.</summary>
+    public void Vote(Guid user, Guid groupId, Guid changeId, bool yes)
+    {
+        lock (_lock)
+        {
+            PruneChanges();
+            var g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user))
+                ?? throw new PartnerException(PartnerError.NotFound, "No such group.");
+            var p = g.Pending is { } c && c.Id == changeId ? c : throw new PartnerException(PartnerError.NotFound, "That change has been settled or has lapsed.");
+            p.Yes.Remove(user);
+            p.No.Remove(user);
+            (yes ? p.Yes : p.No).Add(user);
+            Settle(g);
+            _storage.Save(_state);
+        }
+    }
+
+    /// <summary>Applies the waiting change once it carries; drops it once it can't.</summary>
+    private void Settle(WatchGroup g)
+    {
+        if (g.Pending is not { } p)
+        {
+            return;
+        }
+
+        var members = g.Members.Count;
+        if (ScheduleRules.Passes(p.Yes.Count(g.Members.Contains), members))
+        {
+            var s = p.Proposed.Copy();
+            s.Since = _time.GetUtcNow();
+            g.Schedule = s.Cadence == GroupSchedule.Binge && !s.SoftLock ? null : s;
+            g.Pending = null;
+        }
+        else if (ScheduleRules.Fails(p.No.Count(g.Members.Contains), members))
+        {
+            g.Pending = null;
+        }
+    }
+
+    private void PruneChanges()
+    {
+        var cutoff = _time.GetUtcNow() - ScheduleRules.ChangeLifetime;
+        var changed = false;
+        foreach (var g in _state.Groups.Where(g => g.Pending is { } p && p.At < cutoff))
+        {
+            g.Pending = null;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            _storage.Save(_state);
+        }
+    }
+
+    /// <summary>A schedule as sent, made sensible: a known cadence, a real time, a known time zone.</summary>
+    private static GroupSchedule Valid(GroupSchedule s)
+    {
+        var v = s.Copy();
+        if (v.Cadence is not (GroupSchedule.Binge or GroupSchedule.Days2 or GroupSchedule.Days3 or GroupSchedule.Weekly))
+        {
+            throw new PartnerException(PartnerError.Invalid, "Choose binge, every 2 days, every 3 days or weekly.");
+        }
+
+        v.Hour = Math.Clamp(v.Hour, 0, 23);
+        v.Minute = Math.Clamp(v.Minute, 0, 59);
+        v.TimeZone = string.IsNullOrWhiteSpace(v.TimeZone) ? string.Empty : ScheduleRules.Zone(v).Id;
+        return v;
     }
 
     /// <summary>Leaves a group; a group left with one person ends.</summary>
@@ -360,10 +476,29 @@ public class PartnerHub
 
     private bool SharesGroup(Guid a, Guid b) => _state.Groups.Any(g => g.Members.Contains(a) && g.Members.Contains(b));
 
-    private GroupView View(WatchGroup g, Guid user) => new(
-        g.Id, g.SeriesId, g.SeriesName,
-        g.Members.Where(m => m != user).Select(m => new MemberView(m, _directory.NameOf(m) ?? "Former account")).ToList(),
-        g.Since);
+    private GroupView View(WatchGroup g, Guid user, IReadOnlyList<ShowProgress> everyone)
+    {
+        string Name(Guid m) => _directory.NameOf(m) ?? "Former account";
+        var pending = g.Pending is { } p
+            ? new ScheduleChangeView(p.Id, Name(p.From), p.Proposed, p.Yes.Select(Name).ToList(), p.No.Select(Name).ToList(), p.Yes.Contains(user) || p.No.Contains(user), p.At)
+            : null;
+        var lockNow = new ScheduleLock(null, null);
+        var order = everyone.Select(x => x.Order).FirstOrDefault(o => o is { Count: > 0 });
+        if (g.Schedule is { Limits: true } && order is not null)
+        {
+            // The group's frontier: the furthest part anyone has seen, and when it was first watched.
+            var index = order.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+            var reach = everyone.Select(x => (Furthest: x.Watched.Where(index.ContainsKey).Select(id => index[id]).DefaultIfEmpty(-1).Max(), x.FurthestAt)).ToList();
+            var frontier = reach.Max(r => r.Furthest);
+            var at = reach.Where(r => r.Furthest == frontier && frontier >= 0).Select(r => r.FurthestAt).Where(t => t != null).DefaultIfEmpty(null).Min();
+            lockNow = ScheduleRules.Of(g.Schedule, order, frontier, at, _time.GetUtcNow());
+        }
+
+        return new GroupView(
+            g.Id, g.SeriesId, g.SeriesName,
+            g.Members.Where(m => m != user).Select(m => new MemberView(m, Name(m))).ToList(),
+            g.Since, g.Schedule, pending, lockNow.LockedFromId, lockNow.OpensAt, g.Schedule is { } sc ? lockNow.OpensDay(sc) : null);
+    }
 
     private static OutgoingView Outgoing(PartnerRequest r) => new(r.Id, r.ToLabel, r.SeriesId, r.SeriesName, r.GroupId == Guid.Empty ? null : r.GroupId, r.At);
 

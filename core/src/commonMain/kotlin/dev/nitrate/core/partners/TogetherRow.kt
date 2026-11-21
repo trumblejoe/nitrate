@@ -51,6 +51,16 @@ sealed interface TogetherChoice {
     /** Leave group [group] (asked to confirm first). */
     data class Leave(val group: WatchGroup) : TogetherChoice { override val label = "Leave the group with ${group.label}" }
 
+    /** Ask the group to change its schedule (opens the schedule picker; takes effect once most agree). */
+    data class ChangeSchedule(val group: WatchGroup) : TogetherChoice {
+        override val label = "Change the schedule (${group.schedule?.label ?: "Binge"})"
+    }
+
+    /** A yes or no to the group's waiting schedule change. */
+    data class Vote(val groupId: String, val changeId: String, val yes: Boolean, val proposed: GroupSchedule, val from: String) : TogetherChoice {
+        override val label = if (yes) "Agree to $from's change: ${proposed.label}" else "Keep the schedule as it is"
+    }
+
     /** Pick a title and people to start watching with ([TogetherRow.start]'s card). */
     data object Start : TogetherChoice { override val label = "Watch something with someone" }
 }
@@ -160,10 +170,20 @@ object TogetherRow {
                 }
             }
         }
-        if (canWatchNow && item.isPlayable) groups.forEach { g ->
+        // Changes to a group's schedule waiting for the user's vote come first.
+        groups.forEach { g ->
+            val p = g.pending ?: return@forEach
+            if (!p.voted) {
+                out.add(0, TogetherChoice.Vote(g.id, p.id, yes = false, proposed = p.proposed, from = p.fromName))
+                out.add(0, TogetherChoice.Vote(g.id, p.id, yes = true, proposed = p.proposed, from = p.fromName))
+            }
+        }
+        val hardLocked = lockOf(item, info, standings)?.schedule?.softLock == false
+        if (canWatchNow && item.isPlayable && !hardLocked) groups.forEach { g ->
             out += TogetherChoice.WatchNow(item, g.id, g.others.map { it.id }, g.label)
         }
         groups.forEach { g -> out += TogetherChoice.Invite(g.id, g.label) }
+        groups.forEach { g -> if (g.pending == null) out += TogetherChoice.ChangeSchedule(g) }
         if (isShow) out += TogetherChoice.OwnSpoilers(series, on = series !in ownSpoilers)
         out += TogetherChoice.OpenShow(series, if (isShow) "Open the show" else "Open it")
         groups.forEach { g -> out += TogetherChoice.Leave(g) }
@@ -175,10 +195,31 @@ object TogetherRow {
      * user stands in the shared show ([WatchPartners.standing]).
      */
     fun line(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): Standing? {
-        if (isStart(item)) return Standing("Pick a show and people", "Watch a show with someone: pick the show, then who to ask", catchUp = false)
-        inviteFor(item, info)?.let { r -> return Standing("${r.fromName} invites you", "${r.fromName} asked you to watch this with them", catchUp = false) }
-        val k = standings[titleOf(item, standings) ?: return null] ?: return null
-        return WatchPartners.standing(item, k)
+        if (isStart(item)) return Standing("Start · Pick what and who", "Watch something with someone: pick what, then who to ask", catchUp = false, word = "Start", partners = "Pick what and who")
+        inviteFor(item, info)?.let { r ->
+            val on = r.schedule?.takeIf { it.limits }?.let { " on a schedule: ${it.label}" }.orEmpty()
+            return Standing("Invited · by ${r.fromName}", "${r.fromName} asked you to watch this with them$on", catchUp = false, word = "Invited", partners = "by ${r.fromName}")
+        }
+        val title = titleOf(item, standings) ?: return null
+        val k = standings[title] ?: return null
+        val st = WatchPartners.standing(item, k) ?: return null
+        // Locked by the group's schedule: when it opens, in place of the user's word.
+        lockOf(item, info, standings)?.let { g ->
+            val opens = g.opensLabel ?: g.schedule?.label ?: "Later"
+            return Standing("$opens · ${st.partners}", "Opens $opens: the group's schedule is ${g.schedule?.label}. ${st.long}", catchUp = false, word = opens, partners = st.partners)
+        }
+        g@ for (g in info?.on(title).orEmpty()) {
+            val p = g.pending ?: continue@g
+            if (!p.voted) return st.copy(long = "${p.fromName} asks to change the schedule to ${p.proposed.label}. ${st.long}")
+        }
+        return st
+    }
+
+    /** The group whose schedule locks [item] (it's past what the group has let out), if any. */
+    fun lockOf(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): WatchGroup? {
+        val title = titleOf(item, standings) ?: return null
+        val order = standings[title]?.order ?: return null
+        return info?.on(title).orEmpty().firstOrNull { it.schedule?.limits == true && it.locks(item.id, order) }
     }
 
     /** What kind of title it is, for the picker ("Show", "Film"...). */

@@ -23,11 +23,17 @@ import kotlin.time.Instant
 @Serializable internal data class PrivacyDto(val private: Boolean = false, val byAdmin: Boolean = false)
 @Serializable internal data class PrivacyPutDto(val private: Boolean)
 @Serializable internal data class PeopleDto(val id: String, val name: String = "")
-@Serializable internal data class GroupDto(val id: String, val seriesId: String, val seriesName: String = "", val others: List<PeopleDto> = emptyList(), val since: String? = null)
-@Serializable internal data class IncomingDto(val id: String, val fromId: String, val fromName: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val willSee: List<String> = emptyList(), val at: String? = null)
+@Serializable internal data class ScheduleDto(val cadence: String = "binge", val day: Int = 4, val hour: Int = 19, val minute: Int = 0, val softLock: Boolean = false, val timeZone: String = "")
+@Serializable internal data class ChangeDto(val id: String, val fromName: String = "", val proposed: ScheduleDto = ScheduleDto(), val yes: List<String> = emptyList(), val no: List<String> = emptyList(), val voted: Boolean = false, val at: String? = null)
+@Serializable internal data class GroupDto(
+    val id: String, val seriesId: String, val seriesName: String = "", val others: List<PeopleDto> = emptyList(), val since: String? = null,
+    val schedule: ScheduleDto? = null, val pending: ChangeDto? = null, val lockedFromId: String? = null, val opensAt: String? = null, val opensDay: Int? = null,
+)
+@Serializable internal data class IncomingDto(val id: String, val fromId: String, val fromName: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val willSee: List<String> = emptyList(), val at: String? = null, val schedule: ScheduleDto? = null)
+@Serializable internal data class VoteDto(val yes: Boolean)
 @Serializable internal data class OutgoingDto(val id: String, val to: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val at: String? = null)
 @Serializable internal data class PartnersDto(val groups: List<GroupDto> = emptyList(), val incoming: List<IncomingDto> = emptyList(), val outgoing: List<OutgoingDto> = emptyList())
-@Serializable internal data class AskDto(val toUserId: String?, val toName: String?, val seriesId: String, val seriesName: String, val groupId: String?)
+@Serializable internal data class AskDto(val toUserId: String?, val toName: String?, val seriesId: String, val seriesName: String, val groupId: String?, val schedule: ScheduleDto? = null)
 @Serializable internal data class ProgressDto(val groupId: String, val userId: String, val userName: String = "", val watched: List<String> = emptyList(), val last: String? = null, val nextId: String? = null)
 @Serializable internal data class TogetherDto(val itemId: String, val groupId: String)
 @Serializable internal data class TogetherOutDto(val markedFor: List<String> = emptyList())
@@ -48,14 +54,24 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
     suspend fun list(): PartnersInfo = call { client.get("Nitrate", "Partners") }.decode<PartnersDto>().let { d ->
         PartnersInfo(
             d.groups.map { it.toModel() },
-            d.incoming.map { IncomingRequest(normalizeId(it.id), normalizeId(it.fromId), it.fromName, normalizeId(it.seriesId), it.seriesName, it.groupId?.let(::normalizeId), it.willSee, ms(it.at)) },
+            d.incoming.map { IncomingRequest(normalizeId(it.id), normalizeId(it.fromId), it.fromName, normalizeId(it.seriesId), it.seriesName, it.groupId?.let(::normalizeId), it.willSee, ms(it.at), it.schedule?.toModel()) },
             d.outgoing.map { it.toModel() },
         )
     }
 
-    suspend fun ask(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?): OutgoingRequest = call {
-        client.http.post(client.url("Nitrate", "Partners", "Requests")) { json(AskDto(toUserId, toName?.trim(), seriesId, seriesName, groupId)) }
+    suspend fun ask(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule? = null): OutgoingRequest = call {
+        client.http.post(client.url("Nitrate", "Partners", "Requests")) { json(AskDto(toUserId, toName?.trim(), seriesId, seriesName, groupId, schedule?.toDto())) }
     }.decode<OutgoingDto>().toModel()
+
+    /** Asks the group to change its schedule (it takes effect once more than half agree). */
+    suspend fun proposeSchedule(groupId: String, schedule: dev.nitrate.core.partners.GroupSchedule) {
+        call { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Schedule")) { json(schedule.toDto()) } }
+    }
+
+    /** Says yes or no to the group's waiting schedule change. */
+    suspend fun voteSchedule(groupId: String, changeId: String, yes: Boolean) {
+        call { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Schedule", changeId, "Vote")) { json(VoteDto(yes)) } }
+    }
 
     suspend fun accept(id: String): WatchGroup = call { client.http.post(client.url("Nitrate", "Partners", "Requests", id, "Accept")) { with(client) { auth() } } }.decode<GroupDto>().toModel()
 
@@ -117,7 +133,16 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
 
     private fun ms(iso: String?) = iso?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() } ?: 0L
 
-    private fun GroupDto.toModel() = WatchGroup(normalizeId(id), normalizeId(seriesId), seriesName, others.map { UserRef(normalizeId(it.id), it.name) }, ms(since))
+    private fun GroupDto.toModel() = WatchGroup(
+        normalizeId(id), normalizeId(seriesId), seriesName, others.map { UserRef(normalizeId(it.id), it.name) }, ms(since),
+        schedule?.toModel(),
+        pending?.let { dev.nitrate.core.partners.ScheduleChange(it.id, it.fromName, it.proposed.toModel(), it.yes, it.no, it.voted, ms(it.at)) },
+        lockedFromId?.let(::normalizeId), opensAt?.let(::ms), opensDay,
+    )
+
+    private fun ScheduleDto.toModel() = dev.nitrate.core.partners.GroupSchedule(cadence, day, hour, minute, softLock)
+
+    private fun dev.nitrate.core.partners.GroupSchedule.toDto() = ScheduleDto(cadence, day, hour, minute, softLock)
 
     private fun OutgoingDto.toModel() = OutgoingRequest(normalizeId(id), to, normalizeId(seriesId), seriesName, groupId?.let(::normalizeId), ms(at))
 }

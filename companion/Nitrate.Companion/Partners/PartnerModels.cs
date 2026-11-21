@@ -23,6 +23,12 @@ public class WatchGroup
 
     /// <summary>Gets or sets since when.</summary>
     public DateTimeOffset Since { get; set; }
+
+    /// <summary>Gets or sets how the title is let out (null: all at once).</summary>
+    public GroupSchedule? Schedule { get; set; }
+
+    /// <summary>Gets or sets a change to the schedule waiting for the others' votes.</summary>
+    public ScheduleChange? Pending { get; set; }
 }
 
 /// <summary>A request to watch a show together, waiting for the other person.</summary>
@@ -51,6 +57,9 @@ public class PartnerRequest
 
     /// <summary>Gets or sets when it was asked.</summary>
     public DateTimeOffset At { get; set; }
+
+    /// <summary>Gets or sets the schedule a new group starts with (accepting means agreeing to it).</summary>
+    public GroupSchedule? Schedule { get; set; }
 
     /// <summary>Gets or sets a value indicating whether the other person said no (the asker still sees it waiting until it lapses).</summary>
     public bool Declined { get; set; }
@@ -135,7 +144,9 @@ public interface IPartnerDirectory
 /// <param name="Watched">What of it they've watched (episodes, films...).</param>
 /// <param name="Last">The furthest they've got ("S2 E4", or a film's name), if anywhere.</param>
 /// <param name="NextId">What comes after it (their next up), if anything.</param>
-public record ShowProgress(IReadOnlyList<Guid> Watched, string? Last, Guid? NextId);
+/// <param name="Order">The title's parts in watching order (empty when not known).</param>
+/// <param name="FurthestAt">When they watched the furthest part they've seen.</param>
+public record ShowProgress(IReadOnlyList<Guid> Watched, string? Last, Guid? NextId, IReadOnlyList<Guid>? Order = null, DateTimeOffset? FurthestAt = null);
 
 /// <summary>People's watched state, as partners need it.</summary>
 public interface IWatchState

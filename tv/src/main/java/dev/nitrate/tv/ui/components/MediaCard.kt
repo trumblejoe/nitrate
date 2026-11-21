@@ -117,17 +117,23 @@ fun MediaCard(
                         )
                     }
                 }
-                // A show watched with a group: where the user stands, at a glance.
+                // Watched with a group: the user's word in a pill (amber when someone's ahead), and each
+                // partner's word under it, big enough to read across the room.
                 groupStanding(item)?.let { st ->
-                    Text(
-                        "👥 ${st.short}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (st.catchUp) Color.Black else Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 10.dp, end = 6.dp)
-                            .background(if (st.catchUp) Color(0xFFFFC94D) else Color(0xCC000000), MaterialTheme.shapes.small).padding(horizontal = 6.dp, vertical = 1.dp),
-                    )
+                    androidx.compose.foundation.layout.Column(
+                        Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 10.dp, end = 6.dp)
+                            .background(Color(0xCC000000), MaterialTheme.shapes.small).padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            st.word,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = if (st.catchUp) Color.Black else Color.White,
+                            maxLines = 1,
+                            modifier = Modifier.background(if (st.catchUp) Color(0xFFFFC94D) else Color.Transparent, MaterialTheme.shapes.small).padding(horizontal = 4.dp),
+                        )
+                        if (st.partners.isNotEmpty()) Text(st.partners, style = MaterialTheme.typography.labelMedium, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 if (item.user.played && prefs.watchedMarks) {
                     Text(

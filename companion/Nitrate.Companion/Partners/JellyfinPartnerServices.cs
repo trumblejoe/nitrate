@@ -67,7 +67,10 @@ public class JellyfinWatchState : IWatchState
         var watched = items.Where(e => _userData.GetUserData(user, e)?.Played == true).ToList();
         var last = watched.LastOrDefault();
         var next = last is null ? items.FirstOrDefault() : items.SkipWhile(e => e.Id != last.Id).Skip(1).FirstOrDefault(e => !watched.Contains(e));
-        return new ShowProgress(watched.Select(e => e.Id).ToList(), last is null ? null : Label(last), next?.Id);
+        var at = last is null ? null : _userData.GetUserData(user, last)?.LastPlayedDate;
+        return new ShowProgress(
+            watched.Select(e => e.Id).ToList(), last is null ? null : Label(last), next?.Id,
+            items.Select(i => i.Id).ToList(), at is { } d ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Utc)) : null);
     }
 
     /// <inheritdoc />

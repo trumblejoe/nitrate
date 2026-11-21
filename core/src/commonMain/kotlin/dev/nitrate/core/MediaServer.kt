@@ -434,7 +434,17 @@ interface MediaServer {
      * Invites someone to watch a show together: a listed person by id, or anyone by exact user
      * name; into one of the user's groups ([groupId]) or a new one for the show. Always "sent".
      */
-    suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String? = null): dev.nitrate.core.partners.OutgoingRequest = unsupported()
+    suspend fun askPartner(
+        toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String? = null,
+        /** A new group's schedule (accepting agrees to it); ignored when inviting into a group. */
+        schedule: dev.nitrate.core.partners.GroupSchedule? = null,
+    ): dev.nitrate.core.partners.OutgoingRequest = unsupported()
+
+    /** Asks the group to change its schedule; it takes effect once more than half the group agrees (both, in a pair). */
+    suspend fun proposeSchedule(groupId: String, schedule: dev.nitrate.core.partners.GroupSchedule): Unit = unsupported()
+
+    /** A yes or no to the group's waiting schedule change. */
+    suspend fun voteSchedule(groupId: String, changeId: String, yes: Boolean): Unit = unsupported()
 
     suspend fun acceptPartner(requestId: String): dev.nitrate.core.partners.WatchGroup = unsupported()
     suspend fun declinePartner(requestId: String): Unit = unsupported()

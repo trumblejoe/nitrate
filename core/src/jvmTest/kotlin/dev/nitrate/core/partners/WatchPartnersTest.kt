@@ -49,26 +49,27 @@ class WatchPartnersTest {
     @Test fun partnerAheadMeansCatchUp() {
         val k = KeepUp.of("bear", eps.mapIndexed { i, e -> if (i == 0) e.copy(user = UserState(played = true)) else e }, listOf(sam))
         val s = WatchPartners.standing(eps[1], k)!!
-        assertEquals("Sam is 1 ahead", s.short)
+        assertEquals("Behind · Sam 1 ahead", s.short)
+        assertEquals("Behind", s.word)
         assertTrue(s.catchUp)
     }
 
     @Test fun nobodyHasSeenItMeansWatchTogether() {
         val k = KeepUp.of("bear", eps.map { if (it.id in setOf("e1-1", "e1-2")) it.copy(user = UserState(played = true)) else it }, listOf(sam))
-        assertEquals("Watch with Sam", WatchPartners.standing(eps[2], k)!!.short)
+        assertEquals("Level · Sam level", WatchPartners.standing(eps[2], k)!!.short)
     }
 
     @Test fun aheadOfThePartner() {
         val k = KeepUp.of("bear", eps.map { if (it.id != "e1-4") it.copy(user = UserState(played = true)) else it }, listOf(kim))
         val s = WatchPartners.standing(eps[0].copy(kind = ItemKind.SERIES, id = "bear"), k)!!
-        assertEquals("You're 2 episodes ahead of Kim", s.short)
-        assertEquals("You're ahead. Kim is on S1 E1, 2 episodes behind you", s.long)
+        assertEquals("Ahead · Kim 2 behind", s.short)
+        assertEquals("Kim is on S1 E1, 2 episodes behind you", s.long)
         assertFalse(s.catchUp)
     }
 
     @Test fun inStep() {
         val k = KeepUp.of("bear", eps.map { if (it.id in setOf("e1-1", "e1-2")) it.copy(user = UserState(played = true)) else it }, listOf(sam))
-        assertEquals("In step with Sam", WatchPartners.standing(eps[0].copy(kind = ItemKind.SERIES, id = "bear"), k)!!.short)
+        assertEquals("Level · Sam level", WatchPartners.standing(eps[0].copy(kind = ItemKind.SERIES, id = "bear"), k)!!.short)
     }
 
     // ---- Home's "Watching together" row ----
@@ -118,7 +119,7 @@ class WatchPartnersTest {
         assertEquals(
             listOf(
                 "Kim watched S1:E2 with me", "Watch it together now with Kim", "Invite someone to watch with Kim",
-                "Hide spoilers by my progress only", "Open the show", "Leave the group with Kim",
+                "Change the schedule (Binge)", "Hide spoilers by my progress only", "Open the show", "Leave the group with Kim",
             ),
             labels,
         )
@@ -136,7 +137,7 @@ class WatchPartnersTest {
         val info = PartnersInfo(emptyList(), listOf(r), emptyList())
         val card = MediaItem("dune", "Dune", ItemKind.SERIES)
         assertEquals(r, TogetherRow.inviteFor(card, info))
-        assertEquals("Jessica invites you", TogetherRow.line(card, info, emptyMap())?.short)
+        assertEquals("Invited · by Jessica", TogetherRow.line(card, info, emptyMap())?.short)
         assertEquals(listOf("Accept", "Decline", "Open it"), TogetherRow.choices(card, info, emptyMap(), emptyList(), true, emptySet()).map { it.label })
         assertEquals(listOf(TogetherChoice.Start), TogetherRow.choices(TogetherRow.start, info, emptyMap(), emptyList(), true, emptySet()))
         assertNull(TogetherRow.inviteFor(MediaItem("e", "E", ItemKind.EPISODE, seriesId = "dune"), info))
@@ -150,12 +151,12 @@ class WatchPartnersTest {
         val samSaw = PartnerProgress("g", "sam", "Sam", setOf("dune"), "Dune", null)
         val k = KeepUp.of("dune", listOf(film), listOf(samSaw))
         assertEquals("title", k.noun)
-        assertEquals("Sam has seen it", WatchPartners.standing(film, k)!!.short)
+        assertEquals("Not seen · Sam seen", WatchPartners.standing(film, k)!!.short)
         assertEquals(Turn.CATCH_UP, TogetherRow.turn(k))
         val notYet = PartnerProgress("g", "sam", "Sam", emptySet(), null, null)
-        assertEquals("Watch with Sam", WatchPartners.standing(film, KeepUp.of("dune", listOf(film), listOf(notYet)))!!.short)
+        assertEquals("Not yet · Sam not yet", WatchPartners.standing(film, KeepUp.of("dune", listOf(film), listOf(notYet)))!!.short)
         val seen = film.copy(user = UserState(played = true))
-        assertEquals("Sam hasn't seen it", WatchPartners.standing(seen, KeepUp.of("dune", listOf(seen), listOf(notYet)))!!.short)
+        assertEquals("Seen · Sam not yet", WatchPartners.standing(seen, KeepUp.of("dune", listOf(seen), listOf(notYet)))!!.short)
         // Everyone's seen it: no card, the group's done.
         val both = PartnerProgress("g", "sam", "Sam", setOf("dune"), "Dune", null)
         assertTrue(TogetherRow.items(emptyList(), listOf(SharedShow(seen, listOf(seen), KeepUp.of("dune", listOf(seen), listOf(both))))).isEmpty())
@@ -174,7 +175,7 @@ class WatchPartnersTest {
         val card = TogetherRow.card(SharedShow(MediaItem("list", "Marathon", ItemKind.PLAYLIST), items, k))
         assertEquals("m2", card?.id)
         assertEquals("list", TogetherRow.titleOf(card!!, standings))
-        assertEquals("Kim is 2 ahead", TogetherRow.line(card, null, standings)?.short)
+        assertEquals("Behind · Kim 2 ahead", TogetherRow.line(card, null, standings)?.short)
         val group = WatchGroup("g", "list", "Marathon", listOf(dev.nitrate.core.writing.UserRef("kim", "Kim")), 0)
         val c = TogetherRow.choices(card, PartnersInfo(listOf(group), emptyList(), emptyList()), standings, items, canWatchNow = false, ownSpoilers = emptySet())
         assertEquals("Catch up to Kim (2 titles)", c.first().label)
@@ -184,5 +185,82 @@ class WatchPartnersTest {
 
     @Test fun findingWhatToWatchWith() {
         assertEquals(listOf("Show", "Film", "Playlist", "Collection"), TogetherRow.KINDS.map { TogetherRow.kindLabel(MediaItem("x", "x", it)) })
+    }
+
+    @Test fun betweenAndManyPartners() {
+        fun p(name: String, upTo: Int) = PartnerProgress("g", name, name, (1..upTo).map { "e1-$it" }.toSet(), if (upTo > 0) "S1 E$upTo" else null, null)
+        val k = KeepUp.of("bear", eps.map { if (it.id in setOf("e1-1", "e1-2")) it.copy(user = UserState(played = true)) else it },
+            listOf(p("Kim", 0), p("Kevin", 4), p("Jane", 2), p("Lee", 1)))
+        val s = WatchPartners.standing(eps[2], k)!!
+        assertEquals("Between", s.word)
+        // Furthest ahead first, three shown, the rest counted.
+        assertEquals("Kevin 2 ahead · Jane level · Lee 1 behind · and 1 more", s.partners)
+        assertTrue(s.catchUp)
+    }
+
+    // ---- Schedules ----
+
+    @Test fun scheduleLabels() {
+        assertEquals("Binge", GroupSchedule().label)
+        assertEquals("Thursdays 7pm", GroupSchedule(GroupSchedule.WEEKLY, day = 4, hour = 19).label)
+        assertEquals("Every 2 days, 8pm, ask first", GroupSchedule(GroupSchedule.DAYS2, hour = 20, softLock = true).label)
+        assertEquals("12pm", GroupSchedule.clockOf(12, 0))
+        assertEquals("7:30pm", GroupSchedule.clockOf(19, 30))
+    }
+
+    private val weekly = GroupSchedule(GroupSchedule.WEEKLY, day = 4, hour = 19)
+
+    @Test fun aLockedNextEpisodeSaysWhenItOpens() {
+        // The user's seen 1 and 2 like Sam; 3 is locked until Thursday 7pm.
+        val k = keep(setOf("e1-1", "e1-2"), sam)
+        val group = WatchGroup("g1", "bear", "Bear", listOf(dev.nitrate.core.writing.UserRef("sam", "Sam")), 0, weekly, lockedFromId = "e1-3", opensAtMs = 1, opensDay = 4)
+        val info = PartnersInfo(listOf(group), emptyList(), emptyList())
+        val standings = mapOf("bear" to k)
+        assertTrue(group.locks("e1-3", k.order))
+        assertTrue(group.locks("e1-4", k.order))
+        assertFalse(group.locks("e1-2", k.order))
+        val line = TogetherRow.line(eps[2], info, standings)!!
+        assertEquals("Thursday 7pm", line.word)
+        assertEquals("Sam level", line.partners)
+        // Hard lock: no "watch it together now"; the schedule can be changed.
+        val c = TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = true, ownSpoilers = emptySet())
+        assertTrue(c.none { it is TogetherChoice.WatchNow })
+        assertTrue(c.any { it is TogetherChoice.ChangeSchedule && it.label == "Change the schedule (Thursdays 7pm)" })
+    }
+
+    @Test fun aChangeWaitingForYourVoteComesFirst() {
+        val change = ScheduleChange("c1", "Sam", GroupSchedule(), listOf("Sam"), emptyList(), voted = false, atMs = 0)
+        val group = WatchGroup("g1", "bear", "Bear", listOf(dev.nitrate.core.writing.UserRef("sam", "Sam")), 0, weekly, pending = change)
+        val info = PartnersInfo(listOf(group), emptyList(), emptyList())
+        val c = TogetherRow.choices(eps[2], info, mapOf("bear" to keep(setOf("e1-1", "e1-2"), sam)), eps, canWatchNow = true, ownSpoilers = emptySet())
+        assertEquals(listOf("Agree to Sam's change: Binge", "Keep the schedule as it is"), c.take(2).map { it.label })
+        // While one is waiting, nobody asks for another.
+        assertTrue(c.none { it is TogetherChoice.ChangeSchedule })
+    }
+
+    @Test fun playingSomethingLockedIsStoppedOrAsked() = kotlinx.coroutines.runBlocking {
+        fun server(soft: Boolean): dev.nitrate.core.MediaServer =
+            java.lang.reflect.Proxy.newProxyInstance(dev.nitrate.core.MediaServer::class.java.classLoader, arrayOf(dev.nitrate.core.MediaServer::class.java)) { _, m, _ ->
+                when (m.name) {
+                    "companion" -> dev.nitrate.core.companion.CompanionInfo("1", setOf("partners"))
+                    "partners" -> PartnersInfo(listOf(WatchGroup("g1", "bear", "Bear", listOf(dev.nitrate.core.writing.UserRef("sam", "Sam")), 0, weekly.copy(softLock = soft), lockedFromId = "e1-3", opensDay = 4)), emptyList(), emptyList())
+                    "titleItems" -> eps
+                    else -> throw UnsupportedOperationException(m.name)
+                }
+            } as dev.nitrate.core.MediaServer
+        val store = object : dev.nitrate.core.plugins.PluginStorage {
+            override val enabledOverrides = kotlinx.coroutines.flow.flowOf(emptyMap<String, Boolean>())
+            override suspend fun setEnabled(pluginId: String, enabled: Boolean) {}
+            override fun raw(pluginId: String) = kotlinx.coroutines.flow.flowOf<String?>(null)
+            override suspend fun saveRaw(pluginId: String, value: String) {}
+        }
+        val plugin = WatchPartnersPlugin()
+        val hard = plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(server(false), store)) as dev.nitrate.core.plugins.GuardDecision.Ask
+        assertEquals("Opens Thursday 7pm", hard.title)
+        assertEquals(listOf("OK"), hard.choices.map { it.label })
+        val soft = plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(server(true), store)) as dev.nitrate.core.plugins.GuardDecision.Ask
+        assertEquals(listOf("Watch anyway", "Not now"), soft.choices.map { it.label })
+        // What's open plays.
+        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[1], dev.nitrate.core.plugins.PluginHost(server(false), store)))
     }
 }

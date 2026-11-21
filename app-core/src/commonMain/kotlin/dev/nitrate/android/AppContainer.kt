@@ -320,6 +320,7 @@ class AppContainer(
                 }
                 is dev.nitrate.core.partners.TogetherChoice.Leave -> server.leaveGroup(choice.group.id)
                 is dev.nitrate.core.partners.TogetherChoice.WatchNow -> startWatchingNow(choice)
+                is dev.nitrate.core.partners.TogetherChoice.Vote -> server.voteSchedule(choice.groupId, choice.changeId, choice.yes)
                 else -> Unit
             }
         }
@@ -327,6 +328,14 @@ class AppContainer(
         refreshGroupStandings(1_000)
         pagesChanged()
         return result.exceptionOrNull()?.let { it.message ?: "That didn't work" }
+    }
+
+    /** Asks [groupId] to change its schedule (it takes effect once most of the group agrees). Returns an error, if any. */
+    suspend fun proposeSchedule(groupId: String, schedule: dev.nitrate.core.partners.GroupSchedule): String? {
+        val r = runCatching { server.proposeSchedule(groupId, schedule) }
+        refreshPartners()
+        pagesChanged()
+        return r.exceptionOrNull()?.let { it.message ?: "That didn't work" }
     }
 
     /**

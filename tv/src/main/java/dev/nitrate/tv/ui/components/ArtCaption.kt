@@ -67,8 +67,15 @@ fun ArtCaption(
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
         if (showDetails) ItemMetaLine(item, showRatings = showRatings)
         groupStanding(item)?.let { st ->
-            Text("👥 ${st.long}", style = MaterialTheme.typography.titleSmall, maxLines = 1,
-                color = if (st.catchUp) Color(0xFFFFC94D) else Color(0xDDFFFFFF))
+            // The user's word in bold, then each partner's ("Behind · Kevin 2 ahead · Kim 1 behind").
+            Text(
+                androidx.compose.ui.text.buildAnnotatedString {
+                    append(androidx.compose.ui.text.AnnotatedString(st.word, androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)))
+                    if (st.partners.isNotEmpty()) append("  ·  " + st.partners)
+                },
+                style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (st.catchUp) Color(0xFFFFC94D) else Color(0xDDFFFFFF),
+            )
         }
         if (!compact && !minimal && showOverview && prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
