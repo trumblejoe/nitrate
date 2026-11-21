@@ -57,7 +57,7 @@ public static class UpdatePolicy
 /// Keeps the plugin up to date without anyone visiting the plugin page: every few hours it asks the
 /// server's plugin repositories for a newer version of itself and installs it (as Jellyfin's own
 /// "Update Plugins" task would, only sooner), unless auto-update is switched off for it. A new
-/// version only runs after a restart, so (with <c>RestartForUpdates</c> on) the server is restarted
+/// version only runs after a restart, so (with <c>RestartForUpdates</c> switched on; off by default) the server is restarted
 /// at night once nothing is playing.
 /// </summary>
 public sealed class SelfUpdater : IHostedService, IDisposable
@@ -150,7 +150,7 @@ public sealed class SelfUpdater : IHostedService, IDisposable
                 var config = Plugin.Instance?.Configuration;
                 var waiting = _host.HasPendingRestart && UpdatePolicy.UpdateWaiting(Copies().Select(p => (p.Version, p.Instance is not null)));
                 var playing = _sessions.Sessions.Count(s => s.NowPlayingItem is not null);
-                if (UpdatePolicy.ShouldRestart(config?.RestartForUpdates ?? true, waiting, DateTime.Now, config?.RestartHour ?? 4, playing))
+                if (UpdatePolicy.ShouldRestart(config?.RestartForUpdates ?? false, waiting, DateTime.Now, config?.RestartHour ?? 4, playing))
                 {
                     _log.LogInformation("Nitrate Companion: restarting the server to finish its update (nothing is playing)");
                     _system.Restart();
