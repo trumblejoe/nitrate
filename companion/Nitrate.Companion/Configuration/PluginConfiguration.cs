@@ -71,5 +71,8 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets the rule-based collections the plugin keeps up to date.</summary>
     public Nitrate.Companion.SmartCollections.SmartRule[] SmartCollections { get; set; } = Array.Empty<Nitrate.Companion.SmartCollections.SmartRule>();
+
+    /// <summary>Gets or sets the comic catalogs (OPDS, CLU) everyone can read through the plugin.</summary>
+    public Nitrate.Companion.Catalogs.CatalogSettings[] ComicCatalogs { get; set; } = Array.Empty<Nitrate.Companion.Catalogs.CatalogSettings>();
 #pragma warning restore CA1819
 }

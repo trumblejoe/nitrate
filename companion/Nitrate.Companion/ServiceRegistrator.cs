@@ -53,6 +53,11 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion")));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Comics.ComicStore(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().CachePath, "nitrate-companion", "comics")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Catalogs.CatalogFetcher(
+            Nitrate.Companion.Catalogs.CatalogFetcher.NewClient(),
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().CachePath, "nitrate-companion", "catalog-books")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Catalogs.CatalogPositions(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "catalog-positions")));
         serviceCollection.AddSingleton(sp => new SsoService(
             () => SsoSettings.From(Plugin.Instance?.Configuration),
             new JellyfinSsoAccounts(sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IDeviceManager>(), sp.GetRequiredService<ISessionManager>()),

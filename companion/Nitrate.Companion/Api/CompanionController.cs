@@ -78,6 +78,10 @@ public class CompanionController : ControllerBase
         if (Plugin.Instance?.Configuration.EnableComics ?? true)
         {
             features.Add("comics");
+            if (Catalogs.CatalogAccess.Usable(Plugin.Instance?.Configuration.ComicCatalogs).Count > 0)
+            {
+                features.Add("catalogs");
+            }
         }
 
         if (Plugin.Instance?.Configuration.EnableLines ?? true)

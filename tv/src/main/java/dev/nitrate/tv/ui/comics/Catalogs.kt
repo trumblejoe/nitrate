@@ -23,7 +23,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -39,12 +38,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
-import androidx.tv.material3.FilterChip
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
@@ -62,92 +59,38 @@ import kotlinx.coroutines.launch
 
 private val PagePadding = 48.dp
 
-/** The comic catalogs added on this TV (OPDS, CLU), with adding, changing and removing them. */
+/**
+ * The comic catalogs (OPDS, CLU) the server's admin set up in the Nitrate Companion plugin. The
+ * server signs in to them and keeps where each person is in a book.
+ */
 @Composable
 fun CatalogsScreen(container: AppContainer, onOpen: (String) -> Unit) {
-    val store = container.catalogs
-    val catalogs by store.catalogs.collectAsState(emptyList())
-    var editing by remember { mutableStateOf<ComicCatalog?>(null) }
-    val scope = rememberCoroutineScope()
+    val catalogs by produceState<Result<List<ComicCatalog>>?>(null) { value = runCatching { container.catalogs.catalogs() } }
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { delay(80); runCatching { first.requestFocus() } }
+    val list = catalogs?.getOrNull().orEmpty()
+    LaunchedEffect(catalogs) { if (catalogs != null) { delay(80); runCatching { first.requestFocus() } } }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(PagePadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Comic catalogs", style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    "Comics from servers other than Jellyfin: any OPDS catalog (Komga, Kavita, Calibre…) or CLU. Kept on this TV only, with their sign-in details; where you are in each book is kept here too, and goes back to CLU.",
+                    when {
+                        catalogs == null -> "Loading…"
+                        catalogs?.isFailure == true -> "The server didn't answer: ${catalogs?.exceptionOrNull()?.message}"
+                        list.isEmpty() -> ComicCatalog.NONE_SET_UP
+                        else -> "Comics from other servers, set up on your Jellyfin server. Where you are in each book is kept there for you."
+                    },
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(900.dp),
                 )
-                Button(onClick = { editing = ComicCatalog(id = "c" + dev.nitrate.android.nowMs().toString(36), name = "", url = "") }, modifier = Modifier.focusRequester(first)) { Text("Add a catalog") }
             }
         }
-        items(catalogs, key = { it.id }) { c ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Card(onClick = { onOpen(c.id) }, modifier = Modifier.width(720.dp)) {
-                    Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
-                        Text(c.name, style = MaterialTheme.typography.titleLarge)
-                        Text("${c.kind.label} · ${c.url}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+        items(list, key = { it.id }) { c ->
+            Card(onClick = { onOpen(c.id) }, modifier = Modifier.width(720.dp).let { if (c == list.first()) it.focusRequester(first) else it }) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
+                    Text(c.name, style = MaterialTheme.typography.titleLarge)
+                    Text(c.kind.label, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                OutlinedButton(onClick = { editing = c }) { Text("Change") }
             }
-        }
-    }
-    editing?.let { c ->
-        CatalogDialog(
-            c, isNew = catalogs.none { it.id == c.id },
-            onSave = { scope.launch { store.save(it) }; editing = null },
-            onRemove = { scope.launch { store.remove(c.id) }; editing = null },
-            onDismiss = { editing = null },
-        )
-    }
-}
-
-@Composable
-private fun CatalogDialog(start: ComicCatalog, isNew: Boolean, onSave: (ComicCatalog) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
-    var kind by remember { mutableStateOf(start.kind) }
-    var name by remember { mutableStateOf(start.name) }
-    var url by remember { mutableStateOf(start.url) }
-    var user by remember { mutableStateOf(start.user.orEmpty()) }
-    var password by remember { mutableStateOf(start.password.orEmpty()) }
-    var token by remember { mutableStateOf(start.token.orEmpty()) }
-    val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { delay(80); runCatching { first.requestFocus() } }
-    TvDialog(onDismiss, width = 760) {
-        Text(if (isNew) "Add a catalog" else "Change catalog", style = MaterialTheme.typography.headlineSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CatalogKind.entries.forEachIndexed { i, k ->
-                FilterChip(kind == k, { kind = k }, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier) { Text(k.label) }
-            }
-        }
-        Text(
-            if (kind == CatalogKind.OPDS) "The catalog's OPDS address, e.g. http://server:25600/opds/v1.2/catalog (Komga) or http://server:5000/opds/browse (CLU)."
-            else "CLU's address, e.g. http://server:5577, and an API token from CLU's My Account → API Tokens.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        TvTextField(name, { name = it }, "Name", Modifier.fillMaxWidth())
-        TvTextField(url, { url = it.trim() }, "Address", Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-        if (kind == CatalogKind.OPDS) {
-            TvTextField(user, { user = it }, "User name (if it asks)", Modifier.fillMaxWidth())
-            TvTextField(password, { password = it }, "Password", Modifier.fillMaxWidth(), isPassword = true)
-        }
-        TvTextField(token, { token = it.trim() }, if (kind == CatalogKind.CLU) "API token" else "Token (instead of a password)", Modifier.fillMaxWidth(), isPassword = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(
-                enabled = url.startsWith("http") && (kind == CatalogKind.OPDS || token.isNotBlank()),
-                onClick = {
-                    onSave(
-                        start.copy(
-                            kind = kind, name = name.ifBlank { url.substringAfter("://").substringBefore('/') }, url = url,
-                            user = user.takeIf { kind == CatalogKind.OPDS && it.isNotBlank() }, password = password.takeIf { kind == CatalogKind.OPDS && user.isNotBlank() },
-                            token = token.ifBlank { null },
-                        ),
-                    )
-                },
-            ) { Text("Save") }
-            if (!isNew) OutlinedButton(onClick = onRemove) { Text("Remove") }
-            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
         }
     }
 }
@@ -248,7 +191,7 @@ fun CatalogFeedScreen(container: AppContainer, catalogId: String, target: String
     }
 }
 
-/** A catalog's picture, fetched with the catalog's sign-in details. */
+/** A catalog's picture, fetched through the server. */
 @Composable
 private fun CatalogCover(container: AppContainer, catalog: ComicCatalog, url: String?) {
     val path by produceState<String?>(null, catalog, url) { value = url?.let { container.catalogs.image(catalog, it, container.platform.cacheDir) } }

@@ -91,7 +91,7 @@ fun CatalogReaderScreen(actions: AppActions, catalogId: String, book: dev.nitrat
     val container = actions.container
     ComicLoader(actions, catalogId + "|" + book.id, { progress ->
         val catalog = container.catalogs.catalog(catalogId) ?: throw dev.nitrate.android.comics.ComicException("This catalog was removed.")
-        container.comics.prepareCatalog(container.catalogs.client(catalog), book, container.catalogs, progress)
+        container.comics.prepareCatalog(container.catalogs.client(catalog), book, progress)
     }, onExit, {})
 }
 

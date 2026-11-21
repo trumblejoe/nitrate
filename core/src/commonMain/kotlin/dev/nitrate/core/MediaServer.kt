@@ -202,6 +202,12 @@ interface MediaServer {
     /** Page [index] of a book the plugin serves page by page; fetched with [authorizationHeader]. */
     fun comicPageUrl(itemId: String, index: Int): String = unsupported()
 
+    /** The comic catalogs (OPDS, CLU) the server's admin set up in the Companion plugin (feature `catalogs`); empty without any. */
+    suspend fun comicCatalogs(): List<dev.nitrate.core.catalogs.ComicCatalog> = emptyList()
+
+    /** How [catalog] is reached through the server: browsing, pictures, books and reading positions. */
+    fun catalogLink(catalog: dev.nitrate.core.catalogs.ComicCatalog): dev.nitrate.core.catalogs.CatalogLink = unsupported()
+
     /**
      * Asks the server how to play [itemId] on this device. [forceTranscode] after a local decoder
      * failure; [audioIndex]/[subtitleIndex] pick streams (null lets the server choose, subtitle -1 is off).

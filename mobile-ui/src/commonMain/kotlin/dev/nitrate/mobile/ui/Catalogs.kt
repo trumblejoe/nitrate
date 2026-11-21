@@ -4,8 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -20,16 +18,12 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -44,8 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -66,9 +58,11 @@ import kotlinx.serialization.Serializable
 
 internal val catalogJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
-/** The Library tab's way in to comic catalogs. */
+/** The Library tab's way in to comic catalogs: shown when the server offers some. */
 @Composable
 internal fun CatalogsEntry(actions: AppActions) {
+    val catalogs by produceState(emptyList<ComicCatalog>()) { value = runCatching { actions.container.catalogs.catalogs() }.getOrDefault(emptyList()) }
+    if (catalogs.isEmpty()) return
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
@@ -77,32 +71,37 @@ internal fun CatalogsEntry(actions: AppActions) {
     ) {
         Column(Modifier.weight(1f)) {
             Text("Comic catalogs", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Read from an OPDS server (Komga, Kavita, Calibre…) or CLU", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(catalogs.joinToString(" · ") { it.name }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text("›", style = MaterialTheme.typography.headlineSmall, color = accentColor())
     }
 }
 
-/** The comic catalogs added on this device, with adding, changing and removing them. */
+/**
+ * The comic catalogs (OPDS, CLU) the server's admin set up in the Nitrate Companion plugin. The
+ * server signs in to them and keeps where each person is in a book.
+ */
 @Composable
 fun CatalogsScreen(actions: AppActions) {
-    val store = actions.container.catalogs
-    val catalogs by store.catalogs.collectAsState(emptyList())
-    var editing by remember { mutableStateOf<ComicCatalog?>(null) }
-    val scope = rememberCoroutineScope()
+    val catalogs by produceState<Result<List<ComicCatalog>>?>(null) { value = runCatching { actions.container.catalogs.catalogs() } }
+    val list = catalogs?.getOrNull().orEmpty()
     androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Comic catalogs", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
                 Text(
-                    "Comics from servers other than Jellyfin. Kept on this device only, with their sign-in details; where you are in each book is kept here too, and goes back to CLU.",
+                    when {
+                        catalogs == null -> "Loading…"
+                        catalogs?.isFailure == true -> "The server didn't answer: ${catalogs?.exceptionOrNull()?.message}"
+                        list.isEmpty() -> ComicCatalog.NONE_SET_UP
+                        else -> "Comics from other servers, set up on your Jellyfin server. Where you are in each book is kept there for you."
+                    },
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedButton(onClick = { editing = ComicCatalog(id = "c" + dev.nitrate.android.nowMs().toString(36), name = "", url = "") }) { Text("Add a catalog") }
             }
         }
-        items(catalogs.size) { i ->
-            val c = catalogs[i]
+        items(list.size) { i ->
+            val c = list[i]
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                     .pressable({ actions.nav.navigate(CatalogFeedRoute(c.id)) }).padding(16.dp),
@@ -110,75 +109,13 @@ fun CatalogsScreen(actions: AppActions) {
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(c.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("${c.kind.label} · ${c.url}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(c.kind.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                TextButton(onClick = { editing = c }) { Text("Change") }
+                Text("›", style = MaterialTheme.typography.headlineSmall, color = accentColor())
             }
         }
         item { androidx.compose.foundation.layout.Spacer(Modifier.padding(bottom = NavBarClearance)) }
     }
-    editing?.let { c ->
-        CatalogDialog(
-            c, isNew = catalogs.none { it.id == c.id },
-            onSave = { scope.launch { store.save(it) }; editing = null },
-            onRemove = { scope.launch { store.remove(c.id) }; editing = null },
-            onDismiss = { editing = null },
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CatalogDialog(start: ComicCatalog, isNew: Boolean, onSave: (ComicCatalog) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
-    var kind by remember { mutableStateOf(start.kind) }
-    var name by remember { mutableStateOf(start.name) }
-    var url by remember { mutableStateOf(start.url) }
-    var user by remember { mutableStateOf(start.user.orEmpty()) }
-    var password by remember { mutableStateOf(start.password.orEmpty()) }
-    var token by remember { mutableStateOf(start.token.orEmpty()) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (isNew) "Add a catalog" else "Change catalog") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CatalogKind.entries.forEach { k -> FilterChip(kind == k, { kind = k }, label = { Text(k.label) }) }
-                }
-                Text(
-                    if (kind == CatalogKind.OPDS) "The catalog's OPDS address, e.g. http://server:25600/opds/v1.2/catalog (Komga) or http://server:5000/opds/browse (CLU)."
-                    else "CLU's address, e.g. http://server:5577, and an API token from CLU's My Account → API Tokens.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
-                OutlinedTextField(url, { url = it.trim() }, label = { Text("Address") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-                if (kind == CatalogKind.OPDS) {
-                    OutlinedTextField(user, { user = it }, label = { Text("User name (if it asks)") }, singleLine = true)
-                    OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-                }
-                OutlinedTextField(token, { token = it.trim() }, label = { Text(if (kind == CatalogKind.CLU) "API token" else "Token (instead of a password)") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = url.startsWith("http") && (kind == CatalogKind.OPDS || token.isNotBlank()),
-                onClick = {
-                    onSave(
-                        start.copy(
-                            kind = kind, name = name.ifBlank { url.substringAfter("://").substringBefore('/') }, url = url,
-                            user = user.takeIf { kind == CatalogKind.OPDS && it.isNotBlank() }, password = password.takeIf { kind == CatalogKind.OPDS && user.isNotBlank() },
-                            token = token.ifBlank { null },
-                        ),
-                    )
-                },
-            ) { Text("Save") }
-        },
-        dismissButton = {
-            Row {
-                if (!isNew) TextButton(onClick = onRemove) { Text("Remove", color = MaterialTheme.colorScheme.error) }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
-        },
-    )
 }
 
 /** One page of a catalog: its sections and books, with search where the catalog has it, and more as you scroll. */

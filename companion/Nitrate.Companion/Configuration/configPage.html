@@ -35,6 +35,18 @@
                     <div class="fieldDescription checkboxFieldDescription">Nitrate shows a comic's first page at once and fetches the rest in one go. CBR, CB7 and CBT books are unpacked once into the server's cache folder (the most recently read within 4 GB are kept), so they open on every device.</div>
                 </div>
 
+                <h3>Comic catalogs</h3>
+                <div class="fieldDescription" style="margin-bottom:1em">
+                    Other comic servers everyone signed in here can browse and read in Nitrate: any OPDS catalog (Komga, Kavita,
+                    Calibre-web, CLU's feed…) or CLU with an API token (My Account → API Tokens). The server signs in for everyone,
+                    so these details never reach the apps, and it serves the books page by page (CBR too). Each person's place in a
+                    book is kept here, since the catalog sees one account for the whole household. Needs "Comics page by page".
+                </div>
+                <div id="Catalogs"></div>
+                <div style="margin:1em 0 2em">
+                    <button is="emby-button" type="button" id="AddCatalog" class="raised emby-button"><span>Add a catalog</span></button>
+                </div>
+
                 <h3>Watch together and writing</h3>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label class="emby-checkbox-label">
@@ -277,6 +289,46 @@
                     return rule;
                 }).filter(function (r) { return r.Name; });
             }
+            // Comic catalogs: one card each.
+            function addCatalog(c) {
+                c = c || { Kind: 'OPDS' };
+                var card = document.createElement('div');
+                card.className = 'comicCatalog paperList';
+                card.style.padding = '1em';
+                card.style.marginBottom = '1em';
+                card.dataset.id = c.Id || ('c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+                field(card, 'Name', 'ccName', c.Name);
+                var kind = document.createElement('select');
+                kind.setAttribute('is', 'emby-select');
+                kind.className = 'ccKind';
+                [['OPDS', 'OPDS catalog'], ['CLU', 'CLU (API token)']].forEach(function (o) {
+                    var opt = document.createElement('option');
+                    opt.value = o[0];
+                    opt.textContent = o[1];
+                    kind.appendChild(opt);
+                });
+                kind.value = c.Kind === 'CLU' ? 'CLU' : 'OPDS';
+                card.appendChild(kind);
+                field(card, 'Address (OPDS: the feed, e.g. http://server:25600/opds/v1.2/catalog; CLU: http://server:5000)', 'ccUrl', c.Url, 'url');
+                field(card, 'User name (OPDS)', 'ccUser', c.User);
+                field(card, 'Password (OPDS)', 'ccPassword', c.Password, 'password');
+                field(card, 'Token (CLU\'s API token, or an OPDS server that takes one)', 'ccToken', c.Token, 'password');
+                var remove = document.createElement('button');
+                remove.type = 'button';
+                remove.setAttribute('is', 'emby-button');
+                remove.className = 'emby-button';
+                remove.textContent = 'Remove this catalog';
+                remove.addEventListener('click', function () { card.remove(); });
+                card.appendChild(remove);
+                page.querySelector('#Catalogs').appendChild(card);
+            }
+            function readCatalogs() {
+                return Array.prototype.map.call(page.querySelectorAll('.comicCatalog'), function (c) {
+                    var q = function (k) { return c.querySelector('.' + k).value.trim(); };
+                    return { Id: c.dataset.id, Name: q('ccName'), Kind: q('ccKind'), Url: q('ccUrl'), User: q('ccUser'), Password: c.querySelector('.ccPassword').value, Token: q('ccToken') };
+                }).filter(function (c) { return c.Name && c.Url; });
+            }
+            page.querySelector('#AddCatalog').addEventListener('click', function () { addCatalog(null); });
             page.querySelector('#AddSmartRule').addEventListener('click', function () { addRule(null); });
             page.querySelector('#UpdateSmartNow').addEventListener('click', function () {
                 ApiClient.getScheduledTasks().then(function (tasks) {
@@ -291,6 +343,8 @@
                         var box = page.querySelector('#SmartRules');
                         box.innerHTML = '';
                         (config.SmartCollections || []).forEach(addRule);
+                        page.querySelector('#Catalogs').innerHTML = '';
+                        (config.ComicCatalogs || []).forEach(addCatalog);
                     });
                 });
             });
@@ -300,6 +354,7 @@
                     checks.forEach(function (k) { config[k] = page.querySelector('#' + k).checked; });
                     texts.forEach(function (k) { config[k] = page.querySelector('#' + k).value; });
                     config.SmartCollections = readRules();
+                    config.ComicCatalogs = readCatalogs();
                     config.PrivateUserIds = Array.prototype.filter.call(page.querySelectorAll('.privateUser'), function (i) { return i.checked; })
                         .map(function (i) { return i.dataset.id; });
                     ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {

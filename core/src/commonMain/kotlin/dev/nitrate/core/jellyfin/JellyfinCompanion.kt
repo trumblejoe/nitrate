@@ -411,3 +411,63 @@ internal data class HouseholdReportDto(
     val at: Long = 0,
     val summary: kotlinx.serialization.json.JsonElement = kotlinx.serialization.json.JsonObject(emptyMap()),
 )
+
+@Serializable
+internal data class CatalogInfoDto(val id: String = "", val name: String = "", val url: String = "", val kind: String = "OPDS")
+
+@Serializable
+internal data class CatalogPositionDto(val page: Int? = null)
+
+/** The comic catalogs the admin set up in the Companion plugin, reached through it (`/Nitrate/Catalogs`). */
+internal class JellyfinCatalogs(private val client: JellyfinClient) {
+    suspend fun list(): List<dev.nitrate.core.catalogs.ComicCatalog> =
+        JellyfinJson.decodeFromString<List<CatalogInfoDto>>(client.get("Nitrate", "Catalogs").bodyAsText()).mapNotNull { d ->
+            if (d.id.isBlank() || d.url.isBlank()) return@mapNotNull null
+            dev.nitrate.core.catalogs.ComicCatalog(
+                d.id, d.name, d.url,
+                if (d.kind.equals("CLU", ignoreCase = true)) dev.nitrate.core.catalogs.CatalogKind.CLU else dev.nitrate.core.catalogs.CatalogKind.OPDS,
+            )
+        }
+
+    fun link(catalog: dev.nitrate.core.catalogs.ComicCatalog): dev.nitrate.core.catalogs.CatalogLink = object : dev.nitrate.core.catalogs.CatalogLink {
+        override val catalog = catalog
+        override val authorization get() = client.authorizationHeader()
+        private val id = catalog.id
+
+        override suspend fun text(url: String): String = try {
+            client.get("Nitrate", "Catalogs", id, "Fetch", query = mapOf("url" to url)).bodyAsText()
+        } catch (e: ClientRequestException) {
+            throw dev.nitrate.core.catalogs.CatalogException(problem(e) ?: "The catalog answered ${e.response.status.value}.")
+        } catch (e: io.ktor.client.plugins.ServerResponseException) {
+            throw dev.nitrate.core.catalogs.CatalogException(runCatching { JellyfinJson.decodeFromString<ProblemDto>(e.response.bodyAsText()).detail }.getOrNull() ?: "The catalog couldn't be reached.")
+        }
+
+        override fun fetchUrl(url: String) = client.url("Nitrate", "Catalogs", id, "Fetch", query = mapOf("url" to url))
+
+        override suspend fun book(url: String): dev.nitrate.core.comics.ComicListing? = try {
+            val dto: ComicListingDto = JellyfinJson.decodeFromString(client.get("Nitrate", "Catalogs", id, "Book", query = mapOf("url" to url)).bodyAsText())
+            dev.nitrate.core.comics.ComicListing(dto.format, dto.pages.map { dev.nitrate.core.comics.ComicPageInfo(it.name, it.width, it.height, it.size) }, dto.comicInfo)
+        } catch (e: ClientRequestException) {
+            if (e.response.status.value == 422) null else throw dev.nitrate.core.catalogs.CatalogException(problem(e) ?: "The server couldn't fetch this book (${e.response.status.value}).")
+        } catch (e: io.ktor.client.plugins.ServerResponseException) {
+            throw dev.nitrate.core.catalogs.CatalogException(runCatching { JellyfinJson.decodeFromString<ProblemDto>(e.response.bodyAsText()).detail }.getOrNull() ?: "The catalog couldn't be reached.")
+        }
+
+        override fun pageUrl(url: String, index: Int) = client.url("Nitrate", "Catalogs", id, "Book", "Pages", index.toString(), query = mapOf("url" to url))
+
+        override fun fileUrl(url: String) = client.url("Nitrate", "Catalogs", id, "Book", "File", query = mapOf("url" to url))
+
+        override suspend fun position(bookId: String): Int? =
+            JellyfinJson.decodeFromString<CatalogPositionDto>(client.get("Nitrate", "Catalogs", id, "Position", query = mapOf("book" to bookId)).bodyAsText()).page
+
+        override suspend fun savePosition(bookId: String, page: Int) {
+            client.http.put(client.url("Nitrate", "Catalogs", id, "Position", query = mapOf("book" to bookId))) {
+                with(client) { auth() }
+                contentType(ContentType.Application.Json)
+                setBody("""{"Page":$page}""")
+            }
+        }
+
+        private suspend fun problem(e: ClientRequestException) = runCatching { JellyfinJson.decodeFromString<ProblemDto>(e.response.bodyAsText()).detail }.getOrNull()
+    }
+}

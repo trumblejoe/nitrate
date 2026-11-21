@@ -362,8 +362,8 @@ class AppContainer(
     }
 
     /** Comics read from the server, kept on the device (see [dev.nitrate.android.comics.ComicLibrary]). */
-    /** Comic catalogs (OPDS, CLU) added on this device, and where the user is in their books. */
-    val catalogs by lazy { dev.nitrate.android.comics.CatalogStore(platform.stores.plugins, platform.downloadEngine()) }
+    /** Comic catalogs (OPDS, CLU) the server's admin set up in the Companion plugin, reached through the server. */
+    val catalogs by lazy { dev.nitrate.android.comics.CatalogStore(server, platform.stores.plugins, platform.downloadEngine()) }
     val comics by lazy { dev.nitrate.android.comics.ComicLibrary(server, platform.cacheDir, platform.downloadEngine(), pdf = platform.pdfPages(), pictures = platform.pictureReader(), now = ::nowMs) }
 
     /** Theme music behind details pages (each app's details screens ask for it; players stop it). */

@@ -111,22 +111,29 @@ class ComicLibraryTest {
         assertEquals(3, asked.size)
     }
 
-    @Test fun catalogBooksStreamAndRememberWhereTheReaderIs() = runBlocking {
-        val saved = mutableListOf<Pair<Int, Int>>()
-        val catalog = dev.nitrate.core.catalogs.ComicCatalog("k", "Komga", "http://k/opds", token = "t")
-        val client = object : dev.nitrate.core.catalogs.CatalogClient {
-            override val catalog = catalog
-            override val authorization = "Bearer t"
-            override suspend fun root() = throw UnsupportedOperationException()
-            override suspend fun open(target: String) = throw UnsupportedOperationException()
-            override suspend fun search(query: String) = null
-            override suspend fun saveProgress(book: dev.nitrate.core.catalogs.CatalogBook, page: Int, pageCount: Int): Boolean { saved += page to pageCount; return true }
-        }
-        val positions = object : CatalogPositions {
-            val map = mutableMapOf<String, Int>()
-            override suspend fun get(catalogId: String, bookId: String) = map["$catalogId|$bookId"]
-            override suspend fun set(catalogId: String, bookId: String, page: Int) { map["$catalogId|$bookId"] = page }
-        }
+    /** A catalog reached through a pretend server: addresses go to "http://jf/…", places kept in [places]. */
+    private class FakeLink(val places: MutableMap<String, Int> = mutableMapOf()) : dev.nitrate.core.catalogs.CatalogLink {
+        override val catalog = dev.nitrate.core.catalogs.ComicCatalog("k", "Komga", "http://k/opds")
+        override val authorization = "MediaBrowser Token=\"jf\""
+        var listing: dev.nitrate.core.comics.ComicListing? = null
+        override suspend fun text(url: String) = throw UnsupportedOperationException()
+        override fun fetchUrl(url: String) = "http://jf/fetch?url=$url"
+        override suspend fun book(url: String) = listing
+        override fun pageUrl(url: String, index: Int) = "http://jf/book/$index?url=$url"
+        override fun fileUrl(url: String) = "http://jf/file?url=$url"
+        override suspend fun position(bookId: String) = places[bookId]
+        override suspend fun savePosition(bookId: String, page: Int) { places[bookId] = page }
+    }
+
+    private fun clientOf(link: dev.nitrate.core.catalogs.CatalogLink) = object : dev.nitrate.core.catalogs.CatalogClient {
+        override val link = link
+        override suspend fun root() = throw UnsupportedOperationException()
+        override suspend fun open(target: String) = throw UnsupportedOperationException()
+        override suspend fun search(query: String) = null
+    }
+
+    @Test fun catalogBooksStreamThroughTheServerAndKeepEachPersonsPlaceThere() = runBlocking {
+        val link = FakeLink()
         val asked = mutableListOf<String>()
         val engine = io.ktor.client.engine.mock.MockEngine { request ->
             asked += request.url.toString() + " " + request.headers["Authorization"]
@@ -134,15 +141,31 @@ class ComicLibraryTest {
         }
         val library = ComicLibrary(server, cache.path, engine) { 1_000L }
         val book = dev.nitrate.core.catalogs.CatalogBook("urn:b/1", "Saga 1", pageCount = 5, lastRead = 2, pageTemplate = "http://k/pages/{pageNumber}?w={maxWidth}")
-        val open = library.openCatalog(client, book, positions)
+        // With no place of the person's own, the catalog's (the household's) is the start.
+        val open = library.openCatalog(clientOf(link), book)
         assertEquals(2, open.startPage)
         assertEquals("Saga 1", open.title)
         open.page(3)
-        assertEquals(listOf("http://k/pages/3?w=2000 Bearer t"), asked)
+        // The catalog's page, at 2000 px, fetched through the server with Jellyfin's own sign-in.
+        val only = asked.single()
+        assertTrue(only, only.startsWith("http://jf/fetch?url=") && "pages" in only && "2000" in only && only.endsWith("Token=\"jf\""))
         open.saveProgress(3)
-        assertEquals(listOf(3 to 5), saved)
-        // Next time it starts where this device left off.
-        assertEquals(3, library.openCatalog(client, book, positions).startPage)
+        assertEquals(mapOf("urn:b/1" to 3), link.places)
+        assertEquals(3, library.openCatalog(clientOf(link), book).startPage)
+    }
+
+    @Test fun aCatalogFileIsReadPageByPageFromTheServersCopy() = runBlocking {
+        val link = FakeLink().apply {
+            listing = dev.nitrate.core.comics.ComicListing("rar", listOf(dev.nitrate.core.comics.ComicPageInfo("01.jpg", 0, 0, 2), dev.nitrate.core.comics.ComicPageInfo("02.jpg", 0, 0, 2)), null)
+        }
+        val asked = mutableListOf<String>()
+        val engine = io.ktor.client.engine.mock.MockEngine { request -> asked += request.url.toString(); respond(byteArrayOf(9, 9), io.ktor.http.HttpStatusCode.OK) }
+        val library = ComicLibrary(server, cache.path, engine) { 1_000L }
+        val book = dev.nitrate.core.catalogs.CatalogBook("clu-12", "Saga 001", fileUrl = "http://clu/api/v1/issue/12/download")
+        val open = library.openCatalog(clientOf(link), book)
+        assertEquals(2, open.pageCount)
+        open.page(1)
+        assertTrue(asked.single().startsWith("http://jf/book/1?url="))
     }
 
     @Test fun anEpubGoesToTheBookReaderAndSavesItsShare() = runBlocking {

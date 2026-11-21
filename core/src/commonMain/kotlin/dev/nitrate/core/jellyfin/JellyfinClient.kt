@@ -1261,6 +1261,13 @@ class JellyfinClient(
 
     override fun comicPageUrl(itemId: String, index: Int) = companionApi.comicPageUrl(itemId, index)
 
+    private val catalogsApi = JellyfinCatalogs(this)
+
+    override suspend fun comicCatalogs() =
+        if (companion()?.features?.contains(dev.nitrate.core.catalogs.ComicCatalog.FEATURE) == true) catalogsApi.list() else emptyList()
+
+    override fun catalogLink(catalog: dev.nitrate.core.catalogs.ComicCatalog) = catalogsApi.link(catalog)
+
     override suspend fun saveComicInfo(itemId: String, changes: Map<String, String?>) = companionApi.saveComicInfo(itemId, changes)
     override suspend fun checkClips() = companionApi.checkClips()
     override suspend fun serverCreditScenes(itemId: String) = companionApi.creditScenes(itemId)

@@ -70,12 +70,6 @@ interface EpubReaderHost {
     suspend fun open(book: OpenedBook.Epub)
 }
 
-/** Where the user is in catalog books, kept on the device (by catalog and book). */
-interface CatalogPositions {
-    suspend fun get(catalogId: String, bookId: String): Int?
-    suspend fun set(catalogId: String, bookId: String, page: Int)
-}
-
 /** A picture's brightness, small: [width] × [height] values 0–255, row by row. */
 class PictureLuma(val luma: IntArray, val width: Int, val height: Int)
 
@@ -237,59 +231,63 @@ class ComicLibrary(
     }
 
     /**
-     * Opens a book from a comic catalog (OPDS or CLU): page by page when the catalog streams pages,
-     * else its file fetched once. Where the user is stays on the device ([positions]) and goes back
-     * to the catalog when it keeps reading positions (CLU).
+     * Opens a book from a comic catalog (OPDS or CLU), always through the server: page by page when
+     * the catalog streams pages, else the server fetches the file once and serves it page by page
+     * like its own books (CBR too); PDF and EPUB come whole. Where the user is goes to the server.
      */
     suspend fun openCatalog(
         client: dev.nitrate.core.catalogs.CatalogClient,
         book: dev.nitrate.core.catalogs.CatalogBook,
-        positions: CatalogPositions,
         onProgress: (Float) -> Unit = {},
-    ): ComicBook = (prepareCatalog(client, book, positions, onProgress) as? OpenedBook.Comic)?.book
+    ): ComicBook = (prepareCatalog(client, book, onProgress) as? OpenedBook.Comic)?.book
         ?: throw ComicException("This book is an EPUB, read in the book reader.")
 
     /** [openCatalog], or the file for the EPUB reader when the book is an EPUB. */
     suspend fun prepareCatalog(
         client: dev.nitrate.core.catalogs.CatalogClient,
         book: dev.nitrate.core.catalogs.CatalogBook,
-        positions: CatalogPositions,
         onProgress: (Float) -> Unit = {},
     ): OpenedBook = withContext(Dispatchers.IO) {
-        val key = "cat-" + client.catalog.id + "-" + safeName(book.id)
+        val link = client.link
+        val key = "cat-" + link.catalog.id + "-" + safeName(book.id)
         val dir = root / key
         fs.createDirectories(dir)
         fs.write(dir / "opened") { writeUtf8(now().toString()) }
-        val saved = positions.get(client.catalog.id, book.id)
+        // The person's own place, else the catalog's (its account is the household's).
+        val saved = runCatching { link.position(book.id) }.getOrNull()
         val meta = Meta(
             null, book.title,
             start = { count -> (saved ?: book.lastRead ?: 0).let { if (count > 0 && it >= count - 1) 0 else it.coerceIn(0, (count - 1).coerceAtLeast(0)) } },
-            save = { page, _ ->
-                positions.set(client.catalog.id, book.id, page)
-                runCatching { client.saveProgress(book, page, pageCountOf(dir)) }
-            },
+            save = { page, _ -> link.savePosition(book.id, page) },
         )
         val file = dir / "book"
+        val kept = dir / "listing.json"
         val template = book.pageTemplate
         val count = book.pageCount
+        val fileUrl = book.fileUrl
         val result = when {
             template != null && count != null && count > 0 -> {
-                runCatching { fs.write(dir / "count") { writeUtf8(count.toString()) } }
-                val link = dev.nitrate.core.opds.OpdsLink(dev.nitrate.core.opds.Opds.PSE_STREAM, template, null)
+                val stream = dev.nitrate.core.opds.OpdsLink(dev.nitrate.core.opds.Opds.PSE_STREAM, template, null)
                 OpenedBook.Comic(
                     ComicBook(
                         null, book.title, (0 until count).map { "page-$it.jpg" }, null, emptySet(), meta.start(count),
-                        { i, out -> fetch(dev.nitrate.core.opds.Opds.pageUrl(link, i, STREAM_WIDTH_PX), client.authorization, dir, out) {} },
+                        { i, out -> fetch(link.fetchUrl(dev.nitrate.core.opds.Opds.pageUrl(stream, i, STREAM_WIDTH_PX)), link.authorization, dir, out) {} },
                         dir, meta.save,
                     ),
                 )
             }
-            book.fileUrl != null -> {
-                if (!fs.exists(file)) fetch(book.fileUrl!!, client.authorization, dir, file, onProgress)
-                if (kind(file) == Kind.EPUB) {
-                    // EPUB position on the device, as thousandths of the book.
-                    epub(file, dir, book.title, EpubProgress((saved ?: 0) / 1000.0) { p -> positions.set(client.catalog.id, book.id, (p * 1000).toInt()) })
-                } else OpenedBook.Comic(fromFile(meta, file, dir).also { b -> runCatching { fs.write(dir / "count") { writeUtf8(b.pageCount.toString()) } } })
+            fileUrl != null -> {
+                val listing = if (fs.exists(file)) null else runCatching { link.book(fileUrl) }
+                    .onSuccess { l -> if (l != null) runCatching { fs.write(kept) { writeUtf8(json.encodeToString(ComicListing.serializer(), l)) } } }
+                    .getOrElse { e -> runCatching { json.decodeFromString(ComicListing.serializer(), fs.read(kept) { readUtf8() }) }.getOrElse { throw ComicException(e.message ?: "The server couldn't fetch this book.") } }
+                if (listing != null && listing.paged) OpenedBook.Comic(streamed(meta, listing, dir, link.authorization) { i -> link.pageUrl(fileUrl, i) })
+                else {
+                    if (!fs.exists(file)) fetch(link.fileUrl(fileUrl), link.authorization, dir, file, onProgress)
+                    if (kind(file) == Kind.EPUB) {
+                        // An EPUB's place, as thousandths of the book.
+                        epub(file, dir, book.title, EpubProgress((saved ?: 0) / 1000.0) { p -> link.savePosition(book.id, (p * 1000).toInt()) })
+                    } else OpenedBook.Comic(fromFile(meta, file, dir))
+                }
             }
             else -> throw ComicException("The catalog doesn't offer this book for reading.")
         }
@@ -297,8 +295,6 @@ class ComicLibrary(
         (result as? OpenedBook.Comic)?.book?.pictures = pictures
         result
     }
-
-    private fun pageCountOf(dir: Path) = runCatching { fs.read(dir / "count") { readUtf8().trim().toInt() } }.getOrDefault(0)
 
     private fun safeName(id: String) = id.map { if (it.isLetterOrDigit() || it == '-' || it == '_') it else '_' }.joinToString("").takeLast(80) + "-" + id.hashCode().toUInt().toString(16)
 
@@ -322,11 +318,11 @@ class ComicLibrary(
         save = { page, finished -> server.saveUserData(item.id, if (finished) 0 else ComicProgress.positionMs(page), finished || item.user.played, now()) },
     )
 
-    private fun streamed(meta: Meta, listing: ComicListing, dir: Path, pageUrl: (Int) -> String): ComicBook {
+    private fun streamed(meta: Meta, listing: ComicListing, dir: Path, auth: String = server.authorizationHeader(), pageUrl: (Int) -> String): ComicBook {
         val info = listing.comicInfo?.let { runCatching { ComicInfo.parse(it) }.getOrNull() }
         return ComicBook(
             meta.item, meta.title, listing.pages.map { it.name }, info, listing.widePages + info?.doublePages.orEmpty(),
-            meta.start(listing.pages.size), { i, out -> fetch(pageUrl(i), server.authorizationHeader(), dir, out) {} }, dir, meta.save,
+            meta.start(listing.pages.size), { i, out -> fetch(pageUrl(i), auth, dir, out) {} }, dir, meta.save,
         )
     }
 
