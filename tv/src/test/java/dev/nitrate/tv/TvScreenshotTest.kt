@@ -653,8 +653,13 @@ class TvScreenshotTest {
             compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
             check(focusedHasText("Arrangement")) { "the Layout section should open on its first choice" }
             press("down", "ok")
-            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
-            val stored = runBlocking { container.displaySettings.prefs("user-1").first() }
+            // The save lands a beat later on a slow machine: wait for it rather than a fixed time.
+            var stored = runBlocking { container.displaySettings.prefs("user-1").first() }
+            repeat(50) {
+                if (stored.pageLooks["home"]?.stacked == true) return@repeat
+                compose.mainClock.advanceTimeBy(200); compose.waitForIdle(); Thread.sleep(50)
+                stored = runBlocking { container.displaySettings.prefs("user-1").first() }
+            }
             check(stored.pageLooks["home"]?.stacked == true) { "Home should have stacked rows of its own: ${stored.pageLooks}" }
             check(!stored.tvRowsStacked) { "every page's layout should be unchanged" }
             check(compose.onAllNodes(androidx.compose.ui.test.hasText("Stacked down the page", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the choice should show" }
