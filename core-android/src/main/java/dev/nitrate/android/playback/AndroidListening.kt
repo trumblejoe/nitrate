@@ -212,25 +212,39 @@ class AndroidListening(
     }
 
     private var sleeper: Job? = null
+    private var sleepMessage: androidx.media3.exoplayer.PlayerMessage? = null
 
     override fun setSleep(sleep: dev.nitrate.core.music.Sleep?) {
         sleeper?.cancel()
+        sleepMessage?.cancel()
+        sleepMessage = null
         val endsAt = (sleep as? dev.nitrate.core.music.Sleep.After)?.let { System.currentTimeMillis() + it.minutes * 60_000L }
         _state.value = _state.value.copy(sleep = sleep, sleepEndsAtMs = endsAt)
-        if (sleep == null) return
-        sleeper = scope.launch {
-            when (sleep) {
-                is dev.nitrate.core.music.Sleep.After -> delay(sleep.minutes * 60_000L)
-                dev.nitrate.core.music.Sleep.EndOfChapter -> {
-                    // Watch for the chapter (or song) ending: stop right at its end.
-                    val c = chapters()
-                    val end = if (c != null) dev.nitrate.core.music.Audiobooks.chapterEnd(c, player.currentPosition, player.duration) else player.duration
+        fun fallAsleep() {
+            player.pause()
+            sleepMessage = null
+            _state.value = _state.value.copy(sleep = null, sleepEndsAtMs = null)
+        }
+        when (sleep) {
+            null -> Unit
+            is dev.nitrate.core.music.Sleep.After -> sleeper = scope.launch { delay(sleep.minutes * 60_000L); fallAsleep() }
+            dev.nitrate.core.music.Sleep.EndOfChapter -> {
+                // The player itself stops right at the chapter's (or song's) end: no polling to fall behind.
+                val c = chapters()
+                val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: songs[player.currentMediaItem?.mediaId]?.runtimeMs ?: Long.MAX_VALUE
+                val end = if (c != null) dev.nitrate.core.music.Audiobooks.chapterEnd(c, player.currentPosition, duration) else duration
+                if (end == Long.MAX_VALUE) {
+                    // Length not known yet: stop as this item ends instead.
                     val item = player.currentMediaItemIndex
-                    while (isActive && player.currentMediaItemIndex == item && player.currentPosition < end - 250) delay(250)
+                    sleeper = scope.launch { while (isActive && player.currentMediaItemIndex == item && player.playbackState != Player.STATE_ENDED) delay(250); fallAsleep() }
+                } else {
+                    sleepMessage = player.createMessage { _, _ -> fallAsleep() }
+                        .setPosition(player.currentMediaItemIndex, (end - 100).coerceAtLeast(0))
+                        .setLooper(android.os.Looper.getMainLooper())
+                        .setDeleteAfterDelivery(true)
+                        .send()
                 }
             }
-            player.pause()
-            _state.value = _state.value.copy(sleep = null, sleepEndsAtMs = null)
         }
     }
 

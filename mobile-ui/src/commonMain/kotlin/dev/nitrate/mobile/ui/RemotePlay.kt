@@ -68,6 +68,7 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
     val devices = rememberRemoteDevices(actions)
     var sending by remember { mutableStateOf<String?>(null) }
     var failed by remember { mutableStateOf<String?>(null) }
+    val cast = dev.nitrate.mobile.platform.rememberCast()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Play on…") },
@@ -77,7 +78,10 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
                 when {
                     devices == null -> CircularProgressIndicator()
                     devices.isFailure -> Text("Couldn't ask your server which devices are on: ${devices.exceptionOrNull()?.message}")
-                    list.isNullOrEmpty() -> Text("None of your other devices can be played on right now. Open Nitrate (or another Jellyfin app) on your TV, then try again.")
+                    list.isNullOrEmpty() -> Text(
+                        "None of your other devices can be played on right now. Open Nitrate (or another Jellyfin app) on your TV, then try again." +
+                            if (cast != null) " Or cast to a Chromecast below." else "",
+                    )
                     else -> list.forEach { d ->
                         val name = RemoteDevices.name(d)
                         Row(
@@ -112,6 +116,16 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
                             }
                             if (sending == d.id) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         }
+                    }
+                }
+                // Chromecasts on the network, through Jellyfin's own receiver app.
+                if (cast != null) CastDeviceList(cast, busy = sending) { d ->
+                    sending = d.id
+                    failed = null
+                    scope.launch {
+                        val ok = runCatching { castTo(actions.container, cast, d, castPlayFor(actions.container, item, fromStart = false, startMs = startMs)) }.getOrDefault(false)
+                        sending = null
+                        if (ok) { onSent(); onDismiss() } else failed = "Couldn't cast to ${d.name}. Check it's on the same network, then try again."
                     }
                 }
                 failed?.let { Text(it, color = MaterialTheme.colorScheme.error) }

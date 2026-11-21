@@ -205,3 +205,7 @@ actual fun toImageBitmap(image: coil3.Image): androidx.compose.ui.graphics.Image
 actual fun softwareImage(builder: coil3.request.ImageRequest.Builder): coil3.request.ImageRequest.Builder = builder
 
 actual val canTestPlay: Boolean = false
+
+/** No casting on iPhone and iPad yet. */
+@androidx.compose.runtime.Composable
+actual fun rememberCast(): CastControl? = null

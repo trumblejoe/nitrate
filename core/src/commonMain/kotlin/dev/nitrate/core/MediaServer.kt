@@ -345,6 +345,15 @@ interface MediaServer {
     /** Switches the audio or subtitles (-1: off) playing on another device. */
     suspend fun setSessionTrack(sessionId: String, kind: dev.nitrate.core.model.StreamKind, index: Int): Unit = unsupported()
 
+    /** A message telling Jellyfin's Chromecast receiver to play [play] (null: not signed in, or casting unsupported). */
+    fun castPlay(play: dev.nitrate.core.cast.CastPlay): String? = null
+
+    /** A control message for Jellyfin's Chromecast receiver; [value] is the seek position (ms) or volume (0–100). */
+    fun castCommand(command: dev.nitrate.core.cast.CastCommand, value: Long? = null): String? = null
+
+    /** What a message from the receiver says about playback, if anything. */
+    fun castStatus(message: String): dev.nitrate.core.cast.CastStatus? = null
+
     /** This app's device id on the server, to leave it out of "play on" lists. */
     val deviceId: String? get() = null
 

@@ -368,6 +368,25 @@ class ScreenshotTest {
         check("toggle" in player.asked) { player.asked.toString() }
     }
 
+    /** Casting: the device, what it plays and where, with jumps, pause and stop casting. */
+    @Test
+    fun castBar() {
+        val status = dev.nitrate.core.cast.CastStatus("m1", "Nitrate", positionMs = 754_000, durationMs = 6_960_000, paused = false)
+        val cast = FakeCast(status = status, atMs = Long.MAX_VALUE)
+        shoot("phone-cast-bar") { actions ->
+            Box(Modifier.fillMaxSize()) {
+                dev.nitrate.mobile.ui.CastBar(actions, cast, Modifier.align(Alignment.BottomCenter).padding(12.dp))
+            }
+        }
+        compose.onNodeWithContentDescription("Pause").performClick()
+        compose.onNodeWithText("+10").performClick()
+        compose.waitForIdle()
+        check(cast.sent.first() == "pause" && cast.sent[1].startsWith("seek ")) { cast.sent.toString() }
+        compose.onNodeWithContentDescription("Stop casting").performClick()
+        compose.waitForIdle()
+        check(cast.state.value.connected == null)
+    }
+
     /** Now Playing: the cover, the song, a seek bar, the controls and what's up next. */
     @Test
     fun nowPlaying() {

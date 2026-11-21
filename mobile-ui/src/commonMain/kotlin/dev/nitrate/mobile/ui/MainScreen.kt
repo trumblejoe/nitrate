@@ -103,9 +103,11 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
 
     var playingElsewhere by remember { mutableStateOf(false) }
     var listening by remember { mutableStateOf(false) }
+    var casting by remember { mutableStateOf(false) }
+    val cast = dev.nitrate.mobile.platform.rememberCast()
     val base = NavBarClearance
     // Room above the nav pill for the bars over it: what's playing here, and on another device.
-    androidx.compose.runtime.CompositionLocalProvider(LocalPlayingElsewhere provides (if (playingElsewhere) 72.dp else 0.dp) + (if (listening) 70.dp else 0.dp)) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalPlayingElsewhere provides (if (playingElsewhere) 72.dp else 0.dp) + (if (listening) 70.dp else 0.dp) + (if (casting) 70.dp else 0.dp)) {
     Box(Modifier.fillMaxSize()) {
         val padded = Modifier.fillMaxSize().padding(bottom = NavBarClearance)
         when (tab) {
@@ -119,7 +121,9 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
         // Something playing on your TV (or another device): what, with a tap to its remote.
         // The song playing here, just above the nav pill.
         MiniPlayer(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = base - 8.dp), onShown = { listening = it })
-        PlayingElsewhereBar(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = base - 8.dp + (if (listening) 70.dp else 0.dp)), onShown = { playingElsewhere = it })
+        // Casting to a Chromecast: above the song playing here.
+        CastBar(actions, cast, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = base - 8.dp + (if (listening) 70.dp else 0.dp)), onShown = { casting = it })
+        PlayingElsewhereBar(actions, Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = base - 8.dp + (if (listening) 70.dp else 0.dp) + (if (casting) 70.dp else 0.dp)), onShown = { playingElsewhere = it })
         GlassNavBar(
             tabs = tabs.map { NavTab(it.label, it.icon) },
             selected = tabs.indexOf(tab),

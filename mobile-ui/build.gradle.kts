@@ -56,6 +56,9 @@ kotlin {
             implementation(libs.compose.material.icons)
             implementation(libs.compose.ui.tooling.preview)
             implementation(libs.media3.ui)
+            // Casting to Chromecast through Jellyfin's receiver app.
+            implementation(libs.play.services.cast.framework)
+            implementation(libs.androidx.mediarouter)
             implementation(libs.media3.session)
             implementation(libs.coil.compose)
             implementation(libs.coil.network.okhttp)

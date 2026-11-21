@@ -214,10 +214,16 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         fun playerRoute(itemId: String, fromStart: Boolean) =
             PlayerRoute(itemId, fromStart, local = container.downloads.find(itemId)?.state == DownloadState.COMPLETED)
 
+        val cast = dev.nitrate.mobile.platform.rememberCast()
+
         // Resuming after a break: the "Last time" recap first, when one is due.
         suspend fun go(target: dev.nitrate.core.model.MediaItem, fromStart: Boolean) {
             // A book opens in the reader, from wherever Play was pressed.
             if (target.kind == dev.nitrate.core.model.ItemKind.BOOK) return nav.navigate(ComicRoute(target.id))
+            // Casting: Play sends it to the Chromecast (Jellyfin's receiver plays it from the server).
+            if (cast != null && cast.state.value.connected != null && target.kind != dev.nitrate.core.model.ItemKind.TV_CHANNEL) {
+                if (castTo(container, cast, null, castPlayFor(container, target, fromStart))) return
+            }
             // A song plays in the listening player, its album queued around it.
             val listening = container.listening
             // A book carries on where it was left (from the start when asked, or once it was finished).

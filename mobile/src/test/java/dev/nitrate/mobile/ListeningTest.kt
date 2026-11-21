@@ -65,6 +65,8 @@ class ListeningTest {
 
     @Test fun aQueuePlaysLevelledAndSkipsAreNotCountedAsPlayed() = run({ Server(it) }) { l, server ->
         l.play(listOf(song("a", gain = -6.0206), song("b"), song("c")), startIndex = 0)
+        // Held still: under load the test's audio can run faster than real time and reach a song's end.
+        l.pause()
         until { l.player.playbackState == Player.STATE_READY && l.state.value.index == 0 }
         assertEquals(listOf("a", "b", "c"), l.state.value.queue.map { it.id })
         // Every song brought to the same loudness: -6 dB is half volume.
@@ -123,6 +125,7 @@ class ListeningTest {
         )
         // Carries on where it was left.
         l.play(listOf(book), startMs = 4_000)
+        l.pause() // held still until the sleep timer is tried
         until { l.player.playbackState == Player.STATE_READY }
         assertTrue("resumed at ${l.player.currentPosition}", l.player.currentPosition in 3_000..9_000)
         // Next is the next chapter, not the next item.

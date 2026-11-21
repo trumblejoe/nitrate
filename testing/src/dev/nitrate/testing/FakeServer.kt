@@ -69,6 +69,8 @@ class FakeServer : MediaServer {
     override suspend fun loadCustomPrefs(prefsId: String) = customPrefs[prefsId].orEmpty()
     override suspend fun saveCustomPrefs(prefs: Map<String, String>, prefsId: String) { customPrefs[prefsId] = prefs }
     override suspend fun views() = listOf(movies, shows)
+    override fun castPlay(play: dev.nitrate.core.cast.CastPlay) = "play ${play.items.getOrNull(play.startIndex)?.id} at ${play.startMs}"
+    override fun castCommand(command: dev.nitrate.core.cast.CastCommand, value: Long?) = "${command.name.lowercase()}${value?.let { " $it" } ?: ""}"
     override suspend fun homeRows() = listOf(
         MediaRow("home/continue_watching", "Continue Watching", listOf(films[0], episode(2, 4, false).copy(user = UserState(playedPercentage = 60.0))), RowDisplay(RowStyle.WIDE, showTitles = true)),
         MediaRow("home/next_up", "Next Up", listOf(episode(2, 5, false)), RowDisplay(RowStyle.WIDE, showTitles = true)),

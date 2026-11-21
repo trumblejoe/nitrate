@@ -183,6 +183,22 @@ class JellyfinClient(
         return reconnect()
     }
 
+    // ---- Casting through Jellyfin's receiver ----
+
+    private fun castSignIn(): CastSignIn? {
+        val user = userId ?: return null
+        val t = token ?: return null
+        val base = baseUrl ?: return null
+        return CastSignIn(user, identity.deviceId, t, base, serverId ?: current?.serverId)
+    }
+
+    override fun castPlay(play: dev.nitrate.core.cast.CastPlay): String? =
+        if (play.items.isEmpty()) null else castSignIn()?.let { JellyfinCast.play(it, play) }
+
+    override fun castCommand(command: dev.nitrate.core.cast.CastCommand, value: Long?): String? = castSignIn()?.let { JellyfinCast.command(it, command, value) }
+
+    override fun castStatus(message: String): dev.nitrate.core.cast.CastStatus? = JellyfinCast.status(message)
+
     /** The signed-in account as stored, for its addresses. */
     private var current: StoredSession? = null
 
