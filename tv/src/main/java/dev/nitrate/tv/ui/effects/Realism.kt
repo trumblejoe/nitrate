@@ -165,12 +165,15 @@ internal fun boltSegments(from: Offset, to: Offset, seed: Int, detail: Int = 7):
     return out
 }
 
-/** Draws a bolt as light: a wide faint halo, a blue glow and a white-hot core. */
-internal fun DrawScope.lightning(segments: List<Triple<Offset, Offset, Float>>, brightness: Float) {
+/**
+ * Draws a bolt as light: a wide faint halo, a blue glow and a white-hot core. [scale] sizes the
+ * strokes (1 = drawn for a 1080-line picture), so a bolt over a 4K screen is as bold as over 1080p.
+ */
+internal fun DrawScope.lightning(segments: List<Triple<Offset, Offset, Float>>, brightness: Float, scale: Float = 1f) {
     if (brightness <= 0f) return
-    for ((a, b, s) in segments) drawLine(Color(0xFF6E84FF).copy(alpha = 0.10f * s * brightness), a, b, 26f * s, StrokeCap.Round, blendMode = BlendMode.Plus)
-    for ((a, b, s) in segments) drawLine(Color(0xFFA9BCFF).copy(alpha = 0.35f * s * brightness), a, b, 7f * s, StrokeCap.Round, blendMode = BlendMode.Plus)
-    for ((a, b, s) in segments) drawLine(Color.White.copy(alpha = (0.5f + 0.5f * s) * brightness), a, b, 1.2f + 1.8f * s, StrokeCap.Round)
+    for ((a, b, s) in segments) drawLine(Color(0xFF6E84FF).copy(alpha = 0.10f * s * brightness), a, b, 26f * s * scale, StrokeCap.Round, blendMode = BlendMode.Plus)
+    for ((a, b, s) in segments) drawLine(Color(0xFFA9BCFF).copy(alpha = 0.35f * s * brightness), a, b, 7f * s * scale, StrokeCap.Round, blendMode = BlendMode.Plus)
+    for ((a, b, s) in segments) drawLine(Color.White.copy(alpha = (0.5f + 0.5f * s) * brightness), a, b, (1.2f + 1.8f * s) * scale, StrokeCap.Round)
 }
 
 /** A thunderstorm: clouds, rain, and every few seconds a strike that flickers and lights the deck. */

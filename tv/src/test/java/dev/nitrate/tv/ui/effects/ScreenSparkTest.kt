@@ -53,6 +53,25 @@ class ScreenSparkTest {
         check(narrow.isEmpty()) { narrow.joinToString("\n") }
     }
 
+    /** The strike is as bold on a 4K screen as on 1080p: its bright core grows with the picture. */
+    @Test fun lightningScalesWithTheScreen() {
+        fun core(w: Int, h: Int): Int {
+            val bitmap = ImageBitmap(w, h)
+            CanvasDrawScope().draw(Density(2f), LayoutDirection.Ltr, Canvas(bitmap), Size(w.toFloat(), h.toFloat())) {
+                drawRect(Color.Black)
+                drawScreenSpark(CardSpark.LIGHTNING, 0.02f, 1f, 1234)
+            }
+            val px = IntArray(w * h)
+            bitmap.readPixels(px)
+            // The white-hot core: all three channels near full.
+            return px.count { (it shr 16 and 0xFF) > 235 && (it shr 8 and 0xFF) > 235 && (it and 0xFF) > 235 }
+        }
+        val hd = core(1920, 1080)
+        val uhd = core(3840, 2160)
+        // Twice as long and twice as thick: about four times the pixels (fixed strokes would give two).
+        check(uhd > hd * 3) { "4K core $uhd px vs 1080p $hd px: the bolt didn't thicken" }
+    }
+
     @Test fun cardsKeepTheirOwnSparks() {
         // A large art card is still a card: its spark is the card's, not the screen's.
         val bitmap = ImageBitmap(1280, 680)

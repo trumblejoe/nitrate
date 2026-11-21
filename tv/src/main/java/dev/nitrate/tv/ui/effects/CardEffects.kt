@@ -217,9 +217,9 @@ internal fun DrawScope.drawScreenSpark(spark: CardSpark, p: Float, k: Float, see
             glow(top, h * 0.9f, Color(0xFF9FB4FF), alpha = 0.4f * env)
             if (p < 0.4f) {
                 val ground = Offset(top.x + (rnd(seed, 2) - 0.5f) * w * 0.35f, h * (0.8f + rnd(seed, 3) * 0.2f))
-                lightning(boltSegments(top, ground, seed * 97 + 11), env)
+                lightning(boltSegments(top, ground, seed * 97 + 11), env, scale = u)
                 // A second, fainter fork now and then.
-                if (rnd(seed, 4) > 0.5f) lightning(boltSegments(top, Offset(ground.x + w * 0.18f * (if (rnd(seed, 5) > 0.5f) 1 else -1), h * 0.62f), seed * 53 + 7), env * 0.5f)
+                if (rnd(seed, 4) > 0.5f) lightning(boltSegments(top, Offset(ground.x + w * 0.18f * (if (rnd(seed, 5) > 0.5f) 1 else -1), h * 0.62f), seed * 53 + 7), env * 0.5f, scale = u)
             }
         }
         CardSpark.FIREWORKS -> {
