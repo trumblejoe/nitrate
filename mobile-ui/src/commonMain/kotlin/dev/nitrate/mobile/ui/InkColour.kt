@@ -73,7 +73,8 @@ fun InkColourDialog(display: RowDisplay, onSave: (RowDisplay) -> Unit, onDismiss
                                 Box(
                                     Modifier.size(34.dp).clip(CircleShape).background(Color(colour.toInt()))
                                         .border(if (argb == colour) 3.dp else 1.dp, if (argb == colour) Color.White else Color.White.copy(alpha = 0.25f), CircleShape)
-                                        .pressable({ argb = colour; hue = InkPalette.hue(colour).toFloat() }),
+                                        .pressable({ argb = colour; hue = InkPalette.hue(colour).toFloat() })
+                                        .labelled(name),
                                 )
                             }
                         }

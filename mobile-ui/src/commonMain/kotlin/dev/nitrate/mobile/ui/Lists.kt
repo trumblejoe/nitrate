@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -153,9 +154,9 @@ fun AddToListDialog(actions: AppActions, item: MediaItem, onDismiss: () -> Unit)
                         val t = all[i]
                         val on = selected.any { it.key == t.key }
                         ListItem(
-                            modifier = Modifier.fillMaxWidth().clickable { toggle(t) },
+                            modifier = Modifier.fillMaxWidth().toggleable(value = on, role = androidx.compose.ui.semantics.Role.Checkbox) { toggle(t) },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            leadingContent = { androidx.compose.material3.Checkbox(checked = on, onCheckedChange = { toggle(t) }) },
+                            leadingContent = { androidx.compose.material3.Checkbox(checked = on, onCheckedChange = null) },
                             headlineContent = { Text(t.name + if (t.isNew) "  (new)" else "") },
                         )
                     }

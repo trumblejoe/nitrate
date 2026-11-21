@@ -51,7 +51,8 @@ fun LyricsView(lyrics: Lyrics, positionMs: Long, onSeek: (Long) -> Unit, modifie
                 },
                 textAlign = TextAlign.Start,
                 modifier = Modifier.fillMaxWidth()
-                    .then(line.startMs?.let { start -> Modifier.pressable({ onSeek(start) }) } ?: Modifier)
+                    // A blank line (a break between verses) has nothing to say or tap.
+                    .then(line.startMs?.takeIf { line.text.isNotBlank() }?.let { start -> Modifier.pressable({ onSeek(start) }) } ?: Modifier)
                     .padding(vertical = 8.dp),
             )
         }

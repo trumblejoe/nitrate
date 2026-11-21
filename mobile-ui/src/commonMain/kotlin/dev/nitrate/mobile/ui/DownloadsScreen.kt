@@ -460,7 +460,7 @@ fun DownloadDialog(actions: AppActions, items: List<MediaItem>, title: String, o
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            androidx.compose.material3.Switch(checked = burnIn, onCheckedChange = { burnIn = it })
+                            androidx.compose.material3.Switch(checked = burnIn, onCheckedChange = { burnIn = it }, modifier = Modifier.labelled("Burn-in subtitles"))
                         }
                     }
                 }

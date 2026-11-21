@@ -183,7 +183,7 @@ private fun SwitchLine(title: String, note: String, on: Boolean, onChange: (Bool
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(on, onChange)
+        Switch(on, onChange, Modifier.labelled(title))
     }
 }
 
@@ -194,7 +194,7 @@ private fun FetcherList(title: String, list: List<LibraryFetcher>, onChange: (Li
         Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         list.forEachIndexed { i, f ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(f.enabled, { onChange(LibraryMetadata.toggle(list, i)) })
+                Switch(f.enabled, { onChange(LibraryMetadata.toggle(list, i)) }, Modifier.labelled(f.name))
                 Text(f.name, Modifier.weight(1f).padding(start = 10.dp))
                 TextButton(enabled = i > 0, onClick = { onChange(LibraryMetadata.move(list, i, -1)) }) { Text("▲") }
                 TextButton(enabled = i < list.lastIndex, onClick = { onChange(LibraryMetadata.move(list, i, 1)) }) { Text("▼") }

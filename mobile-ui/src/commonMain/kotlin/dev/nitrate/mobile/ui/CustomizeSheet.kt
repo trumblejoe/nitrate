@@ -129,6 +129,6 @@ private fun SwitchLine(title: String, detail: String?, checked: Boolean, onChang
             Text(title)
             detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.labelled(title))
     }
 }

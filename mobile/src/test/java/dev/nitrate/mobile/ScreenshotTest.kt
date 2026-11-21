@@ -135,6 +135,9 @@ class ScreenshotTest {
         compose.mainClock.advanceTimeBy(1_500)
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+        // Everything that can be tapped says what it is.
+        val silent = dev.nitrate.testing.A11y.silent(compose)
+        check(silent.isEmpty()) { "$name: a screen reader would say nothing for:\n" + silent.joinToString("\n") }
         // Leaving any group stops its clock-sync loop, which would otherwise keep the next test busy.
         compose.runOnUiThread { container.syncPlay.handle(dev.nitrate.core.events.ServerEvent.SyncPlayGroupUpdate("", dev.nitrate.core.syncplay.SyncPlayUpdate.Left)) }
     }

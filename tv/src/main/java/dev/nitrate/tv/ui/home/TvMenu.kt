@@ -310,7 +310,7 @@ private fun Rail(
 ) {
     val state = rememberDrawerState(DrawerValue.Closed)
     val target = stops.firstOrNull { it.selected } ?: stops.firstOrNull()
-    val drawer: @Composable androidx.tv.material3.NavigationDrawerScope.(DrawerValue) -> Unit = {
+    val drawer: @Composable androidx.tv.material3.NavigationDrawerScope.(DrawerValue) -> Unit = { drawerValue ->
         Column(
             Modifier.fillMaxHeight()
                 .then(if (dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvMenuBlack) Modifier.background(Color.Black) else Modifier)
@@ -328,7 +328,8 @@ private fun Rail(
                     selected = entry.selected,
                     onClick = entry.onClick,
                     onLongClick = entry.onLongClick,
-                    leadingContent = { Icon(entry.icon, contentDescription = null) },
+                    // Closed, the rail shows icons alone: each says its stop's name.
+                    leadingContent = { Icon(entry.icon, contentDescription = if (drawerValue == DrawerValue.Closed) entry.label else null) },
                     modifier = if (entry == target) Modifier.focusRequester(menuFocus) else Modifier,
                 ) { Text(entry.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }

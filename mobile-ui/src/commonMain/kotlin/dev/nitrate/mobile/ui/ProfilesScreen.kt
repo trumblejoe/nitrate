@@ -147,7 +147,7 @@ fun ProfilesScreen(
                                 Text("Ask who's watching", style = MaterialTheme.typography.bodyLarge)
                                 Text("Every time Nitrate opens", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Switch(askAtStart, { scope.launch { c.profiles.setAskAtStart(it) } })
+                            Switch(askAtStart, { scope.launch { c.profiles.setAskAtStart(it) } }, Modifier.labelled("Ask who's watching"))
                         }
                     }
                     PillButton(if (editing) "Done" else "Manage profiles", null, primary = editing, onClick = { editing = !editing })

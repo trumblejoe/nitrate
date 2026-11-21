@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.unit.sp
@@ -541,11 +542,12 @@ private fun Choice(label: String, value: String, detail: String? = null, onClick
 
 @Composable
 private fun Toggle(label: String, detail: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    // The whole line is the switch: one thing to tap, read out with its words.
     ListItem(
-        modifier = Modifier.clickable { onToggle(!checked) },
+        modifier = Modifier.toggleable(value = checked, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onToggle),
         headlineContent = { Text(label) },
         supportingContent = { Text(detail) },
-        trailingContent = { Switch(checked = checked, onCheckedChange = onToggle) },
+        trailingContent = { Switch(checked = checked, onCheckedChange = null) },
     )
 }
 

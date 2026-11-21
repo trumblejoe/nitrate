@@ -87,6 +87,16 @@ data class MediaItem(
     val displayTitle get() = if (isEpisode) seriesName ?: name else name
 
     /** "S2:E5 · Episode name" for episodes, null otherwise. */
+    /**
+     * What a screen reader says for a card that shows only a picture: the title, and for an episode
+     * the show with its season and episode in words (never the episode's name, which may spoil).
+     */
+    val spokenTitle: String get() = when {
+        isEpisode -> listOfNotNull(seriesName ?: name, seasonNumber?.let { "season $it" }, indexNumber?.let { "episode $it" }).joinToString(", ")
+        productionYear != null -> "$name, $productionYear"
+        else -> name
+    }
+
     val episodeLabel get() = if (isEpisode) "S${seasonNumber ?: "?"}:E${indexNumber ?: "?"} · $name" else null
 
     companion object {

@@ -248,7 +248,7 @@ fun WatchPartnersScreen(actions: AppActions) {
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(p.isPrivate, { on -> act { privacy = container.server.setPrivacy(on) } }, enabled = !p.byAdmin)
+                Switch(p.isPrivate, { on -> act { privacy = container.server.setPrivacy(on) } }, Modifier.labelled("Keep me private"), enabled = !p.byAdmin)
             }
         }
 

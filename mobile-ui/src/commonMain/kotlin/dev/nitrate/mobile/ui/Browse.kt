@@ -343,7 +343,7 @@ private fun FilterSheet(options: BrowseOptions, genres: List<String>, available:
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Favourites only", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(options.favoritesOnly, { on -> onChange { it.copy(favoritesOnly = on) } })
+                Switch(options.favoritesOnly, { on -> onChange { it.copy(favoritesOnly = on) } }, Modifier.labelled("Favourites only"))
             }
             Group("Quality") {
                 ResolutionFilter.entries.forEach { r -> FilterChip(options.resolution == r, { onChange { it.copy(resolution = r) } }, label = { Text(r.label) }) }

@@ -100,6 +100,9 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(settleMs)
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+        // Everything that can be focused or pressed says what it is.
+        val silent = dev.nitrate.testing.A11y.silent(compose)
+        check(silent.isEmpty()) { "$name: a screen reader would say nothing for:\n" + silent.joinToString("\n") }
     }
 
     private suspend fun customize(c: AppContainer) {

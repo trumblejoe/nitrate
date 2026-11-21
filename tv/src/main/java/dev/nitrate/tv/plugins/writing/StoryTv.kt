@@ -1,5 +1,8 @@
 package dev.nitrate.tv.plugins.writing
 
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -489,6 +492,11 @@ private fun MapTv(ctx: StoryContext, onOpen: (Ref) -> Unit) {
                 .border(if (mapFocused) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
                 .focusRequester(mapFocus)
                 .onFocusChanged { mapFocused = it.isFocused }
+                // Said as the map and the entry chosen on it, which the arrows move between.
+                .semantics {
+                    contentDescription = "Story map"
+                    stateDescription = selected?.let { r -> nameOf(ctx, r) + ", OK opens it" } ?: "nothing to show with these filters"
+                }
                 .onKeyEvent { e ->
                     if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
                     val from = selected ?: return@onKeyEvent false

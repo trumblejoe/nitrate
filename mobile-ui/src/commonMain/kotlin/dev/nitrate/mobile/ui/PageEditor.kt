@@ -200,7 +200,7 @@ private fun EntryCard(
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, "Edit row") }
-        Switch(checked = shown, onCheckedChange = onShown)
+        Switch(checked = shown, onCheckedChange = onShown, modifier = Modifier.labelled("Show $title"))
     }
 }
 
@@ -243,7 +243,7 @@ private fun EntryDialog(
                             Text("Show cards")
                             Text("Off: one title at a time filling the screen, swiped through", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(checked = cards, onCheckedChange = { cards = it })
+                        Switch(checked = cards, onCheckedChange = { cards = it }, modifier = Modifier.labelled("Show cards"))
                     }
                 }
                 if (style == RowStyle.CRESSIDA) {
@@ -255,7 +255,7 @@ private fun EntryDialog(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Titles under cards", modifier = Modifier.weight(1f))
-                    Switch(checked = titles, onCheckedChange = { titles = it })
+                    Switch(checked = titles, onCheckedChange = { titles = it }, modifier = Modifier.labelled("Titles under cards"))
                 }
                 if (entry.isCustom) {
                     Text(
@@ -392,13 +392,13 @@ fun RowBuilderDialog(
                         Chips(QuerySort.entries.map { it to it.label }, selected = { it == query.sort }) { query = query.copy(sort = it) }
                         if (query.sort != QuerySort.RANDOM) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                             Text("Highest / newest first", modifier = Modifier.weight(1f))
-                            Switch(checked = query.descending, onCheckedChange = { query = query.copy(descending = it) })
+                            Switch(checked = query.descending, onCheckedChange = { query = query.copy(descending = it) }, modifier = Modifier.labelled("Highest or newest first"))
                         }
                     }
                     Section("Items") { Chips(listOf(12, 24, 48).map { it to "$it" }, selected = { it == query.limit }) { query = query.copy(limit = it) } }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Favorites only", modifier = Modifier.weight(1f))
-                        Switch(checked = query.favoritesOnly, onCheckedChange = { query = query.copy(favoritesOnly = it) })
+                        Switch(checked = query.favoritesOnly, onCheckedChange = { query = query.copy(favoritesOnly = it) }, modifier = Modifier.labelled("Favorites only"))
                     }
                 }
                 BuilderTab.COLLECTION -> PickList(collections, picked?.id ?: (initial as? RowSource.Collection)?.id, "You don't have any collections yet.") { picked = it; if (name.isBlank()) name = it.name }

@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.rows
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.launch
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.size
@@ -313,6 +315,8 @@ fun RowsPage(
                     ) {
                         androidx.compose.foundation.layout.Box(
                             Modifier.size(1.dp).focusRequester(holder).onFocusChanged { holderFocused = it.isFocused }
+                                // Holds focus a moment while the row's look changes: said as that.
+                                .semantics { contentDescription = "${row.title}: changing look" }
                                 .focusProperties { canFocus = holding }.focusable(),
                         )
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowsScroll) {

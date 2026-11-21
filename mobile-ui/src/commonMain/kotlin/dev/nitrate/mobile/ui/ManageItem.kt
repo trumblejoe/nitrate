@@ -252,7 +252,7 @@ private fun MetadataEditor(actions: AppActions, item: MediaItem, notify: (String
                     Text("Lock this item", style = MaterialTheme.typography.bodyLarge)
                     Text("Refreshes won't change anything", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Switch(checked = meta.lockData, onCheckedChange = { m = meta.copy(lockData = it) })
+                Switch(checked = meta.lockData, onCheckedChange = { m = meta.copy(lockData = it) }, modifier = Modifier.labelled("Lock this item"))
             }
             if (!meta.lockData) {
                 // Every field Jellyfin can lock on its own (the lock icons above, plus two not edited here).
@@ -448,7 +448,7 @@ private fun IdentifyPane(actions: AppActions, item: MediaItem, notify: (String) 
                     Text("The server will fetch this title's metadata from ${match.providerName ?: "the provider"}.")
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
                         Text("Replace existing images", modifier = Modifier.weight(1f))
-                        Switch(checked = replaceImages, onCheckedChange = { replaceImages = it })
+                        Switch(checked = replaceImages, onCheckedChange = { replaceImages = it }, modifier = Modifier.labelled("Replace existing images"))
                     }
                 }
             },
@@ -654,14 +654,14 @@ private fun RefreshPane(actions: AppActions, item: MediaItem, notify: (String) -
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Replace existing images", modifier = Modifier.weight(1f))
-            Switch(checked = replaceImages, onCheckedChange = { replaceImages = it })
+            Switch(checked = replaceImages, onCheckedChange = { replaceImages = it }, modifier = Modifier.labelled("Replace existing images"))
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Regenerate scrubbing thumbnails")
                 Text("Trickplay images for the seek bar", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Switch(checked = trickplay, onCheckedChange = { trickplay = it })
+            Switch(checked = trickplay, onCheckedChange = { trickplay = it }, modifier = Modifier.labelled("Regenerate scrubbing thumbnails"))
         }
         PillButton("Refresh", Icons.Default.Refresh, primary = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp), onClick = {
             scope.launch {

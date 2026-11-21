@@ -52,7 +52,7 @@ fun SpeakersSettings(settings: PlaybackSettings, output: SoundOutput?, update: (
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(checked = settings.upmixStereo, onCheckedChange = { v -> update { it.copy(upmixStereo = v) } })
+            Switch(checked = settings.upmixStereo, onCheckedChange = { v -> update { it.copy(upmixStereo = v) } }, modifier = Modifier.labelled("Upmix stereo"))
         }
         if (output != null) {
             Text("Sound is going to ${output.label}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))

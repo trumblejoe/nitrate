@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.player
 
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -366,6 +367,11 @@ private fun SeekBar(position: Long, duration: Long, onSeek: (Long) -> Unit) {
                 .height(28.dp)
                 .onSizeChanged { widthPx = it.width }
                 .onFocusChanged { focused = it.isFocused }
+                // Spoken as where you are, e.g. "Position: 12:04 of 1:58:30".
+                .semantics {
+                    contentDescription = "Position"
+                    stateDescription = "${formatTime(position)} of ${formatTime(duration)}"
+                }
                 .onKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                     when (event.key) {

@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.rows
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -171,7 +173,7 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
                                     shape = ClickableSurfaceDefaults.shape(shape),
                                     border = accentBorder(shape),
                                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-                                    modifier = Modifier.cardFx(item.id).returnFocus(item.id).fillMaxWidth().height(135.dp).alpha(if (inGate) 1f else 0.55f)
+                                    modifier = Modifier.cardFx(item.id).returnFocus(item.id).semantics { contentDescription = item.spokenTitle }.fillMaxWidth().height(135.dp).alpha(if (inGate) 1f else 0.55f)
                                         .focusProperties { canFocus = !upDown[0] || inGate }
                                         .onFocusChanged { if (it.isFocused) { gate = i; actions.onFocus(item) } }.onPlayKey { actions.onPlay(item) },
                                 ) {
@@ -247,7 +249,7 @@ private fun DoubleBill(row: MediaRow, left: MediaItem, right: MediaItem, reposit
                 shape = ClickableSurfaceDefaults.shape(shape),
                 border = accentBorder(shape),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-                modifier = Modifier.cardFx(item.id).returnFocus(item.id).align(if (isRight) Alignment.TopEnd else Alignment.TopStart).fillMaxHeight().fillMaxWidth(width)
+                modifier = Modifier.cardFx(item.id).returnFocus(item.id).semantics { contentDescription = item.spokenTitle }.align(if (isRight) Alignment.TopEnd else Alignment.TopStart).fillMaxHeight().fillMaxWidth(width)
                     .onFocusChanged { if (it.isFocused) { lit = isRight; actions.onFocus(item) } else if (lit == isRight) lit = null }
                     .onPlayKey { actions.onPlay(item) },
             ) {
