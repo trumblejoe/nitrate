@@ -18,6 +18,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import dev.nitrate.core.playback.trackName
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
@@ -71,6 +74,57 @@ class ApplePlayerSession(private val container: AppContainer, private val report
     private val _engine = MutableStateFlow(IosEngine.APPLE)
     val engine: StateFlow<IosEngine> = _engine
 
+    /** The second subtitle shown at the top (dual subtitles): its stream index, name and lines. */
+    data class Second(val index: Int, val label: String, val cues: List<dev.nitrate.core.playback.Cue>)
+
+    private val _second = MutableStateFlow<Second?>(null)
+    val secondSubtitle: StateFlow<Second?> = _second
+    private var secondJob: Job? = null
+
+    private val _speed = MutableStateFlow(1f)
+    val speed: StateFlow<Float> = _speed
+
+    /** Whether the speed can change (Apple's player; mpv's bridge has no speed yet). */
+    val canChangeSpeed: Boolean get() = !usingMpv
+
+    /** Plays faster or slower (Apple's player). */
+    fun setSpeed(rate: Float) {
+        if (usingMpv) return
+        _speed.value = rate
+        // Playing again after a pause comes back at 1×: the progress loop puts the speed back.
+        if (player.rate != 0f) player.rate = rate
+    }
+
+    /**
+     * Shows a second subtitle (text tracks only) at the top: a download's own SRT/WebVTT file, else
+     * the server's copy as SRT. Null turns it off.
+     */
+    fun setSecondSubtitle(index: Int?) {
+        secondJob?.cancel()
+        val p = _plan.value
+        if (index == null || p == null) {
+            _second.value = null
+            return
+        }
+        val label = p.source.trackName(index)
+        secondJob = scope.launch {
+            runCatching {
+                val local = p.externalSubtitles.firstOrNull { it.streamIndex == index }
+                    ?.takeIf { it.url.startsWith("/") && (it.mimeType.contains("subrip", true) || it.mimeType.contains("vtt", true)) }
+                val text = if (local != null) {
+                    okio.FileSystem.SYSTEM.read(okio.Path.Companion.run { local.url.toPath() }) { readUtf8() }
+                } else {
+                    io.ktor.client.HttpClient(container.platform.serverEngine()).use { http ->
+                        http.get(server.subtitleFileUrl(p.itemId, p.source, index, "srt")) {
+                            headers.append("Authorization", server.authorizationHeader())
+                        }.bodyAsText()
+                    }
+                }
+                _second.value = Second(index, label, dev.nitrate.core.playback.SecondSubtitles.parse(text))
+            }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+        }
+    }
+
     /** mpv, once a title needs it (kept for the rest of this session's titles). */
     var mpv: MpvPlayer? = null
         private set
@@ -94,6 +148,60 @@ class ApplePlayerSession(private val container: AppContainer, private val report
                 }
             }.onFailure { _error.value = "Couldn't start: ${it.message}" }
         }
+    }
+
+    /** The download being played (null: streaming). Its watch state is kept on the device, never reported. */
+    private var download: dev.nitrate.core.downloads.DownloadRecord? = null
+
+    /**
+     * Plays a download from the device: MP4/MOV (a converted copy) in Apple's player, anything else
+     * (an original MKV...) in mpv. Where it stops is saved for [dev.nitrate.core.downloads.DownloadManager.syncWatchState].
+     */
+    fun loadLocal(itemId: String, fromStart: Boolean, startMs: Long?) {
+        scope.launch {
+            runCatching {
+                val downloads = container.downloads
+                var record = downloads.find(itemId) ?: error("This download isn't on the device any more.")
+                downloads.makeSeekable(record)
+                record = downloads.withServerDefaults(downloads.find(itemId) ?: record)
+                download = record
+                _item.value = record.item
+                val p = downloads.playbackPlan(record) ?: error("This download's file is missing.")
+                val start = startMs ?: if (fromStart) 0L else downloads.resumePositionMs(record)
+                val fileContainer = p.source.container.orEmpty().lowercase()
+                val apple = fileContainer.split(',').any { it.trim() in setOf("mp4", "m4v", "mov") }
+                val factory = Mpv.factory
+                if (!apple && factory != null) {
+                    player.pause()
+                    val m = mpv ?: factory.create().also { mpv = it }
+                    m.load(p.url, "", start / 1000.0,
+                        dev.nitrate.core.playback.MpvTracks.audioId(p, p.audioIndex) ?: -1,
+                        dev.nitrate.core.playback.MpvTracks.subtitleId(p, p.subtitleIndex),
+                        p.externalSubtitles.map { it.url })
+                    _engine.value = IosEngine.MPV
+                } else {
+                    _engine.value = IosEngine.APPLE
+                    val playerItem = AVPlayerItem(asset = AVURLAsset(uRL = NSURL.fileURLWithPath(p.url), options = null))
+                    endObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
+                    endObserver = NSNotificationCenter.defaultCenter.addObserverForName(AVPlayerItemDidPlayToEndTimeNotification, playerItem, NSOperationQueue.mainQueue) { _ -> _ended.value = true }
+                    player.replaceCurrentItemWithPlayerItem(playerItem)
+                    if (start > 0) player.seekToTime(CMTimeMakeWithSeconds(start / 1000.0, 600))
+                    player.play()
+                }
+                _plan.value = p
+                _ended.value = false
+                // Skip Intro and the credits from the server when it answers (offline: none).
+                _segments.value = kotlinx.coroutines.withTimeoutOrNull(3_000) { runCatching { server.mediaSegments(itemId) }.getOrNull() }.orEmpty()
+                updateCredits()
+                followProgress()
+            }.onFailure { _error.value = "Couldn't play the download: ${it.message}" }
+        }
+    }
+
+    /** Saves where a download is (every few seconds, and when it stops). */
+    private suspend fun recordLocal(ended: Boolean = false) {
+        val r = download ?: return
+        runCatching { container.downloads.recordPlayback(r.itemId, currentMs(), _durationMs.value, ended) }
     }
 
     private suspend fun play(itemId: String, startMs: Long, audioIndex: Int?, subtitleIndex: Int?) {
@@ -157,13 +265,23 @@ class ApplePlayerSession(private val container: AppContainer, private val report
 
     private fun paused(): Boolean = if (usingMpv) mpv?.isPaused() ?: true else player.rate == 0f
 
+    /** Called when the viewer did something (paused, played, jumped): for "Still watching?". */
+    var onInput: (() -> Unit)? = null
+
     private fun followProgress() {
         progressJob?.cancel()
         progressJob = scope.launch {
             var lastReport = 0L
+            var wasPaused = paused()
             while (true) {
                 delay(250)
+                val before = _positionMs.value
                 _positionMs.value = currentMs()
+                // Apple's own controls take the touches: a pause, a play or a jump means someone's there.
+                val pausedNow = paused()
+                if (pausedNow != wasPaused || kotlin.math.abs(_positionMs.value - before) > 3_000) onInput?.invoke()
+                wasPaused = pausedNow
+                if (!usingMpv && !pausedNow && _speed.value != 1f && player.rate != _speed.value) player.rate = _speed.value
                 if (usingMpv) {
                     mpv?.let { m ->
                         m.duration().takeIf { it > 0 }?.let { _durationMs.value = (it * 1000).toLong() }
@@ -176,7 +294,10 @@ class ApplePlayerSession(private val container: AppContainer, private val report
                     }
                 }
                 val now = dev.nitrate.android.nowMs()
-                if (reported && now - lastReport >= 10_000) {
+                if (download != null && now - lastReport >= 10_000) {
+                    lastReport = now
+                    recordLocal()
+                } else if (reported && now - lastReport >= 10_000) {
                     lastReport = now
                     _plan.value?.let { p -> runCatching { server.reportProgress(p, _positionMs.value, isPaused = paused()) } }
                 }
@@ -215,11 +336,18 @@ class ApplePlayerSession(private val container: AppContainer, private val report
             val m = mpv
             // mpv has a file's own tracks at hand: switch without restarting.
             if (usingMpv && m != null && p.method == dev.nitrate.core.model.PlayMethod.DIRECT_PLAY) {
+                if (download != null) {
+                    if (kind == StreamKind.AUDIO) dev.nitrate.core.playback.MpvTracks.audioId(p, index)?.let(m::setAudio) else m.setSubtitle(dev.nitrate.core.playback.MpvTracks.subtitleId(p, index))
+                    _plan.value = p.copy(audioIndex = audio, subtitleIndex = subtitle)
+                    return@launch
+                }
                 if (kind == StreamKind.AUDIO) dev.nitrate.core.playback.MpvTracks.audioId(p, index)?.let(m::setAudio) else m.setSubtitle(dev.nitrate.core.playback.MpvTracks.subtitleId(p, index))
                 _plan.value = p.copy(audioIndex = audio, subtitleIndex = subtitle)
                 if (reported) runCatching { server.reportProgress(_plan.value!!, currentMs(), isPaused = paused()) }
                 return@launch
             }
+            // A download in Apple's player has the tracks it was saved with.
+            if (download != null) return@launch
             runCatching { play(item.id, currentMs(), audio, subtitle) }.onFailure { _error.value = "Couldn't change the track: ${it.message}" }
         }
     }
@@ -234,7 +362,13 @@ class ApplePlayerSession(private val container: AppContainer, private val report
     }
 
     fun release() {
-        if (reported) _plan.value?.let { server.reportStopped(it, currentMs()) }
+        if (download != null) {
+            // Outlives the screen: the last position is saved after the player's gone.
+            val at = currentMs()
+            val d = download!!
+            val ended = _ended.value
+            kotlinx.coroutines.MainScope().launch { runCatching { container.downloads.recordPlayback(d.itemId, at, _durationMs.value, ended) } }
+        } else if (reported) _plan.value?.let { server.reportStopped(it, currentMs()) }
         mpv?.release()
         endObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
         player.pause()

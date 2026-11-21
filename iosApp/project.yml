@@ -21,7 +21,12 @@ targets:
   Nitrate:
     type: application
     platform: iOS
-    sources: [Nitrate]
+    sources:
+      - Nitrate
+      # The licence texts shown in About → Licences (the same files the Android apps ship).
+      - path: ../core-android/src/main/assets/licenses
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: MPVKit
         product: MPVKit

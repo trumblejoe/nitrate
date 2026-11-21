@@ -187,7 +187,11 @@ actual fun rememberFilePickers(onOpened: (ByteArray) -> Unit, onResult: (String)
 actual fun rememberSoundOutput(): State<SoundOutput?> = remember { mutableStateOf(null) }
 
 @Composable
-actual fun rememberLicenceText(name: String): String? = null
+actual fun rememberLicenceText(name: String): String? = androidx.compose.runtime.remember(name) {
+    // Bundled by the Xcode project as the "licenses" folder (iosApp/project.yml).
+    val folder = platform.Foundation.NSBundle.mainBundle.resourcePath ?: return@remember null
+    runCatching { okio.FileSystem.SYSTEM.read(okio.Path.Companion.run { "$folder/licenses/$name".toPath() }) { readUtf8() } }.getOrNull()
+}
 
 actual fun fullScreenDialog() = DialogProperties(usePlatformDefaultWidth = false)
 

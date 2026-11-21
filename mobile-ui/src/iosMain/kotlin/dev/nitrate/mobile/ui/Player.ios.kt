@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
+import dev.nitrate.core.playback.infoRows
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,6 +46,7 @@ import dev.nitrate.core.playback.NextInCollection
 import dev.nitrate.core.playback.PlaybackMoments
 import dev.nitrate.core.playback.audioChoices
 import dev.nitrate.core.playback.subtitleChoices
+import kotlinx.coroutines.launch
 import platform.AVKit.AVPlayerViewController
 
 /**
@@ -66,7 +70,7 @@ actual fun PlayerScreen(
     val container = actions.container
     val session = remember(itemId) { ApplePlayerSession(container, reported = clipEndMs == null) }
     DisposableEffect(session) {
-        session.load(itemId, fromStart, startMs)
+        if (local) session.loadLocal(itemId, fromStart, startMs) else session.load(itemId, fromStart, startMs)
         container.remote.active = session
         onDispose {
             if (container.remote.active === session) container.remote.active = null
@@ -85,10 +89,35 @@ actual fun PlayerScreen(
     var picking by remember { mutableStateOf<StreamKind?>(null) }
     var upNext by remember(itemId) { mutableStateOf<MediaItem?>(null) }
     var upNextHidden by remember(itemId) { mutableStateOf(false) }
+    var more by remember { mutableStateOf(false) }
+    var chatting by remember { mutableStateOf(false) }
+    val easy = LocalDisplayPrefs.current.easyMode
 
-    // A recap clip ends at its end; anything else when the stream does.
+    // "Still watching?": asked instead of rolling on when nothing's been pressed for a while.
+    val still = container.stillWatching
+    var stillAsk by remember { mutableStateOf<MediaItem?>(null) }
+    val askStill by container.playbackSettings.settings.collectAsState(null)
+    LaunchedEffect(item?.id) { item?.let { i -> if (clipEndMs == null) still.started(i.id, i.user.positionMs, i.user.played) } }
+    DisposableEffect(session) {
+        session.onInput = { session.item.value?.let { i -> still.input(i.id, session.currentMs(), i.user.played) } }
+        onDispose { session.onInput = null }
+    }
+    fun pressed() = session.onInput?.invoke()
+    fun rollOn(next: MediaItem) {
+        if (askStill?.askStillWatching != false && still.shouldAsk()) stillAsk = next
+        else { still.rollingOn(next.id); onPlayNext?.invoke(next) }
+    }
+
+    // A recap clip ends at its end; an episode rolls on to the next (unless Up Next was put away);
+    // anything else ends when the stream does.
     LaunchedEffect(positionMs, ended) {
-        if (ended || (clipEndMs != null && positionMs >= clipEndMs)) onEnded()
+        val next = upNext
+        when {
+            clipEndMs != null && positionMs >= clipEndMs -> onEnded()
+            !ended -> Unit
+            clipEndMs == null && next != null && next.isEpisode && onPlayNext != null && !upNextHidden -> rollOn(next)
+            else -> onEnded()
+        }
     }
     // What comes next: the following episode, or the next film of a small collection.
     LaunchedEffect(item?.id) {
@@ -96,10 +125,16 @@ actual fun PlayerScreen(
         if (onPlayNext == null) return@LaunchedEffect
         upNext = when {
             current.kind == ItemKind.MOVIE -> runCatching { actions.server.nextInCollection(current) }.getOrNull()
+            local -> actions.container.downloads.nextDownloaded(current)
             current.isEpisode -> current.seriesId?.let { s -> runCatching { dev.nitrate.core.episodes.UpNext.after(current, actions.server.allEpisodes(s)) }.getOrNull() }
             else -> null
         }
     }
+
+    // Watch-together chat, while this device is in a group with chat (Companion plugin).
+    val syncGroup = container.syncPlay.group.collectAsState().value
+    val chatGroup = container.chat.groupId.collectAsState().value?.takeIf { !local && !easy }
+    val playerPrefs by container.playbackSettings.settings.collectAsState(null)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val engine by session.engine.collectAsState()
@@ -119,15 +154,19 @@ actual fun PlayerScreen(
             Modifier.align(Alignment.TopStart).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
+            IconButton(onClick = { pressed(); onExit() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
             Text(
                 listOfNotNull(item?.displayTitle, item?.episodeLabel).joinToString(" · "),
                 color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
             if (plan != null && clipEndMs == null) {
-                TextButton(onClick = { picking = StreamKind.AUDIO }) { Text("Audio", color = Color.White) }
-                TextButton(onClick = { picking = StreamKind.SUBTITLE }) { Text("Subtitles", color = Color.White) }
+                TextButton(onClick = { pressed(); picking = StreamKind.AUDIO }) { Text("Audio", color = Color.White) }
+                TextButton(onClick = { pressed(); picking = StreamKind.SUBTITLE }) { Text("Subtitles", color = Color.White) }
+                if (!easy) {
+                    if (chatGroup != null) TextButton(onClick = { pressed(); chatting = true }) { Text("Chat", color = Color.White) }
+                    TextButton(onClick = { pressed(); more = true }) { Text("More", color = Color.White) }
+                }
             }
         }
 
@@ -139,7 +178,7 @@ actual fun PlayerScreen(
         if (clipEndMs == null) SkipButton(PlaybackMoments.skippable(segments, positionMs).takeIf { !showUpNext }) { session.seekTo(it.endMs) }
         if (showUpNext && next != null) {
             val remaining = ((durationMs - positionMs) / 1000).toInt()
-            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true })
+            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { pressed(); onPlayNext?.invoke(next) }, onHide = { pressed(); upNextHidden = true }, onCountdownEnd = { rollOn(next) })
         }
 
         // Scenes in the credits: skipped to when sure (and allowed), else offered or a heads-up.
@@ -160,6 +199,45 @@ actual fun PlayerScreen(
             }
         }) { creditAction = null }
 
+        // Dual subtitles: the second one's current line at the top.
+        session.secondSubtitle.collectAsState().value?.let { second ->
+            dev.nitrate.core.playback.SecondSubtitles.at(second.cues, positionMs)?.let { line ->
+                Text(
+                    line, color = Color.White,
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * (playerPrefs?.subtitleStyle?.scale ?: 1f)),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 52.dp, start = 24.dp, end = 24.dp)
+                        .background(Color(0x99000000), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+        }
+        if (chatGroup != null && !chatting) ChatToasts(container.chat, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+
+        stillAsk?.let { next ->
+            val rewind = remember(next) { still.rewind() }
+            StillWatchingPrompt(
+                next = next,
+                rewind = rewind,
+                onKeepWatching = { stillAsk = null; still.clear(); onPlayNext?.invoke(next) },
+                onGoBack = {
+                    stillAsk = null
+                    actions.scope.launch {
+                        rewind?.let { container.rewindStillWatching(it) }
+                        val back = rewind?.let { runCatching { actions.server.getItem(it.back.itemId) }.getOrNull() }
+                        if (back != null) onPlayNext?.invoke(back) else onExit()
+                    }
+                },
+                onStop = { stillAsk = null; still.clear(); onExit() },
+                onNoAnswer = {
+                    // Dozed off: put things back as they were at the last press, and stop.
+                    actions.scope.launch {
+                        rewind?.let { container.rewindStillWatching(it) }
+                        onExit()
+                    }
+                },
+            )
+        }
+
         when {
             error != null -> Column(Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(12.dp)).padding(24.dp)) {
                 Text(error!!, color = MaterialTheme.colorScheme.error)
@@ -170,6 +248,8 @@ actual fun PlayerScreen(
     }
 
     val p = plan
+    if (chatting) ChatSheet(container.chat, "Chat" + (syncGroup?.name?.let { " · $it" } ?: ""), positionMs = { session.currentMs() }) { chatting = false }
+    if (more && p != null) IosPlayerMore(actions, session, p, local) { more = false }
     when {
         p == null || picking == null -> Unit
         picking == StreamKind.AUDIO -> TrackPicker("Audio", p.audioChoices(), p.audioIndex, { session.selectTrack(StreamKind.AUDIO, it); picking = null }) { picking = null }
@@ -230,4 +310,60 @@ private fun clockOf(ms: Long): String {
     val s = total % 60
     fun two(n: Long) = n.toString().padStart(2, '0')
     return if (h > 0) "$h:${two(m)}:${two(s)}" else "$m:${two(s)}"
+}
+
+/**
+ * The iOS player's More: speed (Apple's player), a second subtitle at the top, and how it plays
+ * (the plan's rows, with the full media info a press away). Android's has more (sound, timings,
+ * sleep...), which Apple's player does itself or doesn't offer.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun IosPlayerMore(actions: AppActions, session: ApplePlayerSession, plan: dev.nitrate.core.model.PlaybackPlan, local: Boolean, onDismiss: () -> Unit) {
+    val speed by session.speed.collectAsState()
+    val second by session.secondSubtitle.collectAsState()
+    val item by session.item.collectAsState()
+    var info by remember { mutableStateOf(false) }
+    if (info) {
+        val text = remember(plan, item) { dev.nitrate.core.playback.MediaInfo.render(item, plan.source, plan, local = local) }
+        MediaInfoDialog(text) { info = false }
+        return
+    }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+        ) {
+            if (session.canChangeSpeed) {
+                Text("Speed", style = MaterialTheme.typography.titleSmall)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                    listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { s ->
+                        androidx.compose.material3.FilterChip(selected = speed == s, onClick = { session.setSpeed(s) }, label = { Text(if (s == 1f) "Normal" else "${s}×") })
+                    }
+                }
+            }
+            val choices = dev.nitrate.core.playback.SecondSubtitles.choices(plan.source, plan.subtitleIndex)
+            if (choices.isNotEmpty()) {
+                Text("Second subtitles", style = MaterialTheme.typography.titleSmall)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.FilterChip(selected = second == null, onClick = { session.setSecondSubtitle(null) }, label = { Text("Off") })
+                    choices.forEach { c ->
+                        androidx.compose.material3.FilterChip(selected = second?.index == c.index, onClick = { session.setSecondSubtitle(c.index) }, label = { Text(c.title + (c.detail?.let { " · $it" } ?: "")) })
+                    }
+                }
+            }
+            Text("How it plays", style = MaterialTheme.typography.titleSmall)
+            val engine by session.engine.collectAsState()
+            val rows = listOf("Player" to (if (engine == IosEngine.MPV) "mpv" else "Apple's player")) +
+                ("Source" to (if (local) "Downloaded copy" else "Streaming")).let(::listOf) +
+                plan.infoRows(null, null)
+            rows.forEach { (label, value) ->
+                Row(Modifier.padding(vertical = 2.dp)) {
+                    Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(110.dp))
+                    Text(value, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            TextButton(onClick = { info = true }) { Text("Media info") }
+        }
+    }
 }

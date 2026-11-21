@@ -13,6 +13,7 @@ import platform.UIKit.UIViewController
 
 /** What the Swift app hosts: the phone app's shared screens (Compose Multiplatform). */
 fun MainViewController(): UIViewController = ComposeUIViewController {
+    androidx.compose.runtime.LaunchedEffect(Unit) { IosApp.downloadScheduler.resume() }
     setSingletonImageLoaderFactory { context ->
         ImageLoader.Builder(context)
             .components { add(KtorNetworkFetcherFactory()) }

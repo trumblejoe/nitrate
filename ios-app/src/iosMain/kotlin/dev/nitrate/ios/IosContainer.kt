@@ -59,10 +59,7 @@ class IosPlatform(private val version: String) : AppPlatform {
     override fun serverEngine() = Darwin.create()
     override fun downloadEngine() = Darwin.create()
 
-    // Downloads come later on iOS (background URLSession); nothing runs the queue yet.
-    override fun downloadScheduler(): DownloadScheduler = object : DownloadScheduler {
-        override fun schedule(wifiOnly: Boolean) = Unit
-    }
+    override fun downloadScheduler(): DownloadScheduler = IosApp.downloadScheduler
 
     override fun probeCapabilities() = appleCapabilities()
     override fun themeMusic(server: MediaServer): ThemeMusic = IosThemeMusic(server)
@@ -87,6 +84,9 @@ class IosPlatform(private val version: String) : AppPlatform {
 object IosApp {
     /** An item to open once signed in (a tapped notification). */
     val openItem = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** Runs the download queue while the app is open (and a little after). */
+    val downloadScheduler = IosDownloadScheduler()
 
     val container: AppContainer by lazy {
         val version = platform.Foundation.NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "0"
