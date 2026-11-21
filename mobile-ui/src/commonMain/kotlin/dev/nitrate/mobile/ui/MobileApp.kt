@@ -97,6 +97,9 @@ import kotlinx.serialization.Serializable
 /** "Last time": the recap in [AppContainer.pendingRecap], before playing on. */
 @Serializable object RecapRoute
 
+/** Reading a comic from a Books library. */
+@Serializable data class ComicRoute(val itemId: String)
+
 /** A remote control for another device's playback. */
 @Serializable data class RemoteRoute(val sessionId: String)
 
@@ -304,6 +307,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ChannelsRoute> { ChannelsScreen(actions) }
             screen<WatchPartnersRoute> { WatchPartnersScreen(actions) }
             screen<RecapRoute> { RecapScreen(actions) }
+            screen<ComicRoute> { entry -> ComicReaderScreen(actions, entry.toRoute<ComicRoute>().itemId, onExit = { nav.popBackStack() }) }
             screen<ChannelEditorRoute> { entry -> ChannelEditorScreen(actions, entry.toRoute<ChannelEditorRoute>().channelId.ifEmpty { null }) }
             screen<ServerAddressesRoute> { ServersScreen(actions) }
             screen<LicensesRoute> { LicensesScreen() }

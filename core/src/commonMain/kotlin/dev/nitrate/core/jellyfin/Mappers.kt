@@ -122,6 +122,7 @@ internal fun itemKind(type: String?): ItemKind = when (type) {
     "Recording" -> ItemKind.VIDEO
     "Playlist" -> ItemKind.PLAYLIST
     "BoxSet" -> ItemKind.BOX_SET
+    "Book" -> ItemKind.BOOK
     "CollectionFolder", "UserView", "PlaylistsFolder", "ManualPlaylistsFolder" -> ItemKind.LIBRARY
     "Folder" -> ItemKind.FOLDER
     "Person" -> ItemKind.PERSON

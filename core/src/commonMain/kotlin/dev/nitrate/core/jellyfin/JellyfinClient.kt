@@ -953,6 +953,8 @@ class JellyfinClient(
 
     override fun authorizationHeader(): String = authHeader(token)
 
+    override fun fileUrl(itemId: String): String = url("Items", itemId, "Download")
+
     private fun authHeader(token: String?): String = buildString {
         fun param(name: String, value: String) = append(name).append("=\"").append(value.encodeURLParameter()).append('"')
         append("MediaBrowser ")
@@ -1877,6 +1879,7 @@ internal fun itemTypeName(kind: ItemKind): String? = when (kind) {
     ItemKind.EPISODE -> "Episode"
     ItemKind.BOX_SET -> "BoxSet"
     ItemKind.PLAYLIST -> "Playlist"
+    ItemKind.BOOK -> "Book"
     ItemKind.VIDEO -> "Video"
     ItemKind.MUSIC_VIDEO -> "MusicVideo"
     ItemKind.MUSIC_ALBUM -> "MusicAlbum"

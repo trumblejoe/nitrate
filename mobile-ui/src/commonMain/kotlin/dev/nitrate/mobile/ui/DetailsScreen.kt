@@ -373,6 +373,15 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
 /** The big Play (or Resume) button, with progress and "From start" when part-watched. */
 @Composable
 private fun PlaySection(actions: AppActions, item: MediaItem, seriesTarget: MediaItem?) {
+    // A comic: Read (or Continue at the page left off), in the reader.
+    if (item.kind == ItemKind.BOOK) {
+        val page = (item.user.positionMs / dev.nitrate.core.comics.ComicProgress.MS_PER_PAGE).toInt()
+        PillButton(
+            if (page > 0 && !item.user.played) "Continue from page ${page + 1}" else "Read", Icons.Default.PlayArrow, primary = true,
+            onClick = { actions.nav.navigate(ComicRoute(item.id)) }, modifier = Modifier.fillMaxWidth(),
+        )
+        return
+    }
     val target = if (item.kind == ItemKind.SERIES) seriesTarget else item.takeIf { it.isPlayable }
     val resumeMs = target?.user?.positionMs ?: 0L
     val label = when {

@@ -361,6 +361,9 @@ class AppContainer(
         if (invitesAvailable()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
     }
 
+    /** Comics read from the server, kept on the device (see [dev.nitrate.android.comics.ComicLibrary]). */
+    val comics by lazy { dev.nitrate.android.comics.ComicLibrary(server, platform.cacheDir, platform.downloadEngine(), now = ::nowMs) }
+
     /** Theme music behind details pages (each app's details screens ask for it; players stop it). */
     val themeMusic: dev.nitrate.android.playback.ThemeMusic by lazy { platform.themeMusic(server) }
 

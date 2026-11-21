@@ -181,6 +181,9 @@ interface MediaServer {
     /** Authorization header for requests made outside the client (the video player). */
     fun authorizationHeader(): String
 
+    /** The item's own file, as stored on the server (a book's CBZ...); fetched with [authorizationHeader]. */
+    fun fileUrl(itemId: String): String = unsupported()
+
     /**
      * Asks the server how to play [itemId] on this device. [forceTranscode] after a local decoder
      * failure; [audioIndex]/[subtitleIndex] pick streams (null lets the server choose, subtitle -1 is off).

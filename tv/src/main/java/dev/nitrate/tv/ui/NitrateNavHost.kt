@@ -143,6 +143,9 @@ private const val RESUME_AT = "resumeAt"
 /** "Last time": the recap in [AppContainer.pendingRecap], before playing on. */
 @Serializable object RecapRoute
 
+/** Reading a comic from a Books library. */
+@Serializable data class ComicRoute(val itemId: String)
+
 /** What plays before [itemId] ([dev.nitrate.tv.ui.preroll.PrerollPlan.steps]): a scene, a verse, then intros. */
 @Serializable data class PrerollRoute(val itemId: String, val fromStart: Boolean = false)
 
@@ -299,7 +302,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 repository = container.server,
                 itemId = route.itemId,
                 seasonId = route.seasonId,
-                onPlay = { item, fromStart -> gate.play(item, fromStart) },
+                onPlay = { item, fromStart -> if (item.kind == dev.nitrate.core.model.ItemKind.BOOK) nav.navigate(ComicRoute(item.id)) else gate.play(item, fromStart) },
                 onOpen = nav::openItem,
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
@@ -311,6 +314,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 applyPlaybackFix = { item, fix -> container.applyPlaybackFix(item.id, fix) },
                 watchPartners = partnersOn,
             )
+        }
+        composable<ComicRoute> { entry ->
+            dev.nitrate.tv.ui.comics.ComicReaderScreen(container, entry.toRoute<ComicRoute>().itemId, onExit = { nav.popBackStack() })
         }
         composable<RecapRoute> {
             dev.nitrate.tv.ui.player.RecapScreen(container, onPlayOn = { recap ->
