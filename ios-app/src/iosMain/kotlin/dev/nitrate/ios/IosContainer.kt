@@ -66,6 +66,8 @@ class IosPlatform(private val version: String) : AppPlatform {
     override fun newEpisodes(server: MediaServer): NewEpisodeNotifier = IosNewEpisodeNotifier(server, store("notifications"))
     override fun updater(): AppUpdater = NoUpdates(version)
 
+    override fun pdfPages(): dev.nitrate.android.comics.PdfPages = IosPdfPages()
+
     // Reconnecting on network changes (NWPathMonitor) comes later; the app re-checks when it opens.
     override fun watchNetwork(onChange: () -> Unit) = Unit
 

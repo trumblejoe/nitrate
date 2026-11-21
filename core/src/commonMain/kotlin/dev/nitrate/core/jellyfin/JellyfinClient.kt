@@ -1216,6 +1216,11 @@ class JellyfinClient(
     override suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean) = channelsApi.save(channel, startOver)
     override suspend fun deleteChannel(channelId: String) = channelsApi.delete(channelId)
     override suspend fun companion() = companionApi.info()
+
+    override suspend fun comicListing(itemId: String) =
+        if (companion()?.features?.contains(dev.nitrate.core.comics.ComicListing.FEATURE) == true) companionApi.comicListing(itemId) else null
+
+    override fun comicPageUrl(itemId: String, index: Int) = companionApi.comicPageUrl(itemId, index)
     override suspend fun checkClips() = companionApi.checkClips()
     override suspend fun serverCreditScenes(itemId: String) = companionApi.creditScenes(itemId)
     override suspend fun sendDeviceSummary(summary: dev.nitrate.core.playback.DeviceSummary) = companionApi.sendDeviceSummary(identity.deviceId, identity.deviceName, summary)

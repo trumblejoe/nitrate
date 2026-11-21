@@ -18,6 +18,8 @@
     <!-- The server ships SQLite (with full-text search) for its own database: use its copy. -->
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" ExcludeAssets="runtime" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Reads CBR, CB7 and CBT comics (MIT); shipped beside the plugin. -->
+    <PackageReference Include="SharpCompress" Version="0.50.10" />
   </ItemGroup>
 
   <ItemGroup>

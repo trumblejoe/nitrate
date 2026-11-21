@@ -71,6 +71,8 @@ class AndroidPlatform(context: Context, clientName: String, version: String) : A
     override fun probeCapabilities() = DeviceProbe.cached(appContext)
     override fun themeMusic(server: MediaServer) = AndroidThemeMusic(appContext, server)
     override fun newEpisodes(server: MediaServer) = AndroidNewEpisodeNotifier(appContext, server)
+    override fun pdfPages(): dev.nitrate.android.comics.PdfPages = dev.nitrate.android.comics.AndroidPdfPages()
+
     override fun updater() = AndroidUpdater(appContext, appKind).also { AndroidUpdater.current = it }
 
     override fun watchNetwork(onChange: () -> Unit) {

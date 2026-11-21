@@ -75,6 +75,11 @@ public class CompanionController : ControllerBase
             features.Add("diary");
         }
 
+        if (Plugin.Instance?.Configuration.EnableComics ?? true)
+        {
+            features.Add("comics");
+        }
+
         if (Plugin.Instance?.Configuration.EnableLines ?? true)
         {
             features.Add("lines");

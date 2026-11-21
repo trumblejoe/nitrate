@@ -1,6 +1,7 @@
 package dev.nitrate.android.comics
 
 import dev.nitrate.core.MediaServer
+import io.ktor.client.engine.mock.respond
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import kotlinx.coroutines.runBlocking
@@ -71,5 +72,42 @@ class ComicLibraryTest {
         library(max = 1_000).open(MediaItem("new", "New", ItemKind.BOOK))
         assertTrue(File(cache, "comics/new/book").exists())
         assertTrue(File(cache, "comics").walk().joinToString { it.relativeTo(cache).path + ":" + it.length() }, !File(cache, "comics/old").exists())
+    }
+
+    @Test fun streamsPagesFromThePluginAndReadsOfflineAfter() = runBlocking {
+        var online = true
+        val asked = mutableListOf<String>()
+        val listing = dev.nitrate.core.comics.ComicListing(
+            "rar",
+            listOf(dev.nitrate.core.comics.ComicPageInfo("p1.png", 10, 20, 3), dev.nitrate.core.comics.ComicPageInfo("p2.png", 40, 20, 3), dev.nitrate.core.comics.ComicPageInfo("p3.jpg", 10, 20, 3)),
+            "<ComicInfo><Series>Waves</Series></ComicInfo>",
+        )
+        val streaming = Proxy.newProxyInstance(MediaServer::class.java.classLoader, arrayOf(MediaServer::class.java)) { _, m, args ->
+            when (m.name) {
+                "comicListing" -> if (online) listing else throw java.io.IOException("offline")
+                "comicPageUrl" -> "http://server/Nitrate/Comics/${args[0]}/Pages/${args[1]}"
+                "authorizationHeader" -> "MediaBrowser Token=\"t\""
+                else -> throw UnsupportedOperationException(m.name)
+            }
+        } as MediaServer
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            asked += request.url.encodedPath
+            respond(byteArrayOf(1, 2, request.url.encodedPath.last().code.toByte()), io.ktor.http.HttpStatusCode.OK)
+        }
+        val library = ComicLibrary(streaming, cache.path, engine) { 1_000L }
+        val book = library.open(MediaItem("s1", "Waves 1", ItemKind.BOOK))
+        assertEquals("Waves", book.info?.series)
+        assertEquals(setOf(1), book.widePages)
+        assertEquals(3, File(book.page(1)).length())
+        assertEquals(listOf("/Nitrate/Comics/s1/Pages/1"), asked)
+        book.fetchAll()
+        assertEquals(3, asked.size)
+        assertTrue(book.hasPage(0) && book.hasPage(2))
+        // Offline, the kept list of pages and the pages fetched open the book again.
+        online = false
+        val again = library.open(MediaItem("s1", "Waves 1", ItemKind.BOOK))
+        assertEquals(3, again.pageCount)
+        assertTrue(File(again.page(2)).exists())
+        assertEquals(3, asked.size)
     }
 }

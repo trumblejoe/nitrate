@@ -63,6 +63,9 @@ interface AppPlatform {
      * null elsewhere (phones, iPad), so predictions say nothing about it.
      */
     fun displaySnapshot(): dev.nitrate.core.playback.DisplaySnapshot? = null
+
+    /** Draws PDF pages for the comic reader; null where the device can't. */
+    fun pdfPages(): dev.nitrate.android.comics.PdfPages? = null
 }
 
 /** What a player contributes to a playback report. */

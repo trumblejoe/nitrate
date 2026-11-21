@@ -27,6 +27,14 @@
                     <div class="fieldDescription checkboxFieldDescription">Keeps every film and episode each person finishes, with the date, and their own rating and note. Only they can see it.</div>
                 </div>
 
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input id="EnableComics" type="checkbox" is="emby-checkbox" />
+                        <span>Comics page by page</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">Nitrate shows a comic's first page at once and fetches the rest in one go. CBR, CB7 and CBT books are unpacked once into the server's cache folder (the most recently read within 4 GB are kept), so they open on every device.</div>
+                </div>
+
                 <h3>Watch together and writing</h3>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label class="emby-checkbox-label">
@@ -123,7 +131,7 @@
     <script type="text/javascript">
         (function () {
             var pluginId = '04250121-a5d6-40da-99fc-242a178b3d2c';
-            var checks = ['EnableLines', 'EnableDiary', 'EnableChat', 'ListUsersForSharing', 'SsoEnabled', 'OidcMatchByEmail'];
+            var checks = ['EnableLines', 'EnableDiary', 'EnableComics', 'EnableChat', 'ListUsersForSharing', 'SsoEnabled', 'OidcMatchByEmail'];
             var texts = ['SsoProviderName', 'OidcIssuer', 'OidcClientId', 'OidcClientSecret', 'OidcScopes', 'OidcUsernameClaim',
                 'OidcRequiredGroup', 'OidcGroupsClaim', 'SsoUserLinks', 'SsoPublicUrl'];
             var page = document.querySelector('#NitrateCompanionConfigPage');

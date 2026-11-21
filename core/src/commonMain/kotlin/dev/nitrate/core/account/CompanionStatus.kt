@@ -21,6 +21,7 @@ object CompanionStatus {
         Triple("devices", "Household devices", "Each device's playback summary, for admins"),
         Triple("testclips", "TV & receiver check", "Clips to check what the TV and receiver show"),
         Triple("credits", "Scenes in the credits", "Found nightly by \"Find scenes in the credits\", with the final credits given to Jellyfin as an Outro"),
+        Triple("comics", "Comics page by page", "Comics open at once, and CBR, CB7 and CBT books work on every device"),
         Triple("intros", "Intros and recaps", "Found nightly by \"Find intros\" and given to Jellyfin, so Skip Intro and Skip Recap work in every app"),
     )
 

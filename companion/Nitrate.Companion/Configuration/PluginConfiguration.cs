@@ -14,6 +14,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets a value indicating whether each user's watches are kept in a diary.</summary>
     public bool EnableDiary { get; set; } = true;
 
+    /// <summary>Gets or sets a value indicating whether books are served page by page (and CBR unpacked on the server).</summary>
+    public bool EnableComics { get; set; } = true;
+
     /// <summary>Gets or sets a value indicating whether chat in watch-together sessions is on.</summary>
     public bool EnableChat { get; set; } = true;
 

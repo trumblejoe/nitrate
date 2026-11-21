@@ -54,6 +54,12 @@ internal data class ChatPageDto(val messages: List<ChatMessageDto> = emptyList()
 internal data class ChatPostDto(val text: String, val kind: String, val positionMs: Long?)
 
 @Serializable
+internal data class ComicPageDto(val name: String = "", val width: Int = 0, val height: Int = 0, val size: Long = 0)
+
+@Serializable
+internal data class ComicListingDto(val format: String = "", val pages: List<ComicPageDto> = emptyList(), val comicInfo: String? = null)
+
+@Serializable
 internal data class ProblemDto(val detail: String? = null)
 
 @Serializable
@@ -182,6 +188,16 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
     } catch (e: ClientRequestException) {
         if (e.response.status == HttpStatusCode.NotFound) null else throw e
     }
+
+    /** The book's pages as the plugin serves them; null when it can't (no plugin, not a file it reads). */
+    suspend fun comicListing(itemId: String): dev.nitrate.core.comics.ComicListing? = try {
+        val dto: ComicListingDto = JellyfinJson.decodeFromString(client.get("Nitrate", "Comics", itemId).bodyAsText())
+        dev.nitrate.core.comics.ComicListing(dto.format, dto.pages.map { dev.nitrate.core.comics.ComicPageInfo(it.name, it.width, it.height, it.size) }, dto.comicInfo)
+    } catch (e: ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound || e.response.status.value == 422) null else throw e
+    }
+
+    fun comicPageUrl(itemId: String, index: Int) = client.url("Nitrate", "Comics", itemId, "Pages", index.toString())
 
     suspend fun info(): CompanionInfo? = try {
         val dto: CompanionInfoDto = JellyfinJson.decodeFromString(client.get("Nitrate", "Companion").bodyAsText())

@@ -2,8 +2,10 @@ package dev.nitrate.android.comics
 
 import dev.nitrate.core.MediaServer
 import dev.nitrate.core.comics.ComicInfo
+import dev.nitrate.core.comics.ComicListing
 import dev.nitrate.core.comics.ComicPages
 import dev.nitrate.core.comics.ComicProgress
+import dev.nitrate.core.comics.ImageSize
 import dev.nitrate.core.model.MediaItem
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -16,6 +18,13 @@ import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path
@@ -27,83 +36,131 @@ import okio.use
 /** A comic that can't be opened here, with why in words. */
 class ComicException(message: String) : Exception(message)
 
-/** An open comic: its pages in order and its ComicInfo, each page taken out of the archive once. */
+/** Where a book's pages come from: written into [out] the first time each is asked for. */
+fun interface PageSource {
+    suspend fun fetch(index: Int, out: Path)
+}
+
+/**
+ * Renders a PDF's pages (each platform's own: Android's PdfRenderer, Apple's PDFKit drawing).
+ * Pages come out as pictures [widthPx] wide, so the readers treat a PDF like any comic.
+ */
+interface PdfPages {
+    /** The document's page count and each page's size in points; null when it can't be read (locked, damaged). */
+    fun open(path: String): List<Pair<Float, Float>>?
+
+    /** Draws page [index] [widthPx] wide (on white) into [outPath] as a JPEG. */
+    fun render(path: String, index: Int, widthPx: Int, outPath: String)
+}
+
+/** An open comic: its pages in order and its ComicInfo, each page fetched or taken out once. */
 class ComicBook internal constructor(
-    val item: MediaItem,
-    /** The archive's page entries, in reading order. */
+    /** The Jellyfin item (null for books from elsewhere, which give [title] and [saveProgress] themselves). */
+    val item: MediaItem?,
+    val title: String,
+    /** Each page's name, in reading order (its extension says what kind of picture it is). */
     val pages: List<String>,
     val info: ComicInfo?,
-    private val zip: FileSystem,
+    /** Pages that are spreads on one picture: shown alone in two-page view. */
+    val widePages: Set<Int>,
+    /** Where to start (0 when finished or never opened). */
+    val startPage: Int,
+    private val source: PageSource,
     private val dir: Path,
+    private val onProgress: suspend (page: Int, finished: Boolean) -> Unit,
 ) {
     val pageCount get() = pages.size
+    private val locks = List(pages.size) { Mutex() }
 
-    /** Where the user left off (0 when finished or never opened). */
-    val startPage: Int get() = if (item.user.played) 0 else ComicProgress.page(item.user.positionMs, pageCount)
-
-    /** The local file of page [index], taken out of the archive the first time it's asked for. */
+    /** The local file of page [index], fetched (or taken out) the first time it's asked for. */
     suspend fun page(index: Int): String = withContext(Dispatchers.IO) {
-        val entry = pages[index]
-        val ext = entry.substringAfterLast('.', "img").lowercase()
-        val out = dir / "page-$index.$ext"
-        if (!FileSystem.SYSTEM.exists(out)) {
-            val tmp = dir / "page-$index.part"
-            zip.source(entry.toPath()).use { src -> FileSystem.SYSTEM.sink(tmp).buffer().use { it.writeAll(src) } }
-            FileSystem.SYSTEM.atomicMove(tmp, out)
+        val out = file(index)
+        if (!FileSystem.SYSTEM.exists(out)) locks[index].withLock {
+            if (!FileSystem.SYSTEM.exists(out)) {
+                val tmp = dir / "page-$index.part"
+                source.fetch(index, tmp)
+                FileSystem.SYSTEM.atomicMove(tmp, out)
+            }
         }
         out.toString()
+    }
+
+    /** True when page [index] is already on the device. */
+    fun hasPage(index: Int) = FileSystem.SYSTEM.exists(file(index))
+
+    /**
+     * Fetches every page not yet here, from [from] on and then the ones before it, two at a time:
+     * the whole book in one burst, so the server's drive is busy once, not every few minutes while
+     * someone reads slowly. Failures are left for the page to try again when it's shown.
+     */
+    suspend fun fetchAll(from: Int = 0) = coroutineScope {
+        val gate = Semaphore(2)
+        val order = (from.coerceIn(0, (pageCount - 1).coerceAtLeast(0)) until pageCount) + (0 until from.coerceAtMost(pageCount))
+        order.filterNot(::hasPage).map { i -> async { gate.withPermit { runCatching { page(i) } } } }.awaitAll()
+        Unit
+    }
+
+    /** Saves where the reader is: the page, and read once they reach the last one. */
+    suspend fun saveProgress(page: Int) {
+        runCatching { onProgress(page, ComicProgress.finished(page, pageCount)) }
+    }
+
+    private fun file(index: Int): Path {
+        val ext = pages[index].substringAfterLast('.', "jpg").lowercase().takeIf { it.length in 2..4 } ?: "jpg"
+        return dir / "page-$index.$ext"
     }
 }
 
 /**
- * Comics read from the server, kept on the device: a book's file is fetched once (in one go, so
- * the server's drive is busy once per book, not once per page) into a cache that keeps the books
- * opened most recently within [maxBytes], and its pages are taken out of it as they're read.
- * Reading position goes to Jellyfin as the book's user data ([ComicProgress]).
+ * Comics read from the server, kept on the device within [maxBytes] (the books opened most
+ * recently stay). With the Companion plugin a book is served page by page: the first page shows at
+ * once and the rest follow in one burst ([ComicBook.fetchAll]); CBR, CB7 and CBT are unpacked on
+ * the server. Without it the book's own file is fetched in one go (CBZ, or a PDF the device
+ * renders). Reading position goes to Jellyfin as the book's user data ([ComicProgress]).
  */
 class ComicLibrary(
     private val server: MediaServer,
     cacheDir: String,
     private val engine: HttpClientEngine,
     private val maxBytes: Long = DEFAULT_MAX_BYTES,
+    private val pdf: PdfPages? = null,
     private val now: () -> Long,
 ) {
     private val root = "$cacheDir/comics".toPath()
     private val http by lazy { HttpClient(engine) }
     private val fs = FileSystem.SYSTEM
+    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
     /**
-     * Opens [item]: from the device when it's there, else fetched from the server first
-     * ([onProgress] 0–1 while that happens). CBZ only for now; a CBR or PDF says what it needs.
+     * Opens [item]: page by page from the plugin when it serves the book, else from its file (on
+     * the device already, or fetched first: [onProgress] 0–1 meanwhile).
      */
     suspend fun open(item: MediaItem, onProgress: (Float) -> Unit = {}): ComicBook = withContext(Dispatchers.IO) {
         val dir = root / item.id
-        val file = dir / "book"
         fs.createDirectories(dir)
-        if (!fs.exists(file)) fetch(server.fileUrl(item.id), dir, file, onProgress)
         // When it was last opened, for keeping the most recent ones.
         fs.write(dir / "opened") { writeUtf8(now().toString()) }
-        when (kind(file)) {
-            Kind.ZIP -> Unit
-            Kind.RAR -> throw ComicException("This comic is a CBR (RAR) file. Nitrate opens CBZ files for now; CBR comes with the Nitrate Companion plugin's page streaming, or convert it to CBZ (CLU can convert a whole library).")
-            Kind.PDF -> throw ComicException("PDF comics open in a later update.")
-            Kind.OTHER -> throw ComicException("This file isn't a comic archive Nitrate can open.")
+        val file = dir / "book"
+        val kept = dir / "listing.json"
+        // The plugin's list of pages; the one kept from last time when the server can't be reached,
+        // so a book fetched in full reads offline.
+        val listing = if (fs.exists(file)) null else runCatching { server.comicListing(item.id) }
+            .onSuccess { l -> if (l != null) runCatching { fs.write(kept) { writeUtf8(json.encodeToString(ComicListing.serializer(), l)) } } }
+            .getOrElse { runCatching { json.decodeFromString(ComicListing.serializer(), fs.read(kept) { readUtf8() }) }.getOrNull() }
+        val book = when {
+            listing != null && listing.paged -> streamed(item, listing, dir)
+            listing?.format == "epub" -> throw ComicException("EPUB books open in a later update.")
+            else -> {
+                if (!fs.exists(file)) fetch(server.fileUrl(item.id), dir, file, onProgress)
+                fromFile(item, file, dir)
+            }
         }
-        val zip = fs.openZip(file)
-        val entries = zip.listRecursively("/".toPath()).filter { zip.metadataOrNull(it)?.isRegularFile == true }.map { it.toString() }.toList()
-        val pages = ComicPages.order(entries)
-        if (pages.isEmpty()) throw ComicException("There are no pages in this comic's file.")
-        val info = entries.firstOrNull { it.substringAfterLast('/').equals("ComicInfo.xml", ignoreCase = true) }
-            ?.let { e -> runCatching { ComicInfo.parse(zip.read(e.toPath()) { readUtf8() }) }.getOrNull() }
         prune(keep = item.id)
-        ComicBook(item, pages, info, zip, dir)
+        book
     }
 
-    /** Saves where the user is: the page, and read once they reach the last one (a finished book stays read). */
-    suspend fun saveProgress(book: ComicBook, page: Int) {
-        val finished = ComicProgress.finished(page, book.pageCount)
-        runCatching { server.saveUserData(book.item.id, if (finished) 0 else ComicProgress.positionMs(page), finished || book.item.user.played, now()) }
-    }
+    /** Saves where the user is in [book]: the page, and read once they reach the last one (a finished book stays read). */
+    suspend fun saveProgress(book: ComicBook, page: Int) = book.saveProgress(page)
 
     /** How much the kept comics take. */
     fun cachedBytes(): Long = if (!fs.exists(root)) 0 else fs.listRecursively(root).sumOf { fs.metadataOrNull(it)?.size ?: 0 }
@@ -113,8 +170,62 @@ class ComicLibrary(
         if (fs.exists(root)) fs.deleteRecursively(root)
     }
 
+    private fun jellyfinProgress(item: MediaItem): suspend (Int, Boolean) -> Unit = { page, finished ->
+        server.saveUserData(item.id, if (finished) 0 else ComicProgress.positionMs(page), finished || item.user.played, now())
+    }
+
+    private fun start(item: MediaItem, count: Int) = if (item.user.played) 0 else ComicProgress.page(item.user.positionMs, count)
+
+    private fun streamed(item: MediaItem, listing: ComicListing, dir: Path): ComicBook {
+        val info = listing.comicInfo?.let { runCatching { ComicInfo.parse(it) }.getOrNull() }
+        return ComicBook(
+            item, item.name, listing.pages.map { it.name }, info, listing.widePages + info?.doublePages.orEmpty(),
+            start(item, listing.pages.size), { i, out -> fetch(server.comicPageUrl(item.id, i), dir, out) {} }, dir, jellyfinProgress(item),
+        )
+    }
+
+    private suspend fun fromFile(item: MediaItem, file: Path, dir: Path): ComicBook = when (kind(file)) {
+        Kind.ZIP -> {
+            val zip = fs.openZip(file)
+            val entries = zip.listRecursively("/".toPath()).filter { zip.metadataOrNull(it)?.isRegularFile == true }.map { it.toString() }.toList()
+            val pages = ComicPages.order(entries)
+            if (pages.isEmpty()) throw ComicException("There are no pages in this comic's file.")
+            val info = entries.firstOrNull { it.substringAfterLast('/').equals("ComicInfo.xml", ignoreCase = true) }
+                ?.let { e -> runCatching { ComicInfo.parse(zip.read(e.toPath()) { readUtf8() }) }.getOrNull() }
+            val wide = wideIn(dir) {
+                pages.indices.filter { i -> ImageSize.isWide(zip.read(pages[i].toPath()) { ImageSize.of(readByteArray(minOf(ImageSize.READ_BYTES.toLong(), zip.metadata(pages[i].toPath()).size ?: 0))) }) }.toSet()
+            }
+            ComicBook(
+                item, item.name, pages, info, wide + info?.doublePages.orEmpty(), start(item, pages.size),
+                { i, out -> zip.source(pages[i].toPath()).use { src -> fs.sink(out).buffer().use { it.writeAll(src) } } },
+                dir, jellyfinProgress(item),
+            )
+        }
+        Kind.PDF -> {
+            val renderer = pdf ?: throw ComicException("PDF comics can't be opened on this device.")
+            val sizes = renderer.open(file.toString()) ?: throw ComicException("This PDF can't be opened (it may be locked with a password).")
+            if (sizes.isEmpty()) throw ComicException("There are no pages in this PDF.")
+            ComicBook(
+                item, item.name, sizes.indices.map { "page-$it.jpg" }, null,
+                sizes.indices.filter { sizes[it].first > sizes[it].second * 1.1f }.toSet(), start(item, sizes.size),
+                { i, out -> renderer.render(file.toString(), i, PDF_WIDTH_PX, out.toString()) }, dir, jellyfinProgress(item),
+            )
+        }
+        Kind.RAR -> throw ComicException("This comic is a CBR (RAR) file. Install the Nitrate Companion plugin on the server to read CBR, CB7 and CBT, or convert it to CBZ (CLU can convert a whole library).")
+        Kind.OTHER -> throw ComicException("This file isn't a comic Nitrate can open.")
+    }
+
+    /** Which pages are wide, worked out once per book and kept beside it. */
+    private fun wideIn(dir: Path, find: () -> Set<Int>): Set<Int> {
+        val kept = dir / "wide"
+        runCatching { return fs.read(kept) { readUtf8() }.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet() }
+        val wide = runCatching(find).getOrDefault(emptySet())
+        runCatching { fs.write(kept) { writeUtf8(wide.joinToString(",")) } }
+        return wide
+    }
+
     private suspend fun fetch(url: String, dir: Path, file: Path, onProgress: (Float) -> Unit) {
-        val part = dir / "book.part"
+        val part = (dir / (file.name + ".dl"))
         http.prepareGet(url) { header(HttpHeaders.Authorization, server.authorizationHeader()) }.execute { response ->
             if (!response.status.isSuccess()) throw ComicException("The server couldn't send this comic (${response.status.value}).")
             val total = response.contentLength()
@@ -166,5 +277,8 @@ class ComicLibrary(
 
     companion object {
         const val DEFAULT_MAX_BYTES = 500L * 1024 * 1024
+
+        /** How wide PDF pages are drawn: sharp on a 4K TV's half and a tablet alike. */
+        const val PDF_WIDTH_PX = 1800
     }
 }

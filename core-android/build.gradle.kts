@@ -45,4 +45,5 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     testImplementation(libs.junit)
+    testImplementation(libs.ktor.client.mock)
 }

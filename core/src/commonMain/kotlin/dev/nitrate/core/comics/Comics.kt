@@ -152,3 +152,71 @@ object ReaderKeys {
         else -> if (right) 1 else -1
     }
 }
+
+/**
+ * A picture's size read from the start of its file (JPEG, PNG, GIF, WebP, BMP) without decoding
+ * it, so wide (double-page) pages are known before they're shown. Keep in step with the
+ * Companion plugin's `Comics/ImageHeader`.
+ */
+object ImageSize {
+    /** How much of a file to read (a JPEG's frame header can sit after large EXIF data). */
+    const val READ_BYTES = 256 * 1024
+
+    /** Width and height, or null when the format isn't known or [b] is cut short. */
+    fun of(b: ByteArray): Pair<Int, Int>? {
+        fun u8(i: Int) = b[i].toInt() and 0xFF
+        fun be16(i: Int) = (u8(i) shl 8) or u8(i + 1)
+        fun le16(i: Int) = u8(i) or (u8(i + 1) shl 8)
+        fun be32(i: Int) = (u8(i) shl 24) or (u8(i + 1) shl 16) or (u8(i + 2) shl 8) or u8(i + 3)
+        fun le32(i: Int) = u8(i) or (u8(i + 1) shl 8) or (u8(i + 2) shl 16) or (u8(i + 3) shl 24)
+        fun ascii(i: Int, s: String) = b.size >= i + s.length && s.indices.all { u8(i + it) == s[it].code }
+        return when {
+            b.size >= 24 && u8(0) == 0x89 && ascii(1, "PNG") -> be32(16) to be32(20)
+            b.size >= 10 && ascii(0, "GIF") -> le16(6) to le16(8)
+            b.size >= 26 && ascii(0, "BM") -> kotlin.math.abs(le32(18)) to kotlin.math.abs(le32(22))
+            b.size >= 30 && ascii(0, "RIFF") && ascii(8, "WEBP") -> when {
+                ascii(12, "VP8X") -> (1 + (u8(24) or (u8(25) shl 8) or (u8(26) shl 16))) to (1 + (u8(27) or (u8(28) shl 8) or (u8(29) shl 16)))
+                ascii(12, "VP8L") -> le32(21).let { (1 + (it and 0x3FFF)) to (1 + ((it ushr 14) and 0x3FFF)) }
+                ascii(12, "VP8 ") -> (le16(26) and 0x3FFF) to (le16(28) and 0x3FFF)
+                else -> null
+            }
+            b.size >= 4 && u8(0) == 0xFF && u8(1) == 0xD8 -> {
+                var i = 2
+                while (i + 9 < b.size) {
+                    if (u8(i) != 0xFF) { i++; continue }
+                    val marker = u8(i + 1)
+                    if (marker == 0xFF) { i++; continue }
+                    if (marker == 0xD8 || marker == 0x01 || marker in 0xD0..0xD7) { i += 2; continue }
+                    // Start-of-frame markers, apart from DHT (C4), JPG (C8) and DAC (CC).
+                    if (marker in 0xC0..0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC) return be16(i + 7) to be16(i + 5)
+                    i += 2 + be16(i + 2)
+                }
+                null
+            }
+            else -> null
+        }
+    }
+
+    /** Wide enough to be a double-page spread on one picture. */
+    fun isWide(size: Pair<Int, Int>?) = size != null && size.first > size.second * 1.1
+}
+
+/** A page as the Companion plugin lists it (sizes 0 when unknown). */
+@kotlinx.serialization.Serializable
+data class ComicPageInfo(val name: String, val width: Int, val height: Int, val size: Long)
+
+/**
+ * A book as the Companion plugin serves it (feature `comics`): [format] "zip", "rar", "7z", "tar"
+ * (served page by page), "pdf" or "epub" (no pages: the apps take the whole file).
+ */
+@kotlinx.serialization.Serializable
+data class ComicListing(val format: String, val pages: List<ComicPageInfo>, val comicInfo: String?) {
+    val paged get() = format in setOf("zip", "rar", "7z", "tar") && pages.isNotEmpty()
+
+    /** Pages wider than tall: spreads on one picture. */
+    val widePages: Set<Int> get() = pages.indices.filter { ImageSize.isWide(pages[it].width to pages[it].height) }.toSet()
+
+    companion object {
+        const val FEATURE = "comics"
+    }
+}

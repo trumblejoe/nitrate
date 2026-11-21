@@ -185,6 +185,15 @@ interface MediaServer {
     fun fileUrl(itemId: String): String = unsupported()
 
     /**
+     * A book's pages as the Companion plugin serves them (feature `comics`): null when it can't
+     * (no plugin, or a file it doesn't read), so the app takes the whole file instead.
+     */
+    suspend fun comicListing(itemId: String): dev.nitrate.core.comics.ComicListing? = null
+
+    /** Page [index] of a book the plugin serves page by page; fetched with [authorizationHeader]. */
+    fun comicPageUrl(itemId: String, index: Int): String = unsupported()
+
+    /**
      * Asks the server how to play [itemId] on this device. [forceTranscode] after a local decoder
      * failure; [audioIndex]/[subtitleIndex] pick streams (null lets the server choose, subtitle -1 is off).
      * [deviceCaps] asks for another player than the device's usual one (iOS: mpv instead of Apple's).

@@ -117,8 +117,10 @@ private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit)
     var chrome by remember { mutableStateOf(true) }
     var settings by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(book.startPage) }
-    val wide = book.info?.doublePages.orEmpty()
+    val wide = book.widePages
 
+    // Once the first pages are up, the rest of the book in one burst.
+    LaunchedEffect(book) { delay(1_000); book.fetchAll(from = book.startPage) }
     // Where the user is goes back to the server a moment after they stop turning, and on leaving.
     LaunchedEffect(page) {
         delay(1_500)
@@ -194,7 +196,7 @@ private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit)
             ) {
                 IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
                 Text(
-                    listOfNotNull(book.info?.series ?: book.item.name, book.info?.number?.let { "#$it" }).joinToString(" "),
+                    listOfNotNull(book.info?.series ?: book.title, book.info?.number?.let { "#$it" }).joinToString(" "),
                     color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )

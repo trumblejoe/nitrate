@@ -63,4 +63,24 @@ class ComicsTest {
         assertEquals(-1, ReaderKeys.step(right = true, ReadingDirection.RIGHT_TO_LEFT))
         assertEquals(1, ReaderKeys.step(right = false, ReadingDirection.RIGHT_TO_LEFT))
     }
+
+    @Test fun picturesSizesFromTheirHeaders() {
+        val png = ByteArray(33).also {
+            byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte()).copyInto(it)
+            it[18] = 0x04; it[19] = 0xB0.toByte() // 1200 wide
+            it[22] = 0x07; it[23] = 0x08 // 1800 tall
+        }
+        assertEquals(1200 to 1800, ImageSize.of(png))
+        val jpeg = intArrayOf(
+            0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 0, 0, 0xFF, 0xC4, 0, 3, 0,
+            0xFF, 0xC0, 0, 11, 8, 0x07, 0xD0, 0x0B, 0xB8, 3, 0, 0, 0, 0,
+        ).map { it.toByte() }.toByteArray()
+        assertEquals(3000 to 2000, ImageSize.of(jpeg))
+        assertTrue(ImageSize.isWide(ImageSize.of(jpeg)))
+        assertEquals(null, ImageSize.of(byteArrayOf(1, 2, 3)))
+        val listing = ComicListing("rar", listOf(ComicPageInfo("a.jpg", 10, 20, 1), ComicPageInfo("b.jpg", 40, 20, 1)), null)
+        assertEquals(setOf(1), listing.widePages)
+        assertTrue(listing.paged)
+        assertFalse(ComicListing("pdf", emptyList(), null).paged)
+    }
 }

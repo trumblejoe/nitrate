@@ -29,14 +29,20 @@ def now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# The plugin and the libraries it ships (SharpCompress, MIT: CBR/CB7/CBT comics). Jellyfin's own
+# packages are provided by the server and never shipped.
+ASSEMBLIES = ["Nitrate.Companion.dll", "SharpCompress.dll"]
+
+
 def package(dll_dir, version, abi, out):
     meta = {
         "category": CATEGORY, "changelog": "", "description": DESCRIPTION, "guid": GUID, "name": NAME,
         "overview": OVERVIEW, "owner": OWNER, "targetAbi": abi, "timestamp": now(), "version": version,
-        "status": "Active", "autoUpdate": True, "assemblies": ["Nitrate.Companion.dll"],
+        "status": "Active", "autoUpdate": True, "assemblies": ASSEMBLIES,
     }
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        z.write(os.path.join(dll_dir, "Nitrate.Companion.dll"), "Nitrate.Companion.dll")
+        for dll in ASSEMBLIES:
+            z.write(os.path.join(dll_dir, dll), dll)
         z.writestr("meta.json", json.dumps(meta, indent=2))
 
 

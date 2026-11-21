@@ -102,7 +102,7 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
     val scope = rememberCoroutineScope()
     var direction by remember { mutableStateOf(book.info?.direction ?: ReadingDirection.LEFT_TO_RIGHT) }
     var twoUp by remember { mutableStateOf(true) }
-    val spreads = remember(book.pageCount, twoUp, direction) { Spreads.of(book.pageCount, twoUp && direction != ReadingDirection.VERTICAL, book.info?.doublePages.orEmpty(), direction) }
+    val spreads = remember(book.pageCount, twoUp, direction) { Spreads.of(book.pageCount, twoUp && direction != ReadingDirection.VERTICAL, book.widePages, direction) }
     var index by remember(spreads) { mutableIntStateOf(Spreads.indexOf(spreads, book.startPage)) }
     var zoom by remember { mutableStateOf(false) }
     var pan by remember { mutableStateOf(Offset.Zero) }
@@ -111,6 +111,8 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
     val page = spreads.getOrNull(index)?.first ?: 0
 
     LaunchedEffect(page) { delay(1_500); container.comics.saveProgress(book, page) }
+    // Once the first pages are up, the rest of the book in one burst.
+    LaunchedEffect(book) { delay(1_000); book.fetchAll(from = book.startPage) }
     DisposableEffect(book) { onDispose { scope.launch { container.comics.saveProgress(book, page) } } }
     // The next spreads are taken out of the file before they're reached.
     LaunchedEffect(index, spreads) { for (i in index..index + 2) spreads.getOrNull(i)?.pages?.forEach { runCatching { book.page(it) } } }
@@ -209,7 +211,7 @@ private fun PageStrip(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(Modifier.padding(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(listOfNotNull(book.info?.series ?: book.item.name, book.info?.number?.let { "#$it" }).joinToString(" "), style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(360.dp))
+            Text(listOfNotNull(book.info?.series ?: book.title, book.info?.number?.let { "#$it" }).joinToString(" "), style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(360.dp))
             ReadingDirection.entries.forEach { d -> FilterChip(direction == d, { onDirection(d) }) { Text(d.label) } }
             FilterChip(twoUp, { onTwoUp(!twoUp) }) { Text("Two pages") }
         }
