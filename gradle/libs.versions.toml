@@ -55,6 +55,7 @@ media3-session = { module = "androidx.media3:media3-session", version.ref = "med
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 androidx-fragment = { module = "androidx.fragment:fragment-ktx", version = "1.9.0" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version = "1.8.0" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version = "2.1.5" }
 readium-shared = { module = "org.readium.kotlin-toolkit:readium-shared", version.ref = "readium" }
 readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", version.ref = "readium" }
 readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }

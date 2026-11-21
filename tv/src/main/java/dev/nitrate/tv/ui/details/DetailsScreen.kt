@@ -441,6 +441,11 @@ private fun Header(
                 if (adding) dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect) { adding = false }
             }
             if (onManage != null) OutlinedButton(onClick = { onManage(item.id) }) { Text("Manage") }
+            if (onManage != null && item.kind == ItemKind.BOOK) {
+                var editing by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { editing = true }) { Text("Comic details") }
+                if (editing) dev.nitrate.tv.ui.comics.ComicInfoDialog(repository, item) { editing = false }
+            }
         }
         val partners = dev.nitrate.tv.ui.partners.LocalPartnerProgress.current
         partners.groupBy { it.groupId }.values.forEach { group ->

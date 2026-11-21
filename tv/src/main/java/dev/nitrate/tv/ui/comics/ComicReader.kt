@@ -125,7 +125,10 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
     val scope = rememberCoroutineScope()
     var direction by remember { mutableStateOf(book.info?.direction ?: ReadingDirection.LEFT_TO_RIGHT) }
     var twoUp by remember { mutableStateOf(true) }
-    val spreads = remember(book.pageCount, twoUp, direction) { Spreads.of(book.pageCount, twoUp && direction != ReadingDirection.VERTICAL, book.widePages, direction) }
+    // Guided view: one panel at a time, zoomed to fill the screen (one page per spread meanwhile).
+    var guided by remember { mutableStateOf(false) }
+    var panelIndex by remember { mutableIntStateOf(0) }
+    val spreads = remember(book.pageCount, twoUp, direction, guided) { Spreads.of(book.pageCount, twoUp && !guided && direction != ReadingDirection.VERTICAL, book.widePages, direction) }
     var index by remember(spreads) { mutableIntStateOf(Spreads.indexOf(spreads, book.startPage)) }
     var zoom by remember { mutableStateOf(false) }
     var pan by remember { mutableStateOf(Offset.Zero) }
@@ -147,8 +150,24 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
     }
     val atEnd = index == spreads.size - 1
 
+    val rtl = direction == ReadingDirection.RIGHT_TO_LEFT
+    val found by androidx.compose.runtime.produceState<Pair<Float, List<dev.nitrate.core.comics.PanelRect>>?>(null, guided, page, rtl) {
+        value = null
+        if (guided) value = runCatching { book.panels(page, rtl) }.getOrNull()
+    }
+    val panels = found?.second ?: listOf(dev.nitrate.core.comics.PanelRect.WHOLE)
+    val currentPanel = if (panelIndex < 0) panels.lastIndex else panelIndex.coerceIn(0, panels.lastIndex)
+
     fun turn(right: Boolean) {
         val step = ReaderKeys.step(right, direction)
+        if (guided) {
+            val nextPanel = currentPanel + step
+            if (nextPanel in panels.indices) { panelIndex = nextPanel; return }
+            if (step > 0 && atEnd) nextIssue?.let { n -> scope.launch { container.comics.saveProgress(book, page) }; onNext(n.id); return }
+            val nextSpread = (index + step).coerceIn(0, spreads.size - 1)
+            if (nextSpread != index) { index = nextSpread; panelIndex = if (step > 0) 0 else -1 }
+            return
+        }
         if (step > 0 && atEnd) nextIssue?.let { n -> scope.launch { container.comics.saveProgress(book, page) }; onNext(n.id); return }
         val next = (index + step).coerceIn(0, spreads.size - 1)
         if (next != index) { index = next; zoom = false; pan = Offset.Zero }
@@ -164,6 +183,7 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
                 Key.DirectionUp -> { if (zoom) pan = pan.copy(y = (pan.y + stepX).coerceAtMost(0.5f)); zoom }
                 Key.DirectionDown -> { if (zoom) pan = pan.copy(y = (pan.y - stepX).coerceAtLeast(-0.5f)) else strip = true; true }
                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                    if (guided) { turn(right = !rtl); return@onPreviewKeyEvent true }
                     // Zoom in from the top corner reading starts at (left, or right for manga).
                     zoom = !zoom
                     pan = if (zoom) Offset(if (direction == ReadingDirection.RIGHT_TO_LEFT) -0.5f else 0.5f, 0.5f) else Offset.Zero
@@ -182,8 +202,17 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
         val spread = spreads.getOrNull(index)
+        val guide = if (guided) dev.nitrate.core.comics.Panels.fit(panels[currentPanel], found?.first ?: (w / h), w, h) else null
+        val gScale by androidx.compose.animation.core.animateFloatAsState(guide?.first ?: 1f, label = "panel-scale")
+        val gX by androidx.compose.animation.core.animateFloatAsState(guide?.second ?: 0f, label = "panel-x")
+        val gY by androidx.compose.animation.core.animateFloatAsState(guide?.third ?: 0f, label = "panel-y")
         Row(
-            Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = shift.x * w; translationY = shift.y * h },
+            Modifier.fillMaxSize().graphicsLayer {
+                if (guided) {
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                    scaleX = gScale; scaleY = gScale; translationX = gX; translationY = gY
+                } else { scaleX = scale; scaleY = scale; translationX = shift.x * w; translationY = shift.y * h }
+            },
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -193,7 +222,11 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
             }
         }
         if (!strip) Text(
-            ComicProgress.label(page, book.pageCount) + if (zoom) "   ·   arrows move, OK zooms out" else "",
+            ComicProgress.label(page, book.pageCount) + when {
+                guided -> "   ·   panel ${currentPanel + 1} of ${panels.size}"
+                zoom -> "   ·   arrows move, OK zooms out"
+                else -> ""
+            },
             style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.7f),
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).background(Color(0x99000000), MaterialTheme.shapes.small).padding(horizontal = 10.dp, vertical = 4.dp),
         )
@@ -212,7 +245,9 @@ private fun TvComicPages(container: AppContainer, book: ComicBook, onExit: () ->
                 twoUp = twoUp,
                 onPick = { p -> index = Spreads.indexOf(spreads, p); zoom = false; pan = Offset.Zero; strip = false },
                 onDirection = { direction = it },
-                onTwoUp = { twoUp = it },
+                onTwoUp = { twoUp = it; if (it) guided = false },
+                guided = if (book.canGuide && direction != ReadingDirection.VERTICAL) guided else null,
+                onGuided = { guided = it; panelIndex = 0; zoom = false; pan = Offset.Zero },
                 onClose = { strip = false },
             )
         }
@@ -235,6 +270,8 @@ private fun PageStrip(
     current: Int,
     direction: ReadingDirection,
     twoUp: Boolean,
+    guided: Boolean? = null,
+    onGuided: (Boolean) -> Unit = {},
     onPick: (Int) -> Unit,
     onDirection: (ReadingDirection) -> Unit,
     onTwoUp: (Boolean) -> Unit,
@@ -252,6 +289,7 @@ private fun PageStrip(
             Text(listOfNotNull(book.info?.series ?: book.title, book.info?.number?.let { "#$it" }).joinToString(" "), style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(360.dp))
             ReadingDirection.entries.forEach { d -> FilterChip(direction == d, { onDirection(d) }) { Text(d.label) } }
             FilterChip(twoUp, { onTwoUp(!twoUp) }) { Text("Two pages") }
+            if (guided != null) FilterChip(guided, { onGuided(!guided) }) { Text("Panel by panel") }
         }
         LazyRow(state = list, contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), reverseLayout = direction == ReadingDirection.RIGHT_TO_LEFT) {
             itemsIndexed(book.pages) { i, _ ->

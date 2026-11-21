@@ -1,11 +1,18 @@
 using System.Net.Mime;
+using Jellyfin.Data;
+using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.IO;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Nitrate.Companion.Comics;
 
 namespace Nitrate.Companion.Api;
+
+/// <summary>A book's ComicInfo.xml after a change.</summary>
+public record ComicInfoOut(string ComicInfo);
 
 /// <summary>
 /// Books read page by page: the apps show the first page at once and fetch the rest in one burst,
@@ -21,13 +28,17 @@ public class ComicsController : ControllerBase
     private readonly ComicStore _store;
     private readonly ILibraryManager _library;
     private readonly IUserManager _users;
+    private readonly IProviderManager _providers;
+    private readonly IFileSystem _fileSystem;
 
     /// <summary>Initializes a new instance of the <see cref="ComicsController"/> class.</summary>
-    public ComicsController(ComicStore store, ILibraryManager library, IUserManager users)
+    public ComicsController(ComicStore store, ILibraryManager library, IUserManager users, IProviderManager providers, IFileSystem fileSystem)
     {
         _store = store;
         _library = library;
         _users = users;
+        _providers = providers;
+        _fileSystem = fileSystem;
     }
 
     /// <summary>The book's format, its pages (names, sizes) and its ComicInfo.xml.</summary>
@@ -70,6 +81,46 @@ public class ComicsController : ControllerBase
 
         Response.Headers.CacheControl = "private, max-age=86400";
         return File(p.Data, p.ContentType);
+    }
+
+    /// <summary>
+    /// Changes the book's ComicInfo.xml (admins; CBZ only): each field given is set, or removed when
+    /// empty. Jellyfin reads the book again afterwards.
+    /// </summary>
+    [HttpPut("{itemId}/Info")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<ComicInfoOut> SetInfo([FromRoute] Guid itemId, [FromBody] Dictionary<string, string?> changes)
+    {
+        if (!Guid.TryParse(User.FindFirst(UserIdClaim)?.Value, out var me) || _users.GetUserById(me) is not { } user
+            || !user.HasPermission(PermissionKind.IsAdministrator))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        if (Book(itemId) is not { } path || _library.GetItemById(itemId) is not { } item)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var xml = ComicInfoEditor.Apply(path, changes);
+            _providers.QueueRefresh(
+                item.Id,
+                new MetadataRefreshOptions(new DirectoryService(_fileSystem)) { MetadataRefreshMode = MetadataRefreshMode.FullRefresh, ReplaceAllMetadata = true },
+                RefreshPriority.High);
+            return new ComicInfoOut(xml);
+        }
+        catch (ComicInfoException e)
+        {
+            return Problem(e.Message, statusCode: StatusCodes.Status400BadRequest);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Xml.XmlException or InvalidDataException)
+        {
+            return Problem("The book couldn't be changed: " + e.Message, statusCode: StatusCodes.Status409Conflict);
+        }
     }
 
     /// <summary>The book's file when the caller may see it and the feature is on.</summary>

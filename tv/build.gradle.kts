@@ -48,6 +48,8 @@ android {
     }
 
     compileOptions {
+        // Readium (EPUB books) uses newer Java library parts than older Android versions have.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -71,6 +73,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.zxing.core)
     implementation(libs.androidx.activity.compose)

@@ -67,6 +67,9 @@ interface AppPlatform {
     /** Draws PDF pages for the comic reader; null where the device can't. */
     fun pdfPages(): dev.nitrate.android.comics.PdfPages? = null
 
+    /** Reads comic pages small and grey, for finding panels (guided view); null where it can't. */
+    fun pictureReader(): dev.nitrate.android.comics.PictureReader? = null
+
     /** Opens EPUB books in the platform's own book reader; null where the app shows its own. */
     fun epubReader(): dev.nitrate.android.comics.EpubReaderHost? = null
 }

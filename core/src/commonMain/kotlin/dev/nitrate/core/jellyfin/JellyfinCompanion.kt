@@ -60,6 +60,9 @@ internal data class ComicPageDto(val name: String = "", val width: Int = 0, val 
 internal data class ComicListingDto(val format: String = "", val pages: List<ComicPageDto> = emptyList(), val comicInfo: String? = null)
 
 @Serializable
+internal data class ComicInfoOutDto(val comicInfo: String = "")
+
+@Serializable
 internal data class ProblemDto(val detail: String? = null)
 
 @Serializable
@@ -195,6 +198,21 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
         dev.nitrate.core.comics.ComicListing(dto.format, dto.pages.map { dev.nitrate.core.comics.ComicPageInfo(it.name, it.width, it.height, it.size) }, dto.comicInfo)
     } catch (e: ClientRequestException) {
         if (e.response.status == HttpStatusCode.NotFound || e.response.status.value == 422) null else throw e
+    }
+
+    /** Changes a CBZ's ComicInfo (admins); the new ComicInfo.xml. */
+    suspend fun saveComicInfo(itemId: String, changes: Map<String, String?>): String {
+        val response = try {
+            client.http.put(client.url("Nitrate", "Comics", itemId, "Info")) {
+                with(client) { auth() }
+                contentType(ContentType.Application.Json)
+                setBody(kotlinx.serialization.json.JsonObject(changes.mapValues { (_, v) -> kotlinx.serialization.json.JsonPrimitive(v) }).toString())
+            }
+        } catch (e: ClientRequestException) {
+            val why = runCatching { JellyfinJson.decodeFromString<ProblemDto>(e.response.bodyAsText()).detail }.getOrNull()
+            throw IllegalStateException(why ?: "The server didn't accept the change (${e.response.status.value}).")
+        }
+        return JellyfinJson.decodeFromString<ComicInfoOutDto>(response.bodyAsText()).comicInfo
     }
 
     fun comicPageUrl(itemId: String, index: Int) = client.url("Nitrate", "Comics", itemId, "Pages", index.toString())

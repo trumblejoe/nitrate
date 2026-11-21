@@ -1253,6 +1253,8 @@ class JellyfinClient(
         if (companion()?.features?.contains(dev.nitrate.core.comics.ComicListing.FEATURE) == true) companionApi.comicListing(itemId) else null
 
     override fun comicPageUrl(itemId: String, index: Int) = companionApi.comicPageUrl(itemId, index)
+
+    override suspend fun saveComicInfo(itemId: String, changes: Map<String, String?>) = companionApi.saveComicInfo(itemId, changes)
     override suspend fun checkClips() = companionApi.checkClips()
     override suspend fun serverCreditScenes(itemId: String) = companionApi.creditScenes(itemId)
     override suspend fun sendDeviceSummary(summary: dev.nitrate.core.playback.DeviceSummary) = companionApi.sendDeviceSummary(identity.deviceId, identity.deviceName, summary)

@@ -400,6 +400,7 @@ private fun PlaySection(actions: AppActions, item: MediaItem, seriesTarget: Medi
             dev.nitrate.core.comics.ComicProgress.readLabel(item), Icons.Default.PlayArrow, primary = true,
             onClick = { actions.nav.navigate(ComicRoute(item.id)) }, modifier = Modifier.fillMaxWidth(),
         )
+        ComicInfoButton(actions, item)
         return
     }
     val target = if (item.kind == ItemKind.SERIES) seriesTarget else item.takeIf { it.isPlayable }

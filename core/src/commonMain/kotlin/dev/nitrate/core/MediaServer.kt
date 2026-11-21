@@ -196,6 +196,9 @@ interface MediaServer {
     /** The issues of [book]'s series in reading order ([dev.nitrate.core.comics.ComicSeries]); just [book] when it has none. */
     suspend fun seriesIssues(book: MediaItem): List<MediaItem> = listOf(book)
 
+    /** Changes a CBZ book's ComicInfo.xml (admins, Companion feature `comics`): each field set, or removed when null. The new XML. */
+    suspend fun saveComicInfo(itemId: String, changes: Map<String, String?>): String = unsupported()
+
     /** Page [index] of a book the plugin serves page by page; fetched with [authorizationHeader]. */
     fun comicPageUrl(itemId: String, index: Int): String = unsupported()
 

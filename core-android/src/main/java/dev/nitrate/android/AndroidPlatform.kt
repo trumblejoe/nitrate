@@ -73,6 +73,8 @@ class AndroidPlatform(context: Context, clientName: String, version: String) : A
     override fun newEpisodes(server: MediaServer) = AndroidNewEpisodeNotifier(appContext, server)
     override fun pdfPages(): dev.nitrate.android.comics.PdfPages = dev.nitrate.android.comics.AndroidPdfPages()
 
+    override fun pictureReader(): dev.nitrate.android.comics.PictureReader = dev.nitrate.android.comics.AndroidPictureReader()
+
     override fun epubReader(): dev.nitrate.android.comics.EpubReaderHost = dev.nitrate.android.books.AndroidEpubReader(appContext, deviceKind == DeviceKind.TV)
 
     override fun updater() = AndroidUpdater(appContext, appKind).also { AndroidUpdater.current = it }

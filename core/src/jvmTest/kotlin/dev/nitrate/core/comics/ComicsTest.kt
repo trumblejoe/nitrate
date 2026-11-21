@@ -91,4 +91,11 @@ class ComicsTest {
         assertEquals("Continue (34%)", ComicProgress.readLabel(book.copy(container = "epub", user = dev.nitrate.core.model.UserState(positionMs = 340_000))))
         assertEquals("Read", ComicProgress.readLabel(book.copy(user = dev.nitrate.core.model.UserState(played = true, positionMs = 5_000))))
     }
+
+    @Test fun comicInfoChangesAreOnlyWhatDiffers() {
+        val before = ComicInfoFields.values("<?xml version=\"1.0\"?><ComicInfo><Series>Moon</Series><Writer>Ann</Writer><Pages><Page Image=\"0\"/></Pages></ComicInfo>")
+        assertEquals(mapOf("Series" to "Moon", "Writer" to "Ann"), before)
+        val changes = ComicInfoFields.changes(before, mapOf("Series" to "Moon", "Writer" to " ", "Number" to "3 "))
+        assertEquals(mapOf("Writer" to null, "Number" to "3"), changes)
+    }
 }

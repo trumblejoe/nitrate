@@ -208,6 +208,33 @@ object ImageSize {
     fun isWide(size: Pair<Int, Int>?) = size != null && size.first > size.second * 1.1
 }
 
+/**
+ * The ComicInfo fields an admin can change from Nitrate (Companion feature `comics`, CBZ only), in
+ * the order they're shown; the plugin's `ComicInfoEditor.Fields` must accept every name here.
+ */
+object ComicInfoFields {
+    data class Field(val name: String, val label: String, val long: Boolean = false)
+
+    val EDITABLE = listOf(
+        Field("Series", "Series"), Field("Number", "Issue number"), Field("Title", "Title"), Field("Volume", "Volume"),
+        Field("Year", "Year"), Field("Month", "Month"), Field("Writer", "Writer"), Field("Penciller", "Artist"),
+        Field("Colorist", "Colourist"), Field("CoverArtist", "Cover artist"), Field("Publisher", "Publisher"),
+        Field("Genre", "Genre"), Field("StoryArc", "Story arc"), Field("AgeRating", "Age rating"), Field("Summary", "Summary", long = true),
+    )
+
+    /** ComicInfo's reading direction values, with what they mean. */
+    val MANGA = listOf("" to "Not set", "No" to "Left to right", "YesAndRightToLeft" to "Manga (right to left)", "Yes" to "Manga, left to right")
+
+    /** Every simple field in a ComicInfo.xml, by name. */
+    fun values(xml: String?): Map<String, String> = xml?.let { x ->
+        runCatching { dev.nitrate.core.opds.Xml.parse(x).children.filter { it.children.isEmpty() }.associate { it.localName to it.text.trim() } }.getOrNull()
+    }.orEmpty()
+
+    /** What changed between [before] and [after] (empty = remove), for the plugin. */
+    fun changes(before: Map<String, String>, after: Map<String, String>): Map<String, String?> =
+        (before.keys + after.keys).filter { (before[it] ?: "") != (after[it] ?: "").trim() }.associateWith { after[it]?.trim()?.ifEmpty { null } }
+}
+
 /** A page as the Companion plugin lists it (sizes 0 when unknown). */
 @kotlinx.serialization.Serializable
 data class ComicPageInfo(val name: String, val width: Int, val height: Int, val size: Long)

@@ -146,4 +146,49 @@ public class ComicTests
 
         Assert.Equal("epub", ComicStore.Format(epub));
     }
+
+    [Fact]
+    public void ComicInfoIsChangedAndTheRestKept()
+    {
+        var dir = Temp();
+        var book = Path.Combine(dir, "book.cbz");
+        using (var zip = ZipFile.Open(book, ZipArchiveMode.Create))
+        {
+            using (var s = zip.CreateEntry("001.png").Open())
+            {
+                s.Write(Png(5, 5));
+            }
+
+            using var ci = new StreamWriter(zip.CreateEntry("ComicInfo.xml").Open());
+            ci.Write("<?xml version=\"1.0\"?><ComicInfo><Series>Moon</Series><Writer>Ann</Writer><Pages><Page Image=\"0\" Type=\"FrontCover\"/></Pages></ComicInfo>");
+        }
+
+        var xml = ComicInfoEditor.Apply(book, new Dictionary<string, string?> { ["Series"] = "Moon Knight", ["Number"] = "3", ["Writer"] = "" });
+        Assert.Contains("<Series>Moon Knight</Series>", xml);
+        Assert.DoesNotContain("Writer", xml);
+        Assert.True(xml.IndexOf("<Number>3</Number>", StringComparison.Ordinal) < xml.IndexOf("<Pages>", StringComparison.Ordinal));
+        using var check = ZipFile.OpenRead(book);
+        Assert.Equal(2, check.Entries.Count);
+        using var page = new MemoryStream();
+        check.GetEntry("001.png")!.Open().CopyTo(page);
+        Assert.Equal(Png(5, 5), page.ToArray());
+        Assert.False(File.Exists(book + ".nitrate-tmp"));
+    }
+
+    [Fact]
+    public void OnlyCbzAndKnownFieldsCanBeChanged()
+    {
+        var dir = Temp();
+        var pdf = Path.Combine(dir, "a.pdf");
+        File.WriteAllText(pdf, "%PDF-1.7");
+        Assert.Throws<ComicInfoException>(() => ComicInfoEditor.Apply(pdf, new Dictionary<string, string?> { ["Series"] = "x" }));
+        var book = Path.Combine(dir, "b.cbz");
+        using (var zip = ZipFile.Open(book, ZipArchiveMode.Create))
+        {
+            zip.CreateEntry("1.png");
+        }
+
+        Assert.Throws<ComicInfoException>(() => ComicInfoEditor.Apply(book, new Dictionary<string, string?> { ["Evil"] = "x" }));
+        Assert.Contains("<Title>New</Title>", ComicInfoEditor.Apply(book, new Dictionary<string, string?> { ["Title"] = "New" }));
+    }
 }

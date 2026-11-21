@@ -76,6 +76,14 @@ interface CatalogPositions {
     suspend fun set(catalogId: String, bookId: String, page: Int)
 }
 
+/** A picture's brightness, small: [width] × [height] values 0–255, row by row. */
+class PictureLuma(val luma: IntArray, val width: Int, val height: Int)
+
+/** Reads a picture file into a small greyscale copy, no side longer than maxSide (each platform's own decoder). */
+fun interface PictureReader {
+    fun luma(path: String, maxSide: Int): PictureLuma?
+}
+
 /** An open comic: its pages in order and its ComicInfo, each page fetched or taken out once. */
 class ComicBook internal constructor(
     /** The Jellyfin item (null for books from elsewhere, which give [title] and [saveProgress] themselves). */
@@ -94,6 +102,26 @@ class ComicBook internal constructor(
 ) {
     val pageCount get() = pages.size
     private val locks = List(pages.size) { Mutex() }
+    internal var pictures: PictureReader? = null
+    private val panelCache = mutableMapOf<Int, Pair<Float, List<dev.nitrate.core.comics.PanelRect>>>()
+
+    /** Guided view is possible: this device can look at the pages. */
+    val canGuide get() = pictures != null
+
+    /**
+     * Page [index]'s panels in reading order ([dev.nitrate.core.comics.Panels]) and the page's
+     * aspect (width / height); the whole page alone when none are found.
+     */
+    suspend fun panels(index: Int, rightToLeft: Boolean): Pair<Float, List<dev.nitrate.core.comics.PanelRect>> {
+        panelCache[index]?.let { return it }
+        val path = page(index)
+        val found = withContext(Dispatchers.Default) {
+            val l = pictures?.luma(path, 260) ?: return@withContext 0.7f to listOf(dev.nitrate.core.comics.PanelRect.WHOLE)
+            (l.width.toFloat() / l.height) to dev.nitrate.core.comics.Panels.find(l.luma, l.width, l.height, rightToLeft)
+        }
+        panelCache[index] = found
+        return found
+    }
 
     /** The local file of page [index], fetched (or taken out) the first time it's asked for. */
     suspend fun page(index: Int): String = withContext(Dispatchers.IO) {
@@ -147,6 +175,7 @@ class ComicLibrary(
     private val engine: HttpClientEngine,
     private val maxBytes: Long = DEFAULT_MAX_BYTES,
     private val pdf: PdfPages? = null,
+    private val pictures: PictureReader? = null,
     private val now: () -> Long,
 ) {
     private val root = "$cacheDir/comics".toPath()
@@ -183,6 +212,7 @@ class ComicLibrary(
             }
         }
         prune(keep = item.id)
+        (book as? OpenedBook.Comic)?.book?.pictures = pictures
         book
     }
 
@@ -264,6 +294,7 @@ class ComicLibrary(
             else -> throw ComicException("The catalog doesn't offer this book for reading.")
         }
         prune(keep = key)
+        (result as? OpenedBook.Comic)?.book?.pictures = pictures
         result
     }
 

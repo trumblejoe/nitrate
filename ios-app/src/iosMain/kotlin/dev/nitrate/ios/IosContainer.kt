@@ -68,6 +68,8 @@ class IosPlatform(private val version: String) : AppPlatform {
 
     override fun pdfPages(): dev.nitrate.android.comics.PdfPages = IosPdfPages()
 
+    override fun pictureReader(): dev.nitrate.android.comics.PictureReader = IosPictureReader()
+
     // Reconnecting on network changes (NWPathMonitor) comes later; the app re-checks when it opens.
     override fun watchNetwork(onChange: () -> Unit) = Unit
 

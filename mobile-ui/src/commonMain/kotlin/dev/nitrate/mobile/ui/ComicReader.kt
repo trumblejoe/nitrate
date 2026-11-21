@@ -137,6 +137,8 @@ private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit,
     val scope = rememberCoroutineScope()
     var direction by remember { mutableStateOf(book.info?.direction ?: ReadingDirection.LEFT_TO_RIGHT) }
     var twoUpChoice by remember { mutableStateOf(TwoUp.AUTO) }
+    // Guided view: one panel at a time, zoomed to fill the screen.
+    var guided by remember { mutableStateOf(false) }
     var chrome by remember { mutableStateOf(true) }
     var settings by remember { mutableStateOf(false) }
     var page by remember { mutableStateOf(book.startPage) }
@@ -160,7 +162,19 @@ private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit,
             TwoUp.ONE -> false
             TwoUp.TWO -> true
         }
-        if (direction == ReadingDirection.VERTICAL) {
+        if (guided && direction != ReadingDirection.VERTICAL) {
+            GuidedPages(book, page, direction, onPage = { page = it }, onMiddle = { chrome = !chrome })
+            AnimatedVisibility(chrome, modifier = Modifier.align(Alignment.BottomCenter)) {
+                Row(Modifier.fillMaxWidth().background(Color(0xCC000000)).windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(ComicProgress.label(page, book.pageCount) + " · panel by panel", color = Color.White, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    val n = nextIssue
+                    if (n != null && ComicProgress.finished(page, book.pageCount)) TextButton(onClick = {
+                        actions.scope.launch { actions.container.comics.saveProgress(book, page) }
+                        onNext(n.id)
+                    }) { Text("Next issue: " + dev.nitrate.core.comics.ComicSeries.label(n), color = Color.White) }
+                }
+            }
+        } else if (direction == ReadingDirection.VERTICAL) {
             val list = rememberLazyListState(initialFirstVisibleItemIndex = page)
             LaunchedEffect(list) { snapshotFlow { list.firstVisibleItemIndex }.collect { page = it } }
             LazyColumn(state = list, modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { chrome = !chrome }) }) {
@@ -249,7 +263,69 @@ private fun ComicPages(actions: AppActions, book: ComicBook, onExit: () -> Unit,
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TwoUp.entries.forEach { t -> FilterChip(twoUpChoice == t, { twoUpChoice = t }, label = { Text(t.label) }) }
             }
+            if (book.canGuide && direction != ReadingDirection.VERTICAL) {
+                FilterChip(guided, { guided = !guided }, label = { Text("Panel by panel") })
+                Text("One panel at a time, filling the screen; tap the edges to move on.", style = MaterialTheme.typography.bodySmall)
+            }
         }
+    }
+}
+
+/**
+ * Guided view: each page's panels ([ComicBook.panels]) one at a time, the page zoomed so the panel
+ * fills the screen; taps at the edges step through them in reading order and on to the next page.
+ */
+@Composable
+private fun GuidedPages(book: ComicBook, start: Int, direction: ReadingDirection, onPage: (Int) -> Unit, onMiddle: () -> Unit) {
+    val rtl = direction == ReadingDirection.RIGHT_TO_LEFT
+    var pageIndex by remember { mutableStateOf(start) }
+    // -1: the page's last panel (stepping back onto a page).
+    var panelIndex by remember { mutableStateOf(0) }
+    val found by produceState<Pair<Float, List<dev.nitrate.core.comics.PanelRect>>?>(null, pageIndex, rtl) {
+        value = null
+        value = runCatching { book.panels(pageIndex, rtl) }.getOrNull()
+    }
+    LaunchedEffect(pageIndex) {
+        onPage(pageIndex)
+        // The next page's panels are found before it's reached.
+        if (pageIndex + 1 < book.pageCount) runCatching { book.panels(pageIndex + 1, rtl) }
+    }
+    val panels = found?.second ?: listOf(dev.nitrate.core.comics.PanelRect.WHOLE)
+    val current = if (panelIndex < 0) panels.lastIndex else panelIndex.coerceIn(0, panels.lastIndex)
+    fun step(by: Int) {
+        val next = current + by
+        when {
+            next in panels.indices -> panelIndex = next
+            by > 0 && pageIndex + 1 < book.pageCount -> { pageIndex++; panelIndex = 0 }
+            by < 0 && pageIndex > 0 -> { pageIndex--; panelIndex = -1 }
+        }
+    }
+    BoxWithConstraints(
+        Modifier.fillMaxSize().pointerInput(direction) {
+            detectTapGestures(onTap = { at ->
+                val w = size.width.toFloat()
+                when {
+                    at.x < w / 5 -> step(dev.nitrate.core.comics.ReaderKeys.step(right = false, direction))
+                    at.x > w * 4 / 5 -> step(dev.nitrate.core.comics.ReaderKeys.step(right = true, direction))
+                    else -> onMiddle()
+                }
+            })
+        },
+    ) {
+        val w = constraints.maxWidth.toFloat()
+        val h = constraints.maxHeight.toFloat()
+        val (target, tx, ty) = dev.nitrate.core.comics.Panels.fit(panels[current], found?.first ?: (w / h), w, h)
+        val scale by androidx.compose.animation.core.animateFloatAsState(target, label = "panel-scale")
+        val dx by androidx.compose.animation.core.animateFloatAsState(tx, label = "panel-x")
+        val dy by androidx.compose.animation.core.animateFloatAsState(ty, label = "panel-y")
+        PageImage(
+            book, pageIndex,
+            Modifier.fillMaxSize().graphicsLayer {
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                scaleX = scale; scaleY = scale; translationX = dx; translationY = dy
+            },
+            ContentScale.Fit,
+        )
     }
 }
 
