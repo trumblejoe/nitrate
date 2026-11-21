@@ -1,6 +1,8 @@
 package dev.nitrate.mobile.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
@@ -64,7 +66,11 @@ fun ReleaseNotes(release: AppRelease) {
         Text(release.title, style = MaterialTheme.typography.titleSmall)
         if (release.notes.isNotEmpty()) {
             Text("What's new", style = MaterialTheme.typography.labelLarge, color = accentColor())
-            release.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+            // Scrolls within a fixed height, so a long list never pushes the buttons away.
+            Column(
+                Modifier.heightIn(max = 240.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) { release.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) } }
         }
     }
 }

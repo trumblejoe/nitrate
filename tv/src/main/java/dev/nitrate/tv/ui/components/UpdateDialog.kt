@@ -44,7 +44,11 @@ internal fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, on
             Text(state.release.title, style = MaterialTheme.typography.titleMedium)
             if (state.release.notes.isNotEmpty()) {
                 Text("What's new", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
-                state.release.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                // Every change, in a box that scrolls with ▲▼ (Up from Update now reaches it), so a long
+                // list never pushes the choices off the screen.
+                dev.nitrate.tv.ui.lists.ScrollBox(maxHeight = 260) {
+                    state.release.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                }
             }
         }
         is UpdateState.Downloading -> Panel("Downloading ${state.release.title}", {}, emptyList()) {
