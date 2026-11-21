@@ -1,6 +1,8 @@
 package dev.nitrate.tv.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.FilterChip
@@ -78,35 +82,53 @@ fun StatsScreen(server: MediaServer) {
                     }
                     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
                 }
-                item { Body(stats) }
+                // Each part is a stop for the D-pad, so ▼ walks down the page and it scrolls.
+                item { Stop { Totals(stats) } }
+                if (stats.byMonth.any { it > 0 }) item { Stop { Months(stats.byMonth) } }
+                if (listOf(stats.topShows, stats.topGenres, stats.rewatched, stats.topArtists).any { it.isNotEmpty() }) item { Stop { Tops(stats) } }
                 item {
-                    Text(
+                    Stop { Text(
                         fromDiary?.let { "From your watch diary, which counts every watch on its own date (since ${java.text.DateFormat.getDateInstance().format(java.util.Date(it))}; before that, your server's record of the last time you watched each title)." }
                         ?: "From your server's record of what you finished. It keeps only the last time you watched each title, so a title counts in that year; time counts every play.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    ) }
                 }
             }
         }
     }
 }
 
+/** A part of the page the D-pad can land on (a faint outline shows where), so the page scrolls to it. */
 @Composable
-private fun Body(s: WatchStats) {
-    Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Big(WatchStatsBuilder.duration(s.watchMinutes), "watching", Modifier.weight(1f))
-            Big("${s.films}", if (s.films == 1) "film" else "films", Modifier.weight(1f))
-            Big("${s.episodes}", "episodes of ${s.shows} show${if (s.shows == 1) "" else "s"}", Modifier.weight(1f))
-            Big("${s.songs}", if (s.songs == 1) "song" else "songs", Modifier.weight(1f))
-        }
-        if (s.byMonth.any { it > 0 }) Months(s.byMonth)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-            Tallies("Top shows", s.topShows, Modifier.weight(1f)) { "${it.count} episode${if (it.count == 1) "" else "s"} · ${WatchStatsBuilder.duration(it.minutes)}" }
-            Tallies("Top genres", s.topGenres, Modifier.weight(1f)) { WatchStatsBuilder.duration(it.minutes) }
-            Tallies("Watched again", s.rewatched, Modifier.weight(1f)) { "${it.count} times" }
-            Tallies("Top artists", s.topArtists, Modifier.weight(1f)) { "${it.count} play${if (it.count == 1) "" else "s"}" }
-        }
+private fun Stop(content: @Composable () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        Modifier.fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
+            .semantics(mergeDescendants = true) {}
+            .focusable()
+            .border(2.dp, if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else Color.Transparent, RoundedCornerShape(20.dp))
+            .padding(12.dp),
+    ) { content() }
+}
+
+@Composable
+private fun Totals(s: WatchStats) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Big(WatchStatsBuilder.duration(s.watchMinutes), "watching", Modifier.weight(1f))
+        Big("${s.films}", if (s.films == 1) "film" else "films", Modifier.weight(1f))
+        Big("${s.episodes}", "episodes of ${s.shows} show${if (s.shows == 1) "" else "s"}", Modifier.weight(1f))
+        Big("${s.songs}", if (s.songs == 1) "song" else "songs", Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun Tops(s: WatchStats) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+        Tallies("Top shows", s.topShows, Modifier.weight(1f)) { "${it.count} episode${if (it.count == 1) "" else "s"} · ${WatchStatsBuilder.duration(it.minutes)}" }
+        Tallies("Top genres", s.topGenres, Modifier.weight(1f)) { WatchStatsBuilder.duration(it.minutes) }
+        Tallies("Watched again", s.rewatched, Modifier.weight(1f)) { "${it.count} times" }
+        Tallies("Top artists", s.topArtists, Modifier.weight(1f)) { "${it.count} play${if (it.count == 1) "" else "s"}" }
     }
 }
 

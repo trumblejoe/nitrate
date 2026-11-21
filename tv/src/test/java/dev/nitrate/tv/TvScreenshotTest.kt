@@ -1,5 +1,6 @@
 package dev.nitrate.tv
 
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
@@ -1369,6 +1370,15 @@ class TvScreenshotTest {
 
     /** "Your year" on TV. */
     @Test fun stats() = shoot("tv-stats") { c -> dev.nitrate.tv.ui.settings.StatsScreen(c.server) }
+
+    /** ▼ walks down "Your year" part by part, so the page scrolls to its end. */
+    @Test fun statsScrolls() = shoot("tv-stats-scrolled", act = {
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        repeat(6) { press("down") }
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(focusedHasText("server's record") || focusedHasText("watch diary")) { "▼ should reach the note at the bottom" }
+        compose.onNode(androidx.compose.ui.test.hasText("server's record", substring = true)).assertIsDisplayed()
+    }) { c -> dev.nitrate.tv.ui.settings.StatsScreen(c.server) }
 
     /** Timed lyrics beside a song's cover. */
     @Test fun lyrics() = shoot("tv-lyrics") { c ->
