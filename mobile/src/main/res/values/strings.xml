@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Nitrate</string>
+    <string name="widget_continue_watching_description">What you\'re partway through: a tap carries on where you left off.</string>
+    <string name="widget_next_up_description">The next episode of your shows: a tap starts it.</string>
 </resources>

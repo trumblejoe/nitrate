@@ -33,6 +33,30 @@
             </intent-filter>
         </activity>
 
+        <!-- Home-screen widgets: Continue watching and Next up. -->
+        <receiver
+            android:name=".widgets.ContinueWatchingReceiver"
+            android:exported="true"
+            android:label="Continue watching">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_continue_watching" />
+        </receiver>
+        <receiver
+            android:name=".widgets.NextUpReceiver"
+            android:exported="true"
+            android:label="Next up">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_next_up" />
+        </receiver>
+
         <service
             android:name=".platform.PlaybackService"
             android:exported="true"

@@ -161,6 +161,9 @@ class AppActions(
     }
 }
 
+/** [MobileApp]'s openItem with this in front plays the item instead of opening it (home-screen widgets). */
+const val PLAY_ITEM_PREFIX = "play:"
+
 @Composable
 fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null)) {
     var start by remember { mutableStateOf<Any?>(null) }
@@ -385,6 +388,11 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             } == true
             if (signedIn && !busy) {
                 openItem.value = null
+                // A home-screen widget's title: into the player, resuming, through the usual checks.
+                if (id.startsWith(PLAY_ITEM_PREFIX)) {
+                    runCatching { container.server.getItem(id.removePrefix(PLAY_ITEM_PREFIX)) }.getOrNull()?.let { guarded(it, false, null) }
+                    return@LaunchedEffect
+                }
                 // A new season opens its show with that season selected.
                 val item = runCatching { container.server.getItem(id) }.getOrNull()
                 val series = item?.seriesId

@@ -9,6 +9,7 @@ import dev.nitrate.android.notifications.NewEpisodeNotifier
 import dev.nitrate.mobile.ui.MobileApp
 import dev.nitrate.mobile.ui.NitrateTheme
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     /** An item to open, from a tapped notification. */
@@ -22,6 +23,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         (application as NitrateApp).container.themeMusic.onAppHidden()
+        // What was just watched moves on in the home-screen widgets.
+        val app = applicationContext
+        kotlinx.coroutines.MainScope().launch { runCatching { dev.nitrate.mobile.widgets.WatchWidgets.refresh(app) } }
         super.onStop()
     }
 
@@ -45,5 +49,8 @@ class MainActivity : ComponentActivity() {
     private fun take(intent: Intent?) {
         intent?.getStringExtra(NewEpisodeNotifier.EXTRA_OPEN_ITEM)?.let { openItem.value = it }
         intent?.removeExtra(NewEpisodeNotifier.EXTRA_OPEN_ITEM)
+        // A widget's title: straight into the player, resuming.
+        intent?.getStringExtra(dev.nitrate.mobile.widgets.WatchWidgets.EXTRA_PLAY_ITEM)?.let { openItem.value = dev.nitrate.mobile.ui.PLAY_ITEM_PREFIX + it }
+        intent?.removeExtra(dev.nitrate.mobile.widgets.WatchWidgets.EXTRA_PLAY_ITEM)
     }
 }
