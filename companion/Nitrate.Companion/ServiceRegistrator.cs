@@ -49,6 +49,8 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService<Nitrate.Companion.SmartCollections.SmartCollectionWatcher>();
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Credits.CreditStore(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "credits.json")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Intros.IntroStore(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion")));
         serviceCollection.AddSingleton(sp => new SsoService(
             () => SsoSettings.From(Plugin.Instance?.Configuration),
             new JellyfinSsoAccounts(sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IDeviceManager>(), sp.GetRequiredService<ISessionManager>()),

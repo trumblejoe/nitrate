@@ -17,6 +17,11 @@ object CompanionStatus {
         Triple("sso", "Single sign-on", "Signing in with the identity provider"),
         Triple("lines", "Search what people say", "Lines from subtitles in search"),
         Triple("diary", "Watch diary", "Every watch kept, with ratings and notes"),
+        Triple("together", "Watch-together invites", "Asking people to join a watch-together group"),
+        Triple("devices", "Household devices", "Each device's playback summary, for admins"),
+        Triple("testclips", "TV & receiver check", "Clips to check what the TV and receiver show"),
+        Triple("credits", "Scenes in the credits", "Found nightly by \"Find scenes in the credits\""),
+        Triple("intros", "Intros", "Found nightly by \"Find intros\" and given to Jellyfin, so Skip Intro works in every app"),
     )
 
     /**
