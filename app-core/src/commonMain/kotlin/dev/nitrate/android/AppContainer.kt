@@ -329,11 +329,10 @@ class AppContainer(
         return result.exceptionOrNull()?.let { it.message ?: "That didn't work" }
     }
 
-    /** Shows to start watching with someone: the ones watched last, or those matching [query]. */
+    /** Shows to start watching with someone: the ones watched lately, or any in the library matching [query]. */
     suspend fun togetherShows(query: String): List<dev.nitrate.core.model.MediaItem> = runCatching {
-        if (query.isBlank()) server.queryItems(
-            dev.nitrate.core.pages.ItemQuery(types = listOf(dev.nitrate.core.model.ItemKind.SERIES), sort = dev.nitrate.core.pages.QuerySort.DATE_PLAYED, limit = 12),
-        ) else server.searchHints(query).shows.take(12)
+        if (query.isBlank()) server.recentlyWatched(20).filter { it.kind == dev.nitrate.core.model.ItemKind.SERIES }
+        else server.findTitles(query, listOf(dev.nitrate.core.model.ItemKind.SERIES), 30)
     }.getOrDefault(emptyList())
 
     /**

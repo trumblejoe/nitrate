@@ -1654,6 +1654,39 @@ class JellyfinClient(
         )
     }
 
+    override suspend fun findTitles(term: String, kinds: List<ItemKind>, limit: Int): List<MediaItem> {
+        val t = term.trim()
+        val types = kinds.mapNotNull(::itemTypeName)
+        if (t.isEmpty() || types.isEmpty()) return emptyList()
+        return items(
+            "Items",
+            query = mapOf(
+                "searchTerm" to t, "recursive" to true, "includeItemTypes" to types.joinToString(","),
+                "limit" to limit, "fields" to "PrimaryImageAspectRatio", "enableTotalRecordCount" to false,
+            ),
+        )
+    }
+
+    override suspend fun recentlyWatched(limit: Int): List<MediaItem> {
+        val played = items(
+            "Items",
+            query = mapOf(
+                "recursive" to true, "includeItemTypes" to "Episode,Movie",
+                "sortBy" to "DatePlayed", "sortOrder" to "Descending",
+                "limit" to limit * 5, "enableTotalRecordCount" to false,
+            ),
+        ).filter { it.user.lastPlayedMs != null }
+        // Each show once, where its latest episode puts it.
+        val order = played.mapNotNull { if (it.kind == ItemKind.EPISODE) it.seriesId else it.id }.distinct().take(limit)
+        val films = played.filter { it.kind == ItemKind.MOVIE }.associateBy { it.id }
+        val showIds = order.filter { it !in films }
+        val shows = if (showIds.isEmpty()) emptyMap() else items(
+            "Items",
+            query = mapOf("ids" to showIds.joinToString(",") { it.replace("-", "") }, "enableTotalRecordCount" to false),
+        ).associateBy { it.id }
+        return order.mapNotNull { films[it] ?: shows[it] }
+    }
+
     override suspend fun search(query: String): SearchResults = coroutineScope {
         val term = query.trim()
         if (term.isEmpty()) return@coroutineScope SearchResults()
@@ -1841,6 +1874,7 @@ internal fun itemTypeName(kind: ItemKind): String? = when (kind) {
     ItemKind.SERIES -> "Series"
     ItemKind.EPISODE -> "Episode"
     ItemKind.BOX_SET -> "BoxSet"
+    ItemKind.PLAYLIST -> "Playlist"
     ItemKind.VIDEO -> "Video"
     ItemKind.MUSIC_VIDEO -> "MusicVideo"
     ItemKind.MUSIC_ALBUM -> "MusicAlbum"

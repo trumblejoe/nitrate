@@ -581,6 +581,16 @@ interface MediaServer {
      */
     suspend fun searchHints(query: String): SearchResults = search(query)
 
+    /** Titles of [kinds] whose name matches [term], from the whole library (not the quick hints, which mix in episodes). */
+    suspend fun findTitles(term: String, kinds: List<dev.nitrate.core.model.ItemKind>, limit: Int = 40): List<MediaItem> =
+        search(term).let { r -> (r.shows + r.movies + r.collections).filter { it.kind in kinds } }
+
+    /**
+     * What the user watched lately, most recent first: films, and shows by their episodes (Jellyfin
+     * keeps no play date on a show itself), each once.
+     */
+    suspend fun recentlyWatched(limit: Int = 20): List<MediaItem> = emptyList()
+
     suspend fun search(query: String): SearchResults = unsupported()
 
     /** Movies and shows [personId] appears in, newest first. */
