@@ -1,5 +1,7 @@
 package dev.nitrate.core.jellyfin
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import dev.nitrate.core.admin.AccountInfo
 import dev.nitrate.core.admin.ActivityEntry
 import dev.nitrate.core.admin.ImageType
@@ -110,6 +112,7 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
             airsBeforeEpisode = o.int("AirsBeforeEpisodeNumber"),
             airsAfterSeason = o.int("AirsAfterSeasonNumber"),
             providerIds = (o["ProviderIds"] as? JsonObject).orEmpty().mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let { k to it } }.toMap(),
+            links = (o["ExternalUrls"] as? JsonArray).orEmpty().mapNotNull { e -> (e as? JsonObject)?.let { u -> (u.str("Name") ?: return@let null) to (u.str("Url") ?: return@let null) } },
             lockData = o.bool("LockData") == true,
             lockedFields = o["LockedFields"]?.strings().orEmpty(),
         )
@@ -156,7 +159,7 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
 
     // ---- Identify and refresh ----
 
-    suspend fun remoteSearch(item: MediaItem, name: String, year: Int?): List<RemoteMatch> {
+    suspend fun remoteSearch(item: MediaItem, name: String, year: Int?, providerIds: Map<String, String> = emptyMap()): List<RemoteMatch> {
         val kind = when (item.kind) {
             ItemKind.MOVIE -> "Movie"
             ItemKind.SERIES -> "Series"
@@ -169,7 +172,7 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
             put("SearchInfo", buildJsonObject {
                 put("Name", name)
                 year?.let { put("Year", it) }
-                put("ProviderIds", JsonObject(emptyMap()))
+                put("ProviderIds", JsonObject(providerIds.filterValues { it.isNotBlank() }.mapValues { JsonPrimitive(it.value.trim()) }))
             })
             put("ItemId", item.id.replace("-", ""))
             put("IncludeDisabledProviders", true)
@@ -188,6 +191,12 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
             )
         }
     }
+
+    suspend fun externalIdFields(itemId: String): List<dev.nitrate.core.admin.ExternalIdField> =
+        json("Items", itemId, "ExternalIdInfos").jsonArray.mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            dev.nitrate.core.admin.ExternalIdField(o.str("Key") ?: return@mapNotNull null, o.str("Name") ?: o.str("Key")!!, o.str("Type"))
+        }
 
     suspend fun applyMatch(itemId: String, match: RemoteMatch, replaceImages: Boolean) {
         post("Items", "RemoteSearch", "Apply", itemId, body = JellyfinJson.parseToJsonElement(match.raw), query = mapOf("replaceAllImages" to replaceImages))
@@ -216,12 +225,109 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
         ItemImage(type, index, o.int("Width"), o.int("Height"), c.image(itemId, type.wire, o.str("ImageTag").orEmpty(), index.takeIf { type == ImageType.BACKDROP }, maxWidth = 800))
     }
 
-    suspend fun remoteImages(itemId: String, type: ImageType): List<RemoteImage> =
-        (json("Items", itemId, "RemoteImages", query = mapOf("type" to type.wire, "includeAllLanguages" to true, "limit" to 80)).jsonObject["Images"] as? JsonArray).orEmpty()
+    suspend fun remoteImages(itemId: String, type: ImageType, provider: String?, allLanguages: Boolean): List<RemoteImage> =
+        (json("Items", itemId, "RemoteImages", query = mapOf("type" to type.wire, "providerName" to provider, "includeAllLanguages" to allLanguages, "limit" to 80)).jsonObject["Images"] as? JsonArray).orEmpty()
             .mapNotNull { e ->
                 val o = e as? JsonObject ?: return@mapNotNull null
                 RemoteImage(o.str("Url") ?: return@mapNotNull null, o.str("ThumbnailUrl"), o.str("ProviderName"), o.int("Width"), o.int("Height"), o.str("Language"), o.double("CommunityRating"))
             }
+
+    suspend fun imageProviders(itemId: String): List<dev.nitrate.core.admin.ImageProvider> =
+        json("Items", itemId, "RemoteImages", "Providers").jsonArray.mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            dev.nitrate.core.admin.ImageProvider(
+                o.str("Name") ?: return@mapNotNull null,
+                o["SupportedImages"]?.strings().orEmpty().mapNotNull { t -> ImageType.entries.firstOrNull { it.wire == t } }.toSet(),
+            )
+        }
+
+    // ---- Library metadata settings ----
+
+    suspend fun libraryMetadataSettings(): List<dev.nitrate.core.admin.LibraryMetadataSettings> = coroutineScope {
+        val folders = json("Library", "VirtualFolders").jsonArray.mapNotNull { it as? JsonObject }
+        // What the server offers, once per kind of library.
+        val offered = folders.map { it.str("CollectionType") }.distinct().associateWith { type ->
+            async { runCatching { json("Libraries", "AvailableOptions", query = mapOf("libraryContentType" to type)).jsonObject }.getOrNull() }
+        }
+        folders.mapNotNull { f ->
+            val id = f.str("ItemId") ?: return@mapNotNull null
+            val options = f["LibraryOptions"] as? JsonObject ?: JsonObject(emptyMap())
+            val available = offered[f.str("CollectionType")]?.await()
+            val savers = (available?.get("MetadataSavers") as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.str("Name") }
+            val current = (options["TypeOptions"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            val types = (available?.get("TypeOptions") as? JsonArray).orEmpty().mapNotNull { t ->
+                val o = t as? JsonObject ?: return@mapNotNull null
+                val type = o.str("Type") ?: return@mapNotNull null
+                fun offeredOf(key: String) = (o[key] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let { p -> dev.nitrate.core.admin.LibraryMetadata.Offered(p.str("Name") ?: return@let null, p.bool("DefaultEnabled") == true) } }
+                val mine = current.firstOrNull { it.str("Type") == type }
+                dev.nitrate.core.admin.LibraryTypeSettings(
+                    type,
+                    dev.nitrate.core.admin.LibraryMetadata.merge(offeredOf("MetadataFetchers"), mine?.get("MetadataFetchers")?.strings(), mine?.get("MetadataFetcherOrder")?.strings()),
+                    dev.nitrate.core.admin.LibraryMetadata.merge(offeredOf("ImageFetchers"), mine?.get("ImageFetchers")?.strings(), mine?.get("ImageFetcherOrder")?.strings()),
+                )
+            }
+            dev.nitrate.core.admin.LibraryMetadataSettings(
+                libraryId = normalizeId(id),
+                name = f.str("Name").orEmpty(),
+                collectionType = f.str("CollectionType"),
+                language = options.str("PreferredMetadataLanguage"),
+                country = options.str("MetadataCountryCode"),
+                saveLocal = options.bool("SaveLocalMetadata") == true,
+                nfo = if (savers.any { it.equals("Nfo", true) }) options["MetadataSavers"]?.strings().orEmpty().any { it.equals("Nfo", true) } else null,
+                refreshDays = options.int("AutomaticRefreshIntervalDays") ?: 0,
+                types = types,
+                raw = options.toString(),
+            )
+        }
+    }
+
+    suspend fun saveLibraryMetadataSettings(s: dev.nitrate.core.admin.LibraryMetadataSettings) {
+        val options = JellyfinJson.parseToJsonElement(s.raw).jsonObject
+        val oldTypes = (options["TypeOptions"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+        val types = s.types.map { t ->
+            val old = oldTypes.firstOrNull { it.str("Type") == t.type } ?: JsonObject(emptyMap())
+            JsonObject(
+                old + mapOf(
+                    "Type" to JsonPrimitive(t.type),
+                    "MetadataFetchers" to JsonArray(t.metadata.filter { it.enabled }.map { JsonPrimitive(it.name) }),
+                    "MetadataFetcherOrder" to JsonArray(t.metadata.map { JsonPrimitive(it.name) }),
+                    "ImageFetchers" to JsonArray(t.images.filter { it.enabled }.map { JsonPrimitive(it.name) }),
+                    "ImageFetcherOrder" to JsonArray(t.images.map { JsonPrimitive(it.name) }),
+                ),
+            )
+        } + oldTypes.filter { o -> s.types.none { it.type == o.str("Type") } }
+        val savers = options["MetadataSavers"]?.strings().orEmpty().filterNot { it.equals("Nfo", true) } + listOfNotNull("Nfo".takeIf { s.nfo == true })
+        val updated = JsonObject(
+            options + mapOf(
+                "PreferredMetadataLanguage" to s.language.json(),
+                "MetadataCountryCode" to s.country.json(),
+                "SaveLocalMetadata" to JsonPrimitive(s.saveLocal),
+                "MetadataSavers" to JsonArray(savers.map(::JsonPrimitive)),
+                "AutomaticRefreshIntervalDays" to JsonPrimitive(s.refreshDays),
+                "TypeOptions" to JsonArray(types),
+            ),
+        )
+        post("Library", "VirtualFolders", "LibraryOptions", body = buildJsonObject {
+            put("Id", s.libraryId.replace("-", ""))
+            put("LibraryOptions", updated)
+        })
+    }
+
+    suspend fun metadataLanguages(): List<dev.nitrate.core.admin.MetadataPlace> =
+        json("Localization", "Cultures").jsonArray.mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            dev.nitrate.core.admin.MetadataPlace(o.str("TwoLetterISOLanguageName") ?: return@mapNotNull null, o.str("DisplayName") ?: o.str("Name").orEmpty())
+        }.distinctBy { it.code }.sortedBy { it.name }
+
+    suspend fun metadataCountries(): List<dev.nitrate.core.admin.MetadataPlace> =
+        json("Localization", "Countries").jsonArray.mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            dev.nitrate.core.admin.MetadataPlace(o.str("TwoLetterISORegionName") ?: return@mapNotNull null, o.str("DisplayName") ?: o.str("Name").orEmpty())
+        }.distinctBy { it.code }.sortedBy { it.name }
+
+    suspend fun moveImage(itemId: String, type: ImageType, index: Int, newIndex: Int) {
+        post("Items", itemId, "Images", type.wire, index.toString(), "Index", query = mapOf("newIndex" to newIndex))
+    }
 
     suspend fun downloadRemoteImage(itemId: String, type: ImageType, url: String) {
         post("Items", itemId, "RemoteImages", "Download", query = mapOf("type" to type.wire, "imageUrl" to url))

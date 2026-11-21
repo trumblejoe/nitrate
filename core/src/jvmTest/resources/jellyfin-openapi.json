@@ -132,6 +132,20 @@
     ],
     "type": "string"
    },
+   "AddVirtualFolderDto": {
+    "additionalProperties": false,
+    "properties": {
+     "LibraryOptions": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/LibraryOptions"
+       }
+      ],
+      "nullable": true
+     }
+    },
+    "type": "object"
+   },
    "AudioSpatialFormat": {
     "enum": [
      "None",
@@ -1612,6 +1626,19 @@
     ],
     "type": "string"
    },
+   "CollectionTypeOptions": {
+    "enum": [
+     "movies",
+     "tvshows",
+     "music",
+     "musicvideos",
+     "homevideos",
+     "boxsets",
+     "books",
+     "mixed"
+    ],
+    "type": "string"
+   },
    "ContainerProfile": {
     "additionalProperties": false,
     "properties": {
@@ -1642,6 +1669,28 @@
        "Subtitle",
        "Lyric"
       ]
+     }
+    },
+    "type": "object"
+   },
+   "CountryInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "DisplayName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "ThreeLetterISORegionName": {
+      "nullable": true,
+      "type": "string"
+     },
+     "TwoLetterISORegionName": {
+      "nullable": true,
+      "type": "string"
      }
     },
     "type": "object"
@@ -1709,6 +1758,32 @@
     "required": [
      "Name"
     ],
+    "type": "object"
+   },
+   "CultureDto": {
+    "additionalProperties": false,
+    "properties": {
+     "DisplayName": {
+      "type": "string"
+     },
+     "Name": {
+      "type": "string"
+     },
+     "ThreeLetterISOLanguageName": {
+      "nullable": true,
+      "readOnly": true,
+      "type": "string"
+     },
+     "ThreeLetterISOLanguageNames": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "TwoLetterISOLanguageName": {
+      "type": "string"
+     }
+    },
     "type": "object"
    },
    "DayOfWeek": {
@@ -1927,10 +2002,74 @@
     ],
     "type": "string"
    },
+   "EmbeddedSubtitleOptions": {
+    "enum": [
+     "AllowAll",
+     "AllowText",
+     "AllowImage",
+     "AllowNone"
+    ],
+    "type": "string"
+   },
    "EncodingContext": {
     "enum": [
      "Streaming",
      "Static"
+    ],
+    "type": "string"
+   },
+   "ExternalIdInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "Key": {
+      "type": "string"
+     },
+     "Name": {
+      "type": "string"
+     },
+     "Type": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/ExternalIdMediaType"
+       }
+      ],
+      "enum": [
+       "Album",
+       "AlbumArtist",
+       "Artist",
+       "BoxSet",
+       "Episode",
+       "Movie",
+       "OtherArtist",
+       "Person",
+       "ReleaseGroup",
+       "Season",
+       "Series",
+       "Track",
+       "Book",
+       "Recording"
+      ],
+      "nullable": true
+     }
+    },
+    "type": "object"
+   },
+   "ExternalIdMediaType": {
+    "enum": [
+     "Album",
+     "AlbumArtist",
+     "Artist",
+     "BoxSet",
+     "Episode",
+     "Movie",
+     "OtherArtist",
+     "Person",
+     "ReleaseGroup",
+     "Season",
+     "Series",
+     "Track",
+     "Book",
+     "Recording"
     ],
     "type": "string"
    },
@@ -2355,6 +2494,42 @@
     },
     "type": "object"
    },
+   "ImageOption": {
+    "additionalProperties": false,
+    "properties": {
+     "Limit": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "MinWidth": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "Type": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/ImageType"
+       }
+      ],
+      "enum": [
+       "Primary",
+       "Art",
+       "Backdrop",
+       "Banner",
+       "Logo",
+       "Thumb",
+       "Disc",
+       "Box",
+       "Screenshot",
+       "Menu",
+       "Chapter",
+       "BoxRear",
+       "Profile"
+      ]
+     }
+    },
+    "type": "object"
+   },
    "ImageOrientation": {
     "enum": [
      "TopLeft",
@@ -2367,6 +2542,21 @@
      "LeftBottom"
     ],
     "type": "string"
+   },
+   "ImageProviderInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "Name": {
+      "type": "string"
+     },
+     "SupportedImages": {
+      "items": {
+       "$ref": "#/components/schemas/ImageType"
+      },
+      "type": "array"
+     }
+    },
+    "type": "object"
    },
    "ImageType": {
     "enum": [
@@ -2514,6 +2704,296 @@
      "UntilDate"
     ],
     "type": "string"
+   },
+   "LibraryOptionInfoDto": {
+    "additionalProperties": false,
+    "properties": {
+     "DefaultEnabled": {
+      "type": "boolean"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "LibraryOptions": {
+    "additionalProperties": false,
+    "properties": {
+     "AllowEmbeddedSubtitles": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/EmbeddedSubtitleOptions"
+       }
+      ],
+      "enum": [
+       "AllowAll",
+       "AllowText",
+       "AllowImage",
+       "AllowNone"
+      ]
+     },
+     "AutomaticRefreshIntervalDays": {
+      "format": "int32",
+      "type": "integer"
+     },
+     "AutomaticallyAddToCollection": {
+      "type": "boolean"
+     },
+     "CustomTagDelimiters": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "DelimiterWhitelist": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "DisabledLocalMetadataReaders": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "DisabledLyricFetchers": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "DisabledMediaSegmentProviders": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "DisabledSubtitleFetchers": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "EnableAutomaticSeriesGrouping": {
+      "type": "boolean"
+     },
+     "EnableChapterImageExtraction": {
+      "type": "boolean"
+     },
+     "EnableEmbeddedEpisodeInfos": {
+      "type": "boolean"
+     },
+     "EnableEmbeddedExtrasTitles": {
+      "type": "boolean"
+     },
+     "EnableEmbeddedTitles": {
+      "type": "boolean"
+     },
+     "EnableInternetProviders": {
+      "deprecated": true,
+      "type": "boolean"
+     },
+     "EnableLUFSScan": {
+      "type": "boolean"
+     },
+     "EnablePhotos": {
+      "type": "boolean"
+     },
+     "EnableRealtimeMonitor": {
+      "type": "boolean"
+     },
+     "EnableTrickplayImageExtraction": {
+      "type": "boolean"
+     },
+     "Enabled": {
+      "type": "boolean"
+     },
+     "ExtractChapterImagesDuringLibraryScan": {
+      "type": "boolean"
+     },
+     "ExtractTrickplayImagesDuringLibraryScan": {
+      "type": "boolean"
+     },
+     "LocalMetadataReaderOrder": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "LyricFetcherOrder": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "MediaSegmentProviderOrder": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "MetadataCountryCode": {
+      "nullable": true,
+      "type": "string"
+     },
+     "MetadataSavers": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "PathInfos": {
+      "items": {
+       "$ref": "#/components/schemas/MediaPathInfo"
+      },
+      "type": "array"
+     },
+     "PreferNonstandardArtistsTag": {
+      "default": false,
+      "type": "boolean"
+     },
+     "PreferredMetadataLanguage": {
+      "nullable": true,
+      "type": "string"
+     },
+     "RequirePerfectSubtitleMatch": {
+      "type": "boolean"
+     },
+     "SaveLocalMetadata": {
+      "type": "boolean"
+     },
+     "SaveLyricsWithMedia": {
+      "default": false,
+      "type": "boolean"
+     },
+     "SaveSubtitlesWithMedia": {
+      "type": "boolean"
+     },
+     "SaveTrickplayWithMedia": {
+      "default": false,
+      "type": "boolean"
+     },
+     "SeasonZeroDisplayName": {
+      "type": "string"
+     },
+     "SkipSubtitlesIfAudioTrackMatches": {
+      "type": "boolean"
+     },
+     "SkipSubtitlesIfEmbeddedSubtitlesPresent": {
+      "type": "boolean"
+     },
+     "SubtitleDownloadLanguages": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "SubtitleFetcherOrder": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "TypeOptions": {
+      "items": {
+       "$ref": "#/components/schemas/TypeOptions"
+      },
+      "type": "array"
+     },
+     "UseCustomTagDelimiters": {
+      "default": false,
+      "type": "boolean"
+     }
+    },
+    "type": "object"
+   },
+   "LibraryOptionsResultDto": {
+    "additionalProperties": false,
+    "properties": {
+     "LyricFetchers": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryOptionInfoDto"
+      },
+      "type": "array"
+     },
+     "MediaSegmentProviders": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryOptionInfoDto"
+      },
+      "type": "array"
+     },
+     "MetadataReaders": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryOptionInfoDto"
+      },
+      "type": "array"
+     },
+     "MetadataSavers": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryOptionInfoDto"
+      },
+      "type": "array"
+     },
+     "SubtitleFetchers": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryOptionInfoDto"
+      },
+      "type": "array"
+     },
+     "TypeOptions": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryTypeOptionsDto"
+      },
+      "type": "array"
+     }
+    },
+    "type": "object"
+   },
+   "LibraryTypeOptionsDto": {
+    "additionalProperties": false,
+    "properties": {
+     "DefaultImageOptions": {
+      "items": {
+       "$ref": "#/components/schemas/ImageOption"
+      },
+      "type": "array"
+     },
+     "ImageFetchers": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryOptionInfoDto"
+      },
+      "type": "array"
+     },
+     "MetadataFetchers": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryOptionInfoDto"
+      },
+      "type": "array"
+     },
+     "SimilarItemProviders": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryOptionInfoDto"
+      },
+      "type": "array"
+     },
+     "SupportedImageTypes": {
+      "items": {
+       "$ref": "#/components/schemas/ImageType"
+      },
+      "type": "array"
+     },
+     "Type": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
    },
    "LiveTvInfo": {
     "additionalProperties": false,
@@ -2750,6 +3230,15 @@
      },
      "MimeType": {
       "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "MediaPathInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "Path": {
       "type": "string"
      }
     },
@@ -6239,6 +6728,65 @@
     },
     "type": "object"
    },
+   "TypeOptions": {
+    "additionalProperties": false,
+    "properties": {
+     "ImageFetcherOrder": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "ImageFetchers": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "ImageOptions": {
+      "items": {
+       "$ref": "#/components/schemas/ImageOption"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "MetadataFetcherOrder": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "MetadataFetchers": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "SimilarItemProviderOrder": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "SimilarItemProviders": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "Type": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
    "UnratedItem": {
     "enum": [
      "Movie",
@@ -6252,6 +6800,24 @@
      "Other"
     ],
     "type": "string"
+   },
+   "UpdateLibraryOptionsDto": {
+    "additionalProperties": false,
+    "properties": {
+     "Id": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "LibraryOptions": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/LibraryOptions"
+       }
+      ],
+      "nullable": true
+     }
+    },
+    "type": "object"
    },
    "UpdatePlaylistDto": {
     "additionalProperties": false,
@@ -6839,6 +7405,66 @@
      "BluRay"
     ],
     "type": "string"
+   },
+   "VirtualFolderInfo": {
+    "additionalProperties": false,
+    "properties": {
+     "CollectionType": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/CollectionTypeOptions"
+       }
+      ],
+      "enum": [
+       "movies",
+       "tvshows",
+       "music",
+       "musicvideos",
+       "homevideos",
+       "boxsets",
+       "books",
+       "mixed"
+      ],
+      "nullable": true
+     },
+     "ItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "LibraryOptions": {
+      "allOf": [
+       {
+        "$ref": "#/components/schemas/LibraryOptions"
+       }
+      ],
+      "nullable": true
+     },
+     "Locations": {
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "Name": {
+      "nullable": true,
+      "type": "string"
+     },
+     "PrimaryImageItemId": {
+      "nullable": true,
+      "type": "string"
+     },
+     "RefreshProgress": {
+      "format": "double",
+      "nullable": true,
+      "type": "number"
+     },
+     "RefreshStatus": {
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "type": "object"
    }
   }
  },
@@ -11075,6 +11701,105 @@
     ]
    }
   },
+  "/Items/{itemId}/ExternalIdInfos": {
+   "get": {
+    "operationId": "GetExternalIdInfos",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ExternalIdInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ExternalIdInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ExternalIdInfo"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "ItemLookup"
+    ]
+   }
+  },
   "/Items/{itemId}/Images": {
    "get": {
     "operationId": "GetItemImageInfos",
@@ -12543,6 +13268,122 @@
     ]
    }
   },
+  "/Items/{itemId}/Images/{imageType}/{imageIndex}/Index": {
+   "post": {
+    "operationId": "UpdateItemImageIndex",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "imageType",
+      "required": true,
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/ImageType"
+        }
+       ],
+       "enum": [
+        "Primary",
+        "Art",
+        "Backdrop",
+        "Banner",
+        "Logo",
+        "Thumb",
+        "Disc",
+        "Box",
+        "Screenshot",
+        "Menu",
+        "Chapter",
+        "BoxRear",
+        "Profile"
+       ]
+      }
+     },
+     {
+      "in": "path",
+      "name": "imageIndex",
+      "required": true,
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "newIndex",
+      "required": true,
+      "schema": {
+       "format": "int32",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "RequiresElevation"
+      ]
+     }
+    ],
+    "tags": [
+     "Image"
+    ]
+   }
+  },
   "/Items/{itemId}/InstantMix": {
    "get": {
     "operationId": "GetInstantMixFromItem",
@@ -13570,6 +14411,104 @@
     ]
    }
   },
+  "/Items/{itemId}/RemoteImages/Providers": {
+   "get": {
+    "operationId": "GetRemoteImageProviders",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "itemId",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ImageProviderInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ImageProviderInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/ImageProviderInfo"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "RemoteImage"
+    ]
+   }
+  },
   "/Items/{itemId}/RemoteSearch/Subtitles/{language}": {
    "get": {
     "operationId": "SearchRemoteSubtitles",
@@ -14083,6 +15022,102 @@
     ]
    }
   },
+  "/Libraries/AvailableOptions": {
+   "get": {
+    "operationId": "GetLibraryOptionsInfo",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "libraryContentType",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/CollectionType"
+        }
+       ],
+       "enum": [
+        "unknown",
+        "movies",
+        "tvshows",
+        "music",
+        "musicvideos",
+        "trailers",
+        "homevideos",
+        "boxsets",
+        "books",
+        "photos",
+        "livetv",
+        "playlists",
+        "folders"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "isNewLibrary",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LibraryOptionsResultDto"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/LibraryOptionsResultDto"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/LibraryOptionsResultDto"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "FirstTimeSetupOrDefault",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Library"
+    ]
+   }
+  },
   "/Library/Refresh": {
    "post": {
     "operationId": "RefreshLibrary",
@@ -14121,6 +15156,345 @@
     ],
     "tags": [
      "Library"
+    ]
+   }
+  },
+  "/Library/VirtualFolders": {
+   "delete": {
+    "operationId": "RemoveVirtualFolder",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "name",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "refreshLibrary",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "FirstTimeSetupOrElevated",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LibraryStructure"
+    ]
+   },
+   "get": {
+    "operationId": "GetVirtualFolders",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/VirtualFolderInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/VirtualFolderInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/VirtualFolderInfo"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "FirstTimeSetupOrElevated",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LibraryStructure"
+    ]
+   },
+   "post": {
+    "operationId": "AddVirtualFolder",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "name",
+      "schema": {
+       "pattern": "^(?:\\S(?:.*\\S)?)$",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "collectionType",
+      "schema": {
+       "allOf": [
+        {
+         "$ref": "#/components/schemas/CollectionTypeOptions"
+        }
+       ],
+       "enum": [
+        "movies",
+        "tvshows",
+        "music",
+        "musicvideos",
+        "homevideos",
+        "boxsets",
+        "books",
+        "mixed"
+       ]
+      }
+     },
+     {
+      "in": "query",
+      "name": "paths",
+      "schema": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     {
+      "in": "query",
+      "name": "refreshLibrary",
+      "schema": {
+       "default": false,
+       "type": "boolean"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/AddVirtualFolderDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/AddVirtualFolderDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/AddVirtualFolderDto"
+         }
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "FirstTimeSetupOrElevated",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LibraryStructure"
+    ]
+   }
+  },
+  "/Library/VirtualFolders/LibraryOptions": {
+   "post": {
+    "operationId": "UpdateLibraryOptions",
+    "requestBody": {
+     "content": {
+      "application/*+json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateLibraryOptionsDto"
+         }
+        ]
+       }
+      },
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateLibraryOptionsDto"
+         }
+        ]
+       }
+      },
+      "text/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/UpdateLibraryOptionsDto"
+         }
+        ]
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {},
+     "401": {},
+     "403": {},
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/ProblemDetails"
+        }
+       }
+      }
+     },
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "FirstTimeSetupOrElevated",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "LibraryStructure"
     ]
    }
   },
@@ -15444,6 +16818,144 @@
     ],
     "tags": [
      "LiveTv"
+    ]
+   }
+  },
+  "/Localization/Countries": {
+   "get": {
+    "operationId": "GetCountries",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CountryInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CountryInfo"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CountryInfo"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "FirstTimeSetupOrDefault",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Localization"
+    ]
+   }
+  },
+  "/Localization/Cultures": {
+   "get": {
+    "operationId": "GetCultures",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CultureDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CultureDto"
+         },
+         "type": "array"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CultureDto"
+         },
+         "type": "array"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {},
+     "503": {
+      "content": {
+       "text/html": {}
+      },
+      "headers": {
+       "Message": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "text",
+         "type": "string"
+        }
+       },
+       "Retry-After": {
+        "allowEmptyValue": true,
+        "schema": {
+         "format": "int32",
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    "security": [
+     {
+      "CustomAuthentication": [
+       "FirstTimeSetupOrDefault",
+       "DefaultAuthorization"
+      ]
+     }
+    ],
+    "tags": [
+     "Localization"
     ]
    }
   },

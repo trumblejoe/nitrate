@@ -192,7 +192,7 @@ class FakeServer : MediaServer {
             providerIds = mapOf("Tmdb" to "12345", "Imdb" to "tt0000001"), lockedFields = listOf("Overview"),
         )
     }
-    override suspend fun remoteSearch(item: MediaItem, name: String, year: Int?) = listOf(
+    override suspend fun remoteSearch(item: MediaItem, name: String, year: Int?, providerIds: Map<String, String>) = listOf(
         dev.nitrate.core.admin.RemoteMatch("Nitrate", 2023, "A projectionist discovers a reel that shouldn't exist.", art("m1-poster"), "TheMovieDb", mapOf("Tmdb" to "12345"), "{}"),
         dev.nitrate.core.admin.RemoteMatch("Nitrate (Director's Cut)", 2024, null, art("m3-poster"), "TheMovieDb", mapOf("Tmdb" to "67890"), "{}"),
     )
@@ -201,7 +201,15 @@ class FakeServer : MediaServer {
         art("m1-backdrop")?.let { dev.nitrate.core.admin.ItemImage(dev.nitrate.core.admin.ImageType.BACKDROP, 0, 1920, 1080, it) },
         art("m2-backdrop")?.let { dev.nitrate.core.admin.ItemImage(dev.nitrate.core.admin.ImageType.BACKDROP, 1, 1920, 1080, it) },
     )
-    override suspend fun remoteImages(itemId: String, type: dev.nitrate.core.admin.ImageType) =
+    override suspend fun externalIdFields(itemId: String) = listOf(
+        dev.nitrate.core.admin.ExternalIdField("Tmdb", "TheMovieDb", "Movie"),
+        dev.nitrate.core.admin.ExternalIdField("Imdb", "IMDb", "Movie"),
+    )
+    override suspend fun imageProviders(itemId: String) = listOf(
+        dev.nitrate.core.admin.ImageProvider("TheMovieDb", setOf(dev.nitrate.core.admin.ImageType.PRIMARY, dev.nitrate.core.admin.ImageType.BACKDROP, dev.nitrate.core.admin.ImageType.LOGO)),
+        dev.nitrate.core.admin.ImageProvider("Fanart", setOf(dev.nitrate.core.admin.ImageType.BACKDROP, dev.nitrate.core.admin.ImageType.LOGO, dev.nitrate.core.admin.ImageType.ART)),
+    )
+    override suspend fun remoteImages(itemId: String, type: dev.nitrate.core.admin.ImageType, provider: String?, allLanguages: Boolean) =
         listOf("m1", "m2", "m3", "m4", "series-1").mapNotNull { k -> art("$k-poster")?.let { dev.nitrate.core.admin.RemoteImage(it, it, "TheMovieDb", 1000, 1500, "en", 7.2) } }
     override suspend fun tasks() = listOf(
         dev.nitrate.core.admin.ServerTask("t1", "Scan media library", "Library", "Scans your libraries for new files", dev.nitrate.core.admin.TaskState.RUNNING, 42.0, "Completed", null, "2026-11-11T08:00:00Z"),

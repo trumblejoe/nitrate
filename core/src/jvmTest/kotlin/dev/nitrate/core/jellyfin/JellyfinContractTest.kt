@@ -68,6 +68,12 @@ class JellyfinContractTest {
             path.endsWith("/LiveTv/Channels") || path.endsWith("/LiveTv/Programs") || path.endsWith("/LiveTv/Recordings") -> """{"Items":[],"TotalRecordCount":0}"""
             path.endsWith("/SyncPlay/List") -> """[{"GroupId":"$HEX","GroupName":"Movie night","State":"Paused","Participants":["joe","sam"],"LastUpdatedAt":"2026-01-01T00:00:00Z"}]"""
             path.endsWith("/GetUtcTime") -> """{"RequestReceptionTime":"2026-01-01T00:00:00.100Z","ResponseTransmissionTime":"2026-01-01T00:00:00.102Z"}"""
+            path.endsWith("/ExternalIdInfos") -> """[{"Name":"TheMovieDb","Key":"Tmdb","Type":"Movie"},{"Name":"IMDb","Key":"Imdb","Type":"Movie"}]"""
+            path.endsWith("/RemoteImages/Providers") -> """[{"Name":"TheMovieDb","SupportedImages":["Primary","Backdrop","Logo"]}]"""
+            path.endsWith("/Library/VirtualFolders") -> """[{"Name":"Films","CollectionType":"movies","ItemId":"$HEX","LibraryOptions":{"PreferredMetadataLanguage":"en","MetadataCountryCode":"US","SaveLocalMetadata":false,"MetadataSavers":[],"AutomaticRefreshIntervalDays":0,"TypeOptions":[{"Type":"Movie","MetadataFetchers":["TheMovieDb"],"MetadataFetcherOrder":["TheMovieDb","The Open Movie Database"],"ImageFetchers":["TheMovieDb"],"ImageFetcherOrder":["TheMovieDb"],"ImageOptions":[{"Type":"Backdrop","Limit":3,"MinWidth":1280}]}],"EnableRealtimeMonitor":true}}]"""
+            path.endsWith("/Libraries/AvailableOptions") -> """{"MetadataSavers":[{"Name":"Nfo","DefaultEnabled":false}],"TypeOptions":[{"Type":"Movie","MetadataFetchers":[{"Name":"TheMovieDb","DefaultEnabled":true},{"Name":"The Open Movie Database","DefaultEnabled":true}],"ImageFetchers":[{"Name":"TheMovieDb","DefaultEnabled":true},{"Name":"Fanart","DefaultEnabled":false}]}]}"""
+            path.endsWith("/Localization/Cultures") -> """[{"Name":"English","DisplayName":"English","TwoLetterISOLanguageName":"en","ThreeLetterISOLanguageName":"eng"}]"""
+            path.endsWith("/Localization/Countries") -> """[{"Name":"US","DisplayName":"United States","TwoLetterISORegionName":"US","ThreeLetterISORegionName":"USA"}]"""
             path.endsWith("/Images") -> """[{"ImageType":"Primary","ImageTag":"t","Width":1000,"Height":1500},{"ImageType":"Backdrop","ImageIndex":1,"ImageTag":"b","Width":1920,"Height":1080}]"""
             path.endsWith("/RemoteImages") -> """{"Images":[{"Url":"http://x/a.jpg","ProviderName":"TheMovieDb","Width":1000,"Height":1500,"Language":"en","CommunityRating":7.5}],"TotalRecordCount":1}"""
             path.endsWith("/ScheduledTasks") -> """[{"Id":"t1","Name":"Scan media library","Category":"Library","State":"Running","CurrentProgressPercentage":42.0,"LastExecutionResult":{"Status":"Completed","EndTimeUtc":"2026-01-01T00:00:00Z"}}]"""
@@ -198,6 +204,24 @@ class JellyfinContractTest {
         client.deleteImage(DASHED, dev.nitrate.core.admin.ImageType.BACKDROP, 1)
         client.deleteImage(DASHED, dev.nitrate.core.admin.ImageType.LOGO, null)
         client.uploadImage(DASHED, dev.nitrate.core.admin.ImageType.PRIMARY, byteArrayOf(1, 2, 3), "image/jpeg")
+        // Identify by ID, the IDs providers take, image providers, the language filter and backdrop order.
+        client.remoteSearch(item.copy(kind = ItemKind.MOVIE), "", null, mapOf("Imdb" to "tt9652782"))
+        assertTrue(sent.last().body!!.contains("\"Imdb\":\"tt9652782\""))
+        assertEquals(listOf("Tmdb", "Imdb"), client.externalIdFields(DASHED).map { it.key })
+        assertEquals(setOf(dev.nitrate.core.admin.ImageType.PRIMARY, dev.nitrate.core.admin.ImageType.BACKDROP, dev.nitrate.core.admin.ImageType.LOGO), client.imageProviders(DASHED).single().types)
+        client.remoteImages(DASHED, dev.nitrate.core.admin.ImageType.BACKDROP, "TheMovieDb", allLanguages = false)
+        assertEquals("false", sent.last().url.parameters["includeAllLanguages"])
+        client.moveImage(DASHED, dev.nitrate.core.admin.ImageType.BACKDROP, 2, 0)
+        // Library metadata settings: read, merged with what the server offers, and saved back over its own JSON.
+        val lib = client.libraryMetadataSettings().single()
+        assertEquals(listOf("TheMovieDb" to true, "The Open Movie Database" to false), lib.types.single().metadata.map { it.name to it.enabled })
+        assertEquals(listOf("TheMovieDb" to true, "Fanart" to false), lib.types.single().images.map { it.name to it.enabled })
+        assertEquals(false, lib.nfo)
+        client.saveLibraryMetadataSettings(lib.copy(nfo = true, language = "de", refreshDays = 30))
+        val savedOptions = sent.last().body!!
+        assertTrue("\"Nfo\"" in savedOptions && "\"de\"" in savedOptions && "\"MinWidth\":1280" in savedOptions && "EnableRealtimeMonitor" in savedOptions)
+        assertEquals("en", client.metadataLanguages().single().code)
+        assertEquals("United States", client.metadataCountries().single().name)
         client.scanAllLibraries()
         assertEquals(dev.nitrate.core.admin.TaskState.RUNNING, client.tasks().single().state)
         client.startTask("t1")

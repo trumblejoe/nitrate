@@ -35,6 +35,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.graphics.Color
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.FilterChip
@@ -204,6 +205,28 @@ private fun MetadataTab(repository: MediaServer, item: MediaItem, themePreview: 
             }
         }
         item {
+            // The title's IDs on the providers: the IDs the server's providers accept for this kind of
+            // title (Jellyfin's ExternalIdInfos), then any other the title has.
+            val accepted by produceState(emptyList<dev.nitrate.core.admin.ExternalIdField>(), item.id) { value = runCatching { repository.externalIdFields(item.id) }.getOrDefault(emptyList()) }
+            val fields = dev.nitrate.core.admin.ExternalIds.fields(accepted.ifEmpty { listOf("Tmdb", "Imdb", "Tvdb").map { dev.nitrate.core.admin.ExternalIdField(it, it, null) } }, meta.providerIds)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("External IDs: change one, then Refresh with \"Replace all metadata\" to read the title again from it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    fields.forEach { f ->
+                        val ids = meta.providerIds
+                        val value = ids.entries.firstOrNull { it.key.equals(f.key, ignoreCase = true) }?.value.orEmpty()
+                        LabeledField(f.label, value, Modifier.width(260.dp)) { v ->
+                            m = meta.copy(providerIds = ids.filterKeys { !it.equals(f.key, ignoreCase = true) } + (if (v.isBlank()) emptyMap() else mapOf(f.key to v.trim())))
+                        }
+                    }
+                }
+                if (meta.links.isNotEmpty()) Text(
+                    meta.links.joinToString("   ·   ") { "${it.first}: ${it.second}" },
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item {
             ListItem(selected = false, onClick = { m = meta.copy(lockData = !meta.lockData) }, headlineContent = { Text("Lock this item against refreshes") },
                 trailingContent = { Switch(checked = meta.lockData, onCheckedChange = null) })
         }
@@ -230,11 +253,17 @@ private fun MetadataTab(repository: MediaServer, item: MediaItem, themePreview: 
 private fun IdentifyTab(repository: MediaServer, item: MediaItem, notify: (String) -> Unit) {
     var name by remember { mutableStateOf(item.displayTitle) }
     var year by remember { mutableStateOf(item.productionYear?.toString().orEmpty()) }
+    // Identify by ID: an IMDb, TMDb or TVDb ID (or a link) finds exactly that title.
+    var byId by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<Result<List<RemoteMatch>>?>(null) }
     var replaceImages by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val supported = item.kind in setOf(ItemKind.MOVIE, ItemKind.SERIES, ItemKind.BOX_SET, ItemKind.MUSIC_VIDEO)
-    fun search() = scope.launch { results = runCatching { repository.remoteSearch(item, name, year.toIntOrNull()) } }
+    fun search() = scope.launch {
+        results = null
+        val id = dev.nitrate.core.admin.ExternalIds.guess(byId, digitsAre = if (item.kind == ItemKind.SERIES) "Tvdb" else "Tmdb")
+        results = runCatching { if (id != null) repository.remoteSearch(item, name, year.toIntOrNull(), mapOf(id)) else repository.remoteSearch(item, name, year.toIntOrNull()) }
+    }
     LaunchedEffect(Unit) { if (supported) search() }
     if (!supported) {
         Text("Identify works on movies, shows and collections. For an episode, identify its show.")
@@ -244,6 +273,7 @@ private fun IdentifyTab(repository: MediaServer, item: MediaItem, notify: (Strin
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
             LabeledField("Title", name, Modifier.weight(2f)) { name = it }
             LabeledField("Year", year, Modifier.weight(1f)) { year = it }
+            LabeledField(if (item.kind == ItemKind.SERIES) "Or an IMDb/TVDb ID" else "Or an IMDb/TMDb ID", byId, Modifier.weight(1.5f)) { byId = it }
             Button(onClick = { search() }) { Text("Search") }
             FilterChip(selected = replaceImages, onClick = { replaceImages = !replaceImages }) { Text("Replace images") }
         }
@@ -271,29 +301,44 @@ private fun IdentifyTab(repository: MediaServer, item: MediaItem, notify: (Strin
     }
 }
 
+/**
+ * The title's images by kind; OK on one asks what to do (make it the main backdrop, delete). Kinds
+ * with one image are replaced from the providers; backdrops are a set Nitrate rotates through, so
+ * found ones are added. Sizes show on each, with small ones (blocky on a TV) marked.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ImagesTab(repository: MediaServer, item: MediaItem, notify: (String) -> Unit) {
     var reload by remember { mutableIntStateOf(0) }
     val images by produceState<List<ItemImage>?>(null, reload) { value = runCatching { repository.itemImages(item.id) }.getOrDefault(emptyList()) }
+    val providers by produceState(emptyList<dev.nitrate.core.admin.ImageProvider>(), item.id) { value = runCatching { repository.imageProviders(item.id) }.getOrDefault(emptyList()) }
     var browsing by remember { mutableStateOf<ImageType?>(null) }
+    var choosing by remember { mutableStateOf<ItemImage?>(null) }
     val scope = rememberCoroutineScope()
+    val offered = providers.flatMap { it.types }.toSet()
+    val kinds = ImageType.entries.filter { if (providers.isEmpty()) it in setOf(ImageType.PRIMARY, ImageType.BACKDROP, ImageType.LOGO, ImageType.THUMB, ImageType.BANNER) else it in offered || images.orEmpty().any { i -> i.type == it } }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
-        items(listOf(ImageType.PRIMARY, ImageType.BACKDROP, ImageType.LOGO, ImageType.THUMB, ImageType.BANNER), key = { it.name }) { type ->
-            val ofType = images.orEmpty().filter { it.type == type }
+        items(kinds, key = { it.name }) { type ->
+            val ofType = images.orEmpty().filter { it.type == type }.sortedBy { it.index ?: 0 }
+            val several = type == ImageType.BACKDROP
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(type.label, style = MaterialTheme.typography.titleMedium)
-                    OutlinedButton(onClick = { browsing = type }) { Text("Find ${type.label.lowercase()}") }
+                    OutlinedButton(onClick = { browsing = type }) { Text(if (several) "Add backdrops" else "Find ${type.label.lowercase()}") }
+                    if (several && ofType.size > 1) Text("Nitrate rotates through these; the main one comes first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     if (ofType.isEmpty()) item { Text("None", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(ofType, key = { "${it.type}-${it.index}" }) { img ->
-                        Card(onClick = {
-                            scope.launch { runCatching { repository.deleteImage(item.id, img.type, img.index) }.onSuccess { notify("Deleted"); reload++ }.onFailure { notify("${it.message}") } }
-                        }, modifier = Modifier.height(140.dp).aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 1f)) {
+                        Card(onClick = { choosing = img }, modifier = Modifier.height(140.dp).aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 1f)) {
                             Box {
                                 AsyncImage(img.url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                Text("Select to delete", Modifier.align(Alignment.BottomStart).background(MaterialTheme.colorScheme.background.copy(alpha = 0.7f)).padding(4.dp), style = MaterialTheme.typography.labelSmall)
+                                val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height)
+                                Text(
+                                    listOfNotNull(listOfNotNull(img.width, img.height).joinToString("×").ifBlank { null }, "small".takeIf { small }, "main".takeIf { several && (img.index ?: 0) == 0 }).joinToString(" · "),
+                                    Modifier.align(Alignment.BottomStart).background(Color(0x99000000)).padding(4.dp),
+                                    style = MaterialTheme.typography.labelSmall, color = if (small) Color(0xFFFFC266) else Color.White,
+                                )
                             }
                         }
                     }
@@ -301,26 +346,76 @@ private fun ImagesTab(repository: MediaServer, item: MediaItem, notify: (String)
             }
         }
     }
+    choosing?.let { img ->
+        val keep = remember { FocusRequester() }
+        dev.nitrate.tv.ui.lists.TvDialog({ choosing = null }, width = 520) {
+            Text("${img.type.label.removeSuffix("s")}${listOfNotNull(img.width, img.height).joinToString("×").ifBlank { null }?.let { " · $it" } ?: ""}", style = MaterialTheme.typography.headlineSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = { choosing = null }, modifier = Modifier.focusRequester(keep)) { Text("Keep") }
+                val index = img.index
+                if (img.type == ImageType.BACKDROP && index != null && index > 0) Button(onClick = {
+                    choosing = null
+                    scope.launch { runCatching { repository.moveImage(item.id, img.type, index, 0) }.onSuccess { notify("Main backdrop set"); reload++ }.onFailure { notify("${it.message}") } }
+                }) { Text("Make main") }
+                OutlinedButton(onClick = {
+                    choosing = null
+                    scope.launch { runCatching { repository.deleteImage(item.id, img.type, img.index) }.onSuccess { notify("Deleted"); reload++ }.onFailure { notify("${it.message}") } }
+                }) { Text("Delete") }
+            }
+            LaunchedEffect(Unit) { kotlinx.coroutines.delay(80); runCatching { keep.requestFocus() } }
+        }
+    }
     browsing?.let { type ->
-        val found by produceState<Result<List<RemoteImage>>?>(null, type) { value = runCatching { repository.remoteImages(item.id, type) } }
+        var provider by remember(type) { mutableStateOf<String?>(null) }
+        var allLanguages by remember(type) { mutableStateOf(false) }
+        val added = remember(type) { androidx.compose.runtime.mutableStateListOf<String>() }
+        val found by produceState<Result<List<RemoteImage>>?>(null, type, provider, allLanguages) {
+            value = null
+            value = runCatching { dev.nitrate.core.admin.RemoteImages.best(repository.remoteImages(item.id, type, provider, allLanguages)) }
+        }
         val first = remember { FocusRequester() }
-        Dialog(onDismissRequest = { browsing = null }) {
-            Column(Modifier.width(900.dp).height(520.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Dialog(onDismissRequest = { browsing = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Column(Modifier.width(1000.dp).height(600.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${type.label} from providers", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-                    OutlinedButton(onClick = { browsing = null }, modifier = Modifier.focusRequester(first)) { Text("Close") }
+                    OutlinedButton(onClick = { browsing = null }, modifier = Modifier.focusRequester(first)) { Text(if (type == ImageType.BACKDROP) "Done" else "Close") }
                 }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = provider == null, onClick = { provider = null }) { Text("All providers") }
+                    providers.filter { type in it.types }.forEach { p -> FilterChip(selected = provider == p.name, onClick = { provider = p.name }) { Text(p.name) } }
+                    FilterChip(selected = allLanguages, onClick = { allLanguages = !allLanguages }) { Text("All languages") }
+                }
+                if (type == ImageType.BACKDROP) Text("Each one you pick is added; Nitrate rotates through them.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val list = found?.getOrNull()
                 when {
                     found == null -> Text("Searching…")
-                    list.isNullOrEmpty() -> Text("Nothing found. The server may not have internet access or a provider id for this item.")
+                    list.isNullOrEmpty() -> Text(
+                        if (allLanguages) "Nothing found. The server may not have internet access or a provider ID for this item."
+                        else "None in the server's metadata language. Try \"All languages\".",
+                    )
                     else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(list, key = { it.url }) { img ->
-                            Card(onClick = {
-                                browsing = null
-                                scope.launch { runCatching { repository.downloadRemoteImage(item.id, type, img.url) }.onSuccess { notify("Image set"); reload++ }.onFailure { notify("${it.message}") } }
-                            }, modifier = Modifier.height(300.dp).aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 0.67f)) {
-                                AsyncImage(img.thumbnailUrl ?: img.url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Card(onClick = {
+                                    if (img.url in added) return@Card
+                                    added += img.url
+                                    if (type != ImageType.BACKDROP) browsing = null
+                                    scope.launch {
+                                        runCatching { repository.downloadRemoteImage(item.id, type, img.url) }
+                                            .onSuccess { notify(if (type == ImageType.BACKDROP) "Backdrop added" else "Image set"); reload++ }
+                                            .onFailure { notify("${it.message}") }
+                                    }
+                                }, modifier = Modifier.height(300.dp).aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 0.67f)) {
+                                    Box {
+                                        AsyncImage(img.thumbnailUrl ?: img.url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                        if (img.url in added) Text("Added", Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp), color = Color.White)
+                                    }
+                                }
+                                Text(
+                                    listOfNotNull(img.providerName, img.language?.uppercase(), listOfNotNull(img.width, img.height).joinToString("×").ifBlank { null }, "small".takeIf { small }).joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall, color = if (small) Color(0xFFFFC266) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                                )
                             }
                         }
                     }
@@ -364,7 +459,7 @@ fun ServerAdminScreen(repository: MediaServer) {
                 Text("Server", style = MaterialTheme.typography.headlineMedium)
                 Text(repository.serverUrl.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
-            Tabs(listOf("Tasks", "Activity", "Devices", "Users"), tab, { tab = it; status = null }, first)
+            Tabs(listOf("Tasks", "Activity", "Devices", "Users", "Libraries"), tab, { tab = it; status = null }, first)
             Button(onClick = { scope.launch { runCatching { repository.scanAllLibraries() }.onSuccess { status = "Library scan started" }.onFailure { status = "${it.message}" } } }) { Text("Scan libraries") }
         }
         Status(status)
@@ -372,7 +467,8 @@ fun ServerAdminScreen(repository: MediaServer) {
             0 -> TasksTab(repository) { status = it }
             1 -> ActivityTab(repository)
             2 -> DevicesTab(repository) { status = it }
-            else -> UsersTab(repository) { status = it }
+            3 -> UsersTab(repository) { status = it }
+            else -> LibrariesTab(repository) { status = it }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }

@@ -233,7 +233,13 @@ interface MediaServer {
     suspend fun saveMetadata(metadata: ItemMetadata): Unit = unsupported()
 
     /** Possible online-database matches for "Identify". */
-    suspend fun remoteSearch(item: MediaItem, name: String, year: Int?): List<RemoteMatch> = unsupported()
+    suspend fun remoteSearch(item: MediaItem, name: String, year: Int?): List<RemoteMatch> = remoteSearch(item, name, year, emptyMap())
+
+    /** Identify by ID: with [providerIds] (e.g. Tmdb → 603) the providers look the title up by them. */
+    suspend fun remoteSearch(item: MediaItem, name: String, year: Int?, providerIds: Map<String, String>): List<RemoteMatch> = unsupported()
+
+    /** The IDs the server's providers accept for this title (Jellyfin's ExternalIdInfos). */
+    suspend fun externalIdFields(itemId: String): List<dev.nitrate.core.admin.ExternalIdField> = emptyList()
     suspend fun applyMatch(itemId: String, match: RemoteMatch, replaceImages: Boolean): Unit = unsupported()
     suspend fun refreshItem(itemId: String, mode: RefreshMode, replaceImages: Boolean, regenerateTrickplay: Boolean): Unit = unsupported()
 
@@ -252,7 +258,29 @@ interface MediaServer {
      */
     suspend fun playbackSources(libraryId: String?, onProgress: (Int, Int) -> Unit = { _, _ -> }): List<Pair<MediaItem, dev.nitrate.core.model.MediaSource>> = unsupported()
     suspend fun itemImages(itemId: String): List<ItemImage> = unsupported()
-    suspend fun remoteImages(itemId: String, type: ImageType): List<RemoteImage> = unsupported()
+    suspend fun remoteImages(itemId: String, type: ImageType): List<RemoteImage> = remoteImages(itemId, type, null, allLanguages = true)
+
+    /**
+     * Images the providers have for this title: from [provider] only when given, and in the server's
+     * metadata language (plus images with no language, like most backdrops) unless [allLanguages].
+     */
+    suspend fun remoteImages(itemId: String, type: ImageType, provider: String?, allLanguages: Boolean): List<RemoteImage> = unsupported()
+
+    /** The image providers on the server and what they have for this title. */
+    suspend fun imageProviders(itemId: String): List<dev.nitrate.core.admin.ImageProvider> = emptyList()
+
+    /** Every library's metadata settings, as the dashboard's Manage library has them (admins). */
+    suspend fun libraryMetadataSettings(): List<dev.nitrate.core.admin.LibraryMetadataSettings> = unsupported()
+
+    /** Saves a library's metadata settings (only those parts of its options change). */
+    suspend fun saveLibraryMetadataSettings(settings: dev.nitrate.core.admin.LibraryMetadataSettings): Unit = unsupported()
+
+    /** The languages and countries the server offers for metadata. */
+    suspend fun metadataLanguages(): List<dev.nitrate.core.admin.MetadataPlace> = emptyList()
+    suspend fun metadataCountries(): List<dev.nitrate.core.admin.MetadataPlace> = emptyList()
+
+    /** Moves an image of a kind that has several (backdrops) to [newIndex]; 0 is the main one. */
+    suspend fun moveImage(itemId: String, type: ImageType, index: Int, newIndex: Int): Unit = unsupported()
     suspend fun downloadRemoteImage(itemId: String, type: ImageType, url: String): Unit = unsupported()
     suspend fun deleteImage(itemId: String, type: ImageType, index: Int?): Unit = unsupported()
     suspend fun uploadImage(itemId: String, type: ImageType, bytes: ByteArray, mimeType: String): Unit = unsupported()

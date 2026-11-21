@@ -69,7 +69,7 @@ import dev.nitrate.core.model.formatClock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class AdminTab(val label: String) { OVERVIEW("Overview"), TASKS("Tasks"), ACTIVITY("Activity"), DEVICES("Devices"), USERS("Users") }
+private enum class AdminTab(val label: String) { OVERVIEW("Overview"), TASKS("Tasks"), ACTIVITY("Activity"), DEVICES("Devices"), USERS("Users"), LIBRARIES("Libraries") }
 
 /** Keeps a server list fresh while shown: loaded now, then every [everyMs]. */
 @Composable
@@ -106,6 +106,7 @@ fun ServerAdminScreen(actions: AppActions) {
                 AdminTab.ACTIVITY -> ActivityPane(actions)
                 AdminTab.DEVICES -> DevicesPane(actions, ::notify)
                 AdminTab.USERS -> UsersPane(actions, ::notify)
+                AdminTab.LIBRARIES -> LibrariesPane(actions) { notify(it) }
             }
         }
         SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(16.dp))

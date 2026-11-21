@@ -37,6 +37,8 @@ data class ItemMetadata(
     val airsBeforeEpisode: Int? = null,
     val airsAfterSeason: Int? = null,
     val providerIds: Map<String, String> = emptyMap(),
+    /** The title's pages on the providers' sites (Jellyfin's external links), name → address. */
+    val links: List<Pair<String, String>> = emptyList(),
     /** Locks the whole item against metadata refreshes. */
     val lockData: Boolean = false,
     val lockedFields: List<String> = emptyList(),
@@ -56,6 +58,55 @@ data class RemoteMatch(
     /** The server's own JSON for this result, sent back unchanged to apply it. */
     internal val raw: String,
 )
+
+/**
+ * An ID a provider on the server accepts for this kind of title (from Jellyfin's ExternalIdInfos):
+ * [key] is what's stored ("Tmdb", "Imdb", "MusicBrainzAlbum"…), [name] the provider's own name.
+ */
+data class ExternalIdField(val key: String, val name: String, val type: String?) {
+    /** "TheMovieDb", or "MusicBrainz (album)" when one provider has several kinds of ID. */
+    val label get() = if (type.isNullOrBlank() || type == "Movie" || type == "Series") name else "$name ($type)"
+}
+
+/** The ID fields to show: what the providers accept, then any other IDs the title already has. */
+object ExternalIds {
+    fun fields(accepted: List<ExternalIdField>, existing: Map<String, String>): List<ExternalIdField> {
+        val known = accepted.distinctBy { it.key }
+        return known + existing.keys.filter { k -> known.none { it.key.equals(k, ignoreCase = true) } }.sorted().map { ExternalIdField(it, it, null) }
+    }
+
+    /**
+     * What a pasted ID or link is: an IMDb "tt…" anywhere, a TMDb or TVDb page's number, else bare
+     * digits as [digitsAre] (TMDb by default). Null when nothing recognisable is in it.
+     */
+    fun guess(text: String, digitsAre: String = "Tmdb"): Pair<String, String>? {
+        val t = text.trim()
+        Regex("tt\\d{5,}").find(t)?.let { return "Imdb" to it.value }
+        Regex("themoviedb\\.org/(?:movie|tv|collection|person)/(\\d+)").find(t)?.let { return "Tmdb" to it.groupValues[1] }
+        Regex("thetvdb\\.com/.*?[?&/](?:id=|series/|dereferrer/series/)(\\d+)").find(t)?.let { return "Tvdb" to it.groupValues[1] }
+        return if (Regex("\\d+").matches(t)) digitsAre to t else null
+    }
+}
+
+/** An image provider on the server and the kinds of image it has for this title. */
+data class ImageProvider(val name: String, val types: Set<ImageType>)
+
+/** Found images in the order worth picking from: biggest first, then best rated. */
+object RemoteImages {
+    fun best(images: List<RemoteImage>): List<RemoteImage> =
+        images.sortedWith(compareByDescending<RemoteImage> { (it.width ?: 0).toLong() * (it.height ?: 0) }.thenByDescending { it.rating ?: 0.0 })
+
+    /** Small for its kind: likely to look blocky on a TV (posters under 600 px wide, backdrops under 1280). */
+    fun isSmall(type: ImageType, width: Int?, height: Int?): Boolean {
+        val w = width ?: return false
+        return when (type) {
+            ImageType.PRIMARY -> w < 600
+            ImageType.BACKDROP, ImageType.THUMB -> w < 1280
+            ImageType.BANNER -> w < 758
+            else -> false
+        }
+    }
+}
 
 /** Image types an item can have. */
 enum class ImageType(val wire: String, val label: String) {

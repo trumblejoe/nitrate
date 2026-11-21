@@ -49,10 +49,17 @@ import dev.nitrate.core.rows.RowStyle
 
 val ScreenPadding = 16.dp
 
+/** Card pictures' height in pixels (see [cardImage]). */
+const val CARD_IMAGE_PX = 540
+
 enum class CardShape(val ratio: Float) { POSTER(2f / 3f), WIDE(16f / 9f), SQUARE(1f) }
 
-/** The image a card of [shape] should show for [item], with sensible fallbacks. */
-fun MediaServer.cardImage(item: MediaItem, shape: CardShape, height: Int = 360): String? = when (shape) {
+/**
+ * The image a card of [shape] should show for [item], with sensible fallbacks. [height] is in
+ * pixels: the default suits a poster card on a high-density phone (about 175 dp tall at 3×), so
+ * the picture is never stretched up and soft.
+ */
+fun MediaServer.cardImage(item: MediaItem, shape: CardShape, height: Int = CARD_IMAGE_PX): String? = when (shape) {
     CardShape.WIDE -> imageUrl(item, ImageKind.THUMB, height) ?: backdropUrl(item, 720) ?: imageUrl(item, ImageKind.PRIMARY, height)
     else -> imageUrl(item, ImageKind.PRIMARY, height)
 }
