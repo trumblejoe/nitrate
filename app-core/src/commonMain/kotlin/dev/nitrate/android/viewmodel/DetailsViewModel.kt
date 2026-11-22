@@ -15,7 +15,7 @@ data class DetailsState(
     val item: MediaItem? = null,
     val error: String? = null,
     val similar: List<MediaItem> = emptyList(),
-    // Series only
+    // A show's (and an episode's own show's): its seasons, the one chosen and that season's episodes.
     val seasons: List<MediaItem> = emptyList(),
     val selectedSeason: Int = 0,
     val episodes: List<MediaItem> = emptyList(),
@@ -30,6 +30,8 @@ data class DetailsState(
     val extras: List<MediaItem> = emptyList(),
     /** A book's series, in reading order (more than just this book). */
     val issues: List<MediaItem> = emptyList(),
+    /** A film's collection (a saga: films only, in release order, this one included); empty when it's in none. */
+    val collection: List<MediaItem> = emptyList(),
 )
 
 class DetailsViewModel(
@@ -66,7 +68,14 @@ class DetailsViewModel(
                 .getOrElse { e -> _state.update { it.copy(error = e.message ?: "Failed to load") }; return@launch }
             _state.update { it.copy(item = item, error = null) }
 
-            if (item.kind == ItemKind.SERIES) loadSeries(item)
+            if (item.kind == ItemKind.SERIES) loadSeries(item.id)
+            // An episode's page shows the rest of its season (and the show's other seasons) too.
+            if (item.kind == ItemKind.EPISODE) item.seriesId?.let { loadSeries(it, item.seasonId) }
+            if (item.kind == ItemKind.MOVIE) {
+                val sagas = runCatching { repository.collectionsOf(item.id).take(5).map { repository.collectionItems(it.id) } }.getOrDefault(emptyList())
+                val saga = dev.nitrate.core.playback.NextInCollection.saga(item, sagas)
+                _state.update { it.copy(collection = saga.takeIf { l -> l.size > 1 }.orEmpty()) }
+            }
             if (item.kind == ItemKind.MUSIC_ALBUM) _state.update { it.copy(tracks = runCatching { repository.albumTracks(itemId) }.getOrDefault(emptyList())) }
             if (item.kind == ItemKind.MUSIC_ARTIST) _state.update { it.copy(albums = runCatching { repository.artistAlbums(itemId) }.getOrDefault(emptyList())) }
             if (item.kind == ItemKind.BOOK) {
@@ -96,13 +105,18 @@ class DetailsViewModel(
         }
     }
 
-    private suspend fun loadSeries(series: MediaItem) {
-        val seasons = runCatching { repository.seasons(series.id) }.getOrDefault(emptyList())
-        val nextUp = runCatching { repository.nextUpFor(series.id) }.getOrNull()
+    /** The show these seasons and episodes belong to: the page's own item, or an episode's show. */
+    private var seriesId: String = itemId
+
+    private suspend fun loadSeries(series: String, ownSeason: String? = null) {
+        seriesId = series
+        val seasons = runCatching { repository.seasons(series) }.getOrDefault(emptyList())
+        val nextUp = if (ownSeason == null) runCatching { repository.nextUpFor(series) }.getOrNull() else null
         val current = _state.value
-        // Keep the user's season on reload; otherwise open on the requested or next-up season.
+        // Keep the user's season on reload; otherwise open on the episode's own, the requested or the next-up season.
         val seasonIndex = when {
             current.seasons.isNotEmpty() -> current.selectedSeason
+            ownSeason != null -> seasons.indexOfFirst { it.id == ownSeason }
             initialSeasonId != null -> seasons.indexOfFirst { it.id == initialSeasonId }
             nextUp?.seasonId != null -> seasons.indexOfFirst { it.id == nextUp.seasonId }
             else -> 0
@@ -127,7 +141,7 @@ class DetailsViewModel(
 
     private suspend fun loadEpisodes(index: Int) {
         val season = _state.value.seasons.getOrNull(index) ?: return
-        val episodes = runCatching { repository.episodes(itemId, season.id) }.getOrNull() ?: return
+        val episodes = runCatching { repository.episodes(seriesId, season.id) }.getOrNull() ?: return
         if (_state.value.selectedSeason == index) _state.update { it.copy(episodes = episodes) }
         cache?.write(account, seasonKey(season.id), episodes, kotlinx.serialization.builtins.ListSerializer(MediaItem.serializer()))
     }

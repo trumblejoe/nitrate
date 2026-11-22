@@ -69,7 +69,7 @@ fun MomentsAndChatButtons(actions: AppActions, itemId: String, onPlayFrom: (Long
 }
 
 @Composable
-private fun MomentsDialog(actions: AppActions, itemId: String, onPlayFrom: (Long) -> Unit, onDismiss: () -> Unit) {
+internal fun MomentsDialog(actions: AppActions, itemId: String, onPlayFrom: (Long) -> Unit, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf<List<Moment>?>(null) }
     LaunchedEffect(itemId) { list = runCatching { actions.server.moments(itemId) }.getOrDefault(emptyList()) }
@@ -99,7 +99,7 @@ private fun MomentsDialog(actions: AppActions, itemId: String, onPlayFrom: (Long
 }
 
 @Composable
-private fun EarlierChatDialog(actions: AppActions, itemId: String, onDismiss: () -> Unit) {
+internal fun EarlierChatDialog(actions: AppActions, itemId: String, onDismiss: () -> Unit) {
     var list by remember { mutableStateOf<List<ChatRecord>?>(null) }
     LaunchedEffect(itemId) { list = runCatching { actions.server.chatHistory(itemId) }.getOrDefault(emptyList()) }
     AlertDialog(

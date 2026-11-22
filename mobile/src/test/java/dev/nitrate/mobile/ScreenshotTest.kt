@@ -241,6 +241,22 @@ class ScreenshotTest {
 
     @Test fun movie() = shoot("phone-movie") { DetailsScreen(it, "m1", null) }
 
+    /** An episode's page: where it belongs (show › season), its own name, and the rest of its season. */
+    @Test fun episode() {
+        shoot("phone-episode") { DetailsScreen(it, "s1e2", null) }
+        compose.onAllNodesWithText("In this season").onFirst().assertExists()
+    }
+
+    /** The details page's More: everything the action row leaves out. */
+    @Test fun detailsMore() {
+        shoot("phone-movie-actions") { DetailsScreen(it, "m1", null) }
+        compose.onNodeWithText("More").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onAllNodesWithText("How it plays").onFirst().assertExists()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/phone-details-more.png")
+    }
+
     @Test fun search() = shoot("phone-search") { SearchScreen(it, initialQuery = "re", autoFocus = false) }
 
     @Test

@@ -24,7 +24,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** Opening "Add to…" with the remote's OK must not add the item anywhere by itself. */
+/** Opening "Add to a playlist or collection" (under More) with the remote's OK must not add the item anywhere by itself. */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w960dp-h540dp-land-television-night-xhdpi", application = android.app.Application::class)
 class AddToListTest {
@@ -46,7 +46,11 @@ class AddToListTest {
     fun okOnAddToOnlyOpensTheDialog() {
         compose.setContent { NitrateTheme { DetailsScreen(server, "ep", null, onPlay = { _, _ -> }, onOpen = {}, canCollect = true) } }
         compose.waitForIdle()
-        val button = compose.onNodeWithText("Add to…")
+        // "Add to" is under the page's More.
+        compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasContentDescription("More")), useUnmergedTree = true)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        val button = compose.onNodeWithText("Add to a playlist or collection")
         button.performSemanticsAction(SemanticsActions.RequestFocus)
         compose.waitForIdle()
         button.performKeyInput { pressKey(Key.DirectionCenter) }

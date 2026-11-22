@@ -31,9 +31,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun MomentsAndChatButtons(repository: MediaServer, itemId: String, onPlayFrom: (Long) -> Unit) {
-    val features by produceState(emptySet<String>(), repository) {
-        value = runCatching { repository.companion()?.features?.toSet() }.getOrNull().orEmpty()
-    }
+    val features = rememberCompanionFeatures(repository)
     var open by remember { mutableStateOf<String?>(null) }
     if ("moments" in features) OutlinedButton(onClick = { open = "moments" }) { Text("Moments") }
     if ("chathistory" in features) OutlinedButton(onClick = { open = "chat" }) { Text("Earlier chat") }
@@ -44,7 +42,7 @@ fun MomentsAndChatButtons(repository: MediaServer, itemId: String, onPlayFrom: (
 }
 
 @Composable
-private fun MomentsDialog(repository: MediaServer, itemId: String, onPlayFrom: (Long) -> Unit, onDismiss: () -> Unit) {
+internal fun MomentsDialog(repository: MediaServer, itemId: String, onPlayFrom: (Long) -> Unit, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf<List<Moment>?>(null) }
     LaunchedEffect(itemId) { list = runCatching { repository.moments(itemId) }.getOrDefault(emptyList()) }
@@ -75,7 +73,7 @@ private fun MomentsDialog(repository: MediaServer, itemId: String, onPlayFrom: (
 }
 
 @Composable
-private fun EarlierChatDialog(repository: MediaServer, itemId: String, onDismiss: () -> Unit) {
+internal fun EarlierChatDialog(repository: MediaServer, itemId: String, onDismiss: () -> Unit) {
     var list by remember { mutableStateOf<List<ChatRecord>?>(null) }
     LaunchedEffect(itemId) { list = runCatching { repository.chatHistory(itemId) }.getOrDefault(emptyList()) }
     TvDialog(onDismiss = onDismiss, width = 760) {
@@ -95,4 +93,13 @@ private fun EarlierChatDialog(repository: MediaServer, itemId: String, onDismiss
         }
         OutlinedButton(onClick = onDismiss) { Text("Close") }
     }
+}
+
+/** The Companion plugin's features on this server (empty without it), asked once per page. */
+@Composable
+fun rememberCompanionFeatures(repository: MediaServer): Set<String> {
+    val features by produceState(emptySet<String>(), repository) {
+        value = runCatching { repository.companion()?.features?.toSet() }.getOrNull().orEmpty()
+    }
+    return features
 }

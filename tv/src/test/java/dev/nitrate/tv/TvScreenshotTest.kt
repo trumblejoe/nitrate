@@ -3,6 +3,8 @@ package dev.nitrate.tv
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
@@ -1887,6 +1889,18 @@ class TvScreenshotTest {
     @Test fun episodeDetails() = shoot("tv-episode-details") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "s1e2", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }
 
     @Test fun movieDetails() = shoot("tv-movie-details") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "m1", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }
+
+    /** The details page's More panel: everything the action row leaves out. */
+    @Test fun detailsMore() {
+        shoot("tv-details-actions", act = {
+            compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasContentDescription("More")), useUnmergedTree = true)
+                .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        }) { c ->
+            dev.nitrate.tv.ui.details.DetailsScreen(c.server, "m1", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {})
+        }
+        compose.onAllNodesWithText("How it plays").onFirst().assertExists()
+        compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/tv-details-more.png")
+    }
 
     @Test fun album() = shoot("tv-album") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "al1", null, onPlay = { _, _ -> }, onOpen = {}) }
 

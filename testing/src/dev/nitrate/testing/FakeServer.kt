@@ -209,6 +209,9 @@ class FakeServer : MediaServer {
     override suspend fun queryPage(query: dev.nitrate.core.pages.ItemQuery, startIndex: Int, limit: Int) =
         shelf.drop(startIndex).take(limit) to shelf.size
     override suspend fun collectionItems(collectionId: String) = films.take(3)
+    /** The first films are a saga (a collection), so a film's page shows "The collection". */
+    override suspend fun collectionsOf(itemId: String) =
+        if (films.take(3).any { it.id == itemId }) listOf(MediaItem("saga-1", "The Nitrate Collection", ItemKind.BOX_SET)) else emptyList()
     override suspend fun genres(libraryId: String?) = listOf("Action", "Comedy", "Drama", "Horror", "Mystery", "Sci-Fi", "Thriller")
     override suspend fun collections() = listOf(MediaItem("c1", "Reel Classics", ItemKind.BOX_SET), MediaItem("c2", "Midnight Movies", ItemKind.BOX_SET))
     /** A check from far away: a slow round trip and a slow library search, the rest fine. */

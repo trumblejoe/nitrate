@@ -52,7 +52,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -130,14 +130,20 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         )
                         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x88000000), 0.25f to Color.Transparent, 1f to Color.Transparent)))
                         Column(Modifier.align(Alignment.BottomStart).padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val logo = server.logoUrl(item)?.takeIf { prefs.logos }
-                            if (logo != null) {
+                            val logo = server.logoUrl(item)?.takeIf { prefs.logos && item.kind != ItemKind.EPISODE }
+                            if (item.kind == ItemKind.EPISODE) {
+                                WhereItBelongs(actions, item, state.seasons.firstOrNull { it.id == item.seasonId }?.name)
+                                Text(
+                                    listOfNotNull(item.indexNumber?.let { "$it." }, item.name).joinToString(" "),
+                                    style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Color.White, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                                )
+                            } else if (logo != null) {
                                 AsyncImage(logo, item.displayTitle, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
                                     modifier = Modifier.widthIn(max = 280.dp).heightIn(max = 100.dp))
                             } else {
                                 Text(item.displayTitle, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 3, overflow = TextOverflow.Ellipsis)
                             }
-                            item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White) }
+                            if (item.kind != ItemKind.EPISODE) item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White) }
                         }
                     }
                 }
@@ -146,13 +152,6 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                 Column(Modifier.padding(horizontal = ScreenPadding, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { prefs.facts(item).forEach { GlassChip(it) } }
                     if (item.genres.isNotEmpty() && prefs.genres) Text(item.genres.take(4).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                    // More like it, by studio or year.
-                    val studio = item.studios.firstOrNull()
-                    val year = item.productionYear
-                    if (studio != null || year != null) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        studio?.let { Text("More from $it ›", color = accentColor(), style = MaterialTheme.typography.labelLarge, modifier = Modifier.pressable({ actions.nav.navigate(PersonRoute("", it, studio = it)) }).padding(vertical = 4.dp)) }
-                        year?.let { Text("More from $it ›", color = accentColor(), style = MaterialTheme.typography.labelLarge, modifier = Modifier.pressable({ actions.nav.navigate(PersonRoute("", "From $it", year = it)) }).padding(vertical = 4.dp)) }
-                    }
                     val music = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
                     if (item.kind == ItemKind.MUSIC_ALBUM) item.albumArtist?.let { artist ->
                         val artistId = item.albumArtistId
@@ -173,7 +172,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     if (item.versions.size > 1) VersionChooser(item)
                     // The tracks Play starts with, and a way to change them (a show's page: its next episode).
                     if (!music) (if (item.isPlayable) item else state.nextUp ?: state.episodes.firstOrNull())?.let { TrackLine(actions, it) }
-                    // Wraps onto a second line when there are more actions than fit (a movie with a trailer, for an admin).
+                    // One short row: watched, favourite, the trailer, downloading, playing elsewhere; the rest under More.
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
                         RoundAction(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", onClick = vm::toggleFavorite, active = item.user.isFavorite)
@@ -184,25 +183,15 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         })
                         if (item.isPlayable) DownloadAction(actions, item)
                         if (item.kind == ItemKind.SERIES) SmartDownloadAction(actions, item)
-                        var adding by remember { mutableStateOf(false) }
-                        if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) RoundAction(Icons.Default.Add, "Add to", onClick = { adding = true })
-                        if (adding) AddToListDialog(actions, item) { adding = false }
-                        if (account?.isAdmin == true) RoundAction(Icons.Default.Edit, "Manage", onClick = { actions.nav.navigate(ManageItemRoute(item.id)) })
-                        // How it would play here, why, and fixes before pressing play.
-                        var checking by remember { mutableStateOf(false) }
-                        if (item.isPlayable && !music) RoundAction(Icons.Default.Info, "How it plays", onClick = { checking = true })
                         // Send it to the TV (or another of your devices) and control it from here.
                         var playingOn by remember { mutableStateOf(false) }
                         val sendable = if (item.kind == ItemKind.SERIES) state.nextUp ?: state.episodes.firstOrNull() else item.takeIf { it.isPlayable }
                         if (sendable != null) RoundAction(NitrateIcons.Tv, "Play on…", onClick = { playingOn = true })
                         if (playingOn && sendable != null) PlayOnDialog(actions, sendable, sendable.user.positionMs, onDismiss = { playingOn = false })
-                        // Watch partners: ask someone to keep this show in step with you.
-                        if (checking) CheckPlaybackDialog(actions, item) { checking = false }
-                        // Marked moments and, only when asked, the chat kept from watching it together.
-                        if (item.isPlayable && !music) MomentsAndChatButtons(actions, item.id) { at -> actions.playFrom(item, at) }
+                        var more by remember { mutableStateOf(false) }
+                        RoundAction(Icons.Default.MoreVert, "More", onClick = { more = true })
+                        if (more) DetailsMoreSheet(actions, item, isAdmin = account?.isAdmin == true, music = music) { more = false }
                     }
-                    // Where it sits in the user's franchises (video playlists), with the way into each hub.
-                    if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE) FranchisePlaces(actions, item)
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
                     item.overview?.takeIf { prefs.overview }?.let { overview ->
                         // Spoiler hiding: unwatched movies and episodes keep their description until asked for.
@@ -216,10 +205,11 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     }
                 }
             }
-            if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
+            // A show's seasons and episodes; on an episode's page, the rest of its season (and the show's other seasons).
+            if ((item.kind == ItemKind.SERIES || item.kind == ItemKind.EPISODE) && state.seasons.isNotEmpty()) {
                 item(key = "seasons") {
                     Column(Modifier.padding(top = 12.dp)) {
-                        SectionHeader("Episodes")
+                        SectionHeader(if (item.kind == ItemKind.EPISODE) "In this season" else "Episodes")
                         LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(state.seasons.size) { i ->
                                 val selected = i == state.selectedSeason
@@ -255,7 +245,28 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         DownloadDialog(actions, missing, "${item.name} · $season") { picking = false }
                     }
                 }
-                items(state.episodes, key = { "ep-${it.id}" }) { episode -> EpisodeCard(actions, episode, episode.id in downloaded) }
+                items(state.episodes, key = { "ep-${it.id}" }) { episode -> EpisodeCard(actions, episode, episode.id in downloaded, thisOne = episode.id == item.id) }
+            }
+            // A film's collection (its saga), in release order, this one marked.
+            if (state.collection.isNotEmpty()) {
+                item(key = "collection") {
+                    Column(Modifier.padding(top = 28.dp)) {
+                        SectionHeader("The collection")
+                        val start = state.collection.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
+                        LazyRow(
+                            state = rememberLazyListState((start - 1).coerceAtLeast(0)),
+                            contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(state.collection, key = { it.id }) { f ->
+                                val key = "collection-${item.id}-${f.id}"
+                                MediaCard(
+                                    f, server.cardImage(f, CardShape.POSTER), CardShape.POSTER, onClick = { if (f.id != item.id) actions.open(f, key) }, width = 116.dp, sharedKey = key,
+                                    title = f.name, subtitle = if (f.id == item.id) "This one" else f.productionYear?.toString(),
+                                )
+                            }
+                        }
+                    }
+                }
             }
             val people = item.people.filter { it.imageTag != null || it.role != null }.take(20).takeIf { prefs.cast }.orEmpty()
             if (people.isNotEmpty()) {
@@ -451,8 +462,14 @@ private fun ExpandableText(text: String) {
 }
 
 @Composable
-private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boolean) {
-    Column(Modifier.fillMaxWidth().pressable({ actions.open(episode, "ep-${episode.id}") }).padding(horizontal = ScreenPadding, vertical = 10.dp)) {
+private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boolean, thisOne: Boolean = false) {
+    // The episode whose page this is: marked, and tapping it plays it rather than opening it again.
+    Column(
+        Modifier.fillMaxWidth()
+            .then(if (thisOne) Modifier.background(Color.White.copy(alpha = 0.06f)) else Modifier)
+            .pressable({ if (thisOne) { if (episode.isPlayable) actions.play(episode, false) } else actions.open(episode, "ep-${episode.id}") })
+            .padding(horizontal = ScreenPadding, vertical = 10.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.width(148.dp).aspectRatio(16f / 9f).sharedArtwork("ep-${episode.id}").clip(RoundedCornerShape(12.dp))
@@ -480,7 +497,7 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
             }
             Column(Modifier.padding(start = 14.dp).weight(1f)) {
                 Text("${episode.indexNumber ?: "–"}. ${episode.name}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val status = dev.nitrate.core.model.AirDates.status(episode, dev.nitrate.android.nowMs())
+                val status = if (thisOne) "This one" else dev.nitrate.core.model.AirDates.status(episode, dev.nitrate.android.nowMs())
                 if (status != null) Text(status, style = MaterialTheme.typography.labelMedium, color = accentColor(), modifier = Modifier.padding(top = 2.dp))
                 else episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
             }
@@ -520,5 +537,62 @@ private fun VersionChooser(item: MediaItem) {
                 )
             }
         }
+    }
+}
+
+/** "The Night Reel  ›  Season 1": an episode's show and season, each opening its page. */
+@Composable
+private fun WhereItBelongs(actions: AppActions, item: MediaItem, seasonName: String?) {
+    val seriesId = item.seriesId ?: return
+    val season = seasonName ?: item.seasonNumber?.let { "Season $it" }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            item.seriesName ?: "The show", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false).pressable({ actions.nav.navigate(DetailsRoute(seriesId)) }).padding(vertical = 4.dp),
+        )
+        if (season != null) {
+            Text("›", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f))
+            Text(
+                season, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1,
+                modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(seriesId, seasonId = item.seasonId)) }).padding(vertical = 4.dp),
+            )
+        }
+    }
+}
+
+/** Everything the action row leaves out: how it plays, moments, chat, lists, more like it, managing. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Boolean, music: Boolean, onDismiss: () -> Unit) {
+    var open by remember { mutableStateOf<String?>(null) }
+    val container = actions.container
+    val video = item.isPlayable && !music
+    val studio = item.studios.firstOrNull()
+    val year = item.productionYear
+    if (open == null) androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text(item.displayTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            @Composable fun entry(label: String, note: String? = null, onClick: () -> Unit) {
+                Column(Modifier.fillMaxWidth().pressable(onClick).padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                    if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (video) entry("How it plays", "Whether it plays as it is here, and why") { open = "plays" }
+            if (video && container.companionOffers("moments")) entry("Moments", "Marked places, yours and your groups'") { open = "moments" }
+            if (video && container.companionOffers("chathistory")) entry("Earlier chat", "What was said watching it together") { open = "chat" }
+            if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) entry("Add to a playlist or collection") { open = "add" }
+            studio?.let { entry("More from $it") { onDismiss(); actions.nav.navigate(PersonRoute("", it, studio = it)) } }
+            year?.let { entry("More from $it") { onDismiss(); actions.nav.navigate(PersonRoute("", "From $it", year = it)) } }
+            if (isAdmin) entry("Manage", "Details, images, identify") { onDismiss(); actions.nav.navigate(ManageItemRoute(item.id)) }
+        }
+    }
+    when (open) {
+        "plays" -> CheckPlaybackDialog(actions, item, onDismiss)
+        "moments" -> MomentsDialog(actions, item.id, { at -> actions.playFrom(item, at) }, onDismiss)
+        "chat" -> EarlierChatDialog(actions, item.id, onDismiss)
+        "add" -> AddToListDialog(actions, item, onDismiss)
     }
 }
