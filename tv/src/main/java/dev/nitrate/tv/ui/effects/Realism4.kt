@@ -193,10 +193,11 @@ internal fun DrawScope.rosesAndThorns(t: Float, k: Float) {
     val w = size.width
     val h = size.height
     val light = Offset(-0.5f, -0.85f) // from the upper left
-    // A dark, warm frame and a pool of red light behind the page.
+    // A pool of red light glowing in the lower corners (never a frame or a wash over the picture).
     back {
-        drawRect(Brush.radialGradient(listOf(Color.Transparent, Color(0x99140006), Color(0xEE080002)), center = Offset(w * 0.5f, h * 0.45f), radius = w * 0.72f))
-        glow(Offset(w * 0.5f, h * 0.35f), w * 0.55f, Color(0xFF7A0A1E), 0.18f + 0.04f * sin(t * 0.5f))
+        val pulse = 0.18f + 0.04f * sin(t * 0.5f)
+        glow(Offset(w * 0.02f, h * 1.0f), h * 0.45f, Color(0xFF7A0A1E), pulse)
+        glow(Offset(w * 0.98f, h * 1.0f), h * 0.45f, Color(0xFF7A0A1E), pulse)
     }
     // Thorny canes arching across the corners, behind the blooms.
     mid {
@@ -291,27 +292,27 @@ private fun DrawScope.blade(root: Offset, hgt: Float, bend: Float, width: Float,
 internal fun DrawScope.flowerGarden(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    val sun = Offset(w * 0.18f, h * 0.2f)
-    // Golden-hour sky glow and haze over the lower page; the sun low on the left, a veil of rays.
+    val sun = Offset(w * 0.06f, h * 0.08f)
+    // Golden hour: the sun in the corner with a veil of short rays, haze only low down.
     back {
-        glow(sun, h * 1.2f, Color(0xFFFFB45A), 0.28f)
-        glow(sun, h * 0.22f, Color(0xFFFFF2D0), 0.75f)
-        glow(sun, h * 0.05f, Color.White, 0.9f)
-        // Light through the haze: a few broad, soft-edged beams, each built of widening faint layers.
+        glow(sun, h * 0.35f, Color(0xFFFFB45A), 0.28f)
+        glow(sun, h * 0.12f, Color(0xFFFFF2D0), 0.75f)
+        glow(sun, h * 0.04f, Color.White, 0.9f)
+        // Light through the haze: a few soft-edged beams, each built of widening faint layers.
         for (r in 0 until 3) {
             val a = 0.25f + r * 0.22f + sin(t * 0.05f + r) * 0.02f
-            val end = sun + Offset(cos(a), sin(a)) * w * 1.3f
+            val end = sun + Offset(cos(a), sin(a)) * w * 0.3f
             for (layer in 1..8) {
-                val side = Offset(-sin(a), cos(a)) * (24f + r * 8f) * layer.toFloat()
+                val side = Offset(-sin(a), cos(a)) * (8f + r * 3f) * layer.toFloat()
                 drawPath(Path().apply { moveTo(sun.x, sun.y); lineTo(end.x + side.x, end.y + side.y); lineTo(end.x - side.x, end.y - side.y); close() },
                     Brush.linearGradient(listOf(Color(0x09FFE0A0), Color.Transparent), start = sun, end = end), blendMode = BlendMode.Plus)
             }
         }
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55E8B070), Color(0x88302010)), startY = h * 0.55f))
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55E8B070), Color(0x88302010)), startY = h * 0.75f), topLeft = Offset(0f, h * 0.75f), size = Size(w, h * 0.25f))
         // Far: the meadow dissolving into haze, specks of colour.
         for (i in 0 until 160) {
             val x = rnd(i, 1800) * w
-            val y = h * (0.7f + rnd(i, 1801) * 0.08f)
+            val y = h * (0.84f + rnd(i, 1801) * 0.05f)
             val col = listOf(Color(0xFFF4E2C8), Color(0xFFF0A890), Color(0xFFE8D0F0), Color(0xFFFFF0B0))[i % 4]
             drawCircle(col.copy(alpha = 0.45f), 1.6f + rnd(i, 1802) * 2f, Offset(x, y))
         }
@@ -321,18 +322,18 @@ internal fun DrawScope.flowerGarden(t: Float, k: Float) {
         for (rank in 0 until 3) {
             val haze = 0.6f - rank * 0.28f
             val scale = 0.6f + rank * 0.55f
-            val baseY = h * (0.8f + rank * 0.08f)
+            val baseY = h * (0.88f + rank * 0.05f)
             // Grass first, then flowers standing in it.
             for (g in 0 until 140 - rank * 30) {
                 val id = g + rank * 1000
                 val x = rnd(id, 1810) * (w + 40f) - 20f
                 val sway = sin(t * 1.1f + x * 0.01f + rank) * 6f * scale + (fbm(t * 0.25f + x * 0.003f, 1811) - 0.5f) * 12f * scale
-                blade(Offset(x, baseY + rnd(id, 1812) * 20f), (40f + rnd(id, 1813) * 70f) * scale, sway + (rnd(id, 1814) - 0.5f) * 30f * scale, 2.2f * scale, haze.coerceAtLeast(0f))
+                blade(Offset(x, baseY + rnd(id, 1812) * 20f), (30f + rnd(id, 1813) * 50f) * scale * h / 1080f, sway + (rnd(id, 1814) - 0.5f) * 30f * scale, 2.2f * scale, haze.coerceAtLeast(0f))
             }
             for (i in 0 until 24 - rank * 7) {
                 val id = i + rank * 500
                 val x = w * (i + rnd(id, 1820) * 0.9f) / (24 - rank * 7)
-                val hgt = h * (0.1f + rnd(id, 1821) * 0.12f) * scale
+                val hgt = h * (0.05f + rnd(id, 1821) * 0.07f) * scale
                 val sway = sin(t * 0.8f + x * 0.008f + rank) * 9f * scale + (fbm(t * 0.2f + x * 0.002f, 1822) - 0.5f) * 14f * scale
                 val root = Offset(x, baseY + 20f)
                 val head = root + Offset(sway, -hgt)

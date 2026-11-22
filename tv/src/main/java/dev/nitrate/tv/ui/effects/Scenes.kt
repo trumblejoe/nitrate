@@ -289,7 +289,7 @@ private fun DrawScope.drawOccasion(o: Occasion, t: Float, k: Float) {
             back { shellBursts(t, k, 111, ground) }
         }
         Occasion.INDEPENDENCE_DAY -> {
-            back { fireworkShow(t, k, listOf(Color(0xFFFF3B4E), Color(0xFFF4F6FF), Color(0xFF3D6BFF)), 121, floorY = 0.5f) }
+            back { fireworkShow(t, k, listOf(Color(0xFFFF3B4E), Color(0xFFF4F6FF), Color(0xFF3D6BFF)), 121, ceiling = 0.06f, floorY = 0.3f) }
         }
         Occasion.AIR_FORCE_BIRTHDAY -> {
             val ground = h * 0.97f

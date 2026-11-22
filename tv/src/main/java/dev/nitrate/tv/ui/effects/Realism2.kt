@@ -35,12 +35,18 @@ private fun DrawScope.neonLine(a: Offset, b: Offset, color: Color, alpha: Float,
 internal fun DrawScope.deepSpace(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    // Nebula: big soft clouds of gas, slowly turning.
+    // Nebula: soft clouds of gas slowly turning, gathered round the planet in the corner and along
+    // the top and left edges, so the page's picture stays clear.
     val gas = listOf(Color(0xFF6B3FA0), Color(0xFF2A6F97), Color(0xFFB0457A), Color(0xFF3B4FA8))
     for (i in 0 until 26) {
-        val x = w * (0.45f + (fbm(i * 0.71f, 801) - 0.5f) * 1.2f) + sin(t * 0.01f + i) * 20f
-        val y = h * (0.3f + (fbm(i * 0.53f, 802) - 0.5f) * 0.9f)
-        back { glow(Offset(x, y), 160f + rnd(i, 803) * 260f, gas[i % gas.size], 0.10f + rnd(i, 804) * 0.08f) }
+        val along = rnd(i, 801)
+        val at = when (i % 3) {
+            0 -> Offset(w * (0.78f + along * 0.24f), h * (0.02f + rnd(i, 802) * 0.36f))
+            1 -> Offset(w * along, h * rnd(i, 802) * 0.06f)
+            else -> Offset(w * rnd(i, 802) * 0.08f, h * (0.1f + along * 0.8f))
+        }
+        val x = at.x + sin(t * 0.01f + i) * 20f
+        back { glow(Offset(x, at.y), (90f + rnd(i, 803) * 150f) * h / 1080f, gas[i % gas.size], 0.10f + rnd(i, 804) * 0.08f) }
     }
     // Stars: colour by temperature, twinkling, slowly drifting; a few bright ones with a glow.
     val temps = listOf(Color(0xFFAFC6FF), Color.White, Color(0xFFFFF1D6), Color(0xFFFFD2A1))
@@ -84,13 +90,17 @@ internal fun DrawScope.deepSpace(t: Float, k: Float) {
 internal fun DrawScope.underwater(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    back { drawRect(Brush.verticalGradient(listOf(Color(0x5520A4C8), Color(0x44064A6E), Color(0x66021826)))) }
-    // Light shafts from the surface, swaying, brighter at the top.
-    for (i in 0 until 7) {
-        val x = w * (0.05f + i * 0.15f) + (fbm(t * 0.08f + i, 830) - 0.5f) * 160f
-        val spread = 90f + rnd(i, 831) * 120f
-        val ray = Path().apply { moveTo(x - 30f, 0f); lineTo(x + 30f, 0f); lineTo(x + spread + 140f, h); lineTo(x - spread + 140f, h); close() }
-        back { drawPath(ray, Brush.verticalGradient(listOf(Color(0x30CFF6FF), Color(0x0ACFF6FF), Color.Transparent)), blendMode = BlendMode.Plus) }
+    // The water's colour at the surface and the deep along the bottom only: the page's picture is the water.
+    back {
+        drawRect(Brush.verticalGradient(listOf(Color(0x7720A4C8), Color.Transparent), endY = h * 0.12f), size = Size(w, h * 0.12f))
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x88021826)), startY = h * 0.75f), topLeft = Offset(0f, h * 0.75f), size = Size(w, h * 0.25f))
+    }
+    // Light shafts from the surface, swaying, bright at the top and gone by halfway down.
+    for (i in 0 until 5) {
+        val x = w * (0.04f + i * 0.23f) + (fbm(t * 0.08f + i, 830) - 0.5f) * 160f
+        val spread = 40f + rnd(i, 831) * 50f
+        val ray = Path().apply { moveTo(x - 20f, 0f); lineTo(x + 20f, 0f); lineTo(x + spread + 80f, h * 0.5f); lineTo(x - spread + 80f, h * 0.5f); close() }
+        back { drawPath(ray, Brush.verticalGradient(listOf(Color(0x26CFF6FF), Color(0x06CFF6FF), Color.Transparent), endY = h * 0.5f), blendMode = BlendMode.Plus) }
     }
     // Caustics: the surface's light rippling across the top.
     for (i in 0 until 40) {
@@ -148,8 +158,9 @@ private fun DrawScope.fogBands(t: Float, from: Float, color: Color, salt: Int) {
     val h = size.height
     for (i in 0 until 24) {
         val x = frac(rnd(i, salt) + t * 0.006f * (0.6f + rnd(i, salt + 1))) * (w + 800f) - 400f
-        val y = h * (from + rnd(i, salt + 2) * (1 - from)) + sin(t * 0.2f + i) * 10f
-        glow(Offset(x, y), 220f + rnd(i, salt + 3) * 200f, color, 0.16f, additive = false)
+        val y = h * (from + 0.06f + rnd(i, salt + 2) * (1 - from)) + sin(t * 0.2f + i) * 10f
+        // Banks lying low: as tall as there's room below [from], never rising over the picture.
+        glow(Offset(x, y), (0.6f + rnd(i, salt + 3) * 0.6f) * h * (1 - from) * 0.75f, color, 0.16f, additive = false)
     }
 }
 
@@ -204,9 +215,11 @@ internal fun DrawScope.haunted(t: Float, k: Float) {
     // Thin cloud passing over the moon.
     val cx = frac(t * 0.01f) * (w + 800f) - 400f
     back {
-        drawRect(Brush.verticalGradient(listOf(Color(0x660A1020), Color.Transparent), endY = h * 0.5f))
+        drawRect(Brush.verticalGradient(listOf(Color(0x660A1020), Color.Transparent), endY = h * 0.12f), size = Size(w, h * 0.12f))
         moon(mc, h * 0.075f)
-        glow(Offset(cx, mc.y + 10f), 260f, Color(0xFF2A2E3A), 0.5f, additive = false)
+        // The cloud only shows as it passes the moon.
+        val near = (1f - abs(cx - mc.x) / (w * 0.18f)).coerceIn(0f, 1f)
+        glow(Offset(cx, mc.y + 10f), h * 0.16f, Color(0xFF2A2E3A), 0.5f * near, additive = false)
     }
     mid {
         deadTree(Offset(w * 0.04f, h), h * 0.22f, -PI.toFloat() / 2 + 0.12f, 8, 3)
@@ -333,7 +346,7 @@ private fun crossingX(t: Float, period: Float, w: Float): Float? {
 internal fun DrawScope.newYear(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    back { fireworkShow(t, k, listOf(Color(0xFFFFD27A), Color(0xFFF2F4FF), Color(0xFFFFB85C), Color(0xFFCFE0FF)), 960, floorY = 0.45f) }
+    back { fireworkShow(t, k, listOf(Color(0xFFFFD27A), Color(0xFFF2F4FF), Color(0xFFFFB85C), Color(0xFFCFE0FF)), 960, ceiling = 0.06f, floorY = 0.3f) }
     // Confetti: foil squares tumbling (they flash as they turn to the light).
     val colors = listOf(Color(0xFFFFD700), Color(0xFFC0C0C0), Color(0xFFFF4D8D), Color(0xFF4DD2FF))
     for (i in 0 until (110 * k).toInt()) {
@@ -407,9 +420,9 @@ internal fun DrawScope.desert(t: Float, k: Float) {
     val w = size.width
     val h = size.height
     back {
-        glow(Offset(w * 0.8f, h * 0.12f), h * 0.7f, Color(0xFFFFC874), 0.18f)
-        glow(Offset(w * 0.8f, h * 0.12f), h * 0.08f, Color(0xFFFFF4D6), 0.9f)
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x33E6A35A), Color(0x55B9773A)), startY = h * 0.55f))
+        glow(Offset(w * 0.88f, h * 0.1f), h * 0.3f, Color(0xFFFFC874), 0.18f)
+        glow(Offset(w * 0.88f, h * 0.1f), h * 0.07f, Color(0xFFFFF4D6), 0.9f)
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x33E6A35A), Color(0x55B9773A)), startY = h * 0.72f), topLeft = Offset(0f, h * 0.72f), size = Size(w, h * 0.28f))
     }
     // Dunes in three ranks, lit on the windward side.
     for (rank in 0 until 3) {
@@ -445,16 +458,19 @@ internal fun DrawScope.desert(t: Float, k: Float) {
 internal fun DrawScope.heroCity(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    back { drawRect(Brush.verticalGradient(listOf(Color(0x66101830), Color.Transparent, Color(0x55301810)), endY = h)) }
+    back {
+        drawRect(Brush.verticalGradient(listOf(Color(0x66101830), Color.Transparent), endY = h * 0.12f), size = Size(w, h * 0.12f))
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55301810)), startY = h * 0.75f), topLeft = Offset(0f, h * 0.75f), size = Size(w, h * 0.25f))
+    }
     // Searchlights sweeping the clouds.
     for (s in 0 until 3) {
         val base = Offset(w * (0.2f + s * 0.3f), h)
         val angle = -PI.toFloat() / 2 + sin(t * (0.25f + s * 0.07f) + s * 2f) * 0.5f
-        val len = h * 1.3f
+        val len = h * 0.95f
         val tip = base + Offset(cos(angle) * len, sin(angle) * len)
-        val side = Offset(-sin(angle), cos(angle)) * 90f
+        val side = Offset(-sin(angle), cos(angle)) * 50f
         val beam = Path().apply { moveTo(base.x - 6f, base.y); lineTo(tip.x - side.x, tip.y - side.y); lineTo(tip.x + side.x, tip.y + side.y); lineTo(base.x + 6f, base.y); close() }
-        back { drawPath(beam, Brush.linearGradient(listOf(Color(0x40FFF6D8), Color(0x08FFF6D8)), start = base, end = tip), blendMode = BlendMode.Plus) }
+        back { drawPath(beam, Brush.linearGradient(listOf(Color(0x30FFF6D8), Color.Transparent), start = base, end = tip), blendMode = BlendMode.Plus) }
     }
     // Skyline in two depths, windows lit and going on and off.
     for (depth in 0 until 2) {
@@ -465,7 +481,7 @@ internal fun DrawScope.heroCity(t: Float, k: Float) {
         val shade = if (depth == 0) Color(0xFF1A1F2E) else Color(0xFF0B0D14)
         while (x < w) {
             val bw = 60f + rnd(i, 1010) * 110f
-            val bh = h * (0.12f + rnd(i, 1011) * (0.2f + depth * 0.08f))
+            val bh = h * (0.1f + rnd(i, 1011) * (0.16f + depth * 0.08f))
             val top = h - bh
             val bx = x
             gate {
@@ -495,20 +511,18 @@ internal fun DrawScope.heroCity(t: Float, k: Float) {
 internal fun DrawScope.visitors(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    var y = 0f
-    back { while (y < h) { drawLine(Color(0x08FFFFFF), Offset(0f, y), Offset(w, y), 1f); y += 3f } }
     // The craft: a metallic disc with running lights, hovering on noise, a beam sweeping the ground.
-    val c = Offset(w * (0.15f + fbm(t * 0.05f, 1020) * 0.7f), h * (0.16f + fbm(t * 0.07f, 1021) * 0.12f))
+    val c = Offset(w * (0.15f + fbm(t * 0.05f, 1020) * 0.7f), h * (0.08f + fbm(t * 0.07f, 1021) * 0.06f))
     val beamOn = noise(t * 0.25f, 1022) > 0.45f
     if (beamOn) mid {
-        val beam = Path().apply { moveTo(c.x - 30f, c.y + 10f); lineTo(c.x + 30f, c.y + 10f); lineTo(c.x + 170f, h); lineTo(c.x - 170f, h); close() }
-        drawPath(beam, Brush.verticalGradient(listOf(Color(0x5562FFB0), Color(0x1462FFB0)), startY = c.y, endY = h), blendMode = BlendMode.Plus)
+        val beam = Path().apply { moveTo(c.x - 30f, c.y + 10f); lineTo(c.x + 30f, c.y + 10f); lineTo(c.x + 110f, h); lineTo(c.x - 110f, h); close() }
+        drawPath(beam, Brush.verticalGradient(listOf(Color(0x3062FFB0), Color(0x0862FFB0)), startY = c.y, endY = h), blendMode = BlendMode.Plus)
         for (i in 0 until 30) {
             val p = frac(rnd(i, 1023) - t * 0.25f)
             drawCircle(Color(0xFFB8FFD8).copy(alpha = 0.5f * (1 - p)), 1.5f, Offset(c.x + (rnd(i, 1024) - 0.5f) * 300f * p, c.y + (h - c.y) * p), blendMode = BlendMode.Plus)
         }
     }
-    mid { withTransform({ scale(1.7f, 1.7f, c) }) { craft(c, t) } }
+    mid { withTransform({ scale(1.7f * h / 1080f, 1.7f * h / 1080f, c) }) { craft(c, t) } }
     // Now and then the flash that makes everyone forget.
     val f = frac(t / 23f)
     if (f < 0.05f) back { drawRect(Color.White.copy(alpha = 0.22f * (1 - f / 0.05f)), blendMode = BlendMode.Plus) }
@@ -528,14 +542,15 @@ private fun DrawScope.craft(c: Offset, t: Float) {
 internal fun DrawScope.arcade(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    val horizon = h * 0.7f
-    // A striped sun sinking into haze.
-    val sc = Offset(w / 2, horizon - 30f)
-    val sun = Path().apply { addOval(androidx.compose.ui.geometry.Rect(sc - Offset(130f, 130f), Size(260f, 260f))) }
+    val horizon = h * 0.8f
+    // A striped sun sinking into haze, low on the horizon so the page's picture stays clear.
+    val sr = h * 0.09f
+    val sc = Offset(w / 2, horizon - sr * 0.25f)
+    val sun = Path().apply { addOval(androidx.compose.ui.geometry.Rect(sc - Offset(sr, sr), Size(sr * 2, sr * 2))) }
     back {
-        glow(sc, 420f, Color(0xFFFF4FA3), 0.3f)
-        drawPath(sun, Brush.verticalGradient(listOf(Color(0xFFFFE27A), Color(0xFFFF8A3D), Color(0xFFFF3DA1)), startY = sc.y - 130f, endY = sc.y + 130f))
-        for (b in 0 until 6) drawRect(Color(0xFF0A0614), topLeft = Offset(sc.x - 140f, sc.y + 10f + b * 22f - (t * 6f) % 22f), size = Size(280f, 4f + b * 1.6f))
+        glow(sc, sr * 2.6f, Color(0xFFFF4FA3), 0.3f)
+        drawPath(sun, Brush.verticalGradient(listOf(Color(0xFFFFE27A), Color(0xFFFF8A3D), Color(0xFFFF3DA1)), startY = sc.y - sr, endY = sc.y + sr))
+        for (b in 0 until 6) drawRect(Color(0xFF0A0614), topLeft = Offset(sc.x - sr * 1.08f, sc.y + sr * 0.08f + b * sr * 0.17f - (t * 6f) % (sr * 0.17f)), size = Size(sr * 2.16f, sr * (0.03f + b * 0.012f)))
     }
     val grid = Color(0xFFB44DFF)
     mid {
@@ -637,9 +652,12 @@ private fun DrawScope.sickleAndHammer(c: Offset, s: Float, color: Color) {
 internal fun DrawScope.laborDay(t: Float, k: Float) {
     val w = size.width
     val h = size.height
-    back { drawRect(Brush.verticalGradient(listOf(Color(0x40600010), Color.Transparent, Color(0x55400008)), endY = h)) }
-    // The great banner over the square, and flags carried above the crowd.
-    mid { clothFlag(Offset(w * 0.72f, h * 0.06f), w * 0.22f, h * 0.24f, t, 1, emblem = true) }
+    back {
+        drawRect(Brush.verticalGradient(listOf(Color(0x40600010), Color.Transparent), endY = h * 0.12f), size = Size(w, h * 0.12f))
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x55400008)), startY = h * 0.75f), topLeft = Offset(0f, h * 0.75f), size = Size(w, h * 0.25f))
+    }
+    // The great banner in the top corner, and flags carried above the crowd.
+    mid { clothFlag(Offset(w * 0.8f, h * 0.04f), w * 0.17f, h * 0.18f, t, 1, emblem = true) }
     for (i in 0 until 7) {
         val x = w * (0.04f + i * 0.14f) + (rnd(i, 1100) - 0.5f) * 40f
         val march = (t * 18f) % (w * 0.14f)

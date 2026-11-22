@@ -39,8 +39,6 @@ class ThemeBehind {
      */
     var clean by mutableStateOf(false)
     var titles by mutableIntStateOf(0)
-    /** Whether there's a theme or occasion showing (the shade over a scene only goes on then). */
-    var active by mutableStateOf(false)
 }
 
 val LocalThemeBehind = staticCompositionLocalOf<ThemeBehind?> { null }
@@ -104,10 +102,4 @@ fun rememberArtColor(url: String?): Color? {
         }.also { cache[url] = it }
     }
     return colour
-}
-
-/** The soft shade at the top left over a theme, so the focused title's name stays readable. */
-@Composable
-fun ThemeShade(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x59000000), Color.Transparent), center = Offset(0f, 0f), radius = 1400f)))
 }
