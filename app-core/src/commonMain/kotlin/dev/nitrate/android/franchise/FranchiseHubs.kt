@@ -9,7 +9,7 @@ import dev.nitrate.core.franchise.WatchOrder
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 
 /** A franchise hub, ready to show: the playlist, everything in the chosen order and where the user is. */
 data class FranchiseHub(
@@ -35,20 +35,24 @@ object FranchiseHubs {
     /** The user's video playlists, as possible hubs. */
     suspend fun list(server: MediaServer): List<MediaItem> = dev.nitrate.core.diagnostics.withQueryOrigin("Franchises") { Franchises.candidates(server.playlists()) }
 
-    /** The hub: at once from what was kept last time (when there is some), then fresh. */
-    fun hub(server: MediaServer, orders: PlaylistOrders, playlistId: String, chosen: WatchOrder?): Flow<FranchiseHub> = flow {
+    /**
+     * The hub: at once from what was kept last time (when there is some), then fresh. A channel flow, since
+     * [withQueryOrigin][dev.nitrate.core.diagnostics.withQueryOrigin] changes the coroutine context, which a plain
+     * `flow` refuses to emit from ("Flow invariant is violated").
+     */
+    fun hub(server: MediaServer, orders: PlaylistOrders, playlistId: String, chosen: WatchOrder?): Flow<FranchiseHub> = channelFlow {
         dev.nitrate.core.diagnostics.withQueryOrigin("Franchise hub") {
             val order = chosen ?: WatchOrder.PLAYLIST
             val kept = orders.cached(playlistId, order)
             val keptPlaylist = orders.keptPlaylist(playlistId)
-            if (kept != null && kept.isNotEmpty() && keptPlaylist != null) emit(build(server, keptPlaylist, order, kept, null, fromCache = true))
+            if (kept != null && kept.isNotEmpty() && keptPlaylist != null) send(build(server, keptPlaylist, order, kept, null, fromCache = true))
             val playlist = server.getItem(playlistId).also { orders.keepPlaylist(it) }
             val entries = orders.entries(playlistId, order, fresherThanMs = 0)
             val titleIds = entries.map { it.item.seriesId ?: it.item.id }.distinct()
             val music = runCatching {
                 if (server.themeSongs(playlist.id).isNotEmpty()) playlist.id else titleIds.take(4).firstOrNull { server.themeSongs(it).isNotEmpty() }
             }.getOrNull()
-            emit(build(server, playlist, order, entries, music, fromCache = false))
+            send(build(server, playlist, order, entries, music, fromCache = false))
         }
     }
 

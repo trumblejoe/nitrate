@@ -1,5 +1,7 @@
 package dev.nitrate.tv
 
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.key
@@ -1713,8 +1715,12 @@ class TvScreenshotTest {
     @Test fun franchises() = shoot("tv-franchises", settleMs = 2_000) { c -> dev.nitrate.tv.ui.franchise.FranchisesScreen(c, onOpen = {}) }
 
     /** A franchise hub: logo or name, progress, next, the order with crossovers, its titles, in its mood. */
-    @Test fun franchiseHub() = shoot("tv-franchise-hub", settleMs = 2_500) { c ->
-        dev.nitrate.tv.ui.franchise.FranchiseHubScreen(c, "p1", onPlay = {}, onOpen = {})
+    @Test fun franchiseHub() {
+        shoot("tv-franchise-hub", settleMs = 2_500) { c ->
+            dev.nitrate.tv.ui.franchise.FranchiseHubScreen(c, "p1", onPlay = {}, onOpen = {})
+        }
+        // The hub itself, not an error in its place.
+        compose.onAllNodesWithText("Rainy day", substring = true).onFirst().assertExists()
     }
 
     /** The watch diary on TV. */

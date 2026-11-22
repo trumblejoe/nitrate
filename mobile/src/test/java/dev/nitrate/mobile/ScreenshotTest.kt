@@ -1,5 +1,7 @@
 package dev.nitrate.mobile
 
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollTo
@@ -340,7 +342,11 @@ class ScreenshotTest {
 
     @Test fun franchises() = shoot("phone-franchises") { actions -> dev.nitrate.mobile.ui.FranchisesScreen(actions) }
 
-    @Test fun franchiseHub() = shoot("phone-franchise-hub") { actions -> dev.nitrate.mobile.ui.FranchiseHubScreen(actions, "p1") }
+    @Test fun franchiseHub() {
+        shoot("phone-franchise-hub") { actions -> dev.nitrate.mobile.ui.FranchiseHubScreen(actions, "p1") }
+        // The hub itself, not an error in its place.
+        compose.onAllNodesWithText("Rainy day", substring = true).onFirst().assertExists()
+    }
 
     /** Search finds what people say too. */
     @Test fun saidIn() = shoot("phone-search-said-in", setup = { c -> c.refreshCompanionForTests() }) { actions -> dev.nitrate.mobile.ui.SearchScreen(actions, initialQuery = "need a bigger boat", autoFocus = false) }
