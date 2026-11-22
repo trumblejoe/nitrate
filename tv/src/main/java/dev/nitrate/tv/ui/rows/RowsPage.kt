@@ -121,6 +121,8 @@ fun RowsPage(
     val oneAtATime = !LocalDisplayPrefs.current.tvArrangement.stacked
     // The room above the first row (one at a time), so any row can sit at the bottom; px.
     var roomAbove by remember { mutableStateOf(0) }
+    // Something on the page (not the menu or a dialog) has focus.
+    var pageFocused by remember { mutableStateOf(false) }
     val showcaseIndex = remember { mutableStateMapOf<String, Int>() }
     // The picture each cards-hidden row is showing (its title's, or the one its rotation reached).
     val cardlessArt = remember { mutableStateMapOf<String, String?>() }
@@ -144,6 +146,22 @@ fun RowsPage(
     // known; else the row's own dialog.
     val customize = dev.nitrate.tv.ui.pages.LocalCustomizeHost.current
     val pageRows = dev.nitrate.tv.ui.pages.LocalPageRows.current
+    // The panel closing: focus back to the row's card left. Android hands it back to the card that had
+    // it, but a new style (or the row moved) swapped that card for another, and focus fell to the menu.
+    val panelOpen = customize?.request != null
+    var panelWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(panelOpen) {
+        if (panelOpen) { panelWasOpen = true; return@LaunchedEffect }
+        if (!panelWasOpen) return@LaunchedEffect
+        panelWasOpen = false
+        val key = lastCard?.first?.let { rows.getOrNull(it)?.key }
+        repeat(30) { tries ->
+            kotlinx.coroutines.delay(60)
+            if (tries > 0 && pageFocused) return@LaunchedEffect
+            val requester = key?.let { rowEntry[it] } ?: rows.firstOrNull { it.items.isNotEmpty() }?.let { rowEntry[it.key] }
+            runCatching { requester?.requestFocus() }
+        }
+    }
     // Home's "Watching together" row: its invite and start cards answer OK themselves, and holding OK
     // on any of its cards offers the show's choices (with Customize this row among them).
     val together = dev.nitrate.tv.ui.partners.LocalTogetherCards.current
@@ -226,7 +244,7 @@ fun RowsPage(
             )
         }
 
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().onFocusChanged { pageFocused = it.hasFocus }) {
             // The page's tabs, at the very top (above the focused title, as they're top right on full
             // art): there while on them or the first row, out of the rows' way further down. They
             // count as above every row, so a Full Showcase below shows as its banner meanwhile.
@@ -243,7 +261,13 @@ fun RowsPage(
             if (!oneAtATime) AnimatedVisibility(visible = activeShowcase == null) {
                 // A clear gap below, so the first row's title never runs into the description.
                 // Just tall enough for its title, facts and two lines (it took nearly half the screen).
-                FocusedSummary(focused, Modifier.padding(start = RowPadding, top = 20.dp, end = RowPadding, bottom = 14.dp).height(148.dp))
+                // Its size as a caption's: the focused row's own, else the page's.
+                val summaryRow = rows.getOrNull(focusedRowIndex) ?: rows.firstOrNull()
+                val summarySize = summaryRow?.let { (overrides[it.key] ?: it.defaultDisplay).normalized().captionSize } ?: LocalDisplayPrefs.current.tvCaptionSize
+                FocusedSummary(
+                    focused, summarySize, focused?.let { dev.nitrate.tv.ui.components.captionLogo(repository, it, size = summarySize) },
+                    Modifier.padding(start = RowPadding, top = 20.dp, end = RowPadding, bottom = 14.dp).height(148.dp),
+                )
             }
             // TVs scroll focused content to a fixed "pivot", which pushes a tall row's title off the
             // top: up and down, scroll just enough to show the whole row; rows keep the TV's own way.
@@ -527,10 +551,17 @@ fun RowsPage(
 }
 
 @Composable
-private fun FocusedSummary(item: MediaItem?, modifier: Modifier) {
+private fun FocusedSummary(item: MediaItem?, size: dev.nitrate.core.pages.CaptionSize, logoUrl: String?, modifier: Modifier) {
     Column(modifier.fillMaxWidth(0.55f), verticalArrangement = Arrangement.Bottom) {
         if (item == null) return@Column
-        Text(item.displayTitle, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Minimal: the title's logo in place of its name, when it has one.
+        var logoFailed by remember(logoUrl) { mutableStateOf(false) }
+        if (logoUrl != null && !logoFailed) coil3.compose.AsyncImage(
+            model = logoUrl, contentDescription = item.displayTitle, onError = { logoFailed = true },
+            alignment = Alignment.BottomStart, contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+            modifier = Modifier.height(64.dp).fillMaxWidth(0.6f),
+        )
+        else Text(item.displayTitle, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleMedium, maxLines = 1) }
         ItemMetaLine(item)
         dev.nitrate.tv.ui.components.groupStanding(item)?.let { st ->
@@ -544,7 +575,8 @@ private fun FocusedSummary(item: MediaItem?, modifier: Modifier) {
                 color = if (st.catchUp) Color(0xFFFFC94D) else Color(0xDDFFFFFF),
             )
         }
-        item.overview?.takeIf { LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.hidesDescription(item) }?.let {
+        // Compact and Minimal leave the description out, as a caption does.
+        item.overview?.takeIf { size == dev.nitrate.core.pages.CaptionSize.NORMAL && LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.hidesDescription(item) }?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)

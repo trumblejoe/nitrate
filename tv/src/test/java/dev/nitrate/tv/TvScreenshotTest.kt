@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performKeyPress
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
@@ -619,8 +620,44 @@ class TvScreenshotTest {
             check(card.bottom <= 1080f) { "The row in use should be whole on screen, its card at $card" }
             tops += card.top
         }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Three seasons inside a cinema", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "Normal shows the description" }
         // Each row in turn takes the same place under the summary (none left part shown above it).
         check(tops.max() - tops.min() < 40f) { "Rows should take one place under the summary, cards at $tops" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** Fast-forward through every style of a row keeps focus in the row each time, never the menu. */
+    private fun everyStyleKeepsFocus(name: String, arrangement: dev.nitrate.core.pages.PageArrangement) = shoot(name, setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvArrangement = arrangement))
+    }, act = {
+        // Along the row first: the card left must still get focus back in each style.
+        press("down", "right", "right", "right", "right", "right", "right")
+        val looks = mutableListOf<String>()
+        repeat(dev.nitrate.core.rows.RowStyle.choices.size + 1) { step ->
+            press("ff")
+            compose.waitUntil(timeoutMillis = 15_000) {
+                compose.mainClock.advanceTimeBy(100)
+                compose.onAllNodes(androidx.compose.ui.test.isFocused(), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.mainClock.advanceTimeBy(1500); compose.waitForIdle()
+            val node = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first()
+            val at = node.boundsInRoot
+            looks += "$step:$at"
+            check(at.left >= 140f) { "Step $step: focus went to the menu, at $at (so far $looks)" }
+        }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    @Test fun everyStyleKeepsFocusStacked() = everyStyleKeepsFocus("tv-every-style-stacked", dev.nitrate.core.pages.PageArrangement.STACKED)
+    @Test fun everyStyleKeepsFocusOneAtATime() = everyStyleKeepsFocus("tv-every-style-rows", dev.nitrate.core.pages.PageArrangement.ROWS)
+
+    /** Stacked rows: the summary at the top follows the caption size (Compact/Minimal: no description). */
+    @Test fun stackedSummaryFollowsCaptionSize() = shoot("tv-stacked-summary-compact", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvArrangement = dev.nitrate.core.pages.PageArrangement.STACKED, tvCaptionSize = dev.nitrate.core.pages.CaptionSize.COMPACT))
+    }, act = {
+        // Down to the show (it has a description; the Normal size shows it, see tv-stacked-rows-clear).
+        press("down", "down", "down")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The Night Reel")).fetchSemanticsNodes().isNotEmpty()) { "the show should be in the summary" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Three seasons inside a cinema", substring = true)).fetchSemanticsNodes().isEmpty()) { "Compact should leave the description out" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
     /** Leaving a row and coming back lands on the card left in it, whatever was done in other rows meanwhile. */
@@ -752,6 +789,37 @@ class TvScreenshotTest {
             if (row != null) dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.HOME, dev.nitrate.tv.ui.pages.CustomizeRequest(row, vm, dev.nitrate.tv.ui.pages.CustomizeSection.ROW)) {}
         }
     }
+
+    /** Customize a row's style and close the panel: focus comes back to the row, never the menu. */
+    @Test fun customizeStyleKeepsFocus() = shoot("tv-customize-style-focus", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+    }, act = {
+        press("down", "right", "right")
+        // Hold OK: the panel on this row.
+        val ok = android.view.KeyEvent.KEYCODE_DPAD_CENTER
+        listOf(
+            android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_DOWN, ok, 0),
+            android.view.KeyEvent(0, 500, android.view.KeyEvent.ACTION_DOWN, ok, 1),
+            android.view.KeyEvent(0, 550, android.view.KeyEvent.ACTION_DOWN, ok, 2),
+            android.view.KeyEvent(0, 600, android.view.KeyEvent.ACTION_UP, ok, 0),
+        ).forEach {
+            val roots = compose.onAllNodes(androidx.compose.ui.test.isRoot())
+            roots[roots.fetchSemanticsNodes().size - 1].performKeyPress(androidx.compose.ui.input.key.KeyEvent(it))
+            compose.mainClock.advanceTimeBy(100); compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
+        check(focusedHasText("Style")) { "the panel should open on Style" }
+        // Through the styles to Posters (a different card for every title), then close.
+        repeat(dev.nitrate.core.rows.RowStyle.choices.size - 1) { press("ok"); compose.mainClock.advanceTimeBy(600); compose.waitForIdle() }
+        press("back")
+        compose.waitUntil(timeoutMillis = 15_000) {
+            compose.mainClock.advanceTimeBy(100)
+            compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.mainClock.advanceTimeBy(2000); compose.waitForIdle()
+        val at = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        check(at.left >= 140f) { "Closing the panel should leave focus in the row, not the menu: $at" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
     /** To a details page and Back: Home comes back with focus on the card left, not its start. */
     @Test fun backFromDetailsKeepsPlace() {

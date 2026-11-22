@@ -322,7 +322,8 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
             ChoiceItem("Arrangement", arrangement.label, first?.let { Modifier.focusRequester(it) } ?: Modifier) {
                 set { it.copy(arrangement = (it.arrangement ?: PageArrangement.ROWS).next()) }
             }
-            ChoiceItem("Caption corner", (look.captionCorner ?: dev.nitrate.core.pages.CaptionCorner.ALTERNATE).label) {
+            // Stacked rows keep their summary at the top left: no corner to choose there.
+            if (arrangement != PageArrangement.STACKED) ChoiceItem("Caption corner", (look.captionCorner ?: dev.nitrate.core.pages.CaptionCorner.ALTERNATE).label) {
                 set { it.copy(captionCorner = (it.captionCorner ?: dev.nitrate.core.pages.CaptionCorner.ALTERNATE).cycleNext()) }
             }
             ChoiceItem("Caption size", (look.captionSize ?: dev.nitrate.core.pages.CaptionSize.NORMAL).label) {
