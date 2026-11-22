@@ -416,6 +416,24 @@ class TvScreenshotTest {
         check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "something should have focus" }
     }
 
+    /** The All tab: Back deep in the grid goes to the first title, and ▲ from the options bar to the chosen tab. */
+    @Test fun allTabMovesAroundEasily() = libraryShot("tv-library-all-moving", rowsLibrary) {
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        repeat(4) { if (!focusedHasText("All")) press("right") }
+        check(focusedHasText("All")) { "should reach the All tab" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(1500); compose.waitForIdle()
+        press("down", "down", "down", "down")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(!focusedHasText("Arclight")) { "should be deep in the grid" }
+        press("back")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(focusedHasText("Arclight")) { "Back deep in the grid should go to the first title" }
+        press("up", "up")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(focusedHasText("All")) { "▲ from the options bar should go to the chosen tab" }
+    }
+
     /** Library pages can be full art like Home, with their tabs top right. */
     @Test fun libraryFullArt() = libraryShot("tv-library-full-art", dev.nitrate.core.pages.DisplayPrefs()) { press("up") }
 
@@ -831,6 +849,13 @@ class TvScreenshotTest {
     /** Progress as a small circle in the card's corner. */
     @Test fun progressCircle() = shoot("tv-progress-circle", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome.withProgress(dev.nitrate.core.pages.ProgressStyle.CIRCLE))
+    }, act = { compose.mainClock.advanceTimeBy(800); compose.waitForIdle() }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    /** The caption box: the words on a dark box, no shade along the screen's edge. */
+    @Test fun captionBox() = shoot("tv-caption-box", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvCaptionBox = true))
     }, act = { compose.mainClock.advanceTimeBy(800); compose.waitForIdle() }) { c ->
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }

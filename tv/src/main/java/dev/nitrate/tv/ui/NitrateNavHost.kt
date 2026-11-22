@@ -473,8 +473,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<PagesRoute> { PagesScreen(container) { id, editNow -> nav.navigate(CustomPageRoute(id, editNow)) } }
         composable<CustomPageRoute> { entry ->
             val route = entry.toRoute<CustomPageRoute>()
-            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.page(route.pageId), overlay = false) {
-                CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() })
+            // Laid out like Home: its own layout (full art lays the menu over it).
+            val pagePrefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, dev.nitrate.core.pages.PageKeys.custom(route.pageId))
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.page(route.pageId), overlay = pagePrefs.tvArrangement.fullArt) { insets ->
+                CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() }, insets = insets)
             }
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container, onMenuStops = { nav.navigate(MenuStopsRoute) }, onShown = { nav.navigate(ShownSettingsRoute) }, onPages = { nav.navigate(PageSetupRoute) }, onEffects = { nav.navigate(EffectsSettingsRoute) }) }

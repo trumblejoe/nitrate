@@ -52,7 +52,13 @@ fun ArtCaption(
     val prefs = LocalDisplayPrefs.current
     val align = if (end) Alignment.End else Alignment.Start
     val textAlign = if (end) TextAlign.End else TextAlign.Start
-    Column(modifier.widthIn(max = captionWidth(compact)), horizontalAlignment = align, verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)) {
+    // The caption box (`DisplayPrefs.tvCaptionBox`): the words on a dark, rounded box instead of a shade.
+    val boxed = LocalDisplayPrefs.current.tvCaptionBox
+    Column(
+        modifier.then(if (boxed) Modifier.background(CaptionBoxColor, androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 18.dp, vertical = 12.dp) else Modifier)
+            .widthIn(max = captionWidth(compact)),
+        horizontalAlignment = align, verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp),
+    ) {
         label?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelLarge, letterSpacing = 1.5.sp, color = Color.White.copy(alpha = 0.75f), maxLines = 1) }
         if (logoUrl != null && prefs.logos) {
             AsyncImage(
@@ -99,6 +105,8 @@ fun captionWidth(compact: Boolean): Dp = if (compact) 260.dp else 340.dp
  */
 @Composable
 fun ArtCaptionShade(modifier: Modifier = Modifier, top: Boolean = false, side: Boolean? = null) {
+    // With the caption box the words carry their own contrast: the picture stays whole.
+    if (LocalDisplayPrefs.current.tvCaptionBox) return
     val dark = Color.Black.copy(alpha = 0.75f)
     val brush = if (top) Brush.verticalGradient(0f to dark, 0.45f to Color.Transparent, 1f to Color.Transparent)
     else Brush.verticalGradient(0f to Color.Transparent, 0.55f to Color.Transparent, 1f to dark)
@@ -109,3 +117,6 @@ fun ArtCaptionShade(modifier: Modifier = Modifier, top: Boolean = false, side: B
         Box(modifier.fillMaxSize().background(b))
     }
 }
+
+/** The caption box's colour: dark enough for white words over any picture, the picture still seen through it. */
+val CaptionBoxColor = Color(0xA6000000)

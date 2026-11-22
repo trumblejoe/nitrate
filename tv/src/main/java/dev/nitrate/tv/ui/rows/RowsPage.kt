@@ -257,7 +257,9 @@ fun RowsPage(
         }
         // One at a time the caption sits in a corner with its own shade: the picture whole, as the
         // screensaver shows it. Stacked keeps the wash for the summary over the top left.
-        dev.nitrate.tv.ui.effects.PageBackdropSlot(artKey?.let(artFor) ?: focused?.let(repository::backdropUrl), clean = oneAtATime)
+        // The picture whole on every arrangement (no wash over it): words get the caption's own shade or box.
+        dev.nitrate.tv.ui.effects.PageBackdropSlot(artKey?.let(artFor) ?: focused?.let(repository::backdropUrl), clean = true)
+        if (!oneAtATime && activeShowcase == null) dev.nitrate.tv.ui.components.ArtCaptionShade(top = true)
         androidx.compose.animation.AnimatedVisibility(
             visible = styleNote != null, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 24.dp, end = RowPadding).zIndex(2f),
@@ -595,7 +597,9 @@ fun RowsPage(
 
 @Composable
 private fun FocusedSummary(item: MediaItem?, size: dev.nitrate.core.pages.CaptionSize, logoUrl: String?, modifier: Modifier) {
+    val boxed = LocalDisplayPrefs.current.tvCaptionBox && item != null
     Column(modifier.fillMaxWidth(0.55f), verticalArrangement = Arrangement.Bottom) {
+      Column(if (boxed) Modifier.background(dev.nitrate.tv.ui.components.CaptionBoxColor, androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).padding(horizontal = 18.dp, vertical = 10.dp) else Modifier) {
         if (item == null) return@Column
         // Minimal: the title's logo in place of its name, when it has one.
         var logoFailed by remember(logoUrl) { mutableStateOf(false) }
@@ -624,6 +628,7 @@ private fun FocusedSummary(item: MediaItem?, size: dev.nitrate.core.pages.Captio
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+      }
     }
 }
 

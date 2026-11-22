@@ -111,6 +111,8 @@ data class DisplayPrefs(
     val tvClock: Boolean = false,
     /** Home: Continue Watching and Next Up as one row (`rows/ContinueAndNext`), on both apps. */
     val combineContinueNextUp: Boolean = false,
+    /** TV: a contrast box behind a caption's words instead of the shade along the screen's edge. */
+    val tvCaptionBox: Boolean = false,
     /** Pages with a layout of their own (by top-level page key, [PageLooks.ownerOf]); the rest use the fields above. */
     val pageLooks: Map<String, PageLook> = emptyMap(),
     /** The menu's stops in order (rail and bars), as [MenuStops] ids; null until arranged. */

@@ -195,11 +195,11 @@ fun LibraryScreen(
             )
             dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay) }
             dev.nitrate.core.pages.LibraryTabKind.UNWATCHED -> Box(padded) {
-                BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin,
+                BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin, tabFocus = tabFocus(tab.id),
                     viewKey = "browse/${lib.id}/unwatched",
                     startWith = dev.nitrate.core.pages.BrowseOptions(watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, sort = dev.nitrate.core.pages.QuerySort.DATE_ADDED, descending = true))
             }
-            dev.nitrate.core.pages.LibraryTabKind.ALL -> Box(padded) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin) }
+            dev.nitrate.core.pages.LibraryTabKind.ALL -> Box(padded) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin, tabFocus = tabFocus(tab.id)) }
         }
     }
 }

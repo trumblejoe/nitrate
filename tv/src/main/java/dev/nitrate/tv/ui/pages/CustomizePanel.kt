@@ -282,6 +282,7 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
         Column {
             dev.nitrate.tv.ui.rows.ToggleItem("Which row this is", prefs.tvRowMarker) { on -> container.changePrefs { it.copy(tvRowMarker = on) } }
             dev.nitrate.tv.ui.rows.ToggleItem("Clock", prefs.tvClock) { on -> container.changePrefs { it.copy(tvClock = on) } }
+            dev.nitrate.tv.ui.rows.ToggleItem("Caption box", prefs.tvCaptionBox) { on -> container.changePrefs { it.copy(tvCaptionBox = on) } }
         }
     }
     item {

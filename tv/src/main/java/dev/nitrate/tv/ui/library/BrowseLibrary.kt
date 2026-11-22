@@ -36,6 +36,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -88,6 +95,8 @@ fun BrowseLibrary(
     /** A tab of its own (Unwatched): its own saved options, starting from these. */
     viewKey: String? = null,
     startWith: dev.nitrate.core.pages.BrowseOptions = dev.nitrate.core.pages.BrowseOptions(),
+    /** The chosen tab: ▲ from the options bar goes straight to it (not whichever tab is nearest). */
+    tabFocus: FocusRequester? = null,
 ) {
     val vm = viewModel(key = "browse-${library.id}-${viewKey.orEmpty()}") {
         if (viewKey == null) BrowseViewModel(repository, displaySettings, library) else BrowseViewModel(repository, displaySettings, library, viewKey, startWith)
@@ -109,6 +118,18 @@ fun BrowseLibrary(
     var selected by remember { mutableStateOf(setOf<String>()) }
     fun tap(item: MediaItem) {
         if (selecting) selected = if (item.id in selected) selected - item.id else selected + item.id else onOpen(item)
+    }
+    // The title in focus: its picture behind the page (as on Home), and where Back and a held ▲ start from.
+    var focusedIndex by remember { mutableStateOf(-1) }
+    // The last title focused: its picture stays while focus is up on the bar or the tabs.
+    var lastFocused by remember { mutableStateOf(-1) }
+    val firstTitle = remember { FocusRequester() }
+    // Back deep in the grid (or a held ▲): to the first title; Back there goes on as before (the first tab, then out).
+    fun toFirstTitle() {
+        scope.launch {
+            runCatching { grid.scrollToItem(0) }
+            repeat(10) { if (runCatching { firstTitle.requestFocus() }.getOrDefault(false)) return@launch; kotlinx.coroutines.delay(32) }
+        }
     }
     // Item focus moves here after a letter jump.
     val jumpFocus = remember { FocusRequester() }
@@ -151,7 +172,10 @@ fun BrowseLibrary(
     }
     // Sort, filters, view, the count and selecting: above the titles in every view.
     val bar: @Composable () -> Unit = {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.focusProperties { if (tabFocus != null) up = tabFocus },
+                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
                 OutlinedButton(onClick = { dialog = "sort" }) { Text("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}") }
                 OutlinedButton(onClick = { dialog = "filters" }) { Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") }
                 OutlinedButton(onClick = { dialog = "view" }, modifier = Modifier.focusRequester(viewButton)) {
@@ -193,15 +217,29 @@ fun BrowseLibrary(
                 }
             }
         }
-    } else
-    Row(Modifier.fillMaxSize()) {
+    } else {
+    // The focused title's picture behind the page, whole (no wash), as on Home.
+    dev.nitrate.tv.ui.effects.PageBackdropSlot(state.items.getOrNull(lastFocused)?.let { repository.backdropUrl(it) }, clean = true)
+    Row(Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+        val deep = focusedIndex >= columns
+        when {
+            // Back deep in the grid: to the first title (taken as a key: left to Compose, Back only moved focus about).
+            e.key == Key.Back && deep -> { if (e.type == KeyEventType.KeyUp) toFirstTitle(); true }
+            // Holding ▲ in the grid: straight to the first title (the first press has moved up one row).
+            e.key == Key.DirectionUp && e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount > 0 && deep -> {
+                if (e.nativeKeyEvent.repeatCount == 1) toFirstTitle()
+                true
+            }
+            else -> false
+        }
+    }) {
     if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) LetterColumn(jumpTo, Modifier.padding(start = 12.dp))
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         state = grid,
         contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(prefs.tvCardSpacing.dp.dp),
+        verticalArrangement = Arrangement.spacedBy((prefs.tvCardSpacing.dp + 4).dp),
         modifier = Modifier.weight(1f).fillMaxSize(),
     ) {
         item(key = "header", span = { GridItemSpan(maxLineSpan) }) { header() }
@@ -223,7 +261,9 @@ fun BrowseLibrary(
             }
             else -> items(state.items.size, key = { state.items[it].id }) { i ->
                 val item = state.items[i]
-                val focus = if (i == jumpedTo) Modifier.focusRequester(jumpFocus) else Modifier
+                val focus = (if (i == jumpedTo) Modifier.focusRequester(jumpFocus) else Modifier)
+                    .then(if (i == 0) Modifier.focusRequester(firstTitle) else Modifier)
+                    .onFocusChanged { if (it.hasFocus) { focusedIndex = i; lastFocused = i } else if (focusedIndex == i) focusedIndex = -1 }
                 if (options.view != BrowseView.LIST) {
                     val artwork = options.view == BrowseView.ARTWORK && !music
                     MediaCard(
@@ -253,6 +293,7 @@ fun BrowseLibrary(
     }
 
     if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.RIGHT) LetterColumn(jumpTo, Modifier.padding(end = 12.dp))
+    }
     }
 
     when (dialog) {

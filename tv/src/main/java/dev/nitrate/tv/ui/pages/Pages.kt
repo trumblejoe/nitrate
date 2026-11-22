@@ -121,7 +121,10 @@ internal fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, o
 
 /** A custom page: its rows, plus edit, rename, pin and delete. */
 @Composable
-fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, onOpen: (MediaItem) -> Unit, onPlay: (MediaItem) -> Unit, onDeleted: () -> Unit) {
+fun CustomPageScreen(
+    container: AppContainer, pageId: String, editNow: Boolean, onOpen: (MediaItem) -> Unit, onPlay: (MediaItem) -> Unit, onDeleted: () -> Unit,
+    insets: dev.nitrate.tv.ui.home.MenuInsets = dev.nitrate.tv.ui.home.MenuInsets(),
+) {
     val pages = rememberCustomPages(container)
     val page = pages.firstOrNull { it.id == pageId }
     val vm = viewModel(key = "custom-$pageId") { RowsViewModel(PageKeys.custom(pageId), { emptyList() }, container.displaySettings, container.server, container.serverChanges, cache = container.dataCache) }
@@ -137,6 +140,11 @@ fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, 
     }
 
     if (editing) PageEditor(page?.title.orEmpty(), vm, container.server, libraryId = null, onDone = { editing = false })
+    // Laid out like Home: its name above its rows (or top right on full art); its rows, look and
+    // layout are changed by holding OK on a row (Customize), its name and place in Settings → Display → Pages.
+    val title: @Composable () -> Unit = {
+        Text(page?.title.orEmpty(), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = PagePadding, top = 24.dp, end = PagePadding))
+    }
     val header: @Composable () -> Unit = {
         Row(Modifier.padding(start = PagePadding, top = 24.dp, end = PagePadding), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(page?.title.orEmpty(), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(end = 16.dp))
@@ -160,7 +168,9 @@ fun CustomPageScreen(container: AppContainer, pageId: String, editNow: Boolean, 
             }
         } else {
             androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.pages.LocalPageRows provides vm) {
-                RowsPage(s.rows, overrides, container.server, onOpen, onPlay, vm::save, header = header, onEditPage = { editing = true }, editButton = false)
+                if (dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvArrangement.fullArt)
+                    dev.nitrate.tv.ui.home.FullArtPage(s.rows, overrides, container.server, onOpen, onPlay, vm::save, onEditPage = { editing = true }, insets = insets)
+                else RowsPage(s.rows, overrides, container.server, onOpen, onPlay, vm::save, header = title, onEditPage = { editing = true }, editButton = false)
             }
         }
         is RowsState.Error -> Column { header(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
@@ -315,6 +325,15 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 headlineContent = { Text("Clock") },
                 supportingContent = { Text("A small clock in the top corner of every page") },
                 trailingContent = { Text("${if (prefs.tvClock) "On" else "Off"}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvCaptionBox = !it.tvCaptionBox) } },
+                headlineContent = { Text("Caption box") },
+                supportingContent = { Text("A dark box behind a title's name and details, instead of a shade along the screen's edge") },
+                trailingContent = { Text("${if (prefs.tvCaptionBox) "On" else "Off"}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
         if (prefs.tvArrangement == dev.nitrate.core.pages.PageArrangement.FULL_ART) {
