@@ -21,6 +21,11 @@ public class ServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<ChatHub>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Recommendations.BecauseStore(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "because")));
+        serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.BecauseBuilder>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Formats.FormatIndex>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Formats.FormatIndex>());
         // The server's own time for each request Nitrate tags (the apps' query analyzer).
         serviceCollection.AddSingleton<Nitrate.Companion.QueryTimes.QueryTimeStore>();
         serviceCollection.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, Nitrate.Companion.QueryTimes.QueryTimingStartupFilter>();

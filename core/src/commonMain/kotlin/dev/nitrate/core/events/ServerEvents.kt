@@ -20,7 +20,11 @@ sealed interface ServerEvent {
     data class LibraryChanged(val added: List<String>, val updated: List<String>, val removed: List<String>) : ServerEvent
 
     /** Watched state, position or favourites changed for these items (on any device). */
-    data class UserDataChanged(val itemIds: List<String>) : ServerEvent
+    data class UserDataChanged(
+        val itemIds: List<String>,
+        /** Each item's watch state now, as the server sent it (empty from servers that send none). */
+        val states: Map<String, dev.nitrate.core.model.UserState> = emptyMap(),
+    ) : ServerEvent
 
     /** A SyncPlay command for this device's group. */
     data class SyncPlayCommand(val groupId: String, val command: dev.nitrate.core.syncplay.SyncPlayCommand) : ServerEvent

@@ -622,6 +622,11 @@ class AppContainer(
         return true
     }
 
+    /** Every person's requests by kind over the last two hours, for admins with the Companion plugin; empty otherwise. */
+    suspend fun householdQueries(): List<dev.nitrate.core.diagnostics.HouseholdQuery> =
+        if (account.value?.isAdmin != true || !serverTimesQueries()) emptyList()
+        else dev.nitrate.core.diagnostics.withQueryOrigin("Query analyzer") { server.householdQueries() }
+
     /** Library and custom page ids → names, so origins read "Library Films" rather than an id. */
     suspend fun queryNames(): Map<String, String> {
         val libraries = runCatching { libraryCache.cached(server) }.getOrDefault(emptyList()).associate { it.id to it.name }

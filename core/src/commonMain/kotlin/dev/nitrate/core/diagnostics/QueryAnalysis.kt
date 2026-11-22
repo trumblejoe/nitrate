@@ -164,3 +164,8 @@ data class QuerySummary(
     val headline: String get() = "$records requests ($fetched fetched, $shared shared" + (if (failed > 0) ", $failed failed" else "") + ") · ${totalMs} ms waited · ${size(bytes)}"
 
 }
+
+/** One kind of request across the household, from the Companion plugin (no names, titles or search words). */
+data class HouseholdQuery(val shape: String, val count: Int, val people: Int, val totalMs: Long, val medianMs: Long, val slowMs: Long, val maxMs: Long) {
+    val counts: String get() = "$count× by $people " + (if (people == 1) "person" else "people") + " · $totalMs ms in all, median $medianMs ms, 9 in 10 under $slowMs ms, max $maxMs ms"
+}

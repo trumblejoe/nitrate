@@ -45,7 +45,8 @@ public class QueryTimingMiddleware
             var id = context.User?.Claims.FirstOrDefault(c => c.Type == UserIdClaim)?.Value;
             if (Guid.TryParse(id, out var user))
             {
-                _store.Record(user, tag, watch.ElapsedMilliseconds);
+                var shape = QueryTimeStore.ShapeOf(context.Request.Method, context.Request.Path.Value ?? string.Empty, context.Request.Query.Keys);
+                _store.Record(user, tag, watch.ElapsedMilliseconds, shape);
             }
         }
     }

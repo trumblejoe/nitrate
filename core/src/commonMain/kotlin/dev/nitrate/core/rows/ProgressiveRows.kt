@@ -30,6 +30,15 @@ class RowJob(
     var keys: Map<String, String> = key?.let { mapOf(it to name) } ?: emptyMap()
         private set
 
+    /** The same job, starting only once [first] has run (e.g. a shared answer it can then use). */
+    fun after(first: suspend () -> Unit): RowJob {
+        val source = this
+        return RowJob(name, key) { first(); source.load() }.also { job ->
+            job.keys = source.keys
+            source.showingLoad?.let { early -> job.showingLoad = { show -> first(); early(show) } }
+        }
+    }
+
     companion object {
         /** A job making several rows with fixed keys ([keys]: key → title): it runs unless every one is hidden. */
         fun making(name: String, keys: Map<String, String>, load: suspend () -> List<MediaRow>): RowJob =

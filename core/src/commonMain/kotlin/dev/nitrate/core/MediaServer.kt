@@ -109,6 +109,9 @@ interface MediaServer {
     /** The server's own time for this app run's requests (tag → ms), from the Companion plugin (feature `querytimes`). */
     suspend fun serverQueryTimes(run: String): Map<String, Long> = emptyMap()
 
+    /** Every person's requests of the last two hours by kind (Companion `querytimes`, admins only); empty otherwise. */
+    suspend fun householdQueries(): List<dev.nitrate.core.diagnostics.HouseholdQuery> = emptyList()
+
     /** Lets go of answers kept to share between pages (a page refreshed by hand asks afresh). */
     suspend fun forgetAnswers() {}
 

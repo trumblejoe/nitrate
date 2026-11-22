@@ -97,7 +97,7 @@ class PlaybackExtrasTest {
             event("""{"MessageType":"GeneralCommand","Data":{"Name":"DisplayMessage","Arguments":{"Header":"Hi","Text":"Dinner"}}}"""),
         )
         assertEquals(
-            ServerEvent.UserDataChanged(listOf("01234567-89ab-cdef-0123-456789abcdef")),
+            ServerEvent.UserDataChanged(listOf("01234567-89ab-cdef-0123-456789abcdef"), mapOf("01234567-89ab-cdef-0123-456789abcdef" to dev.nitrate.core.model.UserState(played = true))),
             event("""{"MessageType":"UserDataChanged","Data":{"UserId":"x","UserDataList":[{"ItemId":"0123456789abcdef0123456789abcdef","Played":true}]}}"""),
         )
         val sync = event("""{"MessageType":"SyncPlayCommand","Data":{"GroupId":"g","Command":"Unpause","When":"2026-11-11T20:00:00.5Z","PositionTicks":20000000,"PlaylistItemId":"p"}}""") as ServerEvent.SyncPlayCommand

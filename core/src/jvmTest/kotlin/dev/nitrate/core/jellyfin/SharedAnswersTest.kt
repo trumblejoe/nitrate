@@ -26,10 +26,12 @@ class SharedAnswersTest {
     private val server = "http://jf.example:8096"
     private val asked = AtomicInteger()
     private val tags = mutableListOf<String>()
+    private val counting = mutableListOf<String?>()
 
     private val engine = MockEngine { request ->
         if (request.url.encodedPath.endsWith("/Similar") || request.url.encodedPath.endsWith("/NextUp")) asked.incrementAndGet()
         request.headers[JellyfinClient.QUERY_TAG_HEADER]?.let { synchronized(tags) { tags += it } }
+        if (request.url.encodedPath == "/Items") synchronized(counting) { counting += request.url.parameters["enableTotalRecordCount"] }
         delay(200)
         when {
             request.method.value == "POST" -> respond("", HttpStatusCode.NoContent)
@@ -100,5 +102,40 @@ class SharedAnswersTest {
         // Whichever asked first fetched; the other shared it.
         assertEquals(2, nextUps.size)
         assertEquals(setOf("Home › Next Up", "Custom page"), nextUps.map { it.origin }.toSet())
+    }
+
+    /** A watched mark changing elsewhere fixes the kept list in place: nothing asked again. */
+    @Test fun watchStateIsPatchedIntoKeptLists() = runBlocking {
+        val c = client()
+        val id = "cccccccccccccccccccccccccccccccc"
+        val before = c.similar(id).single()
+        assertTrue(!before.user.played)
+        c.nextUp(c)
+        c.watchStateChanged(mapOf(before.id to dev.nitrate.core.model.UserState(played = true)))
+        val after = c.similar(id).single()
+        assertTrue(after.user.played)
+        assertEquals(1, c.queryLog.records.value.count { it.endpoint == "/Items/{id}/Similar" && it.outcome == QueryOutcome.FETCHED })
+        // What's next does depend on it: asked again.
+        c.nextUp(c)
+        assertEquals(2, c.queryLog.records.value.count { it.endpoint == "/Shows/NextUp" && it.outcome == QueryOutcome.FETCHED })
+    }
+
+    /** Lists never shown with a total don't make the server count every match. */
+    @Test fun rowListsDontCount() = runBlocking {
+        val c = client()
+        c.homeRowsProgress(emptySet()).collect {}
+        assertTrue(counting.isNotEmpty())
+        assertTrue(counting.toString(), counting.all { it == "false" })
+    }
+
+    @Test fun userDataEventsCarryTheStates() {
+        val data = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"UserId":"u","UserDataList":[{"ItemId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","Played":true,"PlaybackPositionTicks":600000000,"IsFavorite":true,"PlayCount":2}]}""",
+        )
+        val e = parseEvent("UserDataChanged", data) as dev.nitrate.core.events.ServerEvent.UserDataChanged
+        val s = e.states.values.single()
+        assertTrue(s.played && s.isFavorite)
+        assertEquals(60_000L, s.positionMs)
+        assertEquals(2, s.playCount)
     }
 }

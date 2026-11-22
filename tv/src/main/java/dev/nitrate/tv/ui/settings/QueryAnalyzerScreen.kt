@@ -50,6 +50,8 @@ fun QueryAnalyzerScreen(container: AppContainer) {
     var message by remember { mutableStateOf<String?>(null) }
     var names by remember { mutableStateOf(emptyMap<String, String>()) }
     val first = remember { FocusRequester() }
+    var household by remember { mutableStateOf(emptyList<dev.nitrate.core.diagnostics.HouseholdQuery>()) }
+    LaunchedEffect(Unit) { household = container.householdQueries() }
     LaunchedEffect(Unit) {
         names = container.queryNames()
         if (container.fetchServerQueryTimes()) message = "Server times added (Nitrate Companion)"
@@ -122,6 +124,15 @@ fun QueryAnalyzerScreen(container: AppContainer) {
         if (summary.origins.isNotEmpty()) item { QueryHeading("By page or feature") }
         items(summary.origins, key = { "o" + it.origin }) { o ->
             ListItem(selected = false, onClick = {}, headlineContent = { Text(o.origin) }, supportingContent = { Text(o.counts) }, modifier = Modifier.widthIn(max = 1000.dp))
+        }
+        if (household.isNotEmpty()) item {
+            Column {
+                QueryHeading("Across the household (last 2 hours)")
+                Text("Everyone's Nitrate requests by kind, as the server timed them. No names, titles or search words.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        items(household.take(25), key = { "h" + it.shape }) { h ->
+            ListItem(selected = false, onClick = {}, headlineContent = { Text(h.shape, maxLines = 2) }, supportingContent = { Text(h.counts) }, modifier = Modifier.widthIn(max = 1000.dp))
         }
         if (readable.isNotEmpty()) item { QueryHeading("Latest requests") }
         items(readable.takeLast(40).reversed(), key = { "r" + it.id }) { r ->

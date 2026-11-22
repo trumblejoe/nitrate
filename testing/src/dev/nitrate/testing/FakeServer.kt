@@ -76,6 +76,11 @@ class FakeServer : MediaServer {
         return homeRows().firstOrNull { it.key == homeKey }
     }
 
+    override suspend fun householdQueries() = listOf(
+        dev.nitrate.core.diagnostics.HouseholdQuery("/Items/{id}/Similar?limit&userid", 14, 3, 21_000, 1_200, 2_900, 3_400),
+        dev.nitrate.core.diagnostics.HouseholdQuery("/Nitrate/Home?because&latest&limit&nextup&resume", 40, 4, 4_800, 110, 190, 260),
+    )
+
     /** A few requests as the analyzer would have seen them. */
     override val queryLog: dev.nitrate.core.diagnostics.QueryLog = dev.nitrate.core.diagnostics.QueryLog().also { log ->
         fun add(endpoint: String, params: Map<String, String>, origin: String, ms: Long, outcome: dev.nitrate.core.diagnostics.QueryOutcome) {

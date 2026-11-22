@@ -93,6 +93,23 @@ class AnswerCache(private val nowMs: () -> Long, private val maxEntries: Int = 4
         }
     }
 
+    /** Keeps [value] as the answer to [key], as if just fetched (an answer that came another way, e.g. in a bundle). */
+    suspend fun put(key: String, kind: AnswerKind, value: Any) = lock.withLock {
+        kept[key] = Kept(value, nowMs(), kind)
+        while (kept.size > maxEntries) kept.remove(kept.keys.first())
+    }
+
+    /** Lets go of the kept answers [drop] picks ([key] is the whole request). */
+    suspend fun forget(drop: (key: String, kind: AnswerKind) -> Boolean) = lock.withLock { kept.entries.removeAll { drop(it.key, it.value.kind) } }
+
+    /**
+     * Changes kept answers in place ([change] gives the new value, or the same one), keeping when
+     * they were fetched: for watch state that changed without changing which titles a list holds.
+     */
+    suspend fun patch(change: (Any) -> Any) = lock.withLock {
+        kept.entries.forEach { e -> val now = change(e.value.value); if (now !== e.value.value) e.setValue(Kept(now, e.value.atMs, e.value.kind)) }
+    }
+
     /** Lets go of answers showing watch state (after it changed here or on another device). */
     suspend fun userDataChanged() = lock.withLock { kept.entries.removeAll { it.value.kind.userData } }
 

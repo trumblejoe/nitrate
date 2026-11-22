@@ -53,6 +53,8 @@ fun QueryAnalyzerScreen(actions: AppActions) {
     var view by remember { mutableStateOf(0) }
     var message by remember { mutableStateOf<String?>(null) }
     var names by remember { mutableStateOf(emptyMap<String, String>()) }
+    var household by remember { mutableStateOf(emptyList<dev.nitrate.core.diagnostics.HouseholdQuery>()) }
+    LaunchedEffect(Unit) { household = container.householdQueries() }
     LaunchedEffect(Unit) {
         names = container.queryNames()
         if (container.fetchServerQueryTimes()) message = "Server times added (Nitrate Companion)"
@@ -95,7 +97,7 @@ fun QueryAnalyzerScreen(actions: AppActions) {
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor()) }
                 Text("$title: ${summary.headline}", style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("Costliest", "By page", "Latest").forEachIndexed { i, label -> FilterChip(view == i, { view = i }, label = { Text(label) }) }
+                    (listOf("Costliest", "By page", "Latest") + if (household.isNotEmpty()) listOf("Household") else emptyList()).forEachIndexed { i, label -> FilterChip(view == i, { view = i }, label = { Text(label) }) }
                 }
             }
         }
@@ -112,6 +114,21 @@ fun QueryAnalyzerScreen(actions: AppActions) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 8.dp)) {
                     Text(o.origin, style = MaterialTheme.typography.titleSmall)
                     Text(o.counts, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            3 -> {
+                item {
+                    Text(
+                        "Everyone's Nitrate requests of the last 2 hours by kind, as the server timed them. No names, titles or search words.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = ScreenPadding),
+                    )
+                }
+                items(household.take(40), key = { "h" + it.shape }) { h ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 8.dp)) {
+                        Text(h.shape, style = MaterialTheme.typography.titleSmall, maxLines = 3)
+                        Text(h.counts, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
             else -> items(readable.takeLast(80).reversed(), key = { "r" + it.id }) { r ->

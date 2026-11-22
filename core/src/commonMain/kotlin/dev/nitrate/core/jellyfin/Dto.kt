@@ -365,3 +365,29 @@ internal data class QueryFiltersLegacyDto(
 /** The Companion plugin's time for one tagged request. */
 @Serializable
 internal data class QueryTimeDto(val tag: String, val ms: Long)
+
+/** The Companion plugin's Home in one answer. */
+@Serializable
+internal data class HomeBundleDto(
+    val resume: List<ItemDto>? = null,
+    val nextUp: List<ItemDto>? = null,
+    val latest: List<LatestBundleDto> = emptyList(),
+    val because: List<BecauseBundleDto>? = null,
+)
+
+@Serializable
+internal data class LatestBundleDto(val libraryId: String, val items: List<ItemDto> = emptyList())
+
+@Serializable
+internal data class BecauseBundleDto(val seedName: String, val items: List<ItemDto> = emptyList())
+
+/** A title's formats from the Companion plugin's index. */
+@Serializable
+internal data class TitleFormatsDto(val id: String, val video: List<VideoFormatDto> = emptyList(), val audio: List<String> = emptyList())
+
+@Serializable
+internal data class VideoFormatDto(val codec: String? = null, val bitDepth: Int? = null, val rangeType: String? = null, val dvProfile: Int? = null)
+
+/** One kind of request across the household (Companion, admins). */
+@Serializable
+internal data class HouseholdQueryDto(val shape: String, val count: Int, val people: Int, val totalMs: Long, val medianMs: Long, val slowMs: Long, val maxMs: Long)

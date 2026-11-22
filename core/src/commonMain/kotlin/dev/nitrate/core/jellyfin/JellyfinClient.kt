@@ -185,7 +185,9 @@ class JellyfinClient(
             val status = call.response.status.value
             val bytes = if (counted) runCatching { call.response.readRawBytes().size.toLong() }.getOrNull() else null
             record(if (status < 400) dev.nitrate.core.diagnostics.QueryOutcome.FETCHED else dev.nitrate.core.diagnostics.QueryOutcome.FAILED, status, bytes)
-            if (method != "GET" && status < 400) answers.userDataChanged()
+            // Something sent: lists whose titles depend on watch state go now; the server's
+            // UserDataChanged then fixes the marks in the rest.
+            if (method != "GET" && status < 400) answers.forget { key, kind -> dependsOnWatchState(key, kind) }
             call
         }
     }
@@ -195,6 +197,30 @@ class JellyfinClient(
 
     /** Answers kept a little while and shared between pages and rows ([items]). */
     private val answers = dev.nitrate.core.cache.AnswerCache({ nowEpochMs() })
+
+    /**
+     * Watch state changed (here or on another device). Lists whose titles depend on it (what's
+     * part way, what's next, unwatched or favourites only, by date played) go; every other kept
+     * list keeps its titles with each changed one's marks and progress put right in place, so
+     * nothing is asked again. Without the states (an older server), every list showing marks goes.
+     */
+    internal suspend fun watchStateChanged(states: Map<String, dev.nitrate.core.model.UserState>) {
+        if (states.isEmpty()) { answers.userDataChanged(); return }
+        answers.forget { key, kind -> dependsOnWatchState(key, kind) }
+        answers.patch { value -> patchUserData(value, states) }
+    }
+
+    /** Let [value] (a kept list of titles) show [states]; the same object when nothing in it changed. */
+    @Suppress("UNCHECKED_CAST")
+    private fun patchUserData(value: Any, states: Map<String, dev.nitrate.core.model.UserState>): Any {
+        val list = value as? List<*> ?: return value
+        if (list.none { it is MediaItem && it.id in states }) return value
+        return (list as List<Any?>).map { if (it is MediaItem) states[it.id]?.let { s -> it.copy(user = s) } ?: it else it }
+    }
+
+    /** Whether a kept answer's titles (not just their marks) follow watch state. */
+    private fun dependsOnWatchState(key: String, kind: dev.nitrate.core.cache.AnswerKind): Boolean =
+        kind == dev.nitrate.core.cache.AnswerKind.WATCHING || WATCH_STATE_FILTERS.any { key.contains(it, ignoreCase = true) }
 
     /** Lets go of every kept answer, for a page refreshed by hand. */
     override suspend fun forgetAnswers() = answers.clear()
@@ -749,7 +775,11 @@ class JellyfinClient(
      * log too, so the analyzer can show what sharing saved.
      */
     private suspend fun items(vararg segments: String, query: Map<String, Any?>): List<MediaItem> {
-        val key = (accountKey ?: "$baseUrl|$userId") + "|" + url(*segments, query = query)
+        // A list read here never shows a total, so the server needn't count every match (a
+        // second query over the whole filter); only where Jellyfin takes the switch.
+        @Suppress("NAME_SHADOWING")
+        val query = listQuery(segments, query)
+        val key = answerKey(segments, query)
         val started = kotlin.time.TimeSource.Monotonic.markNow()
         val (value, source) = answers.get(key, answerKind(segments)) {
             get(*segments, query = query).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }
@@ -770,6 +800,114 @@ class JellyfinClient(
         }
         return value
     }
+
+    private fun listQuery(segments: Array<out String>, query: Map<String, Any?>): Map<String, Any?> =
+        if (segments.joinToString("/") in COUNTING_LISTS && query.keys.none { it.equals("enableTotalRecordCount", true) })
+            query + ("enableTotalRecordCount" to false) else query
+
+    /** What a list of titles is kept under: the account and the whole request. */
+    private fun answerKey(segments: Array<out String>, query: Map<String, Any?>): String =
+        (accountKey ?: "$baseUrl|$userId") + "|" + url(*segments, query = listQuery(segments, query))
+
+    /** Keeps [items] as the answer to that list request, as if just asked (from the Companion's bundle). */
+    private suspend fun keepList(segments: Array<out String>, query: Map<String, Any?>, items: List<MediaItem>) =
+        answers.put(answerKey(segments, query), answerKind(segments), items)
+
+    // ---- The Companion plugin's lighter ways (each falls back to the usual requests) ----
+
+    private var companionFeatures: Pair<String, Set<String>>? = null
+    private var companionFeaturesAt = kotlin.time.TimeSource.Monotonic.markNow()
+
+    /** Whether the Companion plugin offers [feature], asked at most every few minutes per account. */
+    private suspend fun companionHas(feature: String): Boolean {
+        val account = accountKey ?: "$baseUrl|$userId"
+        val known = companionFeatures?.takeIf { it.first == account && companionFeaturesAt.elapsedNow().inWholeMilliseconds < COMPANION_FEATURES_MS }
+        val features = known?.second ?: (runCatching { companionApi.info()?.features }.getOrNull() ?: emptySet()).also {
+            companionFeatures = account to it
+            companionFeaturesAt = kotlin.time.TimeSource.Monotonic.markNow()
+        }
+        return feature in features
+    }
+
+    /** "Because you watched" as the plugin made it overnight; null without the plugin (or if it fails). */
+    private suspend fun companionBecause(): List<MediaRow>? {
+        if (!companionHas("because")) return null
+        return runCatching {
+            get("Nitrate", "Because", query = mapOf("limit" to 16)).decode<List<BecauseBundleDto>>().toBecauseRows()
+        }.getOrNull()
+    }
+
+    private fun List<BecauseBundleDto>.toBecauseRows(): List<MediaRow> = mapIndexedNotNull { i, r ->
+        val items = r.items.map { it.toMediaItem() }
+        if (items.isEmpty() || i >= 2) null
+        else MediaRow(dev.nitrate.core.rows.BecauseYouWatched.key(i + 1), "Because you watched ${r.seedName}", items, RowDisplay())
+    }
+
+    /**
+     * Home's heaviest rows in one request to the plugin, kept as the answers Home's own requests
+     * would get, so its row jobs (and app rows on other pages) find them already there. Nothing
+     * happens without the plugin; a failure just leaves the jobs to ask as usual.
+     */
+    private suspend fun homeBundle(skip: Set<String>, combine: Boolean) {
+        if (!companionHas("home")) return
+        val wantsResume = combine || "home/continue_watching" !in skip
+        val wantsNextUp = combine || "home/next_up" !in skip
+        val wantsBecause = dev.nitrate.core.rows.BecauseYouWatched.slots().keys.any { it !in skip }
+        val libraries = lastViews().orEmpty().filter { "home/latest/${it.id}" !in skip }.mapNotNull { v ->
+            when (v.collection) {
+                CollectionKind.MOVIES -> v to "Movie"
+                CollectionKind.TV_SHOWS -> v to "Series"
+                else -> null
+            }
+        }
+        runCatching {
+            val bundle = withQueryOriginHere("Home in one request") {
+                get(
+                    "Nitrate", "Home",
+                    query = mapOf(
+                        "resume" to wantsResume, "nextUp" to wantsNextUp, "because" to wantsBecause, "limit" to ROW_LIMIT,
+                        "latest" to libraries.joinToString(",") { (v, kind) -> "${dashless(listOf(v.id))}:$kind" }.ifEmpty { null },
+                    ),
+                ).decode<HomeBundleDto>()
+            }
+            bundle.resume?.let { keepList(arrayOf("UserItems", "Resume"), resumeQuery(null, null), it.map { d -> d.toMediaItem() }) }
+            bundle.nextUp?.let { keepList(arrayOf("Shows", "NextUp"), NEXT_UP_QUERY, it.map { d -> d.toMediaItem() }) }
+            bundle.latest.forEach { l ->
+                val id = normalizeId(l.libraryId)
+                val (view, kind) = libraries.firstOrNull { it.first.id == id } ?: return@forEach
+                keepList(arrayOf("Items"), queryParams(view.id, kind, if (kind == "Movie") "DateCreated" else "DateLastContentAdded", "Descending", null, null), l.items.map { d -> d.toMediaItem() })
+            }
+            bundle.because?.let { answers.put(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR, it.toBecauseRows() to false) }
+        }
+    }
+
+    private suspend fun <T> withQueryOriginHere(part: String, block: suspend () -> T): T = dev.nitrate.core.diagnostics.withQueryOrigin(part, block)
+
+    private fun becauseKey() = "because|${accountKey ?: "$baseUrl|$userId"}"
+
+    /** What every title in [query]'s library is made of, from the plugin's index; null without it. */
+    private suspend fun companionFormats(query: ItemQuery): Map<String, StreamInfo>? {
+        if (!companionHas("formats")) return null
+        val types = query.types.mapNotNull(::itemTypeName).ifEmpty { null }?.joinToString(",")
+        return runCatching {
+            get("Nitrate", "Formats", query = mapOf("parentId" to query.libraryId?.let { dashless(listOf(it)) }, "types" to types))
+                .decode<List<TitleFormatsDto>>()
+                .associate { t ->
+                    normalizeId(t.id) to StreamInfo(
+                        t.video.map { v -> VideoStreamInfo(Codecs.normalize(v.codec), v.bitDepth, Codecs.rangeTags(v.rangeType, v.dvProfile)) }.toSet(),
+                        t.audio.mapNotNull { Codecs.normalize(it) }.toSet(),
+                    )
+                }
+        }.getOrNull()
+    }
+
+    /** Every person's requests by kind (Companion, admins only); empty without it. */
+    override suspend fun householdQueries(): List<dev.nitrate.core.diagnostics.HouseholdQuery> =
+        if (!companionHas("querytimes")) emptyList()
+        else runCatching {
+            get("Nitrate", "QueryTimes", "Household").decode<List<HouseholdQueryDto>>()
+                .map { dev.nitrate.core.diagnostics.HouseholdQuery(it.shape, it.count, it.people, it.totalMs, it.medianMs, it.slowMs, it.maxMs) }
+        }.getOrDefault(emptyList())
 
     private fun answerKind(segments: Array<out String>): dev.nitrate.core.cache.AnswerKind = when (segments.lastOrNull()) {
         "Similar" -> dev.nitrate.core.cache.AnswerKind.SIMILAR
@@ -807,7 +945,16 @@ class JellyfinClient(
      * each app lists them already (the phone's Libraries tab, the TV menu).
      */
     private fun homeJobs(fresh: Boolean = false, skip: Set<String> = emptySet(), combine: Boolean = false): List<dev.nitrate.core.rows.RowJob> {
-        suspend fun nextUp() = items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS))
+        // With the Companion plugin, Home's heaviest rows come in one request first; each job then
+        // finds its answer kept (or asks as usual when the plugin isn't there or didn't answer).
+        val bundle = kotlinx.coroutines.sync.Mutex()
+        var bundled = false
+        val first: suspend () -> Unit = { bundle.withLock { if (!bundled) { bundled = true; homeBundle(skip, combine) } } }
+        return homeJobList(fresh, skip, combine).map { it.after(first) }
+    }
+
+    private fun homeJobList(fresh: Boolean, skip: Set<String>, combine: Boolean): List<dev.nitrate.core.rows.RowJob> {
+        suspend fun nextUp() = items("Shows", "NextUp", query = NEXT_UP_QUERY)
         // Continue Watching and Next Up as one row, or the two rows.
         val watching = if (combine) listOf(
             dev.nitrate.core.rows.RowJob(dev.nitrate.core.rows.ContinueAndNext.TITLE, dev.nitrate.core.rows.ContinueAndNext.KEY) {
@@ -883,7 +1030,7 @@ class JellyfinClient(
      */
     private suspend fun becauseYouWatched(fresh: Boolean): List<MediaRow> {
         val (rows, saved) = if (fresh) becauseYouWatchedNow(true)
-        else answers.get("because|${accountKey ?: "$baseUrl|$userId"}", dev.nitrate.core.cache.AnswerKind.SIMILAR) { becauseYouWatchedNow(false) }.first
+        else answers.get(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR) { becauseYouWatchedNow(false) }.first
         return if (saved) runCatching { withFreshUserData(rows) }.getOrDefault(rows) else rows
     }
 
@@ -904,6 +1051,8 @@ class JellyfinClient(
     /** The rows, and whether they were kept from earlier (true) rather than just made. */
     @OptIn(ExperimentalTime::class)
     private suspend fun becauseYouWatchedNow(fresh: Boolean): Pair<List<MediaRow>, Boolean> {
+        // Made overnight by the plugin, with today's watch state: nothing costly asked here.
+        companionBecause()?.let { return it to false }
         val key = "because/${accountKey ?: "$baseUrl|$userId"}"
         val now = Clock.System.now().toEpochMilliseconds()
         if (!fresh) {
@@ -1463,7 +1612,7 @@ class JellyfinClient(
     override fun events(): Flow<ServerEvent> = socketEvents { token != null }.onEach {
         when (it) {
             is ServerEvent.LibraryChanged -> answers.clear()
-            is ServerEvent.UserDataChanged -> answers.userDataChanged()
+            is ServerEvent.UserDataChanged -> watchStateChanged(it.states)
             else -> Unit
         }
     }
@@ -1673,6 +1822,8 @@ class JellyfinClient(
         val key = "${baseUrl}|${userId}|${query.libraryId}|${query.types.sorted()}"
         val now = Clock.System.now().toEpochMilliseconds()
         codecIndexes[key]?.takeIf { now - it.builtMs < CODEC_INDEX_TTL_MS }?.let { return@withLock it.streams }
+        // The plugin keeps this index itself: one small answer instead of every title's streams.
+        companionFormats(query)?.let { codecIndexes[key] = CodecIndex(it, now); return@withLock it }
         val found = mutableMapOf<String, Pair<MutableSet<VideoStreamInfo>, MutableSet<String>>>()
         fun add(id: String, streams: List<MediaStreamDto>?) {
             val (video, audio) = found.getOrPut(id) { mutableSetOf<VideoStreamInfo>() to mutableSetOf() }
@@ -2217,6 +2368,18 @@ class JellyfinClient(
 
     internal companion object {
         const val PREFS_CLIENT = "nitrate"
+        /** Request parts that make a list's titles follow watch state. */
+        val WATCH_STATE_FILTERS = listOf("IsPlayed", "IsUnplayed", "IsResumable", "IsFavorite", "DatePlayed", "isPlayed=", "isFavorite=")
+
+        /** Home's Next Up request (the plugin's bundle is kept under it too). */
+        val NEXT_UP_QUERY: Map<String, Any?> = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)
+
+        /** How long the Companion plugin's feature list is trusted. */
+        const val COMPANION_FEATURES_MS = 5 * 60_000L
+
+        /** Lists that count every match unless told not to. */
+        val COUNTING_LISTS = setOf("Items", "UserItems/Resume", "Shows/NextUp")
+
         /** Each request's tag, so the Companion plugin can time it under the app's own name. */
         const val QUERY_TAG_HEADER = "X-Nitrate-Query"
         const val ROW_LIMIT = 24

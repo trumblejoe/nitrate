@@ -13,7 +13,9 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
@@ -98,7 +100,20 @@ internal fun parseEvent(type: String?, data: kotlinx.serialization.json.JsonElem
         }
         "LibraryChanged" -> o?.let { ServerEvent.LibraryChanged(it.list("ItemsAdded").map(::normalizeId), it.list("ItemsUpdated").map(::normalizeId), it.list("ItemsRemoved").map(::normalizeId)) }
         "UserDataChanged" -> o?.let { u ->
-            ServerEvent.UserDataChanged((u["UserDataList"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.s("ItemId")?.let(::normalizeId) })
+            val list = (u["UserDataList"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+            val states = list.mapNotNull { d ->
+                val id = d.s("ItemId")?.let(::normalizeId) ?: return@mapNotNull null
+                id to dev.nitrate.core.model.UserState(
+                    played = (d["Played"] as? JsonPrimitive)?.booleanOrNull ?: false,
+                    playedPercentage = (d["PlayedPercentage"] as? JsonPrimitive)?.doubleOrNull,
+                    positionMs = d.l("PlaybackPositionTicks")?.ticksToMs() ?: 0,
+                    isFavorite = (d["IsFavorite"] as? JsonPrimitive)?.booleanOrNull ?: false,
+                    unplayedCount = (d["UnplayedItemCount"] as? JsonPrimitive)?.intOrNull,
+                    lastPlayedMs = d.s("LastPlayedDate")?.let(::epochMs),
+                    playCount = (d["PlayCount"] as? JsonPrimitive)?.intOrNull ?: 0,
+                )
+            }
+            ServerEvent.UserDataChanged(list.mapNotNull { it.s("ItemId")?.let(::normalizeId) }, states.toMap())
         }
         "SyncPlayCommand" -> o?.let {
             ServerEvent.SyncPlayCommand(

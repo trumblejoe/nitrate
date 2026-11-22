@@ -74,6 +74,9 @@ public class CompanionController : ControllerBase
         features.Add("credits");
         features.Add("timing");
         features.Add("intros");
+        features.Add("because");
+        features.Add("home");
+        features.Add("formats");
         // Only once the timing middleware is known to be in the server's pipeline.
         if (_queryTimes.Active)
         {
