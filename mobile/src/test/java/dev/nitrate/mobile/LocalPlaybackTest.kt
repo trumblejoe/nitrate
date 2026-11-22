@@ -30,9 +30,9 @@ class LocalPlaybackTest {
     @get:Rule val codecs: ShadowMediaCodecConfig = ShadowMediaCodecConfig.withAllDefaultSupportedCodecs()
 
     /** One second of silent 16-bit mono PCM in a WAV file. */
-    private fun wav(file: File): File {
+    private fun wav(file: File, seconds: Int = 1): File {
         val rate = 8000
-        val data = ByteArray(rate * 2)
+        val data = ByteArray(rate * 2 * seconds)
         fun le32(v: Int) = byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte())
         fun le16(v: Int) = byteArrayOf(v.toByte(), (v shr 8).toByte())
         file.writeBytes(
@@ -74,7 +74,7 @@ class LocalPlaybackTest {
         ActivityScenario.launch(ComponentActivity::class.java).onActivity { activity ->
             val container = AppContainer(activity, "test", "0", serverOverride = FakeServer())
             val session = PlaybackSession(activity, container.server, container.playbackSettings, "This device", onEnded = {})
-            val file = wav(File(activity.cacheDir, "styled.wav"))
+            val file = wav(File(activity.cacheDir, "styled.wav"), seconds = 10)
             val ass = File(activity.cacheDir, "sub-3.ass").apply {
                 writeText((if (bom) "\uFEFF" else "") +
                     """
@@ -89,7 +89,7 @@ class LocalPlaybackTest {
 
                     [Events]
                     Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-                    Dialogue: 0,0:00:00.00,0:00:00.90,Default,,0,0,0,,Styled line
+                    Dialogue: 0,0:00:00.00,0:00:09.00,Default,,0,0,0,,Styled line
                     """.trimIndent(),
                 )
             }
