@@ -116,6 +116,8 @@ import kotlinx.serialization.Serializable
 @Serializable object HouseholdDevicesRoute
 @Serializable object WatchTogetherRoute
 @Serializable object ChannelsRoute
+@Serializable object FranchisesRoute
+@Serializable data class FranchiseHubRoute(val collectionId: String)
 @Serializable object WatchPartnersRoute
 @Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ProfilesRoute
@@ -254,6 +256,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onTogether = { nav.navigate(WatchTogetherRoute, fromHome) },
                 onChannels = if (channelsOn) ({ nav.navigate(ChannelsRoute, fromHome) }) else null,
                 onComics = { nav.navigate(CatalogsRoute, fromHome) },
+                onFranchises = { nav.navigate(FranchisesRoute, fromHome) },
                 onSettings = { nav.navigate(SettingsHubRoute, fromHome) },
                 onProfiles = { nav.navigate(ProfilesRoute) },
                 onQuickSwitch = { quickSwitch = true },
@@ -570,6 +573,18 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<CatalogBookRoute> { entry ->
             val route = entry.toRoute<CatalogBookRoute>()
             dev.nitrate.tv.ui.comics.CatalogReaderScreen(container, route.catalogId, catalogJson.decodeFromString(dev.nitrate.core.catalogs.CatalogBook.serializer(), route.book), onExit = { nav.popBackStack() })
+        }
+        composable<FranchisesRoute> {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.FRANCHISES, overlay = false, defaultTheme = dev.nitrate.core.effects.PageTheme.COSMIC_RIFT) {
+                dev.nitrate.tv.ui.franchise.FranchisesScreen(container, onOpen = { id -> nav.navigate(FranchiseHubRoute(id)) })
+            }
+        }
+        composable<FranchiseHubRoute> { entry ->
+            dev.nitrate.tv.ui.franchise.FranchiseHubScreen(
+                container, entry.toRoute<FranchiseHubRoute>().collectionId,
+                onPlay = { item -> gate.play(item) },
+                onOpen = nav::openItem,
+            )
         }
         composable<ChannelsRoute> {
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.CHANNELS, overlay = false) {

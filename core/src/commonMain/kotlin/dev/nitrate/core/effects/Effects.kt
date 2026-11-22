@@ -50,6 +50,12 @@ enum class PageTheme(val label: String, val detail: String) {
     ROSES("Roses and thorns", "Climbing briars in bloom, petals drifting down"),
     FLOWERS("Flower garden", "A meadow of blossoms swaying, petals on the breeze"),
     POETRY("Poetry", "Old Japanese verses fading in and out, cherry petals falling"),
+    LIGHTNING_RUN("Lightning run", "A streak of lightning racing down a city street at night, sparks flying"),
+    NIGHT_WATCH("Night watch", "Rain on the rooftops, searchlights sweeping, an arrow's streak now and then"),
+    COSMIC_RIFT("Cosmic rift", "A ring of sparks torn open onto another sky, shards drifting past"),
+    ARENA_DUSK("Arena at dusk", "Forest and smoke under a burning sky, embers on the wind"),
+    HIGH_KINGDOM("High kingdom", "A castle above the mist at sunrise, pennants flying, birds crossing"),
+    SPELLBOUND("Spellbound", "Floating candles under a starry vault, moonlight through tall windows"),
 }
 
 /** How much of each effect there is. */
@@ -216,6 +222,7 @@ object PageThemes {
         stop == dev.nitrate.core.pages.MenuStops.HOME -> dev.nitrate.core.pages.PageKeys.HOME
         stop.startsWith("library:") -> dev.nitrate.core.pages.PageKeys.library(stop.removePrefix("library:"))
         stop.startsWith("page:") -> dev.nitrate.core.pages.PageKeys.custom(stop.removePrefix("page:"))
+        stop == dev.nitrate.core.pages.MenuStops.FRANCHISES -> "franchises"
         else -> null
     }
 }

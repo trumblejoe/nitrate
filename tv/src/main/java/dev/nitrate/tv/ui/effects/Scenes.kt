@@ -254,6 +254,12 @@ private fun DrawScope.drawTheme(theme: PageTheme, t: Float, k: Float) {
         PageTheme.ROSES -> rosesAndThorns(t, k)
         PageTheme.FLOWERS -> flowerGarden(t, k)
         PageTheme.POETRY -> poetry(t, k)
+        PageTheme.LIGHTNING_RUN -> lightningRun(t, k)
+        PageTheme.NIGHT_WATCH -> nightWatch(t, k)
+        PageTheme.COSMIC_RIFT -> cosmicRift(t, k)
+        PageTheme.ARENA_DUSK -> arenaDusk(t, k)
+        PageTheme.HIGH_KINGDOM -> highKingdom(t, k)
+        PageTheme.SPELLBOUND -> spellbound(t, k)
     }
 }
 

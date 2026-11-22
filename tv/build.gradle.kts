@@ -63,7 +63,12 @@ android {
         unitTests.isReturnDefaultValues = true
         unitTests.isIncludeAndroidResources = true
         // Screenshot tests write PNGs to build/outputs/roborazzi (see ScreenshotTest).
-        unitTests.all { it.systemProperty("roborazzi.test.record", "true") }
+        unitTests.all {
+            it.systemProperty("roborazzi.test.record", "true")
+            // SceneGalleryTest: -Pscenes=THEME,THEME draws those themes as pictures.
+            (project.findProperty("scenes") as String?)?.let { s -> it.systemProperty("scenes", s) }
+            (project.findProperty("sceneTimes") as String?)?.let { s -> it.systemProperty("sceneTimes", s) }
+        }
     }
 
     buildFeatures {

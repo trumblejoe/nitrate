@@ -144,6 +144,7 @@ class FakeServer : MediaServer {
     override suspend fun albumTracks(albumId: String) = tracks
     override suspend fun instantMix(itemId: String) = tracks.shuffled()
     override suspend fun getItem(id: String) = when (id) {
+        "c1" -> MediaItem("c1", "Reel Classics", ItemKind.BOX_SET)
         album.id -> album
         series.id -> series
         movies.id -> movies
@@ -205,7 +206,8 @@ class FakeServer : MediaServer {
         .mapIndexed { i, n -> movie("x$i", n, 1980 + i * 3) }).sortedBy { it.name }
     override suspend fun queryPage(query: dev.nitrate.core.pages.ItemQuery, startIndex: Int, limit: Int) =
         shelf.drop(startIndex).take(limit) to shelf.size
-    override suspend fun collectionItems(collectionId: String) = films.take(3)
+    /** "Reel Classics" is a franchise of two films and a show; other collections hold films. */
+    override suspend fun collectionItems(collectionId: String) = if (collectionId == "c1") films.take(2) + series else films.take(3)
     override suspend fun genres(libraryId: String?) = listOf("Action", "Comedy", "Drama", "Horror", "Mystery", "Sci-Fi", "Thriller")
     override suspend fun collections() = listOf(MediaItem("c1", "Reel Classics", ItemKind.BOX_SET), MediaItem("c2", "Midnight Movies", ItemKind.BOX_SET))
     /** A check from far away: a slow round trip and a slow library search, the rest fine. */

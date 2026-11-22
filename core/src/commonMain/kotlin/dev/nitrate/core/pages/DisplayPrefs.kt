@@ -80,6 +80,8 @@ data class DisplayPrefs(
     val effects: dev.nitrate.core.effects.EffectsPrefs = dev.nitrate.core.effects.EffectsPrefs(),
     /** Each page's animated theme, by page key (Home, a library, a custom page). */
     val pageThemes: Map<String, dev.nitrate.core.effects.PageTheme> = emptyMap(),
+    /** Each franchise hub's watch order, by collection id (missing = the hub's default). */
+    val franchiseOrders: Map<String, dev.nitrate.core.franchise.WatchOrder> = emptyMap(),
     /** What each page draws behind it (by page key; missing = the focused title's picture). */
     val pageBackdrops: Map<String, dev.nitrate.core.effects.PageBackdrop> = emptyMap(),
     /** What plays before titles: verses, scenes, the server's intros (off until switched on). */

@@ -1473,8 +1473,8 @@ class TvScreenshotTest {
         press("up")
         compose.onNodeWithText("Search").assertExists()
         press("up", "right")
-        // Ring two by default: Your pages up, Watch together right.
-        compose.onNodeWithText("Watch together").assertExists()
+        // Ring two by default: Channels up, Your pages right.
+        compose.onNodeWithText("Your pages").assertExists()
     }
 
     @Test fun homeFullArtLeft() = fullArt(dev.nitrate.core.pages.TvMenuStyle.LEFT)
@@ -1707,6 +1707,14 @@ class TvScreenshotTest {
             (1..24).map { "Change number $it: something better about watching, browsing or settings" },
         )
         dev.nitrate.tv.ui.components.UpdateDialog(dev.nitrate.android.update.UpdateState.Available(release), onUpdate = {}, onLater = {}, onDismiss = {})
+    }
+
+    /** Franchises: the user's collections as wide cards. */
+    @Test fun franchises() = shoot("tv-franchises", settleMs = 2_000) { c -> dev.nitrate.tv.ui.franchise.FranchisesScreen(c, onOpen = {}) }
+
+    /** A franchise hub: logo or name, progress, next, the order with crossovers, its titles, in its mood. */
+    @Test fun franchiseHub() = shoot("tv-franchise-hub", settleMs = 2_500) { c ->
+        dev.nitrate.tv.ui.franchise.FranchiseHubScreen(c, "c1", onPlay = {}, onOpen = {})
     }
 
     /** The watch diary on TV. */

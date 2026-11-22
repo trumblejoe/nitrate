@@ -337,6 +337,10 @@ class ScreenshotTest {
     /** The watch diary. */
     @Test fun diary() = shoot("phone-diary") { actions -> dev.nitrate.mobile.ui.DiaryScreen(actions) }
 
+    @Test fun franchises() = shoot("phone-franchises") { actions -> dev.nitrate.mobile.ui.FranchisesScreen(actions) }
+
+    @Test fun franchiseHub() = shoot("phone-franchise-hub") { actions -> dev.nitrate.mobile.ui.FranchiseHubScreen(actions, "c1") }
+
     /** Search finds what people say too. */
     @Test fun saidIn() = shoot("phone-search-said-in", setup = { c -> c.refreshCompanionForTests() }) { actions -> dev.nitrate.mobile.ui.SearchScreen(actions, initialQuery = "need a bigger boat", autoFocus = false) }
 

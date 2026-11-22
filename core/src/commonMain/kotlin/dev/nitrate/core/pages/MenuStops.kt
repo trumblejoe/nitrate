@@ -11,6 +11,8 @@ object MenuStops {
     const val PAGES = "pages"
     const val TOGETHER = "together"
     const val CHANNELS = "channels"
+    /** Franchise hubs: the user's collections as themed pages. */
+    const val FRANCHISES = "franchises"
 
     /** Comic catalogs (OPDS, CLU): not in the menu until added in Menu stops. */
     const val COMICS = "comics"
@@ -28,7 +30,7 @@ object MenuStops {
 
     /** The menu before the user changes it: Search, Home, each library, pinned pages, then the rest. */
     fun defaults(libraryIds: List<String>, pinnedPageIds: List<String>): List<String> =
-        listOf(SEARCH, HOME) + libraryIds.map(::library) + pinnedPageIds.map(::page) + listOf(CHANNELS, PAGES, TOGETHER, SETTINGS, PROFILES)
+        listOf(SEARCH, HOME) + libraryIds.map(::library) + pinnedPageIds.map(::page) + listOf(FRANCHISES, CHANNELS, PAGES, TOGETHER, SETTINGS, PROFILES)
 
     /**
      * What to show: the saved slots (or [defaults]) without stops that no longer exist (a removed
