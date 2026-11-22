@@ -217,10 +217,3 @@ enum class PlaylistTileImage(val label: String, val columns: Int) {
 
 @Serializable
 enum class PlaylistProgress(val label: String) { NONE("None"), COUNT("Unwatched count"), BAR("Progress bar") }
-
-/** View options for a single playlist page. */
-@Serializable
-data class PlaylistPageView(
-    /** Large header for the focused item over its backdrop. */
-    val cinematic: Boolean = true,
-)

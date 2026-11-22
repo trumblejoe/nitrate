@@ -222,7 +222,6 @@ object PageThemes {
         stop == dev.nitrate.core.pages.MenuStops.HOME -> dev.nitrate.core.pages.PageKeys.HOME
         stop.startsWith("library:") -> dev.nitrate.core.pages.PageKeys.library(stop.removePrefix("library:"))
         stop.startsWith("page:") -> dev.nitrate.core.pages.PageKeys.custom(stop.removePrefix("page:"))
-        stop == dev.nitrate.core.pages.MenuStops.FRANCHISES -> "franchises"
         else -> null
     }
 }

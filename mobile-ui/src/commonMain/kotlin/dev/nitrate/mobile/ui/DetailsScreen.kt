@@ -201,8 +201,6 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         // Marked moments and, only when asked, the chat kept from watching it together.
                         if (item.isPlayable && !music) MomentsAndChatButtons(actions, item.id) { at -> actions.playFrom(item, at) }
                     }
-                    // Where it sits in the user's franchises (video playlists), with the way into each hub.
-                    if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE) FranchisePlaces(actions, item)
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
                     item.overview?.takeIf { prefs.overview }?.let { overview ->
                         // Spoiler hiding: unwatched movies and episodes keep their description until asked for.

@@ -116,8 +116,6 @@ import kotlinx.serialization.Serializable
 @Serializable object HouseholdDevicesRoute
 @Serializable object WatchTogetherRoute
 @Serializable object ChannelsRoute
-@Serializable object FranchisesRoute
-@Serializable data class FranchiseHubRoute(val playlistId: String)
 @Serializable object WatchPartnersRoute
 @Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ProfilesRoute
@@ -256,7 +254,6 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onTogether = { nav.navigate(WatchTogetherRoute, fromHome) },
                 onChannels = if (channelsOn) ({ nav.navigate(ChannelsRoute, fromHome) }) else null,
                 onComics = { nav.navigate(CatalogsRoute, fromHome) },
-                onFranchises = { nav.navigate(FranchisesRoute, fromHome) },
                 onSettings = { nav.navigate(SettingsHubRoute, fromHome) },
                 onProfiles = { nav.navigate(ProfilesRoute) },
                 onQuickSwitch = { quickSwitch = true },
@@ -336,7 +333,6 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 seasonId = route.seasonId,
                 onPlay = { item, fromStart -> gate.play(item, fromStart) },
                 onPlayFrom = { item, at -> gate.play(item, startMs = at) },
-                onFranchise = { id -> nav.navigate(FranchiseHubRoute(id)) },
                 onOpen = nav::openItem,
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
@@ -575,18 +571,6 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             val route = entry.toRoute<CatalogBookRoute>()
             dev.nitrate.tv.ui.comics.CatalogReaderScreen(container, route.catalogId, catalogJson.decodeFromString(dev.nitrate.core.catalogs.CatalogBook.serializer(), route.book), onExit = { nav.popBackStack() })
         }
-        composable<FranchisesRoute> {
-            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.FRANCHISES, overlay = false, defaultTheme = dev.nitrate.core.effects.PageTheme.COSMIC_RIFT) {
-                dev.nitrate.tv.ui.franchise.FranchisesScreen(container, onOpen = { id -> nav.navigate(FranchiseHubRoute(id)) })
-            }
-        }
-        composable<FranchiseHubRoute> { entry ->
-            dev.nitrate.tv.ui.franchise.FranchiseHubScreen(
-                container, entry.toRoute<FranchiseHubRoute>().playlistId,
-                onPlay = { item -> gate.play(item) },
-                onOpen = nav::openItem,
-            )
-        }
         composable<ChannelsRoute> {
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.CHANNELS, overlay = false) {
                 dev.nitrate.tv.ui.channels.ChannelsScreen(
@@ -637,6 +621,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             PlaylistScreen(
                 repository = container.server,
                 settings = container.displaySettings,
+                playlists = container.playlists,
                 playlistId = entry.toRoute<PlaylistRoute>().playlistId,
                 onPlayQueue = { items -> listen(items) },
                 onOpen = nav::openItem,

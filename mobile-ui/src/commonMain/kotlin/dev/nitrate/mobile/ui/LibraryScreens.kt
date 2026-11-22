@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.filled.Edit
 import dev.nitrate.core.pages.PageKeys
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -202,10 +204,18 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
     // Kept while the page is in the back stack: coming back shows it at once, then refreshes quietly.
     var playlist by retained<MediaItem?>("playlist/$playlistId") { null }
     var items by retained<List<MediaItem>?>("playlist-items/$playlistId") { null }
+    // A video playlist's whole run (shows put in whole as their episodes), for where the user is.
+    var entries by retained<List<MediaItem>?>("playlist-entries/$playlistId") { null }
     LaunchedEffect(playlistId, refresh) {
         runCatching { server.getItem(playlistId) }.getOrNull()?.let { playlist = it }
         items = runCatching { server.playlistItems(playlistId) }.getOrElse { items ?: emptyList() }
+        if (items.orEmpty().any { it.mediaKind != MediaKind.AUDIO }) {
+            val playing = actions.container.playlists
+            if (entries == null) entries = playing.cached(playlistId)
+            entries = runCatching { playing.entries(playlistId, fresherThanMs = if (refresh > 0) 0 else dev.nitrate.android.playlists.PlaylistPlaying.KEEP_MS) }.getOrNull() ?: entries
+        }
     }
+    var menuFor by remember { mutableStateOf<MediaItem?>(null) }
     var editing by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
@@ -238,10 +248,26 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                 else actions.play(item, false)
             }
         }
+        // Where the user is: how much is watched and what's next (carrying on from the entry played most recently, in any app).
+        val all = entries ?: list
+        val status = if (video) dev.nitrate.core.playlists.PlaylistPlaces.progress(all) else null
+        val placeAt = if (video) dev.nitrate.core.playlists.PlaylistPlaces.lastPlayed(all) else null
+        val videoNext = if (video) dev.nitrate.core.playlists.PlaylistPlaces.nextUp(all) else null
+        // The playlist's own entry holding what's next (a whole show or season stands for its episodes).
+        val nextEntry = videoNext?.let { n -> list.indexOfFirst { it.id == n.id || it.id == n.seriesId || it.id == n.seasonId } }?.takeIf { it >= 0 }
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    status?.takeIf { it.total > 0 }?.let { s ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { s.share }, modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                drawStopIndicator = {},
+                            )
+                            Text(s.line, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (editing) {
                             OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
@@ -264,10 +290,10 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                             inOrder, { scope.launch { actions.container.setRecapPlaylist(playlist!!.id, !inOrder) } },
                             label = { Text("In story order: recap when I come back") },
                         )
-                        // A video playlist carries on from where it was left (the entry played most recently, in any app), else its first unwatched.
-                        val placeAt = list.withIndex().filter { it.value.user.lastPlayedMs != null }.maxByOrNull { it.value.user.lastPlayedMs!! }?.index
-                        val next = placeAt?.let { list.drop(it).firstOrNull { e -> !e.user.played } } ?: list.firstOrNull { !it.user.played }
-                        if (next != null && (placeAt != null || next != list.first()) && (video || inOrder)) Button(onClick = {
+                        // A video playlist carries on from where it was left; in story order, from its first unwatched.
+                        val next = if (video) videoNext else list.firstOrNull { !it.user.played }
+                        val notTheStart = if (video) placeAt != null || next?.id != all.firstOrNull()?.id else next != list.firstOrNull()
+                        if (next != null && notTheStart && (video || inOrder)) Button(onClick = {
                             if (video) playFrom(next) else scope.launch {
                                 val recap = actions.container.recapBefore(next, playlist)
                                 if (recap != null) actions.nav.navigate(RecapRoute)
@@ -282,7 +308,11 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                 val thumb = if (audio) server.imageUrl(item, ImageKind.PRIMARY, 120) else server.cardImage(item, CardShape.WIDE, 160)
                 val entry = item.playlistEntryId
                 ListItem(
-                    modifier = Modifier.clickable(enabled = !editing) { if (!audio && video) playFrom(item) else actions.playQueue(list.drop(index).map { it.id }) },
+                    // A tap plays from there; a long press offers the rest (a video playlist's entries).
+                    modifier = Modifier.combinedClickable(
+                        enabled = !editing,
+                        onLongClick = if (!audio && video) ({ menuFor = item }) else null,
+                    ) { if (!audio && video) playFrom(item) else actions.playQueue(list.drop(index).map { it.id }) },
                     leadingContent = {
                         Box(Modifier.height(48.dp).aspectRatio(if (audio) 1f else 16f / 9f).clip(RoundedCornerShape(6.dp))) {
                             if (thumb != null) AsyncImage(thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -308,7 +338,11 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                                 )
                             }
                         } else {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (index == nextEntry) Text(
+                                    "NEXT", style = MaterialTheme.typography.labelSmall, color = androidx.compose.ui.graphics.Color.Black,
+                                    modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(androidx.compose.ui.graphics.Color.White).padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
                                 if (item.user.played && LocalDisplayPrefs.current.watchedMarks) Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.primary)
                                 item.runtimeMs?.takeIf { LocalDisplayPrefs.current.runtime }?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium) }
                             }
@@ -317,6 +351,25 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                 )
             }
         }
+    }
+    menuFor?.let { item ->
+        val playing = actions.container.playlists
+        AlertDialog(
+            onDismissRequest = { menuFor = null },
+            title = { Text(item.displayTitle) },
+            text = {
+                Column {
+                    @Composable
+                    fun choice(label: String, act: () -> Unit) =
+                        TextButton(onClick = { menuFor = null; act() }, modifier = Modifier.fillMaxWidth()) { Text(label, modifier = Modifier.fillMaxWidth()) }
+                    choice("Play from here") { scope.launch { playing.startedFrom(playlistId, item.id); actions.play(item, false) } }
+                    choice("Open it") { actions.open(item) }
+                    choice("Mark watched up to here") { change { playing.markUpTo(playlistId, item.id, true) } }
+                    choice("Mark unwatched from here on") { change { playing.markUpTo(playlistId, item.id, false) } }
+                }
+            },
+            confirmButton = { TextButton(onClick = { menuFor = null }) { Text("Cancel") } },
+        )
     }
     if (renaming) {
         var name by remember { mutableStateOf(playlist?.name.orEmpty()) }

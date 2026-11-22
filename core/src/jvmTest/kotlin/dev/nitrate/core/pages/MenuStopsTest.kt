@@ -8,7 +8,7 @@ class MenuStopsTest {
     private val available = defaults.toSet()
 
     @Test fun defaultsInOrder() {
-        assertEquals(listOf("search", "home", "library:m", "library:s", "page:p1", "franchises", "channels", "pages", "together", "settings", "profiles"), defaults)
+        assertEquals(listOf("search", "home", "library:m", "library:s", "page:p1", "channels", "pages", "together", "settings", "profiles"), defaults)
         assertEquals(defaults, MenuStops.arrange(null, available, defaults))
         // Without channels on this server the defaults close up (no gap on the dial).
         assertEquals(defaults - "channels", MenuStops.arrange(null, available - "channels", defaults))
@@ -18,6 +18,8 @@ class MenuStopsTest {
         // A removed library leaves an empty spot (it matters on the dial); Settings comes back if left out.
         assertEquals(listOf("home", null, "search", "settings"), MenuStops.arrange(listOf("home", "library:gone", "search"), available, defaults))
         assertEquals(listOf("settings"), MenuStops.arrange(listOf("library:gone", null), available, defaults))
+        // A stop the app no longer has (the old "franchises") is just left out of the rail.
+        assertEquals(listOf("home", "search", "settings"), MenuStops.linear(MenuStops.arrange(listOf("home", "franchises", "search"), available, defaults)))
     }
 
     @Test fun placingMovesAndSwaps() {

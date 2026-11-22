@@ -145,8 +145,8 @@ fun PlayerScreen(
      * unreported (like a recap clip), then its trail is handed here before the player leaves.
      */
     testPlay: ((dev.nitrate.core.playback.TestPlayResult) -> Unit)? = null,
-    /** The playlist this title is being watched through, if any, and what follows it there (`PlaylistOrders.contextOf`). */
-    playlistNext: (suspend (MediaItem) -> dev.nitrate.android.franchise.PlaylistContext?)? = null,
+    /** The playlist this title is being watched through, if any, and what follows it there (`PlaylistPlaying.contextOf`). */
+    playlistNext: (suspend (MediaItem) -> dev.nitrate.android.playlists.PlaylistContext?)? = null,
     /** Hears skips and jumps back into what was skipped, so wrong intro/recap marks get fixed (Companion). */
     skipWatch: dev.nitrate.core.companion.SkipWatch? = null,
 ) {

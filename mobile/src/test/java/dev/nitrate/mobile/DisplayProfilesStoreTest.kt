@@ -41,6 +41,20 @@ class DisplayProfilesStoreTest {
         assertEquals(TvMenuStyle.RADIAL, s.prefs(user).first().tvMenu)
     }
 
+    /** Settings saved by a version that had franchise hubs still read, with what's left of them. */
+    @Test
+    fun settingsWithRemovedFieldsStillRead() = runBlocking {
+        val s = store()
+        s.savePrefs(user, DisplayPrefs(tvMenu = TvMenuStyle.TOP))
+        val active = s.activeProfile(user).first()
+        val key = "p:$active:prefs"
+        val all = s.export(user)
+        val old = all.getValue(key).removeSuffix("}") + ""","franchiseOrders":{"p1":"AIRED"},"franchiseHidden":["p2"]}"""
+        s.import(user, all + (key to old))
+        s.useProfile(user, active)
+        assertEquals(TvMenuStyle.TOP, s.prefs(user).first().tvMenu)
+    }
+
     @Test
     fun spoilerHidingIsTheSameInEveryProfileAndDoesNotStartOne() = runBlocking {
         val s = store()

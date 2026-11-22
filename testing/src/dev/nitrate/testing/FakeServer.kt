@@ -162,7 +162,7 @@ class FakeServer : MediaServer {
     override suspend fun allEpisodes(seriesId: String) = (1..3).flatMap { s -> (1..6).map { episode(s, it, s < 2) } }
     override suspend fun nextUpFor(seriesId: String) = episode(2, 4, false)
     override suspend fun similar(itemId: String) = films
-    /** "Rainy day" is a franchise playlist: a film, a few episodes, another film, then the rest of the show. */
+    /** "Rainy day" is a video playlist in watch order: a film, a few episodes, another film, then the rest of the show. */
     override suspend fun playlistItems(playlistId: String) =
         if (playlistId == "p1") listOf(films[0], episode(1, 1, true), episode(1, 2, true), films[1], episode(1, 3, false), episode(2, 1, false)) else films
     override suspend fun setPlayed(itemId: String, played: Boolean) = Unit
