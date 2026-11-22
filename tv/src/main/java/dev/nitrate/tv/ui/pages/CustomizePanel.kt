@@ -201,7 +201,7 @@ private fun LazyListScope.rowSection(
     item { ListItem(selected = false, onClick = { vm.move(entry.id, -1) }, headlineContent = { Text("Move up") }, supportingContent = { Text("The row moves on the page as you press") }) }
     item { ListItem(selected = false, onClick = { vm.move(entry.id, 1) }, headlineContent = { Text("Move down") }) }
     item { ListItem(selected = false, onClick = onRename, headlineContent = { Text("Rename") }, trailingContent = { Text("${vm.titleOf(entry)}  ›", color = MaterialTheme.colorScheme.primary) }) }
-    item { ListItem(selected = false, onClick = { vm.setHidden(entry.id, true); onClose() }, headlineContent = { Text("Hide this row") }, supportingContent = { Text("Back again from This page → Rows") }) }
+    item { ListItem(selected = false, onClick = { vm.setHidden(entry.id, true); onClose() }, headlineContent = { Text("Hide this row") }, supportingContent = { Text("Turned off: not loaded at all until shown again from This page → Rows") }) }
 }
 
 /**

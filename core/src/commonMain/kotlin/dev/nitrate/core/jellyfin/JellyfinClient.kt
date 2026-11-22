@@ -694,29 +694,45 @@ class JellyfinClient(
      * in…" each library and "Because you watched". The libraries themselves aren't a Home row:
      * each app lists them already (the phone's Libraries tab, the TV menu).
      */
-    private fun homeJobs(fresh: Boolean = false): List<dev.nitrate.core.rows.RowJob> {
-        return listOf(
-            dev.nitrate.core.rows.RowJob("Continue Watching") {
+    private fun homeJobs(fresh: Boolean = false, skip: Set<String> = emptySet(), combine: Boolean = false): List<dev.nitrate.core.rows.RowJob> {
+        suspend fun nextUp() = items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS))
+        // Continue Watching and Next Up as one row, or the two rows.
+        val watching = if (combine) listOf(
+            dev.nitrate.core.rows.RowJob(dev.nitrate.core.rows.ContinueAndNext.TITLE, dev.nitrate.core.rows.ContinueAndNext.KEY) {
+                coroutineScope {
+                    val resume = async { resumeItems(parentId = null, types = null) }
+                    val next = async { nextUp() }
+                    dev.nitrate.core.rows.ContinueAndNext.merge(resume.await(), next.await()).let {
+                        if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.rows.ContinueAndNext.KEY, dev.nitrate.core.rows.ContinueAndNext.TITLE, it, WIDE_DEFAULT))
+                    }
+                }
+            },
+        ) else listOf(
+            dev.nitrate.core.rows.RowJob("Continue Watching", "home/continue_watching") {
                 resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT)) }
             },
-            dev.nitrate.core.rows.RowJob("Next Up") {
-                items("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
+            dev.nitrate.core.rows.RowJob("Next Up", "home/next_up") {
+                nextUp().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
             },
-            dev.nitrate.core.rows.RowJob("Continue Listening") {
+        )
+        return watching + listOf(
+            dev.nitrate.core.rows.RowJob("Continue Listening", "home/continue_listening") {
                 items(
                     "UserItems", "Resume",
                     query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook"),
                 ).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_listening", "Continue Listening", it, RowDisplay())) }
             },
-            dev.nitrate.core.rows.RowJob("Continue Reading") {
+            dev.nitrate.core.rows.RowJob("Continue Reading", "home/continue_reading") {
                 continueReading(null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
             },
-            dev.nitrate.core.rows.RowJob("Watching together") {
+            dev.nitrate.core.rows.RowJob("Watching together", dev.nitrate.core.partners.TogetherRow.KEY) {
                 watchingTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.partners.TogetherRow.KEY, dev.nitrate.core.partners.TogetherRow.TITLE, it, WIDE_DEFAULT)) }
             },
             dev.nitrate.core.rows.RowJob.showing("Latest in each library") { show ->
                 coroutineScope {
-                    fun wanted(view: MediaItem) = view.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null)
+                    // A library's "Latest in…" row the page hides is never asked for.
+                    fun wanted(view: MediaItem) = view.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null) &&
+                        "home/latest/${view.id}" !in skip
                     // Some servers take seconds to list libraries: show the rows for the list from
                     // last time straight away, then add (or drop) whatever the fresh list changes.
                     val started = mutableMapOf<String, kotlinx.coroutines.Deferred<List<MediaItem>>>()
@@ -734,7 +750,7 @@ class JellyfinClient(
                     rowsFor(list)
                 }
             },
-            dev.nitrate.core.rows.RowJob("Because you watched") { becauseYouWatched(fresh) },
+            dev.nitrate.core.rows.RowJob("Because you watched", null) { becauseYouWatched(fresh) },
         )
     }
 
@@ -769,7 +785,10 @@ class JellyfinClient(
 
     private var savedBecauseKey: String? = null
 
-    override fun homeRowsProgress(): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(homeJobs())
+    override fun homeRowsProgress(skip: Set<String>): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(homeJobs(skip = skip), skip)
+
+    override fun homeRowsProgress(skip: Set<String>, combineContinueNextUp: Boolean): Flow<dev.nitrate.core.rows.RowsProgress> =
+        dev.nitrate.core.rows.ProgressiveRows.run(homeJobs(skip = skip, combine = combineContinueNextUp), skip)
 
     override suspend fun homeRows(): List<MediaRow> = homeRowsProgress().last().rows
 
@@ -810,7 +829,7 @@ class JellyfinClient(
         val now = Clock.System.now().toString()
         val jobs = mutableListOf<dev.nitrate.core.rows.RowJob>()
         fun add(key: String, title: String, display: RowDisplay = RowDisplay(), load: suspend () -> List<MediaItem>) {
-            jobs += dev.nitrate.core.rows.RowJob(title) { load().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("$prefix/$key", title, it, display)) } }
+            jobs += dev.nitrate.core.rows.RowJob(title, "$prefix/$key") { load().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("$prefix/$key", title, it, display)) } }
         }
 
         when (library.collection) {
@@ -844,7 +863,7 @@ class JellyfinClient(
         return jobs
     }
 
-    override fun libraryRowsProgress(library: MediaItem): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(libraryJobs(library))
+    override fun libraryRowsProgress(library: MediaItem, skip: Set<String>): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(libraryJobs(library), skip)
 
     override suspend fun libraryRows(library: MediaItem): List<MediaRow> = libraryRowsProgress(library).last().rows
 

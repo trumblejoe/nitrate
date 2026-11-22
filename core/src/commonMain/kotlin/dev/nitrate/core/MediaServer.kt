@@ -143,13 +143,30 @@ interface MediaServer {
     suspend fun homeRows(): List<MediaRow>
     suspend fun libraryRows(library: MediaItem): List<MediaRow>
 
-    /** Home's rows as each arrives, so the page needn't wait for its slowest row. */
-    fun homeRowsProgress(): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
-        kotlinx.coroutines.flow.flow { emit(dev.nitrate.core.rows.RowsProgress(homeRows(), complete = true)) }
+    /** Home's rows as each arrives, so the page needn't wait for its slowest row; rows keyed in [skip] (hidden) aren't loaded. */
+    fun homeRowsProgress(skip: Set<String> = emptySet()): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
+        kotlinx.coroutines.flow.flow { emit(dev.nitrate.core.rows.RowsProgress(homeRows().filterNot { it.key in skip }, complete = true)) }
 
-    /** A library's overview rows as each arrives. */
-    fun libraryRowsProgress(library: MediaItem): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
-        kotlinx.coroutines.flow.flow { emit(dev.nitrate.core.rows.RowsProgress(libraryRows(library), complete = true)) }
+    /**
+     * Home's rows with Continue Watching and Next Up as one row when [combineContinueNextUp]
+     * (`ContinueAndNext.KEY`; the two separate rows aren't loaded then).
+     */
+    fun homeRowsProgress(skip: Set<String>, combineContinueNextUp: Boolean): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
+        if (!combineContinueNextUp) homeRowsProgress(skip)
+        else kotlinx.coroutines.flow.flow {
+            val rows = homeRows()
+            val merged = dev.nitrate.core.rows.ContinueAndNext.merge(
+                rows.firstOrNull { it.key == "home/continue_watching" }?.items.orEmpty(),
+                rows.firstOrNull { it.key == "home/next_up" }?.items.orEmpty(),
+            )
+            val combined = merged.takeIf { it.isNotEmpty() && dev.nitrate.core.rows.ContinueAndNext.KEY !in skip }
+                ?.let { dev.nitrate.core.rows.MediaRow(dev.nitrate.core.rows.ContinueAndNext.KEY, dev.nitrate.core.rows.ContinueAndNext.TITLE, it, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE)) }
+            emit(dev.nitrate.core.rows.RowsProgress(listOfNotNull(combined) + rows.filterNot { it.key in skip || it.key == "home/continue_watching" || it.key == "home/next_up" }, complete = true))
+        }
+
+    /** A library's overview rows as each arrives; rows keyed in [skip] (hidden) aren't loaded. */
+    fun libraryRowsProgress(library: MediaItem, skip: Set<String> = emptySet()): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
+        kotlinx.coroutines.flow.flow { emit(dev.nitrate.core.rows.RowsProgress(libraryRows(library).filterNot { it.key in skip }, complete = true)) }
 
     /** One page of a library for grids. Returns the items and the total count. */
     suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean = false): Pair<List<MediaItem>, Int>

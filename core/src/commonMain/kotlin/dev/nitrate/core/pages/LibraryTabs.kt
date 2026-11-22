@@ -95,6 +95,8 @@ object LibraryTabs {
         studios: suspend () -> List<String>,
         years: suspend () -> List<Int>,
         load: suspend (ItemQuery) -> List<dev.nitrate.core.model.MediaItem>,
+        /** Row keys the page hides: never queried. */
+        skip: Set<String> = emptySet(),
     ): List<MediaRow> = kotlinx.coroutines.coroutineScope {
         val specs: List<Pair<String, ItemQuery>> = when (kind) {
             LibraryTabKind.GENRES -> genres().take(MAX_ROWS).map { it to genreQuery(libraryId, types, it) }
@@ -102,7 +104,7 @@ object LibraryTabs {
             LibraryTabKind.DECADES -> Browse.decadesFor(years()).take(MAX_ROWS).map { "${it}s" to decadeQuery(libraryId, types, it) }
             else -> emptyList()
         }
-        specs.map { (title, query) ->
+        specs.filterNot { (title, _) -> rowKey(libraryId, kind, title) in skip }.map { (title, query) ->
             async {
                 val items = runCatching { load(query) }.getOrDefault(emptyList())
                 MediaRow(rowKey(libraryId, kind, title), title, items, RowDisplay())

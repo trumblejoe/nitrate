@@ -537,6 +537,7 @@ private fun LazyListScope.shownSettings(prefs: DisplayPrefs, update: ((DisplayPr
         Triple("Progress bars", "How far into something you are", Pair({ p -> p.progressBars }, { p, v -> p.copy(progressBars = v) })),
         Triple("Watched ticks", "On cards and episodes", Pair({ p -> p.watchedMarks }, { p, v -> p.copy(watchedMarks = v) })),
         Triple("Unwatched counts", "On shows", Pair({ p -> p.unwatchedCounts }, { p, v -> p.copy(unwatchedCounts = v) })),
+        Triple("Continue and Next Up together", "One row on Home: what's part way, then each show's next episode", Pair({ p -> p.combineContinueNextUp }, { p, v -> p.copy(combineContinueNextUp = v) })),
         Triple("Logos", "Title art instead of plain titles", Pair({ p -> p.logos }, { p, v -> p.copy(logos = v) })),
         Triple("Cast & crew", "On details pages", Pair({ p -> p.cast }, { p, v -> p.copy(cast = v) })),
         Triple("More like this", "On details pages", Pair({ p -> p.similar }, { p, v -> p.copy(similar = v) })),

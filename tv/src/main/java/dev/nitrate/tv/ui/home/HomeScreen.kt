@@ -60,8 +60,12 @@ fun HomeScreen(
     /** Rows as last loaded, shown at once while fresh ones load. */
     dataCache: dev.nitrate.android.storage.DataCache? = null,
 ) {
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = dataCache, loadProgress = repository::homeRowsProgress) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = dataCache, loadProgressSkipping = dev.nitrate.android.viewmodel.homeRowsLoader(repository, displaySettings)) }
     val state by vm.state.collectAsStateWithLifecycle()
+    // Continue Watching and Next Up as one row or two: the page is loaded again when that changes.
+    val combineRows = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.combineContinueNextUp
+    var combineSeen by remember { mutableStateOf(combineRows) }
+    LaunchedEffect(combineRows) { if (combineRows != combineSeen) { combineSeen = combineRows; vm.refresh() } }
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf(false) }

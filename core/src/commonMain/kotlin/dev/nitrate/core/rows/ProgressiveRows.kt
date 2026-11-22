@@ -9,17 +9,27 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.time.TimeSource
 
 /** A page's rows so far: [complete] once every row has answered. */
-data class RowsProgress(val rows: List<MediaRow>, val complete: Boolean)
+data class RowsProgress(
+    val rows: List<MediaRow>,
+    val complete: Boolean,
+    /** Rows left out because the page hides them (key → title), never queried: the editor still names them. */
+    val skipped: Map<String, String> = emptyMap(),
+)
 
 /** One independent part of a page (a row, or a few rows from one source), named for timing. */
-class RowJob(val name: String, val load: suspend () -> List<MediaRow>) {
+class RowJob(
+    val name: String,
+    /** The one row this job makes, when that's known before it runs: a page that hides it never runs the job. */
+    val key: String? = null,
+    val load: suspend () -> List<MediaRow>,
+) {
     /** Set by [showing]: a load that can show rows before it finishes. */
     internal var showingLoad: (suspend (show: suspend (List<MediaRow>) -> Unit) -> List<MediaRow>)? = null
 
     companion object {
         /** A job that can [show] rows early (e.g. from what it knew last time), then return the final ones. */
         fun showing(name: String, load: suspend (show: suspend (List<MediaRow>) -> Unit) -> List<MediaRow>): RowJob =
-            RowJob(name) { load {} }.also { it.showingLoad = load }
+            RowJob(name, null) { load {} }.also { it.showingLoad = load }
     }
 }
 
@@ -32,8 +42,14 @@ data class RowTiming(val name: String, val ms: Long, val failed: Boolean)
  * if every job fails the flow fails (the server is unreachable).
  */
 object ProgressiveRows {
-    fun run(jobs: List<RowJob>, onTimed: (RowTiming) -> Unit = {}): Flow<RowsProgress> = channelFlow {
-        if (jobs.isEmpty()) { send(RowsProgress(emptyList(), complete = true)); return@channelFlow }
+    /**
+     * [skip]: row keys the page hides; their jobs (when a job's [RowJob.key] says which row it makes)
+     * never run, and come back as [RowsProgress.skipped] so the editor can still name them.
+     */
+    fun run(all: List<RowJob>, skip: Set<String> = emptySet(), onTimed: (RowTiming) -> Unit = {}): Flow<RowsProgress> = channelFlow {
+        val skipped = all.filter { it.key != null && it.key in skip }.associate { it.key!! to it.name }
+        val jobs = all.filterNot { it.key != null && it.key in skip }
+        if (jobs.isEmpty()) { send(RowsProgress(emptyList(), complete = true, skipped)); return@channelFlow }
         val results = arrayOfNulls<List<MediaRow>>(jobs.size)
         val lock = Mutex()
         var done = 0
@@ -50,7 +66,7 @@ object ProgressiveRows {
                                 if (!shown) onTimed(RowTiming("${job.name} (first shown)", mark.elapsedNow().inWholeMilliseconds, false))
                                 shown = true
                                 results[i] = early
-                                send(RowsProgress(results.filterNotNull().flatten(), complete = false))
+                                send(RowsProgress(results.filterNotNull().flatten(), complete = false, skipped))
                             }
                         }
                     } ?: job.load()
@@ -66,7 +82,7 @@ object ProgressiveRows {
                     done++
                     val complete = done == jobs.size
                     if (complete && failures == jobs.size) throw firstError!!
-                    send(RowsProgress(results.filterNotNull().flatten(), complete))
+                    send(RowsProgress(results.filterNotNull().flatten(), complete, skipped))
                 }
             }
         }

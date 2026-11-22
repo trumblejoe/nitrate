@@ -204,6 +204,7 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
         Triple("Progress bars", { p -> p.progressBars }, { p, v -> p.copy(progressBars = v) }),
         Triple("Watched ticks", { p -> p.watchedMarks }, { p, v -> p.copy(watchedMarks = v) }),
         Triple("Unwatched counts", { p -> p.unwatchedCounts }, { p, v -> p.copy(unwatchedCounts = v) }),
+        Triple("Continue Watching and Next Up in one row (Home)", { p -> p.combineContinueNextUp }, { p, v -> p.copy(combineContinueNextUp = v) }),
         Triple("Logos", { p -> p.logos }, { p, v -> p.copy(logos = v) }),
         Triple("Cast & crew", { p -> p.cast }, { p, v -> p.copy(cast = v) }),
         Triple("More like this", { p -> p.similar }, { p, v -> p.copy(similar = v) }),

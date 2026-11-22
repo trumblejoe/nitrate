@@ -249,8 +249,12 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         }
 
         // A plugin's checks, then play: from the start, resuming, or from [startMs].
-        fun guarded(item: dev.nitrate.core.model.MediaItem, fromStart: Boolean, startMs: Long?) {
+        fun guarded(picked: dev.nitrate.core.model.MediaItem, fromStart: Boolean, startMs: Long?) {
                 scope.launch {
+                    // A show or season: its next episode (else its first) is what plays.
+                    val item = if (dev.nitrate.core.playback.PlayTargets.needsEpisode(picked)) {
+                        dev.nitrate.core.playback.PlayTargets.episodeFor(container.server, picked) ?: return@launch
+                    } else picked
                     val action = container.plugins.checkBeforePlay(item) { ask ->
                         val answer = CompletableDeferred<GuardAction>()
                         pending = ask to answer

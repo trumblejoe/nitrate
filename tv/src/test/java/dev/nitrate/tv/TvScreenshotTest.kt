@@ -787,6 +787,15 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
     }
 
+    /** Continue Watching and Next Up as one row on Home. */
+    @Test fun continueAndNextUpCombined() = shoot("tv-continue-and-next", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvArrangement = dev.nitrate.core.pages.PageArrangement.STACKED, combineContinueNextUp = true))
+    }, act = {
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(hasWords(dev.nitrate.core.rows.ContinueAndNext.TITLE)) { "the combined row should show" }
+        check(!hasWords("Next Up", exact = true)) { "Next Up shouldn't show on its own" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
     /** Leaving a row and coming back lands on the card left in it, whatever was done in other rows meanwhile. */
     @Test fun rowsRememberTheirCard() = shoot("tv-rows-remember-card", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

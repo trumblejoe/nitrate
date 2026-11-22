@@ -165,21 +165,26 @@ fun LibraryScreen(
         .onFocusChanged { pageHasFocus = it.hasFocus }) {
         when (tab.kind) {
             dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED -> TabRows(
-                "library-rows-$libraryId", PageKeys.library(lib.id), { repository.libraryRows(lib) }, { repository.libraryRowsProgress(lib) },
+                "library-rows-$libraryId", PageKeys.library(lib.id), { repository.libraryRows(lib) }, { skip -> repository.libraryRowsProgress(lib, skip) },
                 lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
             )
             dev.nitrate.core.pages.LibraryTabKind.GENRES, dev.nitrate.core.pages.LibraryTabKind.STUDIOS, dev.nitrate.core.pages.LibraryTabKind.DECADES -> TabRows(
                 "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab),
-                {
-                    dev.nitrate.core.pages.LibraryTabs.rows(
-                        lib.id, tab.kind, types,
-                        genres = { repository.genres(lib.id) },
-                        studios = { repository.studios(lib.id) },
-                        years = { repository.libraryFilters(lib.id, types).years },
-                        load = repository::queryItems,
-                    )
+                { emptyList() },
+                // Hidden genre/studio/decade rows are never asked for.
+                { skip ->
+                    kotlinx.coroutines.flow.flow {
+                        emit(dev.nitrate.core.rows.RowsProgress(dev.nitrate.core.pages.LibraryTabs.rows(
+                            lib.id, tab.kind, types,
+                            genres = { repository.genres(lib.id) },
+                            studios = { repository.studios(lib.id) },
+                            years = { repository.libraryFilters(lib.id, types).years },
+                            load = repository::queryItems,
+                            skip = skip,
+                        ), complete = true))
+                    }
                 },
-                null, lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
             )
             // The user's own page of rows (made in Settings → Display → Pages).
             dev.nitrate.core.pages.LibraryTabKind.OWN -> TabRows(
@@ -207,7 +212,7 @@ private fun TabRows(
     vmKey: String,
     pageKey: String,
     loadBuiltIn: suspend () -> List<dev.nitrate.core.rows.MediaRow>,
-    loadProgress: (() -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)?,
+    loadProgress: ((Set<String>) -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)?,
     lib: MediaItem,
     repository: MediaServer,
     displaySettings: DisplaySettingsStore,
@@ -221,7 +226,7 @@ private fun TabRows(
     empty: String = "Nothing here yet.",
 ) {
     val vm = viewModel(key = vmKey) {
-        RowsViewModel(pageKey, loadBuiltIn, displaySettings, repository, changes, cache = dataCache, loadProgress = loadProgress)
+        RowsViewModel(pageKey, loadBuiltIn, displaySettings, repository, changes, cache = dataCache, loadProgressSkipping = loadProgress)
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val overrides by vm.overrides.collectAsStateWithLifecycle()

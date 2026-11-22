@@ -59,4 +59,18 @@ class ProgressiveRowsTest {
         // A first load waits less than a refresh, which has last time's rows to show meanwhile.
         assertTrue(PageReveal.patienceMs(null) < PageReveal.patienceMs(shown))
     }
+
+    @Test fun hiddenRowsAreNeverLoaded() = kotlinx.coroutines.test.runTest {
+        var asked = false
+        val done = ProgressiveRows.run(
+            listOf(
+                RowJob("Shown", "home/shown") { listOf(row("home/shown")) },
+                RowJob("Hidden", "home/hidden") { asked = true; listOf(row("home/hidden")) },
+            ),
+            skip = setOf("home/hidden"),
+        ).toList().last()
+        kotlin.test.assertFalse(asked, "a hidden row's query should never run")
+        kotlin.test.assertEquals(listOf("home/shown"), done.rows.map { it.key })
+        kotlin.test.assertEquals(mapOf("home/hidden" to "Hidden"), done.skipped)
+    }
 }

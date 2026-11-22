@@ -50,6 +50,10 @@ class PlaybackGate(
         if (checking) return
         scope.launch {
             checking = true
+            // A show or season on a card: its next episode (else its first) is what plays.
+            val item = if (dev.nitrate.core.playback.PlayTargets.needsEpisode(item)) {
+                dev.nitrate.core.playback.PlayTargets.episodeFor(registry.host.server, item) ?: run { checking = false; return@launch }
+            } else item
             val action = try {
                 registry.checkBeforePlay(item) { ask ->
                     val answer = CompletableDeferred<GuardAction>()

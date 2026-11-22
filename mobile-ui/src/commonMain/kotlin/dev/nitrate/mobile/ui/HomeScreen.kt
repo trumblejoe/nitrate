@@ -95,8 +95,12 @@ import kotlin.math.absoluteValue
 fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> Unit = {}) {
     val container = actions.container
     // Artwork first: rows the user hasn't styled show as showcases or artwork, not posters.
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges, ArtworkFirst::display, cache = container.dataCache, loadProgress = container.server::homeRowsProgress) }
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, container.server::homeRows, container.displaySettings, container.server, container.serverChanges, ArtworkFirst::display, cache = container.dataCache, loadProgressSkipping = dev.nitrate.android.viewmodel.homeRowsLoader(container.server, container.displaySettings)) }
     val state by vm.state.collectAsStateWithLifecycle()
+    // Continue Watching and Next Up as one row or two: the page is loaded again when that changes.
+    val combineRows = dev.nitrate.mobile.ui.LocalDisplayPrefs.current.combineContinueNextUp
+    var combineSeen by remember { mutableStateOf(combineRows) }
+    LaunchedEffect(combineRows) { if (combineRows != combineSeen) { combineSeen = combineRows; vm.refresh() } }
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     // The spinner shows for a pull, until that reload has finished (not for quiet background reloads).
     val reloading by vm.refreshing.collectAsStateWithLifecycle()

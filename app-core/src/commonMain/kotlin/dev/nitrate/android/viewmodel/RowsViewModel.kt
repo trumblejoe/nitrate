@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -50,6 +51,11 @@ class RowsViewModel(
     private val cache: dev.nitrate.android.storage.DataCache? = null,
     /** The built-in rows as each arrives (instead of [loadBuiltIn]), so the page needn't wait for its slowest row. */
     private val loadProgress: (() -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)? = null,
+    /**
+     * As [loadProgress], told which built-in rows the page hides, so they're never queried (a
+     * hidden row is off, not just out of sight); preferred over [loadProgress] when given.
+     */
+    private val loadProgressSkipping: ((Set<String>) -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)? = null,
 ) : ViewModel() {
     private val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
     private val userId = server.userId
@@ -106,8 +112,19 @@ class RowsViewModel(
         }
     }
 
+    /** The built-in rows the saved layout hides (read from the store, not the not-yet-loaded [layout]). */
+    private suspend fun hiddenBuiltIn(): Set<String> {
+        val saved = userId?.let { runCatching { store.layout(it, pageKey).first() }.getOrNull() } ?: return emptySet()
+        return saved.entries.filter { it.hidden && !it.isCustom }.map { it.rowKey }.toSet()
+    }
+
     fun refresh() {
-        val progressive = loadProgress
+        val skipping = loadProgressSkipping
+        val progressive: (suspend () -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)? = when {
+            skipping != null -> { { skipping(hiddenBuiltIn()) } }
+            loadProgress != null -> { { loadProgress.invoke() } }
+            else -> null
+        }
         if (progressive != null) {
             viewModelScope.launch {
                 _refreshing.value = true
@@ -130,6 +147,7 @@ class RowsViewModel(
                         progressive().collect { raw ->
                             val fresh = raw.rows.map { it.copy(defaultDisplay = defaults(it).normalized()) }
                             fresh.forEach { knownTitles[it.key] = it.title }
+                            raw.skipped.forEach { (key, title) -> knownTitles.getOrPut(key) { title } }
                             val p = raw.copy(rows = fresh)
                             latest = p
                             when {
@@ -167,7 +185,9 @@ class RowsViewModel(
         }
     }
 
-    private suspend fun loadCustom(entries: List<RowEntry>) = coroutineScope {
+    private suspend fun loadCustom(all: List<RowEntry>) = coroutineScope {
+        // A hidden custom row is off: never queried.
+        val entries = all.filterNot { it.hidden }
         val loaded = entries.map { e ->
             async {
                 val items = runCatching {
@@ -211,7 +231,14 @@ class RowsViewModel(
     }
 
     fun move(id: String, delta: Int) = updateEntries { PageComposer.move(it, id, delta) }
-    fun setHidden(id: String, hidden: Boolean) = updateEntries { list -> list.map { if (it.id == id) it.copy(hidden = hidden) else it } }
+    fun setHidden(id: String, hidden: Boolean) {
+        val user = userId ?: return
+        viewModelScope.launch {
+            store.saveLayout(user, pageKey, PageLayout(entries.value.map { if (it.id == id) it.copy(hidden = hidden) else it }))
+            // Shown again: it was never loaded while hidden, so load the page (built-in rows) now.
+            if (!hidden) refresh()
+        }
+    }
     fun rename(id: String, title: String?) = updateEntries { list -> list.map { if (it.id == id) it.copy(title = title?.takeIf(String::isNotBlank)) else it } }
     fun remove(id: String) = updateEntries { list -> list.filterNot { it.id == id && it.isCustom } }
     fun add(entry: RowEntry, atTop: Boolean = false) = updateEntries { if (atTop) listOf(entry) + it else it + entry }
@@ -228,3 +255,14 @@ class RowsViewModel(
 }
 
 private const val LIVE_REFRESH_DEBOUNCE_MS = 2_000L
+
+/**
+ * Home's rows for [RowsViewModel] (`loadProgressSkipping`): the page's hidden rows left out, and
+ * Continue Watching with Next Up as one row when the user's display settings say so.
+ */
+fun homeRowsLoader(server: MediaServer, store: DisplaySettingsStore): (Set<String>) -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> = { hidden ->
+    kotlinx.coroutines.flow.flow {
+        val combine = server.userId?.let { runCatching { store.prefs(it).first().combineContinueNextUp }.getOrNull() } ?: false
+        emitAll(server.homeRowsProgress(hidden, combine))
+    }
+}
