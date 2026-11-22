@@ -97,6 +97,7 @@ import kotlinx.serialization.Serializable
 @Serializable object DeviceBackupRoute
 @Serializable object DisplayProfilesRoute
 @Serializable object SpeedCheckRoute
+@Serializable object QueryAnalyzerRoute
 @Serializable object StatsRoute
 @Serializable object DiaryRoute
 @Serializable object ServerSettingsRoute
@@ -411,6 +412,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         dev.nitrate.tv.ui.settings.SettingsLink("TV & receiver check", "Clips that should make the TV show HDR or Dolby Vision and the receiver its sound format: say what you see") { nav.navigate(TvCheckRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Library playback overview", "Every film and episode you can see, and how each plays on this TV: as it is, converted, and why") { nav.navigate(PlaybackOverviewRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Server speed check", "Is slowness the network, the server or this TV? Times it and shows you") { nav.navigate(SpeedCheckRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Query analyzer", "Every request Nitrate makes to your server: which page asked, what it cost, what was shared, and hints for making pages lighter") { nav.navigate(QueryAnalyzerRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Send device report", "What this TV plays and how it's set, saved in your server's logs for troubleshooting") {
                             reportMessage = "Sending…"
                             scope.launch {
@@ -488,6 +490,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<WhileWatchingRoute> { DisplaySettingsScreen(container, dev.nitrate.tv.ui.pages.DisplayPage.WATCHING, onPrerolls = { nav.navigate(PrerollSettingsRoute) }) }
         composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
         composable<SpeedCheckRoute> { dev.nitrate.tv.ui.settings.SpeedCheckScreen(container) }
+        composable<QueryAnalyzerRoute> { dev.nitrate.tv.ui.settings.QueryAnalyzerScreen(container) }
         composable<StatsRoute> { dev.nitrate.tv.ui.settings.StatsScreen(container.server) }
         composable<DiaryRoute> { dev.nitrate.tv.ui.settings.DiaryScreen(container.server) }
         composable<ServerSettingsRoute> { dev.nitrate.tv.ui.settings.ServerSettingsScreen(container) }
@@ -737,7 +740,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         while (true) {
             kotlinx.coroutines.delay(10_000)
             if (ambient != null || !dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) continue
-            val rows = runCatching { container.server.watchingRows(latest = true) }.getOrNull() ?: continue
+            val rows = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin("Screensaver") { container.server.watchingRows(latest = true) } }.getOrNull() ?: continue
             val slides = dev.nitrate.core.ambient.Ambient.slides(rows) { container.server.backdropUrl(it) != null }
             // Still nothing pressed while Home's rows were fetched.
             if (slides.isNotEmpty() && dev.nitrate.tv.ui.ambient.TvIdle.visible.value && dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) {

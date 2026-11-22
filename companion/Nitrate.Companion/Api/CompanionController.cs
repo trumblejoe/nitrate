@@ -38,13 +38,16 @@ public class CompanionController : ControllerBase
     private readonly IUserManager _users;
 
     /// <summary>Initializes a new instance of the <see cref="CompanionController"/> class.</summary>
-    public CompanionController(ChatHub chat, ISyncPlayManager syncPlay, ISessionManager sessions, IUserManager users)
+    public CompanionController(ChatHub chat, ISyncPlayManager syncPlay, ISessionManager sessions, IUserManager users, Nitrate.Companion.QueryTimes.QueryTimeStore queryTimes)
     {
+        _queryTimes = queryTimes;
         _chat = chat;
         _syncPlay = syncPlay;
         _sessions = sessions;
         _users = users;
     }
+
+    private readonly Nitrate.Companion.QueryTimes.QueryTimeStore _queryTimes;
 
     private static bool ChatEnabled => Plugin.Instance?.Configuration.EnableChat ?? true;
 
@@ -71,6 +74,11 @@ public class CompanionController : ControllerBase
         features.Add("credits");
         features.Add("timing");
         features.Add("intros");
+        // Only once the timing middleware is known to be in the server's pipeline.
+        if (_queryTimes.Active)
+        {
+            features.Add("querytimes");
+        }
         if (Plugin.Instance?.Configuration.EnableDiary ?? true)
         {
             features.Add("diary");

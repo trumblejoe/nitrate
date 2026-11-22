@@ -119,6 +119,7 @@ fun PageEditor(pageTitle: String, vm: RowsViewModel, actions: AppActions, librar
                                 is RowSource.Query -> s.query.describe()
                                 is RowSource.Collection -> "Collection"
                                 is RowSource.Playlist -> "Playlist"
+                                is RowSource.AppRow -> "App row" + if (loaded.none { it.key == e.rowKey } && !e.hidden) " · empty right now" else ""
                             },
                             shown = !e.hidden,
                             first = i == 0,
@@ -263,6 +264,7 @@ private fun EntryDialog(
                             is RowSource.Query -> s.query.describe()
                             is RowSource.Collection -> "Collection: ${s.name}"
                             is RowSource.Playlist -> "Playlist: ${s.name}"
+                            is RowSource.AppRow -> "App row: " + dev.nitrate.core.rows.AppRows.title(s.key, null)
                             is RowSource.BuiltIn -> ""
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -292,7 +294,7 @@ private fun EntryDialog(
     }
 }
 
-private enum class BuilderTab(val label: String) { FILTER("Filter"), COLLECTION("Collection"), PLAYLIST("Playlist") }
+private enum class BuilderTab(val label: String) { FILTER("Filter"), COLLECTION("Collection"), PLAYLIST("Playlist"), APP("App row") }
 
 private val DECADES = listOf(2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950)
 
@@ -312,10 +314,14 @@ fun RowBuilderDialog(
             when (initial) {
                 is RowSource.Collection -> BuilderTab.COLLECTION
                 is RowSource.Playlist -> BuilderTab.PLAYLIST
+                is RowSource.AppRow -> BuilderTab.APP
                 else -> BuilderTab.FILTER
             },
         )
     }
+    var appKey by remember { mutableStateOf((initial as? RowSource.AppRow)?.key) }
+    var appLibrary by remember { mutableStateOf((initial as? RowSource.AppRow)?.libraryId ?: libraryId) }
+    val appKind = appKey?.let { dev.nitrate.core.rows.AppRows.kind(it) }
     var query by remember { mutableStateOf((initial as? RowSource.Query)?.query ?: ItemQuery(libraryId = libraryId)) }
     var picked by remember { mutableStateOf<MediaItem?>(null) }
     var name by remember { mutableStateOf(initialTitle.orEmpty()) }
@@ -336,13 +342,15 @@ fun RowBuilderDialog(
             Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Cancel") }
                 Text(if (initial == null) "New row" else "Row contents", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                val canSave = tab == BuilderTab.FILTER || picked != null || initial is RowSource.Collection && tab == BuilderTab.COLLECTION || initial is RowSource.Playlist && tab == BuilderTab.PLAYLIST
+                val canSave = tab == BuilderTab.FILTER || picked != null || initial is RowSource.Collection && tab == BuilderTab.COLLECTION || initial is RowSource.Playlist && tab == BuilderTab.PLAYLIST ||
+                    tab == BuilderTab.APP && appKind != null && (appKind.library != dev.nitrate.core.rows.LibraryUse.REQUIRED || appLibrary != null)
                 TextButton(enabled = canSave, onClick = {
                     val p = picked
                     val source = when (tab) {
                         BuilderTab.FILTER -> RowSource.Query(query)
                         BuilderTab.COLLECTION -> p?.let { RowSource.Collection(it.id, it.name) } ?: initial!!
                         BuilderTab.PLAYLIST -> p?.let { RowSource.Playlist(it.id, it.name) } ?: initial!!
+                        BuilderTab.APP -> RowSource.AppRow(appKey!!, appLibrary.takeIf { appKind?.library != dev.nitrate.core.rows.LibraryUse.NONE })
                     }
                     onSave(source, name.ifBlank { null })
                 }) { Text("Save") }
@@ -403,6 +411,30 @@ fun RowBuilderDialog(
                 }
                 BuilderTab.COLLECTION -> PickList(collections, picked?.id ?: (initial as? RowSource.Collection)?.id, "You don't have any collections yet.") { picked = it; if (name.isBlank()) name = it.name }
                 BuilderTab.PLAYLIST -> PickList(playlists, picked?.id ?: (initial as? RowSource.Playlist)?.id, "You don't have any playlists yet.") { picked = it; if (name.isBlank()) name = it.name }
+                BuilderTab.APP -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Nitrate's own rows, on this page too. They share Home's answers, so showing one on several pages asks your server once.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    dev.nitrate.core.rows.AppRows.ALL.forEach { k ->
+                        Row(
+                            Modifier.fillMaxWidth().selectable(appKey == k.key, role = Role.RadioButton) { appKey = k.key }.padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = appKey == k.key, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(k.title, style = MaterialTheme.typography.bodyLarge)
+                                Text(k.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    if (appKind != null && appKind.library != dev.nitrate.core.rows.LibraryUse.NONE) Section("From") {
+                        val choices = (if (appKind.library == dev.nitrate.core.rows.LibraryUse.OPTIONAL) listOf<Pair<String?, String>>(null to "All libraries") else emptyList()) +
+                            libraries.map { it.id to it.name }
+                        Chips(choices, selected = { it == appLibrary }) { appLibrary = it }
+                    }
+                }
             }
         }
     }

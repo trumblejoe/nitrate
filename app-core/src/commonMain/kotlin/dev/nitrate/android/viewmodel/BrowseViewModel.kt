@@ -52,12 +52,12 @@ class BrowseViewModel(
     private var loading: Job? = null
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library all")) {
             (userId?.let { store.view(it, key, startWith) } ?: flowOf(startWith)).distinctUntilChanged().collect { options ->
                 if (options != _state.value.options || _state.value.total < 0) restart(options)
             }
         }
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library all")) {
             // The choices the library really has: genres, years, age ratings and tags.
             val f = runCatching { server.libraryFilters(library.id, Browse.typesFor(library.collection)) }.getOrNull()
             if (f != null) _filters.value = f
@@ -74,7 +74,7 @@ class BrowseViewModel(
         if (next.query(library.id, library.collection) == now.query(library.id, library.collection)) _state.update { it.copy(options = next) }
         else restart(next)
         val user = userId ?: return
-        viewModelScope.launch { store.saveView(user, key, next) }
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library all")) { store.saveView(user, key, next) }
     }
 
     private fun restart(options: BrowseOptions) {
@@ -87,7 +87,7 @@ class BrowseViewModel(
     fun loadMore() {
         if (loading?.isActive == true || _state.value.complete || _state.value.error != null && _state.value.items.isNotEmpty()) return
         val current = _state.value
-        loading = viewModelScope.launch {
+        loading = viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library all")) {
             runCatching { server.queryPage(current.options.query(library.id, library.collection), current.items.size, PAGE_SIZE) }
                 .onSuccess { (items, total) -> _state.update { if (it.options == current.options) it.copy(items = it.items + items, total = total, error = null) else it } }
                 .onFailure { e -> _state.update { it.copy(error = e.message ?: "Failed to load") } }

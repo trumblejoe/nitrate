@@ -71,6 +71,32 @@ class FakeServer : MediaServer {
     override suspend fun views() = listOf(movies, shows)
     override fun castPlay(play: dev.nitrate.core.cast.CastPlay) = "play ${play.items.getOrNull(play.startIndex)?.id} at ${play.startMs}"
     override fun castCommand(command: dev.nitrate.core.cast.CastCommand, value: Long?) = "${command.name.lowercase()}${value?.let { " $it" } ?: ""}"
+    override suspend fun appRow(key: String, libraryId: String?): MediaRow? {
+        val homeKey = if (key == dev.nitrate.core.rows.AppRows.LATEST) "home/latest/$libraryId" else "home/$key"
+        return homeRows().firstOrNull { it.key == homeKey }
+    }
+
+    /** A few requests as the analyzer would have seen them. */
+    override val queryLog: dev.nitrate.core.diagnostics.QueryLog = dev.nitrate.core.diagnostics.QueryLog().also { log ->
+        fun add(endpoint: String, params: Map<String, String>, origin: String, ms: Long, outcome: dev.nitrate.core.diagnostics.QueryOutcome) {
+            val (id, tag) = log.nextTag()
+            log.add(
+                dev.nitrate.core.diagnostics.QueryRecord(
+                    id, tag, 1_700_000_000_000 + id * 1_000, "GET", endpoint, dev.nitrate.core.diagnostics.QueryLog.shapeOf(endpoint, params), origin, ms, outcome,
+                    status = 200, bytes = 40_000, serverMs = if (outcome == dev.nitrate.core.diagnostics.QueryOutcome.FETCHED) ms - 40 else null,
+                    hints = if (outcome == dev.nitrate.core.diagnostics.QueryOutcome.FETCHED) dev.nitrate.core.diagnostics.QueryHints.of(endpoint, params, ms, 40_000) else emptyList(),
+                ),
+            )
+        }
+        val similar = mapOf("limit" to "16")
+        val played = mapOf("sortBy" to "DatePlayed", "recursive" to "true", "limit" to "8")
+        add("/Items", played, "Home › Because you watched", 1_850, dev.nitrate.core.diagnostics.QueryOutcome.FETCHED)
+        add("/Items/{id}/Similar", similar, "Home › Because you watched", 2_400, dev.nitrate.core.diagnostics.QueryOutcome.FETCHED)
+        add("/Shows/NextUp", mapOf("limit" to "24"), "Home › Next Up", 120, dev.nitrate.core.diagnostics.QueryOutcome.FETCHED)
+        add("/Shows/NextUp", mapOf("limit" to "24"), "Custom page Evenings › Next Up", 2, dev.nitrate.core.diagnostics.QueryOutcome.KEPT)
+        add("/Items/{id}/Similar", similar, "Details", 3, dev.nitrate.core.diagnostics.QueryOutcome.JOINED)
+    }
+
     override suspend fun homeRows() = listOf(
         MediaRow("home/continue_watching", "Continue Watching", listOf(films[0], episode(2, 4, false).copy(user = UserState(playedPercentage = 60.0))), RowDisplay(RowStyle.WIDE, showTitles = true)),
         MediaRow("home/next_up", "Next Up", listOf(episode(2, 5, false)), RowDisplay(RowStyle.WIDE, showTitles = true)),

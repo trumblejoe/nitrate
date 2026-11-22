@@ -35,7 +35,7 @@ class ChannelsViewModel(private val server: MediaServer, private val now: () -> 
 
     init {
         refresh()
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Channels")) {
             while (isActive) {
                 delay(30_000)
                 _state.update { it.copy(nowMs = now()) }
@@ -44,7 +44,7 @@ class ChannelsViewModel(private val server: MediaServer, private val now: () -> 
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Channels")) {
             val s = _state.value
             runCatching { server.channelGuide(s.windowStartMs, s.windowStartMs + WINDOW_MS) }
                 .onSuccess { g -> _state.update { it.copy(guides = g, error = null, nowMs = now()) } }

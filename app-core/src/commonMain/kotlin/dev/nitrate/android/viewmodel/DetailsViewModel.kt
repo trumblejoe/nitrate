@@ -51,7 +51,7 @@ class DetailsViewModel(
     private fun seasonKey(seasonId: String) = "$key/season/$seasonId"
 
     init {
-        if (cache != null) viewModelScope.launch {
+        if (cache != null) viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
             val cached = cache.read(account, key, DetailsState.serializer()) ?: return@launch
             // Only while nothing fresh has arrived.
             if (_state.value.item == null) _state.value = cached.copy(error = null)
@@ -61,7 +61,7 @@ class DetailsViewModel(
 
     /** Reloads user data (watched, resume point) e.g. after returning from the player. */
     fun load() {
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
             val item = runCatching { repository.getItem(itemId) }
                 .getOrElse { e -> _state.update { it.copy(error = e.message ?: "Failed to load") }; return@launch }
             _state.update { it.copy(item = item, error = null) }
@@ -89,7 +89,7 @@ class DetailsViewModel(
 
     /** Takes [member] out of this collection. */
     fun removeFromCollection(member: MediaItem) {
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
             runCatching { repository.removeFromCollection(itemId, listOf(member.id)) }
                 .onSuccess { _state.update { s -> s.copy(contents = s.contents.filterNot { it.id == member.id }) } }
                 .onFailure { e -> _state.update { it.copy(error = e.message ?: "Couldn't remove it") } }
@@ -114,7 +114,7 @@ class DetailsViewModel(
     fun selectSeason(index: Int) {
         if (index == _state.value.selectedSeason && _state.value.episodes.isNotEmpty()) return
         _state.update { it.copy(selectedSeason = index, episodes = emptyList()) }
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
             // That season's episodes as last seen, while they reload.
             val season = _state.value.seasons.getOrNull(index)
             if (cache != null && season != null) {
@@ -143,7 +143,7 @@ class DetailsViewModel(
 
     private fun mutate(action: suspend (MediaItem) -> Unit) {
         val item = _state.value.item ?: return
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
             runCatching { action(item) }
             load()
         }

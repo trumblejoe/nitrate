@@ -101,6 +101,14 @@ sealed interface RowSource {
 
     @Serializable @SerialName("playlist")
     data class Playlist(val id: String, val name: String) : RowSource
+
+    /**
+     * One of the app's own rows ([dev.nitrate.core.rows.AppRows]: Continue Watching, Next Up,
+     * Because you watched…) placed on any page, from [libraryId] where the row can be narrowed.
+     * Its answers are shared with Home's, so having it on two pages costs the server once.
+     */
+    @Serializable @SerialName("app")
+    data class AppRow(val key: String, val libraryId: String? = null) : RowSource
 }
 
 /** One row on a page, in the order the user chose. [title] overrides the row's own title. */

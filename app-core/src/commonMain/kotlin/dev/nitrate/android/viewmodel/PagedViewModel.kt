@@ -20,7 +20,7 @@ class PagedViewModel(private val load: suspend (startIndex: Int, limit: Int) -> 
     fun loadMore() {
         if (loading?.isActive == true || _state.value.complete) return
         val start = _state.value.items.size
-        loading = viewModelScope.launch {
+        loading = viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Paged list")) {
             runCatching { load(start, 100) }
                 .onSuccess { (items, total) -> _state.update { it.copy(items = it.items + items, total = total, error = null) } }
                 .onFailure { e -> _state.update { it.copy(error = e.message ?: "Failed to load") } }

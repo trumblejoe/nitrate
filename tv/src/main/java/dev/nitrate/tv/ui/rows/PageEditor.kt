@@ -134,6 +134,7 @@ fun PageEditor(pageTitle: String, vm: RowsViewModel, repository: MediaServer, li
                                         is RowSource.Query -> s.query.describe() + if (e.hidden) " · hidden" else ""
                                         is RowSource.Collection -> "Collection" + if (e.hidden) " · hidden" else ""
                                         is RowSource.Playlist -> "Playlist" + if (e.hidden) " · hidden" else ""
+                                        is RowSource.AppRow -> "App row" + if (e.hidden) " · hidden" else ""
                                     },
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -237,7 +238,7 @@ private fun EntryDialog(
     }
 }
 
-private enum class Source(val label: String) { FILTER("Filter"), COLLECTION("Collection"), PLAYLIST("Playlist") }
+private enum class Source(val label: String) { FILTER("Filter"), COLLECTION("Collection"), PLAYLIST("Playlist"), APP("App row") }
 
 private val DECADES = listOf(2020, 2010, 2000, 1990, 1980, 1970, 1960)
 
@@ -251,7 +252,10 @@ fun RowBuilder(
     onSave: (RowSource, String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var source by remember { mutableStateOf(when (initial) { is RowSource.Collection -> Source.COLLECTION; is RowSource.Playlist -> Source.PLAYLIST; else -> Source.FILTER }) }
+    var source by remember { mutableStateOf(when (initial) { is RowSource.Collection -> Source.COLLECTION; is RowSource.Playlist -> Source.PLAYLIST; is RowSource.AppRow -> Source.APP; else -> Source.FILTER }) }
+    var appKey by remember { mutableStateOf((initial as? RowSource.AppRow)?.key) }
+    var appLibrary by remember { mutableStateOf((initial as? RowSource.AppRow)?.libraryId ?: libraryId) }
+    val appKind = appKey?.let { dev.nitrate.core.rows.AppRows.kind(it) }
     var query by remember { mutableStateOf((initial as? RowSource.Query)?.query ?: ItemQuery(libraryId = libraryId)) }
     var picked by remember { mutableStateOf<MediaItem?>(null) }
     var name by remember { mutableStateOf("") }
@@ -263,7 +267,7 @@ fun RowBuilder(
         value = when (source) {
             Source.COLLECTION -> runCatching { repository.collections() }.getOrDefault(emptyList())
             Source.PLAYLIST -> runCatching { repository.playlists() }.getOrDefault(emptyList())
-            Source.FILTER -> null
+            Source.FILTER, Source.APP -> null
         }
     }
     val preview by produceState<List<MediaItem>?>(null, query, source) {
@@ -278,7 +282,8 @@ fun RowBuilder(
                 Text(if (initial == null) "New row" else "Row contents", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                 Source.entries.forEach { s -> FilterChip(selected = source == s, onClick = { source = s; picked = null }) { Text(s.label) } }
                 Button(
-                    enabled = source == Source.FILTER || picked != null,
+                    enabled = source == Source.FILTER || (source == Source.APP && appKind != null && (appKind.library != dev.nitrate.core.rows.LibraryUse.REQUIRED || appLibrary != null)) ||
+                        (source != Source.APP && picked != null),
                     onClick = {
                         val p = picked
                         onSave(
@@ -286,6 +291,7 @@ fun RowBuilder(
                                 Source.FILTER -> RowSource.Query(query)
                                 Source.COLLECTION -> RowSource.Collection(p!!.id, p.name)
                                 Source.PLAYLIST -> RowSource.Playlist(p!!.id, p.name)
+                                Source.APP -> RowSource.AppRow(appKey!!, appLibrary.takeIf { appKind?.library != dev.nitrate.core.rows.LibraryUse.NONE })
                             },
                             name.ifBlank { p?.name },
                         )
@@ -335,6 +341,25 @@ fun RowBuilder(
                             trailingContent = { Switch(checked = query.favoritesOnly, onCheckedChange = null) })
                     }
                     Spacer(Modifier.height(8.dp))
+                }
+                Source.APP -> Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Nitrate's own rows, on this page too. They share Home's answers, so showing one on several pages asks your server once.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    dev.nitrate.core.rows.AppRows.ALL.forEach { k ->
+                        ListItem(
+                            selected = appKey == k.key,
+                            onClick = { appKey = k.key },
+                            headlineContent = { Text(k.title) },
+                            supportingContent = { Text(k.description) },
+                            trailingContent = { if (appKey == k.key) Text("✓", color = MaterialTheme.colorScheme.primary) },
+                        )
+                    }
+                    if (appKind != null && appKind.library != dev.nitrate.core.rows.LibraryUse.NONE) Section("From") {
+                        if (appKind.library == dev.nitrate.core.rows.LibraryUse.OPTIONAL) FilterChip(selected = appLibrary == null, onClick = { appLibrary = null }) { Text("All libraries") }
+                        libraries.forEach { lib -> FilterChip(selected = appLibrary == lib.id, onClick = { appLibrary = lib.id }) { Text(lib.name) } }
+                    }
                 }
                 else -> {
                     val items = lists

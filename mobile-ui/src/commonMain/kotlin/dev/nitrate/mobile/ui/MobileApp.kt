@@ -76,6 +76,7 @@ import kotlinx.serialization.Serializable
 @Serializable object HouseholdDevicesRoute
 @Serializable object GuideRoute
 @Serializable object PlaybackOverviewRoute
+@Serializable object QueryAnalyzerRoute
 @Serializable object ChannelsRoute
 @Serializable object WatchPartnersRoute
 @Serializable data class ChannelEditorRoute(val channelId: String = "")
@@ -350,6 +351,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<HouseholdDevicesRoute> { HouseholdDevicesScreen(actions) }
             screen<GuideRoute> { GuideScreen(admin = actions.container.account.collectAsState().value?.isAdmin == true) }
             screen<PlaybackOverviewRoute> { PlaybackOverviewScreen(actions) }
+            screen<QueryAnalyzerRoute> { QueryAnalyzerScreen(actions) }
             screen<ChannelsRoute> { ChannelsScreen(actions) }
             screen<CatalogsRoute> { CatalogsScreen(actions) }
             screen<CatalogFeedRoute> { entry -> entry.toRoute<CatalogFeedRoute>().let { CatalogFeedScreen(actions, it.catalogId, it.target) } }

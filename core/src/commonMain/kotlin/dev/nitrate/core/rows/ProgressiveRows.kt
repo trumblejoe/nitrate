@@ -69,7 +69,7 @@ object ProgressiveRows {
                 val mark = TimeSource.Monotonic.markNow()
                 var shown = false
                 val rows = try {
-                    job.showingLoad?.invoke { early ->
+                    dev.nitrate.core.diagnostics.withQueryOrigin(job.name) { job.showingLoad?.invoke { early ->
                         lock.withLock {
                             if (results[i] == null || !shown) {
                                 if (!shown) onTimed(RowTiming("${job.name} (first shown)", mark.elapsedNow().inWholeMilliseconds, false))
@@ -78,7 +78,7 @@ object ProgressiveRows {
                                 send(RowsProgress(results.filterNotNull().flatten(), complete = false, skipped))
                             }
                         }
-                    } ?: job.load()
+                    } ?: job.load() }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

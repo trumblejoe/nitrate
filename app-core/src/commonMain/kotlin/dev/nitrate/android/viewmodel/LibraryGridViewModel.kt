@@ -44,7 +44,7 @@ class LibraryGridViewModel(
     fun loadMore() {
         if (loading?.isActive == true || _state.value.complete) return
         val start = _state.value.items.size
-        loading = viewModelScope.launch {
+        loading = viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library grid")) {
             runCatching { repository.libraryPage(library, _state.value.sort, start, PAGE_SIZE, includeTags) }
                 .onSuccess { (items, total) -> _state.update { it.copy(items = it.items + items, total = total, error = null) } }
                 .onFailure { e -> _state.update { it.copy(error = e.message ?: "Failed to load") } }
@@ -53,7 +53,7 @@ class LibraryGridViewModel(
 
     /** Loads every remaining page, for views that must see the whole library (e.g. grouping). */
     fun loadAll() {
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library grid")) {
             while (!_state.value.complete && _state.value.error == null) {
                 loading?.join()
                 if (_state.value.complete) break

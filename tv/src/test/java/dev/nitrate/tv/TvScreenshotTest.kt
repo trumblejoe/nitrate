@@ -1931,4 +1931,7 @@ class TvScreenshotTest {
     }
 
     @Test fun speedCheck() = shoot("tv-speed-check") { c -> dev.nitrate.tv.ui.settings.SpeedCheckScreen(c, startNow = true) }
+
+    /** The query analyzer: costliest kinds of request first, with where they came from and hints. */
+    @Test fun queryAnalyzer() = shoot("tv-query-analyzer") { c -> dev.nitrate.tv.ui.settings.QueryAnalyzerScreen(c) }
 }

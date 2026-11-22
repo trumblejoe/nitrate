@@ -361,3 +361,7 @@ internal data class QueryFiltersLegacyDto(
     val officialRatings: List<String>? = null,
     val years: List<Int>? = null,
 )
+
+/** The Companion plugin's time for one tagged request. */
+@Serializable
+internal data class QueryTimeDto(val tag: String, val ms: Long)

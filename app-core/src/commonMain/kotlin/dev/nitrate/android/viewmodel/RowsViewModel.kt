@@ -57,6 +57,11 @@ class RowsViewModel(
      */
     private val loadProgressSkipping: ((Set<String>) -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)? = null,
 ) : ViewModel() {
+    /** The app rows as last loaded, for their own titles ("Because you watched Dune") and looks. */
+    private val appRows = mutableMapOf<String, MediaRow>()
+
+    /** What this page's requests are put down to in the query analyzer. */
+    private val origin = dev.nitrate.core.diagnostics.QueryLog.pageLabel(pageKey)
     private val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
     private val userId = server.userId
     private val _refreshing = MutableStateFlow(false)
@@ -144,7 +149,7 @@ class RowsViewModel(
                             kotlinx.coroutines.delay(reveal.patienceMs(builtIn.value?.getOrNull()))
                             latest?.let(::showPartial)
                         }
-                        progressive().collect { raw ->
+                        dev.nitrate.core.diagnostics.withQueryOrigin(origin) { progressive().collect { raw ->
                             val fresh = raw.rows.map { it.copy(defaultDisplay = defaults(it).normalized()) }
                             fresh.forEach { knownTitles[it.key] = it.title }
                             raw.skipped.forEach { (key, title) -> knownTitles.getOrPut(key) { title } }
@@ -159,7 +164,7 @@ class RowsViewModel(
                                 // Nothing had answered by the patience mark: show the first answer.
                                 patience.isCompleted && !partialShown -> showPartial(p)
                             }
-                        }
+                        } }
                         patience.cancel()
                     }
                 }
@@ -174,7 +179,7 @@ class RowsViewModel(
         }
         viewModelScope.launch {
             _refreshing.value = true
-            val result = runCatching { loadBuiltIn().map { it.copy(defaultDisplay = defaults(it).normalized()) } }
+            val result = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { loadBuiltIn() }.map { it.copy(defaultDisplay = defaults(it).normalized()) } }
             result.getOrNull()?.forEach { knownTitles[it.key] = it.title }
             // Keep showing old rows if a background refresh fails.
             if (result.isSuccess || builtIn.value?.isSuccess != true) builtIn.value = result
@@ -191,15 +196,18 @@ class RowsViewModel(
         val loaded = entries.map { e ->
             async {
                 val items = runCatching {
-                    when (val src = e.source) {
+                    dev.nitrate.core.diagnostics.withQueryOrigin("$origin › ${titleOf(e)}") { when (val src = e.source) {
                         is RowSource.Query -> server.queryItems(src.query)
                         is RowSource.Collection -> server.collectionItems(src.id)
                         is RowSource.Playlist -> server.playlistItems(src.id)
                         is RowSource.BuiltIn -> emptyList()
-                    }
+                        // The app's own rows answer from Home's shared requests.
+                        is RowSource.AppRow -> server.appRow(src.key, src.libraryId)?.also { appRows[e.id] = it }?.items.orEmpty()
+                    } }
                 }.getOrNull()
-                val more = (e.source as? RowSource.Query)?.let { server.moreOfQuery(it.query) }
-                items?.let { e.id to MediaRow(e.rowKey, e.title ?: defaultTitle(e), it, (e.display ?: PageComposer.defaultDisplay(e.source)).normalized(), more) }
+                val app = appRows[e.id]?.takeIf { e.source is RowSource.AppRow }
+                val more = (e.source as? RowSource.Query)?.let { server.moreOfQuery(it.query) } ?: app?.more
+                items?.let { e.id to MediaRow(e.rowKey, e.title?.takeIf { it.isNotBlank() } ?: app?.title ?: defaultTitle(e), it, (e.display ?: app?.defaultDisplay ?: PageComposer.defaultDisplay(e.source)).normalized(), more) }
             }
         }.awaitAll().filterNotNull().toMap()
         // Keep earlier results for rows that failed this time.
@@ -214,6 +222,7 @@ class RowsViewModel(
         is RowSource.Query -> s.query.genres.firstOrNull() ?: s.query.describe()
         is RowSource.Collection -> s.name
         is RowSource.Playlist -> s.name
+        is RowSource.AppRow -> dev.nitrate.core.rows.AppRows.title(s.key, null)
     }
 
     fun save(row: MediaRow, display: RowDisplay) {

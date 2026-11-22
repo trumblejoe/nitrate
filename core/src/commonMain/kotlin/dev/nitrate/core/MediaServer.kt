@@ -97,6 +97,21 @@ interface MediaServer {
      */
     suspend fun sendClientLog(text: String): String = unsupported()
 
+    /** Every request made to the server, for the query analyzer; null where nothing is recorded. */
+    val queryLog: dev.nitrate.core.diagnostics.QueryLog? get() = null
+
+    /**
+     * One of the app's own rows ([dev.nitrate.core.rows.AppRows]) for any page, narrowed to
+     * [libraryId] where it can be; null when there's nothing in it.
+     */
+    suspend fun appRow(key: String, libraryId: String? = null): MediaRow? = null
+
+    /** The server's own time for this app run's requests (tag → ms), from the Companion plugin (feature `querytimes`). */
+    suspend fun serverQueryTimes(run: String): Map<String, Long> = emptyMap()
+
+    /** Lets go of answers kept to share between pages (a page refreshed by hand asks afresh). */
+    suspend fun forgetAnswers() {}
+
     /**
      * Times typical requests to the server from this device (round trip, a signed-in call, the
      * library list, a library search, a full Home load, download speed, and reading a large

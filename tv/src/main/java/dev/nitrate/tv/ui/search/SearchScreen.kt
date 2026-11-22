@@ -98,8 +98,8 @@ fun SearchScreen(
         searching = true
         // Quick matches first (names and pictures, cheap for the server), then the full results.
         // A newer query cancels this one (keep what's shown until its results arrive).
-        try { results = repository.searchHints(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
-        results = try { repository.search(q).also { resultsFor = q } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results }
+        try { results = dev.nitrate.core.diagnostics.withQueryOrigin("Search") { repository.searchHints(q) } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        results = try { dev.nitrate.core.diagnostics.withQueryOrigin("Search") { repository.search(q) }.also { resultsFor = q } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results }
         searching = false
     }
     var lines by remember { mutableStateOf<List<dev.nitrate.core.lines.SpokenLine>>(emptyList()) }

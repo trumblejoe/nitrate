@@ -146,6 +146,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         item { Link("Advanced playback settings", "The formats this phone plays (Always, Never), learned failures, direct play, resolution limit: what the tools' fixes change") { open(SettingsPage.ADVANCED) } }
         item { Link("Library playback overview", "Every film and episode you can see, and how each plays on this phone: as it is, converted, and why") { actions.nav.navigate(PlaybackOverviewRoute) } }
         item { SpeedCheckRow(actions) }
+        item { Link("Query analyzer", "Every request Nitrate makes to your server: which page asked, what it cost, what was shared, and hints for making pages lighter") { actions.nav.navigate(QueryAnalyzerRoute) } }
         item { DeviceReportRow(actions) }
         if (account?.isAdmin == true) {
             item { Link("Household devices", "How every device in the house plays the library, its tests and what its users saw at their TVs") { actions.nav.navigate(HouseholdDevicesRoute) } }

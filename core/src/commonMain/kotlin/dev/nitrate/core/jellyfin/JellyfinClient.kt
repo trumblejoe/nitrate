@@ -101,6 +101,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.onEach
+import io.ktor.client.call.save
+import io.ktor.client.plugins.plugin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
@@ -123,6 +126,8 @@ class JellyfinClient(
     private val playbackSettings: PlaybackSettingsRepository,
     /** Keeps slow-to-make rows ("Because you watched") between app runs. */
     private val textCache: dev.nitrate.core.cache.TextCache? = null,
+    /** Every request made, for the query analyzer. */
+    override val queryLog: dev.nitrate.core.diagnostics.QueryLog = dev.nitrate.core.diagnostics.QueryLog(),
 ) : MediaServer {
     internal val http = HttpClient(engine) {
         expectSuccess = true
@@ -135,6 +140,64 @@ class JellyfinClient(
             requestTimeoutMillis = 60_000
         }
     }
+
+    init {
+        // Every request is timed and put down to where it came from (the query analyzer), and
+        // tagged so the Companion plugin can time it on the server too. Anything sent that
+        // changes the server lets go of kept answers showing watch state.
+        http.plugin(io.ktor.client.plugins.HttpSend).intercept { request ->
+            val protocol = request.url.protocol.name
+            if (protocol == "ws" || protocol == "wss") return@intercept execute(request)
+            val (id, tag) = queryLog.nextTag()
+            request.headers.append(QUERY_TAG_HEADER, tag)
+            val origin = dev.nitrate.core.diagnostics.QueryLog.originHere()
+            val started = kotlin.time.TimeSource.Monotonic.markNow()
+            val method = request.method.value
+            val path = request.url.pathSegments.filter { it.isNotEmpty() }.let { segs ->
+                // A server at an address with a path (/jellyfin) is named from its own root.
+                val base = baseUrl?.let { b -> runCatching { io.ktor.http.Url(b).segments.filter { it.isNotEmpty() } }.getOrNull() }.orEmpty()
+                if (base.isNotEmpty() && segs.take(base.size) == base) segs.drop(base.size) else segs
+            }.joinToString("/")
+            val params = request.url.parameters.build().entries().associate { it.key to it.value.joinToString(",") }
+            // Long polls wait on purpose: not costs.
+            val counted = params.keys.none { it.equals("waitMs", ignoreCase = true) }
+            fun record(outcome: dev.nitrate.core.diagnostics.QueryOutcome, status: Int?, bytes: Long?) {
+                if (!counted) return
+                val ms = started.elapsedNow().inWholeMilliseconds
+                val endpoint = dev.nitrate.core.diagnostics.QueryLog.endpointOf(path)
+                queryLog.add(
+                    dev.nitrate.core.diagnostics.QueryRecord(
+                        id = id, tag = tag, atMs = nowEpochMs(), method = method, endpoint = endpoint,
+                        shape = (if (method == "GET") "" else "$method ") + dev.nitrate.core.diagnostics.QueryLog.shapeOf(endpoint, params),
+                        origin = origin, ms = ms, outcome = outcome, status = status, bytes = bytes,
+                        hints = dev.nitrate.core.diagnostics.QueryHints.of(endpoint, params, ms, bytes),
+                    ),
+                )
+            }
+            val call = try {
+                execute(request).let { if (counted) it.save() else it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                record(dev.nitrate.core.diagnostics.QueryOutcome.FAILED, null, null)
+                throw e
+            }
+            val status = call.response.status.value
+            val bytes = if (counted) runCatching { call.response.readRawBytes().size.toLong() }.getOrNull() else null
+            record(if (status < 400) dev.nitrate.core.diagnostics.QueryOutcome.FETCHED else dev.nitrate.core.diagnostics.QueryOutcome.FAILED, status, bytes)
+            if (method != "GET" && status < 400) answers.userDataChanged()
+            call
+        }
+    }
+
+    @OptIn(ExperimentalTime::class)
+    private fun nowEpochMs() = Clock.System.now().toEpochMilliseconds()
+
+    /** Answers kept a little while and shared between pages and rows ([items]). */
+    private val answers = dev.nitrate.core.cache.AnswerCache({ nowEpochMs() })
+
+    /** Lets go of every kept answer, for a page refreshed by hand. */
+    override suspend fun forgetAnswers() = answers.clear()
 
     /** Outlives screens, for fire-and-forget reports such as playback stopped. */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -671,8 +734,41 @@ class JellyfinClient(
 
     // ---- Browsing ----
 
-    private suspend fun items(vararg segments: String, query: Map<String, Any?>): List<MediaItem> =
-        get(*segments, query = query).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }
+    /**
+     * A list of titles, from the shared answers when another page or row asked the same lately
+     * (or is asking right now), else from the server. Shared answers are put down in the query
+     * log too, so the analyzer can show what sharing saved.
+     */
+    private suspend fun items(vararg segments: String, query: Map<String, Any?>): List<MediaItem> {
+        val key = (accountKey ?: "$baseUrl|$userId") + "|" + url(*segments, query = query)
+        val started = kotlin.time.TimeSource.Monotonic.markNow()
+        val (value, source) = answers.get(key, answerKind(segments)) {
+            get(*segments, query = query).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }
+        }
+        if (source != dev.nitrate.core.cache.AnswerSource.FETCHED) {
+            val (id, tag) = queryLog.nextTag()
+            val endpoint = dev.nitrate.core.diagnostics.QueryLog.endpointOf(segments.joinToString("/"))
+            val params = query.filterValues { it != null }.mapValues { it.value.toString() }
+            queryLog.add(
+                dev.nitrate.core.diagnostics.QueryRecord(
+                    id = id, tag = tag, atMs = nowEpochMs(), method = "GET", endpoint = endpoint,
+                    shape = dev.nitrate.core.diagnostics.QueryLog.shapeOf(endpoint, params),
+                    origin = dev.nitrate.core.diagnostics.QueryLog.originHere(),
+                    ms = started.elapsedNow().inWholeMilliseconds,
+                    outcome = if (source == dev.nitrate.core.cache.AnswerSource.JOINED) dev.nitrate.core.diagnostics.QueryOutcome.JOINED else dev.nitrate.core.diagnostics.QueryOutcome.KEPT,
+                ),
+            )
+        }
+        return value
+    }
+
+    private fun answerKind(segments: Array<out String>): dev.nitrate.core.cache.AnswerKind = when (segments.lastOrNull()) {
+        "Similar" -> dev.nitrate.core.cache.AnswerKind.SIMILAR
+        "UserViews" -> dev.nitrate.core.cache.AnswerKind.VIEWS
+        "Latest" -> dev.nitrate.core.cache.AnswerKind.LATEST
+        "NextUp", "Resume" -> dev.nitrate.core.cache.AnswerKind.WATCHING
+        else -> dev.nitrate.core.cache.AnswerKind.ITEMS
+    }
 
     /** What a row asked the server, so the row can be continued ([moreOfRow]). */
     private fun rowMore(vararg segments: String, query: Map<String, Any?>): dev.nitrate.core.rows.RowMore =
@@ -771,8 +867,13 @@ class JellyfinClient(
      * everything played by date, then asking for similar titles several times) and barely change
      * hour to hour, so they're remembered for [BECAUSE_TTL_MS], on the device, unless [fresh].
      */
+    /** "Because you watched", worked out once however many pages show it at the same moment. */
+    private suspend fun becauseYouWatched(fresh: Boolean): List<MediaRow> =
+        if (fresh) becauseYouWatchedNow(true)
+        else answers.get("because|${accountKey ?: "$baseUrl|$userId"}", dev.nitrate.core.cache.AnswerKind.SIMILAR) { becauseYouWatchedNow(false) }.first
+
     @OptIn(ExperimentalTime::class)
-    private suspend fun becauseYouWatched(fresh: Boolean): List<MediaRow> {
+    private suspend fun becauseYouWatchedNow(fresh: Boolean): List<MediaRow> {
         val key = "because/${accountKey ?: "$baseUrl|$userId"}"
         val now = Clock.System.now().toEpochMilliseconds()
         if (!fresh) {
@@ -791,6 +892,43 @@ class JellyfinClient(
     }
 
     private var savedBecauseKey: String? = null
+
+    /**
+     * One of the app's own rows for any page ([dev.nitrate.core.rows.AppRows]), through the same
+     * requests as Home's, so a page showing it alongside Home shares Home's answers.
+     */
+    override suspend fun appRow(key: String, libraryId: String?): MediaRow? {
+        val rows = dev.nitrate.core.rows.AppRows
+        fun row(items: List<MediaItem>, title: String, display: RowDisplay = WIDE_DEFAULT, more: dev.nitrate.core.rows.RowMore? = null) =
+            if (items.isEmpty()) null else MediaRow("app/$key", title, items, display, more)
+        val nextUpQuery = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "parentId" to libraryId)
+        return when (key) {
+            rows.CONTINUE_WATCHING -> row(resumeItems(libraryId, null), "Continue Watching", more = resumeMore(libraryId, null))
+            rows.NEXT_UP -> row(items("Shows", "NextUp", query = nextUpQuery), "Next Up", more = rowMore("Shows", "NextUp", query = nextUpQuery))
+            rows.CONTINUE_AND_NEXT -> coroutineScope {
+                val resume = async { resumeItems(libraryId, null) }
+                val next = async { items("Shows", "NextUp", query = nextUpQuery) }
+                row(dev.nitrate.core.rows.ContinueAndNext.merge(resume.await(), next.await()), dev.nitrate.core.rows.ContinueAndNext.TITLE)
+            }
+            rows.BECAUSE_1, rows.BECAUSE_2 -> {
+                val slot = if (key == rows.BECAUSE_1) 0 else 1
+                val key0 = dev.nitrate.core.rows.BecauseYouWatched.slots().keys.toList().getOrNull(slot)
+                becauseYouWatched(false).firstOrNull { it.key == key0 }
+            }
+            rows.LATEST -> {
+                val id = libraryId ?: return null
+                val view = (lastViews() ?: views()).firstOrNull { it.id == id } ?: views().firstOrNull { it.id == id } ?: return null
+                row(latestIn(view), "Latest in ${view.name}", RowDisplay(), latestMore(view))
+            }
+            rows.CONTINUE_LISTENING -> row(
+                items("UserItems", "Resume", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook")),
+                "Continue Listening", RowDisplay(),
+            )
+            rows.CONTINUE_READING -> row(continueReading(libraryId), "Continue Reading", RowDisplay())
+            rows.WATCHING_TOGETHER -> row(watchingTogether(), dev.nitrate.core.partners.TogetherRow.TITLE)
+            else -> null
+        }
+    }
 
     override fun homeRowsProgress(skip: Set<String>): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(homeJobs(skip = skip), skip)
 
@@ -1292,7 +1430,13 @@ class JellyfinClient(
         post<Unit>("Sessions", sessionId, "Command", command.wire)
     }
 
-    override fun events(): Flow<ServerEvent> = socketEvents { token != null }
+    override fun events(): Flow<ServerEvent> = socketEvents { token != null }.onEach {
+        when (it) {
+            is ServerEvent.LibraryChanged -> answers.clear()
+            is ServerEvent.UserDataChanged -> answers.userDataChanged()
+            else -> Unit
+        }
+    }
 
     // ---- Nitrate Companion (implemented in JellyfinCompanion.kt) ----
 
@@ -1361,6 +1505,10 @@ class JellyfinClient(
     override suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean) = channelsApi.save(channel, startOver)
     override suspend fun deleteChannel(channelId: String) = channelsApi.delete(channelId)
     override suspend fun companion() = companionApi.info()
+
+    /** The Companion plugin's own times for this run's requests (tag → ms), the caller's only. */
+    override suspend fun serverQueryTimes(run: String): Map<String, Long> =
+        get("Nitrate", "QueryTimes", query = mapOf("run" to run)).decode<List<QueryTimeDto>>().associate { it.tag to it.ms }
 
     override suspend fun comicListing(itemId: String) =
         if (companion()?.features?.contains(dev.nitrate.core.comics.ComicListing.FEATURE) == true) companionApi.comicListing(itemId) else null
@@ -2039,6 +2187,8 @@ class JellyfinClient(
 
     internal companion object {
         const val PREFS_CLIENT = "nitrate"
+        /** Each request's tag, so the Companion plugin can time it under the app's own name. */
+        const val QUERY_TAG_HEADER = "X-Nitrate-Query"
         const val ROW_LIMIT = 24
         const val ROW_FIELDS = "Overview,PrimaryImageAspectRatio,Genres"
         const val PROBE_TIMEOUT_MS = 5_000L

@@ -207,7 +207,7 @@ class AppContainer(
      */
     private fun syncScripts() {
         scriptSyncJob?.cancel()
-        scriptSyncJob = networkScope.launch {
+        scriptSyncJob = networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Script sync")) {
             launch {
                 @OptIn(kotlinx.coroutines.FlowPreview::class)
                 writing.docs.map { docs -> docs.map { it.id to it.sharedId }.toSet() }.distinctUntilChanged().drop(1).debounce(3_000).collect { runCatching { sharedWriting.autoSync() } }
@@ -272,7 +272,7 @@ class AppContainer(
     /** Reloads [groupStandings] (after sign-in, when watched state changes, after leaving a player). */
     fun refreshGroupStandings(delayMs: Long = 0) {
         standingsJob?.cancel()
-        standingsJob = networkScope.launch {
+        standingsJob = networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch partners")) {
             kotlinx.coroutines.delay(delayMs)
             runCatching { server.groupStandings() }.onSuccess { standingsState.value = it }
         }
@@ -533,7 +533,7 @@ class AppContainer(
      */
     fun shareWithAdmin() {
         shareJob?.cancel()
-        shareJob = networkScope.launch {
+        shareJob = networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Household devices")) {
             kotlinx.coroutines.delay(3_000)
             val settings = playbackSettings.current()
             if (!settings.shareWithAdmin) return@launch
@@ -607,6 +607,37 @@ class AppContainer(
     }
 
     /** Saves a speed check in the server's logs (Dashboard → Logs); returns the file name. */
+    /** Every request made to the server this run (the query analyzer); null when the server client records none. */
+    val queryLog: dev.nitrate.core.diagnostics.QueryLog? get() = server.queryLog
+
+    /** Whether the server's Companion plugin times requests too. */
+    fun serverTimesQueries(): Boolean = companion.value?.features?.contains(QUERY_TIMES_FEATURE) == true
+
+    /** Adds the server's own times to the log's requests (Companion feature `querytimes`); false without it. */
+    suspend fun fetchServerQueryTimes(): Boolean {
+        val log = queryLog ?: return false
+        if (!serverTimesQueries()) return false
+        val times = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin("Query analyzer") { server.serverQueryTimes(log.run) } }.getOrNull() ?: return false
+        log.addServerTimes(times)
+        return true
+    }
+
+    /** Library and custom page ids → names, so origins read "Library Films" rather than an id. */
+    suspend fun queryNames(): Map<String, String> {
+        val libraries = runCatching { libraryCache.cached(server) }.getOrDefault(emptyList()).associate { it.id to it.name }
+        val pages = runCatching { userIdOrNull()?.let { displaySettings.customPages(it).first() } }.getOrNull().orEmpty().associate { it.id to it.title }
+        return libraries + pages
+    }
+
+    private fun userIdOrNull() = server.userId
+
+    /** Saves the analyzer's summary of [records] in the server's logs (Dashboard → Logs). */
+    suspend fun sendQueryReport(title: String, records: List<dev.nitrate.core.diagnostics.QueryRecord>): Result<String> = runCatching {
+        val names = queryNames()
+        val readable = records.map { it.copy(origin = dev.nitrate.core.diagnostics.QueryLog.readable(it.origin, names)) }
+        server.sendClientLog(dev.nitrate.core.diagnostics.QuerySummary.of(readable).render(title, platform.identity.deviceName))
+    }
+
     suspend fun sendSpeedReport(report: dev.nitrate.core.diagnostics.SpeedReport): Result<String> =
         runCatching { server.sendClientLog(report.render()) }
 
@@ -625,14 +656,14 @@ class AppContainer(
         backups.onSignedIn()
         remote.start()
         // Not waited for: Home shouldn't wait on the account details (admin tools appear when they arrive).
-        networkScope.launch { refreshAccount() }
-        networkScope.launch { refreshCompanion() }
+        networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Sign-in")) { refreshAccount() }
+        networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Sign-in")) { refreshCompanion() }
         refreshGroupStandings()
         writing.account = server.currentAccountKey
         watchNetwork()
     }
 
-    private val networkScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+    private val networkScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate + dev.nitrate.core.diagnostics.QueryOrigin("In the background"))
     private var networkWatched = false
     private var reconnecting: kotlinx.coroutines.Job? = null
 
@@ -764,5 +795,10 @@ class AppContainer(
             app = platform.appKind,
             version = version,
         )
+    }
+
+    companion object {
+        /** The Companion plugin feature that times requests on the server. */
+        const val QUERY_TIMES_FEATURE = "querytimes"
     }
 }

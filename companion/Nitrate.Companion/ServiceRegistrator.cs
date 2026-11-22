@@ -21,6 +21,9 @@ public class ServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<ChatHub>();
+        // The server's own time for each request Nitrate tags (the apps' query analyzer).
+        serviceCollection.AddSingleton<Nitrate.Companion.QueryTimes.QueryTimeStore>();
+        serviceCollection.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, Nitrate.Companion.QueryTimes.QueryTimingStartupFilter>();
         // Shared scripts live in the server's data folder (not the plugin's own, which each version replaces).
         serviceCollection.AddSingleton<IScriptStorage>(sp =>
             new FileScriptStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "scripts")));

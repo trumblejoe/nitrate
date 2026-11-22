@@ -34,7 +34,7 @@ class LiveTvViewModel(private val server: MediaServer, private val now: () -> Lo
     init {
         refresh()
         // Keep "now" (progress, what's airing) current.
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Live TV")) {
             while (isActive) {
                 delay(30_000)
                 _state.update { it.copy(nowMs = now()) }
@@ -43,7 +43,7 @@ class LiveTvViewModel(private val server: MediaServer, private val now: () -> Lo
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Live TV")) {
             runCatching { server.liveChannels() }
                 .onSuccess { channels ->
                     _state.update { it.copy(channels = channels, error = null, nowMs = now()) }
@@ -58,7 +58,7 @@ class LiveTvViewModel(private val server: MediaServer, private val now: () -> Lo
     fun shift(slots: Int) {
         val earliest = Guide.windowStart(now())
         _state.update { it.copy(windowStartMs = maxOf(earliest, it.windowStartMs + slots * Guide.SLOT_MS)) }
-        viewModelScope.launch { loadGuide() }
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Live TV")) { loadGuide() }
     }
 
     private suspend fun loadGuide() {
@@ -70,7 +70,7 @@ class LiveTvViewModel(private val server: MediaServer, private val now: () -> Lo
 
     /** Records [program], or cancels its recording if it's already scheduled. */
     fun toggleRecording(program: TvProgram) {
-        viewModelScope.launch {
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Live TV")) {
             val timer = program.timerId
             runCatching { if (timer != null) server.cancelRecording(timer) else server.record(program.id) }
                 .onSuccess { _state.update { it.copy(message = if (timer != null) "Won't record ${program.title}" else "Will record ${program.title}") } }

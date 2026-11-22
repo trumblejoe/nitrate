@@ -89,8 +89,8 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
         loading = true
         // Quick matches first (names and pictures, cheap for the server), then the full results.
         // A newer query cancels this one: not an error to show.
-        try { results = Result.success(actions.server.searchHints(query)) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
-        results = try { Result.success(actions.server.search(query).also { resultsFor = query }) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results?.takeIf { it.isSuccess } ?: Result.failure(e) }
+        try { results = Result.success(dev.nitrate.core.diagnostics.withQueryOrigin("Search") { actions.server.searchHints(query) }) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+        results = try { Result.success(dev.nitrate.core.diagnostics.withQueryOrigin("Search") { actions.server.search(query) }.also { resultsFor = query }) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results?.takeIf { it.isSuccess } ?: Result.failure(e) }
         loading = false
     }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
