@@ -10,20 +10,45 @@ using Microsoft.Extensions.Logging;
 
 namespace Nitrate.Companion.SmartCollections;
 
-/// <summary>Which Jellyfin collection each rule keeps (smart-collections.json), so renames and restarts keep the same one.</summary>
+/// <summary>
+/// Which Jellyfin collection each rule keeps, in the plugin's database (the collections
+/// themselves are Jellyfin's, the rules are the plugin's settings). The older
+/// smart-collections.json is moved in once.
+/// </summary>
 public class SmartCollectionStore
 {
-    private readonly string? _path;
+    private const string Kind = "smart-collections";
+    private readonly Nitrate.Companion.Storage.CompanionDb? _db;
     private readonly object _lock = new();
-    private Dictionary<string, Guid> _collections;
+    private readonly Dictionary<string, Guid> _collections;
 
-    /// <summary>Initializes a new instance of the <see cref="SmartCollectionStore"/> class ([path] null: in memory).</summary>
-    public SmartCollectionStore(string? path)
+    /// <summary>Initializes a new instance of the <see cref="SmartCollectionStore"/> class ([db] null: in memory; [legacyJson]: the older file, moved in once).</summary>
+    public SmartCollectionStore(Nitrate.Companion.Storage.CompanionDb? db, string? legacyJson = null)
     {
-        _path = path;
-        _collections = path is not null && File.Exists(path)
-            ? (TryRead(path) ?? new())
-            : new();
+        _db = db;
+        if (db != null && legacyJson != null && File.Exists(legacyJson))
+        {
+            try
+            {
+                foreach (var (rule, id) in JsonSerializer.Deserialize<Dictionary<string, Guid>>(File.ReadAllText(legacyJson)) ?? new())
+                {
+                    if (db.Pair(Kind, rule) == null)
+                    {
+                        db.PutPair(Kind, rule, id.ToString("N"));
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Unreadable: the collections are found again by name.
+            }
+
+            File.Delete(legacyJson);
+        }
+
+        _collections = (db?.Pairs(Kind) ?? new())
+            .Where(kv => Guid.TryParse(kv.Value, out _))
+            .ToDictionary(kv => kv.Key, kv => Guid.Parse(kv.Value));
     }
 
     /// <summary>The collection kept for [ruleId], if any.</summary>
@@ -41,7 +66,7 @@ public class SmartCollectionStore
         lock (_lock)
         {
             _collections[ruleId] = collectionId;
-            Save();
+            _db?.PutPair(Kind, ruleId, collectionId.ToString("N"));
         }
     }
 
@@ -52,7 +77,7 @@ public class SmartCollectionStore
         {
             if (_collections.Remove(ruleId))
             {
-                Save();
+                _db?.DeletePair(Kind, ruleId);
             }
         }
     }
@@ -64,29 +89,6 @@ public class SmartCollectionStore
         {
             return _collections.Keys.ToList();
         }
-    }
-
-    private static Dictionary<string, Guid>? TryRead(string path)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<string, Guid>>(File.ReadAllText(path));
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
-    private void Save()
-    {
-        if (_path is null)
-        {
-            return;
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        File.WriteAllText(_path, JsonSerializer.Serialize(_collections));
     }
 }
 

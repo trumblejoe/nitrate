@@ -31,6 +31,7 @@ public sealed class CompanionDb : IDisposable
             CREATE TABLE IF NOT EXISTS results(kind TEXT NOT NULL, item TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY(kind, item));
             CREATE TABLE IF NOT EXISTS prints(item TEXT NOT NULL, whole INTEGER NOT NULL, version TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY(item, whole));
             CREATE TABLE IF NOT EXISTS failures(task TEXT NOT NULL, key TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY(task, key));
+            CREATE TABLE IF NOT EXISTS pairs(kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(kind, key));
             """);
     }
 
@@ -250,6 +251,55 @@ public sealed class CompanionDb : IDisposable
 
     /// <summary>Forgets failures of one task.</summary>
     public void DeleteFailures(string task, IEnumerable<string> keys) => DeleteKeys("failures", "task", task, "key", keys);
+
+    /// <summary>Every key and value of one kind (e.g. "smart-collections": rule → collection).</summary>
+    public Dictionary<string, string> Pairs(string kind)
+    {
+        var all = new Dictionary<string, string>();
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT key, value FROM pairs WHERE kind = $k";
+            cmd.Parameters.AddWithValue("$k", kind);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                all[reader.GetString(0)] = reader.GetString(1);
+            }
+        }
+
+        return all;
+    }
+
+    /// <summary>One value, or null.</summary>
+    public string? Pair(string kind, string key)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT value FROM pairs WHERE kind = $k AND key = $key";
+            cmd.Parameters.AddWithValue("$k", kind);
+            cmd.Parameters.AddWithValue("$key", key);
+            return cmd.ExecuteScalar() as string;
+        }
+    }
+
+    /// <summary>Keeps one value.</summary>
+    public void PutPair(string kind, string key, string value)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "INSERT OR REPLACE INTO pairs(kind, key, value) VALUES ($k, $key, $v)";
+            cmd.Parameters.AddWithValue("$k", kind);
+            cmd.Parameters.AddWithValue("$key", key);
+            cmd.Parameters.AddWithValue("$v", value);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>Forgets one value.</summary>
+    public void DeletePair(string kind, string key) => DeleteKeys("pairs", "kind", kind, "key", new[] { key });
 
     /// <inheritdoc />
     public void Dispose() => _db.Dispose();

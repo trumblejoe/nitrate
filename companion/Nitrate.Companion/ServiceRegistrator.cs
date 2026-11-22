@@ -46,7 +46,9 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             new JellyfinChannelLibrary(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>()),
             sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new PartnerHub(
-            new FilePartnerStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "partners.json")),
+            new DbPartnerStorage(
+                sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
+                Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "partners.json")),
             new JellyfinPartnerDirectory(sp.GetRequiredService<IUserManager>()),
             new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>()),
             sp.GetRequiredService<TimeProvider>()));
@@ -55,6 +57,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Together.InviteHub(sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.SmartCollections.SmartCollectionStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "smart-collections.json")));
         serviceCollection.AddHostedService<Nitrate.Companion.SmartCollections.SmartCollectionWatcher>();
         // The nightly tasks' results, fingerprints and unreadable files: one database, one row per

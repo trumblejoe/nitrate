@@ -49,13 +49,39 @@ public class SmartCollectionTests
     [Fact]
     public void TheStoreRemembersEachRulesCollection()
     {
-        var path = Path.Combine(Path.GetTempPath(), "nitrate-smart-" + Guid.NewGuid().ToString("N") + ".json");
+        using var db = new Nitrate.Companion.Storage.CompanionDb(":memory:");
         var collection = Guid.NewGuid();
-        new SmartCollectionStore(path).Set("r1", collection);
-        var again = new SmartCollectionStore(path);
+        new SmartCollectionStore(db).Set("r1", collection);
+        var again = new SmartCollectionStore(db);
         Assert.Equal(collection, again.Get("r1"));
         again.Remove("r1");
-        Assert.Null(new SmartCollectionStore(path).Get("r1"));
-        File.Delete(path);
+        Assert.Null(new SmartCollectionStore(db).Get("r1"));
+    }
+
+    [Fact]
+    public void TheOlderFileIsMovedInOnce()
+    {
+        var folder = Directory.CreateTempSubdirectory().FullName;
+        var file = Path.Combine(folder, "smart-collections.json");
+        var collection = Guid.NewGuid();
+        File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, Guid> { ["r1"] = collection }));
+        using var db = new Nitrate.Companion.Storage.CompanionDb(Path.Combine(folder, "companion.db"));
+        Assert.Equal(collection, new SmartCollectionStore(db, file).Get("r1"));
+        Assert.False(File.Exists(file));
+        Assert.Equal(collection, new SmartCollectionStore(db, file).Get("r1"));
+    }
+
+    [Fact]
+    public void PartnersAreKeptInTheDatabase()
+    {
+        var folder = Directory.CreateTempSubdirectory().FullName;
+        var file = Path.Combine(folder, "partners.json");
+        File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(new Nitrate.Companion.Partners.PartnerState()));
+        using var db = new Nitrate.Companion.Storage.CompanionDb(Path.Combine(folder, "companion.db"));
+        var storage = new Nitrate.Companion.Partners.DbPartnerStorage(db, file);
+        Assert.False(File.Exists(file));
+        var state = storage.Load();
+        storage.Save(state);
+        Assert.NotNull(new Nitrate.Companion.Partners.DbPartnerStorage(db).Load());
     }
 }

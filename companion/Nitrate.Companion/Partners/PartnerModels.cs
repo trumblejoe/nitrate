@@ -88,40 +88,50 @@ public interface IPartnerStorage
     void Save(PartnerState state);
 }
 
-/// <summary>One JSON file in the server's data folder.</summary>
-public class FilePartnerStorage : IPartnerStorage
+/// <summary>
+/// The partners' state (groups, invites, schedules and their votes, private accounts) as one row in
+/// the plugin's database: small, written when someone changes something. The older partners.json
+/// is moved in once.
+/// </summary>
+public class DbPartnerStorage : IPartnerStorage
 {
-    private readonly string _path;
+    private const string Kind = "state";
+    private const string Key = "partners";
+    private readonly Nitrate.Companion.Storage.CompanionDb _db;
 
-    /// <summary>Initializes a new instance of the <see cref="FilePartnerStorage"/> class.</summary>
-    public FilePartnerStorage(string path)
+    /// <summary>Initializes a new instance of the <see cref="DbPartnerStorage"/> class ([legacyJson]: the older file, moved in once).</summary>
+    public DbPartnerStorage(Nitrate.Companion.Storage.CompanionDb db, string? legacyJson = null)
     {
-        _path = path;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        _db = db;
+        if (legacyJson != null && File.Exists(legacyJson))
+        {
+            if (db.Pair(Kind, Key) == null)
+            {
+                db.PutPair(Kind, Key, File.ReadAllText(legacyJson));
+            }
+
+            File.Delete(legacyJson);
+        }
     }
 
     /// <inheritdoc />
     public PartnerState Load()
     {
+        var json = _db.Pair(Kind, Key);
         try
         {
-            return File.Exists(_path) ? JsonSerializer.Deserialize<PartnerState>(File.ReadAllText(_path)) ?? new PartnerState() : new PartnerState();
+            return json is null ? new PartnerState() : JsonSerializer.Deserialize<PartnerState>(json) ?? new PartnerState();
         }
         catch (JsonException)
         {
-            // Keep the damaged file for a look; start empty.
-            File.Copy(_path, _path + ".damaged", true);
+            // Keep the damaged copy for a look; start empty.
+            _db.PutPair(Kind, Key + ".damaged", json!);
             return new PartnerState();
         }
     }
 
     /// <inheritdoc />
-    public void Save(PartnerState state)
-    {
-        var temp = _path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(state));
-        File.Move(temp, _path, true);
-    }
+    public void Save(PartnerState state) => _db.PutPair(Kind, Key, JsonSerializer.Serialize(state));
 }
 
 /// <summary>The server's accounts, as partners need them.</summary>
