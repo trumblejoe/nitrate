@@ -757,7 +757,7 @@ class JellyfinClient(
                     rowsFor(list)
                 }
             },
-            dev.nitrate.core.rows.RowJob("Because you watched", null) { becauseYouWatched(fresh) },
+            dev.nitrate.core.rows.RowJob.making("Because you watched", dev.nitrate.core.rows.BecauseYouWatched.slots()) { becauseYouWatched(fresh) },
         )
     }
 
@@ -782,7 +782,7 @@ class JellyfinClient(
                     ?.also { savedBecause = it; savedBecauseKey = key }
             if (known != null && now - known.savedAtMs in 0 until BECAUSE_TTL_MS) return known.rows
         }
-        val rows = dev.nitrate.core.rows.BecauseYouWatched.rows(recentlyWatched(), ::similar)
+        val rows = dev.nitrate.core.rows.BecauseYouWatched.rows(lastWatchedSeeds(), ::similar)
         val saved = SavedRows(now, rows)
         savedBecause = saved
         savedBecauseKey = key
@@ -798,6 +798,25 @@ class JellyfinClient(
         dev.nitrate.core.rows.ProgressiveRows.run(homeJobs(skip = skip, combine = combineContinueNextUp), skip)
 
     override suspend fun homeRows(): List<MediaRow> = homeRowsProgress().last().rows
+
+    /**
+     * What "Because you watched" grows from: the few films and episodes finished most recently, asked
+     * for as lightly as the server allows (no count of everything played, no pictures, no extra fields).
+     */
+    private suspend fun lastWatchedSeeds(): List<MediaItem> = items(
+        "Items",
+        query = mapOf(
+            "userId" to userId,
+            "includeItemTypes" to "Movie,Episode",
+            "recursive" to true,
+            "filters" to "IsPlayed",
+            "sortBy" to "DatePlayed",
+            "sortOrder" to "Descending",
+            "limit" to 8,
+            "enableTotalRecordCount" to false,
+            "enableImages" to false,
+        ),
+    )
 
     /** Movies and episodes finished most recently. */
     private suspend fun recentlyWatched(): List<MediaItem> = items(
@@ -2018,7 +2037,8 @@ class JellyfinClient(
         const val ROW_FIELDS = "Overview,PrimaryImageAspectRatio,Genres"
         const val PROBE_TIMEOUT_MS = 5_000L
         /** How long "Because you watched" is reused before it's worked out again. */
-        const val BECAUSE_TTL_MS = 6 * 60 * 60 * 1000L
+        /** "Because you watched" is kept a day: it barely changes, and finding it is costly for the server. */
+        const val BECAUSE_TTL_MS = 24 * 60 * 60 * 1000L
         /** A home server answers in well under a second; away from home this is what startup waits for it. */
         const val LOCAL_PROBE_TIMEOUT_MS = 1_200L
 

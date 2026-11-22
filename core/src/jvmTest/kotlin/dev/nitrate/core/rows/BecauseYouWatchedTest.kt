@@ -26,4 +26,27 @@ class BecauseYouWatchedTest {
         assertEquals("Because you watched M2", rows[1].title)
         assertEquals(listOf("e", "f", "g"), rows[1].items.map { it.id })
     }
+
+    @Test fun asksForSimilarTitlesOnlyAsFarAsItNeeds() = kotlinx.coroutines.test.runTest {
+        val watched = (1..6).map { dev.nitrate.core.model.MediaItem("m$it", "Film $it", dev.nitrate.core.model.ItemKind.MOVIE) }
+        val asked = mutableListOf<String>()
+        val rows = BecauseYouWatched.rows(watched, { id ->
+            asked += id
+            (1..5).map { n -> dev.nitrate.core.model.MediaItem("$id-like$n", "Like $n", dev.nitrate.core.model.ItemKind.MOVIE) }
+        })
+        kotlin.test.assertEquals(2, rows.size)
+        // Two rows filled by the first two seeds: nobody else was asked about.
+        kotlin.test.assertEquals(listOf("m1", "m2"), asked.sorted())
+    }
+
+    @Test fun asksTheNextSeedsWhenTheFirstFallShort() = kotlinx.coroutines.test.runTest {
+        val watched = (1..4).map { dev.nitrate.core.model.MediaItem("m$it", "Film $it", dev.nitrate.core.model.ItemKind.MOVIE) }
+        var asked = 0
+        val rows = BecauseYouWatched.rows(watched, { id ->
+            // The first seed has nothing like it.
+            if (id == "m1") emptyList() else (1..5).map { n -> dev.nitrate.core.model.MediaItem("$id-like$n", "Like $n", dev.nitrate.core.model.ItemKind.MOVIE) }
+        }, seedsAsked = { asked = it })
+        kotlin.test.assertEquals(2, rows.size)
+        kotlin.test.assertEquals(3, asked)
+    }
 }

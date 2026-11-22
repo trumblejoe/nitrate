@@ -26,7 +26,15 @@ class RowJob(
     /** Set by [showing]: a load that can show rows before it finishes. */
     internal var showingLoad: (suspend (show: suspend (List<MediaRow>) -> Unit) -> List<MediaRow>)? = null
 
+    /** Every row this job can make, when known before it runs: hidden only when all of them are. */
+    var keys: Map<String, String> = key?.let { mapOf(it to name) } ?: emptyMap()
+        private set
+
     companion object {
+        /** A job making several rows with fixed keys ([keys]: key → title): it runs unless every one is hidden. */
+        fun making(name: String, keys: Map<String, String>, load: suspend () -> List<MediaRow>): RowJob =
+            RowJob(name, null, load).also { it.keys = keys }
+
         /** A job that can [show] rows early (e.g. from what it knew last time), then return the final ones. */
         fun showing(name: String, load: suspend (show: suspend (List<MediaRow>) -> Unit) -> List<MediaRow>): RowJob =
             RowJob(name, null) { load {} }.also { it.showingLoad = load }
@@ -47,8 +55,9 @@ object ProgressiveRows {
      * never run, and come back as [RowsProgress.skipped] so the editor can still name them.
      */
     fun run(all: List<RowJob>, skip: Set<String> = emptySet(), onTimed: (RowTiming) -> Unit = {}): Flow<RowsProgress> = channelFlow {
-        val skipped = all.filter { it.key != null && it.key in skip }.associate { it.key!! to it.name }
-        val jobs = all.filterNot { it.key != null && it.key in skip }
+        fun hidden(job: RowJob) = job.keys.isNotEmpty() && job.keys.keys.all { it in skip }
+        val skipped = all.filter(::hidden).flatMap { it.keys.entries }.associate { it.key to it.value }
+        val jobs = all.filterNot(::hidden)
         if (jobs.isEmpty()) { send(RowsProgress(emptyList(), complete = true, skipped)); return@channelFlow }
         val results = arrayOfNulls<List<MediaRow>>(jobs.size)
         val lock = Mutex()

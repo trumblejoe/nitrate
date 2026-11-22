@@ -73,4 +73,14 @@ class ProgressiveRowsTest {
         kotlin.test.assertEquals(listOf("home/shown"), done.rows.map { it.key })
         kotlin.test.assertEquals(mapOf("home/hidden" to "Hidden"), done.skipped)
     }
+
+    @Test fun aJobMakingSeveralRowsIsSkippedOnlyWhenAllAreHidden() = kotlinx.coroutines.test.runTest {
+        var ran = 0
+        fun job() = RowJob.making("Because", mapOf("a" to "A", "b" to "B")) { ran++; listOf(row("a"), row("b")) }
+        ProgressiveRows.run(listOf(job()), skip = setOf("a")).toList()
+        kotlin.test.assertEquals(1, ran, "one of its rows is still shown: it runs")
+        val done = ProgressiveRows.run(listOf(job()), skip = setOf("a", "b")).toList().last()
+        kotlin.test.assertEquals(1, ran, "both hidden: it never runs")
+        kotlin.test.assertEquals(setOf("a", "b"), done.skipped.keys)
+    }
 }
