@@ -55,6 +55,8 @@ fun QueryAnalyzerScreen(actions: AppActions) {
     var names by remember { mutableStateOf(emptyMap<String, String>()) }
     var household by remember { mutableStateOf(emptyList<dev.nitrate.core.diagnostics.HouseholdQuery>()) }
     LaunchedEffect(Unit) { household = container.householdQueries() }
+    var trends by remember { mutableStateOf(emptyList<dev.nitrate.core.companion.QueryTrend>()) }
+    LaunchedEffect(Unit) { trends = container.queryTrends() }
     LaunchedEffect(Unit) {
         names = container.queryNames()
         if (container.fetchServerQueryTimes()) message = "Server times added (Nitrate Companion)"
@@ -97,7 +99,7 @@ fun QueryAnalyzerScreen(actions: AppActions) {
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor()) }
                 Text("$title: ${summary.headline}", style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (listOf("Costliest", "By page", "Latest") + if (household.isNotEmpty()) listOf("Household") else emptyList()).forEachIndexed { i, label -> FilterChip(view == i, { view = i }, label = { Text(label) }) }
+                    (listOf("Costliest", "By page", "Latest") + (if (household.isNotEmpty()) listOf("Household") else emptyList()) + (if (trends.isNotEmpty()) listOf("Over time") else emptyList())).forEachIndexed { i, label -> FilterChip(view == i, { view = i }, label = { Text(label) }) }
                 }
             }
         }
@@ -128,6 +130,21 @@ fun QueryAnalyzerScreen(actions: AppActions) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 8.dp)) {
                         Text(h.shape, style = MaterialTheme.typography.titleSmall, maxLines = 3)
                         Text(h.counts, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            4 -> {
+                item {
+                    Text(
+                        "Each kind of request's typical time over the last 7 days against the 7 before, from the server's own timing (kept 90 days).",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = ScreenPadding),
+                    )
+                }
+                items(trends.take(40), key = { "t" + it.shape }) { t ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 8.dp)) {
+                        Text(t.shape, style = MaterialTheme.typography.titleSmall, maxLines = 3)
+                        Text(t.line(), style = MaterialTheme.typography.bodySmall, color = if ((t.change() ?: 0) >= 25) HintColor else Color.Unspecified)
                     }
                 }
             }

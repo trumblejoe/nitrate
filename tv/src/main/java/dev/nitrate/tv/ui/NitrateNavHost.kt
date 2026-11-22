@@ -332,6 +332,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 itemId = route.itemId,
                 seasonId = route.seasonId,
                 onPlay = { item, fromStart -> gate.play(item, fromStart) },
+                onPlayFrom = { item, at -> gate.play(item, startMs = at) },
                 onOpen = nav::openItem,
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,

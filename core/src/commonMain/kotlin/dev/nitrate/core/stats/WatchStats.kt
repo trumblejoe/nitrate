@@ -81,7 +81,7 @@ object WatchStatsBuilder {
         history.mapNotNull { it.user.lastPlayedMs }.map { civil(it + utcOffsetMs).first }.distinct().sortedDescending()
 
     /** Year and month (1–12) of a moment in local milliseconds (days from 1970 to the calendar). */
-    internal fun civil(localMs: Long): Pair<Int, Int> {
+    fun civil(localMs: Long): Pair<Int, Int> {
         val days = localMs.floorDiv(86_400_000L)
         val z = days + 719_468
         val era = z.floorDiv(146_097L)

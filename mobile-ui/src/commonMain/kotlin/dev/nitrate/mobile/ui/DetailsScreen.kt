@@ -198,6 +198,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         if (playingOn && sendable != null) PlayOnDialog(actions, sendable, sendable.user.positionMs, onDismiss = { playingOn = false })
                         // Watch partners: ask someone to keep this show in step with you.
                         if (checking) CheckPlaybackDialog(actions, item) { checking = false }
+                        // Marked moments and, only when asked, the chat kept from watching it together.
+                        if (item.isPlayable && !music) MomentsAndChatButtons(actions, item.id) { at -> actions.playFrom(item, at) }
                     }
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
                     item.overview?.takeIf { prefs.overview }?.let { overview ->

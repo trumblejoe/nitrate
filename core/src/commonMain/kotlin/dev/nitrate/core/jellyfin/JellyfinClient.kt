@@ -901,6 +901,68 @@ class JellyfinClient(
         }.getOrNull()
     }
 
+    override suspend fun queryTrends(days: Int): List<dev.nitrate.core.companion.QueryTrend> =
+        if (!companionHas("querytimes")) emptyList()
+        else runCatching {
+            get("Nitrate", "QueryTimes", "Trends", query = mapOf("days" to days)).decode<List<QueryTrendDto>>()
+                .map { t -> dev.nitrate.core.companion.QueryTrend(t.shape, t.days.map { dev.nitrate.core.companion.QueryTrendDay(it.day, it.count, it.medianMs, it.slowMs) }) }
+        }.getOrDefault(emptyList())
+
+    override suspend fun segmentFeedback(itemId: String, part: dev.nitrate.core.companion.SegmentPart) {
+        if (!companionHas("segmentfeedback")) return
+        val name = part.name.lowercase().replaceFirstChar { it.uppercase() }
+        runCatching { post<SegmentFeedbackDto>("Nitrate", "Segments", "Feedback", body = SegmentFeedbackDto(dashless(listOf(itemId)), name)) }
+    }
+
+    override suspend fun sittings(fromMs: Long, toMs: Long): List<dev.nitrate.core.companion.Sitting> =
+        if (!companionHas("watching")) emptyList()
+        else runCatching {
+            get("Nitrate", "Watching", query = mapOf("from" to fromMs, "to" to toMs)).decode<List<SittingDto>>()
+                .map { dev.nitrate.core.companion.Sitting(normalizeId(it.itemId), it.kind, it.name, it.seriesName, it.startedAt, it.endedAt, it.watchedMs) }
+        }.getOrDefault(emptyList())
+
+    /** Titles already reported from this device this run, so each is sent once. */
+    private val reportedProblems = mutableSetOf<String>()
+
+    override suspend fun reportProblem(itemId: String, failed: Boolean, reason: String?) {
+        val kind = if (failed) "Failed" else "Converted"
+        if (!reportedProblems.add("$itemId|$kind") || !companionHas("problems")) return
+        runCatching {
+            post<ProblemPostDto>("Nitrate", "Problems", body = ProblemPostDto(dashless(listOf(itemId)), identity.deviceId, identity.deviceName, kind, reason?.take(200)))
+        }
+    }
+
+    override suspend fun problemTitles(): List<dev.nitrate.core.companion.ProblemTitle> =
+        if (!companionHas("problems")) emptyList()
+        else runCatching {
+            get("Nitrate", "Problems").decode<List<ProblemTitleDto>>()
+                .map { dev.nitrate.core.companion.ProblemTitle(normalizeId(it.itemId), it.name, it.devices, it.failed, it.converted, it.reasons, it.deviceNames, it.lastAt) }
+        }.getOrDefault(emptyList())
+
+    private fun MomentDto.toMoment() = dev.nitrate.core.companion.Moment(normalizeId(id), normalizeId(userId), userName, normalizeId(itemId), positionMs, note, groupId?.let(::normalizeId), at)
+
+    override suspend fun moments(itemId: String?): List<dev.nitrate.core.companion.Moment> =
+        if (!companionHas("moments")) emptyList()
+        else runCatching {
+            get("Nitrate", "Moments", query = mapOf("itemId" to itemId?.let { dashless(listOf(it)) })).decode<List<MomentDto>>().map { it.toMoment() }
+        }.getOrDefault(emptyList())
+
+    override suspend fun addMoment(itemId: String, positionMs: Long, note: String?, groupId: String?): dev.nitrate.core.companion.Moment? =
+        if (!companionHas("moments")) null
+        else post<MomentPostDto>("Nitrate", "Moments", body = MomentPostDto(dashless(listOf(itemId)), positionMs, note, groupId?.let { dashless(listOf(it)) }))
+            .decode<MomentDto>().toMoment()
+
+    override suspend fun deleteMoment(id: String) {
+        http.delete(url("Nitrate", "Moments", dashless(listOf(id)))) { auth() }
+    }
+
+    override suspend fun chatHistory(itemId: String): List<dev.nitrate.core.companion.ChatRecord> =
+        if (!companionHas("chathistory")) emptyList()
+        else runCatching {
+            get("Nitrate", "Chat", "History", query = mapOf("itemId" to dashless(listOf(itemId)))).decode<List<ChatRecordDto>>()
+                .map { dev.nitrate.core.companion.ChatRecord(normalizeId(it.from), it.name, it.kind == "Reaction", it.text, it.positionMs, it.at) }
+        }.getOrDefault(emptyList())
+
     /** Every person's requests by kind (Companion, admins only); empty without it. */
     override suspend fun householdQueries(): List<dev.nitrate.core.diagnostics.HouseholdQuery> =
         if (!companionHas("querytimes")) emptyList()

@@ -420,7 +420,12 @@ actual fun PlayerScreen(
             .let { at -> creditScenes?.upNextAt(at, progress.durationMs) ?: at }
         val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && progress.positionMs >= upNextAt && scrub == null
         if (!inPip) SecondSubtitleLine(session, playbackSettings.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = if (controlsVisible) 76.dp else 20.dp, start = 24.dp, end = 24.dp))
-        SkipButton(PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }) { session.seekTo(it.endMs) }
+        SkipButton(PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }) {
+            item?.let { i -> actions.container.skipWatch.skipped(i.id, it, dev.nitrate.android.nowMs()) }
+            session.seekTo(it.endMs)
+        }
+        // Going straight back into what was just skipped tells the Companion it was found wrong.
+        LaunchedEffect(progress.positionMs / 1000) { item?.let { i -> actions.container.skipWatch.position(i.id, progress.positionMs, dev.nitrate.android.nowMs()) } }
         if (showUpNext && next != null) {
             val remaining = ((progress.durationMs - progress.positionMs) / 1000).toInt()
             UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true }, onCountdownEnd = { rollOn(next) })

@@ -186,7 +186,11 @@ actual fun PlayerScreen(
         val upNextAt = (if (film) NextInCollection.offerAtMs(durationMs, segments, item?.chapters.orEmpty()) else PlaybackMoments.upNextAtMs(durationMs, segments))
             .let { at -> creditScenes?.upNextAt(at, durationMs) ?: at }
         val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && positionMs >= upNextAt
-        if (clipEndMs == null) SkipButton(PlaybackMoments.skippable(segments, positionMs).takeIf { !showUpNext }) { session.seekTo(it.endMs) }
+        if (clipEndMs == null) SkipButton(PlaybackMoments.skippable(segments, positionMs).takeIf { !showUpNext }) {
+            item?.let { i -> container.skipWatch.skipped(i.id, it, dev.nitrate.android.nowMs()) }
+            session.seekTo(it.endMs)
+        }
+        LaunchedEffect(positionMs / 1000) { item?.let { i -> container.skipWatch.position(i.id, positionMs, dev.nitrate.android.nowMs()) } }
         if (showUpNext && next != null) {
             val remaining = ((durationMs - positionMs) / 1000).toInt()
             UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { pressed(); onPlayNext?.invoke(next) }, onHide = { pressed(); upNextHidden = true }, onCountdownEnd = { rollOn(next) })
@@ -348,6 +352,7 @@ private fun IosPlayerMore(
             Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
         ) {
+            MarkMomentRow(actions, item?.id) { session.positionMs.value }
             if (session.canChangeSpeed) {
                 Text("Speed", style = MaterialTheme.typography.titleSmall)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {

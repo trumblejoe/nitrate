@@ -622,6 +622,32 @@ class AppContainer(
         return true
     }
 
+    /**
+     * Notices "that intro was wrong" from skipping it and going straight back (players call
+     * `skipped` on a Skip and `position` as they play); sent to the Companion's corrections.
+     */
+    val skipWatch = dev.nitrate.core.companion.SkipWatch { item, part -> networkScope.launch { server.segmentFeedback(item, part) } }
+
+    /** Whether the Companion plugin offers [feature] (as last asked). */
+    fun companionOffers(feature: String): Boolean = companion.value?.features?.contains(feature) == true
+
+    /** This year's real watch time from the Companion (null without it): [fromMs, toMs), the device's time zone. */
+    suspend fun watchTime(fromMs: Long, toMs: Long, offsetMs: Long): dev.nitrate.core.companion.WatchTime? {
+        if (!companionOffers("watching")) return null
+        val sittings = runCatching { server.sittings(fromMs, toMs) }.getOrNull() ?: return null
+        return dev.nitrate.core.companion.WatchTime.of(sittings, offsetMs)
+    }
+
+    /** Each kind of request's typical time day by day (admins, Companion `querytimes`); empty otherwise. */
+    suspend fun queryTrends(days: Int = 30): List<dev.nitrate.core.companion.QueryTrend> =
+        if (account.value?.isAdmin != true || !companionOffers("querytimes")) emptyList()
+        else runCatching { dev.nitrate.core.diagnostics.withQueryOrigin("Query analyzer") { server.queryTrends(days) } }.getOrDefault(emptyList())
+
+    /** Titles that failed or were converted on the household's devices (admins, Companion `problems`); empty otherwise. */
+    suspend fun problemTitles(): List<dev.nitrate.core.companion.ProblemTitle> =
+        if (account.value?.isAdmin != true || !companionOffers("problems")) emptyList()
+        else runCatching { server.problemTitles() }.getOrDefault(emptyList())
+
     /** Every person's requests by kind over the last two hours, for admins with the Companion plugin; empty otherwise. */
     suspend fun householdQueries(): List<dev.nitrate.core.diagnostics.HouseholdQuery> =
         if (account.value?.isAdmin != true || !serverTimesQueries()) emptyList()

@@ -566,6 +566,7 @@ class PlaybackSession(
                 CapabilityRules.failureCapabilityId(failed, videoFailed)?.let { id ->
                     scope.launch { settings.recordFailure(id, e.errorCodeName, System.currentTimeMillis(), itemId = failed.itemId) }
                 }
+                scope.launch { runCatching { server.reportProblem(failed.itemId, failed = true, reason = e.errorCodeName) } }
                 // Only this title from now on; a whole format only after several different titles fail.
                 showNotice(
                     "$deviceNoun couldn't play this file as it is (${e.errorCodeName}). Switched to converting; " +
@@ -972,6 +973,11 @@ class PlaybackSession(
 
     private fun play(p: PlaybackPlan, startMs: Long, title: String, keepPaused: Boolean? = null) {
         _plan.value = p
+        // The server had to convert it for this device: the household's admins hear about it
+        // (Companion "problems", once per title per run; never for test or recap clips).
+        if (p.method == PlayMethod.TRANSCODE && localProgress == null && clipEndMs == null) {
+            scope.launch { runCatching { server.reportProblem(p.itemId, failed = false, reason = p.transcodeReasons.joinToString(", ").ifEmpty { null }) } }
+        }
         if (_secondSubtitle.value?.itemId != p.itemId) {
             _secondSubtitle.value = null
             restoreSecondSubtitle(p)

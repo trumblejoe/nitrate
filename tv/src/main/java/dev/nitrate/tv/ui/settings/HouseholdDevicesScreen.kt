@@ -54,6 +54,8 @@ fun HouseholdDevicesScreen(container: AppContainer, onOpen: (String) -> Unit) {
         }
     }
     LaunchedEffect(Unit) { load() }
+    var trouble by remember { mutableStateOf(emptyList<dev.nitrate.core.companion.ProblemTitle>()) }
+    LaunchedEffect(Unit) { trouble = container.problemTitles() }
     val now = System.currentTimeMillis()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 58.dp, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -79,6 +81,22 @@ fun HouseholdDevicesScreen(container: AppContainer, onOpen: (String) -> Unit) {
                     onClick = { onOpen(title.itemId) },
                     headlineContent = { Text(title.name) },
                     supportingContent = { Text(listOfNotNull("On $count devices", title.delivery, title.reason).joinToString(" · "), style = MaterialTheme.typography.bodySmall) },
+                )
+            }
+        }
+        if (trouble.isNotEmpty()) {
+            item { Text("Titles with trouble (90 days)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 14.dp)) }
+            items(trouble.take(20), key = { "p" + it.itemId }) { t ->
+                ListItem(
+                    selected = false,
+                    onClick = { onOpen(t.itemId) },
+                    headlineContent = { Text(t.name) },
+                    supportingContent = {
+                        Column {
+                            Text(t.line, style = MaterialTheme.typography.bodySmall, color = if (t.failed > 0) Amber else Color.Unspecified)
+                            if (t.reasons.isNotEmpty()) Text(t.reasons.take(3).joinToString("; "), style = MaterialTheme.typography.bodySmall)
+                        }
+                    },
                 )
             }
         }

@@ -391,3 +391,30 @@ internal data class VideoFormatDto(val codec: String? = null, val bitDepth: Int?
 /** One kind of request across the household (Companion, admins). */
 @Serializable
 internal data class HouseholdQueryDto(val shape: String, val count: Int, val people: Int, val totalMs: Long, val medianMs: Long, val slowMs: Long, val maxMs: Long)
+
+@Serializable
+internal data class QueryTrendDto(val shape: String, val days: List<QueryTrendDayDto> = emptyList())
+
+@Serializable
+internal data class QueryTrendDayDto(val day: String, val count: Long = 0, val medianMs: Long = 0, val slowMs: Long = 0)
+
+@Serializable
+internal data class SegmentFeedbackDto(val itemId: String, val part: String)
+
+@Serializable
+internal data class SittingDto(val itemId: String, val kind: String = "", val name: String = "", val seriesName: String? = null, val startedAt: Long = 0, val endedAt: Long = 0, val watchedMs: Long = 0)
+
+@Serializable
+internal data class ProblemPostDto(val itemId: String, val deviceId: String, val deviceName: String, val kind: String, val reason: String? = null)
+
+@Serializable
+internal data class ProblemTitleDto(val itemId: String, val name: String = "", val devices: Int = 0, val failed: Int = 0, val converted: Int = 0, val reasons: List<String> = emptyList(), val deviceNames: List<String> = emptyList(), val lastAt: Long = 0)
+
+@Serializable
+internal data class MomentDto(val id: String, val userId: String, val userName: String = "", val itemId: String, val positionMs: Long = 0, val note: String? = null, val groupId: String? = null, val at: Long = 0)
+
+@Serializable
+internal data class MomentPostDto(val itemId: String, val positionMs: Long, val note: String? = null, val groupId: String? = null)
+
+@Serializable
+internal data class ChatRecordDto(val from: String, val name: String = "", val kind: String = "Text", val text: String = "", val positionMs: Long? = null, val at: Long = 0)

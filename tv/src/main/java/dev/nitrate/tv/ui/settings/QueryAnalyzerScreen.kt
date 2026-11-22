@@ -52,6 +52,8 @@ fun QueryAnalyzerScreen(container: AppContainer) {
     val first = remember { FocusRequester() }
     var household by remember { mutableStateOf(emptyList<dev.nitrate.core.diagnostics.HouseholdQuery>()) }
     LaunchedEffect(Unit) { household = container.householdQueries() }
+    var trends by remember { mutableStateOf(emptyList<dev.nitrate.core.companion.QueryTrend>()) }
+    LaunchedEffect(Unit) { trends = container.queryTrends() }
     LaunchedEffect(Unit) {
         names = container.queryNames()
         if (container.fetchServerQueryTimes()) message = "Server times added (Nitrate Companion)"
@@ -133,6 +135,20 @@ fun QueryAnalyzerScreen(container: AppContainer) {
         }
         items(household.take(25), key = { "h" + it.shape }) { h ->
             ListItem(selected = false, onClick = {}, headlineContent = { Text(h.shape, maxLines = 2) }, supportingContent = { Text(h.counts) }, modifier = Modifier.widthIn(max = 1000.dp))
+        }
+        if (trends.isNotEmpty()) item {
+            Column {
+                QueryHeading("Over time")
+                Text("Each kind of request's typical time over the last 7 days against the 7 before, from the server's own timing.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        items(trends.take(25), key = { "t" + it.shape }) { t ->
+            ListItem(
+                selected = false, onClick = {},
+                headlineContent = { Text(t.shape, maxLines = 2) },
+                supportingContent = { Text(t.line(), color = if ((t.change() ?: 0) >= 25) HintColor else Color.Unspecified) },
+                modifier = Modifier.widthIn(max = 1000.dp),
+            )
         }
         if (readable.isNotEmpty()) item { QueryHeading("Latest requests") }
         items(readable.takeLast(40).reversed(), key = { "r" + it.id }) { r ->

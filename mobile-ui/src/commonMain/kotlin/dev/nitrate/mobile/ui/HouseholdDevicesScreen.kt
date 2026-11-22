@@ -52,6 +52,8 @@ fun HouseholdDevicesScreen(actions: AppActions) {
         }
     }
     LaunchedEffect(Unit) { load() }
+    var trouble by remember { mutableStateOf(emptyList<dev.nitrate.core.companion.ProblemTitle>()) }
+    LaunchedEffect(Unit) { trouble = actions.container.problemTitles() }
     val now = dev.nitrate.android.nowMs()
     val list = devices.orEmpty()
     val common = Household.mostConverted(list)
@@ -75,6 +77,16 @@ fun HouseholdDevicesScreen(actions: AppActions) {
                 Column(Modifier.fillMaxWidth().clickable { actions.nav.navigate(DetailsRoute(title.itemId)) }.padding(horizontal = ScreenPadding, vertical = 8.dp)) {
                     Text(title.name, style = MaterialTheme.typography.titleSmall)
                     Text(listOfNotNull("On $count devices", title.delivery, title.reason).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (trouble.isNotEmpty()) {
+            item { SectionHeader("Titles with trouble (90 days)") }
+            items(trouble.take(30), key = { "p" + it.itemId }) { t ->
+                Column(Modifier.fillMaxWidth().clickable { actions.nav.navigate(DetailsRoute(t.itemId)) }.padding(horizontal = ScreenPadding, vertical = 8.dp)) {
+                    Text(t.name, style = MaterialTheme.typography.titleSmall)
+                    Text(t.line, style = MaterialTheme.typography.bodySmall, color = if (t.failed > 0) Amber else MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (t.reasons.isNotEmpty()) Text(t.reasons.take(3).joinToString("; "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

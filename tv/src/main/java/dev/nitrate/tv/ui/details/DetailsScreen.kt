@@ -95,6 +95,8 @@ fun DetailsScreen(
     /** The tracks a title will start with, and picking others (remembered like a pick in the player). */
     trackSetup: (suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup)? = null,
     pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
+    /** Plays from a point (a marked moment). */
+    onPlayFrom: (MediaItem, Long) -> Unit = { i, _ -> onPlay(i, false) },
 ) {
     val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
     // "More like this" off: the server isn't asked for similar titles at all.
@@ -140,7 +142,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack, onPlayFrom)
             }
 
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -346,6 +348,7 @@ private fun Header(
     applyPlaybackFix: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit,
     trackSetup: (suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup)? = null,
     pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
+    onPlayFrom: (MediaItem, Long) -> Unit = { i, _ -> onPlay(i, false) },
 ) {
     // Music pages have more buttons in a row.
     val wideHeader = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
@@ -437,6 +440,7 @@ private fun Header(
                     else PlaybackDecisionDialog(repository, item) { showInfo = false }
                 }
             }
+            if (item.isPlayable && item.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO) MomentsAndChatButtons(repository, item.id) { at -> onPlayFrom(item, at) }
             if (item.isPlayable || item.kind == ItemKind.SERIES) {
                 var adding by remember { mutableStateOf(false) }
                 OutlinedButton(onClick = { adding = true }) { Text("Add to…") }

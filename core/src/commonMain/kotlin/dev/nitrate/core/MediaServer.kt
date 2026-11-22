@@ -109,6 +109,34 @@ interface MediaServer {
     /** The server's own time for this app run's requests (tag → ms), from the Companion plugin (feature `querytimes`). */
     suspend fun serverQueryTimes(run: String): Map<String, Long> = emptyMap()
 
+    // ---- Companion: what its database keeps (each empty or a no-op without the feature) ----
+
+    /** Each request kind's server times by day, the last [days] (`querytimes`, admins). */
+    suspend fun queryTrends(days: Int = 30): List<dev.nitrate.core.companion.QueryTrend> = emptyList()
+
+    /** "That part of [itemId] was wrong" (`segmentfeedback`). */
+    suspend fun segmentFeedback(itemId: String, part: dev.nitrate.core.companion.SegmentPart) {}
+
+    /** The caller's own sittings in [fromMs, toMs) (`watching`). */
+    suspend fun sittings(fromMs: Long, toMs: Long): List<dev.nitrate.core.companion.Sitting> = emptyList()
+
+    /** This device had trouble with a title: [failed] it, else the server converted it (`problems`). */
+    suspend fun reportProblem(itemId: String, failed: Boolean, reason: String?) {}
+
+    /** Titles with trouble across the household (`problems`, admins). */
+    suspend fun problemTitles(): List<dev.nitrate.core.companion.ProblemTitle> = emptyList()
+
+    /** The caller's moments (in [itemId], else all) and those shared with their watch groups (`moments`). */
+    suspend fun moments(itemId: String? = null): List<dev.nitrate.core.companion.Moment> = emptyList()
+
+    /** Keeps a moment (shown to watch group [groupId] when given). */
+    suspend fun addMoment(itemId: String, positionMs: Long, note: String?, groupId: String? = null): dev.nitrate.core.companion.Moment? = null
+
+    suspend fun deleteMoment(id: String) {}
+
+    /** A title's kept chat from viewings the caller was part of (`chathistory`). */
+    suspend fun chatHistory(itemId: String): List<dev.nitrate.core.companion.ChatRecord> = emptyList()
+
     /** Every person's requests of the last two hours by kind (Companion `querytimes`, admins only); empty otherwise. */
     suspend fun householdQueries(): List<dev.nitrate.core.diagnostics.HouseholdQuery> = emptyList()
 

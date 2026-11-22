@@ -61,6 +61,11 @@ fun StatsScreen(actions: AppActions) {
     val years = remember(list) { list?.let { WatchStatsBuilder.years(it, offset) }.orEmpty() }
     var year by remember(years) { mutableStateOf(years.firstOrNull()) }
     val stats = remember(list, year) { list?.let { WatchStatsBuilder.build(it, year, offset) } }
+    // Real watch time (Companion `watching`): every sitting, pauses left out.
+    val sittings by produceState(emptyList<dev.nitrate.core.companion.Sitting>()) {
+        value = runCatching { actions.server.sittings(0, dev.nitrate.android.nowMs()) }.getOrDefault(emptyList())
+    }
+    val watchTime = remember(sittings, year) { dev.nitrate.core.companion.WatchTime.forYear(sittings, year, offset) }
 
     Column(
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(ScreenPadding),
@@ -80,6 +85,13 @@ fun StatsScreen(actions: AppActions) {
                     FilterChip(selected = year == null, onClick = { year = null }, label = { Text("All time") })
                 }
                 StatsBody(stats)
+                watchTime?.let { w ->
+                    Column {
+                        Text("Time in front of the screen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(dev.nitrate.core.companion.WatchTime.line(w), style = MaterialTheme.typography.bodyMedium)
+                        Text("Counted by your server as you watch, in any app that tells it what plays: rewatches, unfinished titles and stops part way included, pauses not.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 Text(
                     fromDiary?.let { "From your watch diary, which counts every watch on its own date (since ${dev.nitrate.mobile.platform.formatDate(it)}; before that, your server's record of the last time you watched each title)." }
                         ?: "From your server's record of what you finished. It keeps only the last time you watched each title, so a title counts in that year; time counts every play.",

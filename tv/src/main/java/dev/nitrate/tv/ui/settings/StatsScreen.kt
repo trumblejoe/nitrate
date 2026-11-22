@@ -63,6 +63,11 @@ fun StatsScreen(server: MediaServer) {
     val years = remember(list) { list?.let { WatchStatsBuilder.years(it, offset) }.orEmpty() }
     var year by remember(years) { mutableStateOf(years.firstOrNull()) }
     val stats = remember(list, year) { list?.let { WatchStatsBuilder.build(it, year, offset) } }
+    // Real watch time (Companion `watching`): every sitting, pauses left out.
+    val sittings by produceState(emptyList<dev.nitrate.core.companion.Sitting>()) {
+        value = runCatching { server.sittings(0, System.currentTimeMillis()) }.getOrDefault(emptyList())
+    }
+    val watchTime = remember(sittings, year) { dev.nitrate.core.companion.WatchTime.forYear(sittings, year, offset) }
     val first = remember { FocusRequester() }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(48.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -84,6 +89,17 @@ fun StatsScreen(server: MediaServer) {
                 }
                 // Each part is a stop for the D-pad, so ▼ walks down the page and it scrolls.
                 item { Stop { Totals(stats) } }
+                watchTime?.let { w ->
+                    item {
+                        Stop {
+                            Column {
+                                Text("Time in front of the screen", style = MaterialTheme.typography.titleLarge)
+                                Text(dev.nitrate.core.companion.WatchTime.line(w), style = MaterialTheme.typography.bodyLarge)
+                                Text("Counted by your server as you watch, in any app that tells it what plays: rewatches, unfinished titles and stops part way included, pauses not.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
                 if (stats.byMonth.any { it > 0 }) item { Stop { Months(stats.byMonth) } }
                 if (listOf(stats.topShows, stats.topGenres, stats.rewatched, stats.topArtists).any { it.isNotEmpty() }) item { Stop { Tops(stats) } }
                 item {
