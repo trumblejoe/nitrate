@@ -19,15 +19,16 @@ public record CreditResult(string Version, IReadOnlyList<CreditSkip> Skips, Date
 public class CreditStore
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
-    private readonly string? _path;
+    private readonly Nitrate.Companion.Storage.CompanionDb? _db;
     private readonly object _lock = new();
-    private Dictionary<Guid, CreditResult> _results;
+    private readonly Dictionary<Guid, CreditResult> _results;
 
-    /// <summary>Initializes a new instance of the <see cref="CreditStore"/> class ([path] null: in memory only).</summary>
-    public CreditStore(string? path)
+    /// <summary>Initializes a new instance of the <see cref="CreditStore"/> class ([db] null: in memory only; [legacyJson]: results from before the database, moved in once).</summary>
+    public CreditStore(Nitrate.Companion.Storage.CompanionDb? db, string? legacyJson = null)
     {
-        _path = path;
-        _results = Load(path);
+        _db = db;
+        db?.ImportResults<CreditResult>("credits", legacyJson);
+        _results = db?.Results<CreditResult>("credits") ?? new();
     }
 
     /// <summary>The result for [item], if it was checked.</summary>
@@ -48,7 +49,7 @@ public class CreditStore
         lock (_lock)
         {
             _results[item] = result;
-            Save();
+            _db?.PutResult("credits", item, result);
         }
     }
 
@@ -64,37 +65,8 @@ public class CreditStore
             }
 
             gone.ForEach(k => _results.Remove(k));
-            Save();
+            _db?.DeleteResults("credits", gone);
         }
     }
 
-    private static Dictionary<Guid, CreditResult> Load(string? path)
-    {
-        if (path is null || !File.Exists(path))
-        {
-            return new();
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<Guid, CreditResult>>(File.ReadAllText(path), Json) ?? new();
-        }
-        catch (JsonException)
-        {
-            return new();
-        }
-    }
-
-    private void Save()
-    {
-        if (_path is null)
-        {
-            return;
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        var temp = _path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(_results, Json));
-        File.Move(temp, _path, true);
-    }
 }

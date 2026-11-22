@@ -25,9 +25,9 @@ public class TimingScanner : IScheduledTask
     private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
 
     /// <summary>Initializes a new instance of the <see cref="TimingScanner"/> class.</summary>
-    public TimingScanner(TimingStore store, ILibraryManager library, IMediaEncoder encoder, ILogger<TimingScanner> log, MediaBrowser.Common.Configuration.IApplicationPaths paths)
+    public TimingScanner(TimingStore store, ILibraryManager library, IMediaEncoder encoder, ILogger<TimingScanner> log, Nitrate.Companion.Storage.CompanionDb db)
     {
-        _failures = new Nitrate.Companion.Scanning.ReadFailures(Path.Combine(paths.DataPath, "nitrate-companion", "read-failures", "timing.json"));
+        _failures = new Nitrate.Companion.Scanning.ReadFailures(db, "timing");
         _store = store;
         _library = library;
         _encoder = encoder;

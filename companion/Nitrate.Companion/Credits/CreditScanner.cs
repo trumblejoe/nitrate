@@ -40,9 +40,9 @@ public class CreditScanner : IScheduledTask
     private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
 
     /// <summary>Initializes a new instance of the <see cref="CreditScanner"/> class.</summary>
-    public CreditScanner(CreditStore store, ILibraryManager library, IMediaEncoder encoder, MediaBrowser.Controller.MediaSegments.IMediaSegmentManager segments, ILogger<CreditScanner> log, MediaBrowser.Common.Configuration.IApplicationPaths paths)
+    public CreditScanner(CreditStore store, ILibraryManager library, IMediaEncoder encoder, MediaBrowser.Controller.MediaSegments.IMediaSegmentManager segments, ILogger<CreditScanner> log, Nitrate.Companion.Storage.CompanionDb db)
     {
-        _failures = new Nitrate.Companion.Scanning.ReadFailures(Path.Combine(paths.DataPath, "nitrate-companion", "read-failures", "credits.json"));
+        _failures = new Nitrate.Companion.Scanning.ReadFailures(db, "credits");
         _store = store;
         _library = library;
         _encoder = encoder;

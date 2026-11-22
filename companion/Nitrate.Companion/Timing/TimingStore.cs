@@ -12,15 +12,16 @@ public record TimingResult(string Version, IReadOnlyList<TimingIssue> Issues, Da
 public class TimingStore
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
-    private readonly string? _path;
+    private readonly Nitrate.Companion.Storage.CompanionDb? _db;
     private readonly object _lock = new();
-    private Dictionary<Guid, TimingResult> _results;
+    private readonly Dictionary<Guid, TimingResult> _results;
 
-    /// <summary>Initializes a new instance of the <see cref="TimingStore"/> class ([path] null: in memory only).</summary>
-    public TimingStore(string? path)
+    /// <summary>Initializes a new instance of the <see cref="TimingStore"/> class ([db] null: in memory only; [legacyJson]: results from before the database, moved in once).</summary>
+    public TimingStore(Nitrate.Companion.Storage.CompanionDb? db, string? legacyJson = null)
     {
-        _path = path;
-        _results = Load(path);
+        _db = db;
+        db?.ImportResults<TimingResult>("timing", legacyJson);
+        _results = db?.Results<TimingResult>("timing") ?? new();
     }
 
     /// <summary>The result for [item], if it was checked.</summary>
@@ -41,7 +42,7 @@ public class TimingStore
         lock (_lock)
         {
             _results[item] = result;
-            Save();
+            _db?.PutResult("timing", item, result);
         }
     }
 
@@ -66,34 +67,8 @@ public class TimingStore
             }
 
             gone.ForEach(k => _results.Remove(k));
-            Save();
+            _db?.DeleteResults("timing", gone);
         }
     }
 
-    private void Save()
-    {
-        if (_path == null)
-        {
-            return;
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        var temp = _path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(_results, Json));
-        File.Move(temp, _path, true);
-    }
-
-    private static Dictionary<Guid, TimingResult> Load(string? path)
-    {
-        try
-        {
-            return path != null && File.Exists(path)
-                ? JsonSerializer.Deserialize<Dictionary<Guid, TimingResult>>(File.ReadAllText(path), Json) ?? new()
-                : new();
-        }
-        catch (JsonException)
-        {
-            return new();
-        }
-    }
 }

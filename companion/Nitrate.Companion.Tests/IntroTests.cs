@@ -129,17 +129,19 @@ public class IntroTests
         try
         {
             var id = Guid.NewGuid();
-            var store = new IntroStore(folder);
+            Directory.CreateDirectory(folder);
+            using var db = new Nitrate.Companion.Storage.CompanionDb(Path.Combine(folder, "companion.db"));
+            var store = new IntroStore(db);
             Assert.True(store.Needs(id, "v1"));
             store.Put(id, new IntroResult("v1", new Intro(1_000, 31_000), DateTimeOffset.UtcNow));
             store.SavePrint(id, "v1", new uint[] { 1, 2, 3 });
-            var again = new IntroStore(folder);
+            var again = new IntroStore(db);
             Assert.False(again.Needs(id, "v1"));
             Assert.Equal(new Intro(1_000, 31_000), again.Get(id)!.Intro);
             Assert.Equal(new uint[] { 1, 2, 3 }, again.Print(id, "v1"));
             Assert.Null(again.Print(id, "v2"));
             again.KeepOnly(new HashSet<Guid>());
-            Assert.Null(new IntroStore(folder).Get(id));
+            Assert.Null(new IntroStore(db).Get(id));
             Assert.Null(again.Print(id, "v1"));
         }
         finally

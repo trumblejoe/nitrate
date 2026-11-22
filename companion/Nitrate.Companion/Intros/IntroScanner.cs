@@ -31,9 +31,9 @@ public class IntroScanner : IScheduledTask
     private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
 
     /// <summary>Initializes a new instance of the <see cref="IntroScanner"/> class.</summary>
-    public IntroScanner(IntroStore store, ILibraryManager library, IMediaEncoder encoder, IMediaSegmentManager segments, ILogger<IntroScanner> log, MediaBrowser.Common.Configuration.IApplicationPaths paths)
+    public IntroScanner(IntroStore store, ILibraryManager library, IMediaEncoder encoder, IMediaSegmentManager segments, ILogger<IntroScanner> log, Nitrate.Companion.Storage.CompanionDb db)
     {
-        _failures = new Nitrate.Companion.Scanning.ReadFailures(Path.Combine(paths.DataPath, "nitrate-companion", "read-failures", "intros.json"));
+        _failures = new Nitrate.Companion.Scanning.ReadFailures(db, "intros");
         _store = store;
         _library = library;
         _encoder = encoder;

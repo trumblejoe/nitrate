@@ -30,9 +30,9 @@ public class LineIndexer : IScheduledTask
     private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
 
     /// <summary>Initializes a new instance of the <see cref="LineIndexer"/> class.</summary>
-    public LineIndexer(LineIndex index, ILibraryManager library, IMediaSourceManager sources, ISubtitleEncoder subtitles, ILogger<LineIndexer> log, MediaBrowser.Common.Configuration.IApplicationPaths paths)
+    public LineIndexer(LineIndex index, ILibraryManager library, IMediaSourceManager sources, ISubtitleEncoder subtitles, ILogger<LineIndexer> log, Nitrate.Companion.Storage.CompanionDb db)
     {
-        _failures = new Nitrate.Companion.Scanning.ReadFailures(Path.Combine(paths.DataPath, "nitrate-companion", "read-failures", "lines.json"));
+        _failures = new Nitrate.Companion.Scanning.ReadFailures(db, "lines");
         _index = index;
         _library = library;
         _sources = sources;

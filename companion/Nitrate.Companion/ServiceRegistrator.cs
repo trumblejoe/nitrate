@@ -57,11 +57,18 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.SmartCollections.SmartCollectionStore(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "smart-collections.json")));
         serviceCollection.AddHostedService<Nitrate.Companion.SmartCollections.SmartCollectionWatcher>();
+        // The nightly tasks' results, fingerprints and unreadable files: one database, one row per
+        // title (results from the older JSON files and fingerprint folder are moved in once).
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Storage.CompanionDb(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "companion.db")));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Timing.TimingStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "timing.json")));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Credits.CreditStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "credits.json")));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Intros.IntroStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion")));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Comics.ComicStore(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().CachePath, "nitrate-companion", "comics")));

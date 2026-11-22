@@ -94,18 +94,18 @@ public class CreditTests
     [Fact]
     public void ResultsAreKeptPerVersionAndForgottenWhenGone()
     {
-        var path = Path.Combine(Path.GetTempPath(), "nitrate-credits-" + Guid.NewGuid().ToString("N") + ".json");
+        var path = Path.Combine(Path.GetTempPath(), "nitrate-credits-" + Guid.NewGuid().ToString("N") + ".db");
+        using var db = new Nitrate.Companion.Storage.CompanionDb(path);
         var item = Guid.NewGuid();
-        var store = new CreditStore(path);
+        var store = new CreditStore(db);
         Assert.True(store.Needs(item, "a"));
         store.Put(item, new CreditResult("a", new[] { new CreditSkip(1, 2, true) }, DateTimeOffset.UnixEpoch, Format: CreditResult.CurrentFormat));
-        var again = new CreditStore(path);
+        var again = new CreditStore(db);
         Assert.False(again.Needs(item, "a"));
         Assert.True(again.Needs(item, "b"));
         Assert.Single(again.Get(item)!.Skips);
         again.KeepOnly(new HashSet<Guid>());
-        Assert.Null(new CreditStore(path).Get(item));
-        File.Delete(path);
+        Assert.Null(new CreditStore(db).Get(item));
     }
 
     [Fact]

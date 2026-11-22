@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Nitrate.Companion.Scanning;
 
 /// <summary>One file that couldn't be read: which version, how many times in a row, and when last.</summary>
@@ -11,21 +9,23 @@ public record ReadFailure(string Version, int Count, DateTimeOffset LastAt);
 /// <summary>
 /// Files a nightly task couldn't read (damaged, unplayable, gone missing for a moment), so they
 /// aren't read again every night: tried again after a day, then a week, then once a month, and at
-/// once when the file changes. One JSON file per task in the server's data folder.
+/// once when the file changes. Kept per task in the plugin's database.
 /// </summary>
 public class ReadFailures
 {
-    private readonly string? _path;
+    private readonly Nitrate.Companion.Storage.CompanionDb? _db;
+    private readonly string _task;
     private readonly TimeProvider _time;
     private readonly object _lock = new();
     private readonly Dictionary<string, ReadFailure> _failures;
 
-    /// <summary>Initializes a new instance of the <see cref="ReadFailures"/> class ([path] null: in memory only).</summary>
-    public ReadFailures(string? path, TimeProvider? time = null)
+    /// <summary>Initializes a new instance of the <see cref="ReadFailures"/> class for [task] ([db] null: in memory only).</summary>
+    public ReadFailures(Nitrate.Companion.Storage.CompanionDb? db, string task, TimeProvider? time = null)
     {
-        _path = path;
+        _db = db;
+        _task = task;
         _time = time ?? TimeProvider.System;
-        _failures = Load(path);
+        _failures = db?.Failures<ReadFailure>(task) ?? new();
     }
 
     /// <summary>How long to wait after [count] failures in a row.</summary>
@@ -53,7 +53,7 @@ public class ReadFailures
             var key = Key(item, part);
             var count = _failures.TryGetValue(key, out var f) && f.Version == version ? f.Count + 1 : 1;
             _failures[key] = new ReadFailure(version, count, _time.GetUtcNow());
-            Save();
+            _db?.PutFailure(_task, key, _failures[key]);
         }
     }
 
@@ -62,9 +62,10 @@ public class ReadFailures
     {
         lock (_lock)
         {
-            if (_failures.Remove(Key(item, part)))
+            var key = Key(item, part);
+            if (_failures.Remove(key))
             {
-                Save();
+                _db?.DeleteFailures(_task, new[] { key });
             }
         }
     }
@@ -76,10 +77,7 @@ public class ReadFailures
         {
             var gone = _failures.Keys.Where(k => !Guid.TryParseExact(k[..32], "N", out var id) || !present.Contains(id)).ToList();
             gone.ForEach(k => _failures.Remove(k));
-            if (gone.Count > 0)
-            {
-                Save();
-            }
+            _db?.DeleteFailures(_task, gone);
         }
     }
 
@@ -96,30 +94,6 @@ public class ReadFailures
     }
 
     private static string Key(Guid item, string part) => item.ToString("N") + (part.Length > 0 ? ":" + part : string.Empty);
-
-    private static Dictionary<string, ReadFailure> Load(string? path)
-    {
-        try
-        {
-            return path != null && File.Exists(path) ? JsonSerializer.Deserialize<Dictionary<string, ReadFailure>>(File.ReadAllText(path)) ?? new() : new();
-        }
-        catch (JsonException)
-        {
-            return new();
-        }
-    }
-
-    private void Save()
-    {
-        if (_path == null)
-        {
-            return;
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        File.WriteAllText(_path + ".tmp", JsonSerializer.Serialize(_failures));
-        File.Move(_path + ".tmp", _path, true);
-    }
 }
 
 /// <summary>

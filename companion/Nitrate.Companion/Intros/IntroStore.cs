@@ -10,24 +10,31 @@ namespace Nitrate.Companion.Intros;
 public record IntroResult(string Version, Intro? Intro, DateTimeOffset Checked, Intro? Recap = null);
 
 /// <summary>
-/// Results in the server's data folder (intros.json), and each episode's fingerprint beside them
-/// (intro-prints/), so a new episode only needs its own file read to be compared with the rest.
+/// Results and each episode's sound fingerprint, in the plugin's database (<see cref="Nitrate.Companion.Storage.CompanionDb"/>),
+/// so a new episode only needs its own file read to be compared with the rest.
 /// </summary>
 public class IntroStore
 {
-    private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
-    private readonly string? _path;
-    private readonly string? _prints;
+    private const string Kind = "intros";
+    private readonly Nitrate.Companion.Storage.CompanionDb? _db;
     private readonly object _lock = new();
     private readonly Dictionary<Guid, IntroResult> _results;
     private readonly Dictionary<(Guid, bool), (string Version, uint[] Print)> _memory = new();
 
-    /// <summary>Initializes a new instance of the <see cref="IntroStore"/> class ([folder] null: in memory only).</summary>
-    public IntroStore(string? folder)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="IntroStore"/> class ([db] null: in memory only;
+    /// [legacyFolder]: where intros.json and intro-prints/ were kept before the database, moved in once).
+    /// </summary>
+    public IntroStore(Nitrate.Companion.Storage.CompanionDb? db, string? legacyFolder = null)
     {
-        _path = folder is null ? null : Path.Combine(folder, "intros.json");
-        _prints = folder is null ? null : Path.Combine(folder, "intro-prints");
-        _results = Load(_path);
+        _db = db;
+        if (db != null && legacyFolder != null)
+        {
+            db.ImportResults<IntroResult>(Kind, Path.Combine(legacyFolder, "intros.json"));
+            db.ImportPrints(Path.Combine(legacyFolder, "intro-prints"));
+        }
+
+        _results = db?.Results<IntroResult>(Kind) ?? new();
     }
 
     /// <summary>The result for [item], if it was read.</summary>
@@ -48,80 +55,37 @@ public class IntroStore
         lock (_lock)
         {
             _results[item] = result;
-            Save();
+            _db?.PutResult(Kind, item, result);
         }
     }
 
     /// <summary>[item]'s fingerprint when it was taken of [version] of its file ([whole]: all its sound, for recaps; else its opening).</summary>
     public uint[]? Print(Guid item, string version, bool whole = false)
     {
+        if (_db != null)
+        {
+            return _db.Print(item, whole, version);
+        }
+
         lock (_lock)
         {
-            if (_memory.TryGetValue((item, whole), out var m))
-            {
-                return m.Version == version ? m.Print : null;
-            }
-        }
-
-        if (_prints is null)
-        {
-            return null;
-        }
-
-        var file = FileOf(item, whole);
-        if (!File.Exists(file))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var reader = new BinaryReader(File.OpenRead(file));
-            if (reader.ReadString() != version)
-            {
-                return null;
-            }
-
-            var print = new uint[reader.ReadInt32()];
-            for (var i = 0; i < print.Length; i++)
-            {
-                print[i] = reader.ReadUInt32();
-            }
-
-            return print;
-        }
-        catch (IOException)
-        {
-            return null;
+            return _memory.TryGetValue((item, whole), out var m) && m.Version == version ? m.Print : null;
         }
     }
 
     /// <summary>Keeps [item]'s fingerprint of [version] ([whole]: all its sound).</summary>
     public void SavePrint(Guid item, string version, uint[] print, bool whole = false)
     {
-        if (_prints is null)
+        if (_db != null)
         {
-            lock (_lock)
-            {
-                _memory[(item, whole)] = (version, print);
-            }
-
+            _db.PutPrint(item, whole, version, print);
             return;
         }
 
-        Directory.CreateDirectory(_prints);
-        var file = FileOf(item, whole);
-        using (var writer = new BinaryWriter(File.Create(file + ".tmp")))
+        lock (_lock)
         {
-            writer.Write(version);
-            writer.Write(print.Length);
-            foreach (var bits in print)
-            {
-                writer.Write(bits);
-            }
+            _memory[(item, whole)] = (version, print);
         }
-
-        File.Move(file + ".tmp", file, true);
     }
 
     /// <summary>Forgets episodes no longer in the library (results and fingerprints).</summary>
@@ -131,26 +95,17 @@ public class IntroStore
         {
             var gone = _results.Keys.Where(k => !present.Contains(k)).ToList();
             gone.ForEach(k => _results.Remove(k));
+            _db?.DeleteResults(Kind, gone);
             foreach (var k in _memory.Keys.Where(k => !present.Contains(k.Item1)).ToList())
             {
                 _memory.Remove(k);
             }
-
-            if (gone.Count > 0)
-            {
-                Save();
-            }
         }
 
-        if (_prints is not null && Directory.Exists(_prints))
+        if (_db != null)
         {
-            foreach (var file in Directory.EnumerateFiles(_prints, "*.bin"))
-            {
-                if (Guid.TryParseExact(Path.GetFileName(file)[..32], "N", out var id) && !present.Contains(id))
-                {
-                    File.Delete(file);
-                }
-            }
+            _db.DeletePrints(false, _db.PrintItems(false).Where(id => !present.Contains(id)));
+            _db.DeletePrints(true, _db.PrintItems(true).Where(id => !present.Contains(id)));
         }
     }
 
@@ -168,47 +123,6 @@ public class IntroStore
             }
         }
 
-        if (_prints is not null && Directory.Exists(_prints))
-        {
-            foreach (var file in Directory.EnumerateFiles(_prints, "*.whole.bin"))
-            {
-                if (Guid.TryParseExact(Path.GetFileName(file)[..32], "N", out var id) && !wanted.Contains(id))
-                {
-                    File.Delete(file);
-                }
-            }
-        }
-    }
-
-    private string FileOf(Guid item, bool whole) => Path.Combine(_prints!, item.ToString("N") + (whole ? ".whole.bin" : ".bin"));
-
-    private static Dictionary<Guid, IntroResult> Load(string? path)
-    {
-        if (path is null || !File.Exists(path))
-        {
-            return new();
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<Guid, IntroResult>>(File.ReadAllText(path), Json) ?? new();
-        }
-        catch (JsonException)
-        {
-            return new();
-        }
-    }
-
-    private void Save()
-    {
-        if (_path is null)
-        {
-            return;
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        var temp = _path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(_results, Json));
-        File.Move(temp, _path, true);
+        _db?.DeletePrints(true, _db.PrintItems(true).Where(id => !wanted.Contains(id)));
     }
 }
