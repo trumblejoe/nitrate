@@ -877,7 +877,7 @@ class JellyfinClient(
                 val (view, kind) = libraries.firstOrNull { it.first.id == id } ?: return@forEach
                 keepList(arrayOf("Items"), queryParams(view.id, kind, if (kind == "Movie") "DateCreated" else "DateLastContentAdded", "Descending", null, null), l.items.map { d -> d.toMediaItem() })
             }
-            bundle.because?.let { answers.put(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR, it.toBecauseRows() to false) }
+            bundle.because?.takeIf { it.isNotEmpty() }?.let { answers.put(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR, it.toBecauseRows() to false) }
         }
     }
 
@@ -1031,6 +1031,8 @@ class JellyfinClient(
     private suspend fun becauseYouWatched(fresh: Boolean): List<MediaRow> {
         val (rows, saved) = if (fresh) becauseYouWatchedNow(true)
         else answers.get(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR) { becauseYouWatchedNow(false) }.first
+        // None yet (the plugin is still making them after a restart): asked again next time, not kept.
+        if (rows.isEmpty()) answers.forget { key, _ -> key == becauseKey() }
         return if (saved) runCatching { withFreshUserData(rows) }.getOrDefault(rows) else rows
     }
 

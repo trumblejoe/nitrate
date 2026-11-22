@@ -173,7 +173,7 @@ public class HomeController : ControllerBase
 
     private async Task<IReadOnlyList<BecauseOut>> BecauseFor(User user, int limit, CancellationToken cancellationToken)
     {
-        var set = await _because.ForAsync(user, cancellationToken).ConfigureAwait(false);
+        var set = _because.For(user);
         var options = Options();
         var ids = set.Rows.SelectMany(r => r.ItemIds).Distinct().ToArray();
         if (ids.Length == 0)

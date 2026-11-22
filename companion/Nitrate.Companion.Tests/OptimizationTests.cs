@@ -43,7 +43,7 @@ public class OptimizationTests
     [Fact]
     public void BecauseIsKeptPerPerson()
     {
-        var store = new BecauseStore(Directory.CreateTempSubdirectory().FullName);
+        var store = new BecauseStore();
         Assert.Null(store.Get(G(1)));
         store.Put(G(1), new BecauseSet(DateTimeOffset.UnixEpoch, new[] { new BecauseRow(G(2), "Dune", new[] { G(3) }) }));
         Assert.Equal("Dune", store.Get(G(1))!.Rows.Single().SeedName);

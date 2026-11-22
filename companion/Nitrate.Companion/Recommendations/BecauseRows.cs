@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Nitrate.Companion.Recommendations;
 
 /// <summary>What a row is based on: a film, or the show an episode belongs to.</summary>
@@ -71,46 +69,17 @@ public static class BecauseRows
         row.ItemIds.Where(id => !watched(id)).ToList() is var left && left.Count >= MinItems ? left.Take(limit).ToList() : Array.Empty<Guid>();
 }
 
-/// <summary>Each person's rows, one JSON file each in the server's data folder.</summary>
+/// <summary>
+/// Each person's rows, in memory only: a few dozen title ids each, worked out again overnight and,
+/// after the server starts, in the background (<see cref="BecauseWarmup"/>). Nothing on disk.
+/// </summary>
 public class BecauseStore
 {
-    private readonly string _folder;
-    private readonly object _lock = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, BecauseSet> _sets = new();
 
-    /// <summary>Initializes a new instance of the <see cref="BecauseStore"/> class.</summary>
-    public BecauseStore(string folder)
-    {
-        _folder = folder;
-        Directory.CreateDirectory(folder);
-    }
-
-    /// <summary>The person's rows, or null when none were made yet.</summary>
-    public BecauseSet? Get(Guid user)
-    {
-        lock (_lock)
-        {
-            var path = PathOf(user);
-            try
-            {
-                return File.Exists(path) ? JsonSerializer.Deserialize<BecauseSet>(File.ReadAllText(path)) : null;
-            }
-            catch (JsonException)
-            {
-                return null;
-            }
-        }
-    }
+    /// <summary>The person's rows, or null when none were made since the server started.</summary>
+    public BecauseSet? Get(Guid user) => _sets.TryGetValue(user, out var set) ? set : null;
 
     /// <summary>Keeps the person's rows.</summary>
-    public void Put(Guid user, BecauseSet set)
-    {
-        lock (_lock)
-        {
-            var path = PathOf(user);
-            File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(set));
-            File.Move(path + ".tmp", path, true);
-        }
-    }
-
-    private string PathOf(Guid user) => Path.Combine(_folder, user.ToString("N") + ".json");
+    public void Put(Guid user, BecauseSet set) => _sets[user] = set;
 }
