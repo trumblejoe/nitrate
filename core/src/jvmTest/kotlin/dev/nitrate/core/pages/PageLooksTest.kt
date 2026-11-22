@@ -78,4 +78,14 @@ class PageLooksTest {
         assertEquals(TabStyle.NEON, everywhere.tvTabStyle)
         assertTrue(everywhere.pageLooks.isEmpty())
     }
+
+    @Test fun aPageCanHaveItsOwnFocusStyleAndUpDown() {
+        val prefs = PageLooks.change(DisplayPrefs(), PageKeys.HOME) { it.copy(focusStyle = FocusStyle.GLOW, upDownAlong = true) }
+        assertEquals(FocusStyle.GLOW, PageLooks.forPage(prefs, PageKeys.HOME).tvFocusStyle)
+        assertTrue(PageLooks.forPage(prefs, PageKeys.HOME).tvUpDownAlong)
+        assertEquals(FocusStyle.GROW, PageLooks.forPage(prefs, "library/films").tvFocusStyle)
+        // Set back to every page's: nothing of its own is kept.
+        val back = PageLooks.change(prefs, PageKeys.HOME) { it.copy(focusStyle = FocusStyle.GROW, upDownAlong = false) }
+        assertTrue(back.pageLooks.isEmpty())
+    }
 }

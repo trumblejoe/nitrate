@@ -278,6 +278,13 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
     layoutItems(container, owner, null)
     item { Heading("Every page") }
     item {
+        val prefs = rememberStoredPrefs(container)
+        Column {
+            dev.nitrate.tv.ui.rows.ToggleItem("Which row this is", prefs.tvRowMarker) { on -> container.changePrefs { it.copy(tvRowMarker = on) } }
+            dev.nitrate.tv.ui.rows.ToggleItem("Clock", prefs.tvClock) { on -> container.changePrefs { it.copy(tvClock = on) } }
+        }
+    }
+    item {
         var shown by remember { mutableStateOf(false) }
         ListItem(
             selected = false, onClick = { shown = true },
@@ -328,6 +335,11 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
             }
             ChoiceItem("Caption size", (look.captionSize ?: dev.nitrate.core.pages.CaptionSize.NORMAL).label) {
                 set { it.copy(captionSize = (it.captionSize ?: dev.nitrate.core.pages.CaptionSize.NORMAL).cycleNext()) }
+            }
+            if (arrangement != PageArrangement.FULL_ART) {
+                ChoiceItem("Focus style", (look.focusStyle ?: dev.nitrate.core.pages.FocusStyle.GROW).label) {
+                    set { it.copy(focusStyle = (it.focusStyle ?: dev.nitrate.core.pages.FocusStyle.GROW).cycleNext()) }
+                }
             }
             if (arrangement == PageArrangement.FULL_ART) {
                 ChoiceItem("Up/Down", if (look.upDownAlong == true) "Along the row, then rows" else "Between rows") {

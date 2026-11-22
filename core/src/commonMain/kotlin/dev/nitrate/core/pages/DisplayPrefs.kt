@@ -98,6 +98,12 @@ data class DisplayPrefs(
     val tvRowExtent: RowExtent = RowExtent.FULL,
     /** Full art: ▲▼ step along the row as ◀▶ do, going to the row above or below only past its first or last title. */
     val tvUpDownAlong: Boolean = false,
+    /** How the focused card shows (per page through [PageLook.focusStyle]). */
+    val tvFocusStyle: FocusStyle = FocusStyle.GROW,
+    /** Rows one at a time and full art: a slim marker saying which row this is ("3 / 9"). */
+    val tvRowMarker: Boolean = true,
+    /** A small clock in the page's top corner. */
+    val tvClock: Boolean = false,
     /** Pages with a layout of their own (by top-level page key, [PageLooks.ownerOf]); the rest use the fields above. */
     val pageLooks: Map<String, PageLook> = emptyMap(),
     /** The menu's stops in order (rail and bars), as [MenuStops] ids; null until arranged. */
@@ -159,6 +165,15 @@ enum class RowPlace(val label: String) {
 /** How far the row in use runs: the page's full width (or height), or part of it. */
 @Serializable
 enum class RowExtent(val label: String) { FULL("Full length"), PARTIAL("Part way") }
+
+/** How the focused card shows on TV. Grow is the TV's own way; the others keep rows still. */
+@Serializable
+enum class FocusStyle(val label: String, val note: String) {
+    GROW("Grow", "The focused card grows a little"),
+    OUTLINE("Outline", "A white frame, nothing moves"),
+    GLOW("Glow", "A soft glow in the accent colour, nothing moves"),
+    LIFT("Lift", "Rises slightly with a shadow under it"),
+}
 
 /**
  * How page tabs are drawn on TV. Each keeps "open" (the page showing) and "focused" (where the

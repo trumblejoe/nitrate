@@ -20,6 +20,8 @@ data class PageLook(
     val tabStyle: TabStyle? = null,
     /** Full art: ▲▼ step along the row too, changing rows only past its first or last title. */
     val upDownAlong: Boolean? = null,
+    /** How the focused card shows. */
+    val focusStyle: FocusStyle? = null,
 ) {
     val isEmpty: Boolean get() = this == PageLook()
 }
@@ -41,6 +43,7 @@ object PageLooks {
         rowExtent = prefs.tvRowExtent,
         tabStyle = prefs.tvTabStyle,
         upDownAlong = prefs.tvUpDownAlong,
+        focusStyle = prefs.tvFocusStyle,
     )
 
     /** The page's layout in full: its own choices over every page's. */
@@ -55,6 +58,7 @@ object PageLooks {
             rowExtent = own.rowExtent ?: base.rowExtent,
             tabStyle = own.tabStyle ?: base.tabStyle,
             upDownAlong = own.upDownAlong ?: base.upDownAlong,
+            focusStyle = own.focusStyle ?: base.focusStyle,
         )
     }
 
@@ -76,6 +80,7 @@ object PageLooks {
             tvRowExtent = look.rowExtent ?: prefs.tvRowExtent,
             tvTabStyle = look.tabStyle ?: prefs.tvTabStyle,
             tvUpDownAlong = look.upDownAlong ?: prefs.tvUpDownAlong,
+            tvFocusStyle = look.focusStyle ?: prefs.tvFocusStyle,
         )
     }
 
@@ -93,6 +98,7 @@ object PageLooks {
             rowExtent = next.rowExtent.takeIf { it != base.rowExtent },
             tabStyle = next.tabStyle.takeIf { it != base.tabStyle },
             upDownAlong = next.upDownAlong.takeIf { it != base.upDownAlong },
+            focusStyle = next.focusStyle.takeIf { it != base.focusStyle },
         )
         return prefs.copy(pageLooks = if (own.isEmpty) prefs.pageLooks - owner else prefs.pageLooks + (owner to own))
     }
@@ -115,6 +121,7 @@ object PageLooks {
             tvRowExtent = look.rowExtent ?: prefs.tvRowExtent,
             tvTabStyle = look.tabStyle ?: prefs.tvTabStyle,
             tvUpDownAlong = look.upDownAlong ?: prefs.tvUpDownAlong,
+            tvFocusStyle = look.focusStyle ?: prefs.tvFocusStyle,
             pageLooks = emptyMap(),
         )
     }

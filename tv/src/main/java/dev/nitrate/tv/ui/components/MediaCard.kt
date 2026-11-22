@@ -67,9 +67,13 @@ fun MediaCard(
     }
     val shownSubtitle = subtitle.takeIf { prefs.cardTitles != CardTitles.NEVER }
     Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())) {
+        val look = cardFocusLook(prefs.tvFocusStyle)
         Card(
             onClick = onClick,
             onLongClick = onLongClick,
+            scale = look.scale,
+            border = look.border,
+            glow = look.glow,
             modifier = Modifier
                 .cardFx(item.id).returnFocus(item.id)
                 .fillMaxWidth()
@@ -165,5 +169,34 @@ fun MediaCard(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+
+/** How a card shows focus ([dev.nitrate.core.pages.FocusStyle]): its scale, frame and glow. */
+class CardFocusLook(val scale: androidx.tv.material3.CardScale, val border: androidx.tv.material3.CardBorder, val glow: androidx.tv.material3.CardGlow)
+
+@Composable
+fun cardFocusLook(style: dev.nitrate.core.pages.FocusStyle): CardFocusLook {
+    val accent = MaterialTheme.colorScheme.primary
+    val frame = { width: Dp, color: Color -> androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(width, color)) }
+    return when (style) {
+        // The TV's own: grows a little with its frame.
+        dev.nitrate.core.pages.FocusStyle.GROW -> CardFocusLook(androidx.tv.material3.CardDefaults.scale(), androidx.tv.material3.CardDefaults.border(), androidx.tv.material3.CardDefaults.glow())
+        dev.nitrate.core.pages.FocusStyle.OUTLINE -> CardFocusLook(
+            androidx.tv.material3.CardDefaults.scale(focusedScale = 1f),
+            androidx.tv.material3.CardDefaults.border(focusedBorder = frame(4.dp, Color.White)),
+            androidx.tv.material3.CardDefaults.glow(),
+        )
+        dev.nitrate.core.pages.FocusStyle.GLOW -> CardFocusLook(
+            androidx.tv.material3.CardDefaults.scale(focusedScale = 1f),
+            androidx.tv.material3.CardDefaults.border(focusedBorder = frame(2.dp, accent)),
+            androidx.tv.material3.CardDefaults.glow(focusedGlow = androidx.tv.material3.Glow(accent.copy(alpha = 0.9f), 18.dp)),
+        )
+        dev.nitrate.core.pages.FocusStyle.LIFT -> CardFocusLook(
+            androidx.tv.material3.CardDefaults.scale(focusedScale = 1.04f),
+            androidx.tv.material3.CardDefaults.border(focusedBorder = frame(2.dp, Color.White.copy(alpha = 0.8f))),
+            androidx.tv.material3.CardDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Color.Black, 24.dp)),
+        )
     }
 }

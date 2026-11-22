@@ -697,6 +697,67 @@ class TvScreenshotTest {
         check(label("2 / 2")) { "▲ past the first title should go back to the row above, at its last title" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
+    /** Holds a key: a press, two repeats, then its release (cards and pages read a held key from its repeats). */
+    private fun holdKey(code: Int) {
+        listOf(
+            android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_DOWN, code, 0),
+            android.view.KeyEvent(0, 500, android.view.KeyEvent.ACTION_DOWN, code, 1),
+            android.view.KeyEvent(0, 550, android.view.KeyEvent.ACTION_DOWN, code, 2),
+            android.view.KeyEvent(0, 600, android.view.KeyEvent.ACTION_UP, code, 0),
+        ).forEach {
+            val roots = compose.onAllNodes(androidx.compose.ui.test.isRoot())
+            roots[roots.fetchSemanticsNodes().size - 1].performKeyPress(androidx.compose.ui.input.key.KeyEvent(it))
+            compose.mainClock.advanceTimeBy(100); compose.waitForIdle()
+        }
+        compose.mainClock.advanceTimeBy(1200); compose.waitForIdle()
+    }
+
+    private fun hasWords(words: String, exact: Boolean = false) =
+        compose.onAllNodes(androidx.compose.ui.test.hasText(words, substring = !exact) or androidx.compose.ui.test.hasContentDescription(words, substring = !exact)).fetchSemanticsNodes().isNotEmpty()
+
+    /** Rows one at a time say which row this is, and holding ▲ goes straight back to the first. */
+    @Test fun rowMarkerAndHoldUp() = shoot("tv-row-marker", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+        press("down", "down", "down")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(hasWords("Row 4 of")) { "the marker should say the fourth row" }
+        holdKey(android.view.KeyEvent.KEYCODE_DPAD_UP)
+        check(hasWords("Row 1 of")) { "holding ▲ should go to the first row" }
+        check(!focusedHasText("Home") && compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot.left >= 140f) { "focus should be on the first row's cards" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** Full art: the marker too, and holding ▲ to the first row. */
+    @Test fun fullArtMarkerAndHoldUp() = shoot("tv-full-art-marker", act = {
+        press("down", "down")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(hasWords("Row 3 of")) { "the marker should say the third row" }
+        holdKey(android.view.KeyEvent.KEYCODE_DPAD_UP)
+        check(hasWords("Row 1 of")) { "holding ▲ should go to the first row" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** The focus styles other than Grow keep the card its size. */
+    private fun focusStyle(name: String, style: dev.nitrate.core.pages.FocusStyle) = shoot(name, setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvFocusStyle = style))
+    }, act = { press("right"); compose.mainClock.advanceTimeBy(800); compose.waitForIdle() }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+    @Test fun focusStyleOutline() = focusStyle("tv-focus-outline", dev.nitrate.core.pages.FocusStyle.OUTLINE)
+    @Test fun focusStyleGlow() = focusStyle("tv-focus-glow", dev.nitrate.core.pages.FocusStyle.GLOW)
+    @Test fun focusStyleLift() = focusStyle("tv-focus-lift", dev.nitrate.core.pages.FocusStyle.LIFT)
+
+    /** The clock, top end, with full art's tabs moved aside for it. */
+    @Test fun pageClock() = shoot("tv-page-clock", setup = { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvClock = true))
+    }, act = {
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        val times = compose.onAllNodes(androidx.compose.ui.test.SemanticsMatcher("a time") { n ->
+            n.config.firstOrNull { it.key.name == "Text" }?.value.toString().contains(Regex("\\d{1,2}:\\d{2}"))
+        }).fetchSemanticsNodes()
+        check(times.isNotEmpty()) { "the clock should show a time" }
+    }) { c ->
+        val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
+    }
+
     /** Leaving a row and coming back lands on the card left in it, whatever was done in other rows meanwhile. */
     @Test fun rowsRememberTheirCard() = shoot("tv-rows-remember-card", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

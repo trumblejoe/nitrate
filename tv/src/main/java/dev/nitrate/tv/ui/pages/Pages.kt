@@ -270,6 +270,35 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 trailingContent = { Text("${prefs.tvCaptionSize.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
+        if (prefs.tvArrangement != dev.nitrate.core.pages.PageArrangement.FULL_ART) {
+            item {
+                ListItem(
+                    selected = false,
+                    onClick = { update { it.copy(tvFocusStyle = dev.nitrate.core.pages.FocusStyle.entries[(it.tvFocusStyle.ordinal + 1) % dev.nitrate.core.pages.FocusStyle.entries.size]) } },
+                    headlineContent = { Text("Focus style") },
+                    supportingContent = { Text(prefs.tvFocusStyle.note) },
+                    trailingContent = { Text("${prefs.tvFocusStyle.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvRowMarker = !it.tvRowMarker) } },
+                headlineContent = { Text("Which row this is") },
+                supportingContent = { Text("A slim marker (\"3 / 9\") on rows one at a time and full art. Hold ▲ to go straight to the first row") },
+                trailingContent = { Text("${if (prefs.tvRowMarker) "On" else "Off"}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        item {
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvClock = !it.tvClock) } },
+                headlineContent = { Text("Clock") },
+                supportingContent = { Text("A small clock in the top corner of every page") },
+                trailingContent = { Text("${if (prefs.tvClock) "On" else "Off"}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
         if (prefs.tvArrangement == dev.nitrate.core.pages.PageArrangement.FULL_ART) {
             item {
                 ListItem(

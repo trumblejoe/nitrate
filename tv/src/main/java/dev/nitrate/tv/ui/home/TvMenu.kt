@@ -648,7 +648,10 @@ fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), content: @Co
                 dev.nitrate.tv.ui.components.LocalDisplayPrefs provides prefs,
                 dev.nitrate.tv.ui.pages.LocalLayoutPage provides pageKey,
                 dev.nitrate.tv.ui.pages.LocalCustomizeHost provides customize.takeIf { pageKey != null },
+                dev.nitrate.tv.ui.components.LocalClockRoom provides if (prefs.tvClock) dev.nitrate.tv.ui.components.ClockRoom else 0.dp,
             ) { content() }
+            // The clock, top end, clear of the menu; the page keeps that corner free (LocalClockRoom).
+            if (prefs.tvClock) dev.nitrate.tv.ui.components.PageClock(Modifier.align(androidx.compose.ui.Alignment.TopEnd).then(clear).padding(top = 20.dp, end = 28.dp))
             if (pageKey != null) dev.nitrate.tv.ui.pages.CustomizeLayer(customize, pageKey)
             if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.INFRONT)
         }

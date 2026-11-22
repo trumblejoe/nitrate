@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import dev.nitrate.tv.ui.components.RowMarker
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.background
@@ -225,6 +226,14 @@ fun RowsPage(
     // Focus coming into the page (opening it, coming back to it) goes to the card left, else the first
     // row: never the tabs above them, which are the first thing on the page (see startOnRows).
     Box(modifier.fillMaxSize()
+        // Holding ▲ on a row: straight to the first row (on a long page that's many presses). The first
+        // press has moved up one already; the repeats are taken here, so they never run on into the tabs.
+        .onPreviewKeyEvent { e ->
+            if (e.key != Key.DirectionUp || e.type != KeyEventType.KeyDown || e.nativeKeyEvent.repeatCount == 0) return@onPreviewKeyEvent false
+            if (focusedRowIndex !in rows.indices) return@onPreviewKeyEvent false
+            if (e.nativeKeyEvent.repeatCount == 1 && focusedRowIndex > 0) toRow(0)
+            true
+        }
         .focusProperties {
             if (startOnRows) enter = {
                 when {
@@ -257,6 +266,19 @@ fun RowsPage(
                 (styleNote?.first ?: "") + "   ◀◀ ▶▶",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(horizontal = 18.dp, vertical = 10.dp),
+            )
+        }
+
+        // Which row this is (rows one at a time), on the side away from the menu and from a column of cards.
+        if (oneAtATime && LocalDisplayPrefs.current.tvRowMarker && activeShowcase == null) {
+            val menuRight = dev.nitrate.tv.ui.home.LocalMenuSide.current(Key.DirectionRight)
+            val rowRight = LocalDisplayPrefs.current.tvRowPlace == dev.nitrate.core.pages.RowPlace.RIGHT
+            val rowLeft = LocalDisplayPrefs.current.tvRowPlace == dev.nitrate.core.pages.RowPlace.LEFT
+            // Away from the menu, unless the cards run down that side: then beside the menu.
+            val atStart = if (menuRight) !rowLeft else rowRight
+            RowMarker(
+                if (focusedRowIndex in rows.indices) focusedRowIndex else 0, rows.size,
+                Modifier.align(if (atStart) Alignment.CenterStart else Alignment.CenterEnd).padding(horizontal = 18.dp).zIndex(2f),
             )
         }
 
@@ -482,10 +504,11 @@ fun RowsPage(
                                 val (capTop, capEnd) = p.tvCaptionCorner.resolve(rowIndex, place)
                                 // The row's own caption size, else the page's.
                                 val capSize = display.captionSize ?: p.tvCaptionSize
+                                val clockRoom = dev.nitrate.tv.ui.components.LocalClockRoom.current
                                 val compact = capSize != dev.nitrate.core.pages.CaptionSize.NORMAL
                                 val shownItem = focused?.takeIf { f -> row.items.any { it.id == f.id } } ?: row.items.firstOrNull()
                                 val number = shownItem?.let { f -> row.items.indexOfFirst { it.id == f.id } + 1 } ?: 0
-                                val captionPad = Modifier.padding(start = if (capEnd) 0.dp else RowPadding, end = if (capEnd) RowPadding else 0.dp, top = if (capTop) 12.dp else 0.dp, bottom = if (capTop) 0.dp else 10.dp)
+                                val captionPad = Modifier.padding(start = if (capEnd) 0.dp else RowPadding, end = if (capEnd) RowPadding else 0.dp, top = if (capTop) 12.dp + (if (capEnd && clockRoom > 0.dp) 56.dp else 0.dp) else 0.dp, bottom = if (capTop) 0.dp else 10.dp)
                                 val caption: @Composable (Modifier) -> Unit = { m ->
                                     if (shownItem != null) dev.nitrate.tv.ui.components.ArtCaption(
                                         shownItem, label = "${row.title}  ·  $number / ${row.items.size}", end = capEnd,

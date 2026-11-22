@@ -142,6 +142,11 @@ fun FullArtPage(
                         true
                     }
                     Key.DirectionUp -> {
+                        // Held: straight to the first row (on long pages that's many presses).
+                        if (down && event.nativeKeyEvent.repeatCount > 0) {
+                            if (event.nativeKeyEvent.repeatCount == 1 && rowIndex > 0) rowKey = shown[0].key
+                            return@onPreviewKeyEvent true
+                        }
                         if (down) when {
                             along && current > 0 -> itemIndex[row.key] = current - 1
                             rowIndex > 0 -> { val previous = shown[rowIndex - 1]; if (along) itemIndex[previous.key] = previous.items.lastIndex.coerceAtLeast(0); rowKey = previous.key }
@@ -198,9 +203,19 @@ fun FullArtPage(
 
       }
 
+        // Which row this is, on the side away from the menu.
+        if (dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvRowMarker) {
+            val menuRight = dev.nitrate.tv.ui.home.LocalMenuSide.current(Key.DirectionRight)
+            dev.nitrate.tv.ui.components.RowMarker(
+                rowIndex, shown.size,
+                Modifier.align(if (menuRight) Alignment.CenterStart else Alignment.CenterEnd)
+                    .padding(start = 18.dp + insets.start, end = 18.dp + insets.end),
+            )
+        }
+
         header?.let { tabs ->
             Box(
-                Modifier.align(Alignment.TopEnd).padding(end = insets.end, top = 20.dp + insets.top)
+                Modifier.align(Alignment.TopEnd).padding(end = insets.end + dev.nitrate.tv.ui.components.LocalClockRoom.current, top = 20.dp + insets.top)
                     .focusRequester(headerFocus)
                     .onFocusChanged { headerFocused = it.hasFocus }
                     .focusGroup()
