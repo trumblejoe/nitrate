@@ -152,7 +152,7 @@ fun FranchiseHubScreen(actions: AppActions, playlistId: String) {
             .onFailure { if (hub == null) failed = it.message ?: "Couldn't open it" }
     }
     // Playing from here: the playlist carries on from it (Up Next, Home, every device).
-    val play: (MediaItem) -> Unit = { item -> scope.launch { container.playlists.markPlace(playlistId, item.id); actions.play(item, false) } }
+    val play: (MediaItem) -> Unit = { item -> scope.launch { container.playlists.startedFrom(playlistId, item.id); actions.play(item, false) } }
     var menuFor by remember { mutableStateOf<MediaItem?>(null) }
     var withSomeone by remember { mutableStateOf(false) }
     val music = hub?.themeMusicFrom

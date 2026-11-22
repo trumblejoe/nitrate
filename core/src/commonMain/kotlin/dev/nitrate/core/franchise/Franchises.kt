@@ -172,42 +172,44 @@ object Franchises {
     }
 
     /**
-     * Where a playlist was left ([placeId], the last thing started from it) and whether [itemId] carries
-     * on from there: it's the place itself or one of the few after it (resumed from Continue Watching,
-     * Up Next, a Home card), or the one just before (gone back). Gives its index, or null.
+     * Where a playlist was left, from Jellyfin's own play dates (so watching in any app counts): the
+     * entry played most recently, or null when nothing in it has been played.
      */
-    fun indexNearPlace(entries: List<FranchiseEntry>, placeId: String, itemId: String): Int? {
-        val place = placeIndex(entries, placeId)
-        if (place < 0) return null
+    fun lastPlayed(entries: List<FranchiseEntry>): Int? =
+        entries.withIndex().filter { it.value.item.user.lastPlayedMs != null }.maxByOrNull { it.value.item.user.lastPlayedMs!! }?.index
+
+    /** When [entries] were last played from, if ever. */
+    fun lastPlayedMs(entries: List<FranchiseEntry>): Long? = lastPlayed(entries)?.let { entries[it].item.user.lastPlayedMs }
+
+    /**
+     * Whether [itemId] carries on from a playlist left at [place]: the place itself, the one before
+     * (gone back), or up to [PLACE_AHEAD] past it, past any already watched since. Gives its index.
+     */
+    fun indexNearPlace(entries: List<FranchiseEntry>, place: Int, itemId: String): Int? {
+        if (place !in entries.indices) return null
         val at = entries.indexOfFirst { it.item.id == itemId }
-        // Past any already watched since (elsewhere, or marked), then a few more.
         val watchedAfter = entries.drop(place + 1).indexOfFirst { !it.item.user.played }.let { if (it < 0) entries.size else it }
         return at.takeIf { it >= 0 && it in (place - 1)..(place + watchedAfter + PLACE_AHEAD) }
     }
 
-    /** What to carry on with in a playlist left at [placeId]: that one if not finished, else the next unwatched after it. */
-    fun continueFrom(entries: List<FranchiseEntry>, placeId: String): MediaItem? {
-        val place = placeIndex(entries, placeId)
-        if (place < 0) return null
-        return entries.drop(place).firstOrNull { !it.item.user.played }?.item
-    }
+    /** What to carry on with in a playlist left at [place]: that one if not finished, else the next unwatched after it. */
+    fun continueFrom(entries: List<FranchiseEntry>, place: Int): MediaItem? =
+        if (place !in entries.indices) null else entries.drop(place).firstOrNull { !it.item.user.played }?.item
 
     /**
-     * Where [placeId] sits among [entries]: the entry itself, or for a whole show or season started from
-     * the playlist page, its first unwatched episode (else its first). -1 when it isn't there.
+     * Where [startedId] sits among [entries]: the entry itself, or for a whole show or season started
+     * from a playlist page, its first unwatched episode (else its first). -1 when it isn't there.
      */
-    fun placeIndex(entries: List<FranchiseEntry>, placeId: String): Int {
-        entries.indexOfFirst { it.item.id == placeId }.takeIf { it >= 0 }?.let { return it }
-        fun inside(e: FranchiseEntry) = e.item.seriesId == placeId || e.item.seasonId == placeId
+    fun placeIndex(entries: List<FranchiseEntry>, startedId: String): Int {
+        entries.indexOfFirst { it.item.id == startedId }.takeIf { it >= 0 }?.let { return it }
+        fun inside(e: FranchiseEntry) = e.item.seriesId == startedId || e.item.seasonId == startedId
         return entries.indexOfFirst { inside(it) && !it.item.user.played }.takeIf { it >= 0 } ?: entries.indexOfFirst(::inside)
     }
 
-    /** [places] (playlist id → item id, oldest first) with [playlistId] now at [itemId], newest last, at most [max]. */
-    fun place(places: Map<String, String>, playlistId: String, itemId: String, max: Int = MAX_PLACES): Map<String, String> =
-        (places - playlistId + (playlistId to itemId)).entries.toList().takeLast(max).associate { it.key to it.value }
-
     const val PLACE_AHEAD = 3
-    const val MAX_PLACES = 50
+
+    /** A playlist counts as being watched through when something in it was played within this long. */
+    const val ACTIVE_MS = 60L * 86_400_000L
 
     /** The moods offered for a franchise hub (any page theme can be chosen, these first). */
     val MOODS = listOf(PageTheme.COSMIC_RIFT, PageTheme.LIGHTNING_RUN, PageTheme.NIGHT_WATCH, PageTheme.ARENA_DUSK, PageTheme.HIGH_KINGDOM, PageTheme.SPELLBOUND)

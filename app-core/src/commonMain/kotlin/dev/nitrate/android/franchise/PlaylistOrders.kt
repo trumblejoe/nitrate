@@ -37,8 +37,10 @@ data class PlaylistPlace(val playlist: MediaItem, val index: Int, val total: Int
 /**
  * Video playlists played in their own order: everything in each (whole shows and seasons as their
  * episodes, in the order chosen for it), kept a minute in memory and on disk so a big one opens at once
- * next time; where each was left (`DisplayPrefs.playlistPlaces`, synced, so every device carries on);
- * and from those, what comes next in the player and Home's "Continue your playlists".
+ * next time. Where each was left comes from Jellyfin itself (each entry's last-played date, so watching
+ * in any app on any device counts); Nitrate keeps nothing of its own but, for this run, which playlist a
+ * title was just started from (before the server has a play date for it). From those: what comes next in
+ * the player, Home's "Continue your playlists" and each page's Continue.
  */
 class PlaylistOrders(
     private val server: MediaServer,
@@ -93,42 +95,68 @@ class PlaylistOrders(
     /** Lets go of what's kept (watched marks changed): the next ask fetches again. */
     suspend fun forget(playlistId: String? = null) = lock.withLock { if (playlistId == null) kept.clear() else kept.remove(playlistId) }
 
-    /** [itemId] was started from [playlistId]: the playlist carries on from there, on every device. */
-    suspend fun markPlace(playlistId: String, itemId: String) {
-        val u = server.userId ?: return
-        val p = prefs() ?: return
-        if (p.playlistPlaces[playlistId] == itemId && p.playlistPlaces.keys.lastOrNull() == playlistId) return
-        store.savePrefs(u, p.copy(playlistPlaces = Franchises.place(p.playlistPlaces, playlistId, itemId)))
+    // Titles just started from a playlist (title id → playlist id), for this run only: the server has no
+    // play date for them yet. Rolling on adds the next one, so a sitting carries on before the server catches up.
+    private val started = LinkedHashMap<String, String>()
+
+    /** [itemId] is being started from [playlistId] (its page or hub): what follows comes from that playlist. */
+    suspend fun startedFrom(playlistId: String, itemId: String) = lock.withLock {
+        started.remove(itemId)
+        started[itemId] = playlistId
+        while (started.size > 200) started.remove(started.keys.first())
+    }
+
+    /** The video playlists the user is watching through (played within `Franchises.ACTIVE_MS`), most recent first, with their entries. */
+    private suspend fun active(maxPlaylists: Int, fresherThanMs: Long?): List<Pair<String, List<FranchiseEntry>>> = coroutineScope {
+        val playlists = runCatching { Franchises.candidates(server.playlists()) }.getOrDefault(emptyList()).take(maxPlaylists)
+        val since = nowMs() - Franchises.ACTIVE_MS
+        playlists.map { pl ->
+            async {
+                val entries = runCatching {
+                    if (fresherThanMs == null) cached(pl.id, orderOf(pl.id)) ?: entries(pl.id) else entries(pl.id, fresherThanMs = fresherThanMs)
+                }.getOrNull() ?: return@async null
+                val at = Franchises.lastPlayedMs(entries) ?: return@async null
+                if (at < since) null else Triple(pl.id, entries, at)
+            }
+        }.awaitAll().filterNotNull().sortedByDescending { it.third }.map { it.first to it.second }
     }
 
     /**
-     * The playlist [item] is being watched through, if any: the most recent playlist left at it or just
-     * before it (resumed from anywhere, rolled on to by Up Next). Marks the place and gives what follows.
+     * The playlist [item] is being watched through, if any, and what follows it there: the one it was
+     * just started from (this run), else a playlist watched lately whose last-played entry it is, or
+     * just follows (past any watched since).
      */
     suspend fun contextOf(item: MediaItem): PlaylistContext? {
-        val places = prefs()?.playlistPlaces ?: return null
-        for ((playlistId, placeId) in places.entries.reversed().take(LOOK_IN)) {
-            // What's kept (in memory or on disk) is enough to know where things sit; fetched only when there's none.
-            val entries = runCatching { cached(playlistId, orderOf(playlistId)) ?: entries(playlistId) }.getOrNull() ?: continue
-            val at = Franchises.indexNearPlace(entries, placeId, item.id) ?: continue
-            markPlace(playlistId, item.id)
-            return PlaylistContext(playlistId, at, entries.size, entries.getOrNull(at + 1)?.item)
+        val from = lock.withLock { started[item.id] }
+        if (from != null) {
+            val entries = runCatching { cached(from, orderOf(from)) ?: entries(from) }.getOrNull()
+            val at = entries?.let { Franchises.placeIndex(it, item.id) }?.takeIf { it >= 0 }
+            if (entries != null && at != null) return remember(from, entries, at)
+        }
+        for ((playlistId, entries) in runCatching { active(LOOK_IN, fresherThanMs = null) }.getOrDefault(emptyList())) {
+            val place = Franchises.lastPlayed(entries) ?: continue
+            val at = Franchises.indexNearPlace(entries, place, item.id) ?: continue
+            return remember(playlistId, entries, at)
         }
         return null
     }
 
+    private suspend fun remember(playlistId: String, entries: List<FranchiseEntry>, at: Int): PlaylistContext {
+        val next = entries.getOrNull(at + 1)?.item
+        // The next one rolls on from this playlist too, before the server has its play date.
+        if (next != null) startedFrom(playlistId, next.id)
+        return PlaylistContext(playlistId, at, entries.size, next)
+    }
+
     /**
-     * Home's "Continue your playlists": for each playlist left part way (most recent first), what carries
-     * on from where it was left; finished ones drop out.
+     * Home's "Continue your playlists": for each playlist watched lately (most recent first), what carries
+     * on from its last-played entry; finished ones drop out.
      */
-    suspend fun continueRow(max: Int = 12): MediaRow? = coroutineScope {
-        val places = prefs()?.playlistPlaces ?: return@coroutineScope null
-        val hidden = prefs()?.franchiseHidden.orEmpty()
-        val wanted = places.entries.reversed().filter { it.key !in hidden }.take(max)
-        val next = wanted.map { (playlistId, placeId) ->
-            async { runCatching { Franchises.continueFrom(entries(playlistId, fresherThanMs = FRESH_FOR_HOME_MS), placeId) }.getOrNull() }
-        }.awaitAll().filterNotNull().distinctBy { it.id }
-        if (next.isEmpty()) null else MediaRow(ROW_KEY, "Continue your playlists", next, RowDisplay())
+    suspend fun continueRow(max: Int = 12): MediaRow? {
+        val next = runCatching { active(LOOK_IN, fresherThanMs = FRESH_FOR_HOME_MS) }.getOrDefault(emptyList()).take(max)
+            .mapNotNull { (_, entries) -> Franchises.lastPlayed(entries)?.let { Franchises.continueFrom(entries, it) } }
+            .distinctBy { it.id }
+        return if (next.isEmpty()) null else MediaRow(ROW_KEY, "Continue your playlists", next, RowDisplay())
     }
 
     /** The user's franchises (video playlists not set aside) that hold [item], with where it sits in each. */
@@ -161,7 +189,7 @@ class PlaylistOrders(
         const val ROW_KEY = "home/continue_playlists"
         const val KEEP_MS = 60_000L
         const val FRESH_FOR_HOME_MS = 20_000L
-        /** How many of the playlists most recently played from the player looks in for what a title carries on from. */
-        const val LOOK_IN = 10
+        /** How many video playlists are looked through for one being watched. */
+        const val LOOK_IN = 20
     }
 }

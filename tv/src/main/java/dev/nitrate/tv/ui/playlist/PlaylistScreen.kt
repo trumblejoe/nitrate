@@ -138,8 +138,8 @@ fun PlaylistScreen(
                 val video = onPlayFrom != null && list.any { it.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO }
                 val prefsNow = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
                 val inOrder = pl.id in prefsNow.recapPlaylists
-                val placeId = prefsNow.playlistPlaces[pl.id]
-                val placeAt = placeId?.let { id -> list.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+                // Where it was left: the entry played most recently (Jellyfin's play dates, any app).
+                val placeAt = list.withIndex().filter { it.value.user.lastPlayedMs != null }.maxByOrNull { it.value.user.lastPlayedMs!! }?.index
                 val next = (placeAt?.let { list.drop(it).firstOrNull { e -> !e.user.played } }) ?: list.firstOrNull { !it.user.played }
                 if (video && next != null && (placeAt != null || next != list.first())) {
                     Button(onClick = { onPlayFrom!!(pl, next) }, modifier = Modifier.focusRequester(playFocus)) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(next)}") }

@@ -649,7 +649,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onStoryOrder = { id, on -> scope.launch { container.setRecapPlaylist(id, on) } },
                 onPlayFrom = { pl, item ->
                     scope.launch {
-                        container.playlists.markPlace(pl.id, item.id)
+                        container.playlists.startedFrom(pl.id, item.id)
                         // In story order, a "Last time" recap first when one is due.
                         if (pl.id in displayPrefs.recapPlaylists && container.recapBefore(item, pl) != null) nav.navigate(RecapRoute) else gate.play(item)
                     }

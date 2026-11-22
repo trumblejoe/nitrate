@@ -135,7 +135,7 @@ fun FranchiseHubScreen(container: AppContainer, playlistId: String, onPlay: (Med
     }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     // Playing from here: the playlist carries on from it (Up Next, Home, every device).
-    val play: (MediaItem) -> Unit = { item -> scope.launch { container.playlists.markPlace(playlistId, item.id); onPlay(item) } }
+    val play: (MediaItem) -> Unit = { item -> scope.launch { container.playlists.startedFrom(playlistId, item.id); onPlay(item) } }
     val pageKey = Franchises.pageKey(playlistId)
     val theme = prefs.pageThemes[pageKey] ?: hub?.mood
     // The franchise's theme music, as on a details page.

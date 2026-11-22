@@ -84,11 +84,6 @@ data class DisplayPrefs(
     val franchiseOrders: Map<String, dev.nitrate.core.franchise.WatchOrder> = emptyMap(),
     /** Video playlists the user said aren't franchises: listed apart at the bottom of Franchises. */
     val franchiseHidden: Set<String> = emptySet(),
-    /**
-     * Where each video playlist was left: playlist id → the item last started from it, oldest first.
-     * What plays next, and Home's "Continue your playlists", follow the playlist's order from there.
-     */
-    val playlistPlaces: Map<String, String> = emptyMap(),
     /** What each page draws behind it (by page key; missing = the focused title's picture). */
     val pageBackdrops: Map<String, dev.nitrate.core.effects.PageBackdrop> = emptyMap(),
     /** What plays before titles: verses, scenes, the server's intros (off until switched on). */

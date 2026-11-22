@@ -232,7 +232,7 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
         val storyOrder = playlistId in LocalDisplayPrefs.current.recapPlaylists
         fun playFrom(item: MediaItem) {
             scope.launch {
-                actions.container.playlists.markPlace(playlistId, item.id)
+                actions.container.playlists.startedFrom(playlistId, item.id)
                 val pl = playlist
                 if (storyOrder && pl != null && actions.container.recapBefore(item, pl) != null) actions.nav.navigate(RecapRoute)
                 else actions.play(item, false)
@@ -264,8 +264,8 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                             inOrder, { scope.launch { actions.container.setRecapPlaylist(playlist!!.id, !inOrder) } },
                             label = { Text("In story order: recap when I come back") },
                         )
-                        // A video playlist carries on from where it was left (on any device), else from its first unwatched.
-                        val placeAt = prefs.playlistPlaces[playlist!!.id]?.let { id -> list.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+                        // A video playlist carries on from where it was left (the entry played most recently, in any app), else its first unwatched.
+                        val placeAt = list.withIndex().filter { it.value.user.lastPlayedMs != null }.maxByOrNull { it.value.user.lastPlayedMs!! }?.index
                         val next = placeAt?.let { list.drop(it).firstOrNull { e -> !e.user.played } } ?: list.firstOrNull { !it.user.played }
                         if (next != null && (placeAt != null || next != list.first()) && (video || inOrder)) Button(onClick = {
                             if (video) playFrom(next) else scope.launch {

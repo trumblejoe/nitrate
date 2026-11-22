@@ -92,43 +92,40 @@ class FranchisesTest {
 
 class PlaylistPlacesTest {
     private val day = 86_400_000L
-    private fun e(id: String, played: Boolean = false, series: String? = null, kind: ItemKind = ItemKind.EPISODE) =
-        FranchiseEntry(MediaItem(id, id, kind, seriesId = series, user = UserState(played = played)))
+    private fun e(id: String, played: Boolean = false, series: String? = null, kind: ItemKind = ItemKind.EPISODE, lastPlayed: Long? = null) =
+        FranchiseEntry(MediaItem(id, id, kind, seriesId = series, user = UserState(played = played, lastPlayedMs = lastPlayed)))
 
-    private val entries = listOf(e("a", true), e("b", true), e("c"), e("d", true), e("e"), e("f"), e("g"), e("h"), e("i"), e("j"))
+    private val entries = listOf(e("a", true, lastPlayed = 1), e("b", true, lastPlayed = 2), e("c", lastPlayed = 5), e("d", true, lastPlayed = 3), e("e"), e("f"), e("g"), e("h"), e("i"), e("j"))
+
+    @Test fun whereItWasLeftComesFromPlayDates() {
+        // c was played most recently (it's part way), even though d was finished earlier.
+        assertEquals(2, Franchises.lastPlayed(entries))
+        assertEquals(5L, Franchises.lastPlayedMs(entries))
+        assertNull(Franchises.lastPlayed(listOf(e("x"), e("y"))))
+    }
 
     @Test fun carriesOnNearThePlace() {
         // Left at c: c itself, b (gone back) and a few after count; far ahead doesn't.
-        assertEquals(2, Franchises.indexNearPlace(entries, "c", "c"))
-        assertEquals(1, Franchises.indexNearPlace(entries, "c", "b"))
-        assertEquals(5, Franchises.indexNearPlace(entries, "c", "f"))
-        assertNull(Franchises.indexNearPlace(entries, "c", "j"))
-        assertNull(Franchises.indexNearPlace(entries, "c", "a"))
-        assertNull(Franchises.indexNearPlace(entries, "nope", "c"))
+        assertEquals(2, Franchises.indexNearPlace(entries, 2, "c"))
+        assertEquals(1, Franchises.indexNearPlace(entries, 2, "b"))
+        assertEquals(5, Franchises.indexNearPlace(entries, 2, "f"))
+        assertNull(Franchises.indexNearPlace(entries, 2, "j"))
+        assertNull(Franchises.indexNearPlace(entries, 2, "a"))
+        assertNull(Franchises.indexNearPlace(entries, 99, "c"))
     }
 
     @Test fun watchedOnesAfterThePlaceAreSkipped() {
         val list = listOf(e("a"), e("b", true), e("c", true), e("d", true), e("e", true), e("f"), e("g"))
-        assertEquals("f", Franchises.continueFrom(list, "b")?.id)
+        assertEquals("f", Franchises.continueFrom(list, 1)?.id)
         // f is past four watched ones, still the playlist's.
-        assertEquals(5, Franchises.indexNearPlace(list, "b", "f"))
+        assertEquals(5, Franchises.indexNearPlace(list, 1, "f"))
     }
 
-    @Test fun wholeShowsAsPlaces() {
+    @Test fun wholeShowsAsStartingPoints() {
         val list = listOf(e("m", kind = ItemKind.MOVIE), e("s1e1", true, "show"), e("s1e2", series = "show"), e("s1e3", series = "show"))
         assertEquals(2, Franchises.placeIndex(list, "show"))
-        assertEquals("s1e2", Franchises.continueFrom(list, "show")?.id)
-    }
-
-    @Test fun placesKeepTheNewestLast() {
-        var p = emptyMap<String, String>()
-        p = Franchises.place(p, "x", "1")
-        p = Franchises.place(p, "y", "2")
-        p = Franchises.place(p, "x", "3")
-        assertEquals(listOf("y" to "2", "x" to "3"), p.toList())
-        val many = (1..60).fold(emptyMap<String, String>()) { m, i -> Franchises.place(m, "p$i", "i") }
-        assertEquals(Franchises.MAX_PLACES, many.size)
-        assertEquals("p60", many.keys.last())
+        assertEquals(0, Franchises.placeIndex(list, "m"))
+        assertEquals(-1, Franchises.placeIndex(list, "nope"))
     }
 
     @Test fun crossoversBySharedWordsAndTags() {
