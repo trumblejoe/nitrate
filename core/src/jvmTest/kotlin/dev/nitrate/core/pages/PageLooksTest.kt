@@ -88,4 +88,12 @@ class PageLooksTest {
         val back = PageLooks.change(prefs, PageKeys.HOME) { it.copy(focusStyle = FocusStyle.GROW, upDownAlong = false) }
         assertTrue(back.pageLooks.isEmpty())
     }
+
+    @Test fun aPageCanHaveItsOwnCardShapeAndSpacing() {
+        val prefs = PageLooks.change(DisplayPrefs(), "library/films") { it.copy(cardCorners = CardCorners.SQUARE, cardSpacing = CardSpacing.TIGHT) }
+        assertEquals(CardCorners.SQUARE, PageLooks.forPage(prefs, "library/films/genres").tvCardCorners)
+        assertEquals(CardSpacing.TIGHT, PageLooks.forPage(prefs, "library/films").tvCardSpacing)
+        assertEquals(CardSpacing.NORMAL, PageLooks.forPage(prefs, PageKeys.HOME).tvCardSpacing)
+        assertEquals(CardCorners.SQUARE, PageLooks.useEverywhere(prefs, "library/films").tvCardCorners)
+    }
 }

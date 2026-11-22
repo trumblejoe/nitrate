@@ -340,6 +340,12 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
                 ChoiceItem("Focus style", (look.focusStyle ?: dev.nitrate.core.pages.FocusStyle.GROW).label) {
                     set { it.copy(focusStyle = (it.focusStyle ?: dev.nitrate.core.pages.FocusStyle.GROW).cycleNext()) }
                 }
+                ChoiceItem("Card corners", (look.cardCorners ?: dev.nitrate.core.pages.CardCorners.ROUNDED).label) {
+                    set { it.copy(cardCorners = (it.cardCorners ?: dev.nitrate.core.pages.CardCorners.ROUNDED).cycleNext()) }
+                }
+                ChoiceItem("Card spacing", (look.cardSpacing ?: dev.nitrate.core.pages.CardSpacing.NORMAL).label) {
+                    set { it.copy(cardSpacing = (it.cardSpacing ?: dev.nitrate.core.pages.CardSpacing.NORMAL).cycleNext()) }
+                }
             }
             if (arrangement == PageArrangement.FULL_ART) {
                 ChoiceItem("Up/Down", if (look.upDownAlong == true) "Along the row, then rows" else "Between rows") {

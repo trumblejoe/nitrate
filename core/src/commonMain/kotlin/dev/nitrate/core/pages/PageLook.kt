@@ -22,6 +22,9 @@ data class PageLook(
     val upDownAlong: Boolean? = null,
     /** How the focused card shows. */
     val focusStyle: FocusStyle? = null,
+    /** Cards' corners and the gap between them. */
+    val cardCorners: CardCorners? = null,
+    val cardSpacing: CardSpacing? = null,
 ) {
     val isEmpty: Boolean get() = this == PageLook()
 }
@@ -44,6 +47,8 @@ object PageLooks {
         tabStyle = prefs.tvTabStyle,
         upDownAlong = prefs.tvUpDownAlong,
         focusStyle = prefs.tvFocusStyle,
+        cardCorners = prefs.tvCardCorners,
+        cardSpacing = prefs.tvCardSpacing,
     )
 
     /** The page's layout in full: its own choices over every page's. */
@@ -59,6 +64,8 @@ object PageLooks {
             tabStyle = own.tabStyle ?: base.tabStyle,
             upDownAlong = own.upDownAlong ?: base.upDownAlong,
             focusStyle = own.focusStyle ?: base.focusStyle,
+            cardCorners = own.cardCorners ?: base.cardCorners,
+            cardSpacing = own.cardSpacing ?: base.cardSpacing,
         )
     }
 
@@ -81,6 +88,8 @@ object PageLooks {
             tvTabStyle = look.tabStyle ?: prefs.tvTabStyle,
             tvUpDownAlong = look.upDownAlong ?: prefs.tvUpDownAlong,
             tvFocusStyle = look.focusStyle ?: prefs.tvFocusStyle,
+            tvCardCorners = look.cardCorners ?: prefs.tvCardCorners,
+            tvCardSpacing = look.cardSpacing ?: prefs.tvCardSpacing,
         )
     }
 
@@ -99,6 +108,8 @@ object PageLooks {
             tabStyle = next.tabStyle.takeIf { it != base.tabStyle },
             upDownAlong = next.upDownAlong.takeIf { it != base.upDownAlong },
             focusStyle = next.focusStyle.takeIf { it != base.focusStyle },
+            cardCorners = next.cardCorners.takeIf { it != base.cardCorners },
+            cardSpacing = next.cardSpacing.takeIf { it != base.cardSpacing },
         )
         return prefs.copy(pageLooks = if (own.isEmpty) prefs.pageLooks - owner else prefs.pageLooks + (owner to own))
     }
@@ -122,6 +133,8 @@ object PageLooks {
             tvTabStyle = look.tabStyle ?: prefs.tvTabStyle,
             tvUpDownAlong = look.upDownAlong ?: prefs.tvUpDownAlong,
             tvFocusStyle = look.focusStyle ?: prefs.tvFocusStyle,
+            tvCardCorners = look.cardCorners ?: prefs.tvCardCorners,
+            tvCardSpacing = look.cardSpacing ?: prefs.tvCardSpacing,
             pageLooks = emptyMap(),
         )
     }

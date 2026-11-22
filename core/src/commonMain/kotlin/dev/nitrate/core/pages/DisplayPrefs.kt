@@ -100,6 +100,9 @@ data class DisplayPrefs(
     val tvUpDownAlong: Boolean = false,
     /** How the focused card shows (per page through [PageLook.focusStyle]). */
     val tvFocusStyle: FocusStyle = FocusStyle.GROW,
+    /** Cards' corners and the gap between them (per page through [PageLook]). */
+    val tvCardCorners: CardCorners = CardCorners.ROUNDED,
+    val tvCardSpacing: CardSpacing = CardSpacing.NORMAL,
     /** Rows one at a time and full art: a slim marker saying which row this is ("3 / 9"). */
     val tvRowMarker: Boolean = true,
     /** A small clock in the page's top corner. */
@@ -165,6 +168,14 @@ enum class RowPlace(val label: String) {
 /** How far the row in use runs: the page's full width (or height), or part of it. */
 @Serializable
 enum class RowExtent(val label: String) { FULL("Full length"), PARTIAL("Part way") }
+
+/** Card corners on TV: rounded (the TV's own) or square, for poster walls with clean edges. */
+@Serializable
+enum class CardCorners(val label: String) { ROUNDED("Rounded"), SQUARE("Square") }
+
+/** The gap between cards in a row on TV, in dp. */
+@Serializable
+enum class CardSpacing(val label: String, val dp: Int) { TIGHT("Tight", 8), NORMAL("Normal", 18), ROOMY("Roomy", 30) }
 
 /** How the focused card shows on TV. Grow is the TV's own way; the others keep rows still. */
 @Serializable

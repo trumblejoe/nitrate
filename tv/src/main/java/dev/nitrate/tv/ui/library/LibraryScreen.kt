@@ -2,6 +2,7 @@ package dev.nitrate.tv.ui.library
 
 import dev.nitrate.tv.ui.rows.PageEditor
 import dev.nitrate.core.pages.PageKeys
+import dev.nitrate.tv.ui.components.tabKeys
 import dev.nitrate.android.viewmodel.LibraryGridViewModel
 import dev.nitrate.android.viewmodel.RowsState
 import dev.nitrate.android.viewmodel.RowsViewModel
@@ -158,7 +159,10 @@ fun LibraryScreen(
     val padded = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)
     val types = dev.nitrate.core.pages.LibraryTabs.typesFor(lib.collection)
 
-    androidx.compose.foundation.layout.Box(Modifier.onFocusChanged { pageHasFocus = it.hasFocus }) {
+    // Channel/Page keys step through the library's tabs from anywhere on the page.
+    androidx.compose.foundation.layout.Box(Modifier
+        .tabKeys(shownTabs.map { it.id }, tab.id) { id -> switchTo(id) { tabId = id } }
+        .onFocusChanged { pageHasFocus = it.hasFocus }) {
         when (tab.kind) {
             dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED -> TabRows(
                 "library-rows-$libraryId", PageKeys.library(lib.id), { repository.libraryRows(lib) }, { repository.libraryRowsProgress(lib) },

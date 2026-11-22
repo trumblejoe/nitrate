@@ -67,10 +67,11 @@ fun MediaCard(
     }
     val shownSubtitle = subtitle.takeIf { prefs.cardTitles != CardTitles.NEVER }
     Column(modifier.then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())) {
-        val look = cardFocusLook(prefs.tvFocusStyle)
+        val look = cardFocusLook(prefs.tvFocusStyle, square = prefs.tvCardCorners == dev.nitrate.core.pages.CardCorners.SQUARE)
         Card(
             onClick = onClick,
             onLongClick = onLongClick,
+            shape = look.shape,
             scale = look.scale,
             border = look.border,
             glow = look.glow,
@@ -174,26 +175,41 @@ fun MediaCard(
 
 
 /** How a card shows focus ([dev.nitrate.core.pages.FocusStyle]): its scale, frame and glow. */
-class CardFocusLook(val scale: androidx.tv.material3.CardScale, val border: androidx.tv.material3.CardBorder, val glow: androidx.tv.material3.CardGlow)
+class CardFocusLook(
+    val shape: androidx.tv.material3.CardShape,
+    val scale: androidx.tv.material3.CardScale,
+    val border: androidx.tv.material3.CardBorder,
+    val glow: androidx.tv.material3.CardGlow,
+)
 
+/** How a card shows focus, and its corners ([square]: the frame follows the square edge too). */
 @Composable
-fun cardFocusLook(style: dev.nitrate.core.pages.FocusStyle): CardFocusLook {
+fun cardFocusLook(style: dev.nitrate.core.pages.FocusStyle, square: Boolean = false): CardFocusLook {
     val accent = MaterialTheme.colorScheme.primary
-    val frame = { width: Dp, color: Color -> androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(width, color)) }
+    val corners: androidx.compose.ui.graphics.Shape = if (square) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.medium
+    val frame = { width: Dp, color: Color -> androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(width, color), shape = corners) }
+    val shape = androidx.tv.material3.CardDefaults.shape(shape = corners)
     return when (style) {
         // The TV's own: grows a little with its frame.
-        dev.nitrate.core.pages.FocusStyle.GROW -> CardFocusLook(androidx.tv.material3.CardDefaults.scale(), androidx.tv.material3.CardDefaults.border(), androidx.tv.material3.CardDefaults.glow())
+        dev.nitrate.core.pages.FocusStyle.GROW -> CardFocusLook(
+            shape, androidx.tv.material3.CardDefaults.scale(),
+            if (square) androidx.tv.material3.CardDefaults.border(focusedBorder = frame(3.dp, MaterialTheme.colorScheme.border)) else androidx.tv.material3.CardDefaults.border(),
+            androidx.tv.material3.CardDefaults.glow(),
+        )
         dev.nitrate.core.pages.FocusStyle.OUTLINE -> CardFocusLook(
+            shape,
             androidx.tv.material3.CardDefaults.scale(focusedScale = 1f),
             androidx.tv.material3.CardDefaults.border(focusedBorder = frame(4.dp, Color.White)),
             androidx.tv.material3.CardDefaults.glow(),
         )
         dev.nitrate.core.pages.FocusStyle.GLOW -> CardFocusLook(
+            shape,
             androidx.tv.material3.CardDefaults.scale(focusedScale = 1f),
             androidx.tv.material3.CardDefaults.border(focusedBorder = frame(2.dp, accent)),
             androidx.tv.material3.CardDefaults.glow(focusedGlow = androidx.tv.material3.Glow(accent.copy(alpha = 0.9f), 18.dp)),
         )
         dev.nitrate.core.pages.FocusStyle.LIFT -> CardFocusLook(
+            shape,
             androidx.tv.material3.CardDefaults.scale(focusedScale = 1.04f),
             androidx.tv.material3.CardDefaults.border(focusedBorder = frame(2.dp, Color.White.copy(alpha = 0.8f))),
             androidx.tv.material3.CardDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Color.Black, 24.dp)),

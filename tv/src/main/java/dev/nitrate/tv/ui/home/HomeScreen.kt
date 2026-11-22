@@ -2,6 +2,7 @@ package dev.nitrate.tv.ui.home
 
 import dev.nitrate.tv.ui.rows.PageEditor
 import dev.nitrate.core.pages.PageKeys
+import dev.nitrate.tv.ui.components.tabKeys
 import dev.nitrate.android.viewmodel.RowsState
 import dev.nitrate.android.viewmodel.RowsViewModel
 import androidx.compose.foundation.layout.Arrangement
@@ -115,7 +116,11 @@ fun HomeScreen(
         }
     }
     MainMenu(dev.nitrate.core.pages.MenuStops.HOME, overlay = fullArt) { insets ->
-    Box(Modifier.fillMaxSize().onFocusChanged { homeHasFocus = it.hasFocus }.focusRequester(content).focusGroup()) {
+    // Channel/Page keys step through Home and its pinned pages from anywhere on the page.
+    val tabIds = listOf("home") + pinnedPages.map { it.id }
+    Box(Modifier.fillMaxSize()
+        .tabKeys(tabIds, openPage?.id ?: "home") { id -> pageTab = id.takeIf { it != "home" }; switched = id + "#" + System.nanoTime() }
+        .onFocusChanged { homeHasFocus = it.hasFocus }.focusRequester(content).focusGroup()) {
     if (openPage != null) {
         // The page draws its tabs again as it goes from loading to its rows: keep focus on the tab
         // chosen through that (only just after choosing it, so later reloads never take focus).

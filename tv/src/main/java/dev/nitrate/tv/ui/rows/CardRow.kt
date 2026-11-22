@@ -71,7 +71,7 @@ fun CardRow(
             state = state,
             // A few dp above and below, so a focused card's growth isn't cut off by the row's edge.
             contentPadding = PaddingValues(horizontal = RowPadding, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            horizontalArrangement = Arrangement.spacedBy(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCardSpacing.dp.dp),
         ) {
             itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
                 MediaCard(
@@ -119,6 +119,8 @@ fun ColumnCards(
     val posters = display.style == RowStyle.POSTER
     val across = if (posters) 2 else 1
     val pad = PaddingValues(vertical = 24.dp, horizontal = 8.dp)
+    // The page's card spacing, a little closer down a column (cards there are wider than tall).
+    val gap = (dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCardSpacing.dp * 0.8f).dp
     val count = row.items.size
     val requesters = remember(count) { List(count) { androidx.compose.ui.focus.FocusRequester() } }
     var at by remember { mutableStateOf(0) }
@@ -174,8 +176,8 @@ fun ColumnCards(
             state = gridState,
             columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
             contentPadding = pad,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            verticalArrangement = Arrangement.spacedBy(gap),
             modifier = modifier.then(keys),
         ) {
             items(count, key = { i -> "$i:${row.items[i].id}" }) { i -> card(i, wideCard = false) }
@@ -184,7 +186,7 @@ fun ColumnCards(
         androidx.compose.foundation.lazy.LazyColumn(
             state = listState,
             contentPadding = pad,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(gap),
             modifier = modifier.then(keys),
         ) {
             items(count, key = { i -> "$i:${row.items[i].id}" }) { i -> card(i, wideCard = true) }

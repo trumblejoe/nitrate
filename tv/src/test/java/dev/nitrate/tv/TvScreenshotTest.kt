@@ -758,6 +758,35 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
     }
 
+    /** Square, tightly spaced cards. */
+    @Test fun squareTightCards() = shoot("tv-cards-square-tight", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvCardCorners = dev.nitrate.core.pages.CardCorners.SQUARE, tvCardSpacing = dev.nitrate.core.pages.CardSpacing.TIGHT))
+    }, act = { press("down", "down", "right"); compose.mainClock.advanceTimeBy(800); compose.waitForIdle() }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    /** Channel/Page keys step through Home's tabs from the rows, without going up to the tabs. */
+    @Test fun channelKeysChangeTabs() = shoot("tv-channel-keys-tabs", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        val roots = compose.onAllNodes(androidx.compose.ui.test.isRoot())
+        fun key(code: Int) {
+            listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP).forEach { a ->
+                roots[roots.fetchSemanticsNodes().size - 1].performKeyPress(androidx.compose.ui.input.key.KeyEvent(android.view.KeyEvent(0, 0, a, code, 0)))
+            }
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        }
+        key(android.view.KeyEvent.KEYCODE_CHANNEL_UP)
+        check(focusedHasText("Kids")) { "Channel up should open the next tab (Kids)" }
+        key(android.view.KeyEvent.KEYCODE_CHANNEL_UP)
+        check(focusedHasText("Kids")) { "past the last tab nothing should happen" }
+        key(android.view.KeyEvent.KEYCODE_PAGE_UP)
+        // Home's own page comes back with focus on the card left in its rows, its tab chosen.
+        check(compose.onAllNodes(androidx.compose.ui.test.isSelected() and androidx.compose.ui.test.hasText("Home")).fetchSemanticsNodes().isNotEmpty()) { "Page up should go back to Home's tab" }
+    }) { c ->
+        val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
+    }
+
     /** Leaving a row and coming back lands on the card left in it, whatever was done in other rows meanwhile. */
     @Test fun rowsRememberTheirCard() = shoot("tv-rows-remember-card", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

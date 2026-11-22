@@ -280,6 +280,24 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                     trailingContent = { Text("${prefs.tvFocusStyle.label}  ›", color = MaterialTheme.colorScheme.primary) },
                 )
             }
+            item {
+                ListItem(
+                    selected = false,
+                    onClick = { update { it.copy(tvCardCorners = dev.nitrate.core.pages.CardCorners.entries[(it.tvCardCorners.ordinal + 1) % dev.nitrate.core.pages.CardCorners.entries.size]) } },
+                    headlineContent = { Text("Card corners") },
+                    supportingContent = { Text("Rounded, or square for poster walls with clean edges") },
+                    trailingContent = { Text("${prefs.tvCardCorners.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+            item {
+                ListItem(
+                    selected = false,
+                    onClick = { update { it.copy(tvCardSpacing = dev.nitrate.core.pages.CardSpacing.entries[(it.tvCardSpacing.ordinal + 1) % dev.nitrate.core.pages.CardSpacing.entries.size]) } },
+                    headlineContent = { Text("Card spacing") },
+                    supportingContent = { Text("The gap between cards in a row: tight fits more on screen") },
+                    trailingContent = { Text("${prefs.tvCardSpacing.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
         }
         item {
             ListItem(

@@ -21,6 +21,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -401,3 +402,26 @@ internal fun TabStyleChoices(current: TabStyle, onPick: (TabStyle) -> Unit) {
         }
     }
 }
+
+/** The tab [by] steps from [current] among [ids] (-1 previous, +1 next), or null past either end. */
+fun tabStep(ids: List<String>, current: String, by: Int): String? {
+    val at = ids.indexOf(current)
+    if (at < 0) return null
+    return ids.getOrNull(at + by)
+}
+
+/**
+ * The remote's Channel and Page keys move between a page's tabs from anywhere on it, without going up
+ * to the tabs first: Channel down / Page up to the previous tab, Channel up / Page down to the next.
+ * Nothing happens past the first or last tab.
+ */
+fun Modifier.tabKeys(ids: List<String>, current: String, onSelect: (String) -> Unit): Modifier =
+    if (ids.size < 2) this else onPreviewKeyEvent { e ->
+        val by = when (e.key) {
+            androidx.compose.ui.input.key.Key.ChannelDown, androidx.compose.ui.input.key.Key.PageUp -> -1
+            androidx.compose.ui.input.key.Key.ChannelUp, androidx.compose.ui.input.key.Key.PageDown -> 1
+            else -> return@onPreviewKeyEvent false
+        }
+        if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) tabStep(ids, current, by)?.let(onSelect)
+        true
+    }
