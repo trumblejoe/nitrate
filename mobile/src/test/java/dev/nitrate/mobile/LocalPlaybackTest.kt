@@ -102,6 +102,8 @@ class LocalPlaybackTest {
             )
             assertEquals(true, plan.styledSubtitle)
             session.loadLocal(MediaItem("m2", "Downloaded", ItemKind.MOVIE), plan, 0) { _, _, _ -> }
+            // Held on the first line: a test clock that jumps would otherwise play past it.
+            session.player.pause()
             val end = System.currentTimeMillis() + 10_000
             var cues: List<androidx.media3.common.text.Cue> = emptyList()
             while (System.currentTimeMillis() < end && session.error.value == null && cues.isEmpty()) {
