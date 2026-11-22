@@ -1883,6 +1883,11 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.player.RecapScreen(c, {}, {}, {})
     }
 
+    /** An episode's page. */
+    @Test fun episodeDetails() = shoot("tv-episode-details") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "s1e2", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }
+
+    @Test fun movieDetails() = shoot("tv-movie-details") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "m1", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }
+
     @Test fun album() = shoot("tv-album") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "al1", null, onPlay = { _, _ -> }, onOpen = {}) }
 
     @Test fun liveTv() = shoot("tv-live-tv") { c ->
