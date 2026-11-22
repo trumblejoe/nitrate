@@ -253,11 +253,13 @@ fun RowsPage(
             val viewport = with(density) { maxHeight.roundToPx() }
             val bottomGap = with(density) { 36.dp.toPx() }
             if (oneAtATime) roomAbove = (viewport - 1).coerceAtLeast(0)
-            val spec = remember(oneAtATime, bottomGap) { if (oneAtATime) RowAtBottom(bottomGap) else WholeRowInView }
+            val spec = remember(oneAtATime, bottomGap) { if (oneAtATime) RowAtBottom(bottomGap) else RowAtTop }
             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides spec) {
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(top = with(density) { (if (oneAtATime) roomAbove else 0).toDp() }, bottom = if (oneAtATime) 0.dp else 48.dp),
+                // Stacked: room below the last row for it to come up to the top too, so every row takes the
+                // same place under the summary (rows near the end used to stop lower down).
+                contentPadding = PaddingValues(top = if (oneAtATime) with(density) { roomAbove.toDp() } else 12.dp, bottom = if (oneAtATime) 0.dp else (maxHeight - 48.dp).coerceAtLeast(48.dp)),
                 verticalArrangement = Arrangement.spacedBy(28.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -266,6 +268,11 @@ fun RowsPage(
                     // Moving into a row scrolls the whole row into view, its title included (a tall
                     // row otherwise brings only the focused card in, leaving its title out of sight).
                     val wholeRow = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+                    // Into its place: along the bottom (one at a time), else at the top of the list.
+                    val placeRow: suspend () -> Unit = {
+                        if (oneAtATime) wholeRow.placeRow(spec)
+                        else placeAtTop(listState) { rows.indexOfFirst { it.key == row.key } }
+                    }
                     val rowScope = androidx.compose.runtime.rememberCoroutineScope()
                     // Changing a row's style swaps its cards for others: focus waits on a holder in the
                     // row meanwhile (else it falls to the menu), then goes into the new style.
@@ -295,7 +302,7 @@ fun RowsPage(
                             .then(if (oneAtATime) Modifier.onSizeChanged {
                                 if (rowIndex == current) rowScope.launch { wholeRow.placeRow(spec) }
                             } else Modifier)
-                            .onFocusChanged { if (it.hasFocus) { focusedRowIndex = rowIndex; rowScope.launch { wholeRow.placeRow(spec) } } }
+                            .onFocusChanged { if (it.hasFocus) { focusedRowIndex = rowIndex; rowScope.launch { placeRow() } } }
                             // Fast-forward / Rewind on a row: its next / previous artwork style, there and then.
                             .onPreviewKeyEvent { e ->
                                 val by = when (e.key) { Key.MediaFastForward -> 1; Key.MediaRewind -> -1; else -> 0 }
@@ -339,7 +346,7 @@ fun RowsPage(
                             pendingLook = null
                             holding = false
                             kotlinx.coroutines.delay(60)
-                            wholeRow.placeRow(spec)
+                            placeRow()
                         }
                         // Never left on the holder: if the look asked for never arrives (its save failed), give
                         // focus back to the row. A slow save is waited for: the look takes focus when it comes.
@@ -565,19 +572,44 @@ private class RowAtBottom(private val gap: Float) : androidx.compose.foundation.
     }
 }
 
-/** Brings a row into its place along the bottom (one at a time) or whole into view (stacked). */
+/**
+ * Stacked: scrolls the row at [index] to the top of the list. The card taking focus asks to be
+ * brought into view a moment later, which interrupts the scroll part way (the row left half under
+ * the summary): it's started again until it gets there.
+ */
+private suspend fun placeAtTop(list: androidx.compose.foundation.lazy.LazyListState, index: () -> Int) {
+    repeat(6) {
+        val at = index()
+        if (at < 0) return
+        try {
+            list.animateScrollToItem(at)
+            if (list.firstVisibleItemIndex == at && list.firstVisibleItemScrollOffset == 0 || !list.canScrollForward) return
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Interrupted by another scroll, not this coroutine being cancelled: try again.
+            kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]?.let { if (!it.isActive) throw e }
+        }
+        kotlinx.coroutines.delay(40)
+    }
+}
+
+/** Brings a row into its place along the bottom (one at a time) or whole into view. */
 private suspend fun androidx.compose.foundation.relocation.BringIntoViewRequester.placeRow(spec: androidx.compose.foundation.gestures.BringIntoViewSpec) {
     val atBottom = spec as? RowAtBottom
     atBottom?.rowRequest = true
     try { bringIntoView() } finally { atBottom?.rowRequest = false }
 }
 
-private object WholeRowInView : androidx.compose.foundation.gestures.BringIntoViewSpec {
+/**
+ * Stacked: a card's own request only scrolls what's out of view. The row in use is put at the top
+ * of the list, right under the focused title's summary, by scrolling to it (`placeRow` in [RowsPage]):
+ * as a bring-into-view request it merged with the card's own and put the card there instead, its
+ * row's title cut off under the summary, and leaving the row above part shown did the same to it.
+ */
+private object RowAtTop : androidx.compose.foundation.gestures.BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
         offset < 0 -> offset
-        size <= containerSize -> if (offset + size > containerSize) offset + size - containerSize else 0f
-        offset <= containerSize / 3 -> 0f
-        else -> offset
+        size <= containerSize && offset + size > containerSize -> offset + size - containerSize
+        else -> 0f
     }
 }
 

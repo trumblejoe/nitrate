@@ -597,11 +597,30 @@ class TvScreenshotTest {
         check(next.left > strip.right - 20f && kotlin.math.abs(next.top - strip.top) < 60f) { "Right should move along the strip, got $next from $strip" }
         // The frames either side sit only a little higher or lower on the tilted strip: Up/Down must not pick them.
         press("up")
-        check(at().top < next.top - 100f) { "Up from the strip should go to the row above, got ${at()} from $next" }
+        // Stacked rows each come to the top in turn, so the row above lands where the strip was: it's
+        // told apart by its card at the row's start (the strip was on its second frame).
+        check(at().left < next.left - 200f && at().width > 0f) { "Up from the strip should go to the row above, got ${at()} from $next" }
         press("down")
         check(at().width > at().height) { "Down should come back to the strip, got ${at()}" }
         press("down")
         check(at().height > at().width) { "Down from the strip should reach the poster row below, got ${at()}" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** Stacked rows: moving down the page never leaves a row's title or cards under the focused title's summary. */
+    @Test fun stackedRowsClearOfSummary() = shoot("tv-stacked-rows-clear", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvArrangement = dev.nitrate.core.pages.PageArrangement.STACKED))
+    }, act = {
+        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        val tops = mutableListOf<Float>()
+        repeat(3) {
+            press("down")
+            compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
+            val card = at()
+            check(card.bottom <= 1080f) { "The row in use should be whole on screen, its card at $card" }
+            tops += card.top
+        }
+        // Each row in turn takes the same place under the summary (none left part shown above it).
+        check(tops.max() - tops.min() < 40f) { "Rows should take one place under the summary, cards at $tops" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
     /** Leaving a row and coming back lands on the card left in it, whatever was done in other rows meanwhile. */
