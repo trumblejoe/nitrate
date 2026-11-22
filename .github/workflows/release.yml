@@ -133,10 +133,15 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
-      # Build (build.yml) tests every push to main. When its "android" and "companion" jobs passed
-      # for this very commit, their tests aren't run again here; while they're still running this
-      # waits for them (up to 30 minutes). If either failed, nothing is released. With no Build
-      # for the commit (a tag on another branch) or a part it skipped, that part is tested here.
+      # The release itself is built at once, side by side with Build's tests (not after them).
+      - name: Build
+        run: ./gradlew assembleRelease --console=plain
+
+      # Build (build.yml) tests every push to main. Its results are read once the release is built
+      # (by then Build has usually finished; otherwise this waits, up to 30 minutes): when its
+      # "android" and "companion" jobs passed for this very commit, their tests aren't run again
+      # here. If either failed, nothing is released. With no Build for the commit (a tag on another
+      # branch) or a part it skipped, that part is tested here.
       - name: Tested already?
         id: tested
         env:
@@ -169,15 +174,14 @@ jobs:
             esac
           done
 
-      - name: Test and build
+      - name: Test
         env:
           TESTED: ${{ steps.tested.outputs.android }}
         run: |
           if [ "$TESTED" = "yes" ]; then
-            echo "Build already tested this commit: building only."
-            ./gradlew assembleRelease --console=plain
+            echo "Build already tested this commit."
           else
-            ./gradlew test :core:jvmTest assembleRelease --console=plain
+            ./gradlew test :core:jvmTest --console=plain
           fi
 
       # The Nitrate Companion server plugin: tested, built for Jellyfin's .NET, zipped with the
