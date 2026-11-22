@@ -325,7 +325,9 @@ fun RowsPage(
                 verticalArrangement = Arrangement.spacedBy(28.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                itemsIndexed(rows, key = { _, row -> row.key }) { rowIndex, row ->
+                itemsIndexed(rows, key = { _, row -> row.key }) { rowIndex, loadedRow ->
+                    // "Load more": the row grows as focus nears its end (the row's own look says so).
+                    val (row, moreOnFocus, allLoaded) = rememberLoadMore(loadedRow, (overrides[loadedRow.key] ?: loadedRow.defaultDisplay).normalized().loadMore, repository)
                     // Rows added or removed by a reload slide and fade rather than jump.
                     // Moving into a row scrolls the whole row into view, its title included (a tall
                     // row otherwise brings only the focused card in, leaving its title out of sight).
@@ -389,7 +391,8 @@ fun RowsPage(
                                 .focusProperties { canFocus = holding }.focusable(),
                         )
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides rowsScroll) {
-                        val display = (overrides[row.key] ?: row.defaultDisplay).normalized()
+                        // Wrap round only once there's nothing more to load (else the end would jump back as more arrived).
+                        val display = (overrides[row.key] ?: row.defaultDisplay).normalized().let { if (allLoaded) it else it.copy(wrapRound = false) }
                         // The new style is on screen: into it, and the whole row back in view at its new height.
                         LaunchedEffect(display.style, display.cards) {
                             // Only the look the last press asked for takes focus: an earlier one arriving
@@ -419,8 +422,8 @@ fun RowsPage(
                         }
                         val prefs = LocalDisplayPrefs.current
                         val fx = dev.nitrate.tv.ui.effects.rememberCardFx(display, prefs.effects, prefs.easyMode)
-                        val rowActions = remember(actions, rowIndex) {
-                            RowActions(onFocus = { item -> lastCard = rowIndex to item.id; rowLast[row.key] = item.id; actions.onFocus(item) }, onOpen = actions.onOpen, onPlay = actions.onPlay, onEditRow = actions.onEditRow)
+                        val rowActions = remember(actions, rowIndex, moreOnFocus) {
+                            RowActions(onFocus = { item -> lastCard = rowIndex to item.id; rowLast[row.key] = item.id; moreOnFocus(item); actions.onFocus(item) }, onOpen = actions.onOpen, onPlay = actions.onPlay, onEditRow = actions.onEditRow)
                         }
                         val actions = fx?.wrap(rowActions) ?: rowActions
                         androidx.compose.runtime.CompositionLocalProvider(

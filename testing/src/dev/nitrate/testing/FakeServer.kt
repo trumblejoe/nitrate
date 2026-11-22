@@ -74,10 +74,13 @@ class FakeServer : MediaServer {
     override suspend fun homeRows() = listOf(
         MediaRow("home/continue_watching", "Continue Watching", listOf(films[0], episode(2, 4, false).copy(user = UserState(playedPercentage = 60.0))), RowDisplay(RowStyle.WIDE, showTitles = true)),
         MediaRow("home/next_up", "Next Up", listOf(episode(2, 5, false)), RowDisplay(RowStyle.WIDE, showTitles = true)),
-        MediaRow("home/latest/lib-movies", "Latest in Movies", films, RowDisplay()),
+        MediaRow("home/latest/lib-movies", "Latest in Movies", films, RowDisplay(), dev.nitrate.core.rows.RowMore(listOf("latest"), mapOf("parentId" to "lib-movies"))),
         MediaRow("home/latest/lib-shows", "Latest in Shows", listOf(series), RowDisplay()),
     )
     override suspend fun libraryRows(library: MediaItem) = homeRows().drop(2)
+    /** More of "Latest in Movies": the films again under new ids, 20 titles in all. */
+    override suspend fun moreOfRow(more: dev.nitrate.core.rows.RowMore, startIndex: Int, limit: Int): List<MediaItem> =
+        (startIndex until minOf(startIndex + limit, 20)).map { i -> films[i % films.size].copy(id = "${films[i % films.size].id}-more$i") }
     override suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean) =
         (if (startIndex == 0) films + films.map { it.copy(id = it.id + "b") } else emptyList()) to films.size * 2
     val album = MediaItem("al1", "Second Reel", ItemKind.MUSIC_ALBUM, productionYear = 2022, albumArtist = "The Projectionists", albumArtistId = "ar1", genres = listOf("Rock"),

@@ -198,7 +198,8 @@ class RowsViewModel(
                         is RowSource.BuiltIn -> emptyList()
                     }
                 }.getOrNull()
-                items?.let { e.id to MediaRow(e.rowKey, e.title ?: defaultTitle(e), it, (e.display ?: PageComposer.defaultDisplay(e.source)).normalized()) }
+                val more = (e.source as? RowSource.Query)?.let { server.moreOfQuery(it.query) }
+                items?.let { e.id to MediaRow(e.rowKey, e.title ?: defaultTitle(e), it, (e.display ?: PageComposer.defaultDisplay(e.source)).normalized(), more) }
             }
         }.awaitAll().filterNotNull().toMap()
         // Keep earlier results for rows that failed this time.

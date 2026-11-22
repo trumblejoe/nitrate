@@ -168,6 +168,12 @@ interface MediaServer {
     fun libraryRowsProgress(library: MediaItem, skip: Set<String> = emptySet()): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
         kotlinx.coroutines.flow.flow { emit(dev.nitrate.core.rows.RowsProgress(libraryRows(library).filterNot { it.key in skip }, complete = true)) }
 
+    /** The next [limit] items of a row from [startIndex] (what [MediaRow.more] describes); empty at its end. */
+    suspend fun moreOfRow(more: dev.nitrate.core.rows.RowMore, startIndex: Int, limit: Int): List<MediaItem> = emptyList()
+
+    /** How to continue a row made by [queryItems] with [query]; null when it can't be. */
+    fun moreOfQuery(query: dev.nitrate.core.pages.ItemQuery): dev.nitrate.core.rows.RowMore? = null
+
     /** One page of a library for grids. Returns the items and the total count. */
     suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean = false): Pair<List<MediaItem>, Int>
     suspend fun getItem(id: String): MediaItem

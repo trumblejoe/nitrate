@@ -5,6 +5,11 @@ import dev.nitrate.core.pages.isSpoiler
 import dev.nitrate.core.pages.CardTitles
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,9 +62,16 @@ fun MediaCard(
     onPlay: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     showProgress: Boolean = true,
+    /** Titles under the card only while it has focus (the room kept, so nothing moves). */
+    titleOnFocus: Boolean = false,
+    /** The title's logo over the picture instead of words under it; words come back when it won't load. */
+    logoUrl: String? = null,
 ) {
+    var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var logoFailed by androidx.compose.runtime.remember(logoUrl) { androidx.compose.runtime.mutableStateOf(false) }
+    val logoShown = logoUrl != null && !logoFailed
     val prefs = LocalDisplayPrefs.current
-    val progress = item.user.playedPercentage?.toFloat()?.div(100f)?.takeIf { prefs.progressBars }
+    val progress = item.user.playedPercentage?.toFloat()?.div(100f)?.takeIf { prefs.progress != dev.nitrate.core.pages.ProgressStyle.NONE }
     val shownTitle = when (prefs.cardTitles) {
         CardTitles.NEVER -> null
         CardTitles.ALWAYS -> title ?: item.displayTitle
@@ -79,7 +91,7 @@ fun MediaCard(
                 .cardFx(item.id).returnFocus(item.id)
                 .fillMaxWidth()
                 .aspectRatio(aspectRatio)
-                .onFocusChanged { if (it.isFocused) onFocus() }
+                .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus() }
                 .onPlayKey(onPlay),
         ) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
@@ -90,6 +102,16 @@ fun MediaCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().then(if (dev.nitrate.tv.ui.partners.spoilerStill(item)) Modifier.blur(20.dp) else Modifier),
                     )
+                    // Logo cards: the title's logo low on the picture, over a soft shade.
+                    if (logoUrl != null && !logoFailed) {
+                        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().fillMaxHeight(0.55f)
+                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color(0xB0000000)))))
+                        AsyncImage(
+                            logoUrl, contentDescription = null, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
+                            onError = { logoFailed = true },
+                            modifier = Modifier.align(Alignment.BottomStart).padding(10.dp).fillMaxWidth(0.62f).fillMaxHeight(0.36f),
+                        )
+                    }
                 } else {
                     Text(
                         item.name.orEmpty(),
@@ -98,7 +120,8 @@ fun MediaCard(
                     )
                 }
                 if (showProgress && progress != null && progress > 0f) {
-                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x99000000))) {
+                    if (prefs.progress == dev.nitrate.core.pages.ProgressStyle.CIRCLE) ProgressCircle(progress, Modifier.align(Alignment.BottomEnd).padding(7.dp))
+                    else Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x99000000))) {
                         Box(Modifier.fillMaxWidth(progress).height(4.dp).background(MaterialTheme.colorScheme.primary))
                     }
                 }
@@ -152,22 +175,24 @@ fun MediaCard(
                 }
             }
         }
-        if (shownTitle != null) {
+        val wordsAlpha = if (!titleOnFocus || focused) 1f else 0f
+        if (shownTitle != null && !logoShown) {
             Text(
                 shownTitle,
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 8.dp).graphicsLayer { alpha = wordsAlpha },
             )
         }
-        if (shownSubtitle != null) {
+        if (shownSubtitle != null && !logoShown) {
             Text(
                 shownSubtitle,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.graphicsLayer { alpha = wordsAlpha },
             )
         }
     }
@@ -214,5 +239,21 @@ fun cardFocusLook(style: dev.nitrate.core.pages.FocusStyle, square: Boolean = fa
             androidx.tv.material3.CardDefaults.border(focusedBorder = frame(2.dp, Color.White.copy(alpha = 0.8f))),
             androidx.tv.material3.CardDefaults.glow(focusedGlow = androidx.tv.material3.Glow(Color.Black, 24.dp)),
         )
+    }
+}
+
+
+/** Progress as a small ring in a card's corner ([dev.nitrate.core.pages.ProgressStyle.CIRCLE]). */
+@Composable
+fun ProgressCircle(fraction: Float, modifier: Modifier = Modifier) {
+    val accent = MaterialTheme.colorScheme.primary
+    androidx.compose.foundation.Canvas(modifier.size(24.dp)) {
+        val stroke = 3.dp.toPx()
+        drawCircle(Color(0xB0000000))
+        val inset = stroke / 2 + 2.dp.toPx()
+        val arc = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+        val at = androidx.compose.ui.geometry.Offset(inset, inset)
+        drawArc(Color(0x55FFFFFF), 0f, 360f, false, at, arc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+        drawArc(accent, -90f, 360f * fraction.coerceIn(0f, 1f), false, at, arc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
     }
 }

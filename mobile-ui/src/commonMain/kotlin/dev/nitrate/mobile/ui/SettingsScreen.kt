@@ -534,7 +534,6 @@ private fun LazyListScope.shownSettings(prefs: DisplayPrefs, update: ((DisplayPr
         Triple("Plot overviews", "Descriptions on Home and details pages", Pair({ p -> p.overview }, { p, v -> p.copy(overview = v) })),
         Triple("Taglines", "The one-line pitch on details pages", Pair({ p -> p.tagline }, { p, v -> p.copy(tagline = v) })),
         Triple("Quality labels", "4K, HDR, Dolby Vision, Atmos, 5.1", Pair({ p -> p.qualityBadges }, { p, v -> p.copy(qualityBadges = v) })),
-        Triple("Progress bars", "How far into something you are", Pair({ p -> p.progressBars }, { p, v -> p.copy(progressBars = v) })),
         Triple("Watched ticks", "On cards and episodes", Pair({ p -> p.watchedMarks }, { p, v -> p.copy(watchedMarks = v) })),
         Triple("Unwatched counts", "On shows", Pair({ p -> p.unwatchedCounts }, { p, v -> p.copy(unwatchedCounts = v) })),
         Triple("Continue and Next Up together", "One row on Home: what's part way, then each show's next episode", Pair({ p -> p.combineContinueNextUp }, { p, v -> p.copy(combineContinueNextUp = v) })),
@@ -544,6 +543,12 @@ private fun LazyListScope.shownSettings(prefs: DisplayPrefs, update: ((DisplayPr
     )
     toggles.forEach { (label, detail, get) ->
         item(key = "pref-$label") { Toggle(label, detail, get.first(prefs)) { v -> update { get.second(it, v) } } }
+    }
+    item(key = "pref-progress") {
+        // A bar along the card, a small circle in its corner, or nothing.
+        Toggle("Progress on cards", "How far into something you are: ${prefs.progress.label}. Tap for the next style", prefs.progress != dev.nitrate.core.pages.ProgressStyle.NONE) { _ ->
+            update { it.withProgress(dev.nitrate.core.pages.ProgressStyle.entries[(it.progress.ordinal + 1) % dev.nitrate.core.pages.ProgressStyle.entries.size]) }
+        }
     }
 }
 

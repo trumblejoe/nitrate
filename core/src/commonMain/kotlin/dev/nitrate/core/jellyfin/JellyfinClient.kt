@@ -674,6 +674,13 @@ class JellyfinClient(
     private suspend fun items(vararg segments: String, query: Map<String, Any?>): List<MediaItem> =
         get(*segments, query = query).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }
 
+    /** What a row asked the server, so the row can be continued ([moreOfRow]). */
+    private fun rowMore(vararg segments: String, query: Map<String, Any?>): dev.nitrate.core.rows.RowMore =
+        dev.nitrate.core.rows.RowMore(segments.toList(), query.filterValues { it != null }.mapValues { it.value.toString() })
+
+    override suspend fun moreOfRow(more: dev.nitrate.core.rows.RowMore, startIndex: Int, limit: Int): List<MediaItem> =
+        items(*more.path.toTypedArray(), query = more.params + mapOf("startIndex" to startIndex, "limit" to limit))
+
     override suspend fun views(): List<MediaItem> = items("UserViews", query = emptyMap()).also { v ->
         knownViews = viewsKey() to v
         runCatching { textCache?.put(viewsKey(), JellyfinJson.encodeToString(ListSerializer(MediaItem.serializer()), v)) }
@@ -709,10 +716,10 @@ class JellyfinClient(
             },
         ) else listOf(
             dev.nitrate.core.rows.RowJob("Continue Watching", "home/continue_watching") {
-                resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT)) }
+                resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT, resumeMore(null, null))) }
             },
             dev.nitrate.core.rows.RowJob("Next Up", "home/next_up") {
-                nextUp().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT)) }
+                nextUp().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT, rowMore("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)))) }
             },
         )
         return watching + listOf(
@@ -738,7 +745,7 @@ class JellyfinClient(
                     val started = mutableMapOf<String, kotlinx.coroutines.Deferred<List<MediaItem>>>()
                     fun start(view: MediaItem) = started.getOrPut(view.id) { async { latestIn(view) } }
                     suspend fun rowsFor(list: List<MediaItem>) = list.mapNotNull { view ->
-                        start(view).await().takeIf { it.isNotEmpty() }?.let { MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay()) }
+                        start(view).await().takeIf { it.isNotEmpty() }?.let { MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay(), latestMore(view)) }
                     }
                     val known = lastViews()?.filter(::wanted)
                     known?.forEach { start(it) }
@@ -817,6 +824,13 @@ class JellyfinClient(
         else -> latest(view.id)
     }
 
+    /** How to continue a library's "Latest in…" row (Jellyfin's own grouped latest can't be). */
+    private fun latestMore(view: MediaItem): dev.nitrate.core.rows.RowMore? = when (view.collection) {
+        CollectionKind.MOVIES -> queryMore(view.id, "Movie", "DateCreated")
+        CollectionKind.TV_SHOWS -> queryMore(view.id, "Series", "DateLastContentAdded")
+        else -> null
+    }
+
     private suspend fun latest(parentId: String): List<MediaItem> =
         get("Items", "Latest", query = mapOf("parentId" to parentId, "fields" to ROW_FIELDS, "limit" to ROW_LIMIT))
             .decode<List<ItemDto>>().map { it.toMediaItem() }
@@ -828,8 +842,8 @@ class JellyfinClient(
         val prefix = "library/$id"
         val now = Clock.System.now().toString()
         val jobs = mutableListOf<dev.nitrate.core.rows.RowJob>()
-        fun add(key: String, title: String, display: RowDisplay = RowDisplay(), load: suspend () -> List<MediaItem>) {
-            jobs += dev.nitrate.core.rows.RowJob(title, "$prefix/$key") { load().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("$prefix/$key", title, it, display)) } }
+        fun add(key: String, title: String, display: RowDisplay = RowDisplay(), more: dev.nitrate.core.rows.RowMore? = null, load: suspend () -> List<MediaItem>) {
+            jobs += dev.nitrate.core.rows.RowJob(title, "$prefix/$key") { load().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("$prefix/$key", title, it, display, more)) } }
         }
 
         when (library.collection) {
@@ -839,25 +853,25 @@ class JellyfinClient(
                 add("continue_listening", "Continue Listening") {
                     items("UserItems", "Resume", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook"))
                 }
-                add("recently_added", "Recently Added") { query(id, "Book,AudioBook", "DateCreated") }
+                add("recently_added", "Recently Added", more = queryMore(id, "Book,AudioBook", "DateCreated")) { query(id, "Book,AudioBook", "DateCreated") }
                 add("unread", "Not Read Yet") { query(id, "Book,AudioBook", "Random", filters = "IsUnplayed") }
-                add("favorites", "Favorites") { query(id, "Book,AudioBook", "SortName", "Ascending", filters = "IsFavorite") }
+                add("favorites", "Favorites", more = queryMore(id, "Book,AudioBook", "SortName", "Ascending", filters = "IsFavorite")) { query(id, "Book,AudioBook", "SortName", "Ascending", filters = "IsFavorite") }
             }
             CollectionKind.TV_SHOWS -> {
-                add("continue_watching", "Continue Watching", WIDE_DEFAULT) { resumeItems(id, "Episode") }
-                add("next_up", "Next Up", WIDE_DEFAULT) { items("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS)) }
-                add("recently_added", "Recently Added") { query(id, "Series", "DateLastContentAdded") }
-                add("recently_released", "Recently Aired", WIDE_DEFAULT) { query(id, "Episode", "PremiereDate", maxPremiere = now) }
-                add("top_unwatched", "Top Unwatched") { query(id, "Series", "CommunityRating", filters = "IsUnplayed") }
-                add("favorites", "Favorites") { query(id, "Series", "SortName", "Ascending", filters = "IsFavorite") }
+                add("continue_watching", "Continue Watching", WIDE_DEFAULT, more = resumeMore(id, "Episode")) { resumeItems(id, "Episode") }
+                add("next_up", "Next Up", WIDE_DEFAULT, more = rowMore("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS))) { items("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS)) }
+                add("recently_added", "Recently Added", more = queryMore(id, "Series", "DateLastContentAdded")) { query(id, "Series", "DateLastContentAdded") }
+                add("recently_released", "Recently Aired", WIDE_DEFAULT, more = queryMore(id, "Episode", "PremiereDate", maxPremiere = now)) { query(id, "Episode", "PremiereDate", maxPremiere = now) }
+                add("top_unwatched", "Top Unwatched", more = queryMore(id, "Series", "CommunityRating", filters = "IsUnplayed")) { query(id, "Series", "CommunityRating", filters = "IsUnplayed") }
+                add("favorites", "Favorites", more = queryMore(id, "Series", "SortName", "Ascending", filters = "IsFavorite")) { query(id, "Series", "SortName", "Ascending", filters = "IsFavorite") }
             }
             else -> {
                 val types = if (library.collection == CollectionKind.MOVIES) "Movie" else null
-                add("continue_watching", "Continue Watching", WIDE_DEFAULT) { resumeItems(id, types) }
-                add("recently_released", "Recently Released") { query(id, types, "PremiereDate", maxPremiere = now) }
-                add("recently_added", "Recently Added") { query(id, types, "DateCreated") }
-                add("top_unwatched", "Top Unwatched") { query(id, types, "CommunityRating", filters = "IsUnplayed") }
-                add("favorites", "Favorites") { query(id, types, "SortName", "Ascending", filters = "IsFavorite") }
+                add("continue_watching", "Continue Watching", WIDE_DEFAULT, more = resumeMore(id, types)) { resumeItems(id, types) }
+                add("recently_released", "Recently Released", more = queryMore(id, types, "PremiereDate", maxPremiere = now)) { query(id, types, "PremiereDate", maxPremiere = now) }
+                add("recently_added", "Recently Added", more = queryMore(id, types, "DateCreated")) { query(id, types, "DateCreated") }
+                add("top_unwatched", "Top Unwatched", more = queryMore(id, types, "CommunityRating", filters = "IsUnplayed")) { query(id, types, "CommunityRating", filters = "IsUnplayed") }
+                add("favorites", "Favorites", more = queryMore(id, types, "SortName", "Ascending", filters = "IsFavorite")) { query(id, types, "SortName", "Ascending", filters = "IsFavorite") }
             }
         }
         return jobs
@@ -890,10 +904,12 @@ class JellyfinClient(
         return dev.nitrate.core.comics.ComicSeries.of(book, siblings.ifEmpty { listOf(book) })
     }
 
-    private suspend fun resumeItems(parentId: String?, types: String?) = items(
-        "UserItems", "Resume",
-        query = mapOf("parentId" to parentId, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Video", "includeItemTypes" to types),
-    )
+    private fun resumeQuery(parentId: String?, types: String?) =
+        mapOf("parentId" to parentId, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Video", "includeItemTypes" to types)
+
+    private suspend fun resumeItems(parentId: String?, types: String?) = items("UserItems", "Resume", query = resumeQuery(parentId, types))
+
+    private fun resumeMore(parentId: String?, types: String?) = rowMore("UserItems", "Resume", query = resumeQuery(parentId, types))
 
     private suspend fun query(
         parentId: String,
@@ -902,9 +918,26 @@ class JellyfinClient(
         order: String = "Descending",
         filters: String? = null,
         maxPremiere: String? = null,
-    ) = items(
-        "Items",
-        query = mapOf(
+    ) = items("Items", query = queryParams(parentId, types, sortBy, order, filters, maxPremiere))
+
+    /** A sorted lookup's request, for rows that can be continued. */
+    private fun queryMore(
+        parentId: String,
+        types: String?,
+        sortBy: String,
+        order: String = "Descending",
+        filters: String? = null,
+        maxPremiere: String? = null,
+    ) = rowMore("Items", query = queryParams(parentId, types, sortBy, order, filters, maxPremiere))
+
+    private fun queryParams(
+        parentId: String,
+        types: String?,
+        sortBy: String,
+        order: String,
+        filters: String?,
+        maxPremiere: String?,
+    ) = mapOf(
             "parentId" to parentId,
             "includeItemTypes" to types,
             "recursive" to true,
@@ -915,8 +948,7 @@ class JellyfinClient(
             "limit" to ROW_LIMIT,
             "fields" to ROW_FIELDS,
             "enableTotalRecordCount" to false,
-        ),
-    )
+        )
 
     override suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean): Pair<List<MediaItem>, Int> {
         val types = when (library.collection) {
@@ -1392,6 +1424,10 @@ class JellyfinClient(
     // ---- Custom rows ----
 
     override suspend fun queryItems(query: ItemQuery): List<MediaItem> = items("Items", query = itemQueryParams(query))
+
+    // Codec filters are applied here, not by the server, so such a row can't simply be continued.
+    override fun moreOfQuery(query: ItemQuery): dev.nitrate.core.rows.RowMore? =
+        if (query.filtersCodecs) null else rowMore("Items", query = itemQueryParams(query))
 
     override suspend fun queryPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> {
         if (query.filtersCodecs) return codecFilteredPage(query, startIndex, limit)

@@ -96,4 +96,13 @@ class PageLooksTest {
         assertEquals(CardSpacing.NORMAL, PageLooks.forPage(prefs, PageKeys.HOME).tvCardSpacing)
         assertEquals(CardCorners.SQUARE, PageLooks.useEverywhere(prefs, "library/films").tvCardCorners)
     }
+
+    @Test fun progressStyleFollowsTheOldSwitchUntilChosen() {
+        assertEquals(ProgressStyle.BAR, DisplayPrefs().progress)
+        assertEquals(ProgressStyle.NONE, DisplayPrefs(progressBars = false).progress)
+        val circle = DisplayPrefs().withProgress(ProgressStyle.CIRCLE)
+        assertEquals(ProgressStyle.CIRCLE, circle.progress)
+        assertTrue(circle.progressBars)
+        kotlin.test.assertFalse(DisplayPrefs().withProgress(ProgressStyle.NONE).progressBars)
+    }
 }

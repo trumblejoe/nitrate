@@ -67,13 +67,33 @@ fun CardRow(
     PrefetchAlongRow(state, row.items, ahead = 2) { listOf(repository.backdropUrl(it)) }
     Column {
         if (LocalRowTitle.current) Text(row.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = RowPadding, bottom = 12.dp))
+        // Wrap round: past the last card ▶ goes back to the first, and ◀ from the first to the last.
+        val count = row.items.size
+        val requesters = remember(count) { List(count) { androidx.compose.ui.focus.FocusRequester() } }
+        var at by remember { mutableStateOf(0) }
+        val scope = rememberCoroutineScope()
+        fun jump(to: Int) {
+            scope.launch {
+                state.scrollToItem(to)
+                repeat(10) { if (runCatching { requesters[to].requestFocus() }.getOrDefault(false)) return@launch; kotlinx.coroutines.delay(16) }
+            }
+        }
+        val wrap = if (!display.wrapRound || count < 2) Modifier else Modifier.onPreviewKeyEvent { e ->
+            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when {
+                e.key == Key.DirectionRight && at == count - 1 -> { jump(0); true }
+                e.key == Key.DirectionLeft && at == 0 -> { jump(count - 1); true }
+                else -> false
+            }
+        }
         LazyRow(
             state = state,
             // A few dp above and below, so a focused card's growth isn't cut off by the row's edge.
             contentPadding = PaddingValues(horizontal = RowPadding, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvCardSpacing.dp.dp),
+            modifier = wrap,
         ) {
-            itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { _, item ->
+            itemsIndexed(row.items, key = { i, it -> "$i:${it.id}" }) { i, item ->
                 MediaCard(
                     item = item,
                     imageUrl = if (wide) wideImage(repository, item) else repository.imageUrl(item, ImageKind.PRIMARY, display.size.posterHeightDp * 2),
@@ -81,10 +101,13 @@ fun CardRow(
                     aspectRatio = ratio,
                     title = if (display.showTitles) item.displayTitle else null,
                     subtitle = if (display.showTitles) item.subtitleLine() else null,
-                    onFocus = { actions.onFocus(item) },
+                    onFocus = { at = i; actions.onFocus(item) },
                     onClick = { actions.onOpen(item) },
                     onPlay = { actions.onPlay(item) },
                     onLongClick = { actions.onEditRow(row) },
+                    titleOnFocus = display.titlesOnFocus,
+                    logoUrl = if (wide && display.logoCards) repository.logoUrl(item) else null,
+                    modifier = Modifier.focusRequester(requesters[i]),
                 )
             }
         }

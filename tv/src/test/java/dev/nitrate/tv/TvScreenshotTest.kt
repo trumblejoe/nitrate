@@ -796,6 +796,45 @@ class TvScreenshotTest {
         check(!hasWords("Next Up", exact = true)) { "Next Up shouldn't show on its own" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
+    /** A row set to load more grows as focus nears its end; wrap round goes from the last card back to the first. */
+    @Test fun rowLoadsMoreAndWrapsRound() = shoot("tv-row-load-more", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome)
+        val movies = c.server.homeRows().first { it.key == "home/latest/lib-movies" }
+        c.displaySettings.save("user-1", movies, dev.nitrate.core.rows.RowDisplay(loadMore = true, wrapRound = true))
+    }, act = {
+        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        fun label(n: String) = compose.onAllNodes(androidx.compose.ui.test.hasText(n, substring = true)).fetchSemanticsNodes().isNotEmpty()
+        press("down", "down")
+        val first = at()
+        // Along the row: with load more it runs past the four it started with.
+        repeat(6) { press("right") }
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(label("/ 2") || label("/ 3")) { "the row should have grown past its first four titles" }
+        // To the very end (all 20 loaded) and once more: back round to the first card.
+        repeat(13) { press("right"); compose.mainClock.advanceTimeBy(200); compose.waitForIdle() }
+        check(label("20 / 20")) { "the row should end at 20 titles (4, then 16 more)" }
+        press("right")
+        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        check(label("1 / 20")) { "past the last card should wrap to the first" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** Titles only on the focused card, and logo cards on a wide row. */
+    @Test fun titlesOnFocusAndLogoCards() = shoot("tv-titles-on-focus-logos", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvArrangement = dev.nitrate.core.pages.PageArrangement.STACKED))
+        val rows = c.server.homeRows()
+        c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, showTitles = true, titlesOnFocus = true))
+        c.displaySettings.save("user-1", rows[2], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, logoCards = true))
+    }, act = { press("right"); compose.mainClock.advanceTimeBy(800); compose.waitForIdle() }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
+    /** Progress as a small circle in the card's corner. */
+    @Test fun progressCircle() = shoot("tv-progress-circle", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.withProgress(dev.nitrate.core.pages.ProgressStyle.CIRCLE))
+    }, act = { compose.mainClock.advanceTimeBy(800); compose.waitForIdle() }) { c ->
+        WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+    }
+
     /** Leaving a row and coming back lands on the card left in it, whatever was done in other rows meanwhile. */
     @Test fun rowsRememberTheirCard() = shoot("tv-rows-remember-card", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

@@ -181,6 +181,7 @@ fun LibraryScreen(
                             years = { repository.libraryFilters(lib.id, types).years },
                             load = repository::queryItems,
                             skip = skip,
+                            more = repository::moreOfQuery,
                         ), complete = true))
                     }
                 },

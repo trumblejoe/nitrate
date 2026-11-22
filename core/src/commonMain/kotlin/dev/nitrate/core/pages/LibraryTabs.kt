@@ -97,6 +97,8 @@ object LibraryTabs {
         load: suspend (ItemQuery) -> List<dev.nitrate.core.model.MediaItem>,
         /** Row keys the page hides: never queried. */
         skip: Set<String> = emptySet(),
+        /** How each row could be continued (`MediaServer.moreOfQuery`). */
+        more: (ItemQuery) -> dev.nitrate.core.rows.RowMore? = { null },
     ): List<MediaRow> = kotlinx.coroutines.coroutineScope {
         val specs: List<Pair<String, ItemQuery>> = when (kind) {
             LibraryTabKind.GENRES -> genres().take(MAX_ROWS).map { it to genreQuery(libraryId, types, it) }
@@ -107,7 +109,7 @@ object LibraryTabs {
         specs.filterNot { (title, _) -> rowKey(libraryId, kind, title) in skip }.map { (title, query) ->
             async {
                 val items = runCatching { load(query) }.getOrDefault(emptyList())
-                MediaRow(rowKey(libraryId, kind, title), title, items, RowDisplay())
+                MediaRow(rowKey(libraryId, kind, title), title, items, RowDisplay(), more(query))
             }
         }.awaitAll().filter { it.items.isNotEmpty() }
     }

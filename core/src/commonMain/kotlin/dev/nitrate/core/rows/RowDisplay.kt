@@ -92,6 +92,14 @@ data class RowDisplay(
     val cards: Boolean = true,
     /** TV: this row's caption (for the title in focus); null = the page's (`DisplayPrefs.tvCaptionSize`). */
     val captionSize: dev.nitrate.core.pages.CaptionSize? = null,
+    /** Reaching the end of the row fetches more of it (rows that can say how: [MediaRow.more]). */
+    val loadMore: Boolean = false,
+    /** Past the last card ◀▶ go round to the first (and back from the first to the last). */
+    val wrapRound: Boolean = false,
+    /** Titles under the cards only on the focused one (with [showTitles]); the room is kept so nothing moves. */
+    val titlesOnFocus: Boolean = false,
+    /** Wide cards: the title's logo over its picture instead of words under it (words when there's no logo). */
+    val logoCards: Boolean = false,
 ) {
     /**
      * The look [by] places on, round the list: each style in [RowStyle.choices], Artwork followed by
@@ -179,7 +187,16 @@ data class MediaRow(
     val title: String,
     val items: List<MediaItem>,
     val defaultDisplay: RowDisplay,
+    /** How to fetch more of this row (`MediaServer.moreOfRow`); null when it can't. */
+    val more: RowMore? = null,
 )
+
+/**
+ * The request that made a row, opaque outside the server client (which alone knows its API), so
+ * the row can be continued from where it ends.
+ */
+@Serializable
+data class RowMore(val path: List<String>, val params: Map<String, String>)
 
 /** View options for the Playlists library page. */
 @Serializable

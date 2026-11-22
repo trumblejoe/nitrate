@@ -26,6 +26,8 @@ data class DisplayPrefs(
     val qualityBadges: Boolean = true,
     val cardTitles: CardTitles = CardTitles.BY_ROW,
     val progressBars: Boolean = true,
+    /** How progress shows on cards: a bar, a small circle, or nothing; null = from [progressBars] (saved before this). */
+    val progressStyle: ProgressStyle? = null,
     val watchedMarks: Boolean = true,
     val unwatchedCounts: Boolean = true,
     val logos: Boolean = true,
@@ -115,7 +117,13 @@ data class DisplayPrefs(
     val tvMenuStops: List<String>? = null,
     /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */
     val tvDialStops: List<String?>? = null,
-)
+) {
+    /** How progress shows on cards (from the old [progressBars] switch until a style is chosen). */
+    val progress: ProgressStyle get() = progressStyle ?: if (progressBars) ProgressStyle.BAR else ProgressStyle.NONE
+
+    /** Progress shown as [style]; None also turns the bars off everywhere else (details pages, the player). */
+    fun withProgress(style: ProgressStyle): DisplayPrefs = copy(progressStyle = style, progressBars = style != ProgressStyle.NONE)
+}
 
 /** Where the A–Z bar goes on TV library pages. */
 @Serializable
@@ -178,6 +186,10 @@ enum class CardCorners(val label: String) { ROUNDED("Rounded"), SQUARE("Square")
 /** The gap between cards in a row on TV, in dp. */
 @Serializable
 enum class CardSpacing(val label: String, val dp: Int) { TIGHT("Tight", 8), NORMAL("Normal", 18), ROOMY("Roomy", 30) }
+
+/** How far into something you are, on cards. */
+@Serializable
+enum class ProgressStyle(val label: String) { BAR("Bar"), CIRCLE("Circle"), NONE("None") }
 
 /** How the focused card shows on TV. Grow is the TV's own way; the others keep rows still. */
 @Serializable

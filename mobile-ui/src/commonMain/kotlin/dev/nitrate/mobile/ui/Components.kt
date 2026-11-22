@@ -108,9 +108,21 @@ fun MediaCard(
             } else {
                 Text(item.name, Modifier.align(Alignment.Center).padding(8.dp), style = MaterialTheme.typography.labelLarge, maxLines = 3)
             }
-            val progress = item.user.playedPercentage?.toFloat()?.div(100f)?.takeIf { prefs.progressBars }
+            val progress = item.user.playedPercentage?.toFloat()?.div(100f)?.takeIf { prefs.progress != dev.nitrate.core.pages.ProgressStyle.NONE }
             if (progress != null && progress > 0f) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x99000000))) {
+                if (prefs.progress == dev.nitrate.core.pages.ProgressStyle.CIRCLE) {
+                    // A small ring in the corner.
+                    val ring = accentColor()
+                    androidx.compose.foundation.Canvas(Modifier.align(Alignment.BottomEnd).padding(6.dp).size(22.dp)) {
+                        val stroke = 3.dp.toPx()
+                        drawCircle(Color(0xB0000000))
+                        val inset = stroke / 2 + 2.dp.toPx()
+                        val arc = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+                        val at = androidx.compose.ui.geometry.Offset(inset, inset)
+                        drawArc(Color(0x55FFFFFF), 0f, 360f, false, at, arc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+                        drawArc(ring, -90f, 360f * progress.coerceIn(0f, 1f), false, at, arc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                    }
+                } else Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x99000000))) {
                     Box(Modifier.fillMaxWidth(progress).height(4.dp).background(accentColor()))
                 }
             }

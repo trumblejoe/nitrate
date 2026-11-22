@@ -201,7 +201,6 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
         Triple("Plot overviews", { p -> p.overview }, { p, v -> p.copy(overview = v) }),
         Triple("Taglines", { p -> p.tagline }, { p, v -> p.copy(tagline = v) }),
         Triple("Quality labels (4K, HDR, Dolby Vision, Atmos)", { p -> p.qualityBadges }, { p, v -> p.copy(qualityBadges = v) }),
-        Triple("Progress bars", { p -> p.progressBars }, { p, v -> p.copy(progressBars = v) }),
         Triple("Watched ticks", { p -> p.watchedMarks }, { p, v -> p.copy(watchedMarks = v) }),
         Triple("Unwatched counts", { p -> p.unwatchedCounts }, { p, v -> p.copy(unwatchedCounts = v) }),
         Triple("Continue Watching and Next Up in one row (Home)", { p -> p.combineContinueNextUp }, { p, v -> p.copy(combineContinueNextUp = v) }),
@@ -503,6 +502,16 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 }
                 itemsIndexed(shown, key = { _, t -> t.first }) { i, (label, get, set) ->
                     Toggle(label, null, get(prefs), if (i == 0) Modifier.focusRequester(first) else Modifier) { update { set(it, !get(it)) } }
+                }
+                item(key = "progress") {
+                    // How far into something you are: a bar along the card, a small circle in its corner, or nothing.
+                    ListItem(
+                        selected = false,
+                        onClick = { update { it.withProgress(dev.nitrate.core.pages.ProgressStyle.entries[(it.progress.ordinal + 1) % dev.nitrate.core.pages.ProgressStyle.entries.size]) } },
+                        headlineContent = { Text("Progress on cards") },
+                        supportingContent = { Text("How far into something you are: a bar, a small circle in the corner, or none") },
+                        trailingContent = { Text("${prefs.progress.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                    )
                 }
             }
             DisplayPage.WATCHING -> {

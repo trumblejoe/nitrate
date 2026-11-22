@@ -185,6 +185,19 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.rowLookItems(
                     item { ToggleItem("Rotate artwork", display.showcase.rotateArtwork) { showcase { copy(rotateArtwork = it) } } }
                 } else {
                     item { ToggleItem("Show titles", display.showTitles) { onChange(display.copy(showTitles = it)) } }
+                    if (display.showTitles) item {
+                        ChoiceItem("Titles show", if (display.titlesOnFocus) "On the focused card" else "On every card") { onChange(display.copy(titlesOnFocus = !display.titlesOnFocus)) }
+                    }
+                    if (display.style == RowStyle.WIDE) item {
+                        ToggleItem("Logos on the pictures", display.logoCards) { onChange(display.copy(logoCards = it)) }
+                    }
+                    if (display.style == RowStyle.POSTER || display.style == RowStyle.WIDE) item {
+                        ToggleItem("Wrap round", display.wrapRound) { onChange(display.copy(wrapRound = it)) }
+                    }
+                    // Rows that can say how to fetch more of themselves.
+                    if (row.more != null) item {
+                        ToggleItem("Load more at the end", display.loadMore) { onChange(display.copy(loadMore = it)) }
+                    }
                 }
                 }
                 // Fun on the cards: what one does when opened, and now and then while browsing.
