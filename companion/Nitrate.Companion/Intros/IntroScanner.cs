@@ -28,10 +28,12 @@ public class IntroScanner : IScheduledTask
     private readonly IMediaEncoder _encoder;
     private readonly IMediaSegmentManager _segments;
     private readonly ILogger<IntroScanner> _log;
+    private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
 
     /// <summary>Initializes a new instance of the <see cref="IntroScanner"/> class.</summary>
-    public IntroScanner(IntroStore store, ILibraryManager library, IMediaEncoder encoder, IMediaSegmentManager segments, ILogger<IntroScanner> log)
+    public IntroScanner(IntroStore store, ILibraryManager library, IMediaEncoder encoder, IMediaSegmentManager segments, ILogger<IntroScanner> log, MediaBrowser.Common.Configuration.IApplicationPaths paths)
     {
+        _failures = new Nitrate.Companion.Scanning.ReadFailures(Path.Combine(paths.DataPath, "nitrate-companion", "read-failures", "intros.json"));
         _store = store;
         _library = library;
         _encoder = encoder;
@@ -54,7 +56,7 @@ public class IntroScanner : IScheduledTask
     /// <inheritdoc />
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => new[]
     {
-        new TaskTriggerInfo { Type = TaskTriggerInfoType.DailyTrigger, TimeOfDayTicks = TimeSpan.FromHours(3).Ticks },
+        new TaskTriggerInfo { Type = TaskTriggerInfoType.DailyTrigger, TimeOfDayTicks = TimeSpan.FromHours(1.5).Ticks },
     };
 
     /// <summary>The version of an episode's file the results belong to.</summary>
@@ -62,6 +64,20 @@ public class IntroScanner : IScheduledTask
 
     /// <inheritdoc />
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        // One file-reading task at a time (FileReading.Gate).
+        await Nitrate.Companion.Scanning.FileReading.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await RunAsync(progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Nitrate.Companion.Scanning.FileReading.Gate.Release();
+        }
+    }
+
+    private async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var episodes = _library.GetItemList(new InternalItemsQuery
         {
@@ -79,7 +95,7 @@ public class IntroScanner : IScheduledTask
         var work = shows
             .SelectMany(show => show.GroupBy(e => e.ParentIndexNumber)
                 .Select(g => (Show: show, Season: g.ToList()))
-                .Where(x => x.Season.Count >= 2 && x.Season.Any(e => _store.Needs(e.Id, VersionOf(e)))))
+                .Where(x => x.Season.Count >= 2 && x.Season.Any(e => _store.Needs(e.Id, VersionOf(e)) && _failures.MayRead(e.Id, VersionOf(e)))))
             .ToList();
         var done = 0;
         foreach (var group in work.GroupBy(w => w.Show))
@@ -105,6 +121,10 @@ public class IntroScanner : IScheduledTask
             }
         }
 
+        // Whole-sound fingerprints are kept only for each show's last few episodes: the ones the
+        // next new episode's recap is compared with.
+        _store.KeepWholeOnly(new HashSet<Guid>(shows.SelectMany(show => show.TakeLast(RecapFrom)).Select(e => e.Id)));
+        _failures.KeepOnly(new HashSet<Guid>(episodes.Select(e => e.Id)));
         progress.Report(100);
     }
 
@@ -121,14 +141,22 @@ public class IntroScanner : IScheduledTask
             var print = _store.Print(e.Id, version);
             if (print == null)
             {
+                // A file that couldn't be read waits a while before it's tried again (ReadFailures).
+                if (!_failures.MayRead(e.Id, version))
+                {
+                    continue;
+                }
+
                 try
                 {
                     print = await ReadAsync(e, opening: true, cancellationToken).ConfigureAwait(false);
                     _store.SavePrint(e.Id, version, print);
+                    _failures.Succeeded(e.Id);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // One unreadable file never stops the rest of the season (it's tried again next night).
+                    // One unreadable file never stops the rest of the season.
+                    _failures.Failed(e.Id, version);
                     _log.LogWarning("Intros: couldn't read {Name}: {Message}", e.Name, ex.Message);
                     continue;
                 }
@@ -143,7 +171,11 @@ public class IntroScanner : IScheduledTask
         {
             var e = kept[i];
             var before = _store.Get(e.Id);
-            var recap = await RecapAsync(show, e, prints[i], found[i], whole, cancellationToken).ConfigureAwait(false);
+            // A recap only needs finding for a new or changed episode: the others keep theirs, so a
+            // season gaining an episode never has its earlier episodes' sound read again.
+            var recap = before == null || before.Version != VersionOf(e)
+                ? await RecapAsync(show, e, prints[i], found[i], whole, cancellationToken).ConfigureAwait(false)
+                : before.Recap;
             _store.Put(e.Id, new IntroResult(VersionOf(e), found[i], DateTimeOffset.UtcNow, recap));
             if ((found[i] != null || recap != null) && (found[i] != before?.Intro || recap != before?.Recap))
             {
@@ -169,11 +201,30 @@ public class IntroScanner : IScheduledTask
             {
                 try
                 {
-                    print = await ReadAsync(e, opening: false, cancellationToken).ConfigureAwait(false);
+                    // Kept for the last few episodes of a show (KeepWholeOnly), read once each.
+                    print = _store.Print(e.Id, VersionOf(e), whole: true);
+                    if (print == null && _failures.MayRead(e.Id, VersionOf(e), "whole"))
+                    {
+                        print = await ReadAsync(e, opening: false, cancellationToken).ConfigureAwait(false);
+                        // Kept only for the show's last few episodes, the ones a new episode is compared with.
+                        if (show.IndexOf(e) >= show.Count - RecapFrom)
+                        {
+                            _store.SavePrint(e.Id, VersionOf(e), print, whole: true);
+                        }
+
+                        _failures.Succeeded(e.Id, "whole");
+                    }
+
+                    if (print == null)
+                    {
+                        continue;
+                    }
+
                     whole[e.Id] = print;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    _failures.Failed(e.Id, VersionOf(e), "whole");
                     _log.LogWarning("Intros: couldn't read {Name} for recaps: {Message}", e.Name, ex.Message);
                     continue;
                 }

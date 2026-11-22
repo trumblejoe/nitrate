@@ -27,9 +27,12 @@ public class LineIndexer : IScheduledTask
     private readonly ISubtitleEncoder _subtitles;
     private readonly ILogger<LineIndexer> _log;
 
+    private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
+
     /// <summary>Initializes a new instance of the <see cref="LineIndexer"/> class.</summary>
-    public LineIndexer(LineIndex index, ILibraryManager library, IMediaSourceManager sources, ISubtitleEncoder subtitles, ILogger<LineIndexer> log)
+    public LineIndexer(LineIndex index, ILibraryManager library, IMediaSourceManager sources, ISubtitleEncoder subtitles, ILogger<LineIndexer> log, MediaBrowser.Common.Configuration.IApplicationPaths paths)
     {
+        _failures = new Nitrate.Companion.Scanning.ReadFailures(Path.Combine(paths.DataPath, "nitrate-companion", "read-failures", "lines.json"));
         _index = index;
         _library = library;
         _sources = sources;
@@ -58,6 +61,20 @@ public class LineIndexer : IScheduledTask
     /// <inheritdoc />
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
+        // One file-reading task at a time (FileReading.Gate).
+        await Nitrate.Companion.Scanning.FileReading.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await RunAsync(progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Nitrate.Companion.Scanning.FileReading.Gate.Release();
+        }
+    }
+
+    private async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    {
         if (!(Plugin.Instance?.Configuration.EnableLines ?? true))
         {
             return;
@@ -74,6 +91,8 @@ public class LineIndexer : IScheduledTask
         {
             _index.Remove(gone);
         }
+
+        _failures.KeepOnly(present);
 
         var done = 0;
         foreach (var item in items)
@@ -105,11 +124,26 @@ public class LineIndexer : IScheduledTask
         var version = string.Join(
             ';',
             new[] { item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture) }.Concat(streams.Select(s => $"{s.Index}:{s.Language}:{s.Path}")));
-        if (!_index.NeedsIndex(item.Id, version))
+        if (!_index.NeedsIndex(item.Id, version) || !_failures.MayRead(item.Id, version))
         {
             return;
         }
 
+        try
+        {
+            await ReadAsync(item, streams, version, cancellationToken).ConfigureAwait(false);
+            _failures.Succeeded(item.Id);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Waits a day, a week, then a month before another try (or until the file changes).
+            _failures.Failed(item.Id, version);
+            throw;
+        }
+    }
+
+    private async Task ReadAsync(BaseItem item, IReadOnlyList<MediaStream> streams, string version, CancellationToken cancellationToken)
+    {
         var tracks = new List<(string? Language, IReadOnlyList<LineCue> Cues)>();
         foreach (var s in streams)
         {

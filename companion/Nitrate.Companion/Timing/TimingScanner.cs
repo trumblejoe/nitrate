@@ -22,9 +22,12 @@ public class TimingScanner : IScheduledTask
     private readonly IMediaEncoder _encoder;
     private readonly ILogger<TimingScanner> _log;
 
+    private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
+
     /// <summary>Initializes a new instance of the <see cref="TimingScanner"/> class.</summary>
-    public TimingScanner(TimingStore store, ILibraryManager library, IMediaEncoder encoder, ILogger<TimingScanner> log)
+    public TimingScanner(TimingStore store, ILibraryManager library, IMediaEncoder encoder, ILogger<TimingScanner> log, MediaBrowser.Common.Configuration.IApplicationPaths paths)
     {
+        _failures = new Nitrate.Companion.Scanning.ReadFailures(Path.Combine(paths.DataPath, "nitrate-companion", "read-failures", "timing.json"));
         _store = store;
         _library = library;
         _encoder = encoder;
@@ -52,6 +55,20 @@ public class TimingScanner : IScheduledTask
     /// <inheritdoc />
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
+        // One file-reading task at a time (FileReading.Gate).
+        await Nitrate.Companion.Scanning.FileReading.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await RunAsync(progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Nitrate.Companion.Scanning.FileReading.Gate.Release();
+        }
+    }
+
+    private async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    {
         var items = _library.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode },
@@ -59,6 +76,7 @@ public class TimingScanner : IScheduledTask
             IsVirtualItem = false,
         });
         _store.KeepOnly(new HashSet<Guid>(items.Select(i => i.Id)));
+        _failures.KeepOnly(new HashSet<Guid>(items.Select(i => i.Id)));
         var done = 0;
         foreach (var item in items)
         {
@@ -70,7 +88,7 @@ public class TimingScanner : IScheduledTask
             }
 
             var version = item.Path + "|" + item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture);
-            if (!_store.Needs(item.Id, version))
+            if (!_store.Needs(item.Id, version) || !_failures.MayRead(item.Id, version))
             {
                 continue;
             }
@@ -86,7 +104,8 @@ public class TimingScanner : IScheduledTask
             }
             catch (Exception e)
             {
-                // One unreadable file never stops the rest (it's tried again next night).
+                // One unreadable file never stops the rest; it waits a day, a week, then a month before another try.
+                _failures.Failed(item.Id, version);
                 _log.LogWarning("Timing check: couldn't read {Name}: {Message}", item.Name, e.Message);
             }
         }

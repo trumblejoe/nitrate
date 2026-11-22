@@ -37,9 +37,12 @@ public class CreditScanner : IScheduledTask
     private readonly MediaBrowser.Controller.MediaSegments.IMediaSegmentManager _segments;
     private readonly ILogger<CreditScanner> _log;
 
+    private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
+
     /// <summary>Initializes a new instance of the <see cref="CreditScanner"/> class.</summary>
-    public CreditScanner(CreditStore store, ILibraryManager library, IMediaEncoder encoder, MediaBrowser.Controller.MediaSegments.IMediaSegmentManager segments, ILogger<CreditScanner> log)
+    public CreditScanner(CreditStore store, ILibraryManager library, IMediaEncoder encoder, MediaBrowser.Controller.MediaSegments.IMediaSegmentManager segments, ILogger<CreditScanner> log, MediaBrowser.Common.Configuration.IApplicationPaths paths)
     {
+        _failures = new Nitrate.Companion.Scanning.ReadFailures(Path.Combine(paths.DataPath, "nitrate-companion", "read-failures", "credits.json"));
         _store = store;
         _library = library;
         _encoder = encoder;
@@ -73,6 +76,20 @@ public class CreditScanner : IScheduledTask
     /// <inheritdoc />
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
+        // One file-reading task at a time (FileReading.Gate).
+        await Nitrate.Companion.Scanning.FileReading.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await RunAsync(progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            Nitrate.Companion.Scanning.FileReading.Gate.Release();
+        }
+    }
+
+    private async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    {
         var all = _library.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Episode },
@@ -80,6 +97,7 @@ public class CreditScanner : IScheduledTask
             IsVirtualItem = false,
         });
         _store.KeepOnly(new HashSet<Guid>(all.Select(i => i.Id)));
+        _failures.KeepOnly(new HashSet<Guid>(all.Select(i => i.Id)));
         var items = all.Where(Wanted).ToList();
         var done = 0;
         foreach (var item in items)
@@ -87,7 +105,7 @@ public class CreditScanner : IScheduledTask
             cancellationToken.ThrowIfCancellationRequested();
             progress.Report(100.0 * done++ / Math.Max(1, items.Count));
             var version = item.Path + "|" + item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture);
-            if (!_store.Needs(item.Id, version))
+            if (!_store.Needs(item.Id, version) || !_failures.MayRead(item.Id, version))
             {
                 continue;
             }
@@ -97,6 +115,7 @@ public class CreditScanner : IScheduledTask
                 var before = _store.Get(item.Id)?.OutroStartMs;
                 var result = await FindAsync(item, version, cancellationToken).ConfigureAwait(false);
                 _store.Put(item.Id, result);
+                _failures.Succeeded(item.Id);
                 if (result.OutroStartMs != null && result.OutroStartMs != before)
                 {
                     // The final credits go to Jellyfin as an Outro segment (Segments/CompanionSegmentProvider).
@@ -109,7 +128,8 @@ public class CreditScanner : IScheduledTask
             }
             catch (Exception e)
             {
-                // One unreadable file never stops the rest (it's tried again next night).
+                // One unreadable file never stops the rest; it waits a day, a week, then a month before another try.
+                _failures.Failed(item.Id, version);
                 _log.LogWarning("Credit scenes: couldn't read {Name}: {Message}", item.Name, e.Message);
             }
         }

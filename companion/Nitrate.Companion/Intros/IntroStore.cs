@@ -20,7 +20,7 @@ public class IntroStore
     private readonly string? _prints;
     private readonly object _lock = new();
     private readonly Dictionary<Guid, IntroResult> _results;
-    private readonly Dictionary<Guid, (string Version, uint[] Print)> _memory = new();
+    private readonly Dictionary<(Guid, bool), (string Version, uint[] Print)> _memory = new();
 
     /// <summary>Initializes a new instance of the <see cref="IntroStore"/> class ([folder] null: in memory only).</summary>
     public IntroStore(string? folder)
@@ -52,12 +52,12 @@ public class IntroStore
         }
     }
 
-    /// <summary>[item]'s fingerprint when it was taken of [version] of its file.</summary>
-    public uint[]? Print(Guid item, string version)
+    /// <summary>[item]'s fingerprint when it was taken of [version] of its file ([whole]: all its sound, for recaps; else its opening).</summary>
+    public uint[]? Print(Guid item, string version, bool whole = false)
     {
         lock (_lock)
         {
-            if (_memory.TryGetValue(item, out var m))
+            if (_memory.TryGetValue((item, whole), out var m))
             {
                 return m.Version == version ? m.Print : null;
             }
@@ -68,7 +68,7 @@ public class IntroStore
             return null;
         }
 
-        var file = Path.Combine(_prints, item.ToString("N") + ".bin");
+        var file = FileOf(item, whole);
         if (!File.Exists(file))
         {
             return null;
@@ -96,21 +96,21 @@ public class IntroStore
         }
     }
 
-    /// <summary>Keeps [item]'s fingerprint of [version].</summary>
-    public void SavePrint(Guid item, string version, uint[] print)
+    /// <summary>Keeps [item]'s fingerprint of [version] ([whole]: all its sound).</summary>
+    public void SavePrint(Guid item, string version, uint[] print, bool whole = false)
     {
         if (_prints is null)
         {
             lock (_lock)
             {
-                _memory[item] = (version, print);
+                _memory[(item, whole)] = (version, print);
             }
 
             return;
         }
 
         Directory.CreateDirectory(_prints);
-        var file = Path.Combine(_prints, item.ToString("N") + ".bin");
+        var file = FileOf(item, whole);
         using (var writer = new BinaryWriter(File.Create(file + ".tmp")))
         {
             writer.Write(version);
@@ -131,7 +131,7 @@ public class IntroStore
         {
             var gone = _results.Keys.Where(k => !present.Contains(k)).ToList();
             gone.ForEach(k => _results.Remove(k));
-            foreach (var k in _memory.Keys.Where(k => !present.Contains(k)).ToList())
+            foreach (var k in _memory.Keys.Where(k => !present.Contains(k.Item1)).ToList())
             {
                 _memory.Remove(k);
             }
@@ -146,13 +146,41 @@ public class IntroStore
         {
             foreach (var file in Directory.EnumerateFiles(_prints, "*.bin"))
             {
-                if (Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "N", out var id) && !present.Contains(id))
+                if (Guid.TryParseExact(Path.GetFileName(file)[..32], "N", out var id) && !present.Contains(id))
                 {
                     File.Delete(file);
                 }
             }
         }
     }
+
+    /// <summary>
+    /// Lets go of whole-sound fingerprints except [wanted]'s: only the last few episodes of each
+    /// show are kept, the ones a new episode's recap is compared with, so each is read once.
+    /// </summary>
+    public void KeepWholeOnly(ISet<Guid> wanted)
+    {
+        lock (_lock)
+        {
+            foreach (var k in _memory.Keys.Where(k => k.Item2 && !wanted.Contains(k.Item1)).ToList())
+            {
+                _memory.Remove(k);
+            }
+        }
+
+        if (_prints is not null && Directory.Exists(_prints))
+        {
+            foreach (var file in Directory.EnumerateFiles(_prints, "*.whole.bin"))
+            {
+                if (Guid.TryParseExact(Path.GetFileName(file)[..32], "N", out var id) && !wanted.Contains(id))
+                {
+                    File.Delete(file);
+                }
+            }
+        }
+    }
+
+    private string FileOf(Guid item, bool whole) => Path.Combine(_prints!, item.ToString("N") + (whole ? ".whole.bin" : ".bin"));
 
     private static Dictionary<Guid, IntroResult> Load(string? path)
     {
