@@ -31,10 +31,10 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddTransient<Microsoft.AspNetCore.Hosting.IStartupFilter, Nitrate.Companion.QueryTimes.QueryTimingStartupFilter>();
         // Shared scripts live in the server's data folder (not the plugin's own, which each version replaces).
         serviceCollection.AddSingleton<IScriptStorage>(sp =>
-            new FileScriptStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "scripts")));
+            new DbScriptStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "scripts")));
         serviceCollection.AddSingleton<ScriptHub>();
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Diary.DiaryHub(
-            new Nitrate.Companion.Diary.FileDiaryStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "diary")),
+            new Nitrate.Companion.Storage.DbDiaryStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "diary")),
             sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddHostedService<Nitrate.Companion.Diary.DiaryRecorder>();
         // Installs newer versions of itself, and restarts at night to finish them.
@@ -53,7 +53,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>()),
             sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Devices.DeviceHub(
-            new Nitrate.Companion.Devices.FileDeviceReportStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "devices.json")),
+            new Nitrate.Companion.Storage.DbDeviceReportStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "devices.json")),
             sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Together.InviteHub(sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.SmartCollections.SmartCollectionStore(
@@ -79,6 +79,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             Nitrate.Companion.Catalogs.CatalogFetcher.NewClient(),
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().CachePath, "nitrate-companion", "catalog-books")));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Catalogs.CatalogPositions(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "catalog-positions")));
         serviceCollection.AddSingleton(sp => new SsoService(
             () => SsoSettings.From(Plugin.Instance?.Configuration),

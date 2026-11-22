@@ -105,7 +105,7 @@ public class CatalogTests
     [Fact]
     public void PositionsArePerPerson()
     {
-        var positions = new CatalogPositions(Temp());
+        var positions = new CatalogPositions(new Nitrate.Companion.Storage.CompanionDb(":memory:"));
         var sam = Guid.NewGuid();
         var kim = Guid.NewGuid();
         positions.Set(sam, "c1", "urn:book:7", 12);

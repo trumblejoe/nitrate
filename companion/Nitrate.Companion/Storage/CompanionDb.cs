@@ -32,6 +32,8 @@ public sealed class CompanionDb : IDisposable
             CREATE TABLE IF NOT EXISTS prints(item TEXT NOT NULL, whole INTEGER NOT NULL, version TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY(item, whole));
             CREATE TABLE IF NOT EXISTS failures(task TEXT NOT NULL, key TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY(task, key));
             CREATE TABLE IF NOT EXISTS pairs(kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(kind, key));
+            CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL, owner TEXT NOT NULL, key TEXT NOT NULL, json TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(kind, owner, key));
+            CREATE INDEX IF NOT EXISTS records_at ON records(kind, owner, at);
             """);
     }
 
@@ -300,6 +302,68 @@ public sealed class CompanionDb : IDisposable
 
     /// <summary>Forgets one value.</summary>
     public void DeletePair(string kind, string key) => DeleteKeys("pairs", "kind", kind, "key", new[] { key });
+
+    /// <summary>One owner's records of a kind (key → JSON), oldest first; every owner's when [owner] is null ("owner|key" → JSON).</summary>
+    public List<KeyValuePair<string, string>> Records(string kind, string? owner) => owner is null
+        ? Rows("SELECT owner || '|' || key, json FROM records WHERE kind = $k ORDER BY at", ("$k", kind))
+        : Rows("SELECT key, json FROM records WHERE kind = $k AND owner = $o ORDER BY at", ("$k", kind), ("$o", owner));
+
+    /// <summary>One record, or null.</summary>
+    public string? Record(string kind, string owner, string key) =>
+        Rows("SELECT key, json FROM records WHERE kind = $k AND owner = $o AND key = $key", ("$k", kind), ("$o", owner), ("$key", key)).Select(r => r.Value).FirstOrDefault();
+
+    /// <summary>Keeps one record (one row written).</summary>
+    public void PutRecord(string kind, string owner, string key, string json, long at) =>
+        Execute("INSERT OR REPLACE INTO records(kind, owner, key, json, at) VALUES ($k, $o, $key, $j, $at)", ("$k", kind), ("$o", owner), ("$key", key), ("$j", json), ("$at", at));
+
+    /// <summary>Forgets one record.</summary>
+    public void DeleteRecord(string kind, string owner, string key) =>
+        Execute("DELETE FROM records WHERE kind = $k AND owner = $o AND key = $key", ("$k", kind), ("$o", owner), ("$key", key));
+
+    /// <summary>Keeps only one owner's [keep] newest records of a kind.</summary>
+    public void KeepNewest(string kind, string owner, int keep) =>
+        Execute(
+            "DELETE FROM records WHERE kind = $k AND owner = $o AND key NOT IN (SELECT key FROM records WHERE kind = $k AND owner = $o ORDER BY at DESC LIMIT $n)",
+            ("$k", kind), ("$o", owner), ("$n", keep));
+
+    /// <summary>Runs SQL with named parameters (for stores with tables of their own).</summary>
+    public void Execute(string sql, params (string Name, object? Value)[] parameters)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = sql;
+            foreach (var (name, value) in parameters)
+            {
+                cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+            }
+
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>The rows a query gives: its first column (as text) and its second (as text).</summary>
+    public List<KeyValuePair<string, string>> Rows(string sql, params (string Name, object? Value)[] parameters)
+    {
+        var rows = new List<KeyValuePair<string, string>>();
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = sql;
+            foreach (var (name, value) in parameters)
+            {
+                cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+            }
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add(new(Convert.ToString(reader.GetValue(0), System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty, reader.GetString(1)));
+            }
+        }
+
+        return rows;
+    }
 
     /// <inheritdoc />
     public void Dispose() => _db.Dispose();
