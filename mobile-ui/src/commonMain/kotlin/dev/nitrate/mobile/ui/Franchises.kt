@@ -53,7 +53,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable object FranchisesRoute
 
-@Serializable data class FranchiseHubRoute(val collectionId: String)
+@Serializable data class FranchiseHubRoute(val playlistId: String)
 
 private val Gold = Color(0xFFFFC46A)
 
@@ -68,40 +68,56 @@ internal fun FranchisesEntry(actions: AppActions) {
     ) {
         Column(Modifier.weight(1f)) {
             Text("Franchises", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White)
-            Text("Your collections in order, with what's next and crossovers", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE0D6CC), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Your playlists in watch order, with what's next and crossovers", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE0D6CC), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text("›", style = MaterialTheme.typography.headlineSmall, color = Gold)
     }
 }
 
-/** Every collection, each a wide card of its own artwork and logo. */
+/** The user's video playlists, each a wide card of its own artwork; a long press moves one to "Not franchises". */
 @Composable
 fun FranchisesScreen(actions: AppActions) {
     val server = actions.server
+    val container = actions.container
+    val scope = rememberCoroutineScope()
+    val prefs = LocalDisplayPrefs.current
     val list by produceState<List<MediaItem>?>(null) { value = runCatching { FranchiseHubs.list(server) }.getOrDefault(emptyList()) }
+    val shown = list.orEmpty().filter { it.id !in prefs.franchiseHidden }
+    val apart = list.orEmpty().filter { it.id in prefs.franchiseHidden }
+    fun toggle(id: String) {
+        val u = server.userId ?: return
+        scope.launch { container.displaySettings.savePrefs(u, prefs.copy(franchiseHidden = if (id in prefs.franchiseHidden) prefs.franchiseHidden - id else prefs.franchiseHidden + id)) }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(ScreenPadding), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Franchises", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
                 Text(
                     when {
-                        list == null -> "Gathering your collections…"
-                        list!!.isEmpty() -> "No collections yet. Make one in Jellyfin (a saga's films, or several shows of one universe) and it becomes a franchise here."
-                        else -> "Each with its own page: what's next, everything in order, crossovers in place."
+                        list == null -> "Gathering your playlists…"
+                        list!!.isEmpty() -> "No video playlists yet. A playlist in watch order (a saga's films, or a universe's episodes and films) becomes a franchise here."
+                        else -> "Your playlists in watch order: what's next, everything in order, crossovers in place. Long-press one that isn't a franchise to move it down."
                     },
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
-        itemsIndexed(list.orEmpty(), key = { _, c -> c.id }) { _, c ->
+        itemsIndexed(shown, key = { _, c -> c.id }) { _, c ->
             Box(
                 Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(18.dp)).background(Color(0xFF16141C))
-                    .pressable({ actions.nav.navigate(FranchiseHubRoute(c.id)) }),
+                    .pressable({ actions.nav.navigate(FranchiseHubRoute(c.id)) }, onLongClick = { toggle(c.id) }),
             ) {
                 AsyncImage(server.backdropUrl(c, 960), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000)))))
                 FranchiseTitle(server.logoUrl(c), c.name, Modifier.align(Alignment.BottomStart).padding(16.dp), small = true)
             }
+        }
+        if (apart.isNotEmpty()) item { Text("Not franchises (long-press to move one back)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp)) }
+        itemsIndexed(apart, key = { _, c -> "h" + c.id }) { _, c ->
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                    .pressable({ actions.nav.navigate(FranchiseHubRoute(c.id)) }, onLongClick = { toggle(c.id) }).padding(14.dp),
+            ) { Text(c.name, style = MaterialTheme.typography.bodyMedium) }
         }
         item { Spacer(Modifier.padding(bottom = NavBarClearance)) }
     }
@@ -117,19 +133,19 @@ private fun FranchiseTitle(logo: String?, name: String, modifier: Modifier, smal
 
 /**
  * A franchise's page: its own artwork and theme music, where you are, what's next, and everything in
- * the chosen order (release, or as it aired with shows interleaved), crossovers marked. Tap plays;
+ * the chosen order (the playlist's own, as it aired, or release), crossovers marked. Tap plays;
  * a long press opens the title.
  */
 @Composable
-fun FranchiseHubScreen(actions: AppActions, collectionId: String) {
+fun FranchiseHubScreen(actions: AppActions, playlistId: String) {
     val container = actions.container
     val server = actions.server
     val prefs = LocalDisplayPrefs.current
     val scope = rememberCoroutineScope()
-    val chosen = prefs.franchiseOrders[collectionId]
+    val chosen = prefs.franchiseOrders[playlistId]
     var failed by remember { mutableStateOf<String?>(null) }
-    val hub by produceState<FranchiseHub?>(null, collectionId, chosen) {
-        runCatching { FranchiseHubs.load(server, collectionId, chosen) }.onSuccess { value = it }.onFailure { failed = it.message ?: "Couldn't open it" }
+    val hub by produceState<FranchiseHub?>(null, playlistId, chosen) {
+        runCatching { FranchiseHubs.load(server, playlistId, chosen) }.onSuccess { value = it }.onFailure { failed = it.message ?: "Couldn't open it" }
     }
     val music = hub?.themeMusicFrom
     val themeOn = prefs.themeMusic ?: false
@@ -139,7 +155,7 @@ fun FranchiseHubScreen(actions: AppActions, collectionId: String) {
     }
     fun setOrder(o: WatchOrder) {
         val u = server.userId ?: return
-        scope.launch { container.displaySettings.savePrefs(u, prefs.copy(franchiseOrders = prefs.franchiseOrders + (collectionId to o))) }
+        scope.launch { container.displaySettings.savePrefs(u, prefs.copy(franchiseOrders = prefs.franchiseOrders + (playlistId to o))) }
     }
     val h = hub
     if (h == null) {
@@ -154,11 +170,11 @@ fun FranchiseHubScreen(actions: AppActions, collectionId: String) {
                 AsyncImage(h.backdrop, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x55000000), 0.45f to Color.Transparent, 1f to MaterialTheme.colorScheme.background)))
                 Column(Modifier.align(Alignment.BottomStart).padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FranchiseTitle(h.logo, h.collection.name, Modifier)
+                    FranchiseTitle(h.logo, h.playlist.name, Modifier)
                     Text(
                         listOfNotNull(
-                            h.titles.count { it.kind == ItemKind.MOVIE }.takeIf { it > 0 }?.let { "$it film" + if (it == 1) "" else "s" },
-                            h.titles.count { it.kind == ItemKind.SERIES }.takeIf { it > 0 }?.let { "$it show" + if (it == 1) "" else "s" },
+                            h.films.takeIf { it > 0 }?.let { "$it film" + if (it == 1) "" else "s" },
+                            h.shows.takeIf { it > 0 }?.let { "$it show" + if (it == 1) "" else "s" },
                             h.entries.count { it.item.kind == ItemKind.EPISODE }.takeIf { it > 0 }?.let { "$it episodes" },
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodyMedium, color = Color(0xFFE6E2DA),

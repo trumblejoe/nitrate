@@ -144,7 +144,7 @@ class FakeServer : MediaServer {
     override suspend fun albumTracks(albumId: String) = tracks
     override suspend fun instantMix(itemId: String) = tracks.shuffled()
     override suspend fun getItem(id: String) = when (id) {
-        "c1" -> MediaItem("c1", "Reel Classics", ItemKind.BOX_SET)
+        "p1" -> MediaItem("p1", "Rainy day", ItemKind.PLAYLIST)
         album.id -> album
         series.id -> series
         movies.id -> movies
@@ -162,7 +162,9 @@ class FakeServer : MediaServer {
     override suspend fun allEpisodes(seriesId: String) = (1..3).flatMap { s -> (1..6).map { episode(s, it, s < 2) } }
     override suspend fun nextUpFor(seriesId: String) = episode(2, 4, false)
     override suspend fun similar(itemId: String) = films
-    override suspend fun playlistItems(playlistId: String) = films
+    /** "Rainy day" is a franchise playlist: a film, a few episodes, another film, then the rest of the show. */
+    override suspend fun playlistItems(playlistId: String) =
+        if (playlistId == "p1") listOf(films[0], episode(1, 1, true), episode(1, 2, true), films[1], episode(1, 3, false), episode(2, 1, false)) else films
     override suspend fun setPlayed(itemId: String, played: Boolean) = Unit
     override suspend fun setFavorite(itemId: String, favorite: Boolean) = Unit
     /** Generated abstract artwork (tools/generate-sample-art.py) as local files. */
@@ -206,8 +208,7 @@ class FakeServer : MediaServer {
         .mapIndexed { i, n -> movie("x$i", n, 1980 + i * 3) }).sortedBy { it.name }
     override suspend fun queryPage(query: dev.nitrate.core.pages.ItemQuery, startIndex: Int, limit: Int) =
         shelf.drop(startIndex).take(limit) to shelf.size
-    /** "Reel Classics" is a franchise of two films and a show; other collections hold films. */
-    override suspend fun collectionItems(collectionId: String) = if (collectionId == "c1") films.take(2) + series else films.take(3)
+    override suspend fun collectionItems(collectionId: String) = films.take(3)
     override suspend fun genres(libraryId: String?) = listOf("Action", "Comedy", "Drama", "Horror", "Mystery", "Sci-Fi", "Thriller")
     override suspend fun collections() = listOf(MediaItem("c1", "Reel Classics", ItemKind.BOX_SET), MediaItem("c2", "Midnight Movies", ItemKind.BOX_SET))
     /** A check from far away: a slow round trip and a slow library search, the rest fine. */

@@ -1714,7 +1714,7 @@ class TvScreenshotTest {
 
     /** A franchise hub: logo or name, progress, next, the order with crossovers, its titles, in its mood. */
     @Test fun franchiseHub() = shoot("tv-franchise-hub", settleMs = 2_500) { c ->
-        dev.nitrate.tv.ui.franchise.FranchiseHubScreen(c, "c1", onPlay = {}, onOpen = {})
+        dev.nitrate.tv.ui.franchise.FranchiseHubScreen(c, "p1", onPlay = {}, onOpen = {})
     }
 
     /** The watch diary on TV. */

@@ -339,7 +339,7 @@ class ScreenshotTest {
 
     @Test fun franchises() = shoot("phone-franchises") { actions -> dev.nitrate.mobile.ui.FranchisesScreen(actions) }
 
-    @Test fun franchiseHub() = shoot("phone-franchise-hub") { actions -> dev.nitrate.mobile.ui.FranchiseHubScreen(actions, "c1") }
+    @Test fun franchiseHub() = shoot("phone-franchise-hub") { actions -> dev.nitrate.mobile.ui.FranchiseHubScreen(actions, "p1") }
 
     /** Search finds what people say too. */
     @Test fun saidIn() = shoot("phone-search-said-in", setup = { c -> c.refreshCompanionForTests() }) { actions -> dev.nitrate.mobile.ui.SearchScreen(actions, initialQuery = "need a bigger boat", autoFocus = false) }

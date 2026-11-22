@@ -6,15 +6,17 @@ import dev.nitrate.core.model.MediaItem
 import kotlinx.serialization.Serializable
 
 /**
- * Franchises are the user's own Jellyfin collections: any collection of two or more films or shows is
- * a franchise hub. A collection holding several shows (Arrow, The Flash, Supergirl…) becomes one
- * universe whose episodes can be watched interleaved as they aired, so crossovers fall in place.
- * Everything shown about one (logo, backdrop, theme music) is the server's own artwork for it.
+ * Franchises are the user's own video playlists: a playlist's order is its watch order (the user
+ * curates it, often with a plugin that builds franchise playlists), so the hub follows it by default.
+ * Shows put in a playlist whole count as their episodes. Collections aren't used: their order is only
+ * by title or year, which breaks a franchise's. Everything shown about one (logo, backdrop, theme
+ * music) is the server's own artwork for it.
  */
 @Serializable
 enum class WatchOrder(val label: String, val detail: String) {
-    RELEASE("Release order", "Each film and show in the order it came out, a show's episodes together"),
+    PLAYLIST("Playlist order", "Just as the playlist has it"),
     AIRED("As it aired", "Every episode and film by its air date, shows interleaved so crossovers line up"),
+    RELEASE("Release order", "Each film and show in the order it came out, a show's episodes together"),
 }
 
 /** One thing to watch in a franchise, in its order, with the crossover it's part of (if any). */
@@ -35,48 +37,48 @@ data class FranchiseProgress(val watched: Int, val total: Int, val next: MediaIt
 
 object Franchises {
     /** The page key a franchise hub's theme and background are kept under. */
-    fun pageKey(collectionId: String) = "franchise/$collectionId"
+    fun pageKey(playlistId: String) = "franchise/$playlistId"
 
-    /** Collections worth a hub: two or more films or shows. */
-    fun isFranchise(items: List<MediaItem>): Boolean = items.count { it.kind == ItemKind.MOVIE || it.kind == ItemKind.SERIES } >= 2
-
-    /** The order a franchise opens in: as it aired for collections of shows, else release order. */
-    fun defaultOrder(titles: List<MediaItem>): WatchOrder = if (titles.count { it.kind == ItemKind.SERIES } >= 2) WatchOrder.AIRED else WatchOrder.RELEASE
+    /** Playlists that can be franchises: video ones (music playlists never are). */
+    fun candidates(playlists: List<MediaItem>): List<MediaItem> = playlists.filter { it.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO }
 
     /** "S3:E8", or null for a film. */
     fun code(item: MediaItem): String? =
         if (item.kind == ItemKind.EPISODE && item.seasonNumber != null && item.indexNumber != null) "S${item.seasonNumber}:E${item.indexNumber}" else null
 
+    /** Shows put in a playlist whole: their episodes are fetched to stand in for them. */
+    fun wholeShows(items: List<MediaItem>): List<String> = items.filter { it.kind == ItemKind.SERIES }.map { it.id }.distinct()
+
+    /** The titles in a franchise: its films and the shows its episodes (or whole shows) come from. */
+    fun titleIds(items: List<MediaItem>): List<String> = items.mapNotNull { if (it.kind == ItemKind.EPISODE) it.seriesId else it.id }.distinct()
+
     /**
-     * Everything to watch, in [order]. [titles] are the collection's films and shows; [episodes] each
-     * show's episodes (by series id), in the show's own order. Specials (season 0) and episodes not
-     * in the library are left out.
+     * Everything to watch, in [order], from the playlist's [items] as the playlist has them. A whole
+     * show is its [episodes] (by series id) in the show's own order. Specials (season 0) and episodes
+     * not in the library are left out of whole shows; anything put in the playlist by hand stays.
      */
-    fun entries(titles: List<MediaItem>, episodes: Map<String, List<MediaItem>>, order: WatchOrder): List<FranchiseEntry> {
+    fun entries(items: List<MediaItem>, episodes: Map<String, List<MediaItem>>, order: WatchOrder): List<FranchiseEntry> {
         fun watchable(e: MediaItem) = !e.isMissing && (e.seasonNumber ?: 1) > 0
-        val released = titles.sortedWith(compareBy({ it.premiereDateMs ?: yearMs(it.productionYear) ?: Long.MAX_VALUE }, { it.name }))
-        val items: List<MediaItem> = when (order) {
-            WatchOrder.RELEASE -> released.flatMap { t -> if (t.kind == ItemKind.SERIES) episodes[t.id].orEmpty().filter(::watchable) else listOf(t) }
+        val flat = items.flatMap { t -> if (t.kind == ItemKind.SERIES) episodes[t.id].orEmpty().filter(::watchable) else listOf(t) }
+            .filter { it.kind == ItemKind.MOVIE || it.kind == ItemKind.EPISODE || it.kind == ItemKind.VIDEO }
+            .distinctBy { it.id }
+        val sorted: List<MediaItem> = when (order) {
+            WatchOrder.PLAYLIST -> flat
             WatchOrder.AIRED -> {
-                // Each thing gets a date; an episode without one takes its predecessor's, so it keeps its place in its show.
-                val dated = ArrayList<Pair<Long, MediaItem>>()
-                for (t in released) {
-                    if (t.kind == ItemKind.SERIES) {
-                        var last = t.premiereDateMs ?: yearMs(t.productionYear) ?: Long.MAX_VALUE / 2
-                        for (e in episodes[t.id].orEmpty().filter(::watchable)) {
-                            last = e.premiereDateMs ?: last
-                            dated += last to e
-                        }
-                    } else dated += (t.premiereDateMs ?: yearMs(t.productionYear) ?: Long.MAX_VALUE / 2) to t
-                }
-                // Same day: films first, then shows in the order they started, then by episode.
-                val showOrder = released.withIndex().associate { it.value.id to it.index }
-                dated.sortedWith(compareBy<Pair<Long, MediaItem>>({ it.first / DAY_MS }, { if (it.second.kind == ItemKind.EPISODE) 1 else 0 }, { showOrder[it.second.seriesId] ?: 0 }, { it.second.seasonNumber ?: 0 }, { it.second.indexNumber ?: 0 }))
-                    .map { it.second }
+                // Each thing gets a date; one without takes the one before it, so it keeps its place.
+                var last = Long.MIN_VALUE / 2
+                val dated = flat.mapIndexed { i, e -> Triple(e.premiereDateMs ?: yearMs(e.productionYear) ?: last, i, e).also { last = it.first } }
+                // Same day: films first, then in the playlist's own order.
+                dated.sortedWith(compareBy({ it.first / DAY_MS }, { if (it.third.kind == ItemKind.EPISODE) 1 else 0 }, { it.second })).map { it.third }
+            }
+            WatchOrder.RELEASE -> {
+                // Titles by when they began (a show by its earliest episode), each show's episodes together in the playlist's order.
+                val groups = flat.groupBy { if (it.kind == ItemKind.EPISODE) it.seriesId ?: it.id else it.id }
+                groups.values.sortedBy { g -> g.minOf { it.premiereDateMs ?: yearMs(it.productionYear) ?: Long.MAX_VALUE } }.flatten()
             }
         }
-        val crossovers = crossovers(items)
-        return items.map { FranchiseEntry(it, crossovers[it.id]) }
+        val crossovers = crossovers(sorted)
+        return sorted.map { FranchiseEntry(it, crossovers[it.id]) }
     }
 
     /**

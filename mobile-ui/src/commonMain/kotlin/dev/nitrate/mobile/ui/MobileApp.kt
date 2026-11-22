@@ -355,7 +355,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<ChannelsRoute> { ChannelsScreen(actions) }
             screen<CatalogsRoute> { CatalogsScreen(actions) }
             screen<FranchisesRoute> { FranchisesScreen(actions) }
-            screen<FranchiseHubRoute> { entry -> FranchiseHubScreen(actions, entry.toRoute<FranchiseHubRoute>().collectionId) }
+            screen<FranchiseHubRoute> { entry -> FranchiseHubScreen(actions, entry.toRoute<FranchiseHubRoute>().playlistId) }
             screen<CatalogFeedRoute> { entry -> entry.toRoute<CatalogFeedRoute>().let { CatalogFeedScreen(actions, it.catalogId, it.target) } }
             screen<CatalogBookRoute> { entry ->
                 val route = entry.toRoute<CatalogBookRoute>()

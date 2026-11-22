@@ -1411,7 +1411,7 @@ class JellyfinClient(
     override suspend fun similar(itemId: String) = items("Items", itemId, "Similar", query = mapOf("limit" to 16, "fields" to "PrimaryImageAspectRatio"))
 
     override suspend fun playlistItems(playlistId: String) =
-        items("Playlists", playlistId, "Items", query = mapOf("fields" to "Overview,PrimaryImageAspectRatio,Genres"))
+        items("Playlists", playlistId, "Items", query = mapOf("fields" to "Overview,PrimaryImageAspectRatio,Genres,Tags"))
 
     override suspend fun setPlayed(itemId: String, played: Boolean) {
         if (played) post<Unit>("UserPlayedItems", itemId) else http.delete(url("UserPlayedItems", itemId)) { auth() }

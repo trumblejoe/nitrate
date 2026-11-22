@@ -117,7 +117,7 @@ import kotlinx.serialization.Serializable
 @Serializable object WatchTogetherRoute
 @Serializable object ChannelsRoute
 @Serializable object FranchisesRoute
-@Serializable data class FranchiseHubRoute(val collectionId: String)
+@Serializable data class FranchiseHubRoute(val playlistId: String)
 @Serializable object WatchPartnersRoute
 @Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ProfilesRoute
@@ -581,7 +581,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<FranchiseHubRoute> { entry ->
             dev.nitrate.tv.ui.franchise.FranchiseHubScreen(
-                container, entry.toRoute<FranchiseHubRoute>().collectionId,
+                container, entry.toRoute<FranchiseHubRoute>().playlistId,
                 onPlay = { item -> gate.play(item) },
                 onOpen = nav::openItem,
             )

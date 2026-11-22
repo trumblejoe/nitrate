@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -63,14 +64,18 @@ import dev.nitrate.tv.ui.pages.changePrefs
 private val Gold = Color(0xFFFFC46A)
 
 /**
- * Menu → Franchises: the user's collections, each as a wide card with its own artwork and logo.
- * Any collection can be a franchise: films of one saga, or several shows of one universe.
+ * Menu → Franchises: the user's video playlists (their order is the watch order), each a wide card
+ * with its own artwork. Holding OK on one moves it to "Not franchises" at the bottom, and back.
  */
 @Composable
 fun FranchisesScreen(container: AppContainer, onOpen: (String) -> Unit) {
     val server = container.server
     val list by produceState<List<MediaItem>?>(null) { value = runCatching { FranchiseHubs.list(server) }.getOrDefault(emptyList()) }
+    val hidden = LocalDisplayPrefs.current.franchiseHidden
+    val shown = list.orEmpty().filter { it.id !in hidden }
+    val apart = list.orEmpty().filter { it.id in hidden }
     val first = remember { FocusRequester() }
+    fun toggle(id: String) = container.changePrefs { it.copy(franchiseHidden = if (id in it.franchiseHidden) it.franchiseHidden - id else it.franchiseHidden + id) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(horizontal = 56.dp, vertical = 40.dp),
@@ -83,23 +88,29 @@ fun FranchisesScreen(container: AppContainer, onOpen: (String) -> Unit) {
                 Text("Franchises", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
                 Text(
                     when {
-                        list == null -> "Gathering your collections…"
-                        list!!.isEmpty() -> "No collections yet. Make one in Jellyfin (a saga's films, or several shows of one universe) and it becomes a franchise here."
-                        else -> "Your collections, each with its own page: what's next, every film and episode in order, and crossovers in place."
+                        list == null -> "Gathering your playlists…"
+                        list!!.isEmpty() -> "No video playlists yet. A playlist in watch order (a saga's films, or a universe's episodes and films) becomes a franchise here."
+                        else -> "Your playlists in watch order, each with its own page: what's next, everything in order, crossovers in place. Hold OK on one that isn't a franchise to move it down."
                     },
                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.widthIn(max = 900.dp),
                 )
             }
         }
-        itemsIndexed(list.orEmpty(), key = { _, it -> it.id }) { i, c ->
+        itemsIndexed(shown, key = { _, it -> it.id }) { i, c ->
             MediaCard(
-                c, server.backdropUrl(c, 640), width = null, aspectRatio = 16f / 9f, onClick = { onOpen(c.id) },
+                c, server.backdropUrl(c, 640), width = null, aspectRatio = 16f / 9f, onClick = { onOpen(c.id) }, onLongClick = { toggle(c.id) },
                 title = c.name, logoUrl = server.logoUrl(c), showProgress = false,
                 modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
             )
         }
+        if (apart.isNotEmpty()) item(span = { GridItemSpan(3) }) {
+            Text("Not franchises (hold OK to move one back)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+        }
+        itemsIndexed(apart, key = { _, it -> "h" + it.id }) { _, c ->
+            MediaCard(c, server.backdropUrl(c, 480), width = null, aspectRatio = 16f / 9f, onClick = { onOpen(c.id) }, onLongClick = { toggle(c.id) }, title = c.name, showProgress = false, modifier = Modifier.alpha(0.6f))
+        }
     }
-    LaunchedEffect(list) { if (!list.isNullOrEmpty()) runCatching { first.requestFocus() } }
+    LaunchedEffect(list) { if (shown.isNotEmpty()) runCatching { first.requestFocus() } }
 }
 
 /**
@@ -108,15 +119,15 @@ fun FranchisesScreen(container: AppContainer, onOpen: (String) -> Unit) {
  * everything in the chosen order with crossovers marked. OK on an entry plays it; holding OK opens it.
  */
 @Composable
-fun FranchiseHubScreen(container: AppContainer, collectionId: String, onPlay: (MediaItem) -> Unit, onOpen: (MediaItem) -> Unit) {
+fun FranchiseHubScreen(container: AppContainer, playlistId: String, onPlay: (MediaItem) -> Unit, onOpen: (MediaItem) -> Unit) {
     val server = container.server
     val prefs = LocalDisplayPrefs.current
-    val chosen = prefs.franchiseOrders[collectionId]
+    val chosen = prefs.franchiseOrders[playlistId]
     var failed by remember { mutableStateOf<String?>(null) }
-    val hub by produceState<FranchiseHub?>(null, collectionId, chosen) {
-        runCatching { FranchiseHubs.load(server, collectionId, chosen) }.onSuccess { value = it }.onFailure { failed = it.message ?: "Couldn't open it" }
+    val hub by produceState<FranchiseHub?>(null, playlistId, chosen) {
+        runCatching { FranchiseHubs.load(server, playlistId, chosen) }.onSuccess { value = it }.onFailure { failed = it.message ?: "Couldn't open it" }
     }
-    val pageKey = Franchises.pageKey(collectionId)
+    val pageKey = Franchises.pageKey(playlistId)
     val theme = prefs.pageThemes[pageKey] ?: hub?.mood
     // The franchise's theme music, as on a details page.
     val music = hub?.themeMusicFrom
@@ -152,11 +163,11 @@ private fun HubBody(container: AppContainer, hub: FranchiseHub, theme: dev.nitra
         // The franchise's logo, or its name set large.
         var logoFailed by remember(hub.logo) { mutableStateOf(hub.logo == null) }
         if (!logoFailed) AsyncImage(
-            hub.logo, contentDescription = hub.collection.name, contentScale = ContentScale.Fit, alignment = Alignment.CenterStart,
+            hub.logo, contentDescription = hub.playlist.name, contentScale = ContentScale.Fit, alignment = Alignment.CenterStart,
             onError = { logoFailed = true }, modifier = Modifier.heightIn(max = 120.dp).widthIn(max = 460.dp),
-        ) else Text(hub.collection.name, fontSize = 40.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, maxLines = 2, modifier = Modifier.widthIn(max = 720.dp))
-        val films = hub.titles.count { it.kind == ItemKind.MOVIE }
-        val shows = hub.titles.count { it.kind == ItemKind.SERIES }
+        ) else Text(hub.playlist.name, fontSize = 40.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, maxLines = 2, modifier = Modifier.widthIn(max = 720.dp))
+        val films = hub.films
+        val shows = hub.shows
         val episodes = entries.count { it.item.kind == ItemKind.EPISODE }
         Text(
             listOfNotNull(
@@ -188,10 +199,10 @@ private fun HubBody(container: AppContainer, hub: FranchiseHub, theme: dev.nitra
             }
             OutlinedButton(onClick = {
                 val other = WatchOrder.entries[(hub.order.ordinal + 1) % WatchOrder.entries.size]
-                container.changePrefs { it.copy(franchiseOrders = it.franchiseOrders + (hub.collection.id to other)) }
+                container.changePrefs { it.copy(franchiseOrders = it.franchiseOrders + (hub.playlist.id to other)) }
             }) { Text("Order: " + hub.order.label) }
             OutlinedButton(onClick = { picking = true }) { Text("Mood: " + (theme?.label ?: "None")) }
-            OutlinedButton(onClick = { onOpen(hub.collection) }) { Text("The collection") }
+            OutlinedButton(onClick = { onOpen(hub.playlist) }) { Text("The playlist") }
         }
         Text(hub.order.detail, style = MaterialTheme.typography.bodySmall, color = Color(0xFFB9B4AA))
         Spacer(Modifier.weight(1f))
@@ -204,9 +215,9 @@ private fun HubBody(container: AppContainer, hub: FranchiseHub, theme: dev.nitra
             }
         }
     }
-    LaunchedEffect(hub.collection.id) { runCatching { playFocus.requestFocus() } }
-    if (picking) dev.nitrate.tv.ui.effects.PageThemePicker(hub.collection.name, theme ?: dev.nitrate.core.effects.PageTheme.NONE, onPick = { t ->
-        container.changePrefs { it.copy(pageThemes = it.pageThemes + (Franchises.pageKey(hub.collection.id) to t)) }
+    LaunchedEffect(hub.playlist.id) { runCatching { playFocus.requestFocus() } }
+    if (picking) dev.nitrate.tv.ui.effects.PageThemePicker(hub.playlist.name, theme ?: dev.nitrate.core.effects.PageTheme.NONE, onPick = { t ->
+        container.changePrefs { it.copy(pageThemes = it.pageThemes + (Franchises.pageKey(hub.playlist.id) to t)) }
         picking = false
     }, onDismiss = { picking = false })
 }
