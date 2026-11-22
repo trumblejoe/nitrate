@@ -1689,6 +1689,26 @@ class TvScreenshotTest {
         }
     }
 
+    /** Skip intro / Skip recap over the video, focused so one OK skips. */
+    @Test fun skipIntro() = shoot("tv-skip-intro") { c ->
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+            coil3.compose.AsyncImage(c.server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            androidx.compose.foundation.layout.Column(Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(48.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+                dev.nitrate.tv.ui.player.SkipSegmentButton(dev.nitrate.core.model.MediaSegment(dev.nitrate.core.model.SegmentKind.RECAP, 0, 60_000), takeFocus = false, onSkip = {}, onFocus = {})
+                dev.nitrate.tv.ui.player.SkipSegmentButton(dev.nitrate.core.model.MediaSegment(dev.nitrate.core.model.SegmentKind.INTRO, 60_000, 150_000), takeFocus = true, onSkip = {}, onFocus = {})
+            }
+        }
+    }
+
+    /** The update offer with a long "What's new": the notes sit in their own box, the choices below. */
+    @Test fun updateOffer() = shoot("tv-update-offer") { _ ->
+        val release = dev.nitrate.core.update.AppRelease(
+            "dev-120", "Nitrate dev-120", 1120, true, "nitrate-tv-dev-120.apk", "https://example.invalid/a.apk", null,
+            (1..24).map { "Change number $it: something better about watching, browsing or settings" },
+        )
+        dev.nitrate.tv.ui.components.UpdateDialog(dev.nitrate.android.update.UpdateState.Available(release), onUpdate = {}, onLater = {}, onDismiss = {})
+    }
+
     /** The watch diary on TV. */
     @Test fun diary() = shoot("tv-diary") { c -> dev.nitrate.tv.ui.settings.DiaryScreen(c.server) }
 

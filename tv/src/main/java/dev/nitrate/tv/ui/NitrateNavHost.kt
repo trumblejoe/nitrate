@@ -672,6 +672,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { next -> nav.popBackStack(); gate.play(next) } else null,
                 syncPlay = container.syncPlay.takeIf { !route.test },
                 stillWatching = container.stillWatching,
+                skipWatch = container.skipWatch,
                 stillWatchingRewind = container::stillWatchingRewind,
                 sendLog = { session -> container.sendPlaybackReport(session) },
                 capabilities = container.capabilities,

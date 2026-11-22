@@ -111,7 +111,7 @@ public class PeopleRecords
     public const int ProblemDays = 90;
 
     /// <summary>How long viewing chat is kept.</summary>
-    public const int ChatDays = 30;
+    public const int ChatDays = 3 * 365;
 
     /// <summary>The most moments one person keeps.</summary>
     public const int MaxMoments = 500;

@@ -109,7 +109,7 @@ private fun EarlierChatDialog(actions: AppActions, itemId: String, onDismiss: ()
             val l = list
             when {
                 l == null -> Text("Loading…")
-                l.isEmpty() -> Text("No chat kept from watching this together (it's kept 30 days, for those who were there).")
+                l.isEmpty() -> Text("No chat kept from watching this together (it's kept 3 years, for those who were there).")
                 else -> LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(l) { m ->
                         Column {

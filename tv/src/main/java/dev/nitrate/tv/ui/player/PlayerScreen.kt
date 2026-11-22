@@ -145,6 +145,8 @@ fun PlayerScreen(
      * unreported (like a recap clip), then its trail is handed here before the player leaves.
      */
     testPlay: ((dev.nitrate.core.playback.TestPlayResult) -> Unit)? = null,
+    /** Hears skips and jumps back into what was skipped, so wrong intro/recap marks get fixed (Companion). */
+    skipWatch: dev.nitrate.core.companion.SkipWatch? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
@@ -414,6 +416,19 @@ fun PlayerScreen(
         if (a is dev.nitrate.core.playback.CreditSkipper.Action.Skip) player.seekTo(a.toMs)
         creditAction = a
     }
+    // Skip intro / Skip recap: shown on entering one for 10 s by itself, and whenever the controls are up
+    // while it lasts. Not in recap clips or test plays.
+    val skipSegment = remember(segments, position / 1000) {
+        dev.nitrate.core.playback.PlaybackMoments.skippable(segments, position)?.takeIf { skipLabel(it) != null }
+    }?.takeIf { clipEndMs == null && testPlay == null }
+    var skipFaded by remember { mutableStateOf<dev.nitrate.core.model.MediaSegment?>(null) }
+    var skipFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(skipSegment) {
+        if (skipSegment == null) return@LaunchedEffect
+        delay(10_000)
+        skipFaded = skipSegment
+    }
+    LaunchedEffect(item?.id, position / 1000) { item?.let { skipWatch?.position(it.id, position, System.currentTimeMillis()) } }
     val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE &&
         upNextAt != null && position >= upNextAt
 
@@ -426,6 +441,7 @@ fun PlayerScreen(
             openPanel != null -> { openPanel = null; touch() }
             showUpNext -> { upNextHidden = true; refocus() }
             creditAction != null -> { creditAction = null; refocus() }
+            skipSegment != null && skipFocused -> { skipFaded = skipSegment; skipFocused = false; refocus() }
             // The same whether playing or paused: Back hides the controls, then leaves.
             controlsVisible -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
             else -> onExit()
@@ -662,6 +678,28 @@ fun PlayerScreen(
                 onNoAnswer = { stillWatchingRewind?.invoke(rewind) { onExit() } ?: onExit() },
             )
         }
+
+        val showSkip = skipSegment != null && (skipSegment != skipFaded || controlsVisible) && !showUpNext && creditAction == null &&
+            panel == Panel.NONE && person == null && stillAsk == null
+        if (showSkip && skipSegment != null) {
+            val seg = skipSegment
+            SkipSegmentButton(
+                seg,
+                // Only when nothing else is in use: never from the controls someone is moving through.
+                takeFocus = rootFocused,
+                onSkip = {
+                    item?.let { skipWatch?.skipped(it.id, seg, System.currentTimeMillis()) }
+                    player.seekTo(seg.endMs)
+                    skipFaded = seg
+                    skipFocused = false
+                    refocus()
+                },
+                onFocus = { skipFocused = it },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
+            )
+        }
+        // Gone while it had focus (faded or its part ended): focus goes back where it belongs.
+        LaunchedEffect(showSkip) { if (!showSkip && skipFocused) { skipFocused = false; refocus() } }
 
         creditAction?.takeIf { !showUpNext }?.let { a ->
             // The banner's button on the phone too.

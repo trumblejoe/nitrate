@@ -23,6 +23,29 @@ import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import dev.nitrate.android.update.AppUpdater
 import dev.nitrate.android.update.UpdateState
 import dev.nitrate.core.update.AppRelease
@@ -40,14 +63,18 @@ private data class Choice(val label: String, val action: () -> Unit)
 internal fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, onLater: (AppRelease) -> Unit, onDismiss: () -> Unit, onReoffer: (AppRelease) -> Unit = {}) {
     val context = LocalContext.current
     when (state) {
-        is UpdateState.Available -> Panel("Update available", { onLater(state.release) }, listOf(Choice("Update now") { onUpdate(state.release) }, Choice("Later") { onLater(state.release) })) {
-            Text(state.release.title, style = MaterialTheme.typography.titleMedium)
-            if (state.release.notes.isNotEmpty()) {
-                Text("What's new", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
-                // Every change, in a box that scrolls with ▲▼ (Up from Update now reaches it), so a long
-                // list never pushes the choices off the screen.
-                dev.nitrate.tv.ui.lists.ScrollBox(maxHeight = 260) {
-                    state.release.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+        is UpdateState.Available -> {
+            val notesFocus = remember { FocusRequester() }
+            val hasNotes = state.release.notes.isNotEmpty()
+            Panel(
+                "Update available", { onLater(state.release) },
+                listOf(Choice("Update now") { onUpdate(state.release) }, Choice("Later") { onLater(state.release) }),
+                upFromChoices = notesFocus.takeIf { hasNotes },
+            ) {
+                Text(state.release.title, style = MaterialTheme.typography.titleMedium)
+                if (hasNotes) {
+                    Text("What's new", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
+                    ReleaseNotes(state.release.notes, notesFocus)
                 }
             }
         }
@@ -73,8 +100,61 @@ internal fun UpdateDialog(state: UpdateState, onUpdate: (AppRelease) -> Unit, on
     }
 }
 
+/**
+ * Every change, in a box of its own height so a long list never pushes the choices off the screen.
+ * It rolls slowly by itself (a pause at the top, down to the end, a pause, back to the top) until
+ * someone scrolls it with ▲▼, which works once it has focus (Up from the choices goes straight to it).
+ */
 @Composable
-private fun Panel(title: String, onDismiss: () -> Unit, choices: List<Choice>, body: @Composable () -> Unit) {
+internal fun ReleaseNotes(notes: List<String>, focus: FocusRequester = remember { FocusRequester() }, maxHeight: Int = 260) {
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    var focused by remember { mutableStateOf(false) }
+    var byHand by remember { mutableStateOf(false) }
+    LaunchedEffect(notes, byHand) {
+        if (byHand) return@LaunchedEffect
+        while (true) {
+            delay(3_000)
+            if (scroll.maxValue <= 0) continue
+            // About 40 px a second, so every line can be read as it passes.
+            scroll.animateScrollTo(scroll.maxValue, tween(durationMillis = ((scroll.maxValue - scroll.value) * 25).coerceAtLeast(1), easing = LinearEasing))
+            delay(3_000)
+            scroll.animateScrollTo(0, tween(600))
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = maxHeight.dp)
+                .border(2.dp, if (focused) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(10.dp))
+                .focusRequester(focus)
+                .onFocusChanged { focused = it.isFocused }
+                .onKeyEvent { e ->
+                    if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    when (e.key) {
+                        Key.DirectionDown -> if (scroll.value < scroll.maxValue) { byHand = true; scope.launch { scroll.animateScrollBy(160f) }; true } else false
+                        Key.DirectionUp -> if (scroll.value > 0) { byHand = true; scope.launch { scroll.animateScrollBy(-160f) }; true } else false
+                        else -> false
+                    }
+                }
+                .semantics { contentDescription = "What's new: " + notes.joinToString(". ") }
+                .focusable()
+                .verticalScroll(scroll)
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            notes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+        }
+        if (scroll.maxValue > 0) Text(
+            if (focused) "▲▼ to scroll · ▼ at the end for the choices" else "Press ▲ to scroll through the changes yourself",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun Panel(title: String, onDismiss: () -> Unit, choices: List<Choice>, upFromChoices: FocusRequester? = null, body: @Composable () -> Unit) {
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -85,7 +165,11 @@ private fun Panel(title: String, onDismiss: () -> Unit, choices: List<Choice>, b
             body()
             if (choices.isNotEmpty()) Column(Modifier.padding(top = 10.dp)) {
                 choices.forEachIndexed { i, c ->
-                    ListItem(selected = false, onClick = c.action, headlineContent = { Text(c.label) }, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier)
+                    ListItem(
+                        selected = false, onClick = c.action, headlineContent = { Text(c.label) },
+                        modifier = (if (i == 0) Modifier.focusRequester(first) else Modifier)
+                            .then(if (i == 0 && upFromChoices != null) Modifier.focusProperties { up = upFromChoices } else Modifier),
+                    )
                 }
             }
         }

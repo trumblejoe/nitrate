@@ -83,7 +83,7 @@ private fun EarlierChatDialog(repository: MediaServer, itemId: String, onDismiss
         val l = list
         when {
             l == null -> Text("Loading…")
-            l.isEmpty() -> Text("No chat kept from watching this together (it's kept 30 days, for those who were there).", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            l.isEmpty() -> Text("No chat kept from watching this together (it's kept 3 years, for those who were there).", color = MaterialTheme.colorScheme.onSurfaceVariant)
             else -> dev.nitrate.tv.ui.lists.ScrollBox(maxHeight = 420, takeFocus = true) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     l.forEach { m ->

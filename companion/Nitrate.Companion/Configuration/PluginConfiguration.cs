@@ -30,7 +30,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool EnableChat { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets a value indicating whether watch-together chat is kept for 30 days for the people
+    /// Gets or sets a value indicating whether watch-together chat is kept for 3 years for the people
     /// who were in that viewing (shown only when one of them asks for "Earlier chat").
     /// </summary>
     public bool KeepChatHistory { get; set; } = true;
