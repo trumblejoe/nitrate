@@ -38,6 +38,11 @@ class DetailsViewModel(
     private val initialSeasonId: String?,
     /** What this page showed last time, shown at once while it reloads. */
     private val cache: dev.nitrate.android.storage.DataCache? = null,
+    /**
+     * Whether "More like this" shows (`DisplayPrefs.similar`): the server's similar-titles search is
+     * one of the costliest things it's asked for, so it isn't asked when the section is off.
+     */
+    private val wantsSimilar: suspend () -> Boolean = { true },
 ) : ViewModel() {
     private val _state = MutableStateFlow(DetailsState())
     val state: StateFlow<DetailsState> = _state
@@ -73,7 +78,7 @@ class DetailsViewModel(
             if (item.localTrailerCount + item.specialFeatureCount > 0) {
                 _state.update { it.copy(extras = runCatching { repository.extras(itemId) }.getOrDefault(it.extras)) }
             }
-            val similar = runCatching { repository.similar(itemId) }.getOrDefault(emptyList())
+            val similar = if (runCatching { wantsSimilar() }.getOrDefault(true)) runCatching { repository.similar(itemId) }.getOrDefault(emptyList()) else emptyList()
             _state.update { it.copy(similar = similar) }
             cache?.write(account, key, _state.value.copy(error = null), DetailsState.serializer())
         }
@@ -144,3 +149,4 @@ class DetailsViewModel(
         }
     }
 }
+

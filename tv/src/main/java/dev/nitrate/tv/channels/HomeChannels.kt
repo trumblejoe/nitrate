@@ -43,7 +43,7 @@ class HomeChannels(private val context: Context, private val server: MediaServer
             clear()
             return
         }
-        val content = HomeChannelContent.from(server.homeRows())
+        val content = HomeChannelContent.from(server.watchingRows(latest = true))
         syncWatchNext(content.watchNext)
         syncChannel(content.channel)
     }

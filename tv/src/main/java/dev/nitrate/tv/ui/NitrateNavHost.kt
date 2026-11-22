@@ -737,7 +737,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         while (true) {
             kotlinx.coroutines.delay(10_000)
             if (ambient != null || !dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) continue
-            val rows = runCatching { container.server.homeRows() }.getOrNull() ?: continue
+            val rows = runCatching { container.server.watchingRows(latest = true) }.getOrNull() ?: continue
             val slides = dev.nitrate.core.ambient.Ambient.slides(rows) { container.server.backdropUrl(it) != null }
             // Still nothing pressed while Home's rows were fetched.
             if (slides.isNotEmpty() && dev.nitrate.tv.ui.ambient.TvIdle.visible.value && dev.nitrate.core.ambient.Ambient.due(dev.nitrate.tv.ui.ambient.TvIdle.idleMs(), ambientMinutes, watching)) {

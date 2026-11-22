@@ -56,4 +56,19 @@ class DetailsCacheTest {
             while (cache.read(account, "details/m9", dev.nitrate.android.viewmodel.DetailsState.serializer())?.item?.name != "Fresh title") kotlinx.coroutines.delay(20)
         }
     }
+
+    /** "More like this" off: the server's costly similar-titles search is never asked for. */
+    @Test
+    fun noSimilarSearchWhenMoreLikeThisIsOff() = runBlocking {
+        val fake = FakeServer()
+        var asked = false
+        val server = object : MediaServer by fake {
+            override suspend fun getItem(id: String): MediaItem = MediaItem(id, "Title", ItemKind.MOVIE)
+            override suspend fun similar(itemId: String): List<MediaItem> { asked = true; return emptyList() }
+        }
+        val vm = DetailsViewModel(server, "m9", null, cache = null, wantsSimilar = { false })
+        withTimeout(5_000) { vm.state.first { it.item != null } }
+        kotlinx.coroutines.delay(200)
+        org.junit.Assert.assertFalse(asked)
+    }
 }

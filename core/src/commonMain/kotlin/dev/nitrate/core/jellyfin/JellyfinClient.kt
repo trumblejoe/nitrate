@@ -735,7 +735,7 @@ class JellyfinClient(
             dev.nitrate.core.rows.RowJob("Watching together", dev.nitrate.core.partners.TogetherRow.KEY) {
                 watchingTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.partners.TogetherRow.KEY, dev.nitrate.core.partners.TogetherRow.TITLE, it, WIDE_DEFAULT)) }
             },
-            dev.nitrate.core.rows.RowJob.showing("Latest in each library") { show ->
+            dev.nitrate.core.rows.RowJob.showing(LATEST_JOB) { show ->
                 coroutineScope {
                     // A library's "Latest in…" row the page hides is never asked for.
                     fun wanted(view: MediaItem) = view.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null) &&
@@ -798,6 +798,12 @@ class JellyfinClient(
         dev.nitrate.core.rows.ProgressiveRows.run(homeJobs(skip = skip, combine = combineContinueNextUp), skip)
 
     override suspend fun homeRows(): List<MediaRow> = homeRowsProgress().last().rows
+
+    override suspend fun watchingRows(latest: Boolean): List<MediaRow> {
+        // Only the jobs these rows come from: Continue Watching, Next Up and (when asked) each "Latest in…".
+        val wanted = homeJobs().filter { it.key == "home/continue_watching" || it.key == "home/next_up" || (latest && it.name == LATEST_JOB) }
+        return dev.nitrate.core.rows.ProgressiveRows.run(wanted).last().rows
+    }
 
     /**
      * What "Because you watched" grows from: the few films and episodes finished most recently, asked
@@ -2039,6 +2045,9 @@ class JellyfinClient(
         /** How long "Because you watched" is reused before it's worked out again. */
         /** "Because you watched" is kept a day: it barely changes, and finding it is costly for the server. */
         const val BECAUSE_TTL_MS = 24 * 60 * 60 * 1000L
+
+        /** The job that makes every library's "Latest in…" row on Home. */
+        private const val LATEST_JOB = "Latest in each library"
         /** A home server answers in well under a second; away from home this is what startup waits for it. */
         const val LOCAL_PROBE_TIMEOUT_MS = 1_200L
 

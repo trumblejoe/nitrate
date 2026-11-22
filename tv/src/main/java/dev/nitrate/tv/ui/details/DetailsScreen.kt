@@ -97,8 +97,10 @@ fun DetailsScreen(
     pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
 ) {
     val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
+    // "More like this" off: the server isn't asked for similar titles at all.
+    val similarOn = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.similar
     val vm = viewModel(key = "details-$itemId") {
-        DetailsViewModel(repository, itemId, seasonId, dataCache)
+        DetailsViewModel(repository, itemId, seasonId, dataCache, wantsSimilar = { similarOn })
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val prefs = LocalDisplayPrefs.current

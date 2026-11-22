@@ -116,7 +116,7 @@ private suspend fun load(context: Context, kind: WidgetKind): Shown = withContex
         // Started by the system with the app closed: load the saved sign-in first.
         if (container.server.userId == null) container.server.restoreSession()
         if (container.server.userId == null) return@withContext Shown(emptyList(), "Open Nitrate to sign in")
-        val items = WidgetCards.items(kind, container.server.homeRows())
+        val items = WidgetCards.items(kind, container.server.watchingRows())
         items.map { item ->
             val card = WidgetCards.card(item)
             val picture = container.server.backdropUrl(item, 480)?.let { url -> picture(context, url, File(dir, "${item.id}.png")) }

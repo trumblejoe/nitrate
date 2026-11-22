@@ -164,6 +164,14 @@ interface MediaServer {
             emit(dev.nitrate.core.rows.RowsProgress(listOfNotNull(combined) + rows.filterNot { it.key in skip || it.key == "home/continue_watching" || it.key == "home/next_up" }, complete = true))
         }
 
+    /**
+     * Only what's being watched, for things that read Home's rows in the background (the TV's
+     * screensaver and home-screen channels, the phone's widgets): Continue Watching and Next Up, and
+     * each library's "Latest in…" when [latest]; never the costly ones such as "Because you watched".
+     */
+    suspend fun watchingRows(latest: Boolean = false): List<MediaRow> =
+        homeRows().filter { it.key == "home/continue_watching" || it.key == "home/next_up" || (latest && it.key.startsWith("home/latest/")) }
+
     /** A library's overview rows as each arrives; rows keyed in [skip] (hidden) aren't loaded. */
     fun libraryRowsProgress(library: MediaItem, skip: Set<String> = emptySet()): kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> =
         kotlinx.coroutines.flow.flow { emit(dev.nitrate.core.rows.RowsProgress(libraryRows(library).filterNot { it.key in skip }, complete = true)) }
