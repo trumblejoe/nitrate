@@ -16,6 +16,8 @@ on:
 
 permissions:
   contents: write
+  # Reads Build's results for the commit ("Tested already?").
+  checks: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -131,8 +133,52 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
+      # Build (build.yml) tests every push to main. When its "android" and "companion" jobs passed
+      # for this very commit, their tests aren't run again here; while they're still running this
+      # waits for them (up to 30 minutes). If either failed, nothing is released. With no Build
+      # for the commit (a tag on another branch) or a part it skipped, that part is tested here.
+      - name: Tested already?
+        id: tested
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state() { echo "$runs" | awk -v n="$1" '$1==n {print $2" "$3; exit}'; }
+          for i in $(seq 1 120); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+              -q '.check_runs[] | "\(.name) \(.status) \(.conclusion)"' || true)
+            changes=$(state changes); android=$(state android); companion=$(state companion)
+            # No Build at all for this commit (after a minute's grace for it to appear): test here.
+            if [ -z "$changes" ] && [ "$i" -ge 4 ]; then break; fi
+            waiting=false
+            for s in "$changes" "$android" "$companion"; do
+              case "$s" in queued*|in_progress*|waiting*|pending*) waiting=true ;; esac
+            done
+            # Build decided which parts to test once "changes" finished; those jobs follow it.
+            if [ "$changes" = "completed success" ] && { [ -z "$android" ] || [ -z "$companion" ]; }; then waiting=true; fi
+            if [ -n "$changes" ] && [ "$waiting" = false ]; then break; fi
+            sleep 15
+          done
+          echo "Build's results: changes=[$changes] android=[$android] companion=[$companion]"
+          for part in android companion; do
+            s=$(state $part)
+            case "$s" in
+              "completed success") echo "$part=yes" >> "$GITHUB_OUTPUT" ;;
+              "completed failure"|"completed cancelled"|"completed timed_out")
+                echo "::error::Build's $part tests failed for this commit: not releasing."; exit 1 ;;
+              *) echo "$part=no" >> "$GITHUB_OUTPUT" ;;
+            esac
+          done
+
       - name: Test and build
-        run: ./gradlew test :core:jvmTest assembleRelease --console=plain
+        env:
+          TESTED: ${{ steps.tested.outputs.android }}
+        run: |
+          if [ "$TESTED" = "yes" ]; then
+            echo "Build already tested this commit: building only."
+            ./gradlew assembleRelease --console=plain
+          else
+            ./gradlew test :core:jvmTest assembleRelease --console=plain
+          fi
 
       # The Nitrate Companion server plugin: tested, built for Jellyfin's .NET, zipped with the
       # meta.json Jellyfin reads. Listed in the plugin repository below only when it changed.
@@ -143,11 +189,12 @@ jobs:
         run: |
           companion_version="0.1.0.$GITHUB_RUN_NUMBER"
           echo "COMPANION_VERSION=$companion_version" >> "$GITHUB_ENV"
-          dotnet test companion/Nitrate.Companion.Tests --configuration Release
+          if [ "$TESTED" != "yes" ]; then dotnet test companion/Nitrate.Companion.Tests --configuration Release; fi
           dotnet publish companion/Nitrate.Companion --configuration Release -o companion-out -p:Version=$companion_version
           python3 tools/companion-manifest.py package companion-out "$companion_version" "$COMPANION_ABI" companion.zip
         env:
           COMPANION_ABI: "12.4.0.0"
+          TESTED: ${{ steps.tested.outputs.companion }}
 
       - name: Publish
         env:

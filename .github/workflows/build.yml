@@ -1,12 +1,46 @@
 name: Build
 
+# Tests what a push or pull request changed, and only that:
+#  - "android": the Kotlin apps and core (Gradle tests, the iOS compile check, debug APKs);
+#  - "companion": the Jellyfin server plugin's tests.
+# A change to documentation only runs neither. Release (release.yml) waits for these two jobs on
+# the same commit and skips its own tests when both passed, so a release never tests twice.
+
 on:
   push:
     branches: [main]
   pull_request:
 
 jobs:
-  build:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.which.outputs.android }}
+      companion: ${{ steps.which.outputs.companion }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: What changed
+        id: which
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base="${BASE:-$BEFORE}"
+          # A new branch, a force push or anything unknown: test everything.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+            echo "companion=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$base" "$GITHUB_SHA")
+          echo "$files"
+          python3 tools/changed-parts.py $files >> "$GITHUB_OUTPUT"
+
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,11 +56,6 @@ jobs:
       # these debug APKs leave DTS/TrueHD to the server.
       # KMP core: jvmTest is not part of `test`; the iOS compile catches JVM-only APIs in commonMain.
       - run: ./gradlew test :core:jvmTest :core:compileKotlinIosArm64 assembleDebug --console=plain
-      # The Nitrate Companion server plugin (C#, for Jellyfin's own .NET version).
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-      - run: dotnet test companion/Nitrate.Companion.Tests --configuration Release
       - uses: actions/upload-artifact@v4
         with:
           name: nitrate-tv-debug
@@ -42,3 +71,15 @@ jobs:
           path: |
             mobile/build/outputs/roborazzi/*.png
             tv/build/outputs/roborazzi/*.png
+
+  # The Nitrate Companion server plugin (C#, for Jellyfin's own .NET version).
+  companion:
+    needs: changes
+    if: needs.changes.outputs.companion == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet test companion/Nitrate.Companion.Tests --configuration Release
