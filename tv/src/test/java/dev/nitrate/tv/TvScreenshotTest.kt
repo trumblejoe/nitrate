@@ -1,6 +1,7 @@
 package dev.nitrate.tv
 
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
@@ -1477,8 +1478,8 @@ class TvScreenshotTest {
         press("up")
         compose.onNodeWithText("Search").assertExists()
         press("up", "right")
-        // Ring two by default: Channels up, Your pages right.
-        compose.onNodeWithText("Your pages").assertExists()
+        // Ring two by default: Your pages up, Watch together right.
+        compose.onNodeWithText("Watch together").assertExists()
     }
 
     @Test fun homeFullArtLeft() = fullArt(dev.nitrate.core.pages.TvMenuStyle.LEFT)
@@ -1713,16 +1714,24 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.components.UpdateDialog(dev.nitrate.android.update.UpdateState.Available(release), onUpdate = {}, onLater = {}, onDismiss = {})
     }
 
-    /** Franchises: the user's collections as wide cards. */
-    @Test fun franchises() = shoot("tv-franchises", settleMs = 2_000) { c -> dev.nitrate.tv.ui.franchise.FranchisesScreen(c, onOpen = {}) }
-
-    /** A franchise hub: logo or name, progress, next, the order with crossovers, its titles, in its mood. */
-    @Test fun franchiseHub() {
-        shoot("tv-franchise-hub", settleMs = 2_500) { c ->
-            dev.nitrate.tv.ui.franchise.FranchiseHubScreen(c, "p1", onPlay = {}, onOpen = {})
+    /** A video playlist's page: how much is watched, Continue from where it was left, the entry you're up to marked NEXT. */
+    @Test fun videoPlaylist() {
+        shoot("tv-playlist", settleMs = 2_000) { c ->
+            dev.nitrate.tv.ui.playlist.PlaylistScreen(c.server, c.displaySettings, "p1", onPlayQueue = {}, onOpen = {}, onPlayFrom = { _, _ -> }, playlists = c.playlists)
         }
-        // The hub itself, not an error in its place.
         compose.onAllNodesWithText("Rainy day", substring = true).onFirst().assertExists()
+        compose.onAllNodesWithText("of 6 watched", substring = true).onFirst().assertExists()
+        compose.onAllNodesWithText("NEXT").onFirst().assertExists()
+        compose.onAllNodesWithText("Compact view").assertCountEquals(0)
+    }
+
+    /** Holding OK on an entry: play from here, open it, mark watched up to here or unwatched from here on. */
+    @Test fun videoPlaylistEntryMenu() = shoot("tv-playlist-entry-menu", settleMs = 2_000, act = {
+        compose.onAllNodes(androidx.compose.ui.test.hasText("The Night Reel") and androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)).onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.waitForIdle()
+        compose.onNodeWithText("Mark watched up to here").assertExists()
+    }) { c ->
+        dev.nitrate.tv.ui.playlist.PlaylistScreen(c.server, c.displaySettings, "p1", onPlayQueue = {}, onOpen = {}, onPlayFrom = { _, _ -> }, playlists = c.playlists)
     }
 
     /** The watch diary on TV. */

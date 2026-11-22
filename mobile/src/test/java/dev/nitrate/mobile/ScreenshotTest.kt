@@ -356,12 +356,12 @@ class ScreenshotTest {
     /** The watch diary. */
     @Test fun diary() = shoot("phone-diary") { actions -> dev.nitrate.mobile.ui.DiaryScreen(actions) }
 
-    @Test fun franchises() = shoot("phone-franchises") { actions -> dev.nitrate.mobile.ui.FranchisesScreen(actions) }
-
-    @Test fun franchiseHub() {
-        shoot("phone-franchise-hub") { actions -> dev.nitrate.mobile.ui.FranchiseHubScreen(actions, "p1") }
-        // The hub itself, not an error in its place.
+    /** A video playlist's page: how much is watched, Continue from where it was left, the entry you're up to marked NEXT. */
+    @Test fun videoPlaylist() {
+        shoot("phone-playlist") { actions -> dev.nitrate.mobile.ui.PlaylistScreen(actions, "p1") }
         compose.onAllNodesWithText("Rainy day", substring = true).onFirst().assertExists()
+        compose.onAllNodesWithText("of 6 watched", substring = true).onFirst().assertExists()
+        compose.onAllNodesWithText("NEXT").onFirst().assertExists()
     }
 
     /** Search finds what people say too. */

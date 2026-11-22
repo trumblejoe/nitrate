@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.activity.compose.BackHandler
@@ -115,7 +114,6 @@ object NavIcons {
     val profile = Icons.Filled.AccountCircle
     val channels = Icons.Filled.DateRange
     val comics = Icons.Filled.Star
-    val franchises = Icons.Filled.ThumbUp
     val music = Icons.Filled.PlayArrow
 
     fun library(item: MediaItem): ImageVector = when (item.collection) {
@@ -547,7 +545,6 @@ class MenuActions(
     /** Set when the household's channels are available (Companion plugin and the Channels plugin on). */
     val onChannels: (() -> Unit)? = null,
     val onComics: () -> Unit = {},
-    val onFranchises: () -> Unit = {},
     val onSettings: () -> Unit = {},
     val onProfiles: () -> Unit = {},
     /** Long press on "Switch user": switch straight from the menu. */
@@ -577,7 +574,6 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
         add(NavEntry("Home", NavIcons.home, id = MenuStops.HOME, onClick = actions.onHome))
         libraries.forEach { lib -> add(NavEntry(lib.name, NavIcons.library(lib), id = MenuStops.library(lib.id)) { actions.onLibrary(lib) }) }
         pages.forEach { p -> add(NavEntry(p.title, NavIcons.pages, id = MenuStops.page(p.id)) { actions.onPage(p.id) }) }
-        add(NavEntry("Franchises", NavIcons.franchises, id = MenuStops.FRANCHISES, onClick = actions.onFranchises))
         actions.onChannels?.let { add(NavEntry("Channels", NavIcons.channels, id = MenuStops.CHANNELS, onClick = it)) }
         add(NavEntry("Your pages", NavIcons.pages, id = MenuStops.PAGES, onClick = actions.onPages))
         add(NavEntry("Comics", NavIcons.comics, id = MenuStops.COMICS, onClick = actions.onComics))
@@ -605,7 +601,7 @@ val LocalMenuCatalog = androidx.compose.runtime.staticCompositionLocalOf<MenuCat
  * previews) the page shows alone.
  */
 @Composable
-fun MainMenu(current: String, overlay: Boolean, defaultTheme: dev.nitrate.core.effects.PageTheme? = null, content: @Composable (MenuInsets) -> Unit) {
+fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets) -> Unit) {
     val catalog = LocalMenuCatalog.current ?: return content(MenuInsets())
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val marked = remember(catalog, current) { catalog.current(current) }
@@ -617,7 +613,7 @@ fun MainMenu(current: String, overlay: Boolean, defaultTheme: dev.nitrate.core.e
     val music = listening?.state?.collectAsState()?.value?.active == true
     val stops = marked.stops(prefs).let { s -> if (music && marked.nowPlaying != null) listOf(marked.nowPlaying) + s else s }
     TvMenu(style, stops, marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
-        ThemedPage(pageKey, insets, defaultTheme) { content(insets) }
+        ThemedPage(pageKey, insets) { content(insets) }
     }
 }
 
@@ -630,10 +626,10 @@ fun MainMenu(current: String, overlay: Boolean, defaultTheme: dev.nitrate.core.e
  * directly.
  */
 @Composable
-fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), defaultTheme: dev.nitrate.core.effects.PageTheme? = null, content: @Composable () -> Unit) {
+fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), content: @Composable () -> Unit) {
     // The page's own layout (core PageLooks): everything inside reads it as the display prefs.
     val prefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, pageKey)
-    val theme = pageKey?.let { prefs.pageThemes[it] } ?: defaultTheme
+    val theme = pageKey?.let { prefs.pageThemes[it] }
     val occasion = dev.nitrate.tv.ui.effects.rememberOccasion(prefs.effects)
     val themed = !prefs.easyMode
     val clear = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)

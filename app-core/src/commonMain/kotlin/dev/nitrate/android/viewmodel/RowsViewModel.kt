@@ -278,9 +278,9 @@ private const val LIVE_REFRESH_DEBOUNCE_MS = 2_000L
 fun homeRowsLoader(
     server: MediaServer,
     store: DisplaySettingsStore,
-    playlists: dev.nitrate.android.franchise.PlaylistOrders? = null,
+    playlists: dev.nitrate.android.playlists.PlaylistPlaying? = null,
 ): (Set<String>) -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> = { hidden ->
-    val key = dev.nitrate.android.franchise.PlaylistOrders.ROW_KEY
+    val key = dev.nitrate.android.playlists.PlaylistPlaying.ROW_KEY
     val title = "Continue your playlists"
     kotlinx.coroutines.flow.channelFlow {
         val combine = server.userId?.let { runCatching { store.prefs(it).first().combineContinueNextUp }.getOrNull() } ?: false
