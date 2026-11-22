@@ -97,6 +97,8 @@ fun DetailsScreen(
     pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
     /** Plays from a point (a marked moment). */
     onPlayFrom: (MediaItem, Long) -> Unit = { i, _ -> onPlay(i, false) },
+    /** Opens a franchise hub (a video playlist holding this title). */
+    onFranchise: (String) -> Unit = {},
 ) {
     val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
     // "More like this" off: the server isn't asked for similar titles at all.
@@ -142,7 +144,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack, onPlayFrom)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack, onPlayFrom, onFranchise)
             }
 
             if (item.kind == ItemKind.SERIES && state.seasons.isNotEmpty()) {
@@ -349,6 +351,7 @@ private fun Header(
     trackSetup: (suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup)? = null,
     pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
     onPlayFrom: (MediaItem, Long) -> Unit = { i, _ -> onPlay(i, false) },
+    onFranchise: (String) -> Unit = {},
 ) {
     // Music pages have more buttons in a row.
     val wideHeader = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
@@ -453,6 +456,8 @@ private fun Header(
                 if (editing) dev.nitrate.tv.ui.comics.ComicInfoDialog(repository, item) { editing = false }
             }
         }
+        // Where it sits in the user's franchises (video playlists), with the way into each hub.
+        if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE) FranchisePlaces(item, onFranchise)
         val partners = dev.nitrate.tv.ui.partners.LocalPartnerProgress.current
         partners.groupBy { it.groupId }.values.forEach { group ->
             Text(
@@ -625,5 +630,20 @@ private fun TrackButtons(
             },
             onDismiss = { picking = null },
         )
+    }
+}
+
+
+/** "In Arrowverse · 47 of 712 · after Arrow S3:E7 · before The Flash S1:E9", one per franchise holding [item]; OK opens the hub. */
+@Composable
+private fun FranchisePlaces(item: MediaItem, onFranchise: (String) -> Unit) {
+    val container = dev.nitrate.tv.ui.pages.LocalTvContainer.current ?: return
+    val places by androidx.compose.runtime.produceState(emptyList<dev.nitrate.android.franchise.PlaylistPlace>(), item.id) {
+        value = runCatching { container.playlists.placesOf(item) }.getOrDefault(emptyList())
+    }
+    places.take(3).forEach { p ->
+        androidx.tv.material3.OutlinedButton(onClick = { onFranchise(p.playlist.id) }) {
+            Text("In ${p.playlist.name}  ·  ${p.line}", maxLines = 1)
+        }
     }
 }

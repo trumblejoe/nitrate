@@ -81,6 +81,9 @@ class AppContainer(
     /** Each page's rows as last loaded, so pages open with them while fresh ones load. */
     val dataCache: dev.nitrate.android.storage.DataCache by lazy { dev.nitrate.android.storage.DataCache(platform.cacheDir) }
 
+    /** Video playlists in their own order: where each was left, what plays next, Home's "Continue your playlists". */
+    val playlists: dev.nitrate.android.franchise.PlaylistOrders by lazy { dev.nitrate.android.franchise.PlaylistOrders(server, displaySettings, dataCache, ::nowMs) }
+
     val server: MediaServer = serverOverride ?: JellyfinClient(
         engine = platform.serverEngine(),
         identity = platform.identity,

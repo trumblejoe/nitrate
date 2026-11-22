@@ -60,6 +60,7 @@ import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.tv.ui.components.MediaCard
 import dev.nitrate.tv.ui.effects.PageBackdropSlot
 import dev.nitrate.tv.ui.pages.changePrefs
+import kotlinx.coroutines.launch
 
 private val Gold = Color(0xFFFFC46A)
 
@@ -116,7 +117,8 @@ fun FranchisesScreen(container: AppContainer, onOpen: (String) -> Unit) {
 /**
  * A franchise's own page: its artwork and logo from the server, its theme music, a mood scene
  * (the one chosen for it, else one suggested from its tags), where the user is, what's next, and
- * everything in the chosen order with crossovers marked. OK on an entry plays it; holding OK opens it.
+ * everything in the chosen order with crossovers marked. OK on an entry plays it (the playlist then
+ * carries on from it); holding OK offers opening it and marking everything up to it.
  */
 @Composable
 fun FranchiseHubScreen(container: AppContainer, playlistId: String, onPlay: (MediaItem) -> Unit, onOpen: (MediaItem) -> Unit) {
@@ -124,9 +126,16 @@ fun FranchiseHubScreen(container: AppContainer, playlistId: String, onPlay: (Med
     val prefs = LocalDisplayPrefs.current
     val chosen = prefs.franchiseOrders[playlistId]
     var failed by remember { mutableStateOf<String?>(null) }
-    val hub by produceState<FranchiseHub?>(null, playlistId, chosen) {
-        runCatching { FranchiseHubs.load(server, playlistId, chosen) }.onSuccess { value = it }.onFailure { failed = it.message ?: "Couldn't open it" }
+    var reload by remember { mutableStateOf(0) }
+    var hub by remember(playlistId) { mutableStateOf<FranchiseHub?>(null) }
+    // What it held last time at once, then fresh (a big universe takes a moment).
+    LaunchedEffect(playlistId, chosen, reload) {
+        runCatching { FranchiseHubs.hub(server, container.playlists, playlistId, chosen).collect { hub = it } }
+            .onFailure { if (hub == null) failed = it.message ?: "Couldn't open it" }
     }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // Playing from here: the playlist carries on from it (Up Next, Home, every device).
+    val play: (MediaItem) -> Unit = { item -> scope.launch { container.playlists.markPlace(playlistId, item.id); onPlay(item) } }
     val pageKey = Franchises.pageKey(playlistId)
     val theme = prefs.pageThemes[pageKey] ?: hub?.mood
     // The franchise's theme music, as on a details page.
@@ -146,14 +155,17 @@ fun FranchiseHubScreen(container: AppContainer, playlistId: String, onPlay: (Med
             when {
                 h == null && failed != null -> Text(failed!!, modifier = Modifier.padding(56.dp))
                 h == null -> Text("Opening…", modifier = Modifier.padding(56.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> HubBody(container, h, theme, onPlay, onOpen)
+                else -> HubBody(container, h, theme, play, onOpen, onChanged = { scope.launch { container.playlists.forget(playlistId); reload++ } })
             }
         }
     }
 }
 
 @Composable
-private fun HubBody(container: AppContainer, hub: FranchiseHub, theme: dev.nitrate.core.effects.PageTheme?, onPlay: (MediaItem) -> Unit, onOpen: (MediaItem) -> Unit) {
+private fun HubBody(container: AppContainer, hub: FranchiseHub, theme: dev.nitrate.core.effects.PageTheme?, onPlay: (MediaItem) -> Unit, onOpen: (MediaItem) -> Unit, onChanged: () -> Unit) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var menuFor by remember { mutableStateOf<MediaItem?>(null) }
+    var withSomeone by remember { mutableStateOf(false) }
     val server = container.server
     val playFocus = remember { FocusRequester() }
     var picking by remember { mutableStateOf(false) }
@@ -202,6 +214,7 @@ private fun HubBody(container: AppContainer, hub: FranchiseHub, theme: dev.nitra
                 container.changePrefs { it.copy(franchiseOrders = it.franchiseOrders + (hub.playlist.id to other)) }
             }) { Text("Order: " + hub.order.label) }
             OutlinedButton(onClick = { picking = true }) { Text("Mood: " + (theme?.label ?: "None")) }
+            if (container.companionOffers("partners")) OutlinedButton(onClick = { withSomeone = true }) { Text("Watch with someone") }
             OutlinedButton(onClick = { onOpen(hub.playlist) }) { Text("The playlist") }
         }
         Text(hub.order.detail, style = MaterialTheme.typography.bodySmall, color = Color(0xFFB9B4AA))
@@ -211,11 +224,27 @@ private fun HubBody(container: AppContainer, hub: FranchiseHub, theme: dev.nitra
         val rowState = rememberLazyListState(initialFirstVisibleItemIndex = (nextIndex - 1).coerceAtLeast(0))
         LazyRow(state = rowState, horizontalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(end = 56.dp), modifier = Modifier.padding(top = 4.dp)) {
             itemsIndexed(entries, key = { _, e -> e.item.id }) { i, e ->
-                EntryCard(container, e, i, isNext = i == nextIndex, onPlay = { onPlay(e.item) }, onOpen = { onOpen(e.item) })
+                EntryCard(container, e, i, isNext = i == nextIndex, onPlay = { onPlay(e.item) }, onOpen = { menuFor = e.item })
             }
         }
     }
     LaunchedEffect(hub.playlist.id) { runCatching { playFocus.requestFocus() } }
+    // Holding OK on an entry: what to do with it, and with everything up to it.
+    menuFor?.let { item ->
+        dev.nitrate.tv.ui.lists.TvDialog(onDismiss = { menuFor = null }) {
+            Text(label(item), style = MaterialTheme.typography.headlineSmall)
+            val choices = listOf(
+                "Play from here" to { onPlay(item) },
+                "Open it" to { onOpen(item) },
+                "Mark watched up to here" to { scope.launch { container.playlists.markUpTo(hub.playlist.id, item.id, watched = true); onChanged() }; Unit },
+                "Mark unwatched from here on" to { scope.launch { container.playlists.markUpTo(hub.playlist.id, item.id, watched = false); onChanged() }; Unit },
+            )
+            choices.forEach { (text, act) ->
+                androidx.tv.material3.ListItem(selected = false, onClick = { menuFor = null; act() }, headlineContent = { Text(text) })
+            }
+        }
+    }
+    if (withSomeone) dev.nitrate.tv.ui.partners.WatchWithDialog(container, hub.playlist) { withSomeone = false }
     if (picking) dev.nitrate.tv.ui.effects.PageThemePicker(hub.playlist.name, theme ?: dev.nitrate.core.effects.PageTheme.NONE, onPick = { t ->
         container.changePrefs { it.copy(pageThemes = it.pageThemes + (Franchises.pageKey(hub.playlist.id) to t)) }
         picking = false

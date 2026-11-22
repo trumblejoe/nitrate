@@ -67,6 +67,11 @@ fun PlaylistScreen(
     onContinue: ((playlist: MediaItem, next: MediaItem, rest: List<MediaItem>) -> Unit)? = null,
     /** Marks the playlist in story order, or not. */
     onStoryOrder: ((playlistId: String, on: Boolean) -> Unit)? = null,
+    /**
+     * A video playlist: plays [item] as part of it, so it carries on in the playlist's order (Up Next,
+     * Continue Watching, Home) from where it's left; resuming, not from the top. Null: played as a queue.
+     */
+    onPlayFrom: ((playlist: MediaItem, item: MediaItem) -> Unit)? = null,
 ) {
     val id = remember(playlistId) { playlistId }
     var refresh by remember { mutableStateOf(0) }
@@ -129,14 +134,22 @@ fun PlaylistScreen(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Button(onClick = { onPlayQueue(list) }, enabled = list.isNotEmpty(), modifier = Modifier.focusRequester(playFocus)) {
-                    Text("Play all")
+                // A video playlist plays as itself: from where it was left, carrying on in its order.
+                val video = onPlayFrom != null && list.any { it.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO }
+                val prefsNow = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+                val inOrder = pl.id in prefsNow.recapPlaylists
+                val placeId = prefsNow.playlistPlaces[pl.id]
+                val placeAt = placeId?.let { id -> list.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+                val next = (placeAt?.let { list.drop(it).firstOrNull { e -> !e.user.played } }) ?: list.firstOrNull { !it.user.played }
+                if (video && next != null && (placeAt != null || next != list.first())) {
+                    Button(onClick = { onPlayFrom!!(pl, next) }, modifier = Modifier.focusRequester(playFocus)) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(next)}") }
+                }
+                Button(onClick = { if (video) onPlayFrom!!(pl, list.first()) else onPlayQueue(list) }, enabled = list.isNotEmpty(), modifier = if (video && next != null && (placeAt != null || next != list.first())) Modifier else Modifier.focusRequester(playFocus)) {
+                    Text(if (video) "Play from the start" else "Play all")
                 }
                 OutlinedButton(onClick = { onPlayQueue(list.shuffled()) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
-                // Story order: carry on from the first unwatched item, with a recap after a break.
-                val inOrder = pl.id in dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.recapPlaylists
-                val next = list.firstOrNull { !it.user.played }
-                if (inOrder && next != null && next != list.first() && onContinue != null) {
+                // Story order (not a video playlist played as itself): carry on from the first unwatched, with a recap after a break.
+                if (!video && inOrder && next != null && next != list.first() && onContinue != null) {
                     Button(onClick = { onContinue(pl, next, list.dropWhile { it.id != next.id }) }) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(next)}") }
                 }
                 if (onStoryOrder != null) androidx.tv.material3.FilterChip(inOrder, { onStoryOrder(pl.id, !inOrder) }) { Text("In story order") }
@@ -161,7 +174,13 @@ fun PlaylistScreen(
                         item = item,
                         repository = repository,
                         // Selecting an entry plays from there (or, editing, offers moves); long-press opens its details.
-                        onClick = { if (editing) entryActions = index else onPlayQueue(list.drop(index)) },
+                        onClick = {
+                            when {
+                                editing -> entryActions = index
+                                onPlayFrom != null && item.mediaKind != dev.nitrate.core.model.MediaKind.AUDIO -> onPlayFrom(pl, item)
+                                else -> onPlayQueue(list.drop(index))
+                            }
+                        },
                         onLongClick = { onOpen(item) },
                         modifier = Modifier.onFocusChanged { if (it.hasFocus) focused = item },
                     )

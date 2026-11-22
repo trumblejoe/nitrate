@@ -88,6 +88,7 @@ actual fun PlayerScreen(
     val ended by session.ended.collectAsState()
     var picking by remember { mutableStateOf<StreamKind?>(null) }
     var upNext by remember(itemId) { mutableStateOf<MediaItem?>(null) }
+    var inPlaylist by remember(itemId) { mutableStateOf(false) }
     var upNextHidden by remember(itemId) { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
     var chatting by remember { mutableStateOf(false) }
@@ -126,7 +127,7 @@ actual fun PlayerScreen(
             clipEndMs != null && positionMs >= clipEndMs -> onEnded()
             !ended -> Unit
             sleepAtEnd -> onExit()
-            clipEndMs == null && next != null && next.isEpisode && onPlayNext != null && !upNextHidden -> rollOn(next)
+            clipEndMs == null && next != null && (next.isEpisode || inPlaylist) && onPlayNext != null && !upNextHidden -> rollOn(next)
             else -> onEnded()
         }
     }
@@ -134,6 +135,12 @@ actual fun PlayerScreen(
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
         if (onPlayNext == null) return@LaunchedEffect
+        // Part of a playlist being watched through: its order decides, and it rolls on whatever comes next.
+        if (!local && clipEndMs == null) runCatching { actions.container.playlists.contextOf(current) }.getOrNull()?.let { ctx ->
+            inPlaylist = true
+            upNext = ctx.next
+            return@LaunchedEffect
+        }
         upNext = when {
             current.kind == ItemKind.MOVIE -> runCatching { actions.server.nextInCollection(current) }.getOrNull()
             local -> actions.container.downloads.nextDownloaded(current)
@@ -182,7 +189,7 @@ actual fun PlayerScreen(
         }
 
         val next = upNext
-        val film = next != null && !next.isEpisode
+        val film = next != null && !next.isEpisode && !inPlaylist
         val upNextAt = (if (film) NextInCollection.offerAtMs(durationMs, segments, item?.chapters.orEmpty()) else PlaybackMoments.upNextAtMs(durationMs, segments))
             .let { at -> creditScenes?.upNextAt(at, durationMs) ?: at }
         val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && positionMs >= upNextAt

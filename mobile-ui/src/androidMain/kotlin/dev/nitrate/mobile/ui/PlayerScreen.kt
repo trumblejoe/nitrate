@@ -124,6 +124,8 @@ actual fun PlayerScreen(
     val context = LocalContext.current
     val downloads = actions.container.downloads
     var upNext by remember { mutableStateOf<MediaItem?>(null) }
+    // Watching through a playlist: what follows is the playlist's next, and it rolls on whatever it is.
+    var inPlaylist by remember { mutableStateOf(false) }
     var upNextHidden by remember { mutableStateOf(false) }
     // "Still watching?": asked instead of rolling on when nothing's been pressed for a while.
     val still = actions.container.stillWatching
@@ -141,7 +143,7 @@ actual fun PlayerScreen(
             // "Sleep at the end of this": stop here, not on to the next episode or queue item.
             sleepAtEndRef -> onExit()
             // The next episode rolls on; the next film in a collection waits to be asked for.
-            next != null && onPlayNext != null && !upNextHidden && next.isEpisode -> rollOn(next)
+            next != null && onPlayNext != null && !upNextHidden && (next.isEpisode || inPlaylist) -> rollOn(next)
             else -> onEnded()
         }
     }
@@ -269,7 +271,14 @@ actual fun PlayerScreen(
     // The next episode in viewing order: from the server, or from downloads when offline.
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
+        inPlaylist = false
         if (onPlayNext == null) return@LaunchedEffect
+        // Part of a playlist being watched through (started from it, or carried on to): its order decides.
+        if (!local && clipEndMs == null) runCatching { actions.container.playlists.contextOf(current) }.getOrNull()?.let { ctx ->
+            inPlaylist = true
+            upNext = ctx.next
+            return@LaunchedEffect
+        }
         if (current.kind == dev.nitrate.core.model.ItemKind.MOVIE) {
             // A film in a saga: the next one, offered at the credits.
             if (!local) upNext = runCatching { actions.server.nextInCollection(current) }.getOrNull()
@@ -414,7 +423,7 @@ actual fun PlayerScreen(
         }
 
         val next = upNext
-        val film = next != null && !next.isEpisode
+        val film = next != null && !next.isEpisode && !inPlaylist
         val upNextAt = (if (film) dev.nitrate.core.playback.NextInCollection.offerAtMs(progress.durationMs, segments, item?.chapters.orEmpty())
             else PlaybackMoments.upNextAtMs(progress.durationMs, segments))
             .let { at -> creditScenes?.upNextAt(at, progress.durationMs) ?: at }

@@ -145,6 +145,8 @@ fun PlayerScreen(
      * unreported (like a recap clip), then its trail is handed here before the player leaves.
      */
     testPlay: ((dev.nitrate.core.playback.TestPlayResult) -> Unit)? = null,
+    /** The playlist this title is being watched through, if any, and what follows it there (`PlaylistOrders.contextOf`). */
+    playlistNext: (suspend (MediaItem) -> dev.nitrate.android.franchise.PlaylistContext?)? = null,
     /** Hears skips and jumps back into what was skipped, so wrong intro/recap marks get fixed (Companion). */
     skipWatch: dev.nitrate.core.companion.SkipWatch? = null,
 ) {
@@ -152,6 +154,8 @@ fun PlayerScreen(
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
     val sleepAtEndState = remember { mutableStateOf(false) }
     var upNext by remember { mutableStateOf<MediaItem?>(null) }
+    // Watching through a playlist: what follows is the playlist's next, and it rolls on whatever it is.
+    var inPlaylist by remember { mutableStateOf(false) }
     var upNextHidden by remember { mutableStateOf(false) }
     var stillAsk by remember { mutableStateOf<MediaItem?>(null) }
     val askStill by playbackSettings.settings.map { it.askStillWatching }.collectAsState(true)
@@ -164,7 +168,7 @@ fun PlayerScreen(
         when {
             sleepAtEndState.value -> onExit()
             // The next episode rolls on; the next film in a collection waits to be asked for.
-            next != null && next.isEpisode && !upNextHidden && onPlayNext != null -> rollOn(next)
+            next != null && (next.isEpisode || inPlaylist) && !upNextHidden && onPlayNext != null -> rollOn(next)
             else -> onEnded()
         }
     }
@@ -240,7 +244,15 @@ fun PlayerScreen(
         val current = item ?: return@LaunchedEffect
         upNext = null
         upNextHidden = false
+        inPlaylist = false
         if (onPlayNext == null || clipEndMs != null) return@LaunchedEffect
+        // Part of a playlist being watched through (started from it, or carried on to): its order decides.
+        val inList = playlistNext?.let { runCatching { it(current) }.getOrNull() }
+        if (inList != null) {
+            inPlaylist = true
+            upNext = inList.next
+            return@LaunchedEffect
+        }
         upNext = runCatching {
             when {
                 current.isEpisode -> current.seriesId?.let { dev.nitrate.core.episodes.UpNext.after(current, repository.allEpisodes(it)) }
@@ -401,7 +413,7 @@ fun PlayerScreen(
         )
     }
     val nextUp = upNext
-    val film = nextUp != null && !nextUp.isEpisode
+    val film = nextUp != null && !nextUp.isEpisode && !inPlaylist
     val creditScenes by session.creditScenes.collectAsState()
     val upNextAt = (if (film) dev.nitrate.core.playback.NextInCollection.offerAtMs(duration, segments, item?.chapters.orEmpty())
         else dev.nitrate.core.playback.PlaybackMoments.upNextAtMs(duration, segments))

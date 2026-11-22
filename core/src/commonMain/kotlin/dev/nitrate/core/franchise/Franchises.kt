@@ -49,6 +49,9 @@ object Franchises {
     /** Shows put in a playlist whole: their episodes are fetched to stand in for them. */
     fun wholeShows(items: List<MediaItem>): List<String> = items.filter { it.kind == ItemKind.SERIES }.map { it.id }.distinct()
 
+    /** Seasons put in a playlist whole: their episodes stand in for them too (keyed by season id). */
+    fun wholeSeasons(items: List<MediaItem>): List<MediaItem> = items.filter { it.kind == ItemKind.SEASON }.distinctBy { it.id }
+
     /** The titles in a franchise: its films and the shows its episodes (or whole shows) come from. */
     fun titleIds(items: List<MediaItem>): List<String> = items.mapNotNull { if (it.kind == ItemKind.EPISODE) it.seriesId else it.id }.distinct()
 
@@ -59,7 +62,7 @@ object Franchises {
      */
     fun entries(items: List<MediaItem>, episodes: Map<String, List<MediaItem>>, order: WatchOrder): List<FranchiseEntry> {
         fun watchable(e: MediaItem) = !e.isMissing && (e.seasonNumber ?: 1) > 0
-        val flat = items.flatMap { t -> if (t.kind == ItemKind.SERIES) episodes[t.id].orEmpty().filter(::watchable) else listOf(t) }
+        val flat = items.flatMap { t -> if (t.kind == ItemKind.SERIES || t.kind == ItemKind.SEASON) episodes[t.id].orEmpty().filter(::watchable) else listOf(t) }
             .filter { it.kind == ItemKind.MOVIE || it.kind == ItemKind.EPISODE || it.kind == ItemKind.VIDEO }
             .distinctBy { it.id }
         val sorted: List<MediaItem> = when (order) {
@@ -88,18 +91,33 @@ object Franchises {
      */
     fun crossovers(items: List<MediaItem>): Map<String, Crossover> {
         val episodes = items.filter { it.kind == ItemKind.EPISODE && it.seriesId != null && it.premiereDateMs != null }
-        val byStory = episodes.groupBy { storyName(it.name) }.filterKeys { it.length >= 4 }
         val out = HashMap<String, Crossover>()
-        for ((story, group) in byStory) {
-            for (e in group) {
-                val partners = group.filter { o ->
-                    o.seriesId != e.seriesId && kotlin.math.abs(o.premiereDateMs!! - e.premiereDateMs!!) <= CROSSOVER_DAYS * DAY_MS
-                }.sortedBy { it.premiereDateMs }
-                if (partners.isNotEmpty()) out[e.id] = Crossover(story, partners.distinctBy { it.seriesId })
-            }
+        fun near(a: MediaItem, b: MediaItem) = a.seriesId != b.seriesId && kotlin.math.abs(a.premiereDateMs!! - b.premiereDateMs!!) <= CROSSOVER_DAYS * DAY_MS
+        // The same story name, part by part.
+        val byStory = episodes.groupBy { storyName(it.name) }.filterKeys { it.length >= 4 }
+        for ((story, group) in byStory) for (e in group) {
+            val partners = group.filter { near(it, e) }.sortedBy { it.premiereDateMs }
+            if (partners.isNotEmpty()) out[e.id] = Crossover(story, partners.distinctBy { it.seriesId })
+        }
+        // Different names sharing a telling word, aired days apart ("Legends of Yesterday" / "Legends of Today"),
+        // or both tagged as a crossover.
+        for (e in episodes) {
+            if (e.id in out) continue
+            val words = tellingWords(e.name)
+            val tagged = e.tags.any { it.contains("crossover", ignoreCase = true) }
+            val partners = episodes.filter { o ->
+                near(o, e) && ((words.isNotEmpty() && tellingWords(o.name).any { it in words }) || (tagged && o.tags.any { it.contains("crossover", ignoreCase = true) }))
+            }.sortedBy { it.premiereDateMs }
+            if (partners.isNotEmpty()) out[e.id] = Crossover(storyName(e.name), partners.distinctBy { it.seriesId })
         }
         return out
     }
+
+    /** The words of a name that say what it's about: five letters or more, not the common ones. */
+    fun tellingWords(name: String): Set<String> =
+        Regex("[A-Za-z][A-Za-z'-]{4,}").findAll(name.lowercase()).map { it.value.trim('\'', '-') }.filter { it.length >= 5 && it !in COMMON }.toSet()
+
+    private val COMMON = setOf("there", "their", "about", "after", "before", "where", "which", "other", "these", "those", "under", "again", "never", "every", "first", "second", "third", "would", "could", "should", "still", "while", "night", "world", "things", "being", "pilot", "finale", "chapter", "episode")
 
     /** A story's name from an episode's: "Crisis on Infinite Earths: Part Two" → "crisis on infinite earths". */
     fun storyName(name: String): String {
@@ -152,6 +170,44 @@ object Franchises {
             else -> PageTheme.COSMIC_RIFT
         }
     }
+
+    /**
+     * Where a playlist was left ([placeId], the last thing started from it) and whether [itemId] carries
+     * on from there: it's the place itself or one of the few after it (resumed from Continue Watching,
+     * Up Next, a Home card), or the one just before (gone back). Gives its index, or null.
+     */
+    fun indexNearPlace(entries: List<FranchiseEntry>, placeId: String, itemId: String): Int? {
+        val place = placeIndex(entries, placeId)
+        if (place < 0) return null
+        val at = entries.indexOfFirst { it.item.id == itemId }
+        // Past any already watched since (elsewhere, or marked), then a few more.
+        val watchedAfter = entries.drop(place + 1).indexOfFirst { !it.item.user.played }.let { if (it < 0) entries.size else it }
+        return at.takeIf { it >= 0 && it in (place - 1)..(place + watchedAfter + PLACE_AHEAD) }
+    }
+
+    /** What to carry on with in a playlist left at [placeId]: that one if not finished, else the next unwatched after it. */
+    fun continueFrom(entries: List<FranchiseEntry>, placeId: String): MediaItem? {
+        val place = placeIndex(entries, placeId)
+        if (place < 0) return null
+        return entries.drop(place).firstOrNull { !it.item.user.played }?.item
+    }
+
+    /**
+     * Where [placeId] sits among [entries]: the entry itself, or for a whole show or season started from
+     * the playlist page, its first unwatched episode (else its first). -1 when it isn't there.
+     */
+    fun placeIndex(entries: List<FranchiseEntry>, placeId: String): Int {
+        entries.indexOfFirst { it.item.id == placeId }.takeIf { it >= 0 }?.let { return it }
+        fun inside(e: FranchiseEntry) = e.item.seriesId == placeId || e.item.seasonId == placeId
+        return entries.indexOfFirst { inside(it) && !it.item.user.played }.takeIf { it >= 0 } ?: entries.indexOfFirst(::inside)
+    }
+
+    /** [places] (playlist id → item id, oldest first) with [playlistId] now at [itemId], newest last, at most [max]. */
+    fun place(places: Map<String, String>, playlistId: String, itemId: String, max: Int = MAX_PLACES): Map<String, String> =
+        (places - playlistId + (playlistId to itemId)).entries.toList().takeLast(max).associate { it.key to it.value }
+
+    const val PLACE_AHEAD = 3
+    const val MAX_PLACES = 50
 
     /** The moods offered for a franchise hub (any page theme can be chosen, these first). */
     val MOODS = listOf(PageTheme.COSMIC_RIFT, PageTheme.LIGHTNING_RUN, PageTheme.NIGHT_WATCH, PageTheme.ARENA_DUSK, PageTheme.HIGH_KINGDOM, PageTheme.SPELLBOUND)

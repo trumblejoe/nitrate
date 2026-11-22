@@ -89,3 +89,56 @@ class FranchisesTest {
         assertEquals(PageTheme.ARENA_DUSK, Franchises.suggestedMood(listOf(MediaItem("1", "x", ItemKind.MOVIE, tags = listOf("dystopia")))))
     }
 }
+
+class PlaylistPlacesTest {
+    private val day = 86_400_000L
+    private fun e(id: String, played: Boolean = false, series: String? = null, kind: ItemKind = ItemKind.EPISODE) =
+        FranchiseEntry(MediaItem(id, id, kind, seriesId = series, user = UserState(played = played)))
+
+    private val entries = listOf(e("a", true), e("b", true), e("c"), e("d", true), e("e"), e("f"), e("g"), e("h"), e("i"), e("j"))
+
+    @Test fun carriesOnNearThePlace() {
+        // Left at c: c itself, b (gone back) and a few after count; far ahead doesn't.
+        assertEquals(2, Franchises.indexNearPlace(entries, "c", "c"))
+        assertEquals(1, Franchises.indexNearPlace(entries, "c", "b"))
+        assertEquals(5, Franchises.indexNearPlace(entries, "c", "f"))
+        assertNull(Franchises.indexNearPlace(entries, "c", "j"))
+        assertNull(Franchises.indexNearPlace(entries, "c", "a"))
+        assertNull(Franchises.indexNearPlace(entries, "nope", "c"))
+    }
+
+    @Test fun watchedOnesAfterThePlaceAreSkipped() {
+        val list = listOf(e("a"), e("b", true), e("c", true), e("d", true), e("e", true), e("f"), e("g"))
+        assertEquals("f", Franchises.continueFrom(list, "b")?.id)
+        // f is past four watched ones, still the playlist's.
+        assertEquals(5, Franchises.indexNearPlace(list, "b", "f"))
+    }
+
+    @Test fun wholeShowsAsPlaces() {
+        val list = listOf(e("m", kind = ItemKind.MOVIE), e("s1e1", true, "show"), e("s1e2", series = "show"), e("s1e3", series = "show"))
+        assertEquals(2, Franchises.placeIndex(list, "show"))
+        assertEquals("s1e2", Franchises.continueFrom(list, "show")?.id)
+    }
+
+    @Test fun placesKeepTheNewestLast() {
+        var p = emptyMap<String, String>()
+        p = Franchises.place(p, "x", "1")
+        p = Franchises.place(p, "y", "2")
+        p = Franchises.place(p, "x", "3")
+        assertEquals(listOf("y" to "2", "x" to "3"), p.toList())
+        val many = (1..60).fold(emptyMap<String, String>()) { m, i -> Franchises.place(m, "p$i", "i") }
+        assertEquals(Franchises.MAX_PLACES, many.size)
+        assertEquals("p60", many.keys.last())
+    }
+
+    @Test fun crossoversBySharedWordsAndTags() {
+        val a = MediaItem("a", "Legends of Yesterday", ItemKind.EPISODE, seriesId = "flash", seriesName = "The Flash", seasonNumber = 2, indexNumber = 8, premiereDateMs = 1000 * day)
+        val b = MediaItem("b", "Legends of Today", ItemKind.EPISODE, seriesId = "arrow", seriesName = "Arrow", seasonNumber = 4, indexNumber = 8, premiereDateMs = 1001 * day)
+        val c = MediaItem("c", "Unrelated", ItemKind.EPISODE, seriesId = "arrow", premiereDateMs = 1001 * day)
+        val x = MediaItem("x", "One", ItemKind.EPISODE, seriesId = "s1", premiereDateMs = 2000 * day, tags = listOf("Crossover"))
+        val y = MediaItem("y", "Two", ItemKind.EPISODE, seriesId = "s2", premiereDateMs = 2001 * day, tags = listOf("crossover episode"))
+        val found = Franchises.crossovers(listOf(a, b, c, x, y))
+        assertEquals(setOf("a", "b", "x", "y"), found.keys)
+        assertEquals("Crossover with Arrow S4:E8", found.getValue("a").label)
+    }
+}

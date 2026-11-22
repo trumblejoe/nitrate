@@ -336,6 +336,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 seasonId = route.seasonId,
                 onPlay = { item, fromStart -> gate.play(item, fromStart) },
                 onPlayFrom = { item, at -> gate.play(item, startMs = at) },
+                onFranchise = { id -> nav.navigate(FranchiseHubRoute(id)) },
                 onOpen = nav::openItem,
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
@@ -646,6 +647,13 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     }
                 },
                 onStoryOrder = { id, on -> scope.launch { container.setRecapPlaylist(id, on) } },
+                onPlayFrom = { pl, item ->
+                    scope.launch {
+                        container.playlists.markPlace(pl.id, item.id)
+                        // In story order, a "Last time" recap first when one is due.
+                        if (pl.id in displayPrefs.recapPlaylists && container.recapBefore(item, pl) != null) nav.navigate(RecapRoute) else gate.play(item)
+                    }
+                },
             )
         }
         composable<NowPlayingRoute> {
@@ -688,6 +696,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 syncPlay = container.syncPlay.takeIf { !route.test },
                 stillWatching = container.stillWatching,
                 skipWatch = container.skipWatch,
+                playlistNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { item -> container.playlists.contextOf(item) } else null,
                 stillWatchingRewind = container::stillWatchingRewind,
                 sendLog = { session -> container.sendPlaybackReport(session) },
                 capabilities = container.capabilities,

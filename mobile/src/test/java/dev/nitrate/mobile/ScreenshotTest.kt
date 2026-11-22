@@ -2,6 +2,7 @@ package dev.nitrate.mobile
 
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -649,7 +650,7 @@ class ScreenshotTest {
     @Test fun longPressCopiesThePlot() {
         shoot("phone-movie-copy") { DetailsScreen(it, "m2", null) }
         val plot = "A projectionist discovers a reel that shouldn't exist."
-        compose.onNodeWithText(plot).performTouchInput { longClick() }
+        compose.onNodeWithText(plot).performScrollTo().performTouchInput { longClick() }
         compose.waitForIdle()
         val clip = compose.activity.getSystemService(android.content.ClipboardManager::class.java).primaryClip
         org.junit.Assert.assertEquals(plot, clip?.getItemAt(0)?.text?.toString())

@@ -133,8 +133,8 @@ private fun FranchiseTitle(logo: String?, name: String, modifier: Modifier, smal
 
 /**
  * A franchise's page: its own artwork and theme music, where you are, what's next, and everything in
- * the chosen order (the playlist's own, as it aired, or release), crossovers marked. Tap plays;
- * a long press opens the title.
+ * the chosen order (the playlist's own, as it aired, or release), crossovers marked. Tap plays (the
+ * playlist then carries on from it); a long press offers opening it and marking everything up to it.
  */
 @Composable
 fun FranchiseHubScreen(actions: AppActions, playlistId: String) {
@@ -144,9 +144,17 @@ fun FranchiseHubScreen(actions: AppActions, playlistId: String) {
     val scope = rememberCoroutineScope()
     val chosen = prefs.franchiseOrders[playlistId]
     var failed by remember { mutableStateOf<String?>(null) }
-    val hub by produceState<FranchiseHub?>(null, playlistId, chosen) {
-        runCatching { FranchiseHubs.load(server, playlistId, chosen) }.onSuccess { value = it }.onFailure { failed = it.message ?: "Couldn't open it" }
+    var reload by remember { mutableStateOf(0) }
+    var hub by remember(playlistId) { mutableStateOf<FranchiseHub?>(null) }
+    // What it held last time at once, then fresh.
+    androidx.compose.runtime.LaunchedEffect(playlistId, chosen, reload) {
+        runCatching { FranchiseHubs.hub(server, container.playlists, playlistId, chosen).collect { hub = it } }
+            .onFailure { if (hub == null) failed = it.message ?: "Couldn't open it" }
     }
+    // Playing from here: the playlist carries on from it (Up Next, Home, every device).
+    val play: (MediaItem) -> Unit = { item -> scope.launch { container.playlists.markPlace(playlistId, item.id); actions.play(item, false) } }
+    var menuFor by remember { mutableStateOf<MediaItem?>(null) }
+    var withSomeone by remember { mutableStateOf(false) }
     val music = hub?.themeMusicFrom
     val themeOn = prefs.themeMusic ?: false
     DisposableEffect(music, themeOn) {
@@ -198,26 +206,48 @@ fun FranchiseHubScreen(actions: AppActions, playlistId: String) {
                         h.progress.watched == 0 -> "Start: " + label(next)
                         else -> "Next: " + label(next)
                     },
-                    null, primary = true, onClick = { next?.let { actions.play(it, false) } },
+                    null, primary = true, onClick = { next?.let(play) },
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     WatchOrder.entries.forEach { o -> FilterChip(h.order == o, { setOrder(o) }, label = { Text(o.label) }) }
                 }
                 Text(h.order.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (container.companionOffers("partners")) androidx.compose.material3.TextButton(onClick = { withSomeone = true }) { Text("Watch with someone") }
             }
         }
         item { SectionHeader("In order", Modifier.padding(top = 8.dp)) }
-        itemsIndexed(h.entries, key = { _, e -> e.item.id }) { i, e -> EntryLine(actions, e, i, i == nextIndex) }
+        itemsIndexed(h.entries, key = { _, e -> e.item.id }) { i, e -> EntryLine(actions, e, i, i == nextIndex, onPlay = { play(e.item) }, onMenu = { menuFor = e.item }) }
         item { Spacer(Modifier.padding(bottom = NavBarClearance)) }
     }
+    // A long press on an entry: what to do with it, and with everything up to it.
+    menuFor?.let { item ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { menuFor = null },
+            title = { Text(label(item)) },
+            text = {
+                Column {
+                    listOf(
+                        "Play from here" to { play(item) },
+                        "Open it" to { actions.open(item) },
+                        "Mark watched up to here" to { scope.launch { container.playlists.markUpTo(playlistId, item.id, watched = true); container.playlists.forget(playlistId); reload++ }; Unit },
+                        "Mark unwatched from here on" to { scope.launch { container.playlists.markUpTo(playlistId, item.id, watched = false); container.playlists.forget(playlistId); reload++ }; Unit },
+                    ).forEach { (text, act) ->
+                        Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.fillMaxWidth().pressable({ menuFor = null; act() }).padding(vertical = 12.dp))
+                    }
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { menuFor = null }) { Text("Close") } },
+        )
+    }
+    if (withSomeone) WatchWithDialog(actions, h.playlist) { withSomeone = false }
 }
 
 @Composable
-private fun EntryLine(actions: AppActions, e: FranchiseEntry, index: Int, isNext: Boolean) {
+private fun EntryLine(actions: AppActions, e: FranchiseEntry, index: Int, isNext: Boolean, onPlay: () -> Unit, onMenu: () -> Unit) {
     val item = e.item
     val server = actions.server
     Row(
-        Modifier.fillMaxWidth().pressable({ actions.play(item, false) }, onLongClick = { actions.open(item) })
+        Modifier.fillMaxWidth().pressable(onPlay, onLongClick = onMenu)
             .background(if (isNext) Gold.copy(alpha = 0.10f) else Color.Transparent).padding(horizontal = ScreenPadding, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -241,3 +271,21 @@ private fun EntryLine(actions: AppActions, e: FranchiseEntry, index: Int, isNext
 
 /** "Arrow S3:E9", or a film's name. */
 private fun label(item: MediaItem): String = Franchises.code(item)?.let { "${item.seriesName ?: ""} $it".trim() } ?: item.name
+
+
+/** "In Arrowverse · 47 of 712 · after Arrow S3:E7 · before The Flash S1:E9", one per franchise holding [item]; a tap opens the hub. */
+@Composable
+internal fun FranchisePlaces(actions: AppActions, item: MediaItem) {
+    val places by produceState(emptyList<dev.nitrate.android.franchise.PlaylistPlace>(), item.id) {
+        value = runCatching { actions.container.playlists.placesOf(item) }.getOrDefault(emptyList())
+    }
+    places.take(3).forEach { p ->
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Gold.copy(alpha = 0.10f))
+                .pressable({ actions.nav.navigate(FranchiseHubRoute(p.playlist.id)) }).padding(12.dp),
+        ) {
+            Text("In ${p.playlist.name}", style = MaterialTheme.typography.titleSmall, color = Gold)
+            Text(p.line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}

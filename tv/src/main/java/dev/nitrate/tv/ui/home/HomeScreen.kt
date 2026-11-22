@@ -60,7 +60,8 @@ fun HomeScreen(
     /** Rows as last loaded, shown at once while fresh ones load. */
     dataCache: dev.nitrate.android.storage.DataCache? = null,
 ) {
-    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = dataCache, loadProgressSkipping = dev.nitrate.android.viewmodel.homeRowsLoader(repository, displaySettings)) }
+    val playlistOrders = dev.nitrate.tv.ui.pages.LocalTvContainer.current?.playlists
+    val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = dataCache, loadProgressSkipping = dev.nitrate.android.viewmodel.homeRowsLoader(repository, displaySettings, playlistOrders)) }
     val state by vm.state.collectAsStateWithLifecycle()
     // Continue Watching and Next Up as one row or two: the page is loaded again when that changes.
     val combineRows = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.combineContinueNextUp

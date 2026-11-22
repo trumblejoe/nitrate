@@ -1,5 +1,8 @@
 package dev.nitrate.android.viewmodel
 
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.launch
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.nitrate.android.storage.DisplaySettingsStore
@@ -268,11 +271,44 @@ private const val LIVE_REFRESH_DEBOUNCE_MS = 2_000L
 
 /**
  * Home's rows for [RowsViewModel] (`loadProgressSkipping`): the page's hidden rows left out, and
- * Continue Watching with Next Up as one row when the user's display settings say so.
+ * Continue Watching with Next Up as one row when the user's display settings say so. With [playlists],
+ * "Continue your playlists" (where each video playlist was left) joins them after Next Up, made side by
+ * side with the rest and never holding them up.
  */
-fun homeRowsLoader(server: MediaServer, store: DisplaySettingsStore): (Set<String>) -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> = { hidden ->
-    kotlinx.coroutines.flow.flow {
+fun homeRowsLoader(
+    server: MediaServer,
+    store: DisplaySettingsStore,
+    playlists: dev.nitrate.android.franchise.PlaylistOrders? = null,
+): (Set<String>) -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress> = { hidden ->
+    val key = dev.nitrate.android.franchise.PlaylistOrders.ROW_KEY
+    val title = "Continue your playlists"
+    kotlinx.coroutines.flow.channelFlow {
         val combine = server.userId?.let { runCatching { store.prefs(it).first().combineContinueNextUp }.getOrNull() } ?: false
-        emitAll(server.homeRowsProgress(hidden, combine))
+        val lock = kotlinx.coroutines.sync.Mutex()
+        var latest: dev.nitrate.core.rows.RowsProgress? = null
+        var extra: MediaRow? = null
+        var extraDone = playlists == null || key in hidden
+        suspend fun emitMerged() {
+            val p = latest ?: return
+            val rows = extra?.let { HomePlaylistsRow.insert(p.rows, it) } ?: p.rows
+            send(p.copy(rows = rows, complete = p.complete && extraDone, skipped = if (key in hidden) p.skipped + (key to title) else p.skipped))
+        }
+        val job = if (!extraDone) launch {
+            val row = dev.nitrate.core.diagnostics.withQueryOrigin("Home › $title") { runCatching { playlists!!.continueRow() }.getOrNull() }
+            lock.withLock { extra = row; extraDone = true; emitMerged() }
+        } else null
+        server.homeRowsProgress(hidden, combine).collect { p -> lock.withLock { latest = p; emitMerged() } }
+        job?.join()
+    }
+}
+
+/** Where Home's "Continue your playlists" goes: after Next Up (or the combined row, else Continue Watching), else first. */
+object HomePlaylistsRow {
+    private val AFTER = listOf("home/next_up", "home/continue_and_next", "home/continue_watching")
+
+    fun insert(rows: List<MediaRow>, row: MediaRow): List<MediaRow> {
+        val without = rows.filter { it.key != row.key }
+        val at = AFTER.firstNotNullOfOrNull { k -> without.indexOfFirst { it.key == k }.takeIf { it >= 0 } }
+        return if (at == null) listOf(row) + without else without.take(at + 1) + row + without.drop(at + 1)
     }
 }

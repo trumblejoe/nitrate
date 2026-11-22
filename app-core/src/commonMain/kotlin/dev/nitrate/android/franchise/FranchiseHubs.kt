@@ -8,9 +8,8 @@ import dev.nitrate.core.franchise.Franchises
 import dev.nitrate.core.franchise.WatchOrder
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /** A franchise hub, ready to show: the playlist, everything in the chosen order and where the user is. */
 data class FranchiseHub(
@@ -27,40 +26,46 @@ data class FranchiseHub(
     /** A picture for the whole franchise: the playlist's backdrop, else its first title's. */
     val backdrop: String?,
     val logo: String?,
+    /** Shown from what this device kept last time; the fresh one follows. */
+    val fromCache: Boolean = false,
 )
 
-/** Builds franchise hubs from the user's video playlists, whole shows' episodes fetched side by side. */
+/** Builds franchise hubs from the user's video playlists through [PlaylistOrders]. */
 object FranchiseHubs {
     /** The user's video playlists, as possible hubs. */
     suspend fun list(server: MediaServer): List<MediaItem> = dev.nitrate.core.diagnostics.withQueryOrigin("Franchises") { Franchises.candidates(server.playlists()) }
 
-    suspend fun load(server: MediaServer, playlistId: String, chosen: WatchOrder?): FranchiseHub = dev.nitrate.core.diagnostics.withQueryOrigin("Franchise hub") {
-        coroutineScope {
-            val playlist = async { server.getItem(playlistId) }
-            val items = server.playlistItems(playlistId)
-            val episodes = Franchises.wholeShows(items)
-                .map { id -> async { id to runCatching { server.allEpisodes(id) }.getOrDefault(emptyList()) } }
-                .awaitAll().toMap()
+    /** The hub: at once from what was kept last time (when there is some), then fresh. */
+    fun hub(server: MediaServer, orders: PlaylistOrders, playlistId: String, chosen: WatchOrder?): Flow<FranchiseHub> = flow {
+        dev.nitrate.core.diagnostics.withQueryOrigin("Franchise hub") {
             val order = chosen ?: WatchOrder.PLAYLIST
-            val entries = Franchises.entries(items, episodes, order)
-            val p = playlist.await()
-            val flat = entries.map { it.item }
-            val titleIds = Franchises.titleIds(items)
+            val kept = orders.cached(playlistId, order)
+            val keptPlaylist = orders.keptPlaylist(playlistId)
+            if (kept != null && kept.isNotEmpty() && keptPlaylist != null) emit(build(server, keptPlaylist, order, kept, null, fromCache = true))
+            val playlist = server.getItem(playlistId).also { orders.keepPlaylist(it) }
+            val entries = orders.entries(playlistId, order, fresherThanMs = 0)
+            val titleIds = entries.map { it.item.seriesId ?: it.item.id }.distinct()
             val music = runCatching {
-                if (server.themeSongs(p.id).isNotEmpty()) p.id else titleIds.take(4).firstOrNull { server.themeSongs(it).isNotEmpty() }
+                if (server.themeSongs(playlist.id).isNotEmpty()) playlist.id else titleIds.take(4).firstOrNull { server.themeSongs(it).isNotEmpty() }
             }.getOrNull()
-            FranchiseHub(
-                playlist = p,
-                order = order,
-                entries = entries,
-                progress = Franchises.progress(entries),
-                films = flat.count { it.kind == ItemKind.MOVIE },
-                shows = flat.mapNotNull { it.seriesId }.distinct().size,
-                mood = Franchises.suggestedMood(items),
-                themeMusicFrom = music,
-                backdrop = server.backdropUrl(p, 1920) ?: flat.firstNotNullOfOrNull { server.backdropUrl(it, 1920) },
-                logo = server.logoUrl(p),
-            )
+            emit(build(server, playlist, order, entries, music, fromCache = false))
         }
+    }
+
+    private fun build(server: MediaServer, playlist: MediaItem, order: WatchOrder, entries: List<FranchiseEntry>, music: String?, fromCache: Boolean): FranchiseHub {
+        val flat = entries.map { it.item }
+        return FranchiseHub(
+            playlist = playlist,
+            order = order,
+            entries = entries,
+            progress = Franchises.progress(entries),
+            films = flat.count { it.kind == ItemKind.MOVIE },
+            shows = flat.mapNotNull { it.seriesId }.distinct().size,
+            mood = Franchises.suggestedMood(flat),
+            themeMusicFrom = music,
+            backdrop = server.backdropUrl(playlist, 1920) ?: flat.firstNotNullOfOrNull { server.backdropUrl(it, 1920) },
+            logo = server.logoUrl(playlist),
+            fromCache = fromCache,
+        )
     }
 }

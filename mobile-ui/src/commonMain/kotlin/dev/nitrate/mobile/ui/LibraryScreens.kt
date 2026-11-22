@@ -226,6 +226,18 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
             Loading(Modifier.padding(padding))
             return@BackScaffold
         }
+        // A video playlist plays as itself: from where it was left, carrying on in its order
+        // (Up Next, Continue Watching, Home) and resuming rather than starting over.
+        val video = list.any { it.mediaKind != MediaKind.AUDIO }
+        val storyOrder = playlistId in LocalDisplayPrefs.current.recapPlaylists
+        fun playFrom(item: MediaItem) {
+            scope.launch {
+                actions.container.playlists.markPlace(playlistId, item.id)
+                val pl = playlist
+                if (storyOrder && pl != null && actions.container.recapBefore(item, pl) != null) actions.nav.navigate(RecapRoute)
+                else actions.play(item, false)
+            }
+        }
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -235,9 +247,9 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                             OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
                             OutlinedButton(onClick = { deleting = true }) { Text("Delete playlist", color = MaterialTheme.colorScheme.error) }
                         } else {
-                            Button(onClick = { actions.playItems(list) }, enabled = list.isNotEmpty()) {
+                            Button(onClick = { if (video) playFrom(list.first()) else actions.playItems(list) }, enabled = list.isNotEmpty()) {
                                 Icon(Icons.Default.PlayArrow, null)
-                                Text("Play all")
+                                Text(if (video) "Play from the start" else "Play all")
                             }
                             OutlinedButton(onClick = { actions.playItems(list, shuffle = true) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
                             if (list.isNotEmpty() && list.all { it.kind == ItemKind.AUDIO }) MusicDownloadButton(actions, list, "playlist")
@@ -252,9 +264,11 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                             inOrder, { scope.launch { actions.container.setRecapPlaylist(playlist!!.id, !inOrder) } },
                             label = { Text("In story order: recap when I come back") },
                         )
-                        val next = list.firstOrNull { !it.user.played }
-                        if (inOrder && next != null && next != list.first()) Button(onClick = {
-                            scope.launch {
+                        // A video playlist carries on from where it was left (on any device), else from its first unwatched.
+                        val placeAt = prefs.playlistPlaces[playlist!!.id]?.let { id -> list.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+                        val next = placeAt?.let { list.drop(it).firstOrNull { e -> !e.user.played } } ?: list.firstOrNull { !it.user.played }
+                        if (next != null && (placeAt != null || next != list.first()) && (video || inOrder)) Button(onClick = {
+                            if (video) playFrom(next) else scope.launch {
                                 val recap = actions.container.recapBefore(next, playlist)
                                 if (recap != null) actions.nav.navigate(RecapRoute)
                                 else actions.playQueue(list.dropWhile { it.id != next.id }.map { it.id })
@@ -268,7 +282,7 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                 val thumb = if (audio) server.imageUrl(item, ImageKind.PRIMARY, 120) else server.cardImage(item, CardShape.WIDE, 160)
                 val entry = item.playlistEntryId
                 ListItem(
-                    modifier = Modifier.clickable(enabled = !editing) { actions.playQueue(list.drop(index).map { it.id }) },
+                    modifier = Modifier.clickable(enabled = !editing) { if (!audio && video) playFrom(item) else actions.playQueue(list.drop(index).map { it.id }) },
                     leadingContent = {
                         Box(Modifier.height(48.dp).aspectRatio(if (audio) 1f else 16f / 9f).clip(RoundedCornerShape(6.dp))) {
                             if (thumb != null) AsyncImage(thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
