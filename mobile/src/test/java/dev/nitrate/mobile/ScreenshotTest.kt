@@ -1,5 +1,6 @@
 package dev.nitrate.mobile
 
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.test.performClick
@@ -408,7 +409,12 @@ class ScreenshotTest {
             chapters = listOf("Prologue", "The Booth", "Changeover", "House Lights").mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 1_800_000L, n) },
         )
         val player = dev.nitrate.testing.FakeListening(dev.nitrate.core.music.ListenState(listOf(book), 0, playing = true, durationMs = 9_000_000, speed = 1.25f), position = 2_400_000)
-        shoot("phone-now-playing-book") { actions -> dev.nitrate.mobile.ui.NowPlayingScreen(actions, onBack = {}, player = player) }
+        val marks = dev.nitrate.testing.FakeBookmarks(mapOf("ab1" to listOf(dev.nitrate.core.music.Bookmark("m1", 4_300_000, "The projectionist's confession"))))
+        shoot("phone-now-playing-book") { actions -> dev.nitrate.mobile.ui.NowPlayingScreen(actions, onBack = {}, player = player, bookmarkStore = marks) }
+        // One tap marks where it's playing.
+        compose.onNodeWithText("Bookmark").performClick()
+        compose.waitForIdle()
+        check(marks.all.value["ab1"]!!.map { it.positionMs } == listOf(2_400_000L, 4_300_000L)) { marks.all.value.toString() }
         compose.onNodeWithText("+30 s").performClick()
         compose.onNode(androidx.compose.ui.test.hasScrollAction()).performScrollToNode(androidx.compose.ui.test.hasText("Changeover"))
         compose.onNodeWithText("Changeover").performClick()

@@ -293,7 +293,15 @@ fun DownloadAction(actions: AppActions, item: MediaItem) {
         DownloadState.FAILED -> "Failed"
         else -> "Queued"
     }
-    RoundAction(NitrateIcons.Download, label, onClick = { if (record == null) picking = true else confirmRemove = true }, active = record?.state == DownloadState.COMPLETED) {
+    // Sound (an audiobook, a song) is kept as it is: no quality or tracks to choose.
+    val sound = item.kind == dev.nitrate.core.model.ItemKind.AUDIOBOOK || item.kind == dev.nitrate.core.model.ItemKind.AUDIO
+    RoundAction(NitrateIcons.Download, label, onClick = {
+        when {
+            record != null -> confirmRemove = true
+            sound -> scope.launch { downloads.enqueue(listOf(item), dev.nitrate.core.downloads.DownloadQuality.ORIGINAL, hevc = false) }
+            else -> picking = true
+        }
+    }, active = record?.state == DownloadState.COMPLETED) {
         when (record?.state) {
             DownloadState.COMPLETED -> Icon(NitrateIcons.DownloadDone, label, tint = accent)
             DownloadState.DOWNLOADING -> {

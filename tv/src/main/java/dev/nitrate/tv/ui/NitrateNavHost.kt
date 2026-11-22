@@ -630,7 +630,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<NowPlayingRoute> {
             val listening = container.listening
             if (listening == null) LaunchedEffect(Unit) { nav.popBackStack() }
-            else dev.nitrate.tv.ui.music.NowPlayingScreen(listening, container.server, onBack = { nav.popBackStack() })
+            else dev.nitrate.tv.ui.music.NowPlayingScreen(listening, container.server, onBack = { nav.popBackStack() }, bookmarkStore = container.bookmarks)
         }
         composable<PlayerRoute> { entry ->
             LaunchedEffect(Unit) {

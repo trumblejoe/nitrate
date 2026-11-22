@@ -317,6 +317,22 @@ class DownloadManagerTest {
     }
 
     @Test
+    fun `an audiobook keeps its place early on and is read only at its very end`() = runBlocking {
+        signIn()
+        manager.enqueue(listOf(movie.copy(kind = dev.nitrate.core.model.ItemKind.AUDIOBOOK)), DownloadQuality.ORIGINAL, hevc = false)
+        val tenHours = 36_000_000L
+        // Twenty minutes into ten hours (under 5%): still kept, unlike a film.
+        manager.recordPlayback(ITEM_ID, positionMs = 1_200_000, durationMs = tenHours, ended = false)
+        assertEquals(1_200_000, record().item.user.positionMs)
+        // Nine and a half hours in (95%): not finished yet.
+        manager.recordPlayback(ITEM_ID, positionMs = 34_200_000, durationMs = tenHours, ended = false)
+        assertFalse(record().item.user.played)
+        assertEquals(34_200_000, record().item.user.positionMs)
+        manager.recordPlayback(ITEM_ID, positionMs = tenHours - 60_000, durationMs = tenHours, ended = false)
+        assertTrue(record().item.user.played)
+    }
+
+    @Test
     fun `sizes and which presets are worth offering`() {
         val source = MediaSource("s", "mkv", 10_000_000, listOf(MediaStream(0, StreamKind.VIDEO, width = 1280, height = 720)), size = 4_500_000_000)
         val options = DownloadSizing.options(source, runtimeMs = 3_600_000, hevc = false).associateBy { it.quality }

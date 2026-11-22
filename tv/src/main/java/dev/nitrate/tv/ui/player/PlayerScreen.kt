@@ -431,6 +431,16 @@ fun PlayerScreen(
     }
     BackHandler { goBack() }
 
+    // Home while playing: on in a corner window (not for recap clips or test plays).
+    val inPip by rememberTvPictureInPicture(player, settingsNow.pictureInPicture && clipEndMs == null)
+    // Out of sight (Home without the small window, or the small window closed): pause, never play on unseen.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle, player) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event -> if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) player.pause() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
     Row(
         Modifier
             .fillMaxSize()
@@ -517,6 +527,8 @@ fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+        // In the small window: just the picture, no controls or pop-ups.
+        if (inPip) return@Box
 
         lyrics?.takeIf { showLyrics }?.let { LyricsView(it, position, Modifier.align(Alignment.CenterEnd)) }
 

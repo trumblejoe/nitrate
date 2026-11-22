@@ -490,6 +490,7 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 item { Toggle("Hide spoilers", "Blur stills and hold back descriptions of episodes and films you haven't seen", prefs.hideSpoilers) { update { it.copy(hideSpoilers = !it.hideSpoilers) } } }
                 item { Heading("This TV", dev.nitrate.core.settings.SettingScope.DEVICE) }
                 item { StillWatchingToggle(container) }
+                item { PictureInPictureToggle(container) }
             }
         }
     }
@@ -507,6 +508,20 @@ private fun StillWatchingToggle(container: AppContainer) {
         headlineContent = { Text("Ask \"Still watching?\"") },
         supportingContent = { Text("After two episodes play on by themselves with nothing pressed, stop and ask. No answer: go back to where you last pressed something") },
         trailingContent = { Switch(checked = settings.askStillWatching, onCheckedChange = null) },
+    )
+}
+
+/** Home while a video plays keeps it in a corner window: a playback setting, this TV only. */
+@Composable
+private fun PictureInPictureToggle(container: AppContainer) {
+    val scope = rememberCoroutineScope()
+    val settings by container.playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
+    ListItem(
+        selected = false,
+        onClick = { scope.launch { container.playbackSettings.update { it.copy(pictureInPicture = !it.pictureInPicture) } } },
+        headlineContent = { Text("Picture-in-picture") },
+        supportingContent = { Text("Pressing Home while a video plays keeps it going in a corner over the home screen or another app. Choose it to come back full screen") },
+        trailingContent = { Switch(checked = settings.pictureInPicture, onCheckedChange = null) },
     )
 }
 

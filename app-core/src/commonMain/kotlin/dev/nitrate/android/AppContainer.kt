@@ -57,6 +57,9 @@ class AppContainer(
 
     val playbackSettings = PlaybackSettingsStore(platform.stores.playback)
 
+    /** Audiobook bookmarks, synced with the user's display settings (the same on every device). */
+    val bookmarks: dev.nitrate.core.music.BookmarkStore by lazy { displaySettings.bookmarks { server.userId } }
+
     /** The listening player (music): lives as long as the app, so browsing never stops it. */
     val listening: dev.nitrate.core.music.Listening? by lazy {
         platform.listening(server, playbackSettings, object : dev.nitrate.core.music.ListenDownloads {

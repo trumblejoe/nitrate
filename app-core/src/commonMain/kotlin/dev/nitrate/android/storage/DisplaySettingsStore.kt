@@ -267,6 +267,18 @@ class DisplaySettingsStore(
         }
     }
 
+    /** Audiobook bookmarks for [userId], the same on every device. */
+    fun bookmarks(userId: () -> String?): dev.nitrate.core.music.BookmarkStore = object : dev.nitrate.core.music.BookmarkStore {
+        override fun bookmarks(itemId: String): Flow<List<dev.nitrate.core.music.Bookmark>> =
+            userId()?.let { stored<List<dev.nitrate.core.music.Bookmark>>(it, DisplayProfiles.BOOKMARKS + itemId, emptyList()) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+
+        override suspend fun save(itemId: String, bookmarks: List<dev.nitrate.core.music.Bookmark>) {
+            val user = userId() ?: return
+            if (bookmarks.isEmpty()) removeRaw(user, DisplayProfiles.BOOKMARKS + itemId)
+            else saveRaw(user, DisplayProfiles.BOOKMARKS + itemId, json.encodeToString(bookmarks))
+        }
+    }
+
     @PublishedApi
     internal suspend fun removeRaw(userId: String, name: String) {
         var changed = false

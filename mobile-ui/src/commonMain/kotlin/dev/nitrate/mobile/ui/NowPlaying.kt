@@ -103,7 +103,10 @@ fun MiniPlayer(actions: AppActions, modifier: Modifier = Modifier, onShown: (Boo
 
 /** Now Playing: the cover large, the song, a seek bar, the controls, then the queue or the lyrics. */
 @Composable
-fun NowPlayingScreen(actions: AppActions, onBack: () -> Unit, player: Listening? = actions.container.listening) {
+fun NowPlayingScreen(
+    actions: AppActions, onBack: () -> Unit, player: Listening? = actions.container.listening,
+    bookmarkStore: dev.nitrate.core.music.BookmarkStore = actions.container.bookmarks,
+) {
     val listening = player ?: return onBack()
     val state by listening.state.collectAsState()
     val song = state.current
@@ -116,6 +119,21 @@ fun NowPlayingScreen(actions: AppActions, onBack: () -> Unit, player: Listening?
     val lyrics by produceState<dev.nitrate.core.music.Lyrics?>(null, song.id) { value = runCatching { actions.server.lyrics(song.id) }.getOrNull() }
     var dragging by remember { mutableStateOf<Float?>(null) }
     val book = dev.nitrate.core.music.Audiobooks.isBook(song)
+    // A book's bookmarks (synced, the same on every device), and the one whose note is being written.
+    val marks by remember(song.id) { bookmarkStore.bookmarks(song.id) }.collectAsState(emptyList())
+    var noting by remember { mutableStateOf<dev.nitrate.core.music.Bookmark?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun saveMarks(list: List<dev.nitrate.core.music.Bookmark>) { scope.launch { bookmarkStore.save(song.id, list) } }
+    noting?.let { mark ->
+        var note by remember(mark.id) { mutableStateOf(mark.note) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { noting = null },
+            title = { Text("Bookmark at ${dev.nitrate.core.music.Bookmarks.place(mark, song.chapters)}") },
+            text = { androidx.compose.material3.OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = { TextButton(onClick = { saveMarks(dev.nitrate.core.music.Bookmarks.edit(marks, mark.id, note)); noting = null }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { noting = null }) { Text("Skip") } },
+        )
+    }
     val tint by rememberArtworkColor(actions.server.imageUrl(song, ImageKind.PRIMARY, 300))
     TintedBackdrop(tint) {
         LazyColumn(
@@ -181,9 +199,32 @@ fun NowPlayingScreen(actions: AppActions, onBack: () -> Unit, player: Listening?
                     }
                     state.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     if (book) BookChoices(listening, state, position)
+                    if (book) PillButton("Bookmark", null, primary = false, onClick = {
+                        val mark = dev.nitrate.core.music.Bookmark(kotlin.random.Random.nextLong().toULong().toString(36), position, createdMs = dev.nitrate.android.nowMs())
+                        // One tap marks the place; a note can be added from the list.
+                        saveMarks(dev.nitrate.core.music.Bookmarks.add(marks, mark))
+                    }, modifier = Modifier.padding(top = 8.dp))
                 }
             }
             if (book) {
+                // Bookmarks: a tap goes there; the note can be changed, or the bookmark removed.
+                if (marks.isNotEmpty()) {
+                    item { Column(Modifier.fillMaxWidth().padding(top = 16.dp)) { SectionHeader("Bookmarks") } }
+                    items(marks.size, key = { "bm-" + marks[it].id }) { i ->
+                        val m = marks[i]
+                        Row(
+                            Modifier.fillMaxWidth().pressable({ listening.seekTo(m.positionMs) }).padding(start = ScreenPadding, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(m.note.ifBlank { "Bookmark" }, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(dev.nitrate.core.music.Bookmarks.place(m, song.chapters), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            TextButton(onClick = { noting = m }) { Text("Note") }
+                            IconButton(onClick = { saveMarks(dev.nitrate.core.music.Bookmarks.remove(marks, m.id)) }) { Icon(Icons.Default.Close, "Remove bookmark ${m.note.ifBlank { formatClock(m.positionMs) }}") }
+                        }
+                    }
+                }
                 // A book's chapters in place of what's up next: the one playing marked, a tap goes there.
                 val chapters = song.chapters
                 if (chapters.isNotEmpty()) {

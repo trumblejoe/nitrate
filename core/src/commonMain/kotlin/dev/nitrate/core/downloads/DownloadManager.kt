@@ -545,12 +545,20 @@ class DownloadManager(
 
     /**
      * Saves where playback of a download stopped. Past 90% counts as watched (and resets the
-     * position), under 5% doesn't count, as on the server. Sent by [syncWatchState].
+     * position), under 5% doesn't count, as on the server. An audiobook keeps its place from
+     * [BOOK_MIN_RESUME_MS] on and counts as read only in its last [BOOK_END_MS] (5% of a long book
+     * is half an hour). Sent by [syncWatchState].
      */
     suspend fun recordPlayback(itemId: String, positionMs: Long, durationMs: Long, ended: Boolean) {
         val fraction = if (durationMs > 0) positionMs.toDouble() / durationMs else 0.0
-        val played = ended || fraction >= PLAYED_FRACTION
-        val position = if (played || fraction < MIN_RESUME_FRACTION) 0L else positionMs
+        val book = record(itemId)?.item?.kind == dev.nitrate.core.model.ItemKind.AUDIOBOOK
+        val played = ended || if (book) durationMs > 0 && durationMs - positionMs < BOOK_END_MS else fraction >= PLAYED_FRACTION
+        val position = when {
+            played -> 0L
+            book -> if (positionMs < BOOK_MIN_RESUME_MS) 0L else positionMs
+            fraction < MIN_RESUME_FRACTION -> 0L
+            else -> positionMs
+        }
         edit(itemId) { r ->
             // Rewatching part of a watched item keeps it watched, as the server does.
             val user = r.item.user.copy(played = played || r.item.user.played, positionMs = position)
@@ -625,6 +633,8 @@ class DownloadManager(
         const val SAVE_EVERY_MS = 3_000L
         const val PLAYED_FRACTION = 0.9
         const val MIN_RESUME_FRACTION = 0.05
+        const val BOOK_MIN_RESUME_MS = 30_000L
+        const val BOOK_END_MS = 120_000L
     }
 }
 

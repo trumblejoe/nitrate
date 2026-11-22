@@ -108,6 +108,16 @@ actual fun PlayerScreen(
         else { still.rollingOn(next.id); onPlayNext?.invoke(next) }
     }
 
+    // Sleep timer: pauses at a time, or stops at the end of this instead of rolling on.
+    var sleepAt by remember { mutableStateOf<Long?>(null) }
+    var sleepAtEnd by remember { mutableStateOf(false) }
+    LaunchedEffect(sleepAt) {
+        val at = sleepAt ?: return@LaunchedEffect
+        kotlinx.coroutines.delay((at - dev.nitrate.android.nowMs()).coerceAtLeast(0))
+        session.pause()
+        sleepAt = null
+    }
+
     // A recap clip ends at its end; an episode rolls on to the next (unless Up Next was put away);
     // anything else ends when the stream does.
     LaunchedEffect(positionMs, ended) {
@@ -115,6 +125,7 @@ actual fun PlayerScreen(
         when {
             clipEndMs != null && positionMs >= clipEndMs -> onEnded()
             !ended -> Unit
+            sleepAtEnd -> onExit()
             clipEndMs == null && next != null && next.isEpisode && onPlayNext != null && !upNextHidden -> rollOn(next)
             else -> onEnded()
         }
@@ -174,7 +185,7 @@ actual fun PlayerScreen(
         val film = next != null && !next.isEpisode
         val upNextAt = (if (film) NextInCollection.offerAtMs(durationMs, segments, item?.chapters.orEmpty()) else PlaybackMoments.upNextAtMs(durationMs, segments))
             .let { at -> creditScenes?.upNextAt(at, durationMs) ?: at }
-        val showUpNext = next != null && onPlayNext != null && !upNextHidden && upNextAt != null && positionMs >= upNextAt
+        val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && positionMs >= upNextAt
         if (clipEndMs == null) SkipButton(PlaybackMoments.skippable(segments, positionMs).takeIf { !showUpNext }) { session.seekTo(it.endMs) }
         if (showUpNext && next != null) {
             val remaining = ((durationMs - positionMs) / 1000).toInt()
@@ -249,7 +260,7 @@ actual fun PlayerScreen(
 
     val p = plan
     if (chatting) ChatSheet(container.chat, "Chat" + (syncGroup?.name?.let { " · $it" } ?: ""), positionMs = { session.currentMs() }) { chatting = false }
-    if (more && p != null) IosPlayerMore(actions, session, p, local) { more = false }
+    if (more && p != null) IosPlayerMore(actions, session, p, local, sleepAt, sleepAtEnd, onSleep = { at, end -> sleepAt = at; sleepAtEnd = end }) { more = false }
     when {
         p == null || picking == null -> Unit
         picking == StreamKind.AUDIO -> TrackPicker("Audio", p.audioChoices(), p.audioIndex, { session.selectTrack(StreamKind.AUDIO, it); picking = null }) { picking = null }
@@ -319,7 +330,10 @@ private fun clockOf(ms: Long): String {
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun IosPlayerMore(actions: AppActions, session: ApplePlayerSession, plan: dev.nitrate.core.model.PlaybackPlan, local: Boolean, onDismiss: () -> Unit) {
+private fun IosPlayerMore(
+    actions: AppActions, session: ApplePlayerSession, plan: dev.nitrate.core.model.PlaybackPlan, local: Boolean,
+    sleepAt: Long?, sleepAtEnd: Boolean, onSleep: (at: Long?, atEnd: Boolean) -> Unit, onDismiss: () -> Unit,
+) {
     val speed by session.speed.collectAsState()
     val second by session.secondSubtitle.collectAsState()
     val item by session.item.collectAsState()
@@ -341,6 +355,18 @@ private fun IosPlayerMore(actions: AppActions, session: ApplePlayerSession, plan
                         androidx.compose.material3.FilterChip(selected = speed == s, onClick = { session.setSpeed(s) }, label = { Text(if (s == 1f) "Normal" else "${s}×") })
                     }
                 }
+            }
+            // Sleep timer, as on Android: after a while, or at the end of this (no rolling on).
+            Text(
+                "Sleep timer" + (sleepAt?.let { " · stops at ${dev.nitrate.mobile.platform.formatTime(it)}" } ?: if (sleepAtEnd) " · end of this" else ""),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.FilterChip(selected = sleepAt == null && !sleepAtEnd, onClick = { onSleep(null, false) }, label = { Text("Off") })
+                listOf(15, 30, 45, 60, 90).forEach { m ->
+                    androidx.compose.material3.FilterChip(selected = false, onClick = { onSleep(dev.nitrate.android.nowMs() + m * 60_000L, false) }, label = { Text("$m min") })
+                }
+                androidx.compose.material3.FilterChip(selected = sleepAtEnd, onClick = { onSleep(null, true) }, label = { Text("End of this") })
             }
             val choices = dev.nitrate.core.playback.SecondSubtitles.choices(plan.source, plan.subtitleIndex)
             if (choices.isNotEmpty()) {

@@ -323,6 +323,11 @@ class ApplePlayerSession(private val container: AppContainer, private val report
         else if (player.rate == 0f) player.play() else player.pause()
     }
 
+    /** Pauses (the sleep timer). */
+    fun pause() {
+        if (usingMpv) mpv?.pause() else player.pause()
+    }
+
     val isPaused: Boolean get() = paused()
 
     /** Picks a track: remembered for the show (or title), then the stream restarts from here with it. */

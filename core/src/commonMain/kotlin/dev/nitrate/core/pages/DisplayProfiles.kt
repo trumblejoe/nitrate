@@ -36,14 +36,16 @@ object DisplayProfiles {
     private const val LAYOUT = "layout:"
     private const val PAGES = "pages"
     private const val TRACKS = "tracks"
+    /** One entry per audiobook ("bookmarks:<item id>"), so devices adding at once merge book by book. */
+    const val BOOKMARKS = "bookmarks:"
 
     fun isBuiltIn(id: String) = BUILT_IN.any { it.id == id }
 
     /**
-     * Stays the same on every device: custom pages (and their rows), per-series languages, the
-     * profile list and shared settings. Everything else belongs to a profile.
+     * Stays the same on every device: custom pages (and their rows), per-series languages,
+     * audiobook bookmarks, the profile list and shared settings. Everything else belongs to a profile.
      */
-    fun isShared(name: String) = name == PAGES || name == TRACKS || name == PROFILES || name == SHARED ||
+    fun isShared(name: String) = name == PAGES || name == TRACKS || name == PROFILES || name == SHARED || name.startsWith(BOOKMARKS) ||
         name.startsWith(LAYOUT + PageKeys.custom(""))
 
     /** Where [name] is stored for [profileId]. */

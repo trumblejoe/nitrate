@@ -228,7 +228,14 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             val listening = container.listening
             // A book carries on where it was left (from the start when asked, or once it was finished).
             if (target.kind == dev.nitrate.core.model.ItemKind.AUDIOBOOK && listening != null) {
-                val from = if (fromStart || target.user.played) 0L else target.user.positionMs
+                // A downloaded book read offline has a newer place on the device than the server's.
+                val download = container.downloads.find(target.id)?.takeIf { it.state == DownloadState.COMPLETED }
+                val from = when {
+                    fromStart -> 0L
+                    download != null -> container.downloads.resumePositionMs(download)
+                    target.user.played -> 0L
+                    else -> target.user.positionMs
+                }
                 listening.play(listOf(target), startMs = from)
                 return nav.navigate(NowPlayingRoute)
             }

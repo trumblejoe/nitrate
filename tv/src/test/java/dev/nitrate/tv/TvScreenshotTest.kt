@@ -1293,11 +1293,15 @@ class TvScreenshotTest {
             chapters = listOf("Prologue", "The Booth", "Changeover", "House Lights").mapIndexed { i, n -> dev.nitrate.core.model.Chapter(i * 1_800_000L, n) },
         )
         val player = dev.nitrate.testing.FakeListening(dev.nitrate.core.music.ListenState(listOf(book), 0, playing = true, durationMs = 9_000_000, speed = 1.25f), position = 2_400_000)
+        val marks = dev.nitrate.testing.FakeBookmarks(mapOf("ab1" to listOf(dev.nitrate.core.music.Bookmark("m1", 4_300_000, "The projectionist's confession"))))
         shoot("tv-now-playing-book", act = {
             compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
             press("right", "right", "ok")
             check("skip by 30000" in player.asked) { player.asked.toString() }
-        }) { c -> dev.nitrate.tv.ui.music.NowPlayingScreen(player, c.server, onBack = {}) }
+            compose.onNodeWithText("Bookmark").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+            compose.waitForIdle()
+            check(marks.all.value["ab1"]!!.size == 2) { marks.all.value.toString() }
+        }) { c -> dev.nitrate.tv.ui.music.NowPlayingScreen(player, c.server, onBack = {}, bookmarkStore = marks) }
     }
 
     /** Every tab style in the picker, each drawn with "Recommended" open and "All" focused. */

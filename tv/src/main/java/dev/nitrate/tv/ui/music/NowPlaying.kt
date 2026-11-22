@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.music
 
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,7 +64,7 @@ import kotlinx.coroutines.delay
  * up next or the lyrics. Back leaves the music playing; the menu's "Now playing" comes back here.
  */
 @Composable
-fun NowPlayingScreen(listening: Listening, server: MediaServer, onBack: () -> Unit) {
+fun NowPlayingScreen(listening: Listening, server: MediaServer, onBack: () -> Unit, bookmarkStore: dev.nitrate.core.music.BookmarkStore? = null) {
     val state by listening.state.collectAsState()
     val song = state.current
     if (song == null) {
@@ -74,6 +75,10 @@ fun NowPlayingScreen(listening: Listening, server: MediaServer, onBack: () -> Un
     val lyrics by produceState<dev.nitrate.core.music.Lyrics?>(null, song.id) { value = runCatching { server.lyrics(song.id) }.getOrNull() }
     var lyricsShown by remember { mutableStateOf(false) }
     val book = dev.nitrate.core.music.Audiobooks.isBook(song)
+    // A book's bookmarks (synced; notes are written on the phone).
+    val marks by remember(song.id, bookmarkStore) { bookmarkStore?.bookmarks(song.id) ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsState(emptyList())
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun saveMarks(list: List<dev.nitrate.core.music.Bookmark>) { bookmarkStore?.let { s -> scope.launch { s.save(song.id, list) } } }
     val play = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(80); runCatching { play.requestFocus() } }
 
@@ -148,6 +153,9 @@ fun NowPlayingScreen(listening: Listening, server: MediaServer, onBack: () -> Un
                     OutlinedButton(onClick = { listening.setSleep(sleeps[(sleeps.indexOf(state.sleep) + 1) % sleeps.size]) }) {
                         Text("Sleep: " + (state.sleep?.label ?: "off"))
                     }
+                    if (bookmarkStore != null) OutlinedButton(onClick = {
+                        saveMarks(dev.nitrate.core.music.Bookmarks.add(marks, dev.nitrate.core.music.Bookmark(kotlin.random.Random.nextLong().toULong().toString(36), position, createdMs = System.currentTimeMillis())))
+                    }) { Text("Bookmark") }
                     Text(dev.nitrate.core.music.Audiobooks.timeLeft(position, state.durationMs, state.speed), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (lyrics != null) OutlinedButton(onClick = { lyricsShown = !lyricsShown }, modifier = Modifier.padding(top = 10.dp)) {
@@ -159,11 +167,22 @@ fun NowPlayingScreen(listening: Listening, server: MediaServer, onBack: () -> Un
             if (lyricsShown && shown != null) {
                 dev.nitrate.tv.ui.player.LyricsView(shown, position, Modifier.weight(1f).fillMaxHeight())
             } else if (book) {
-                // The book's chapters: the one playing marked, OK goes there.
+                // The book's bookmarks, then its chapters: the one playing marked, OK goes there.
                 Column(Modifier.weight(1f)) {
-                    Text("Chapters", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 12.dp))
+                    Text(if (marks.isNotEmpty()) "Bookmarks and chapters" else "Chapters", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 12.dp))
                     val at = dev.nitrate.core.music.Audiobooks.chapterAt(song.chapters, position)
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(marks.size, key = { "bm-" + marks[it].id }) { i ->
+                            val m = marks[i]
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ListItem(
+                                    selected = false, onClick = { listening.seekTo(m.positionMs) }, modifier = Modifier.weight(1f),
+                                    headlineContent = { Text(m.note.ifBlank { "Bookmark" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    trailingContent = { Text(dev.nitrate.core.music.Bookmarks.place(m, song.chapters), maxLines = 1) },
+                                )
+                                OutlinedButton(onClick = { saveMarks(dev.nitrate.core.music.Bookmarks.remove(marks, m.id)) }) { Text("Remove") }
+                            }
+                        }
                         itemsIndexed(song.chapters, key = { i, c -> "ch$i-${c.startMs}" }) { i, c ->
                             ListItem(
                                 selected = i == at, onClick = { listening.seekTo(c.startMs) },
