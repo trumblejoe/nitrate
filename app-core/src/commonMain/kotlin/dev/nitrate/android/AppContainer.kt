@@ -57,6 +57,12 @@ class AppContainer(
 
     val playbackSettings = PlaybackSettingsStore(platform.stores.playback)
 
+    /**
+     * For saves started from a screen that may close at once (a picker closing on the press that
+     * chose): they finish even when the screen's own scope is cancelled.
+     */
+    val saveScope: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+
     /** Audiobook bookmarks, synced with the user's display settings (the same on every device). */
     val bookmarks: dev.nitrate.core.music.BookmarkStore by lazy { displaySettings.bookmarks { server.userId } }
 

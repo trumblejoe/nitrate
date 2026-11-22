@@ -16,6 +16,8 @@ data class PageLook(
     val captionSize: CaptionSize? = null,
     val rowPlace: RowPlace? = null,
     val rowExtent: RowExtent? = null,
+    /** How the page's tabs look. */
+    val tabStyle: TabStyle? = null,
 ) {
     val isEmpty: Boolean get() = this == PageLook()
 }
@@ -35,6 +37,7 @@ object PageLooks {
         captionSize = prefs.tvCaptionSize,
         rowPlace = prefs.tvRowPlace,
         rowExtent = prefs.tvRowExtent,
+        tabStyle = prefs.tvTabStyle,
     )
 
     /** The page's layout in full: its own choices over every page's. */
@@ -47,6 +50,7 @@ object PageLooks {
             captionSize = own.captionSize ?: base.captionSize,
             rowPlace = own.rowPlace ?: base.rowPlace,
             rowExtent = own.rowExtent ?: base.rowExtent,
+            tabStyle = own.tabStyle ?: base.tabStyle,
         )
     }
 
@@ -66,6 +70,7 @@ object PageLooks {
             tvCaptionSize = look.captionSize ?: prefs.tvCaptionSize,
             tvRowPlace = look.rowPlace ?: prefs.tvRowPlace,
             tvRowExtent = look.rowExtent ?: prefs.tvRowExtent,
+            tvTabStyle = look.tabStyle ?: prefs.tvTabStyle,
         )
     }
 
@@ -81,6 +86,7 @@ object PageLooks {
             captionSize = next.captionSize.takeIf { it != base.captionSize },
             rowPlace = next.rowPlace.takeIf { it != base.rowPlace },
             rowExtent = next.rowExtent.takeIf { it != base.rowExtent },
+            tabStyle = next.tabStyle.takeIf { it != base.tabStyle },
         )
         return prefs.copy(pageLooks = if (own.isEmpty) prefs.pageLooks - owner else prefs.pageLooks + (owner to own))
     }
@@ -101,6 +107,7 @@ object PageLooks {
             tvCaptionSize = look.captionSize ?: prefs.tvCaptionSize,
             tvRowPlace = look.rowPlace ?: prefs.tvRowPlace,
             tvRowExtent = look.rowExtent ?: prefs.tvRowExtent,
+            tvTabStyle = look.tabStyle ?: prefs.tvTabStyle,
             pageLooks = emptyMap(),
         )
     }

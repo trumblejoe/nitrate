@@ -650,12 +650,14 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
-    /** Customize → Layout over Home: a change is this page's own, every other page keeps its layout. */
+    /** Customize → This page → How it's laid out, over Home: a change is this page's own, every other page keeps its layout. */
     @Test fun customizeLayoutPerPage() {
         lateinit var container: AppContainer
         shoot("tv-customize-layout", setup = { c -> container = c; c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
             compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
-            check(focusedHasText("Arrangement")) { "the Layout section should open on its first choice" }
+            // This page, down past what's on it and how it looks, to how it's laid out.
+            repeat(8) { if (!focusedHasText("Arrangement")) { press("down"); compose.mainClock.advanceTimeBy(200); compose.waitForIdle() } }
+            check(focusedHasText("Arrangement")) { "the page's layout choices should be in This page" }
             press("ok")
             // The save lands a beat later on a slow machine: wait for it rather than a fixed time.
             var stored = runBlocking { container.displaySettings.prefs("user-1").first() }
@@ -670,7 +672,34 @@ class TvScreenshotTest {
         }) { c ->
             WithMenu(c) {
                 HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
-                dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.HOME, dev.nitrate.tv.ui.pages.CustomizeRequest(null, null, dev.nitrate.tv.ui.pages.CustomizeSection.LAYOUT)) {}
+                dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.HOME, dev.nitrate.tv.ui.pages.CustomizeRequest(null, null, dev.nitrate.tv.ui.pages.CustomizeSection.PAGE)) {}
+            }
+        }
+    }
+
+    /** Customize → Theme: the picker closes on the press that chose, and the choice is still saved (it sometimes wasn't). */
+    @Test fun customizeThemeSticks() {
+        lateinit var container: AppContainer
+        shoot("tv-customize-theme", setup = { c -> container = c; c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+            repeat(6) { if (!focusedHasText("Theme")) { press("down"); compose.mainClock.advanceTimeBy(200); compose.waitForIdle() } }
+            check(focusedHasText("Theme")) { "Theme should be in This page" }
+            press("ok")
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+            press("down")
+            compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
+            press("ok")
+            var stored = runBlocking { container.displaySettings.prefs("user-1").first() }
+            repeat(50) {
+                if (stored.pageThemes["home"] != null) return@repeat
+                compose.mainClock.advanceTimeBy(200); compose.waitForIdle(); Thread.sleep(50)
+                stored = runBlocking { container.displaySettings.prefs("user-1").first() }
+            }
+            check(stored.pageThemes["home"] != null) { "the picked theme should be saved: ${stored.pageThemes}" }
+        }) { c ->
+            WithMenu(c) {
+                HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
+                dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.HOME, dev.nitrate.tv.ui.pages.CustomizeRequest(null, null, dev.nitrate.tv.ui.pages.CustomizeSection.PAGE)) {}
             }
         }
     }

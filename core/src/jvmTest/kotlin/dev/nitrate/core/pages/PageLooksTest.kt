@@ -69,4 +69,13 @@ class PageLooksTest {
         assertEquals(PageArrangement.FULL_ART, PageArrangement.STACKED.next())
         assertEquals(PageArrangement.ROWS, PageArrangement.FULL_ART.next())
     }
+
+    @Test fun aPageCanHaveItsOwnTabStyle() {
+        val prefs = PageLooks.change(DisplayPrefs(), "library/films") { it.copy(tabStyle = TabStyle.NEON) }
+        assertEquals(TabStyle.NEON, PageLooks.forPage(prefs, "library/films/genres").tvTabStyle)
+        assertEquals(TabStyle.CHIPS, PageLooks.forPage(prefs, PageKeys.HOME).tvTabStyle)
+        val everywhere = PageLooks.useEverywhere(prefs, "library/films")
+        assertEquals(TabStyle.NEON, everywhere.tvTabStyle)
+        assertTrue(everywhere.pageLooks.isEmpty())
+    }
 }

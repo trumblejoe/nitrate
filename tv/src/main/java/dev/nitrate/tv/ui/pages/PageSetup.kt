@@ -377,11 +377,11 @@ fun LibraryTabsScreen(container: AppContainer, libraryId: String) {
 /** Picks [pageKey]'s theme and saves it in the display profile. */
 @Composable
 internal fun ThemeChoice(container: AppContainer, pageKey: String, name: String, onDone: () -> Unit) {
-    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
-    val scope = rememberCoroutineScope()
+    // What's stored, not the page's view of it (this opens from inside a page).
+    val prefs = rememberStoredPrefs(container)
     dev.nitrate.tv.ui.effects.PageThemePicker(name, prefs.pageThemes[pageKey] ?: dev.nitrate.core.effects.PageTheme.NONE, onPick = { theme ->
         // The stored settings, not a page's own view of them (this can open from inside a page).
-        container.changePrefs(scope) { it.withTheme(pageKey, theme) }
+        container.changePrefs { it.withTheme(pageKey, theme) }
         onDone()
     }, onDismiss = onDone)
 }
@@ -415,8 +415,7 @@ private fun Swatch(choice: dev.nitrate.core.effects.PageBackdrop) {
 /** Picks [pageKey]'s background and saves it in the display profile. */
 @Composable
 internal fun BackgroundChoice(container: AppContainer, pageKey: String, name: String, onDone: () -> Unit) {
-    val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
-    val scope = rememberCoroutineScope()
+    val prefs = rememberStoredPrefs(container)
     val now = prefs.pageBackdrops[pageKey] ?: dev.nitrate.core.effects.PageBackdrop.ARTWORK
     val focus = remember { FocusRequester() }
     TvDialog(onDismiss = onDone, width = 640) {
@@ -425,7 +424,7 @@ internal fun BackgroundChoice(container: AppContainer, pageKey: String, name: St
             ListItem(
                 selected = b == now,
                 onClick = {
-                    container.changePrefs(scope) { p -> p.copy(pageBackdrops = if (b == dev.nitrate.core.effects.PageBackdrop.ARTWORK) p.pageBackdrops - pageKey else p.pageBackdrops + (pageKey to b)) }
+                    container.changePrefs { p -> p.copy(pageBackdrops = if (b == dev.nitrate.core.effects.PageBackdrop.ARTWORK) p.pageBackdrops - pageKey else p.pageBackdrops + (pageKey to b)) }
                     onDone()
                 },
                 headlineContent = { Text(b.label) },

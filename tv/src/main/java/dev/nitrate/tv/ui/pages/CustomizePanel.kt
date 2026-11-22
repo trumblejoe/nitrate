@@ -66,7 +66,7 @@ val LocalLayoutPage = staticCompositionLocalOf<String?> { null }
 /** Where the Customize panel opens from: the page frame ([dev.nitrate.tv.ui.home.ThemedPage]) holds it. */
 val LocalCustomizeHost = staticCompositionLocalOf<CustomizeHost?> { null }
 
-enum class CustomizeSection(val label: String) { ROW("This row"), PAGE("This page"), LAYOUT("Layout") }
+enum class CustomizeSection(val label: String) { ROW("This row"), PAGE("This page") }
 
 /** What the panel was opened for: a row (with the rows it's in), or just the page. */
 data class CustomizeRequest(val row: MediaRow?, val vm: RowsViewModel?, val section: CustomizeSection)
@@ -82,10 +82,14 @@ class CustomizeHost {
     fun openRow(row: MediaRow, vm: RowsViewModel) { request = CustomizeRequest(row, vm, CustomizeSection.ROW) }
 }
 
-/** Saves the stored display settings changed by [change] (never a page's own view of them). */
-internal fun AppContainer.changePrefs(scope: CoroutineScope, change: (DisplayPrefs) -> DisplayPrefs) {
+/**
+ * Saves the stored display settings changed by [change] (never a page's own view of them), on the
+ * app's own scope: a picker closes on the press that chose, and a save tied to it would sometimes
+ * be cancelled before it was written (a theme that "sometimes doesn't change").
+ */
+internal fun AppContainer.changePrefs(change: (DisplayPrefs) -> DisplayPrefs) {
     val u = server.userId ?: return
-    scope.launch { displaySettings.savePrefs(u, change(displaySettings.prefs(u).first())) }
+    saveScope.launch { displaySettings.savePrefs(u, change(displaySettings.prefs(u).first())) }
 }
 
 /** The stored display settings, as they change (not a page's own view of them). */
@@ -143,7 +147,6 @@ fun CustomizePanel(container: AppContainer, pageKey: String, request: CustomizeR
                     when (section) {
                         CustomizeSection.ROW -> request.row?.title.orEmpty()
                         CustomizeSection.PAGE -> name
-                        CustomizeSection.LAYOUT -> "$name · " + if (PageLooks.hasOwn(rememberStoredPrefs(container), owner)) "its own layout" else "same as every page"
                     },
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -159,7 +162,6 @@ fun CustomizePanel(container: AppContainer, pageKey: String, request: CustomizeR
                             onRename = { renaming = true }, onClose = onClose,
                         )
                         CustomizeSection.PAGE -> pageSection(container, owner, name, request.vm, first)
-                        CustomizeSection.LAYOUT -> layoutItems(container, owner, first)
                     }
                 }
             }
@@ -202,29 +204,33 @@ private fun LazyListScope.rowSection(
     item { ListItem(selected = false, onClick = { vm.setHidden(entry.id, true); onClose() }, headlineContent = { Text("Hide this row") }, supportingContent = { Text("Back again from This page → Rows") }) }
 }
 
-/** This page: its rows, its tabs, its theme and background. */
+/**
+ * This page, by what's being changed: what's on it (rows, tabs), how it looks (theme, background,
+ * tab style), how it's laid out (with "Use this layout on every page"), then What's shown, which
+ * is every page's.
+ */
 private fun LazyListScope.pageSection(container: AppContainer, owner: String, name: String, vm: RowsViewModel?, first: FocusRequester) {
+    val libraryId = owner.removePrefix("library/").takeIf { owner.startsWith("library/") }
+    val hasRows = vm != null && owner != PageKeys.MORE_FROM
+    val hasTabs = owner == PageKeys.HOME || libraryId != null
+    // More from… pages are one row: nothing on them to arrange.
+    if (hasRows || hasTabs) item { Heading("What's on it") }
     item {
-        val prefs = rememberStoredPrefs(container)
         var open by remember { mutableStateOf<String?>(null) }
-        val libraryId = owner.removePrefix("library/").takeIf { owner.startsWith("library/") }
         Column {
-            // More from… pages are one row: nothing to arrange.
-            if (vm != null && owner != PageKeys.MORE_FROM) ListItem(
+            if (hasRows) ListItem(
                 selected = false, onClick = { open = "rows" },
                 headlineContent = { Text("Rows") }, supportingContent = { Text("Order, hide, rename and add your own") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
                 modifier = Modifier.focusRequester(first),
             )
-            if (owner == PageKeys.HOME || libraryId != null) ListItem(
+            if (hasTabs) ListItem(
                 selected = false, onClick = { open = "tabs" },
                 headlineContent = { Text("Tabs") },
                 supportingContent = { Text(if (owner == PageKeys.HOME) "Your own pages as tabs beside Home" else "Recommended, All, Genres, Collections, your own…") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-                modifier = if (vm == null) Modifier.focusRequester(first) else Modifier,
+                modifier = if (!hasRows) Modifier.focusRequester(first) else Modifier,
             )
-            ThemeItem(prefs.pageThemes[owner], first.takeIf { owner == PageKeys.MORE_FROM }) { open = "theme" }
-            BackgroundItem(prefs.pageBackdrops[owner]) { open = "background" }
         }
         when (open) {
             "rows" -> vm?.let { dev.nitrate.tv.ui.rows.PageEditor(name, it, container.server, libraryId = libraryId, onDone = { open = null }) }
@@ -241,9 +247,62 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
                     if (owner == PageKeys.HOME) HomeSetupScreen(container) else LibraryTabsScreen(container, libraryId!!)
                 }
             }
+        }
+    }
+    item { Heading("How it looks") }
+    item {
+        val prefs = rememberStoredPrefs(container)
+        var open by remember { mutableStateOf<String?>(null) }
+        Column {
+            ThemeItem(prefs.pageThemes[owner], first.takeIf { !hasRows && !hasTabs }) { open = "theme" }
+            BackgroundItem(prefs.pageBackdrops[owner]) { open = "background" }
+            if (hasTabs) {
+                val style = PageLooks.resolved(prefs, owner).tabStyle ?: prefs.tvTabStyle
+                ChoiceItem("Tab style", style.label) { open = "tabStyle" }
+            }
+        }
+        when (open) {
             "theme" -> ThemeChoice(container, owner, name) { open = null }
             "background" -> BackgroundChoice(container, owner, name) { open = null }
+            "tabStyle" -> dev.nitrate.tv.ui.components.TabStylePicker(
+                PageLooks.resolved(prefs, owner).tabStyle ?: prefs.tvTabStyle,
+                onPick = { style -> container.changePrefs { PageLooks.change(it, owner) { look -> look.copy(tabStyle = style) } }; open = null },
+                onDismiss = { open = null },
+            )
         }
+    }
+    item {
+        val own = PageLooks.hasOwn(rememberStoredPrefs(container), owner)
+        Heading("How it's laid out", if (own) "This page's own" else "Same as every page")
+    }
+    layoutItems(container, owner, null)
+    item { Heading("Every page") }
+    item {
+        var shown by remember { mutableStateOf(false) }
+        ListItem(
+            selected = false, onClick = { shown = true },
+            headlineContent = { Text("What's shown") },
+            supportingContent = { Text("Ratings, descriptions, badges and more, on every page and details page (your display profile)") },
+            trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+        )
+        if (shown) androidx.compose.ui.window.Dialog(
+            onDismissRequest = { shown = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            androidx.compose.foundation.layout.Box(
+                Modifier.size(width = 820.dp, height = 600.dp)
+                    .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(8.dp),
+            ) { DisplaySettingsScreen(container, page = DisplayPage.SHOWN) }
+        }
+    }
+}
+
+/** A group's heading in the panel, with an optional note beside it. */
+@Composable
+private fun Heading(text: String, note: String? = null) {
+    Row(Modifier.padding(top = 14.dp, bottom = 4.dp, start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        note?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
@@ -257,7 +316,7 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
         val prefs = rememberStoredPrefs(container)
         val look = PageLooks.resolved(prefs, owner)
         val own = PageLooks.hasOwn(prefs, owner)
-        fun set(change: (PageLook) -> PageLook) = container.changePrefs(scope) { PageLooks.change(it, owner, change) }
+        fun set(change: (PageLook) -> PageLook) = container.changePrefs { PageLooks.change(it, owner, change) }
         val arrangement = look.arrangement ?: PageArrangement.ROWS
         Column {
             ChoiceItem("Arrangement", arrangement.label, first?.let { Modifier.focusRequester(it) } ?: Modifier) {
@@ -274,12 +333,12 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
                 ChoiceItem("Row length", (look.rowExtent ?: RowExtent.FULL).label) { set { it.copy(rowExtent = (it.rowExtent ?: RowExtent.FULL).cycleNext()) } }
             }
             ListItem(
-                selected = false, onClick = { container.changePrefs(scope) { PageLooks.useEverywhere(it, owner) } },
+                selected = false, onClick = { container.changePrefs { PageLooks.useEverywhere(it, owner) } },
                 headlineContent = { Text("Use this layout on every page") },
                 supportingContent = { Text("Home, every library and your own pages all take it") },
             )
             if (own) ListItem(
-                selected = false, onClick = { container.changePrefs(scope) { PageLooks.reset(it, owner) } },
+                selected = false, onClick = { container.changePrefs { PageLooks.reset(it, owner) } },
                 headlineContent = { Text("Same as every page") },
                 supportingContent = { Text("Drop this page's own layout") },
             )
