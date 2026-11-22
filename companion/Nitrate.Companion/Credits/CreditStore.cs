@@ -9,8 +9,12 @@ namespace Nitrate.Companion.Credits;
 /// <param name="OutroStartMs">Where the final stretch of credits starts (to the end, after any scene), if it ends on credits.</param>
 /// <param name="OutroEndMs">The title's end, when [OutroStartMs] is known.</param>
 /// <param name="Format">How it was read: older results (without the final credits) are read again.</param>
-public record CreditResult(string Version, IReadOnlyList<CreditSkip> Skips, DateTimeOffset Checked, long? OutroStartMs = null, long? OutroEndMs = null, int Format = 0)
+/// <param name="OutroRejected">People said the final credits found were wrong: none are given for this version of the file.</param>
+public record CreditResult(string Version, IReadOnlyList<CreditSkip> Skips, DateTimeOffset Checked, long? OutroStartMs = null, long? OutroEndMs = null, int Format = 0, bool OutroRejected = false)
 {
+    /// <summary>What's handed out: rejected final credits left out.</summary>
+    public CreditResult Effective() => OutroRejected ? this with { OutroStartMs = null, OutroEndMs = null } : this;
+
     /// <summary>What results are read as now.</summary>
     public const int CurrentFormat = 2;
 }

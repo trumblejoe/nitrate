@@ -114,6 +114,12 @@ public class CreditScanner : IScheduledTask
             {
                 var before = _store.Get(item.Id)?.OutroStartMs;
                 var result = await FindAsync(item, version, cancellationToken).ConfigureAwait(false);
+                // Rejected final credits stay rejected until the file itself changes.
+                if (_store.Get(item.Id) is { OutroRejected: true } old && old.Version == version)
+                {
+                    result = result with { OutroRejected = true };
+                }
+
                 _store.Put(item.Id, result);
                 _failures.Succeeded(item.Id);
                 if (result.OutroStartMs != null && result.OutroStartMs != before)

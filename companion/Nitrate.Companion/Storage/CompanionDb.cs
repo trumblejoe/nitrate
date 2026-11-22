@@ -326,6 +326,14 @@ public sealed class CompanionDb : IDisposable
             "DELETE FROM records WHERE kind = $k AND owner = $o AND key NOT IN (SELECT key FROM records WHERE kind = $k AND owner = $o ORDER BY at DESC LIMIT $n)",
             ("$k", kind), ("$o", owner), ("$n", keep));
 
+    /// <summary>Forgets every record of a kind written before [beforeAt] (any owner).</summary>
+    public void DeleteOlder(string kind, long beforeAt) =>
+        Execute("DELETE FROM records WHERE kind = $k AND at < $at", ("$k", kind), ("$at", beforeAt));
+
+    /// <summary>One owner's records of a kind written in [from, to) (key → JSON), oldest first.</summary>
+    public List<KeyValuePair<string, string>> RecordsBetween(string kind, string owner, long from, long to) =>
+        Rows("SELECT key, json FROM records WHERE kind = $k AND owner = $o AND at >= $f AND at < $t ORDER BY at", ("$k", kind), ("$o", owner), ("$f", from), ("$t", to));
+
     /// <summary>Runs SQL with named parameters (for stores with tables of their own).</summary>
     public void Execute(string sql, params (string Name, object? Value)[] parameters)
     {

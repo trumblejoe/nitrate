@@ -37,7 +37,7 @@ public class CompanionSegmentProvider : IMediaSegmentProvider
 
     /// <inheritdoc />
     public Task<IReadOnlyList<MediaSegmentDto>> GetMediaSegments(MediaSegmentGenerationRequest request, CancellationToken cancellationToken) =>
-        Task.FromResult(For(request.ItemId, _intros.Get(request.ItemId), _credits.Get(request.ItemId)));
+        Task.FromResult(For(request.ItemId, _intros.Get(request.ItemId)?.Effective(), _credits.Get(request.ItemId)?.Effective()));
 
     /// <summary>The segments for [itemId] from what was found.</summary>
     public static IReadOnlyList<MediaSegmentDto> For(Guid itemId, IntroResult? intros, CreditResult? credits)

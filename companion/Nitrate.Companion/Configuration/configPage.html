@@ -69,6 +69,13 @@
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label class="emby-checkbox-label">
+                        <input id="KeepChatHistory" type="checkbox" is="emby-checkbox" />
+                        <span>Keep watch-together chat for 30 days</span>
+                    </label>
+                    <div class="fieldDescription">Only the people who were in that viewing can read it again, and only when they open "Earlier chat".</div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
                         <input id="ListUsersForSharing" type="checkbox" is="emby-checkbox" />
                         <span>Show everyone's names when sharing a script</span>
                     </label>
@@ -156,7 +163,7 @@
     <script type="text/javascript">
         (function () {
             var pluginId = '04250121-a5d6-40da-99fc-242a178b3d2c';
-            var checks = ['RestartForUpdates', 'EnableLines', 'EnableDiary', 'EnableComics', 'EnableChat', 'ListUsersForSharing', 'SsoEnabled', 'OidcMatchByEmail'];
+            var checks = ['RestartForUpdates', 'EnableLines', 'EnableDiary', 'EnableComics', 'EnableChat', 'KeepChatHistory', 'ListUsersForSharing', 'SsoEnabled', 'OidcMatchByEmail'];
             var texts = ['SsoProviderName', 'OidcIssuer', 'OidcClientId', 'OidcClientSecret', 'OidcScopes', 'OidcUsernameClaim',
                 'OidcRequiredGroup', 'OidcGroupsClaim', 'SsoUserLinks', 'SsoPublicUrl'];
             var page = document.querySelector('#NitrateCompanionConfigPage');

@@ -33,13 +33,15 @@ public class CompanionController : ControllerBase
     private const string UserIdClaim = "Jellyfin-UserId";
 
     private readonly ChatHub _chat;
+    private readonly Nitrate.Companion.Insights.PeopleRecords _records;
     private readonly ISyncPlayManager _syncPlay;
     private readonly ISessionManager _sessions;
     private readonly IUserManager _users;
 
     /// <summary>Initializes a new instance of the <see cref="CompanionController"/> class.</summary>
-    public CompanionController(ChatHub chat, ISyncPlayManager syncPlay, ISessionManager sessions, IUserManager users, Nitrate.Companion.QueryTimes.QueryTimeStore queryTimes)
+    public CompanionController(ChatHub chat, ISyncPlayManager syncPlay, ISessionManager sessions, IUserManager users, Nitrate.Companion.QueryTimes.QueryTimeStore queryTimes, Nitrate.Companion.Insights.PeopleRecords records)
     {
+        _records = records;
         _queryTimes = queryTimes;
         _chat = chat;
         _syncPlay = syncPlay;
@@ -75,6 +77,15 @@ public class CompanionController : ControllerBase
         features.Add("timing");
         features.Add("intros");
         features.Add("because");
+        features.Add("segmentfeedback");
+        features.Add("watching");
+        features.Add("problems");
+        features.Add("moments");
+        if (ChatEnabled && (Plugin.Instance?.Configuration.KeepChatHistory ?? true))
+        {
+            features.Add("chathistory");
+        }
+
         features.Add("home");
         features.Add("formats");
         // Only once the timing middleware is known to be in the server's pipeline.
@@ -148,12 +159,47 @@ public class CompanionController : ControllerBase
 
         try
         {
-            return _chat.Post(Room(groupId), user.Id, user.Name, post.Kind, post.Text, post.PositionMs);
+            var message = _chat.Post(Room(groupId), user.Id, user.Name, post.Kind, post.Text, post.PositionMs);
+            Keep(groupId, user.Id, message);
+            return message;
         }
         catch (ChatRejectedException e)
         {
             return Problem(e.Message, statusCode: e.TooFast ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
         }
+    }
+
+    /// <summary>
+    /// Keeps the message under the title being watched, readable later only by the people in the
+    /// group right now (the plugin's "Keep watch-together chat" switch, on by default).
+    /// </summary>
+    private void Keep(Guid groupId, Guid userId, ChatMessage message)
+    {
+        if (!(Plugin.Instance?.Configuration.KeepChatHistory ?? true))
+        {
+            return;
+        }
+
+        var session = _sessions.Sessions.FirstOrDefault(s => s.UserId.Equals(userId) && s.NowPlayingItem != null)
+            ?? _sessions.Sessions.FirstOrDefault(s => s.UserId.Equals(userId));
+        var group = session is null ? null : _syncPlay.GetGroup(session, groupId);
+        var itemId = _sessions.Sessions.Where(s => s.NowPlayingItem != null && group?.Participants?.Contains(s.UserName, StringComparer.OrdinalIgnoreCase) == true)
+            .Select(s => (Guid?)s.NowPlayingItem.Id).FirstOrDefault();
+        if (itemId is not { } item || group?.Participants is not { Count: > 0 } names)
+        {
+            return;
+        }
+
+        var members = _users.GetUsers().Where(u => names.Contains(u.Username, StringComparer.OrdinalIgnoreCase)).Select(u => u.Id).ToList();
+        if (!members.Contains(userId))
+        {
+            members.Add(userId);
+        }
+
+        _records.AddChat(
+            item,
+            message.SentAt.ToUnixTimeMilliseconds() + "|" + groupId.ToString("N") + "|" + message.Seq,
+            new Nitrate.Companion.Insights.ChatRecord(userId, message.UserName, message.Kind.ToString(), message.Text, message.PositionMs, message.SentAt.ToUnixTimeMilliseconds(), members));
     }
 
     private static string Room(Guid groupId) => "syncplay:" + groupId.ToString("N");

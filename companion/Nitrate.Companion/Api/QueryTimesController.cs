@@ -27,6 +27,22 @@ public class QueryTimesController : ControllerBase
 
     private readonly MediaBrowser.Controller.Library.IUserManager _users;
 
+    /// <summary>Each kind of request's typical and slow server times by day, the last [days] days (admins only).</summary>
+    [HttpGet("Trends")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<IReadOnlyList<Nitrate.Companion.Insights.QueryTrend>> Trends([FromServices] Nitrate.Companion.Insights.QueryTrendStore trends, [FromQuery] int days = 30)
+    {
+        var id = User.Claims.FirstOrDefault(c => c.Type == UserIdClaim)?.Value;
+        var user = Guid.TryParse(id, out var g) ? _users.GetUserById(g) : null;
+        if (user == null)
+        {
+            return Unauthorized();
+        }
+
+        return user.HasPermission(PermissionKind.IsAdministrator) ? Ok(trends.Trends(days, DateTimeOffset.UtcNow)) : StatusCode(StatusCodes.Status403Forbidden);
+    }
+
     /// <summary>Every person's requests of the last two hours by kind, costliest first (admins only; no names, titles or search words).</summary>
     [HttpGet("Household")]
     [ProducesResponseType(StatusCodes.Status200OK)]

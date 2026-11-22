@@ -7,7 +7,13 @@ namespace Nitrate.Companion.Intros;
 /// <param name="Intro">Its intro (null: read, none found).</param>
 /// <param name="Checked">When.</param>
 /// <param name="Recap">Its "Previously on…" recap (null: none found).</param>
-public record IntroResult(string Version, Intro? Intro, DateTimeOffset Checked, Intro? Recap = null);
+/// <param name="IntroRejected">People said the intro found was wrong: none is given for this version of the file.</param>
+/// <param name="RecapRejected">People said the recap found was wrong.</param>
+public record IntroResult(string Version, Intro? Intro, DateTimeOffset Checked, Intro? Recap = null, bool IntroRejected = false, bool RecapRejected = false)
+{
+    /// <summary>What's handed out: rejected parts left out.</summary>
+    public IntroResult Effective() => this with { Intro = IntroRejected ? null : Intro, Recap = RecapRejected ? null : Recap };
+}
 
 /// <summary>
 /// Results and each episode's sound fingerprint, in the plugin's database (<see cref="Nitrate.Companion.Storage.CompanionDb"/>),

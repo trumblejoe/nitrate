@@ -127,6 +127,15 @@ public partial class QueryTimeStore
         }).OrderByDescending(h => h.TotalMs).ToList();
     }
 
+    /// <summary>Every person's timed requests (shape, ms, when) between two moments, for the daily trends.</summary>
+    public IReadOnlyList<(string Shape, long Ms, DateTimeOffset At)> Since(DateTimeOffset from, DateTimeOffset to)
+    {
+        lock (_lock)
+        {
+            return _byUser.Values.SelectMany(l => l.Where(t => t.At >= from && t.At < to && t.Shape.Length > 0).Select(t => (t.Shape, t.Ms, t.At))).ToList();
+        }
+    }
+
     /// <summary>A request's shape: method, path with ids as {id}, sorted parameter names (never their values).</summary>
     public static string ShapeOf(string method, string path, IEnumerable<string> parameterNames)
     {

@@ -21,6 +21,11 @@ public class ServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.AddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<ChatHub>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.QueryTrendStore(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
+        serviceCollection.AddHostedService<Nitrate.Companion.Insights.QueryTrendRecorder>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.SegmentVotes(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.PeopleRecords(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
+        serviceCollection.AddHostedService<Nitrate.Companion.Insights.SittingRecorder>();
         serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.BecauseStore>();
         serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.BecauseBuilder>();
         serviceCollection.AddHostedService<Nitrate.Companion.Recommendations.BecauseWarmup>();

@@ -176,7 +176,9 @@ public class IntroScanner : IScheduledTask
             var recap = before == null || before.Version != VersionOf(e)
                 ? await RecapAsync(show, e, prints[i], found[i], whole, cancellationToken).ConfigureAwait(false)
                 : before.Recap;
-            _store.Put(e.Id, new IntroResult(VersionOf(e), found[i], DateTimeOffset.UtcNow, recap));
+            // What people rejected stays rejected until the file itself changes.
+            var same = before?.Version == VersionOf(e);
+            _store.Put(e.Id, new IntroResult(VersionOf(e), found[i], DateTimeOffset.UtcNow, recap, same && before!.IntroRejected, same && before!.RecapRejected));
             if ((found[i] != null || recap != null) && (found[i] != before?.Intro || recap != before?.Recap))
             {
                 // Jellyfin asks every segment provider again (others' segments are made afresh too).
