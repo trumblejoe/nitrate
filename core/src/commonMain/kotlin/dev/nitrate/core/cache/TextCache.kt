@@ -4,4 +4,5 @@ package dev.nitrate.core.cache
 interface TextCache {
     suspend fun get(key: String): String?
     suspend fun put(key: String, value: String)
+    suspend fun remove(key: String) {}
 }

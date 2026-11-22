@@ -429,6 +429,7 @@ class JellyfinClient(
         require(key != accountKey) { "Sign out of the current account instead" }
         val session = sessionStorage.all().firstOrNull { it.key == key } ?: return
         sessionStorage.remove(key)
+        forgetRemembered(key)
         // Revoke its token so the server's device list stays tidy; fine if the server is away.
         runCatching {
             http.post("${session.serverUrl.trimEnd('/')}/Sessions/Logout") {
@@ -710,7 +711,15 @@ class JellyfinClient(
         sessionStorage.save(session)
     }
 
+    /** Lets go of what this client remembered on the device for [key] (its library list, "Because you watched"). */
+    private suspend fun forgetRemembered(key: String) {
+        runCatching { textCache?.remove("views/$key") }
+        runCatching { textCache?.remove("because/$key") }
+        answers.clear()
+    }
+
     override suspend fun logout() {
+        accountKey?.let { forgetRemembered(it) }
         runCatching { post<Unit>("Sessions", "Logout") }
         sessionStorage.clear()
         token = null
@@ -867,13 +876,34 @@ class JellyfinClient(
      * everything played by date, then asking for similar titles several times) and barely change
      * hour to hour, so they're remembered for [BECAUSE_TTL_MS], on the device, unless [fresh].
      */
-    /** "Because you watched", worked out once however many pages show it at the same moment. */
-    private suspend fun becauseYouWatched(fresh: Boolean): List<MediaRow> =
-        if (fresh) becauseYouWatchedNow(true)
+    /**
+     * "Because you watched", worked out once however many pages show it at the same moment. Rows
+     * kept from earlier get their cards' watched marks and progress read afresh (one small request,
+     * itself shared and let go when watch state changes), so a day-old row never shows old ticks.
+     */
+    private suspend fun becauseYouWatched(fresh: Boolean): List<MediaRow> {
+        val (rows, saved) = if (fresh) becauseYouWatchedNow(true)
         else answers.get("because|${accountKey ?: "$baseUrl|$userId"}", dev.nitrate.core.cache.AnswerKind.SIMILAR) { becauseYouWatchedNow(false) }.first
+        return if (saved) runCatching { withFreshUserData(rows) }.getOrDefault(rows) else rows
+    }
 
+    /** [rows] with each card's watch state as the server has it now (nothing else asked for). */
+    private suspend fun withFreshUserData(rows: List<MediaRow>): List<MediaRow> {
+        val ids = rows.flatMap { r -> r.items.map { it.id } }.distinct()
+        if (ids.isEmpty()) return rows
+        val now = items(
+            "Items",
+            query = mapOf(
+                "ids" to dashless(ids), "userId" to userId, "enableImages" to false,
+                "enableTotalRecordCount" to false, "fields" to null,
+            ),
+        ).associateBy { it.id }
+        return rows.map { r -> r.copy(items = r.items.map { item -> now[item.id]?.let { item.copy(user = it.user) } ?: item }) }
+    }
+
+    /** The rows, and whether they were kept from earlier (true) rather than just made. */
     @OptIn(ExperimentalTime::class)
-    private suspend fun becauseYouWatchedNow(fresh: Boolean): List<MediaRow> {
+    private suspend fun becauseYouWatchedNow(fresh: Boolean): Pair<List<MediaRow>, Boolean> {
         val key = "because/${accountKey ?: "$baseUrl|$userId"}"
         val now = Clock.System.now().toEpochMilliseconds()
         if (!fresh) {
@@ -881,14 +911,14 @@ class JellyfinClient(
                 ?: textCache?.get(key)
                     ?.let { runCatching { JellyfinJson.decodeFromString(SavedRows.serializer(), it) }.getOrNull() }
                     ?.also { savedBecause = it; savedBecauseKey = key }
-            if (known != null && now - known.savedAtMs in 0 until BECAUSE_TTL_MS) return known.rows
+            if (known != null && now - known.savedAtMs in 0 until BECAUSE_TTL_MS) return known.rows to true
         }
         val rows = dev.nitrate.core.rows.BecauseYouWatched.rows(lastWatchedSeeds(), ::similar)
         val saved = SavedRows(now, rows)
         savedBecause = saved
         savedBecauseKey = key
         runCatching { textCache?.put(key, JellyfinJson.encodeToString(SavedRows.serializer(), saved)) }
-        return rows
+        return rows to false
     }
 
     private var savedBecauseKey: String? = null

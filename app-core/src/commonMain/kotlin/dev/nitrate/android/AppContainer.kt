@@ -727,13 +727,14 @@ class AppContainer(
     /** Signs out of the current account and forgets it here. */
     suspend fun signOut() {
         leaveSession()
-        server.currentAccountKey?.let { profiles.forget(it) }
+        server.currentAccountKey?.let { profiles.forget(it); dataCache.forget(it) }
         server.logout()
     }
 
     /** Forgets a saved account that isn't current. */
     suspend fun forgetAccount(key: String) {
         profiles.forget(key)
+        dataCache.forget(key)
         server.forgetAccount(key)
     }
 
