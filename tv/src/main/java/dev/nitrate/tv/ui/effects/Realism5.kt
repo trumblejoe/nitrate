@@ -24,7 +24,7 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 /*
- * Mood scenes for franchise hubs (and any page): Lightning run, Night watch, Cosmic rift, Arena at
+ * Mood scenes for any page: Lightning run, Night watch, Cosmic rift, Arena at
  * dusk, High kingdom, Spellbound. Original drawings in the light-first style of Realism.kt, with more
  * care for depth: every scene is built from far to near with haze growing with distance, light from
  * one place in the scene rimming what faces it, and soft glows near the lens. No emblems, characters
