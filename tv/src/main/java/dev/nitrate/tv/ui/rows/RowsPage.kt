@@ -129,6 +129,22 @@ fun RowsPage(
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     var listingRows by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val pageScope = androidx.compose.runtime.rememberCoroutineScope()
+    // Into the row at [index] by hand (from a column down the side, where the focus search between
+    // rows found nothing): placed first, since it may not be composed, then asked until it has focus.
+    // False when there's no such row (Up from the first goes on to the tabs as usual).
+    fun toRow(index: Int): Boolean {
+        val target = rows.getOrNull(index) ?: return false
+        pageScope.launch {
+            if (oneAtATime) listState.scrollToItem(index, roomAbove) else listState.scrollToItem(index)
+            repeat(30) {
+                kotlinx.coroutines.delay(32)
+                if (focusedRowIndex == index) return@launch
+                runCatching { rowEntry[target.key]?.requestFocus() }
+            }
+        }
+        return true
+    }
     // Back on the page (from a details page): focus to the card left, once its row is composed.
     val cameBackTo = remember { lastCard }
     LaunchedEffect(cameBackTo, rows.isNotEmpty()) {
@@ -501,14 +517,15 @@ fun RowsPage(
                                         } else {
                                             val rowEnd = place == dev.nitrate.core.pages.RowPlace.RIGHT
                                             val sidePad = Modifier.padding(start = if (rowEnd) 0.dp else RowPadding - 16.dp, end = if (rowEnd) RowPadding - 16.dp else 0.dp)
-                                            val column: @Composable (Modifier) -> Unit = { m -> ColumnCards(row, display, repository, actions, m.width(ColumnWidth)) }
+                                            val column: @Composable (Modifier) -> Unit = { m -> ColumnCards(row, display, repository, actions, m.width(ColumnWidth), onPastEnd = { by -> toRow(rowIndex + by) }) }
                                             if (capEnd == rowEnd) {
                                                 // On the same side: the caption heads (or ends) the column, which takes the rest.
                                                 Column(Modifier.align(if (rowEnd) Alignment.TopEnd else Alignment.TopStart).fillMaxHeight(),
                                                     horizontalAlignment = if (rowEnd) Alignment.End else Alignment.Start) {
-                                                    if (capTop) caption(Modifier)
+                                                    // A gap between them, so the column's last card (and its titles) isn't cut off against the caption.
+                                                    if (capTop) { caption(Modifier); androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp)) }
                                                     column(Modifier.weight(1f).then(sidePad))
-                                                    if (!capTop) caption(Modifier)
+                                                    if (!capTop) { androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp)); caption(Modifier) }
                                                 }
                                             } else {
                                                 caption(Modifier.align(corner(capTop, capEnd)))

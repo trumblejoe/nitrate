@@ -660,6 +660,43 @@ class TvScreenshotTest {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Three seasons inside a cinema", substring = true)).fetchSemanticsNodes().isEmpty()) { "Compact should leave the description out" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
+    /** Rows down the left or right: ▲▼ along each column and on to the next row, never the menu. */
+    private fun sideRowsKeepFocus(name: String, place: dev.nitrate.core.pages.RowPlace) = shoot(name, setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsHome.copy(tvRowPlace = place))
+    }, act = {
+        val trail = mutableListOf<String>()
+        fun step(key: String) {
+            press(key)
+            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+            val node = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().firstOrNull()
+            val at = node?.boundsInRoot
+            val label = node?.config?.firstOrNull { it.key == androidx.compose.ui.semantics.SemanticsProperties.ContentDescription }?.value?.toString()
+            trail += "$key→$label@${at?.left?.toInt()},${at?.top?.toInt()}"
+            check(at != null && at.left >= 140f && at.top >= -5f && at.bottom <= 1085f) { "Focus lost or off screen: $trail" }
+        }
+        repeat(12) { step("down") }
+        repeat(12) { step("up") }
+        println("TRAIL $name: $trail")
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    @Test fun leftRowsKeepFocus() = sideRowsKeepFocus("tv-left-rows-focus", dev.nitrate.core.pages.RowPlace.LEFT)
+    @Test fun rightRowsKeepFocus() = sideRowsKeepFocus("tv-right-rows-focus", dev.nitrate.core.pages.RowPlace.RIGHT)
+
+    /** Full art with "Up/Down along the row": ▼▲ step titles, changing rows only past a row's ends. */
+    @Test fun fullArtUpDownAlong() = shoot("tv-full-art-up-down-along", setup = { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvUpDownAlong = true))
+    }, act = {
+        fun label(n: String) = compose.onAllNodes(androidx.compose.ui.test.hasText(n, substring = true)).fetchSemanticsNodes().isNotEmpty()
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(label("1 / 2")) { "should start on the first row's first title" }
+        press("down"); compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(label("2 / 2")) { "▼ should step to the row's second title" }
+        press("down"); compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(label("NEXT UP  ·  1 / 1")) { "▼ past the row's last title should go to the next row" }
+        press("up"); compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(label("2 / 2")) { "▲ past the first title should go back to the row above, at its last title" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
     /** Leaving a row and coming back lands on the card left in it, whatever was done in other rows meanwhile. */
     @Test fun rowsRememberTheirCard() = shoot("tv-rows-remember-card", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

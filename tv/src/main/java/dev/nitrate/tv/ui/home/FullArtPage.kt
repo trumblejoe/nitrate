@@ -119,6 +119,7 @@ fun FullArtPage(
     val plainActions = remember(onOpen, onPlay) { dev.nitrate.tv.ui.rows.RowActions(onFocus = {}, onOpen = onOpen, onPlay = onPlay, onEditRow = {}) }
     val open = (fx?.wrap(plainActions) ?: plainActions).onOpen
 
+    val along = LocalDisplayPrefs.current.tvUpDownAlong
     Box(
         modifier
             .fillMaxSize()
@@ -130,10 +131,20 @@ fun FullArtPage(
                     // end (the row's "Infinite scroll"). Past the first/last row: the menu or stay.
                     Key.DirectionRight -> { if (down) { if (current < row.items.lastIndex) itemIndex[row.key] = current + 1 else if (!reachMenu(event.key) && showcase.infiniteScroll) itemIndex[row.key] = 0 }; true }
                     Key.DirectionLeft -> { if (down) { if (current > 0) itemIndex[row.key] = current - 1 else if (!reachMenu(event.key) && showcase.infiniteScroll) itemIndex[row.key] = row.items.lastIndex }; true }
-                    Key.DirectionDown -> { if (down) { if (rowIndex < shown.lastIndex) rowKey = shown[rowIndex + 1].key else reachMenu(event.key) }; true }
+                    // "Up/Down along the row": ▼▲ step titles first, and only past the last (first) one go on
+                    // to the next row's first title (the previous row's last).
+                    Key.DirectionDown -> {
+                        if (down) when {
+                            along && current < row.items.lastIndex -> itemIndex[row.key] = current + 1
+                            rowIndex < shown.lastIndex -> { val next = shown[rowIndex + 1]; if (along) itemIndex[next.key] = 0; rowKey = next.key }
+                            else -> reachMenu(event.key)
+                        }
+                        true
+                    }
                     Key.DirectionUp -> {
                         if (down) when {
-                            rowIndex > 0 -> rowKey = shown[rowIndex - 1].key
+                            along && current > 0 -> itemIndex[row.key] = current - 1
+                            rowIndex > 0 -> { val previous = shown[rowIndex - 1]; if (along) itemIndex[previous.key] = previous.items.lastIndex.coerceAtLeast(0); rowKey = previous.key }
                             header != null -> runCatching { headerFocus.requestFocus() }
                             else -> reachMenu(event.key)
                         }

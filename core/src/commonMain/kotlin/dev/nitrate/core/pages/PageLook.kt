@@ -18,6 +18,8 @@ data class PageLook(
     val rowExtent: RowExtent? = null,
     /** How the page's tabs look. */
     val tabStyle: TabStyle? = null,
+    /** Full art: ▲▼ step along the row too, changing rows only past its first or last title. */
+    val upDownAlong: Boolean? = null,
 ) {
     val isEmpty: Boolean get() = this == PageLook()
 }
@@ -38,6 +40,7 @@ object PageLooks {
         rowPlace = prefs.tvRowPlace,
         rowExtent = prefs.tvRowExtent,
         tabStyle = prefs.tvTabStyle,
+        upDownAlong = prefs.tvUpDownAlong,
     )
 
     /** The page's layout in full: its own choices over every page's. */
@@ -51,6 +54,7 @@ object PageLooks {
             rowPlace = own.rowPlace ?: base.rowPlace,
             rowExtent = own.rowExtent ?: base.rowExtent,
             tabStyle = own.tabStyle ?: base.tabStyle,
+            upDownAlong = own.upDownAlong ?: base.upDownAlong,
         )
     }
 
@@ -71,6 +75,7 @@ object PageLooks {
             tvRowPlace = look.rowPlace ?: prefs.tvRowPlace,
             tvRowExtent = look.rowExtent ?: prefs.tvRowExtent,
             tvTabStyle = look.tabStyle ?: prefs.tvTabStyle,
+            tvUpDownAlong = look.upDownAlong ?: prefs.tvUpDownAlong,
         )
     }
 
@@ -87,6 +92,7 @@ object PageLooks {
             rowPlace = next.rowPlace.takeIf { it != base.rowPlace },
             rowExtent = next.rowExtent.takeIf { it != base.rowExtent },
             tabStyle = next.tabStyle.takeIf { it != base.tabStyle },
+            upDownAlong = next.upDownAlong.takeIf { it != base.upDownAlong },
         )
         return prefs.copy(pageLooks = if (own.isEmpty) prefs.pageLooks - owner else prefs.pageLooks + (owner to own))
     }
@@ -108,6 +114,7 @@ object PageLooks {
             tvRowPlace = look.rowPlace ?: prefs.tvRowPlace,
             tvRowExtent = look.rowExtent ?: prefs.tvRowExtent,
             tvTabStyle = look.tabStyle ?: prefs.tvTabStyle,
+            tvUpDownAlong = look.upDownAlong ?: prefs.tvUpDownAlong,
             pageLooks = emptyMap(),
         )
     }

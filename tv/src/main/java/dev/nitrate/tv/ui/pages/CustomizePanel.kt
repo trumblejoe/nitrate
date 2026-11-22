@@ -329,6 +329,11 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
             ChoiceItem("Caption size", (look.captionSize ?: dev.nitrate.core.pages.CaptionSize.NORMAL).label) {
                 set { it.copy(captionSize = (it.captionSize ?: dev.nitrate.core.pages.CaptionSize.NORMAL).cycleNext()) }
             }
+            if (arrangement == PageArrangement.FULL_ART) {
+                ChoiceItem("Up/Down", if (look.upDownAlong == true) "Along the row, then rows" else "Between rows") {
+                    set { it.copy(upDownAlong = it.upDownAlong != true) }
+                }
+            }
             if (arrangement.oneAtATime) {
                 ChoiceItem("Row position", (look.rowPlace ?: RowPlace.BOTTOM).label) { set { it.copy(rowPlace = (it.rowPlace ?: RowPlace.BOTTOM).cycleNext()) } }
                 ChoiceItem("Row length", (look.rowExtent ?: RowExtent.FULL).label) { set { it.copy(rowExtent = (it.rowExtent ?: RowExtent.FULL).cycleNext()) } }

@@ -270,6 +270,17 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 trailingContent = { Text("${prefs.tvCaptionSize.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
+        if (prefs.tvArrangement == dev.nitrate.core.pages.PageArrangement.FULL_ART) {
+            item {
+                ListItem(
+                    selected = false,
+                    onClick = { update { it.copy(tvUpDownAlong = !it.tvUpDownAlong) } },
+                    headlineContent = { Text("Up/Down") },
+                    supportingContent = { Text(if (prefs.tvUpDownAlong) "▲ ▼ step along the row like ◀ ▶, on to the next row past its ends" else "▲ ▼ go straight to the row above or below") },
+                    trailingContent = { Text("${if (prefs.tvUpDownAlong) "Along the row, then rows" else "Between rows"}  ›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
+        }
         if (prefs.tvArrangement.oneAtATime) {
             item {
                 ListItem(
