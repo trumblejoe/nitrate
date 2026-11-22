@@ -176,6 +176,19 @@ class PlaybackSession(
     @Volatile private var videoFormat: androidx.media3.common.Format? = null
     @Volatile private var audioInFormat: androidx.media3.common.Format? = null
     @Volatile private var droppedFrames = 0
+
+    /** Watches for sound and picture falling out of step ([dev.nitrate.core.playback.SyncWatch]); fed on the player's thread. */
+    private val syncWatch = dev.nitrate.core.playback.SyncWatch()
+    private val _syncWarning = MutableStateFlow<dev.nitrate.core.playback.SyncWarning?>(null)
+    /** What knocked sound and picture out of step in this playback, if anything. */
+    val syncWarning: StateFlow<dev.nitrate.core.playback.SyncWarning?> = _syncWarning
+
+    private fun syncChanged() {
+        val w = syncWatch.warning
+        if (w == _syncWarning.value) return
+        _syncWarning.value = w
+        if (w != null) log("Out of step: ${w.trouble.title}. ${w.text}")
+    }
     @Volatile private var networkBps: Long? = null
 
     /**
@@ -228,6 +241,7 @@ class PlaybackSession(
             displayHz = display?.hz,
             displayHdr = display?.hdr,
             droppedFrames = droppedFrames,
+            syncTrouble = _syncWarning.value?.text,
             bufferedMs = exo.totalBufferedDuration.takeIf { _plan.value != null },
             networkBps = networkBps?.takeIf { p?.url?.startsWith("/") != true },
             fileBps = p?.source?.bitrate?.toLong()?.takeIf { it > 0 && p.url.startsWith("/").not() },
@@ -716,10 +730,28 @@ class PlaybackSession(
 
             override fun onRenderedFirstFrame(e: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
                 if (firstFrameAt == null) firstFrameAt = System.currentTimeMillis()
+                syncWatch.settling(System.currentTimeMillis())
             }
 
             override fun onPositionDiscontinuity(e: AnalyticsListener.EventTime, oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) seekedAt = System.currentTimeMillis()
+                when (reason) {
+                    // A jump nobody asked for, within one item: the file's own timing.
+                    Player.DISCONTINUITY_REASON_INTERNAL ->
+                        if (oldPosition.mediaItemIndex == newPosition.mediaItemIndex) { syncWatch.timingJump(System.currentTimeMillis()); syncChanged() }
+                    else -> syncWatch.settling(System.currentTimeMillis())
+                }
+            }
+
+            override fun onAudioUnderrun(e: AnalyticsListener.EventTime, bufferSize: Int, bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) {
+                log("Sound ran dry (buffer ${bufferSizeMs}ms, last fed ${elapsedSinceLastFeedMs}ms before)")
+                syncWatch.underrun(System.currentTimeMillis())
+                syncChanged()
+            }
+
+            override fun onVideoFrameProcessingOffset(e: AnalyticsListener.EventTime, totalProcessingOffsetUs: Long, frameCount: Int) {
+                syncWatch.frameTiming(totalProcessingOffsetUs, frameCount, System.currentTimeMillis())
+                syncChanged()
             }
 
             override fun onDroppedVideoFrames(e: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
@@ -729,6 +761,8 @@ class PlaybackSession(
 
             override fun onAudioSinkError(e: AnalyticsListener.EventTime, audioSinkError: Exception) {
                 log("Audio output error: ${audioSinkError::class.simpleName}: ${audioSinkError.message}")
+                syncWatch.soundRestarted(System.currentTimeMillis())
+                syncChanged()
             }
 
             override fun onAudioCodecError(e: AnalyticsListener.EventTime, audioCodecError: Exception) {
@@ -1007,8 +1041,19 @@ class PlaybackSession(
     /** Why the current item doesn't play as it is here, and what would fix it. */
     suspend fun diagnosis(caps: dev.nitrate.core.playback.DeviceCapabilities): dev.nitrate.core.playback.PlaybackDiagnosis? {
         val p = _plan.value ?: return null
-        if (localProgress != null) return null
-        return dev.nitrate.core.playback.PlaybackDoctor.diagnose(p, caps, settings.current(), forcedTranscode)
+        val sync = _syncWarning.value?.let { w ->
+            dev.nitrate.core.playback.PlaybackFinding(
+                w.trouble.title, w.text,
+                fixes = listOfNotNull(
+                    dev.nitrate.core.playback.PlaybackFix.Resync("Line them up again", "Reloads from this moment"),
+                    dev.nitrate.core.playback.PlaybackFix.Convert("Have the server convert it", "From this moment, for this playback; smoother on this device, a little softer picture")
+                        .takeIf { w.convertHelps && p.method != PlayMethod.TRANSCODE && localProgress == null },
+                ),
+            )
+        }
+        if (localProgress != null) return sync?.let { dev.nitrate.core.playback.PlaybackDiagnosis(dev.nitrate.core.playback.PlaybackQuality.ORIGINAL, "Plays from this device", listOf(it), p) }
+        val d = dev.nitrate.core.playback.PlaybackDoctor.diagnose(p, caps, settings.current(), forcedTranscode)
+        return if (sync == null) d else d.copy(findings = listOf(sync) + d.findings)
     }
 
     @Volatile private var displayHzBefore: Float? = null
@@ -1035,6 +1080,7 @@ class PlaybackSession(
             stalls = stalls,
             stalledMs = stalledMs,
             droppedFrames = droppedFrames,
+            syncTrouble = _syncWarning.value?.let { "${it.trouble.title}: ${it.text}" },
             networkBps = networkBps?.takeIf { p?.url?.startsWith("/") != true },
             streamBps = streamBps?.takeIf { p?.url?.startsWith("/") != true },
         )
@@ -1114,6 +1160,15 @@ class PlaybackSession(
             }
             is dev.nitrate.core.playback.PlaybackFix.Retry ->
                 restart(at, forceTranscode = false, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex)
+            // Sound and picture out of step: the same way again (or converted), and watch afresh.
+            is dev.nitrate.core.playback.PlaybackFix.Resync -> {
+                syncWatch.reset(System.currentTimeMillis()); _syncWarning.value = null
+                restart(at, forceTranscode = forcedTranscode, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex)
+            }
+            is dev.nitrate.core.playback.PlaybackFix.Convert -> {
+                syncWatch.reset(System.currentTimeMillis()); _syncWarning.value = null
+                restart(at, forceTranscode = true, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex)
+            }
             is dev.nitrate.core.playback.PlaybackFix.Change ->
                 restart(at, forceTranscode = false, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex, before = { settings.update(fix.change::apply) })
         }
@@ -1123,6 +1178,8 @@ class PlaybackSession(
     private fun forgetItemState() {
         videoFormat = null
         droppedFrames = 0
+        syncWatch.reset(System.currentTimeMillis())
+        _syncWarning.value = null
         firstFrameAt = null
         stalls = 0
         stalledMs = 0

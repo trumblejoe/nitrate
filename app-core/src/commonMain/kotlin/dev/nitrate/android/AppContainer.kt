@@ -580,7 +580,9 @@ class AppContainer(
      * copies, what this device always has to convert, and missing episodes.
      */
     suspend fun checkLibraryHealth(libraryId: String?): Map<dev.nitrate.core.diagnostics.HealthCheck, List<dev.nitrate.core.diagnostics.HealthFinding>> {
-        val found = dev.nitrate.core.diagnostics.LibraryHealth.findings(server.healthScan(libraryId), capabilities, playbackSettings.current())
+        // The plugin's timing check, when it's there (admins; the health check is for admins).
+        val timing = runCatching { server.fileTimingIssues() }.getOrDefault(emptyList())
+        val found = dev.nitrate.core.diagnostics.LibraryHealth.findings(server.healthScan(libraryId), capabilities, playbackSettings.current(), timing)
         lastHealth = libraryId to found
         return found
     }

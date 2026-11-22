@@ -577,8 +577,12 @@ actual fun PlayerScreen(
                         Icon(CopyIcon, null, modifier = Modifier.size(16.dp))
                         Text("Media info", modifier = Modifier.padding(start = 8.dp))
                     }
-                    if (p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY && !local) {
-                        androidx.compose.material3.OutlinedButton(onClick = { dialog = PlayerDialog.FIX }, modifier = Modifier.padding(top = 12.dp)) { Text("Why converting? Fix it") }
+                    // Sound and picture knocked out of step (SyncWatch): the fixes for that, even when it plays as it is.
+                    val outOfStep by session.syncWarning.collectAsState()
+                    if (outOfStep != null || (p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY && !local)) {
+                        androidx.compose.material3.OutlinedButton(onClick = { dialog = PlayerDialog.FIX }, modifier = Modifier.padding(top = 12.dp)) {
+                            Text(if (outOfStep != null) "Out of step? Fix it" else "Why converting? Fix it")
+                        }
                     }
                 }
             },

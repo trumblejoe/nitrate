@@ -23,6 +23,7 @@ data class HealthScan(val titles: List<HealthTitle>, val missingEpisodes: List<M
 /** What the check looks for, in the order shown. */
 enum class HealthCheck(val title: String, val explain: String) {
     ALWAYS_CONVERTS("Always converted on this device", "The server has to convert these to play them here, every time."),
+    TIMING("Sound and picture timing", "Files made in a way that can put sound and picture out of step in some players, or when the server converts them. Remaking the file (remuxing it) usually fixes it."),
     DUPLICATES("Duplicate copies", "The same title more than once: merged, they become versions of one title."),
     NO_ARTWORK("Missing artwork", "No poster or background picture."),
     UNMATCHED("Not identified", "Not matched to an online database, so details and artwork can't be fetched."),
@@ -56,9 +57,21 @@ data class HealthFinding(
  */
 object LibraryHealth {
 
-    fun findings(scan: HealthScan, caps: DeviceCapabilities, settings: PlaybackSettings): Map<HealthCheck, List<HealthFinding>> {
+    fun findings(scan: HealthScan, caps: DeviceCapabilities, settings: PlaybackSettings, timing: List<FileTiming> = emptyList()): Map<HealthCheck, List<HealthFinding>> {
         val out = mutableMapOf<HealthCheck, MutableList<HealthFinding>>()
         fun add(f: HealthFinding) { out.getOrPut(f.check) { mutableListOf() } += f }
+
+        // The server's timing check, for the files of this scan (a film, or each of a show's episodes).
+        if (timing.isNotEmpty()) {
+            val byId = timing.associateBy { it.itemId }
+            for (t in scan.titles) {
+                val files = if (t.files.isEmpty()) listOf(t.item) else t.files.map { it.first }
+                for (file in files.distinctBy { it.id }) {
+                    val found = byId[file.id] ?: continue
+                    add(HealthFinding(HealthCheck.TIMING, file, found.issues.joinToString(" ") { it.text }, fixes = listOf(HealthFix.HOW_IT_PLAYS, HealthFix.OPEN)))
+                }
+            }
+        }
 
         for (t in scan.titles) {
             val i = t.item

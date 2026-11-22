@@ -49,6 +49,8 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.SmartCollections.SmartCollectionStore(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "smart-collections.json")));
         serviceCollection.AddHostedService<Nitrate.Companion.SmartCollections.SmartCollectionWatcher>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Timing.TimingStore(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "timing.json")));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Credits.CreditStore(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "credits.json")));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Intros.IntroStore(

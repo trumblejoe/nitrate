@@ -41,6 +41,8 @@ data class VideoPath(
     val tvShowedHdr: Boolean = false,
     /** An Amazon Fire TV, whose Dynamic Range setting decides what goes out. */
     val fireTv: Boolean = false,
+    /** Sound and picture knocked out of step while playing ([SyncWatch]), in a sentence. */
+    val syncTrouble: String? = null,
 ) {
     fun rows(): List<Pair<String, String>> = buildList {
         val shown = listOfNotNull(inCodec?.uppercase(), size(inWidth, inHeight), inFps?.takeIf { it > 0 }?.let { "${fps(it)} fps" }, inRange)
@@ -88,6 +90,7 @@ data class VideoPath(
         if (content != null && display != null && !cadenceFits(content, display)) {
             add("${fps(content)} fps on a ${fps(display)} Hz display: motion stutters slightly (judder). Refresh rate in the player's More → Settings (or Match frame rate in Settings → Picture & sound) switches the display to suit.")
         }
+        syncTrouble?.let { add(it) }
         if (droppedFrames >= DROPPED_WARN) add("Dropped frames: this device is struggling with this video. A lower quality or another version may play smoothly.")
         val need = fileBps
         if (need != null && networkBps != null && networkBps in 1 until need && (bufferedMs ?: Long.MAX_VALUE) < LOW_BUFFER_MS) {

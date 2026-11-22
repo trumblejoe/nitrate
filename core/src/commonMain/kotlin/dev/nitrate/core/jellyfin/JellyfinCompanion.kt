@@ -192,6 +192,14 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
         if (e.response.status == HttpStatusCode.NotFound) null else throw e
     }
 
+    /** Files whose timing the plugin found wrong; empty without the feature or for non-admins. */
+    suspend fun fileTiming(): List<dev.nitrate.core.diagnostics.FileTiming> = try {
+        JellyfinJson.decodeFromString<List<TimingDto>>(client.get("Nitrate", "Timing").bodyAsText())
+            .map { dev.nitrate.core.diagnostics.FileTiming(normalizeId(it.itemId), it.issues.map { i -> dev.nitrate.core.diagnostics.TimingIssue(i.kind, i.atMs, i.amountMs, i.text) }) }
+    } catch (e: ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound || e.response.status == HttpStatusCode.Forbidden) emptyList() else throw e
+    }
+
     /** The book's pages as the plugin serves them; null when it can't (no plugin, not a file it reads). */
     suspend fun comicListing(itemId: String): dev.nitrate.core.comics.ComicListing? = try {
         val dto: ComicListingDto = JellyfinJson.decodeFromString(client.get("Nitrate", "Comics", itemId).bodyAsText())
@@ -471,3 +479,9 @@ internal class JellyfinCatalogs(private val client: JellyfinClient) {
         private suspend fun problem(e: ClientRequestException) = runCatching { JellyfinJson.decodeFromString<ProblemDto>(e.response.bodyAsText()).detail }.getOrNull()
     }
 }
+
+@kotlinx.serialization.Serializable
+internal data class TimingIssueDto(val kind: String, val atMs: Long? = null, val amountMs: Long? = null, val text: String = "")
+
+@kotlinx.serialization.Serializable
+internal data class TimingDto(val itemId: String, val issues: List<TimingIssueDto> = emptyList())

@@ -72,6 +72,8 @@ data class Smoothness(
     val seekResumeMs: Long? = null,
     val seekFailed: Boolean = false,
     val passthroughAfterSeek: Boolean? = null,
+    /** What knocked sound and picture out of step, if anything ([SyncWatch]). */
+    val syncTrouble: String? = null,
 )
 
 /**
@@ -288,6 +290,8 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
                     if (m.stalls == 0) "None: it never stopped to wait for data" else "${m.stalls} stall${if (m.stalls == 1) "" else "s"}, ${dev.nitrate.core.model.formatOneDecimal(m.stalledMs / 1000.0)} s in all",
                     if (m.stalls > 0 && slowNet) "The network is slower than the stream needs" else null,
                     differs = if (m.stalls > 0) "stopped to buffer" else null),
+                TrailStep("Sound and picture", TrailActor.MEASURED, m.syncTrouble ?: "In step: nothing knocked them apart",
+                    differs = if (m.syncTrouble != null) "out of step" else null),
                 TrailStep("Dropped frames", TrailActor.MEASURED, "${m.droppedFrames}",
                     differs = if (m.droppedFrames > TestPlay.DROPPED_OK) "more than a few: the picture stuttered" else null),
                 m.networkBps?.let { n -> TrailStep("Network", TrailActor.MEASURED, mbps(n) + (m.streamBps?.let { " (the stream needs ${mbps(it)})" } ?: ""),

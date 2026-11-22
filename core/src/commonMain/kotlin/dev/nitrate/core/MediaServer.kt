@@ -527,6 +527,9 @@ interface MediaServer {
      */
     suspend fun serverCreditScenes(itemId: String): List<dev.nitrate.core.playback.CreditSkip>? = null
 
+    /** Files whose timing can put sound and picture out of step (Companion feature `timing`, admins; empty without it). */
+    suspend fun fileTimingIssues(): List<dev.nitrate.core.diagnostics.FileTiming> = emptyList()
+
     /** Invites people (from [partnerPeople]) to join watch-together group [groupId] (Companion feature `together`); always "sent". */
     suspend fun inviteToWatch(groupId: String, userIds: List<String>, itemId: String?, itemName: String?): Unit = unsupported()
 

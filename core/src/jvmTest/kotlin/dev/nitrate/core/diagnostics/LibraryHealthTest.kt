@@ -86,4 +86,17 @@ class LibraryHealthTest {
         assertEquals("s1", f.item.id)
         assertEquals("3 missing: S2 E1, S2 E3, S2 E7", f.detail)
     }
+
+    @Test fun listsFilesTheServerFoundOutOfStepInThisLibraryOnly() {
+        val film = movie("m1", "Night Shift")
+        val timing = listOf(
+            FileTiming("m1", listOf(TimingIssue("start-offset", amountMs = 420, text = "The sound starts 0.42 s after the picture."))),
+            FileTiming("elsewhere", listOf(TimingIssue("audio-gap", 60_000, 900, "A gap."))),
+        )
+        val found = LibraryHealth.findings(HealthScan(listOf(title(film)), emptyList()), device, PlaybackSettings(), timing)
+        val f = found.getValue(HealthCheck.TIMING).single()
+        assertEquals("m1", f.item.id)
+        assertTrue("0.42 s after" in f.detail)
+        assertEquals("Sound starts 0.4 s late", FileTimings.label(timing[0].issues[0]))
+    }
 }

@@ -68,6 +68,10 @@ sealed interface PlaybackFix {
     data class Change(val change: SettingsChange, override val label: String, override val detail: String?) : PlaybackFix
     /** Asks the server again without forcing a transcode (after an earlier failure). */
     data class Retry(override val label: String, override val detail: String?) : PlaybackFix
+    /** Reloads from the same spot the same way, putting sound and picture back in step. */
+    data class Resync(override val label: String, override val detail: String?) : PlaybackFix
+    /** Has the server convert this title from the same spot (this playback only). */
+    data class Convert(override val label: String, override val detail: String?) : PlaybackFix
 }
 
 /** One reason an item doesn't play as it is, in plain words, with what can be done. */

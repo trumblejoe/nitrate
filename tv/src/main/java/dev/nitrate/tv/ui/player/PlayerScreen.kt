@@ -196,6 +196,8 @@ fun PlayerScreen(
     val settingsNow by playbackSettings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
     val assTrack by session.assTrack.collectAsState()
     val subtitleOffset by session.subtitleOffsetMs.collectAsState()
+    // Sound and picture knocked out of step (SyncWatch): the fix panel offers what helps.
+    val outOfStep by session.syncWarning.collectAsState()
     // The TV's refresh rate follows the video's frame rate, as set in Playback settings.
     // This playback's choice from More → Settings, else the device's.
     var frameRateOverride by remember { mutableStateOf<dev.nitrate.core.playback.FrameRateMatch?>(null) }
@@ -565,7 +567,8 @@ fun PlayerScreen(
                     PlayerAction("Info", ready) { panel = Panel.INFO }.takeIf { !easy },
                     PlayerAction("More", ready) { panel = Panel.MORE }.takeIf { !easy },
                     PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },
-                    PlayerAction("Why converting?") { panel = Panel.FIX }.takeIf { !easy && capabilities != null && p != null && p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY },
+                    PlayerAction(if (outOfStep != null) "Out of step? Fix it" else "Why converting?") { panel = Panel.FIX }
+                        .takeIf { !easy && capabilities != null && p != null && (outOfStep != null || p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY) },
                     PlayerAction(if (panel == Panel.CHAT) "Hide chat" else "Chat") { toggle(Panel.CHAT) }.takeIf { !easy && chatGroup != null },
                 ) + (if (easy) emptyList() else panels.map { PlayerAction(it.panelLabel) { togglePanel(it) } }) +
                     listOfNotNull(sendLog?.takeIf { !easy }?.let { send ->
