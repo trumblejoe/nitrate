@@ -45,7 +45,7 @@ class ThemeDrawTest {
         for (t in listOf(2.3f, 7.9f, 15.1f)) {
             val bitmap = ImageBitmap(480, 270)
             val scope = CanvasDrawScope()
-            scope.draw(Density(1f), LayoutDirection.Ltr, Canvas(bitmap), Size(480f, 270f)) { scale(0.5f, 0.5f, androidx.compose.ui.geometry.Offset.Zero) { (this as androidx.compose.ui.graphics.drawscope.DrawScope).draw(t, 1f, depths) } }
+            scope.draw(Density(1f), LayoutDirection.Ltr, Canvas(bitmap), Size(960f, 540f)) { scale(0.5f, 0.5f, androidx.compose.ui.geometry.Offset.Zero) { (this as androidx.compose.ui.graphics.drawscope.DrawScope).draw(t, 1f, depths) } }
             val px = IntArray(480 * 270)
             bitmap.readPixels(px)
             worst = maxOf(worst, px.count { (it ushr 24) > 60 } / px.size.toFloat())
@@ -69,6 +69,36 @@ class ThemeDrawTest {
         Occasion.entries.forEach { o -> check(o.name) { t, k, d -> drawOccasionForTest(o, t, k, d) } }
         check(heavy.isEmpty()) { heavy.joinToString("\n") }
         check(empty.isEmpty()) { "nothing behind the rows: ${empty.joinToString()}" }
+    }
+
+    /** How much the behind layers cover where a title's picture sits (the middle, upper part): mean alpha. */
+    private fun overPicture(draw: androidx.compose.ui.graphics.drawscope.DrawScope.(Float) -> Unit): Float {
+        var worst = 0f
+        for (t in listOf(2.3f, 7.9f, 15.1f, 31.7f)) {
+            val bitmap = ImageBitmap(480, 270)
+            CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(bitmap), Size(960f, 540f)) { scale(0.5f, 0.5f, androidx.compose.ui.geometry.Offset.Zero) { (this as androidx.compose.ui.graphics.drawscope.DrawScope).draw(t) } }
+            val px = IntArray(480 * 270)
+            bitmap.readPixels(px)
+            var sum = 0L
+            for (y in 27 until 162) for (x in 96 until 384) sum += px[y * 480 + x] ushr 24
+            worst = maxOf(worst, sum / (135f * 288f * 255f))
+        }
+        return worst
+    }
+
+    /**
+     * Behind the page a theme lies over the title's picture: no skies, vignettes or washes there, and big
+     * shapes keep to the edges, so the picture never looks filmed over. Small passing things are fine.
+     */
+    @Test fun pictureStaysClear() {
+        val filmed = mutableListOf<String>()
+        fun check(name: String, draw: androidx.compose.ui.graphics.drawscope.DrawScope.(Float) -> Unit) {
+            val cover = overPicture(draw)
+            if (cover > 0.08f) filmed += "$name covers the picture ${"%.2f".format(cover)}"
+        }
+        PageTheme.entries.filter { it != PageTheme.NONE }.forEach { theme -> check(theme.name) { t -> drawThemeForTest(theme, t, 1f, BEHIND) } }
+        Occasion.entries.forEach { o -> check(o.name) { t -> drawOccasionForTest(o, t, 1f, BEHIND) } }
+        check(filmed.isEmpty()) { filmed.joinToString("\n") }
     }
 
     @Test fun everyThemeDraws() {

@@ -38,9 +38,30 @@ private fun mix(a: Offset, b: Offset, t: Float) = Offset(a.x + (b.x - a.x) * t, 
 
 // ---- Shared parts ----
 
-/** A sky laid over the page: [colors] top to bottom, strongest at the top, gone by [to] (share of height). */
+/**
+ * The sky's dark top edge: [colors] top to bottom, gone by [to] (share of height) and never further
+ * than [SKY_EDGE], since below that the page's picture is the sky.
+ */
 private fun DrawScope.skyWash(colors: List<Color>, to: Float) {
-    drawRect(Brush.verticalGradient(colors + Color.Transparent, endY = size.height * to), size = Size(size.width, size.height * to))
+    val end = size.height * min(to, SKY_EDGE)
+    drawRect(Brush.verticalGradient(colors + Color.Transparent, endY = end), size = Size(size.width, end))
+}
+
+/** How far down the screen a scene's sky may reach over the page's picture. */
+private const val SKY_EDGE = 0.12f
+
+/** A band of drifting cloud along the top edge, [color] underlit by [under] (which may pulse with [lit]). */
+private fun DrawScope.topClouds(t: Float, n: Int, salt: Int, color: Color, under: Color, underAlpha: Float, speed: Float = 0.005f) {
+    val w = size.width
+    val h = size.height
+    val s = u()
+    for (i in 0 until n) {
+        val x = frac(rnd(i, salt) + t * speed * (1 + i % 3)) * (w + 400f * s) - 200f * s
+        val y = h * (-0.03f + rnd(i, salt + 1) * 0.08f)
+        val r = (80f + rnd(i, salt + 2) * 120f) * s
+        glow(Offset(x, y), r, color, 0.6f, additive = false)
+        glow(Offset(x, y + r * 0.3f), r * 0.6f, under, underAlpha)
+    }
 }
 
 /**
@@ -203,19 +224,14 @@ internal fun DrawScope.lightningRun(t: Float, k: Float) {
     val flare = if (a < RUN_TIME) 1f else exp(-(a - RUN_TIME) * 2.2f)
     back {
         skyWash(listOf(Color(0xDD04050B), Color(0x9907070F)), 0.62f)
-        // A low cloud deck lit orange from below by the city.
-        for (i in 0 until 26) {
-            val x = frac(rnd(i, 5100) + t * 0.004f * (1 + i % 3)) * (w + 500f * s) - 250f * s
-            val y = h * (0.06f + rnd(i, 5101) * 0.28f)
-            val r = (160f + rnd(i, 5102) * 240f) * s
-            glow(Offset(x, y), r, Color(0xFF0E0F18), 0.55f, additive = false)
-            glow(Offset(x, y + r * 0.35f), r * 0.7f, Color(0xFFFF8A3C), 0.035f + 0.05f * flare)
-        }
-        glow(Offset(w * 0.5f, h * 0.8f), h * 0.9f, Color(0xFFFF9A4A), 0.10f)
-        skyline(h * 0.80f, 120f * s, 320f * s, 5110, 0.72f, Color(0xFF2A2433), Color(0xFFFFA25A), Color(0xFFFFC78A), t)
+        // A low cloud deck along the top, lit orange from below by the city.
+        topClouds(t, 26, 5100, Color(0xFF0E0F18), Color(0xFFFF8A3C), 0.035f + 0.05f * flare, 0.004f)
+        // The city's glow, low along the bottom.
+        glow(Offset(w * 0.5f, h * 1.02f), h * 0.45f, Color(0xFFFF9A4A), 0.12f)
+        skyline(h * 0.885f, 50f * s, 150f * s, 5110, 0.72f, Color(0xFF2A2433), Color(0xFFFFA25A), Color(0xFFFFC78A), t)
     }
     mid {
-        skyline(h * 0.90f, 160f * s, 560f * s, 5120, 0.15f, Color(0xFF1A1420), Color(0xFFFFB066), Color(0xFFFFD39A), t, tallAtEdges = true, windowShare = 0.28f)
+        skyline(h * 0.90f, 80f * s, 300f * s, 5120, 0.15f, Color(0xFF1A1420), Color(0xFFFFB066), Color(0xFFFFD39A), t, tallAtEdges = true, windowShare = 0.28f)
         // The street: wet asphalt catching the light.
         val street = h * 0.885f
         drawRect(Brush.verticalGradient(listOf(Color(0xF0100D12), Color(0xFF050407)), startY = street, endY = h), topLeft = Offset(0f, street), size = Size(w, h - street))
@@ -308,26 +324,20 @@ internal fun DrawScope.nightWatch(t: Float, k: Float) {
     val s = u()
     back {
         skyWash(listOf(Color(0xE0020807), Color(0xA0061411)), 0.7f)
-        // Clouds lit green-white from the city underneath.
-        for (i in 0 until 30) {
-            val x = frac(rnd(i, 5200) + t * 0.006f * (1 + i % 3)) * (w + 600f * s) - 300f * s
-            val y = h * (0.04f + rnd(i, 5201) * 0.3f)
-            val r = (140f + rnd(i, 5202) * 260f) * s
-            glow(Offset(x, y), r, Color(0xFF081210), 0.6f, additive = false)
-            glow(Offset(x, y + r * 0.3f), r * 0.75f, Color(0xFF7FE0B0), 0.04f)
-        }
-        // Searchlights sweeping from behind the city.
+        // Clouds along the top, lit green-white from the city underneath.
+        topClouds(t, 30, 5200, Color(0xFF081210), Color(0xFF7FE0B0), 0.04f, 0.006f)
+        // Searchlights sweeping from behind the city: narrow and faint over the picture.
         for (b in 0 until 3) {
             val ang = sin(t * (0.13f + b * 0.04f) + b * 2.1f) * 0.55f + (b - 1) * 0.25f
-            beam(Offset(w * (0.22f + b * 0.3f), h * 0.74f), ang, h * 0.95f, 0.09f, Color(0xFFCFF5E6), 0.16f)
+            beam(Offset(w * (0.22f + b * 0.3f), h * 0.82f), ang, h * 0.8f, 0.06f, Color(0xFFCFF5E6), 0.07f)
         }
-        skyline(h * 0.74f, 140f * s, 380f * s, 5210, 0.7f, Color(0xFF1C3A33), Color(0xFF9CF0CB), Color(0xFFE6F7C9), t, windowShare = 0.42f)
-        skyline(h * 0.80f, 120f * s, 300f * s, 5211, 0.42f, Color(0xFF12241F), Color(0xFF8CE6BE), Color(0xFFFFE2A0), t, windowShare = 0.3f)
+        skyline(h * 0.845f, 50f * s, 160f * s, 5210, 0.7f, Color(0xFF1C3A33), Color(0xFF9CF0CB), Color(0xFFE6F7C9), t, windowShare = 0.42f)
+        skyline(h * 0.86f, 40f * s, 120f * s, 5211, 0.42f, Color(0xFF12241F), Color(0xFF8CE6BE), Color(0xFFFFE2A0), t, windowShare = 0.3f)
         // A harbour bridge's lights strung across the distance.
-        val by = h * 0.705f
+        val by = h * 0.79f
         for (i in 0 until 40) {
             val x = w * 0.05f + i * w * 0.022f
-            val sag = sin(i / 39f * PI.toFloat()) * 36f * s
+            val sag = sin(i / 39f * PI.toFloat()) * 20f * s
             glow(Offset(x, by + sag), 7f * s, Color(0xFFFFE6A8), 0.6f)
         }
     }
@@ -416,21 +426,21 @@ internal fun DrawScope.cosmicRift(t: Float, k: Float) {
     val w = size.width
     val h = size.height
     val s = u()
-    val c = Offset(w * 0.7f, h * 0.42f)
-    val ringR = h * 0.24f * (0.92f + 0.08f * sin(t * 0.5f))
+    // Up in the corner, so the page's picture stays clear.
+    val c = Offset(w * 0.85f, h * 0.27f)
+    val ringR = h * 0.16f * (0.92f + 0.08f * sin(t * 0.5f))
     back {
         skyWash(listOf(Color(0xE0020109), Color(0xB0050212)), 0.95f)
-        // Nebula: soft clouds in three families of colour, wandering slowly, with dark dust lanes.
+        // Nebula: soft clouds in families of colour wandering slowly round the ring and along the top
+        // edge (never over the page's picture), with dark dust lanes.
         val families = listOf(Color(0xFF7A2BD6), Color(0xFF1C5BFF), Color(0xFFE0407A), Color(0xFF1BB8C9))
-        for (i in 0 until 70) {
-            val fx = rnd(i, 5300)
-            val fy = rnd(i, 5301)
-            val drift = Offset((fbm(t * 0.01f + i, 5302) - 0.5f) * 80f * s, (fbm(t * 0.012f + i * 2, 5303) - 0.5f) * 60f * s)
-            // Gathered along a sweeping arm through the ring.
-            val arm = Offset(w * (fx), h * (0.25f + 0.45f * fy + 0.25f * sin(fx * 3.4f)))
-            glow(arm + drift, (90f + rnd(i, 5304) * 260f) * s, families[i % families.size], 0.10f + 0.08f * rnd(i, 5305))
+        for (i in 0 until 60) {
+            val drift = Offset((fbm(t * 0.01f + i, 5302) - 0.5f) * 60f * s, (fbm(t * 0.012f + i * 2, 5303) - 0.5f) * 40f * s)
+            val at = if (i % 3 == 0) Offset(w * rnd(i, 5300), h * rnd(i, 5301) * 0.07f)
+                else c + Offset((rnd(i, 5300) - 0.35f) * ringR * 2.6f, (rnd(i, 5301) - 0.5f) * ringR * 2.4f)
+            glow(at + drift, (60f + rnd(i, 5304) * 140f) * s, families[i % families.size], 0.10f + 0.08f * rnd(i, 5305))
         }
-        for (i in 0 until 14) glow(Offset(rnd(i, 5306) * w, h * (0.3f + rnd(i, 5307) * 0.5f)), (120f + rnd(i, 5308) * 200f) * s, Color(0xFF020108), 0.5f, additive = false)
+        for (i in 0 until 8) glow(c + Offset((rnd(i, 5306) - 0.3f) * ringR * 2.4f, (rnd(i, 5307) - 0.5f) * ringR * 2.4f), (60f + rnd(i, 5308) * 90f) * s, Color(0xFF020108), 0.5f, additive = false)
         // Stars, a few big ones with soft crosses.
         for (i in 0 until 320) {
             val tw = 0.6f + 0.4f * sin(t * (0.7f + rnd(i, 5310) * 2f) + i)
@@ -492,9 +502,9 @@ internal fun DrawScope.cosmicRift(t: Float, k: Float) {
         }
         glow(c + Offset(ringR, 0f) * cos(t * 2.2f), 50f * s, Color(0xFFFFD27A), 0.25f)
         // Shards of something broken drifting past the ring, catching its light on their faces.
-        for (i in 0 until 12) {
+        for (i in 0 until 8) {
             val orbit = t * (0.02f + rnd(i, 5350) * 0.03f) + rnd(i, 5351) * 6.28f
-            val dist = ringR * (1.5f + rnd(i, 5352) * 1.6f)
+            val dist = ringR * (1.4f + rnd(i, 5352) * 1.1f)
             val p = c + Offset(cos(orbit) * dist * 1.3f, sin(orbit) * dist * 0.55f)
             if (p.x < -100f || p.x > w + 100f) continue
             val sz = (18f + rnd(i, 5353) * 46f) * s
@@ -553,30 +563,32 @@ internal fun DrawScope.arenaDusk(t: Float, k: Float) {
     val w = size.width
     val h = size.height
     val s = u()
-    val sun = Offset(w * 0.62f, h * 0.66f)
+    // Low behind the trees: its light comes up from the bottom, the page's picture is the sky.
+    val sun = Offset(w * 0.62f, h * 0.86f)
     // A far-off flash now and then: something going off beyond the trees.
     val flashN = floor(t / 13f).toLong()
     val flashA = t - flashN * 13f
     val flash = if (flashA < 2.5f) exp(-flashA * 3f) * (0.6f + 0.4f * sin(flashA * 40f)) else 0f
-    val flashAt = Offset(w * (0.2f + rnd(flashN.toInt(), 5410) * 0.6f), h * 0.66f)
+    val flashAt = Offset(w * (0.2f + rnd(flashN.toInt(), 5410) * 0.6f), h * 0.84f)
     back {
-        drawRect(Brush.verticalGradient(listOf(Color(0xCC1A0610), Color(0xAA6A1414), Color(0x99D9521C), Color(0x66FFB050), Color.Transparent), endY = h * 0.78f), size = Size(w, h * 0.78f))
-        glow(sun, h * 0.75f, Color(0xFFFF7A2A), 0.35f)
-        glow(sun, h * 0.14f, Color(0xFFFFE0A0), 0.8f)
-        // Smoke rising in columns, leaning on the wind, lit from below.
-        for (col in 0 until 4) {
-            val bx = w * (0.1f + col * 0.27f + rnd(col, 5420) * 0.08f)
-            for (i in 0 until 16) {
-                val life = frac(i / 16f + t * 0.012f)
-                val y = h * 0.7f - life * h * 0.75f
-                val x = bx + life * life * 260f * s + (fbm(t * 0.1f + i + col * 9, 5421) - 0.5f) * 90f * s
-                val r = (60f + life * 220f) * s
+        skyWash(listOf(Color(0xCC1A0610), Color(0x886A1414)), 0.12f)
+        glow(sun, h * 0.38f, Color(0xFFFF7A2A), 0.35f)
+        glow(sun, h * 0.1f, Color(0xFFFFE0A0), 0.8f)
+        // Smoke rising in columns at the sides, leaning outwards on the wind, lit from below.
+        for (col in 0 until 2) {
+            val bx = w * (if (col == 0) 0.07f else 0.9f)
+            val lean = if (col == 0) -1f else 1f
+            for (i in 0 until 14) {
+                val life = frac(i / 14f + t * 0.012f)
+                val y = h * 0.82f - life * h * 0.8f
+                val x = bx + lean * life * life * 200f * s + (fbm(t * 0.1f + i + col * 9, 5421) - 0.5f) * 60f * s
+                val r = (40f + life * 130f) * s
                 glow(Offset(x, y), r, Color(0xFF1A0B0A), 0.35f * (1 - life), additive = false)
                 glow(Offset(x, y + r * 0.3f), r * 0.6f, Color(0xFFFF6A2A), 0.05f * (1 - life))
             }
         }
-        if (flash > 0f) { glow(flashAt, h * 0.6f, Color(0xFFFFD08A), 0.4f * flash); glow(flashAt, h * 0.08f, Color.White, 0.8f * flash) }
-        ridge(h * 0.74f, h * 0.1f, 520f * s, 5430, Color(0xFF1C0A12), Color(0xFF7A3036), 0.4f, rim = Color(0xFFFFA060))
+        if (flash > 0f) { glow(flashAt, h * 0.3f, Color(0xFFFFD08A), 0.4f * flash); glow(flashAt, h * 0.06f, Color.White, 0.8f * flash) }
+        ridge(h * 0.86f, h * 0.06f, 520f * s, 5430, Color(0xFF1C0A12), Color(0xFF7A3036), 0.4f, rim = Color(0xFFFFA060))
     }
     mid {
         // Three bands of forest, the nearest darkest; the trees rimmed on the side facing the sun.
@@ -599,7 +611,7 @@ internal fun DrawScope.arenaDusk(t: Float, k: Float) {
             for (m in 0 until 8) glow(Offset(frac(rnd(m, 5460 + band) + t * 0.006f * (band + 1)) * (w + 600f * s) - 300f * s, base - 10f * s), 220f * s, Color(0xFFFF9A5A), 0.06f * (1 - band * 0.3f))
         }
         // The flash lights the trees' edges for a moment.
-        if (flash > 0f) drawRect(Brush.radialGradient(listOf(Color(0xFFFFC080).copy(alpha = 0.18f * flash), Color.Transparent), center = flashAt, radius = h * 0.7f), blendMode = BlendMode.Plus)
+        if (flash > 0f) drawRect(Brush.radialGradient(listOf(Color(0xFFFFC080).copy(alpha = 0.18f * flash), Color.Transparent), center = flashAt, radius = h * 0.35f), blendMode = BlendMode.Plus)
     }
     front {
         embers(t, k, 46, 5470, listOf(Color(0xFFFF7A1A), Color(0xFFFFB13A), Color(0xFFFF4A10)), rise = 0.045f)
@@ -650,29 +662,32 @@ internal fun DrawScope.highKingdom(t: Float, k: Float) {
     val w = size.width
     val h = size.height
     val s = u()
-    val sun = Offset(w * 0.2f, h * 0.42f)
+    // The sun up in the corner: the page's picture is the sky.
+    val sun = Offset(w * 0.06f, h * 0.1f)
     back {
-        drawRect(Brush.verticalGradient(listOf(Color(0xB0101A38), Color(0x80385080), Color(0x70E8A068), Color(0x40FFD9A0), Color.Transparent), endY = h * 0.8f), size = Size(w, h * 0.8f))
-        glow(sun, h * 0.9f, Color(0xFFFFB866), 0.28f)
-        glow(sun, h * 0.09f, Color(0xFFFFF2D0), 0.9f)
-        // Rays through the gaps in the clouds, shimmering slowly.
-        for (r in 0 until 9) {
-            val ang = 1.2f + r * 0.18f + sin(t * 0.07f + r) * 0.03f
-            beam(sun, ang, w * 0.9f, 0.04f + rnd(r, 5510) * 0.03f, Color(0xFFFFE2A8), 0.06f + 0.04f * (sin(t * 0.3f + r * 1.7f) * 0.5f + 0.5f))
+        skyWash(listOf(Color(0xB0101A38), Color(0x80385080)), 0.12f)
+        glow(sun, h * 0.3f, Color(0xFFFFB866), 0.28f)
+        glow(sun, h * 0.07f, Color(0xFFFFF2D0), 0.9f)
+        // Short rays through the gaps in the clouds, shimmering slowly.
+        for (r in 0 until 6) {
+            val ang = 1.5f + r * 0.18f + sin(t * 0.07f + r) * 0.03f
+            beam(sun, ang, w * 0.22f, 0.04f + rnd(r, 5510) * 0.03f, Color(0xFFFFE2A8), 0.05f + 0.03f * (sin(t * 0.3f + r * 1.7f) * 0.5f + 0.5f))
         }
-        // Long clouds catching the dawn on their undersides.
+        // Long clouds along the top catching the dawn on their undersides.
         for (i in 0 until 22) {
             val x = frac(rnd(i, 5520) + t * 0.003f * (1 + i % 2)) * (w + 800f * s) - 400f * s
-            val y = h * (0.12f + rnd(i, 5521) * 0.22f)
-            for (j in 0 until 5) glow(Offset(x + j * 70f * s, y + sin(j + i * 1f) * 10f * s), (70f + rnd(i * 5 + j, 5522) * 80f) * s, Color(0xFFFFC9A0), 0.09f, additive = false)
+            val y = h * (0.01f + rnd(i, 5521) * 0.06f)
+            for (j in 0 until 5) glow(Offset(x + j * 70f * s, y + sin(j + i * 1f) * 10f * s), (50f + rnd(i * 5 + j, 5522) * 50f) * s, Color(0xFFFFC9A0), 0.09f, additive = false)
         }
-        // Mountain ranges, far to near, each hazier with distance.
-        ridge(h * 0.62f, h * 0.22f, 340f * s, 5530, Color(0xFF3A4A72), Color(0xFFB9A8C4), 0.75f, jag = 0.35f, rim = Color(0xFFFFD8A0))
-        ridge(h * 0.7f, h * 0.18f, 300f * s, 5531, Color(0xFF263252), Color(0xFF8E86A8), 0.5f, jag = 0.3f, rim = Color(0xFFFFC890))
+        // Mountain ranges along the bottom, far to near, each hazier with distance.
+        ridge(h * 0.84f, h * 0.12f, 340f * s, 5530, Color(0xFF3A4A72), Color(0xFFB9A8C4), 0.75f, jag = 0.35f, rim = Color(0xFFFFD8A0))
+        ridge(h * 0.89f, h * 0.1f, 300f * s, 5531, Color(0xFF263252), Color(0xFF8E86A8), 0.5f, jag = 0.3f, rim = Color(0xFFFFC890))
         // Mist filling the valleys.
-        for (m in 0 until 30) glow(Offset(frac(rnd(m, 5532) + t * 0.004f) * (w + 900f * s) - 450f * s, h * (0.72f + rnd(m, 5533) * 0.08f)), (380f + rnd(m, 5534) * 200f) * s, Color(0xFFF3E6E0), 0.08f, additive = false)
+        for (m in 0 until 30) glow(Offset(frac(rnd(m, 5532) + t * 0.004f) * (w + 900f * s) - 450f * s, h * (0.9f + rnd(m, 5533) * 0.06f)), (200f + rnd(m, 5534) * 120f) * s, Color(0xFFF3E6E0), 0.08f, additive = false)
     }
     mid {
+      // The crag and castle in the bottom right corner: drawn at full size, scaled down about that corner.
+      withTransform({ scale(0.6f, 0.6f, Offset(w, h)) }) {
         // The crag and its castle, the sun behind on the left rimming every left edge.
         val body = Color(0xFF1B1E2C)
         val rim = Color(0xFFFFC27A)
@@ -717,19 +732,20 @@ internal fun DrawScope.highKingdom(t: Float, k: Float) {
             val x0 = w * (0.84f + a * 0.028f)
             drawArc(body, 180f, 180f, false, Offset(x0, h * 0.66f), Size(w * 0.028f, 50f * s), style = Stroke(9f * s))
         }
+      }
         // Birds crossing in a loose skein.
         val period = 34f
         val bn = floor(t / period).toLong()
         val bp = (t - bn * period) / period
         for (b in 0 until 9) {
-            val lead = Offset(-0.1f * w + bp * 1.25f * w, h * (0.3f + rnd(bn.toInt(), 5540) * 0.1f))
+            val lead = Offset(-0.1f * w + bp * 1.25f * w, h * (0.12f + rnd(bn.toInt(), 5540) * 0.08f))
             val side = if (b % 2 == 0) 1 else -1
             val p = lead + Offset(-(b + 1) / 2 * 26f * s, side * (b + 1) / 2 * 14f * s)
             val flap = sin(t * 9f + b) * 6f * s
             drawPath(Path().apply { moveTo(p.x - 9f * s, p.y - flap); quadraticTo(p.x - 3f * s, p.y - 2f * s, p.x, p.y); quadraticTo(p.x + 3f * s, p.y - 2f * s, p.x + 9f * s, p.y - flap) }, Color(0xCC1A1C26), style = Stroke(1.8f * s, cap = StrokeCap.Round))
         }
         // Mist curling round the crag's foot.
-        for (m in 0 until 22) glow(Offset(frac(rnd(m, 5550) + t * 0.006f) * (w + 800f * s) - 400f * s, h * (0.88f + rnd(m, 5551) * 0.12f)), (360f + rnd(m, 5552) * 200f) * s, Color(0xFFE8DEE0), 0.1f, additive = false)
+        for (m in 0 until 22) glow(Offset(frac(rnd(m, 5550) + t * 0.006f) * (w + 800f * s) - 400f * s, h * (0.93f + rnd(m, 5551) * 0.08f)), (200f + rnd(m, 5552) * 120f) * s, Color(0xFFE8DEE0), 0.1f, additive = false)
     }
     front {
         for (i in 0 until (20 * k).toInt()) {
@@ -780,13 +796,13 @@ internal fun DrawScope.spellbound(t: Float, k: Float) {
     val h = size.height
     val s = u()
     back {
-        // A vault of night sky that is also a ceiling: deep blue, stars, slow cloud.
-        drawRect(Brush.verticalGradient(listOf(Color(0xE0050816), Color(0xC00B1430), Color(0x80101830), Color.Transparent), endY = h * 0.9f), size = Size(w, h * 0.9f))
+        // A vault of night sky that is also a ceiling: its deep blue only along the top edge, stars, slow cloud.
+        skyWash(listOf(Color(0xE0050816), Color(0x900B1430)), 0.12f)
         for (i in 0 until 240) {
             val tw = 0.5f + 0.5f * sin(t * (0.8f + rnd(i, 5610) * 2.5f) + i)
             drawCircle(Color(0xFFE8EEFF).copy(alpha = (0.2f + 0.6f * rnd(i, 5611)) * tw), (0.6f + rnd(i, 5612) * 1.3f) * s, Offset(rnd(i, 5613) * w, rnd(i, 5614) * h * 0.6f))
         }
-        for (i in 0 until 12) glow(Offset(frac(rnd(i, 5615) + t * 0.004f) * (w + 600f * s) - 300f * s, h * (0.1f + rnd(i, 5616) * 0.3f)), (160f + rnd(i, 5617) * 200f) * s, Color(0xFF6A7BB0), 0.06f)
+        for (i in 0 until 12) glow(Offset(frac(rnd(i, 5615) + t * 0.004f) * (w + 600f * s) - 300f * s, h * (0.01f + rnd(i, 5616) * 0.06f)), (90f + rnd(i, 5617) * 110f) * s, Color(0xFF6A7BB0), 0.06f)
         // Tall pointed windows on either side, moonlight pouring through in shafts.
         for (side in listOf(0, 1)) for (j in 0 until 2) {
             val cx = if (side == 0) w * (0.06f + j * 0.12f) else w * (0.94f - j * 0.12f)
@@ -821,7 +837,9 @@ internal fun DrawScope.spellbound(t: Float, k: Float) {
         for (i in order) {
             val depth = rnd(i, 5630)
             val haze = 1f - depth
-            val x = rnd(i, 5631) * w
+            // Near (large) candles keep to the sides, so the page's picture stays clear; far ones anywhere.
+            val across = rnd(i, 5631)
+            val x = if (depth < 0.45f) across * w else (if (across < 0.5f) across * 0.4f else 0.6f + (across - 0.5f) * 0.8f) * w
             val y = h * (0.08f + rnd(i, 5632) * 0.5f) + sin(t * (0.5f + rnd(i, 5633) * 0.4f) + i) * 12f * s
             candle(Offset(x, y), (24f + depth * 70f) * s, haze * 0.8f, t, i)
         }

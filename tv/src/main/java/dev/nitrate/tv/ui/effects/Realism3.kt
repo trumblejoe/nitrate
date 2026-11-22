@@ -53,17 +53,17 @@ private fun DrawScope.inkMountains(t: Float) {
     val w = size.width
     val h = size.height
     for (r in 0 until 4) {
-        val base = h * (0.55f + r * 0.1f)
+        val base = h * (0.74f + r * 0.07f)
         val tone = lerp(Color(0xFF9AA6B8), Color(0xFF2A3240), r / 3f).copy(alpha = 0.18f + r * 0.1f)
         val p = Path().apply {
             moveTo(0f, h)
             var x = 0f
-            while (x <= w) { lineTo(x, base - fbm(x / (500f - r * 80f) + r * 9f + t * 0.002f, 1400 + r) * h * (0.32f - r * 0.05f)); x += 12f }
+            while (x <= w) { lineTo(x, base - fbm(x / (500f - r * 80f) + r * 9f + t * 0.002f, 1400 + r) * h * (0.2f - r * 0.035f)); x += 12f }
             lineTo(w, h); close()
         }
-        drawPath(p, Brush.verticalGradient(listOf(tone, tone.copy(alpha = 0f)), startY = base - h * 0.3f, endY = h))
+        drawPath(p, Brush.verticalGradient(listOf(tone, tone.copy(alpha = 0f)), startY = base - h * 0.2f, endY = h))
         // Mist lying in the valley in front of each ridge.
-        for (m in 0 until 6) glow(Offset(frac(rnd(m, 1410 + r) + t * 0.004f) * (w + 600f) - 300f, base + 10f), 240f, Color(0xFFD6DCE6), 0.08f, additive = false)
+        for (m in 0 until 6) glow(Offset(frac(rnd(m, 1410 + r) + t * 0.004f) * (w + 600f) - 300f, base + 10f), h * 0.12f, Color(0xFFD6DCE6), 0.08f, additive = false)
     }
 }
 
@@ -106,7 +106,9 @@ internal fun DrawScope.poetry(t: Float, k: Float) {
     val u = t - n * cycle
     val alpha = when { u < 3f -> u / 3f; u > cycle - 3f -> (cycle - u) / 3f; else -> 1f }
     val poem = dev.nitrate.core.poetry.Poems.at((n + (System.currentTimeMillis() / 86_400_000L)) * 30_000L)
-    mid { verse(poem, Offset(w - 600f, h * 0.6f), alpha * 0.92f, 30f, android.graphics.Paint.Align.LEFT) }
+    // Set against the right edge, low, so it never lies across the page's picture.
+    val textPx = 45f * h / 1080f
+    mid { verse(poem, Offset(w * 0.95f, h * 0.64f), alpha * 0.92f, textPx, android.graphics.Paint.Align.RIGHT) }
 }
 
 // ---- Drawn pre-roll scenes (full screen, opaque) ----

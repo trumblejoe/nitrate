@@ -638,13 +638,11 @@ fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), defaultTheme
     val themed = !prefs.easyMode
     val clear = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)
     val behind = remember { dev.nitrate.tv.ui.effects.ThemeBehind() }
-    behind.active = themed && prefs.effects.on && ((theme != null && theme != dev.nitrate.core.effects.PageTheme.NONE) || occasion != null)
     val backdrop = pageKey?.let { prefs.pageBackdrops[it] } ?: dev.nitrate.core.effects.PageBackdrop.ARTWORK
     androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.effects.LocalThemeBehind provides behind) {
         androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
             if (behind.titles > 0 || !backdrop.followsTitle) dev.nitrate.tv.ui.effects.PageBackground(backdrop, behind.artwork, clean = behind.clean)
             if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.BEHIND)
-            if (behind.active && behind.titles > 0 && !prefs.tvCaptionBox) dev.nitrate.tv.ui.effects.ThemeShade()
             // The page's own layout, and the Customize panel held here so it outlives the page's
             // redraws (a row's new style, rows ↔ full-screen artwork).
             val customize = remember { dev.nitrate.tv.ui.pages.CustomizeHost() }

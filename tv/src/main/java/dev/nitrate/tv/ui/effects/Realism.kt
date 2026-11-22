@@ -68,8 +68,9 @@ internal fun DrawScope.glow(c: Offset, radius: Float, color: Color, alpha: Float
 // ---- Weather ----
 
 /**
- * A heavy cloud deck along the top: dozens of soft puffs drifting on noise, darker underneath.
- * [lit] (0..1) lights them from [litAt], as lightning does from inside the cloud.
+ * A heavy cloud deck along the top edge: dozens of soft puffs drifting on noise, darker underneath,
+ * kept to a band [depth] deep so the page's picture below stays clear. [lit] (0..1) lights them from
+ * [litAt], as lightning does from inside the cloud.
  */
 internal fun DrawScope.cloudDeck(t: Float, depth: Float, lit: Float = 0f, litAt: Offset = Offset.Zero, salt: Int = 300) {
     val w = size.width
@@ -78,20 +79,20 @@ internal fun DrawScope.cloudDeck(t: Float, depth: Float, lit: Float = 0f, litAt:
         val layer = i % 3 // 0 = far and high, 2 = low and near
         val speed = 6f + layer * 5f
         val x = ((rnd(i, salt) * (w + 900f) + t * speed) % (w + 900f)) - 450f
-        val y = depth * (0.05f + rnd(i, salt + 1) * 0.55f + layer * 0.18f) + (fbm(t * 0.05f + i, salt) - 0.5f) * 30f
-        val r = (180f + rnd(i, salt + 2) * 260f) * (0.8f + layer * 0.2f)
+        val y = depth * (-0.35f + rnd(i, salt + 1) * 0.5f + layer * 0.15f) + (fbm(t * 0.05f + i, salt) - 0.5f) * depth * 0.12f
+        val r = depth * (0.7f + rnd(i, salt + 2) * 0.7f) * (0.8f + layer * 0.2f)
         // Lighter on top where the sky lights them, darker underneath.
         val shade = 0.22f + layer * 0.04f
         glow(Offset(x, y - r * 0.2f), r, Color(shade, shade + 0.02f, shade + 0.06f), alpha = 0.7f, additive = false)
-        glow(Offset(x, y + r * 0.25f), r * 0.8f, Color(0.07f, 0.08f, 0.11f), alpha = 0.6f, additive = false)
+        glow(Offset(x, y + r * 0.1f), r * 0.75f, Color(0.07f, 0.08f, 0.11f), alpha = 0.6f, additive = false)
         if (lit > 0f) {
             val d = (Offset(x, y) - litAt).getDistance()
             val near = (1f - d / (w * 0.55f)).coerceIn(0f, 1f)
-            if (near > 0f) glow(Offset(x, y + r * 0.15f), r * 0.9f, Color(0xFFB9C8FF), alpha = lit * near * 0.7f)
+            if (near > 0f) glow(Offset(x, y + r * 0.1f), r * 0.9f, Color(0xFFB9C8FF), alpha = lit * near * 0.7f)
         }
     }
-    // The deck's underside fading into the page.
-    drawRect(Brush.verticalGradient(listOf(Color(0xE60A0D14), Color(0x990A0D14), Color.Transparent), endY = depth * 1.25f))
+    // The deck's underside, along the top edge only.
+    drawRect(Brush.verticalGradient(listOf(Color(0xB30A0D14), Color(0x590A0D14), Color.Transparent), endY = depth * 0.8f), size = androidx.compose.ui.geometry.Size(w, depth * 0.8f))
 }
 
 /** Rain in three depths, slanted by a gusting wind, splashes and spray along the bottom. */
@@ -121,13 +122,6 @@ internal fun DrawScope.rain(t: Float, k: Float, salt: Int = 400, layered: Boolea
                 drawLine(color.copy(alpha = l.alpha), Offset(x - dx * 0.4f, y - l.len * 0.4f), Offset(x, y), l.width, StrokeCap.Round)
             }
         }
-    }
-    // Gusts: broad sheets of heavier rain sweeping across (far off).
-    if (!layered || Pass.on(Depth.BACK)) for (g in 0 until 3) {
-        val x = ((t * (120f + g * 40f) + g * 700f) % (w + 1200f)) - 600f
-        drawRect(
-            Brush.horizontalGradient(listOf(Color.Transparent, Color(0x14C8D8F0), Color.Transparent), startX = x, endX = x + 600f),
-        )
     }
     // Splashes: little crowns that open and fade.
     for (s in 0 until (60 * k).toInt()) {
@@ -201,10 +195,9 @@ internal fun DrawScope.thunderstorm(t: Float, k: Float) {
     val sheet = if (sheetPhase < 0.03f) 0.35f * (1 - sheetPhase / 0.03f) else 0f
     val sheetAt = Offset(w * noise(floor(t * 0.37f), 77), h * 0.1f)
     back {
-        cloudDeck(t, h * 0.42f, lit = max(env, sheet), litAt = if (env > 0f) top else sheetAt)
+        cloudDeck(t, h * 0.13f, lit = max(env, sheet), litAt = if (env > 0f) top else sheetAt)
         if (env > 0f) {
-            drawRect(Color(0xFFCAD6FF).copy(alpha = 0.10f * env), blendMode = BlendMode.Plus)
-            glow(top, h * 0.9f, Color(0xFF9FB4FF), alpha = 0.35f * env)
+            glow(top, h * 0.45f, Color(0xFF9FB4FF), alpha = 0.3f * env)
             if (u < 0.45f) {
                 val ground = Offset(top.x + (rnd(cycle, 8) - 0.5f) * w * 0.35f, h * (0.75f + rnd(cycle, 9) * 0.25f))
                 lightning(boltSegments(top, ground, cycle * 97 + 11), env)
@@ -228,6 +221,8 @@ internal fun DrawScope.fireworkShow(t: Float, k: Float, palette: List<Color>, sa
     val w = size.width
     val h = size.height
     val shells = (5 * k).toInt().coerceAtLeast(2)
+    // Sized to the screen (drawn for a 1080-line picture).
+    val sc = h / 1080f
     for (s in 0 until shells) {
         val period = 4.2f + rnd(s, salt) * 2.5f
         val phase = rnd(s, salt + 1) * period
@@ -235,7 +230,7 @@ internal fun DrawScope.fireworkShow(t: Float, k: Float, palette: List<Color>, sa
         val u = (t + phase) - cycle * period
         val id = s * 1009 + cycle
         val x0 = w * (0.08f + rnd(id, salt + 2) * 0.84f)
-        val burst = Offset(x0 + (rnd(id, salt + 3) - 0.5f) * 120f, h * (ceiling + rnd(id, salt + 4) * (floorY - ceiling)))
+        val burst = Offset(x0 + (rnd(id, salt + 3) - 0.5f) * 120f * sc, h * (ceiling + rnd(id, salt + 4) * (floorY - ceiling)))
         val color = palette[(s + cycle * 2).mod(palette.size)]
         // Mostly coloured peonies; now and then a ring, a crackle or a gold willow.
         val kind = listOf(Shell.PEONY, Shell.PEONY, Shell.RING, Shell.PEONY, Shell.CRACKLE, Shell.PEONY, Shell.WILLOW)[(s * 3 + cycle).mod(7)]
@@ -257,13 +252,13 @@ internal fun DrawScope.fireworkShow(t: Float, k: Float, palette: List<Color>, sa
         val tau = u - launch
         val life = when (kind) { Shell.WILLOW -> 3.4f; Shell.CRACKLE -> 2.2f; else -> 2.0f }
         // Sky lit by the burst, and the smoke it leaves.
-        if (tau < 0.8f) glow(burst, h * 0.55f, color, 0.22f * (1 - tau / 0.8f))
-        if (tau < 4f) glow(burst + Offset(tau * 12f, tau * 10f), 90f + tau * 60f, Color(0xFF8C8C96), 0.10f * (1 - tau / 4f), additive = false)
+        if (tau < 0.8f) glow(burst, h * 0.3f, color, 0.2f * (1 - tau / 0.8f))
+        if (tau < 4f) glow(burst + Offset(tau * 12f, tau * 10f) * sc, (90f + tau * 60f) * sc, Color(0xFF8C8C96), 0.10f * (1 - tau / 4f), additive = false)
         if (tau > life) continue
         val n = (if (kind == Shell.RING) 48 else 80)
-        val speed = (if (kind == Shell.WILLOW) 380f else 560f) * (0.8f + rnd(id, salt + 6) * 0.5f)
+        val speed = (if (kind == Shell.WILLOW) 380f else 560f) * (0.8f + rnd(id, salt + 6) * 0.5f) * sc
         val drag = if (kind == Shell.WILLOW) 1.6f else 2.3f
-        val gravity = if (kind == Shell.WILLOW) 160f else 110f
+        val gravity = (if (kind == Shell.WILLOW) 160f else 110f) * sc
         val starColor = if (kind == Shell.WILLOW) Color(0xFFFFC46B) else color
         fun pos(i: Int, time: Float): Offset {
             val a = 2 * PI.toFloat() * i / n + rnd(i, id) * 0.12f
@@ -288,7 +283,7 @@ internal fun DrawScope.fireworkShow(t: Float, k: Float, palette: List<Color>, sa
             }
             // Hot white at first, the shell's colour as it cools.
             val hot = (1 - tau / 0.35f).coerceIn(0f, 1f)
-            glow(head, 16f + 10f * hot, starColor, (a * 0.9f).coerceIn(0f, 1f))
+            glow(head, (16f + 10f * hot) * sc, starColor, (a * 0.9f).coerceIn(0f, 1f))
             drawCircle(lerp(starColor, Color.White, 0.35f + 0.65f * hot).copy(alpha = a.coerceIn(0f, 1f)), 2.4f + 1.4f * hot, head)
         }
     }
