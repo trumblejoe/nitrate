@@ -61,7 +61,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
         FRAMEWORK_SEARCH_PATHS: ["$(inherited)", "$(KOTLIN_FRAMEWORK_DIR)"]
-        OTHER_LDFLAGS: ["$(inherited)", "-framework", "NitrateKit", "-lc++", "-lsqlite3"]
+        OTHER_LDFLAGS: ["$(inherited)", "-framework", "NitrateKit", "-framework", "MediaPlayer", "-framework", "AVFoundation", "-lc++", "-lsqlite3"]
         ENABLE_BITCODE: NO
         # Unsigned: each person signs it when sideloading (AltStore, SideStore, Sideloadly).
         CODE_SIGNING_ALLOWED: NO

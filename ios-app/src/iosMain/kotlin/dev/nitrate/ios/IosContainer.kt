@@ -63,6 +63,12 @@ class IosPlatform(private val version: String) : AppPlatform {
 
     override fun probeCapabilities() = appleCapabilities()
     override fun themeMusic(server: MediaServer): ThemeMusic = IosThemeMusic(server)
+
+    override fun listening(server: MediaServer, settings: dev.nitrate.android.storage.PlaybackSettingsStore, downloads: dev.nitrate.core.music.ListenDownloads): dev.nitrate.core.music.Listening =
+        IosListening(server, settings, downloads)
+
+    /** Readium through the Swift app's bridge ([useBookReader]); null (Nitrate's own `EpubScreen`) until it ships one. */
+    override fun epubReader(): dev.nitrate.android.comics.EpubReaderHost? = BookReaders.host()
     override fun newEpisodes(server: MediaServer): NewEpisodeNotifier = IosNewEpisodeNotifier(server, store("notifications"))
     override fun updater(): AppUpdater = NoUpdates(version)
 

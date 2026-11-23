@@ -27,7 +27,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -110,8 +109,6 @@ class RemoteSessionPlayer(private val server: MediaServer, val sessionId: String
 class RemoteControlService : MediaSessionService() {
     companion object {
         private const val EXTRA_SESSION = "session"
-        private const val LOOK_MS = 4_000L
-        private const val GIVE_UP_MS = 60_000L
 
         fun follow(context: Context, sessionId: String) {
             runCatching { context.startService(Intent(context, RemoteControlService::class.java).putExtra(EXTRA_SESSION, sessionId)) }
@@ -122,6 +119,7 @@ class RemoteControlService : MediaSessionService() {
     private var player: RemoteSessionPlayer? = null
     private var session: MediaSession? = null
     private var looking: Job? = null
+    private var follower: dev.nitrate.android.remote.RemoteFollower? = null
 
     private val server get() = (application as? AppContainer.Owner)?.container?.server
 
@@ -134,16 +132,12 @@ class RemoteControlService : MediaSessionService() {
             player = p
             session = MediaSession.Builder(this, p).setId("remote-$id").build().also { addSession(it) }
             looking?.cancel()
-            looking = scope.launch {
-                var idleSince = SystemClock.elapsedRealtime()
-                while (isActive) {
-                    val s = runCatching { server.controllableSessions().firstOrNull { it.id == id } }.getOrNull()
-                    p.update(s)
-                    if (s?.nowPlaying != null) idleSince = SystemClock.elapsedRealtime()
-                    else if (SystemClock.elapsedRealtime() - idleSince > GIVE_UP_MS) { stopSelf(); break }
-                    delay(LOOK_MS)
-                }
-            }
+            follower?.stop()
+            // The looking and giving up are shared with iOS (app-core RemoteFollower).
+            val f = dev.nitrate.android.remote.RemoteFollower(server, id, scope, onGone = { stopSelf() })
+            follower = f
+            f.start()
+            looking = scope.launch { f.seen.collect { p.update(it.session) } }
         }
         return super.onStartCommand(intent, flags, startId)
     }
@@ -152,6 +146,7 @@ class RemoteControlService : MediaSessionService() {
 
     override fun onDestroy() {
         looking?.cancel()
+        follower?.stop()
         session?.release()
         session = null
         player = null

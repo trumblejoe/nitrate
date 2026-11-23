@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import coil3.toBitmap
@@ -206,10 +207,67 @@ actual fun softwareImage(builder: coil3.request.ImageRequest.Builder): coil3.req
 
 actual val canTestPlay: Boolean = false
 
-/** No casting on iPhone and iPad yet. */
+/** Casting through the Swift app's Cast SDK bridge ([IosCast]); null until the app ships one. */
 @androidx.compose.runtime.Composable
-actual fun rememberCast(): CastControl? = null
+actual fun rememberCast(): CastControl? {
+    val container = dev.nitrate.mobile.ui.LocalAppContainer.current
+    return remember(container) {
+        IosCast.get()?.also { cast -> container?.let { c -> cast.parse = { c.server.castStatus(it) } } }
+    }
+}
 
-/** No lock-screen controls for another device on iPhone yet. */
+/** Lock screen and Control Center follow another device's playback (app-core `RemoteFollower`). */
 @androidx.compose.runtime.Composable
-actual fun rememberRemoteFollower(): (sessionId: String) -> Unit = { }
+actual fun rememberRemoteFollower(): (sessionId: String) -> Unit {
+    val container = dev.nitrate.mobile.ui.LocalAppContainer.current
+    return remember(container) { { id -> if (container != null) RemoteFollowing.follow(container, id) } }
+}
+
+/**
+ * The one device followed on the lock screen at a time: its title, where it is, and play/pause,
+ * seek, next/previous sent back through the server. iOS only shows Now Playing for the app that
+ * last played sound, so it appears once Nitrate has played something this run (the music player or
+ * a video); it lets go when nothing has played there for a minute.
+ */
+object RemoteFollowing {
+    private val scope = kotlinx.coroutines.MainScope()
+    private var follower: dev.nitrate.android.remote.RemoteFollower? = null
+    private var showing: kotlinx.coroutines.Job? = null
+
+    fun follow(container: dev.nitrate.android.AppContainer, sessionId: String) {
+        if (follower?.sessionId == sessionId) return
+        stop()
+        val server = container.server
+        val f = dev.nitrate.android.remote.RemoteFollower(server, sessionId, scope, onGone = { stop() })
+        follower = f
+        NowPlaying.take(f, object : NowPlaying.Controls {
+            override fun play() = f.setPlaying(true)
+            override fun pause() = f.setPlaying(false)
+            override fun toggle() = f.toggle()
+            override fun next() = f.next()
+            override fun previous() = f.previous()
+            override fun seekTo(ms: Long) = f.seekTo(ms)
+        })
+        f.start()
+        showing = scope.launch {
+            f.seen.collect { seen ->
+                val s = seen.session
+                val item = s?.nowPlaying ?: return@collect
+                NowPlaying.update(f, NowPlaying.Info(
+                    title = item.displayTitle,
+                    artist = listOfNotNull(item.episodeLabel, "On ${s.deviceName ?: "your TV"}").joinToString(" · "),
+                    durationMs = item.runtimeMs ?: 0,
+                    positionMs = f.positionMs(),
+                    playing = !s.isPaused,
+                    artworkUrl = server.imageUrl(item),
+                ))
+            }
+        }
+    }
+
+    fun stop() {
+        showing?.cancel()
+        follower?.let { it.stop(); NowPlaying.release(it) }
+        follower = null
+    }
+}
