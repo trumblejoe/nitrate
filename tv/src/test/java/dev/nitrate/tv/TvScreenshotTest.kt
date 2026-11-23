@@ -1026,13 +1026,6 @@ class TvScreenshotTest {
         }
     }
 
-    /** The remote's Menu key on a row does what holding OK does: Customize opens on that row. */
-    @Test fun menuKeyCustomizesRow() = shoot("tv-menu-key-row", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
-        press("down", "right", "menu")
-        compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
-        check(focusedHasText("Style")) { "Menu on a row should open Customize on it" }
-    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
-
     /** The menu's "Customize this page" stop (before Settings) opens the Customize panel on the page. */
     @Test fun customizeMenuStop() = shoot("tv-customize-stop", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
         compose.onNode(androidx.compose.ui.test.hasContentDescription("Customize this page") or androidx.compose.ui.test.hasText("Customize this page"), useUnmergedTree = true)

@@ -19,7 +19,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -98,15 +97,8 @@ fun FullArtPage(
     val row = shown[rowIndex]
     val current = (itemIndex[row.key] ?: 0).coerceIn(0, row.items.lastIndex)
     val item = row.items[current]
-    // The menu's Customize opens on this row; the remote's Menu key does what holding OK would.
-    val menuKey = LocalMenuKey.current
-    var pageHasFocus by remember { mutableStateOf(false) }
+    // The menu's Customize stop opens on this row.
     SideEffect { customize?.lastRow = row; customize?.lastRows = pageRows }
-    DisposableEffect(menuKey, pageHasFocus, headerFocused, row.key, pageRows) {
-        val handler = { customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row }; true }
-        if (pageHasFocus && !headerFocused) menuKey?.handler = handler
-        onDispose { if (menuKey?.handler === handler) menuKey.handler = null }
-    }
     // Fetch the pictures one press away (either side, and the rows above and below) so stepping
     // shows them at once.
     LaunchedEffect(row.key, current) {
@@ -184,7 +176,6 @@ fun FullArtPage(
                 }
             }
             .focusRequester(pageFocus)
-            .onFocusChanged { pageHasFocus = it.hasFocus }
             .focusable(),
     ) {
         // The picture (or the page's chosen background) and the theme over it, drawn by the menu.

@@ -348,12 +348,7 @@ private fun PlaylistEntry(
         selected = false,
         onClick = onClick,
         onLongClick = onLongClick,
-        // The remote's Menu key does what holding OK does: the entry's choices.
-        modifier = modifier.onPlayKey(onClick).onPreviewKeyEvent { e ->
-            if (e.key != androidx.compose.ui.input.key.Key.Menu) return@onPreviewKeyEvent false
-            if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) onLongClick()
-            true
-        },
+        modifier = modifier.onPlayKey(onClick),
         leadingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,

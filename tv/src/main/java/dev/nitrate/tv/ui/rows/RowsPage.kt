@@ -202,21 +202,9 @@ fun RowsPage(
         )
     }
 
-    // The menu's Customize opens on the row last used; the remote's Menu key on a row does what
-    // holding OK on it would (Customize, or a Watching together card's choices).
-    val menuKey = dev.nitrate.tv.ui.home.LocalMenuKey.current
+    // The menu's Customize stop opens on the row last used.
     val usedRow = lastCard?.first?.let { rows.getOrNull(it) }
     SideEffect { if (usedRow != null) customize?.lastRow = usedRow; customize?.lastRows = pageRows }
-    val latestRowIndex by androidx.compose.runtime.rememberUpdatedState(focusedRowIndex)
-    val latestPageFocused by androidx.compose.runtime.rememberUpdatedState(pageFocused)
-    DisposableEffect(menuKey, actions) {
-        val handler = {
-            val row = currentRows.getOrNull(latestRowIndex)
-            if (latestPageFocused && row != null) { actions.onEditRow(row); true } else false
-        }
-        menuKey?.handler = handler
-        onDispose { if (menuKey?.handler === handler) menuKey.handler = null }
-    }
 
     LaunchedEffect(activeShowcase) {
         val key = activeShowcase ?: return@LaunchedEffect

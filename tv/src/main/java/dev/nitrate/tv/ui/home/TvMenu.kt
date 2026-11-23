@@ -106,15 +106,6 @@ data class NavEntry(
 )
 
 /** Standard icons for the menu; kept here so screens don't each pick their own. */
-/**
- * What the remote's Menu key does on a page: [handler] (set by the page while something with options
- * is focused, e.g. a card in a row) opens what holding OK would and returns true; otherwise Menu
- * toggles the menu as always.
- */
-class MenuKeyOptions { var handler: (() -> Boolean)? = null }
-
-val LocalMenuKey = androidx.compose.runtime.staticCompositionLocalOf<MenuKeyOptions?> { null }
-
 object NavIcons {
     val search = Icons.Filled.Search
     val home = Icons.Filled.Home
@@ -179,7 +170,6 @@ fun TvMenu(
     // over Home's full-screen art (a column of its own left a blank strip while hidden).
     @Suppress("NAME_SHADOWING") val overlay = overlay || autoHide
     val contentFocus = remember { FocusRequester() }
-    val menuKey = remember { MenuKeyOptions() }
     val menuFocus = remember { FocusRequester() }
     var inMenu by remember { mutableStateOf(false) }
     var dialOpen by remember { mutableStateOf(false) }
@@ -246,7 +236,7 @@ fun TvMenu(
             }
             .focusRequester(contentFocus).focusGroup(),
     ) {
-        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows, dev.nitrate.tv.ui.rows.LocalFocusReturn provides focusReturn, LocalMenuKey provides menuKey) { content(insets) }
+        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows, dev.nitrate.tv.ui.rows.LocalFocusReturn provides focusReturn) { content(insets) }
     }
     val shown by animateFloatAsState(if (!autoHide || inMenu) 1f else 0f, label = "menu-fade")
     val trackMenu = Modifier.alpha(shown).onFocusChanged { inMenu = it.hasFocus; if (!it.hasFocus) forcedTop = false }
@@ -254,14 +244,7 @@ fun TvMenu(
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { e ->
             if (e.key != Key.Menu) return@onPreviewKeyEvent false
-            // With a side rail (always reached with Left/Right), Menu on the page first offers what holding
-            // OK would for whatever is focused (a row's Customize, a card's choices). The bar and the dial
-            // can't be reached from a middle row any other way, so there Menu stays the way to the menu.
-            if (e.type == KeyEventType.KeyUp) {
-                val rail = style == TvMenuStyle.LEFT || style == TvMenuStyle.RIGHT
-                if (inMenu || dialOpen) toContent()
-                else if (!rail || menuKey.handler?.invoke() != true) toMenu()
-            }
+            if (e.type == KeyEventType.KeyUp) { if (inMenu || dialOpen) toContent() else toMenu() }
             true
         },
     ) {
