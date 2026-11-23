@@ -158,7 +158,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
             val padding = PaddingValues(start = ScreenPadding, end = if (options.alphabetical) 34.dp else ScreenPadding, top = 4.dp, bottom = bottomInset(24.dp))
             when {
                 state.error != null && state.items.isEmpty() -> ErrorMessage(state.error ?: "", vm::retry)
-                state.loading -> Loading()
+                state.loading -> GridPlaceholder(minWidth = if (artwork) 240.dp else if (square) 140.dp else 110.dp, aspect = if (artwork) 16f / 9f else if (square) 1f else 2f / 3f)
                 state.items.isEmpty() -> EmptyResults(options) { update { it.clearFilters() } }
                 options.view != BrowseView.LIST -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = if (artwork) 240.dp else if (square) 140.dp else 110.dp),
@@ -405,7 +405,7 @@ fun ArtistsGrid(actions: AppActions, library: MediaItem) {
     LaunchedEffect(grid) { snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { if (it >= state.items.size - 20) vm.loadMore() } }
     when {
         state.error != null && state.items.isEmpty() -> ErrorMessage(state.error ?: "", vm::loadMore)
-        state.total < 0 -> Loading()
+        state.total < 0 -> GridPlaceholder(minWidth = 120.dp, aspect = 1f)
         else -> LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 120.dp),
             state = grid,

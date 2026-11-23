@@ -200,7 +200,7 @@ fun CustomPageScreen(actions: AppActions, pageId: String, editNow: Boolean) {
                 }
             }
             when (val s = state) {
-                RowsState.Loading -> item { Loading(Modifier.padding(top = 80.dp)) }
+                RowsState.Loading -> item { RowsPlaceholder() }
                 is RowsState.Error -> item { ErrorMessage(s.message, vm::refresh) }
                 is RowsState.Loaded -> {
                     if (s.rows.isEmpty()) item {

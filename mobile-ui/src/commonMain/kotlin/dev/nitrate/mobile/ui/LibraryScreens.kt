@@ -20,6 +20,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -96,8 +100,18 @@ fun BackScaffold(
                 actions = topActions,
             )
         },
-        content = content,
-    )
+    ) { padding ->
+        // A page of one column of lines doesn't stretch across a tablet: centred, up to 1200 dp.
+        ReadableWidth(1200.dp) { content(padding) }
+    }
+}
+
+/** [content] at most [max] wide, centred: single-column pages on a tablet or wide window. */
+@Composable
+fun ReadableWidth(max: androidx.compose.ui.unit.Dp, content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = max).fillMaxSize()) { content() }
+    }
 }
 
 @Composable
@@ -143,7 +157,7 @@ private fun LibraryRows(actions: AppActions, library: MediaItem) {
     var editing by remember { mutableStateOf(false) }
     if (editing) PageEditor(library.name, vm, actions, libraryId = library.id, onDone = { editing = false })
     when (val s = state) {
-        RowsState.Loading -> Loading()
+        RowsState.Loading -> RowsPlaceholder()
         is RowsState.Error -> ErrorMessage(s.message, vm::refresh)
         is RowsState.Loaded -> {
             val list = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -229,11 +243,10 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
     BackScaffold(
         playlist?.name ?: "",
         onBack = { actions.nav.popBackStack() },
-        topActions = { TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit") } },
     ) { padding ->
         val list = items
         if (list == null) {
-            Loading(Modifier.padding(padding))
+            ListPlaceholder(Modifier.padding(padding))
             return@BackScaffold
         }
         // A video playlist plays as itself: from where it was left, carrying on in its order
@@ -268,39 +281,40 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                             Text(s.line, style = MaterialTheme.typography.labelLarge)
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (editing) {
-                            OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
-                            OutlinedButton(onClick = { deleting = true }) { Text("Delete playlist", color = MaterialTheme.colorScheme.error) }
-                        } else {
-                            Button(onClick = { if (video) playFrom(list.first()) else actions.playItems(list) }, enabled = list.isNotEmpty()) {
-                                Icon(Icons.Default.PlayArrow, null)
-                                Text(if (video) "Play from the start" else "Play all")
-                            }
-                            OutlinedButton(onClick = { actions.playItems(list, shuffle = true) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
-                            if (list.isNotEmpty() && list.all { it.kind == ItemKind.AUDIO }) MusicDownloadButton(actions, list, "playlist")
-                        }
-                    }
-                    // Story order: carries on from the first unwatched item, with a "Last time" recap after a break.
+                    // As on a details page: one big button for what you most likely want, round ones for the rest, More for editing.
                     val prefs = LocalDisplayPrefs.current
                     val inOrder = playlist != null && playlist!!.id in prefs.recapPlaylists
-                    val scope = androidx.compose.runtime.rememberCoroutineScope()
-                    if (!editing && playlist != null) {
-                        androidx.compose.material3.FilterChip(
-                            inOrder, { scope.launch { actions.container.setRecapPlaylist(playlist!!.id, !inOrder) } },
-                            label = { Text("In story order: recap when I come back") },
-                        )
-                        // A video playlist carries on from where it was left; in story order, from its first unwatched.
-                        val next = if (video) videoNext else list.firstOrNull { !it.user.played }
-                        val notTheStart = if (video) placeAt != null || next?.id != all.firstOrNull()?.id else next != list.firstOrNull()
-                        if (next != null && notTheStart && (video || inOrder)) Button(onClick = {
+                    // A video playlist carries on from where it was left; in story order, from its first unwatched.
+                    val next = if (video) videoNext else list.firstOrNull { !it.user.played }
+                    val notTheStart = if (video) placeAt != null || next?.id != all.firstOrNull()?.id else next != list.firstOrNull()
+                    val canContinue = !editing && playlist != null && next != null && notTheStart && (video || inOrder)
+                    fun fromStart() { if (video) playFrom(list.first()) else actions.playItems(list) }
+                    when {
+                        editing -> PillButton("Done editing", Icons.Default.Check, primary = true, onClick = { editing = false }, modifier = Modifier.fillMaxWidth())
+                        canContinue -> PillButton("Continue: ${dev.nitrate.core.recap.Recaps.label(next!!)}", Icons.Default.PlayArrow, primary = true, modifier = Modifier.fillMaxWidth(), onClick = {
                             if (video) playFrom(next) else scope.launch {
                                 val recap = actions.container.recapBefore(next, playlist)
                                 if (recap != null) actions.nav.navigate(RecapRoute)
                                 else actions.playQueue(list.dropWhile { it.id != next.id }.map { it.id })
                             }
-                        }) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(next)}") }
+                        })
+                        list.isNotEmpty() -> PillButton(if (video) "Play from the start" else "Play all", Icons.Default.PlayArrow, primary = true, onClick = ::fromStart, modifier = Modifier.fillMaxWidth())
                     }
+                    if (!editing) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (canContinue) RoundAction(Icons.Default.Refresh, "From the start", onClick = ::fromStart)
+                        if (list.isNotEmpty()) RoundAction(NitrateIcons.Shuffle, "Shuffle", onClick = { actions.playItems(list, shuffle = true) })
+                        var more by remember { mutableStateOf(false) }
+                        RoundAction(Icons.Default.MoreVert, "More", onClick = { more = true })
+                        if (more) PlaylistMoreSheet(
+                            storyOrder = inOrder,
+                            onStoryOrder = { on -> playlist?.let { pl -> scope.launch { actions.container.setRecapPlaylist(pl.id, on) } } },
+                            onEdit = { editing = true },
+                            onRename = { renaming = true },
+                            onDelete = { deleting = true },
+                            onDismiss = { more = false },
+                        )
+                    }
+                    if (!editing && list.isNotEmpty() && list.all { it.kind == ItemKind.AUDIO }) MusicDownloadButton(actions, list, "playlist")
                 }
             }
             itemsIndexed(list, key = { i, it -> it.playlistEntryId ?: "$i-${it.id}" }) { index, item ->
@@ -354,22 +368,12 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
     }
     menuFor?.let { item ->
         val playing = actions.container.playlists
-        AlertDialog(
-            onDismissRequest = { menuFor = null },
-            title = { Text(item.displayTitle) },
-            text = {
-                Column {
-                    @Composable
-                    fun choice(label: String, act: () -> Unit) =
-                        TextButton(onClick = { menuFor = null; act() }, modifier = Modifier.fillMaxWidth()) { Text(label, modifier = Modifier.fillMaxWidth()) }
-                    choice("Play from here") { scope.launch { playing.startedFrom(playlistId, item.id); actions.play(item, false) } }
-                    choice("Open it") { actions.open(item) }
-                    choice("Mark watched up to here") { change { playing.markUpTo(playlistId, item.id, true) } }
-                    choice("Mark unwatched from here on") { change { playing.markUpTo(playlistId, item.id, false) } }
-                }
-            },
-            confirmButton = { TextButton(onClick = { menuFor = null }) { Text("Cancel") } },
-        )
+        ChoiceSheet(item.displayTitle, onDismiss = { menuFor = null }) { choice ->
+            choice("Play from here", null) { scope.launch { playing.startedFrom(playlistId, item.id); actions.play(item, false) } }
+            choice("Open it", null) { actions.open(item) }
+            choice("Mark watched up to here", "Everything before it too") { change { playing.markUpTo(playlistId, item.id, true) } }
+            choice("Mark unwatched from here on", "Everything after it too") { change { playing.markUpTo(playlistId, item.id, false) } }
+        }
     }
     if (renaming) {
         var name by remember { mutableStateOf(playlist?.name.orEmpty()) }
@@ -398,5 +402,23 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
             },
             dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** A playlist's More: editing it, story order, renaming and deleting. */
+@Composable
+private fun PlaylistMoreSheet(
+    storyOrder: Boolean,
+    onStoryOrder: (Boolean) -> Unit,
+    onEdit: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ChoiceSheet("Playlist", onDismiss) { choice ->
+        choice("Edit order", "Move or remove what's in it", onEdit)
+        choice(if (storyOrder) "In story order: on" else "In story order: off", "A recap of last time when you come back after a break") { onStoryOrder(!storyOrder) }
+        choice("Rename", null, onRename)
+        choice("Delete playlist", "What's in it stays", onDelete)
     }
 }

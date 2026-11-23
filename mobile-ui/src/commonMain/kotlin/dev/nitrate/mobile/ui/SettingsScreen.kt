@@ -98,7 +98,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
     val account by c.account.collectAsState()
     val companion by c.companion.collectAsState()
     val easy = LocalDisplayPrefs.current.easyMode
-    fun open(page: SettingsPage) = actions.nav.navigate(SettingsPageRoute(page.name))
+    // Two-pane Settings (wide windows) shows the page beside the list instead.
+    val pane = LocalSettingsPane.current
+    fun open(page: SettingsPage) = pane?.invoke(page) ?: actions.nav.navigate(SettingsPageRoute(page.name))
     var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialQuery) }
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
@@ -120,7 +122,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         if (query.isNotBlank()) {
             val found = dev.nitrate.core.settings.SettingsSearch.find(query, tv = false, admin = account?.isAdmin == true)
             if (found.isEmpty()) item { Text("No setting matches \"$query\".", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
-            found.forEach { e -> item(key = "found/${e.place}/${e.title}") { Link(e.title, e.place.path) { openPlace(actions, e.place) } } }
+            found.forEach { e -> item(key = "found/${e.place}/${e.title}") { Link(e.title, e.place.path) { openPlace(actions, e.place, ::open) } } }
             return@LazyColumn
         }
         item { Link("Picture & sound", "Sound, speakers, audio sync; Advanced for formats and fixes") { open(SettingsPage.SOUND) } }
@@ -184,8 +186,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
 }
 
 /** Opens the page a found setting lives on. */
-private fun openPlace(actions: AppActions, place: dev.nitrate.core.settings.SettingsPlace) {
-    fun page(p: SettingsPage) = actions.nav.navigate(SettingsPageRoute(p.name))
+private fun openPlace(actions: AppActions, place: dev.nitrate.core.settings.SettingsPlace, page: (SettingsPage) -> Unit) {
     when (place) {
         dev.nitrate.core.settings.SettingsPlace.SOUND -> page(SettingsPage.SOUND)
         dev.nitrate.core.settings.SettingsPlace.SOUND_ADVANCED -> page(SettingsPage.ADVANCED)
@@ -267,13 +268,15 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
     val user = actions.server.userId
     val profile by remember(user) { user?.let { c.displaySettings.activeProfileName(it) } ?: kotlinx.coroutines.flow.flowOf(null) }.collectAsState(null)
     val caps = c.capabilities
+    val pane = LocalSettingsPane.current
 
     LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
-                androidx.compose.material3.IconButton(onClick = { actions.nav.popBackStack() }) {
+                // Beside the list (two-pane Settings) there's nothing to go back to.
+                if (!LocalInSettingsPane.current) androidx.compose.material3.IconButton(onClick = { actions.nav.popBackStack() }) {
                     androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                }
+                } else androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 12.dp))
                 Text(page.title, style = MaterialTheme.typography.headlineSmall)
             }
         }
@@ -343,7 +346,7 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                         updatePlayback { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
                     }
                 }
-                item { Link("Advanced", "Dolby Vision profile 7, 3D, resolution limit, direct play, and the formats this phone plays") { actions.nav.navigate(SettingsPageRoute(SettingsPage.ADVANCED.name)) } }
+                item { Link("Advanced", "Dolby Vision profile 7, 3D, resolution limit, direct play, and the formats this phone plays") { pane?.invoke(SettingsPage.ADVANCED) ?: actions.nav.navigate(SettingsPageRoute(SettingsPage.ADVANCED.name)) } }
             }
             SettingsPage.ADVANCED -> {
                 item {
@@ -405,7 +408,7 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                 item { ScopeTag(dev.nitrate.core.settings.SettingScope.PROFILE, profile) }
                 item { DisplayProfileRow(actions) }
                 displayLook(prefs, updatePrefs)
-                item { Link("What's shown", "Ratings, year, genres, descriptions, logos, progress and the rest on cards and pages") { actions.nav.navigate(SettingsPageRoute(SettingsPage.SHOWN.name)) } }
+                item { Link("What's shown", "Ratings, year, genres, descriptions, logos, progress and the rest on cards and pages") { pane?.invoke(SettingsPage.SHOWN) ?: actions.nav.navigate(SettingsPageRoute(SettingsPage.SHOWN.name)) } }
                 heading("Your server account", dev.nitrate.core.settings.SettingScope.EVERYWHERE)
                 item { MissingEpisodesToggle(actions) }
             }

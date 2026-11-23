@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -94,7 +96,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
 
     val item = state.item
     if (item == null) {
-        if (state.error != null) ErrorMessage(state.error!!, vm::load) else Loading()
+        if (state.error != null) ErrorMessage(state.error!!, vm::load) else DetailsPlaceholder()
         return
     }
     val server = actions.server
@@ -109,19 +111,28 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
     // Watch partners on this show: spoiler hiding goes by whoever is furthest behind.
     val showId = if (item.kind == ItemKind.SERIES) item.id else item.seriesId
     val partnerProgress = rememberPartnerProgress(actions, showId)
+    // A season's page (a show's page opened at one of its seasons): named and played as that season,
+    // and following the season chips as they change.
+    val season = if (item.kind == ItemKind.SERIES && seasonId != null) state.seasons.getOrNull(state.selectedSeason) else null
+    val seasonEpisodes = state.episodes.filter { season == null || it.seasonId == null || it.seasonId == season.id }
+    val playTarget = if (season != null) seasonEpisodes.firstOrNull { !it.user.played && !it.isMissing } ?: seasonEpisodes.firstOrNull()
+        else state.nextUp ?: state.episodes.firstOrNull()
 
     androidx.compose.runtime.CompositionLocalProvider(LocalPartnerProgress provides partnerProgress) {
     TintedBackdrop(tint, strength = 0.32f) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomInset(40.dp))) {
-            item(key = "hero") {
+        // The page's parts: the picture and title, the facts and actions, and the rows below. A wide
+        // window (a tablet, a phone on its side at 840 dp and up) puts the first two in a column on the
+        // left that stays put, with the rows scrolling beside it; narrower, they're one list.
+        val hero: @Composable (wide: Boolean) -> Unit = { wide ->
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val heroHeight = (maxWidth * 1.05f).coerceIn(340.dp, 560.dp)
+                    val heroHeight = if (wide) (maxWidth * 0.62f).coerceIn(240.dp, 420.dp) else (maxWidth * 1.05f).coerceIn(340.dp, 560.dp)
                     Box(Modifier.fillMaxWidth().height(heroHeight)) {
                         AsyncImage(
                             backdrop,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize().sharedArtwork(artKey).fadeBottom(0.55f).graphicsLayer {
+                                if (wide) return@graphicsLayer
                                 // Parallax: the picture scrolls at half speed and fades as it leaves.
                                 val scrolled = if (list.firstVisibleItemIndex == 0) list.firstVisibleItemScrollOffset.toFloat() else size.height
                                 translationY = scrolled * 0.5f
@@ -131,7 +142,10 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x88000000), 0.25f to Color.Transparent, 1f to Color.Transparent)))
                         Column(Modifier.align(Alignment.BottomStart).padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             val logo = server.logoUrl(item)?.takeIf { prefs.logos && item.kind != ItemKind.EPISODE }
-                            if (item.kind == ItemKind.EPISODE) {
+                            if (season != null) {
+                                ShowCrumb(actions, item)
+                                Text(season.name, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            } else if (item.kind == ItemKind.EPISODE) {
                                 WhereItBelongs(actions, item, state.seasons.firstOrNull { it.id == item.seasonId }?.name)
                                 Text(
                                     listOfNotNull(item.indexNumber?.let { "$it." }, item.name).joinToString(" "),
@@ -148,9 +162,14 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     }
                 }
             }
-            item(key = "facts") {
+        val facts: @Composable () -> Unit = {
                 Column(Modifier.padding(horizontal = ScreenPadding, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { prefs.facts(item).forEach { GlassChip(it) } }
+                    // A season: how many episodes and how many watched, in place of the show's facts.
+                    val chips = if (season != null && seasonEpisodes.isNotEmpty()) {
+                        val shown = seasonEpisodes.filter { !it.isMissing }
+                        listOfNotNull("${shown.size} ${if (shown.size == 1) "episode" else "episodes"}", shown.count { it.user.played }.takeIf { it > 0 }?.let { "$it watched" })
+                    } else prefs.facts(item)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { chips.forEach { GlassChip(it) } }
                     if (item.genres.isNotEmpty() && prefs.genres) Text(item.genres.take(4).joinToString("  •  "), color = accentColor(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     val music = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
                     if (item.kind == ItemKind.MUSIC_ALBUM) item.albumArtist?.let { artist ->
@@ -168,10 +187,10 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                             style = MaterialTheme.typography.labelLarge, color = accentColor(),
                         )
                     }
-                    if (!music) PlaySection(actions, item, state.nextUp ?: state.episodes.firstOrNull())
+                    if (!music) PlaySection(actions, item, playTarget)
                     if (item.versions.size > 1) VersionChooser(item)
                     // The tracks Play starts with, and a way to change them (a show's page: its next episode).
-                    if (!music) (if (item.isPlayable) item else state.nextUp ?: state.episodes.firstOrNull())?.let { TrackLine(actions, it) }
+                    if (!music) (if (item.isPlayable) item else playTarget)?.let { TrackLine(actions, it) }
                     // One short row: watched, favourite, the trailer, downloading, playing elsewhere; the rest under More.
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
@@ -185,7 +204,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         if (item.kind == ItemKind.SERIES) SmartDownloadAction(actions, item)
                         // Send it to the TV (or another of your devices) and control it from here.
                         var playingOn by remember { mutableStateOf(false) }
-                        val sendable = if (item.kind == ItemKind.SERIES) state.nextUp ?: state.episodes.firstOrNull() else item.takeIf { it.isPlayable }
+                        val sendable = if (item.kind == ItemKind.SERIES) playTarget else item.takeIf { it.isPlayable }
                         if (sendable != null) RoundAction(NitrateIcons.Tv, "Play on…", onClick = { playingOn = true })
                         if (playingOn && sendable != null) PlayOnDialog(actions, sendable, sendable.user.positionMs, onDismiss = { playingOn = false })
                         var more by remember { mutableStateOf(false) }
@@ -193,7 +212,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         if (more) DetailsMoreSheet(actions, item, isAdmin = account?.isAdmin == true, music = music) { more = false }
                     }
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
-                    item.overview?.takeIf { prefs.overview }?.let { overview ->
+                    // A season's own description when it has one, else the show's.
+                    (season?.overview ?: item.overview)?.takeIf { prefs.overview }?.let { overview ->
                         // Spoiler hiding: unwatched movies and episodes keep their description until asked for.
                         var revealed by remember(item.id) { mutableStateOf(false) }
                         if (!descriptionHidden(item) || revealed) ExpandableText(overview)
@@ -205,6 +225,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     }
                 }
             }
+        fun androidx.compose.foundation.lazy.LazyListScope.rows() {
             // A show's seasons and episodes; on an episode's page, the rest of its season (and the show's other seasons).
             if ((item.kind == ItemKind.SERIES || item.kind == ItemKind.EPISODE) && state.seasons.isNotEmpty()) {
                 item(key = "seasons") {
@@ -400,6 +421,25 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                 }
             }
         }
+        if (!wideDetails()) {
+            LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomInset(40.dp))) {
+                item(key = "hero") { hero(false) }
+                item(key = "facts") { facts() }
+                rows()
+            }
+        } else {
+            Row(Modifier.fillMaxSize()) {
+                Column(Modifier.weight(0.42f).fillMaxHeight().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(bottom = bottomInset(40.dp))) {
+                    hero(true)
+                    facts()
+                }
+                LazyColumn(
+                    state = list,
+                    modifier = Modifier.weight(0.58f).fillMaxHeight(),
+                    contentPadding = PaddingValues(top = 24.dp, bottom = bottomInset(40.dp)),
+                ) { rows() }
+            }
+        }
         IconButton(
             onClick = { actions.nav.popBackStack() },
             colors = IconButtonDefaults.iconButtonColors(containerColor = Color(0x66000000), contentColor = Color.White),
@@ -562,7 +602,6 @@ private fun WhereItBelongs(actions: AppActions, item: MediaItem, seasonName: Str
 }
 
 /** Everything the action row leaves out: how it plays, moments, chat, lists, more like it, managing. */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Boolean, music: Boolean, onDismiss: () -> Unit) {
     var open by remember { mutableStateOf<String?>(null) }
@@ -570,24 +609,15 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Bool
     val video = item.isPlayable && !music
     val studio = item.studios.firstOrNull()
     val year = item.productionYear
-    if (open == null) androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-            Text(item.displayTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-            @Composable fun entry(label: String, note: String? = null, onClick: () -> Unit) {
-                Column(Modifier.fillMaxWidth().pressable(onClick).padding(horizontal = 20.dp, vertical = 12.dp)) {
-                    Text(label, style = MaterialTheme.typography.bodyLarge)
-                    if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (video) entry("How it plays", "Whether it plays as it is here, and why") { open = "plays" }
-            if (video && container.companionOffers("moments")) entry("Moments", "Marked places, yours and your groups'") { open = "moments" }
-            if (video && container.companionOffers("chathistory")) entry("Earlier chat", "What was said watching it together") { open = "chat" }
-            if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) entry("Add to a playlist or collection") { open = "add" }
-            studio?.let { entry("More from $it") { onDismiss(); actions.nav.navigate(PersonRoute("", it, studio = it)) } }
-            year?.let { entry("More from $it") { onDismiss(); actions.nav.navigate(PersonRoute("", "From $it", year = it)) } }
-            if (isAdmin) entry("Manage", "Details, images, identify") { onDismiss(); actions.nav.navigate(ManageItemRoute(item.id)) }
-        }
+    // A choice opening a dialog replaces the sheet with it; one going elsewhere closes it.
+    if (open == null) ChoiceSheet(item.displayTitle, onDismiss, onChoose = {}) { entry ->
+        if (video) entry("How it plays", "Whether it plays as it is here, and why") { open = "plays" }
+        if (video && container.companionOffers("moments")) entry("Moments", "Marked places, yours and your groups'") { open = "moments" }
+        if (video && container.companionOffers("chathistory")) entry("Earlier chat", "What was said watching it together") { open = "chat" }
+        if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) entry("Add to a playlist or collection", null) { open = "add" }
+        studio?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", it, studio = it)) } }
+        year?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", "From $it", year = it)) } }
+        if (isAdmin) entry("Manage", "Details, images, identify") { onDismiss(); actions.nav.navigate(ManageItemRoute(item.id)) }
     }
     when (open) {
         "plays" -> CheckPlaybackDialog(actions, item, onDismiss)
@@ -595,4 +625,21 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Bool
         "chat" -> EarlierChatDialog(actions, item.id, onDismiss)
         "add" -> AddToListDialog(actions, item, onDismiss)
     }
+}
+
+/** Width from which a details page sits in two columns (tablets, wide windows). */
+val WIDE_DETAILS = 840.dp
+
+/** Whether this window is wide enough for two-column pages (details, settings). */
+@Composable
+fun wideDetails(): Boolean = dev.nitrate.mobile.platform.windowSizeDp().width >= WIDE_DETAILS
+
+/** "The Night Reel  ›": a season page's show, opening the show's own page. */
+@Composable
+private fun ShowCrumb(actions: AppActions, show: MediaItem) {
+    Text(
+        "${show.displayTitle}  ›", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White,
+        maxLines = 1, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(show.id)) }).padding(vertical = 4.dp),
+    )
 }

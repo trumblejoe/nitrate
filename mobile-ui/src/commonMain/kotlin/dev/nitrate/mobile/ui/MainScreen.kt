@@ -116,7 +116,7 @@ fun MainScreen(actions: AppActions, startOnLibrary: Boolean = false, onSignedOut
             Tab.LIBRARIES -> LibrariesTab(actions, padded)
             Tab.DOWNLOADS -> DownloadsScreen(actions, padded)
             Tab.WRITING -> WritingScreen(actions, onBack = null, modifier = padded)
-            Tab.SETTINGS -> SettingsScreen(actions, onSignedOut, padded)
+            Tab.SETTINGS -> SettingsTab(actions, onSignedOut, padded)
         }
         // Something playing on your TV (or another device): what, with a tap to its remote.
         // The song playing here, just above the nav pill.

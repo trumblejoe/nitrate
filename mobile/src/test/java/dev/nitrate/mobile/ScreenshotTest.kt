@@ -31,6 +31,7 @@ import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.UserState
 import dev.nitrate.mobile.ui.DetailsScreen
+import dev.nitrate.mobile.ui.SettingsTab
 import dev.nitrate.mobile.ui.DownloadsScreen
 import dev.nitrate.mobile.ui.SearchScreen
 import dev.nitrate.mobile.ui.ManageItemScreen
@@ -240,6 +241,32 @@ class ScreenshotTest {
     @Test fun details() = shoot("phone-series") { DetailsScreen(it, "series-1", null) }
 
     @Test fun movie() = shoot("phone-movie") { DetailsScreen(it, "m1", null) }
+
+    /** A season's page: "The Night Reel ›", the season's name, its episode count, Play its next episode. */
+    @Test fun season() {
+        shoot("phone-season") { DetailsScreen(it, "series-1", "season-2") }
+        compose.onAllNodesWithText("Season 2").onFirst().assertExists()
+        compose.onAllNodesWithText("6 episodes").onFirst().assertExists()
+    }
+
+    /** A tablet's details page: the picture, title and actions on the left, the season's episodes beside them. */
+    @Test @Config(qualifiers = "w1280dp-h800dp-land-night-xhdpi")
+    fun tabletEpisode() = shoot("tablet-episode") { DetailsScreen(it, "s1e2", null) }
+
+    @Test @Config(qualifiers = "w1280dp-h800dp-land-night-xhdpi")
+    fun tabletMovie() = shoot("tablet-movie") { DetailsScreen(it, "m1", null) }
+
+    /** A tablet's Settings: the sections on the left, the chosen one beside them. */
+    @Test @Config(qualifiers = "w1280dp-h800dp-land-night-xhdpi")
+    fun tabletSettings() = shoot("tablet-settings") { SettingsTab(it, onSignedOut = {}) }
+
+    /** What the details page shows while it loads. */
+    @Test fun detailsLoading() = shoot("phone-details-loading") { dev.nitrate.mobile.ui.DetailsPlaceholder() }
+
+    @Test @Config(qualifiers = "w1280dp-h800dp-land-night-xhdpi")
+    fun tabletDetailsLoading() = shoot("tablet-details-loading") { dev.nitrate.mobile.ui.DetailsPlaceholder() }
+
+    @Test fun playlistLoading() = shoot("phone-playlist-loading") { dev.nitrate.mobile.ui.ListPlaceholder() }
 
     /** An episode's page: where it belongs (show › season), its own name, and the rest of its season. */
     @Test fun episode() {
