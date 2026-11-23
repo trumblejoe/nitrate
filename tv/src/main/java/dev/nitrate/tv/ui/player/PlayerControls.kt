@@ -128,7 +128,7 @@ internal fun PlayerControls(
         ) {
             PlayPauseButton(playing, onPlayPause, Modifier.remembered(focus, ControlFocus.PLAY_PAUSE))
             for (b in buttons) {
-                PlayerButton(b.label, b.onClick, Modifier.remembered(focus, b.label), enabled = b.enabled)
+                PlayerButton(b.label, b.onClick, Modifier.remembered(focus, b.key), enabled = b.enabled)
             }
             plan?.takeIf { it.method != PlayMethod.DIRECT_PLAY }?.let {
                 Text(
@@ -289,7 +289,8 @@ private val CHAPTER_WIDTH = 176.dp
 internal val CONTROLS_HEIGHT = 220.dp
 
 /** One button in the player's row. */
-internal class PlayerAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)
+/** A button under the seek bar; [key] keeps its place for focus when its label changes ("Group chat: On"/"Off"). */
+internal class PlayerAction(val label: String, val enabled: Boolean = true, val key: String = label, val onClick: () -> Unit)
 
 private fun Modifier.remembered(focus: ControlFocus, key: String) =
     focusRequester(focus.of(key)).onFocusChanged { if (it.isFocused) focus.last = key }

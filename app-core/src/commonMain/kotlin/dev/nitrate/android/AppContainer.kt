@@ -193,6 +193,21 @@ class AppContainer(
         }
     }
 
+    /**
+     * Group chat for one playback (Companion `notes`, or live in this device's SyncPlay group): the
+     * title's notes pinned along it, popping up as they're reached. The player calls `start` and
+     * `at`, and `close` when it goes.
+     */
+    fun timelineChat(scope: kotlinx.coroutines.CoroutineScope, live: Boolean): dev.nitrate.core.companion.TimelineChat =
+        dev.nitrate.core.companion.TimelineChat(server, scope, { server.userId }, chat.takeIf { live }) { nowMs() }
+
+    /** Group chat on or off for a title's watch groups: remembered per group, a display preference (per user). */
+    suspend fun setGroupChat(groupIds: List<String>, on: Boolean) {
+        val user = server.userId ?: return
+        if (groupIds.isEmpty()) return
+        displaySettings.savePrefs(user, displaySettings.prefs(user).first().withGroupChat(groupIds, on))
+    }
+
     /** Chats in [groupId] without playing (null stops); this device's own group comes first. */
     fun chatAlongside(groupId: String?) {
         chat

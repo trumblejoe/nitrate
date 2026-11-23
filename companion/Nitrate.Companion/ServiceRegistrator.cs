@@ -25,6 +25,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService<Nitrate.Companion.Insights.QueryTrendRecorder>();
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.SegmentVotes(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.PeopleRecords(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.TimelineNoteBook(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), TimeProvider.System));
         serviceCollection.AddHostedService<Nitrate.Companion.Insights.SittingRecorder>();
         serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.BecauseStore>();
         serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.BecauseBuilder>();

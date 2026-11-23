@@ -1382,6 +1382,80 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {})
     }
 
+    /** The real player on an episode with group notes (Companion `notes`), its group chat a [chatAt] into the episode. */
+    private fun groupChatPlayer(name: String, easy: Boolean = false, act: () -> Unit) = shoot(name, setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
+        c.refreshCompanionForTests()
+        if (easy) c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(easyMode = true))
+    }, act = act) { c ->
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val chat = androidx.compose.runtime.remember { c.timelineChat(scope, live = false) }
+        dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {}, groupChat = chat)
+    }
+
+    private fun focusedNodes() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
+
+    /**
+     * The player's group chat: ▼ from the reactions goes to the text field (it used to fall out to
+     * the player), focus stays in the panel, and Back closes it with focus back on its button.
+     */
+    @Test fun playerGroupChatFocus() = groupChatPlayer("tv-player-group-chat") {
+        repeat(8) { if (!focusedHasText("Group chat")) press("right") }
+        check(focusedHasText("Group chat: On")) { "should reach Group chat: On; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedHasText(dev.nitrate.core.companion.QUICK_REACTIONS.first())) { "the panel opens on the first reaction; focused: ${focusedNodes()}" }
+        press("down", "down")
+        check(focusedHasText("Type a message")) { "▼ from the reactions should reach the text field; focused: ${focusedNodes()}" }
+        // Further down and sideways: still inside the panel.
+        press("down", "down", "right", "left")
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "focus must stay in the panel" }
+        check(!focusedHasText("Audio") && !focusedHasText("Subtitles")) { "focus must not fall out to the controls; focused: ${focusedNodes()}" }
+        press("up", "up")
+        check(focusedHasText("Type a message") || dev.nitrate.core.companion.QUICK_REACTIONS.any { focusedHasText(it) }) { "▲ goes back up the panel; focused: ${focusedNodes()}" }
+        press("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Type a message")).fetchSemanticsNodes().isEmpty()) { "Back closes the panel" }
+        check(focusedHasText("Group chat")) { "focus returns to the button that opened it; focused: ${focusedNodes()}" }
+    }
+
+    /** The group's notes pop up over the video as playback reaches them: the first two, a few seconds in, not the later one. */
+    @Test fun groupChatPopups() = shoot("tv-group-chat-popups", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
+    }, act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The opening shot!")).fetchSemanticsNodes().isNotEmpty()) { "Will's note at 0:04 pops up" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Called it.")).fetchSemanticsNodes().isEmpty()) { "never one further on" }
+    }) { c ->
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val chat = androidx.compose.runtime.remember { c.timelineChat(scope, live = false) }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            chat.start("s1e2", 0) { true }
+            kotlinx.coroutines.delay(100)
+            for (s in 0..8L) chat.at(s * 1_000)
+        }
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.DarkGray)) {
+            dev.nitrate.tv.ui.together.NoteToasts(chat.popups, Modifier.align(androidx.compose.ui.Alignment.CenterStart).padding(start = 32.dp))
+        }
+    }
+
+    /** The group chat panel with the switch, the notes so far and the reactions. */
+    @Test fun groupChatPanel() = shoot("tv-group-chat-panel", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
+    }) { c ->
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val chat = androidx.compose.runtime.remember { c.timelineChat(scope, live = false) }
+        androidx.compose.runtime.LaunchedEffect(Unit) { chat.start("s1e2", 1_000_000) { true } }
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxSize().background(androidx.compose.ui.graphics.Color.Black))
+            dev.nitrate.tv.ui.together.GroupChatPanel(chat, "The Night Reel", positionMs = { 1_000_000 }, onTurn = { chat.turn(it, 1_000_000) })
+        }
+    }
+
+    /** Group chat off in easy mode: no chat button. */
+    @Test fun playerGroupChatEasyOff() = groupChatPlayer("tv-player-group-chat-easy", easy = true) {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat", substring = true)).fetchSemanticsNodes().isEmpty()) { "no group chat in easy mode" }
+    }
+
     @Test fun playerControlsPlay() = playerControls("tv-player-controls-play")
     @Test fun playerControlsButton() = playerControls("tv-player-controls-audio", "right") { check(focusedHasText("Audio")) }
     @Test fun playerControlsSeek() = playerControls("tv-player-controls-seek", "up")

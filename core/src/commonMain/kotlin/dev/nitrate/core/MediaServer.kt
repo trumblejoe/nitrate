@@ -126,13 +126,20 @@ interface MediaServer {
     /** Titles with trouble across the household (`problems`, admins). */
     suspend fun problemTitles(): List<dev.nitrate.core.companion.ProblemTitle> = emptyList()
 
-    /** The caller's moments (in [itemId], else all) and those shared with their watch groups (`moments`). */
+    /** The caller's moments (in [itemId], else all) and those shared with their watch groups (`moments`, servers before `notes`). */
     suspend fun moments(itemId: String? = null): List<dev.nitrate.core.companion.Moment> = emptyList()
 
-    /** Keeps a moment (shown to watch group [groupId] when given). */
-    suspend fun addMoment(itemId: String, positionMs: Long, note: String?, groupId: String? = null): dev.nitrate.core.companion.Moment? = null
+    /**
+     * A title's group chat pinned to its timeline that the caller may read, and their watch groups
+     * on it (`notes`; older servers' moments read as notes); null without either feature.
+     */
+    suspend fun titleNotes(itemId: String): dev.nitrate.core.companion.TitleNotes? = null
 
-    suspend fun deleteMoment(id: String) {}
+    /** Pins a message or reaction at [positionMs] for the caller's watch groups on the title (`notes`); throws [dev.nitrate.core.companion.ChatRejected]. */
+    suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String): dev.nitrate.core.companion.TimelineNote = unsupported()
+
+    /** Removes one of the caller's own notes (or older moments) on a title. */
+    suspend fun deleteNote(itemId: String, id: String) {}
 
     /** A title's kept chat from viewings the caller was part of (`chathistory`). */
     suspend fun chatHistory(itemId: String): List<dev.nitrate.core.companion.ChatRecord> = emptyList()

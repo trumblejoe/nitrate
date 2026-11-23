@@ -81,6 +81,12 @@ public class CompanionController : ControllerBase
         features.Add("watching");
         features.Add("problems");
         features.Add("moments");
+        // Chat pinned to the timeline (the moments' successor; "moments" stays for older apps).
+        if (ChatEnabled)
+        {
+            features.Add("notes");
+        }
+
         if (ChatEnabled && (Plugin.Instance?.Configuration.KeepChatHistory ?? true))
         {
             features.Add("chathistory");

@@ -43,33 +43,178 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.nitrate.core.companion.ChatKind
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Switch
 import dev.nitrate.core.companion.ChatMessage
+import dev.nitrate.core.companion.Notes
+import dev.nitrate.core.companion.TimelineChat
+import dev.nitrate.core.companion.TimelineNote
+import kotlinx.coroutines.flow.Flow
 import dev.nitrate.core.companion.GroupChat
 import dev.nitrate.core.companion.QUICK_REACTIONS
 import dev.nitrate.core.model.formatClock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** New messages from the others in the group, popping up over the video for a few seconds each. */
+/**
+ * One playback's group chat (Companion `notes`, live in a SyncPlay group too): started once the
+ * title is known (its notes loaded once), told where playback is about once a second, closed with
+ * the player. Null for downloads played offline, recap clips and test plays.
+ */
 @Composable
-fun ChatToasts(chat: GroupChat, modifier: Modifier = Modifier) {
-    val shown = remember { mutableStateListOf<ChatMessage>() }
-    LaunchedEffect(chat) {
-        chat.incoming.collect { m ->
-            shown.add(m)
+fun rememberGroupChat(actions: AppActions, itemId: String?, enabled: Boolean, positionMs: () -> Long): TimelineChat? {
+    if (!enabled) return null
+    val scope = rememberCoroutineScope()
+    val chat = remember { actions.container.timelineChat(scope, live = true) }
+    val prefs by androidx.compose.runtime.rememberUpdatedState(LocalDisplayPrefs.current)
+    LaunchedEffect(chat, itemId) {
+        val id = itemId ?: return@LaunchedEffect
+        chat.start(id, positionMs()) { groups -> prefs.groupChatOn(groups) }
+        // Notes pop up as playback reaches them (never ahead).
+        while (true) {
+            delay(1_000)
+            chat.at(positionMs())
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(chat) { onDispose { chat.close() } }
+    return chat
+}
+
+/** Whether there's anyone to chat with in this playback: a watch group on the title, or a live group. */
+@Composable
+fun groupChatAvailable(chat: TimelineChat?, liveGroup: Boolean): Boolean =
+    chat != null && (chat.groups.collectAsState().value.isNotEmpty() || liveGroup)
+
+/** Turns group chat on or off for this playback and remembers it for the title's groups (per user). */
+fun turnGroupChat(actions: AppActions, chat: TimelineChat, on: Boolean, positionMs: Long) {
+    chat.turn(on, positionMs)
+    val groups = chat.keys
+    actions.scope.launch { actions.container.setGroupChat(groups, on) }
+}
+
+/**
+ * The group's notes popping up over the video as playback reaches them (or live from the group): a
+ * small notification each, name then what they said, for a few seconds (the newest three at most).
+ */
+@Composable
+fun NoteToasts(popups: Flow<TimelineNote>, modifier: Modifier = Modifier) {
+    val shown = remember { mutableStateListOf<TimelineNote>() }
+    LaunchedEffect(popups) {
+        popups.collect { n ->
+            shown.add(n)
             while (shown.size > 3) shown.removeAt(0)
             launch {
                 delay(8_000)
-                shown.remove(m)
+                shown.remove(n)
             }
         }
     }
     Column(modifier.widthIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (m in shown) {
-            androidx.compose.runtime.key(m.seq) {
-                Bubble(m, Modifier.background(Color(0xCC101014), RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 8.dp))
+        for (n in shown) {
+            androidx.compose.runtime.key(n.id) {
+                Row(
+                    Modifier.background(Color(0xD9101014), RoundedCornerShape(18.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(n.userName, style = MaterialTheme.typography.labelMedium, color = accentColor(), fontWeight = FontWeight.Bold)
+                    if (n.kind == ChatKind.REACTION) Text(n.text, fontSize = 22.sp)
+                    else Text(Notes.text(n), style = MaterialTheme.typography.bodyMedium, color = Color.White, maxLines = 3)
+                }
             }
         }
+    }
+}
+
+/** "Group chat" with its switch (the whole line toggles), for the chat sheet and the player's More. */
+@Composable
+fun GroupChatSwitch(on: Boolean, onTurn: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier.fillMaxWidth().toggleable(value = on, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onTurn).padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Group chat: " + if (on) "On" else "Off", style = MaterialTheme.typography.titleSmall)
+            Text(if (on) "Your group's notes pop up as you reach them" else "No pop-ups, nothing sent", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = on, onCheckedChange = null)
+    }
+}
+
+/**
+ * The player's group chat as a sheet: the Group chat switch, then (when on) the notes so far — only
+ * up to where you've got, with "Show what I missed" after turning it on mid-play — and reactions
+ * and a text box to leave your own at this point.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GroupChatSheet(chat: TimelineChat, title: String?, positionMs: () -> Long, onTurn: (Boolean) -> Unit, onDismiss: () -> Unit) {
+    val on by chat.on.collectAsState()
+    val history by chat.history.collectAsState()
+    val missed by chat.missed.collectAsState()
+    val scope = rememberCoroutineScope()
+    var draft by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val list = rememberLazyListState()
+    LaunchedEffect(Unit) { chat.opened() }
+    LaunchedEffect(history.size) { if (history.isNotEmpty()) list.animateScrollToItem(history.size - 1) }
+    fun send(text: String, kind: ChatKind) {
+        scope.launch {
+            chat.send(text, kind, positionMs())
+                .onSuccess { if (kind == ChatKind.TEXT) draft = ""; problem = null }
+                .onFailure { problem = it.message ?: "Couldn't send" }
+        }
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Group chat" + (title?.let { " · $it" } ?: ""), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            GroupChatSwitch(on, onTurn)
+            if (!on) {
+                Text("Turn it on to see what your group said at each point as you reach it, and to leave your own reactions and notes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                return@Column
+            }
+            if (missed.isNotEmpty()) TextButton(onClick = { chat.showMissed() }) { Text("Show what I missed (${missed.size})") }
+            LazyColumn(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 420.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (history.isEmpty()) item { Text("Nothing yet up to here. A reaction or a note stays at this point for your group.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(history, key = { it.id }) { n ->
+                    Column {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(n.userName, style = MaterialTheme.typography.labelMedium, color = accentColor(), fontWeight = FontWeight.Bold)
+                            Text(formatClock(n.positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (n.kind == ChatKind.REACTION) Text(n.text, fontSize = 28.sp) else Text(Notes.text(n), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                items(QUICK_REACTIONS) { emoji -> TextButton(onClick = { send(emoji, ChatKind.REACTION) }) { Text(emoji, fontSize = 22.sp) } }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    draft, { draft = it.take(500) },
+                    placeholder = { Text("Message") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank()) send(draft, ChatKind.TEXT) }),
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { send(draft, ChatKind.TEXT) }, enabled = draft.isNotBlank()) {
+                    Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = accentColor())
+                }
+            }
+            problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
+/** The player's More: the Group chat switch, and "Show what I missed" after turning it on mid-play. */
+@Composable
+fun GroupChatRow(chat: TimelineChat, onTurn: (Boolean) -> Unit, onShowMissed: () -> Unit) {
+    val on by chat.on.collectAsState()
+    val missed by chat.missed.collectAsState()
+    Column {
+        GroupChatSwitch(on, onTurn)
+        if (on && missed.isNotEmpty()) TextButton(onClick = onShowMissed) { Text("Show what I missed (${missed.size})") }
     }
 }
 
