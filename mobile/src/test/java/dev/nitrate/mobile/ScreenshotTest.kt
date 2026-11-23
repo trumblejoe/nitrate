@@ -309,6 +309,19 @@ class ScreenshotTest {
         }
     }
 
+    /** Someone's schedule change as the in-app sheet asks it (Yes, No, Later), and the note when it passed (OK). */
+    @Test fun scheduleAsk() = shoot("phone-schedule-ask") { actions ->
+        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+            dev.nitrate.mobile.ui.ScheduleChangeChoices((actions.server as dev.nitrate.testing.FakeServer).sampleSchedulePrompt(), onLater = {}, onAnswer = {})
+        }
+    }
+
+    @Test fun scheduleDone() = shoot("phone-schedule-done") { actions ->
+        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+            dev.nitrate.mobile.ui.ScheduleChangeChoices((actions.server as dev.nitrate.testing.FakeServer).sampleSchedulePrompt(done = true), onLater = {}, onAnswer = {})
+        }
+    }
+
     @Test fun watchPartners() = shoot("phone-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { dev.nitrate.mobile.ui.WatchPartnersScreen(it) }
 
     /** The guided setup's first step: titles picked from what was watched lately, Next, and Cancel (Back on the first page). */

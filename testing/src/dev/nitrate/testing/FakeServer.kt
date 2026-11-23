@@ -398,6 +398,16 @@ class FakeServer : MediaServer {
     override suspend fun watchParty(groupId: String) = watchPartyState?.takeIf { it.groupId == groupId }
 
     /** A sample watch party reminder: Tommy and Suzy, 8:15 after Suzy's +15, S1:E4. */
+    /** Sam asking the group to go weekly with Together on ([done]: how it went, with [outcome]). */
+    fun sampleScheduleNews(done: Boolean = false, outcome: String = dev.nitrate.core.partners.ScheduleNews.PASSED) = dev.nitrate.core.partners.ScheduleNews(
+        if (done) dev.nitrate.core.partners.ScheduleNews.DONE else dev.nitrate.core.partners.ScheduleNews.ASK, "g2", "c1",
+        listOf("The Night Reel", "Nitrate"), listOf("Sam"), "Sam", false,
+        dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, day = 4, hour = 19, together = true),
+        outcome = if (done) outcome else null,
+    )
+
+    fun sampleSchedulePrompt(done: Boolean = false) = dev.nitrate.core.partners.SchedulePrompt.of(sampleScheduleNews(done))!!
+
     fun samplePartyPrompt(easy: Boolean = false): dev.nitrate.core.partners.PartyPrompt {
         val at = java.time.Instant.parse("2026-11-19T20:00:00Z").toEpochMilli()
         val party = dev.nitrate.core.partners.WatchParty(

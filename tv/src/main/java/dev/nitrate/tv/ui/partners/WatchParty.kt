@@ -137,17 +137,70 @@ fun WatchPartyDialog(prompt: PartyPrompt, onDismiss: () -> Unit, onChoose: (Part
 
 /** In the player: the news at the top, never focusable; the question itself waits until the player closes. */
 @Composable
-private fun PartyNote(prompt: PartyPrompt, onGone: () -> Unit) {
-    // News with nothing to answer goes by itself.
-    val newsOnly = prompt.choices == listOf(PartyChoice.Ok)
-    if (newsOnly) LaunchedEffect(prompt) { delay(8_000); onGone() }
+private fun PartyNote(prompt: PartyPrompt, onGone: () -> Unit) =
+    QuietNote(prompt.text.lines().first(), asks = prompt.choices != listOf(PartyChoice.Ok), onGone = onGone)
+
+/**
+ * A schedule change someone in one of the user's groups asked for ("Sam asks to change the
+ * schedule of The Bear to Thursdays 7pm. Agree?": Yes focused, No, Later), or a note when one
+ * passes, fails or lapses (OK). Back (or Later) puts the question away: it stays first in the
+ * card's choices and in Settings → Watch groups. In the player ([inPlayer]) only a quiet note at
+ * the top that never takes focus; the question waits for the player to close. Waits while a
+ * watch party prompt shows.
+ */
+@Composable
+fun ScheduleChangePrompt(container: AppContainer, inPlayer: Boolean) {
+    val news by container.scheduleAsks.showing.collectAsState()
+    val party by container.parties.asking.collectAsState()
+    val scope = rememberCoroutineScope()
+    var error by remember { mutableStateOf<String?>(null) }
+    val n = news ?: return
+    val prompt = dev.nitrate.core.partners.SchedulePrompt.of(n) ?: return
+    if (inPlayer) {
+        QuietNote(prompt.text, asks = prompt.asks) { if (!prompt.asks) container.scheduleAsks.dismiss(n) }
+        return
+    }
+    if (party != null) return
+    ScheduleAskDialog(prompt, error, onLater = { error = null; container.scheduleAsks.dismiss(n) }) { yes ->
+        scope.launch { error = container.scheduleAsks.answer(n, yes) }
+    }
+}
+
+/** The schedule prompt's dialog: the question with Yes (focused), No and Later, or the outcome with OK. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ScheduleAskDialog(prompt: dev.nitrate.core.partners.SchedulePrompt, error: String? = null, onLater: () -> Unit, onAnswer: (Boolean) -> Unit) {
+    val first = remember(prompt) { FocusRequester() }
+    TvDialog(onLater, width = 640) {
+        Text(prompt.title, style = MaterialTheme.typography.headlineSmall)
+        Text(prompt.text)
+        if (prompt.asks) Text(
+            "It changes once most of the group agrees, and lapses after 7 days. You can also answer from the title's group choices.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (prompt.asks) {
+                Button(onClick = { onAnswer(true) }, modifier = Modifier.focusRequester(first)) { Text("Yes") }
+                OutlinedButton(onClick = { onAnswer(false) }) { Text("No") }
+                OutlinedButton(onClick = onLater) { Text("Later") }
+            } else Button(onClick = onLater, modifier = Modifier.focusRequester(first)) { Text("OK") }
+        }
+    }
+    LaunchedEffect(prompt) { delay(60); runCatching { first.requestFocus() } }
+}
+
+/** A note at the top of the player, never focusable: [asks] says the question waits until the player closes; news alone goes by itself. */
+@Composable
+private fun QuietNote(text: String, asks: Boolean, onGone: () -> Unit) {
+    if (!asks) LaunchedEffect(text) { delay(8_000); onGone() }
     Box(Modifier.fillMaxSize().padding(top = 24.dp), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 640.dp).background(Color(0xCC101418), RoundedCornerShape(12.dp)).padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text(prompt.text.lines().first(), color = Color.White, style = MaterialTheme.typography.titleSmall)
-            if (!newsOnly) Text("It'll ask when you stop playing.", color = Color(0xFFB8C0CC), style = MaterialTheme.typography.bodySmall)
+            Text(text, color = Color.White, style = MaterialTheme.typography.titleSmall)
+            if (asks) Text("It'll ask when you stop playing.", color = Color(0xFFB8C0CC), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -2285,6 +2285,14 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.partners.WatchPartyDialog((c.server as dev.nitrate.testing.FakeServer).samplePartyPrompt(), onDismiss = {}, onChoose = {})
     }
 
+    /** Someone's schedule change: the question with Yes focused, No and Later beside it. */
+    @Test fun scheduleAsk() = shoot("tv-schedule-ask", act = {
+        compose.onNode(androidx.compose.ui.test.hasText("Yes") and androidx.compose.ui.test.hasClickAction()).assertIsFocusedOrHasFocusedChild()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Sam asks to change the schedule of The Night Reel and Nitrate to Thursdays 7pm, together. Agree?")).fetchSemanticsNodes().isNotEmpty()) { "the question" }
+    }) { c ->
+        dev.nitrate.tv.ui.partners.ScheduleAskDialog((c.server as dev.nitrate.testing.FakeServer).sampleSchedulePrompt(), onLater = {}, onAnswer = {})
+    }
+
     /** The guided setup: step 1 picks titles (focus in the search); Next goes on to Who, focus on the first person; Back steps back with the picks kept. */
     @Test fun groupSetupBack() = shoot("tv-group-setup-what", setup = { c -> c.refreshCompanionForTests() }, act = {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Step 1 of 5 · What to watch")).fetchSemanticsNodes().isNotEmpty()) { "the first step" }

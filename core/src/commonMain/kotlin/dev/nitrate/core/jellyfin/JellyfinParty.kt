@@ -40,3 +40,28 @@ private fun partyMs(iso: String): Long = runCatching { kotlin.time.Instant.parse
 /** A "Nitrate.Party" message's text (null when it isn't one). */
 internal fun decodePartyNews(text: String): dev.nitrate.core.partners.PartyNews? =
     runCatching { JellyfinJson.decodeFromString(PartyNewsDto.serializer(), text).toModel() }.getOrNull()
+
+// Schedule changes, sent with the same header ("schedule-ask"/"schedule-done"; the party fields
+// come along so older apps read it as party news that changes nothing).
+@Serializable internal data class ScheduleNewsDto(
+    val kind: String, val groupId: String, val changeId: String = "", val titles: List<String> = emptyList(), val seriesName: String = "",
+    val others: List<String> = emptyList(), val fromName: String? = null, val fromMe: Boolean = false,
+    val proposed: ScheduleDto = ScheduleDto(), val current: ScheduleDto? = null, val outcome: String? = null,
+) {
+    fun toModel() = dev.nitrate.core.partners.ScheduleNews(
+        kind, normalizeId(groupId), normalizeId(changeId), titles.ifEmpty { listOf(seriesName) }, others, fromName.orEmpty(), fromMe,
+        proposed.toScheduleModel(), current?.toScheduleModel(), outcome,
+    )
+}
+
+internal fun ScheduleDto.toScheduleModel() = dev.nitrate.core.partners.GroupSchedule(
+    cadence, day, hour, minute, softLock, together,
+    party?.takeIf { it.days.isNotEmpty() }?.let { dev.nitrate.core.partners.PartyTime(it.days, it.hour, it.minute) },
+)
+
+/** A "Nitrate.Party" message's schedule news (null when it's party news, or not a message at all). */
+internal fun decodeScheduleNews(text: String): dev.nitrate.core.partners.ScheduleNews? = runCatching {
+    val kind = JellyfinJson.parseToJsonElement(text).let { (it as? kotlinx.serialization.json.JsonObject)?.get("Kind") as? kotlinx.serialization.json.JsonPrimitive }?.content
+    if (kind != dev.nitrate.core.partners.ScheduleNews.ASK && kind != dev.nitrate.core.partners.ScheduleNews.DONE) null
+    else JellyfinJson.decodeFromString(ScheduleNewsDto.serializer(), text).toModel()
+}.getOrNull()

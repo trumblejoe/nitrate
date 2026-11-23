@@ -116,3 +116,49 @@ fun WatchPartyChoices(prompt: PartyPrompt, onDismiss: () -> Unit, onChoose: (Par
         if (prompt.choices.none { it == PartyChoice.Ok }) TextButton(onClick = onDismiss) { Text("Close") }
     }
 }
+
+/**
+ * A schedule change someone in one of the user's groups asked for, as the Companion tells it ("Sam
+ * asks to change the schedule of The Bear to Thursdays 7pm. Agree?": Yes / No / Later), or how one
+ * went (OK): an in-app sheet. Dismissing it is Later: the vote stays first in the title's group
+ * choices and in Settings → Watch groups. Not over the player (it waits until the player closes),
+ * nor while a watch party prompt shows.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScheduleChangePrompt(actions: AppActions, inPlayer: Boolean) {
+    val container = actions.container
+    val news by container.scheduleAsks.showing.collectAsState()
+    val party by container.parties.asking.collectAsState()
+    val platform = dev.nitrate.mobile.platform.rememberPlatformActions()
+    val scope = rememberCoroutineScope()
+    val n = news ?: return
+    if (inPlayer || party != null) return
+    val prompt = dev.nitrate.core.partners.SchedulePrompt.of(n) ?: return
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = { container.scheduleAsks.dismiss(n) }) {
+        ScheduleChangeChoices(prompt, onLater = { container.scheduleAsks.dismiss(n) }) { yes ->
+            scope.launch { container.scheduleAsks.answer(n, yes)?.let(platform.toast) }
+        }
+    }
+}
+
+/** The schedule sheet's contents (also shot on its own in the screenshot tests): the question with Yes, No and Later, or the outcome with OK. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ScheduleChangeChoices(prompt: dev.nitrate.core.partners.SchedulePrompt, onLater: () -> Unit, onAnswer: (Boolean) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(prompt.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(prompt.text, style = MaterialTheme.typography.bodyLarge)
+        if (prompt.asks) Text(
+            "It changes once most of the group agrees, and lapses after 7 days.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (prompt.asks) {
+                Button(onClick = { onAnswer(true) }) { Text("Yes") }
+                OutlinedButton(onClick = { onAnswer(false) }) { Text("No") }
+                TextButton(onClick = onLater) { Text("Later") }
+            } else Button(onClick = onLater) { Text("OK") }
+        }
+    }
+}

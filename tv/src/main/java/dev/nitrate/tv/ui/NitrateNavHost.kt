@@ -600,6 +600,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
         dev.nitrate.tv.ui.partners.WatchPartyPrompt(container, inPlayer, displayPrefs.easyMode) { item -> gate.play(item) }
     }
+    // Schedule changes someone in a group asked for (Yes/No), and how they went; never over the player.
+    if (companion?.features?.contains("partners") == true) {
+        val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
+        dev.nitrate.tv.ui.partners.ScheduleChangePrompt(container, inPlayer)
+    }
     // "Also count it for Suzy, where it's next too?": once the player has closed (it never interrupts one).
     run {
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true

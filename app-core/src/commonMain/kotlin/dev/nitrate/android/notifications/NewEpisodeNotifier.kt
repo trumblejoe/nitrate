@@ -25,7 +25,7 @@ interface NewEpisodeNotifier {
     suspend fun setInvitesEnabled(on: Boolean) = Unit
     suspend fun setPartnerRequestsEnabled(on: Boolean) = Unit
 
-    /** Looks for invites and partner requests not notified yet (every 15 minutes in the background). */
+    /** Looks for invites, group requests and schedule changes to answer not notified yet (every 15 minutes in the background). */
     suspend fun checkInvites() = Unit
 
     /** Watch party reminders, 15 minutes before each of the user's groups' parties (on until switched off). */
@@ -64,5 +64,8 @@ interface NewEpisodeNotifier {
 
         /** A tapped watch party reminder: the app opens on that group's party ([String] group id). */
         const val EXTRA_OPEN_PARTY = "dev.nitrate.OPEN_PARTY"
+
+        /** A tapped schedule change request: the app opens on that group's Yes/No ([String] group id). */
+        const val EXTRA_OPEN_SCHEDULE = "dev.nitrate.OPEN_SCHEDULE"
     }
 }

@@ -191,6 +191,9 @@ const val PLAY_ITEM_PREFIX = "play:"
 /** [MobileApp]'s openItem with this in front opens that group's watch party (a tapped reminder). */
 const val PARTY_PREFIX = "party:"
 
+/** A tapped schedule change request: `schedule:<group id>` opens that group's Yes/No. */
+const val SCHEDULE_PREFIX = "schedule:"
+
 @Composable
 fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null)) {
     var start by remember { mutableStateOf<Any?>(null) }
@@ -469,6 +472,10 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     container.openParty(id.removePrefix(PARTY_PREFIX))
                     return@LaunchedEffect
                 }
+                if (id.startsWith(SCHEDULE_PREFIX)) {
+                    container.openScheduleAsk(id.removePrefix(SCHEDULE_PREFIX))
+                    return@LaunchedEffect
+                }
                 if (id.startsWith(PLAY_ITEM_PREFIX)) {
                     runCatching { container.server.getItem(id.removePrefix(PLAY_ITEM_PREFIX)) }.getOrNull()?.let { guarded(it, false, null) }
                     return@LaunchedEffect
@@ -518,6 +525,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             WatchInvitePrompt(actions)
             // Watch parties: what the Companion sends as it happens; waits while the player is open.
             WatchPartyPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
+            // Schedule changes someone in a group asked for (Yes/No), and how they went; waits while the player is open.
+            ScheduleChangePrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
             // "Also count it for Suzy, where it's next too?": once the player has closed.
             CountingPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
         }

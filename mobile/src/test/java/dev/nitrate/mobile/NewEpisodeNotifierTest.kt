@@ -80,4 +80,46 @@ class NewEpisodeNotifierTest {
         assertEquals(0, manager.allNotifications.size)
         notifier.setPartyRemindersEnabled(true)
     }
+
+    @Test
+    fun `a schedule change to answer is posted once with Yes and No, never for your own`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        shadowOf(context as Application).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        val system = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        system.cancelAll()
+        val manager = shadowOf(system)
+        val change = dev.nitrate.core.partners.ScheduleChange(
+            "c1", "Sam", dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY), listOf("Sam"), emptyList(), voted = false, atMs = 0,
+        )
+        val group = dev.nitrate.core.partners.WatchGroup("g1", "s1", "The Night Reel", listOf(dev.nitrate.core.writing.UserRef("u2", "Sam")), 0, pending = change)
+        val server = FakeServer().apply {
+            partnerInfo = dev.nitrate.core.partners.PartnersInfo(listOf(group), emptyList(), emptyList())
+        }
+        val notifier = dev.nitrate.android.notifications.AndroidNewEpisodeNotifier(context, server)
+        notifier.setPartnerRequestsEnabled(true)
+
+        notifier.checkInvites()
+        val posted = manager.allNotifications.single()
+        assertEquals("Change the schedule?", posted.extras.getString("android.title"))
+        assertEquals("Sam asks to change the schedule of The Night Reel to Thursdays 7pm. Agree?", posted.extras.getCharSequence("android.text").toString())
+        assertEquals(listOf("Yes", "No"), posted.actions.map { it.title.toString() })
+        assertEquals("partner_requests", posted.channelId)
+
+        // Once per change: a later check says nothing more.
+        system.cancelAll()
+        notifier.checkInvites()
+        assertEquals(0, manager.allNotifications.size)
+
+        // The user's own ask (the asker counts as answered), or one already answered: nothing.
+        server.partnerInfo = dev.nitrate.core.partners.PartnersInfo(listOf(group.copy(pending = change.copy(id = "c2", voted = true))), emptyList(), emptyList())
+        notifier.checkInvites()
+        assertEquals(0, manager.allNotifications.size)
+
+        // Switched off: nothing either.
+        notifier.setPartnerRequestsEnabled(false)
+        server.partnerInfo = dev.nitrate.core.partners.PartnersInfo(listOf(group.copy(pending = change.copy(id = "c3"))), emptyList(), emptyList())
+        notifier.checkInvites()
+        assertEquals(0, manager.allNotifications.size)
+        notifier.setPartnerRequestsEnabled(true)
+    }
 }

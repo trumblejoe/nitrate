@@ -327,6 +327,14 @@ class AppContainer(
         )
     }
 
+    /** Schedule changes as the Companion tells them: Yes/No to someone's ask, a note when one passes, fails or lapses. */
+    val scheduleAsks by lazy {
+        dev.nitrate.android.partners.ScheduleAsks(
+            vote = { runTogether(it) },
+            changed = { networkScope.launch { refreshPartners(); pagesChanged() } },
+        )
+    }
+
     private var followingParties = false
 
     /** Listens for the Companion's watch party news on the live connection (sent, never polled). */
@@ -334,6 +342,7 @@ class AppContainer(
         if (followingParties) return
         followingParties = true
         networkScope.launch { remote.partyNews.collect { parties.heard(it) } }
+        networkScope.launch { remote.scheduleNews.collect { scheduleAsks.heard(it) } }
     }
 
     /** The groups' parties changed: a phone moves its own reminders (TVs show the prompts only while open). */
@@ -349,6 +358,12 @@ class AppContainer(
         val group = partnersState.value?.groups?.firstOrNull { it.id == groupId } ?: return
         val party = runCatching { server.watchParty(groupId) }.getOrNull() ?: group.party ?: return
         parties.open(group.copy(party = party))
+    }
+
+    /** Opens [groupId]'s waiting schedule change (a tapped notification): the groups looked at once, then its Yes/No. */
+    suspend fun openScheduleAsk(groupId: String) {
+        refreshPartners()
+        partnersState.value?.groups?.firstOrNull { it.id == groupId }?.let { scheduleAsks.open(it) }
     }
 
     /**
@@ -1034,6 +1049,7 @@ class AppContainer(
         standingsState.value = emptyMap()
         // So do its watch parties: nothing asked, no reminders set.
         parties.clear()
+        scheduleAsks.clear()
         partnersState.value = null
         countAsksState.value = emptyList()
         if (deviceKind != dev.nitrate.core.pages.DeviceKind.TV) runCatching { newEpisodes.scheduleParties(emptyList(), nowMs()) }

@@ -160,6 +160,38 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         NotificationManagerCompat.from(context).notify(partyId(group.id), notification)
     }
 
+    /** Someone in a group asked to change its schedule: Yes / No without opening the app; a tap opens the app on the question. */
+    private fun postScheduleAsk(ask: dev.nitrate.core.partners.ScheduleNews) {
+        if (!canNotify()) return
+        channel(REQUESTS_CHANNEL, REQUESTS_NAME)
+        val prompt = dev.nitrate.core.partners.SchedulePrompt.of(ask) ?: return
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            putExtra(NewEpisodeNotifier.EXTRA_OPEN_SCHEDULE, ask.groupId)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val notification = NotificationCompat.Builder(context, REQUESTS_CHANNEL)
+            .setSmallIcon(dev.nitrate.android.R.drawable.ic_stat_new_episode)
+            .setContentTitle(prompt.title)
+            .setContentText(prompt.text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(prompt.text))
+            .setAutoCancel(true)
+            .apply { if (open != null) setContentIntent(PendingIntent.getActivity(context, scheduleId(ask.groupId), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)) }
+            .addAction(0, "Yes", scheduleVote(ask, yes = true))
+            .addAction(0, "No", scheduleVote(ask, yes = false))
+            .build()
+        NotificationManagerCompat.from(context).notify(scheduleId(ask.groupId), notification)
+    }
+
+    private fun scheduleVote(ask: dev.nitrate.core.partners.ScheduleNews, yes: Boolean): PendingIntent {
+        val intent = android.content.Intent(context, PartyActionReceiver::class.java).apply {
+            action = PartyActionReceiver.SCHEDULE_VOTE
+            putExtra(PARTY_GROUP, ask.groupId)
+            putExtra(PARTY_REQUEST, ask.changeId)
+            putExtra(PARTY_YES, yes)
+        }
+        return PendingIntent.getBroadcast(context, (ask.groupId + PartyActionReceiver.SCHEDULE_VOTE + yes).hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+
     private fun canNotify() = Build.VERSION.SDK_INT < 33 ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
@@ -214,7 +246,13 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         val partners = if (requestsOn || partyOn) runCatching { server.partners() }.getOrNull() else null
         if (requestsOn) partners?.incoming.orEmpty().forEach { r ->
             fresh += "r:" + r.id
-            if ("r:" + r.id !in notified) postSocial("r:" + r.id, "Watch ${r.seriesName} together?", "${r.fromName} would like to watch ${r.seriesName} with you.", REQUESTS_CHANNEL, "Watch partner requests")
+            if ("r:" + r.id !in notified) postSocial("r:" + r.id, "Watch ${r.seriesName} together?", "${r.fromName} would like to watch ${r.seriesName} with you.", REQUESTS_CHANNEL, REQUESTS_NAME)
+        }
+        // Schedule changes waiting for the user's yes or no (never their own: the asker counts as a yes).
+        if (requestsOn) partners?.groups.orEmpty().forEach { g ->
+            val ask = dev.nitrate.core.partners.ScheduleNews.askOf(g) ?: return@forEach
+            fresh += "s:" + ask.changeId
+            if ("s:" + ask.changeId !in notified) postScheduleAsk(ask)
         }
         if (partyOn) partners?.groups.orEmpty().forEach { g ->
             val ask = g.party?.ask?.takeIf { !it.voted && !it.mine } ?: return@forEach
@@ -351,7 +389,9 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         private const val SOON = "new-episodes-soon"
         private const val INVITES = "watch-invites"
         private const val INVITES_CHANNEL = "watch_invites"
+        // The id is kept (Android keeps the user's settings for it); the name says what it holds now.
         private const val REQUESTS_CHANNEL = "partner_requests"
+        private const val REQUESTS_NAME = "Watch group requests"
         private const val PARTY_CHANNEL = "watch_party"
         private const val PARTY_TAG = "watch-party"
         internal const val PARTY_GROUP = "group"
@@ -362,6 +402,9 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
 
         /** One notification per group's party: a later one replaces it. */
         internal fun partyId(groupId: String) = ("party:" + groupId).hashCode()
+
+        /** One notification per group's schedule change: a later one replaces it. */
+        internal fun scheduleId(groupId: String) = ("schedule:" + groupId).hashCode()
     }
 }
 
@@ -397,7 +440,8 @@ class PartyReminderWorker(context: Context, params: WorkerParameters) : Coroutin
 
 /**
  * A watch party notification's buttons, answered without opening the app: +15 min, Not tonight,
- * and Yes/No to someone else's postponement. The notification then says what happened.
+ * and Yes/No to someone else's postponement; and Yes/No to someone's schedule change. The
+ * notification then says what happened.
  */
 class PartyActionReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: android.content.Intent) {
@@ -411,6 +455,12 @@ class PartyActionReceiver : android.content.BroadcastReceiver() {
                 when (action) {
                     LATER -> container.server.partyLater(groupId, 15)?.let { "Pushed back to ${it.clock}. Everyone's told." }
                     SKIP -> container.server.partySkip(groupId)?.let { if (it.skipped) "Tonight's Group Watch Session is off." else "Asked the group to skip tonight." }
+                    SCHEDULE_VOTE -> {
+                        val change = intent.getStringExtra(AndroidNewEpisodeNotifier.PARTY_REQUEST) ?: return@runCatching null
+                        val yes = intent.getBooleanExtra(AndroidNewEpisodeNotifier.PARTY_YES, false)
+                        container.server.voteSchedule(groupId, change, yes)
+                        if (yes) "Thanks: it changes once most of the group agrees." else "Thanks: the others will see your answer."
+                    }
                     VOTE -> {
                         val request = intent.getStringExtra(AndroidNewEpisodeNotifier.PARTY_REQUEST) ?: return@runCatching null
                         container.server.partyVote(groupId, request, intent.getBooleanExtra(AndroidNewEpisodeNotifier.PARTY_YES, false))
@@ -420,15 +470,17 @@ class PartyActionReceiver : android.content.BroadcastReceiver() {
                 }
             }.getOrElse { it.message ?: "That didn't work" }
             val manager = NotificationManagerCompat.from(context)
-            manager.cancel(AndroidNewEpisodeNotifier.partyId(groupId))
+            val schedule = action == SCHEDULE_VOTE
+            val id = if (schedule) AndroidNewEpisodeNotifier.scheduleId(groupId) else AndroidNewEpisodeNotifier.partyId(groupId)
+            manager.cancel(id)
             if (said != null && (Build.VERSION.SDK_INT < 33 ||
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
             ) {
                 manager.notify(
-                    AndroidNewEpisodeNotifier.partyId(groupId),
-                    NotificationCompat.Builder(context, "watch_party")
+                    id,
+                    NotificationCompat.Builder(context, if (schedule) "partner_requests" else "watch_party")
                         .setSmallIcon(dev.nitrate.android.R.drawable.ic_stat_new_episode)
-                        .setContentTitle("Group Watch Session")
+                        .setContentTitle(if (schedule) "Watch group schedule" else "Group Watch Session")
                         .setContentText(said)
                         .setAutoCancel(true)
                         .setTimeoutAfter(60_000)
@@ -443,5 +495,6 @@ class PartyActionReceiver : android.content.BroadcastReceiver() {
         const val LATER = "dev.nitrate.PARTY_LATER"
         const val SKIP = "dev.nitrate.PARTY_SKIP"
         const val VOTE = "dev.nitrate.PARTY_VOTE"
+        const val SCHEDULE_VOTE = "dev.nitrate.SCHEDULE_VOTE"
     }
 }

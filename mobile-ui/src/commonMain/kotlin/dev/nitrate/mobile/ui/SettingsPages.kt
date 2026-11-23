@@ -514,14 +514,14 @@ internal fun InvitesToggle(actions: AppActions) {
     }
 }
 
-/** Watch-partner requests (on until switched off). */
+/** Watch group requests: invites into a group and schedule changes to answer (on until switched off). */
 @Composable
 internal fun PartnerRequestsToggle(actions: AppActions) {
     val notifier = actions.container.newEpisodes
     val scope = rememberCoroutineScope()
     val on by notifier.partnerRequestsEnabled.collectAsState(false)
     val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setPartnerRequestsEnabled(true) } }
-    Toggle("Watch partner requests", "When someone asks to watch a show with you", on) { want ->
+    Toggle("Watch group requests", "When someone asks to watch something with you, or to change a group's schedule", on) { want ->
         if (want) askPermission { scope.launch { notifier.setPartnerRequestsEnabled(true) } } else scope.launch { notifier.setPartnerRequestsEnabled(false) }
     }
 }

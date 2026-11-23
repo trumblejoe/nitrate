@@ -477,6 +477,7 @@ public partial class PartnerHub
         }
 
         Tell(said);
+        TellSchedules();
 
         // Where everyone is, for groups that pace their titles, have Together on or meet for a Group
         // Watch Session (outside the lock: it reads the library, once per title).
@@ -568,10 +569,17 @@ public partial class PartnerHub
                 throw new PartnerException(PartnerError.Invalid, "Another change is waiting for votes: answer that one first.");
             }
 
-            g.Pending = new ScheduleChange { Id = Guid.NewGuid(), From = user, Proposed = Valid(schedule), Yes = new() { user }, At = _time.GetUtcNow() };
-            Settle(g);
+            var change = new ScheduleChange { Id = Guid.NewGuid(), From = user, Proposed = Valid(schedule), Yes = new() { user }, At = _time.GetUtcNow() };
+            g.Pending = change;
+            if (Settle(g, null) is null)
+            {
+                SaySchedule(new ScheduleAnnouncement(g.Id, ScheduleNews.Ask, change.Id, user, change.Proposed.Copy()));
+            }
+
             _storage.Save(_state);
         }
+
+        TellSchedules();
     }
 
     /// <summary>A member's yes or no to the group's waiting change.</summary>
@@ -586,31 +594,47 @@ public partial class PartnerHub
             p.Yes.Remove(user);
             p.No.Remove(user);
             (yes ? p.Yes : p.No).Add(user);
-            Settle(g);
+            Settle(g, user);
             _storage.Save(_state);
         }
+
+        TellSchedules();
     }
 
-    /// <summary>Applies the waiting change once it carries; drops it once it can't. The group's record carries on either way.</summary>
-    private void Settle(WatchGroup g)
+    /// <summary>
+    /// Applies the waiting change once it carries; drops it once it can't. The group's record
+    /// carries on either way. Returns how it went (null: still waiting), announced to the group
+    /// ([by]: whose vote settled it).
+    /// </summary>
+    private string? Settle(WatchGroup g, Guid? by)
     {
         if (g.Pending is not { } p)
         {
-            return;
+            return null;
         }
 
         var members = g.Members.Count;
+        string? outcome = null;
         if (ScheduleRules.Passes(p.Yes.Count(g.Members.Contains), members))
         {
             var s = p.Proposed.Copy();
             s.Since = _time.GetUtcNow();
             g.Schedule = s.Cadence == GroupSchedule.Binge && !s.Together && s.Party is null ? null : s;
             g.Pending = null;
+            outcome = ScheduleNews.Passed;
         }
         else if (ScheduleRules.Fails(p.No.Count(g.Members.Contains), members))
         {
             g.Pending = null;
+            outcome = ScheduleNews.Failed;
         }
+
+        if (outcome is not null)
+        {
+            SaySchedule(new ScheduleAnnouncement(g.Id, ScheduleNews.Done, p.Id, p.From, p.Proposed.Copy(), outcome, by));
+        }
+
+        return outcome;
     }
 
     private void PruneChanges()
@@ -619,6 +643,8 @@ public partial class PartnerHub
         var changed = false;
         foreach (var g in _state.Groups.Where(g => g.Pending is { } p && p.At < cutoff))
         {
+            var lapsed = g.Pending!;
+            SaySchedule(new ScheduleAnnouncement(g.Id, ScheduleNews.Done, lapsed.Id, lapsed.From, lapsed.Proposed.Copy(), ScheduleNews.Lapsed));
             g.Pending = null;
             changed = true;
         }

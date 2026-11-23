@@ -320,4 +320,82 @@ public class PartyTests
         Assert.Null(p.Request);
         Assert.Empty(p.CantMake);
     }
+
+    [Fact]
+    public void ScheduleChangesAreToldToTheRestOfTheGroup()
+    {
+        var hub = Hub();
+        var gid = Group(hub, three: true);
+        var said = new List<ScheduleAnnouncement>();
+        hub.ScheduleAnnounced += said.Add;
+
+        var weekly = Thursdays(cadence: GroupSchedule.Weekly);
+        hub.ProposeSchedule(Joe, gid, weekly);
+        var ask = said.Single();
+        Assert.Equal(ScheduleNews.Ask, ask.Kind);
+        Assert.Equal(Joe, ask.From);
+        Assert.Equal(hub.Groups(Sam).Single().Pending!.Id, ask.ChangeId);
+
+        // The ask goes to the others' Nitrate apps, not the asker's, and never outside the group.
+        var sessions = new[]
+        {
+            new LiveApp("joe", Joe, "Nitrate"), new LiveApp("sam", Sam, "Nitrate Mobile"), new LiveApp("kim", Kim, "Nitrate"),
+            new LiveApp("web", Sam, "Jellyfin Web"), new LiveApp("out", Out, "Nitrate"),
+        };
+        Assert.Equal(new[] { "sam", "kim" }, PartyPush.Targets(ask, hub.MembersOf(gid), sessions).Select(s => s.SessionId));
+
+        // Each member's message: who asked, the titles, the schedule asked for; old apps read it as party news with the party as it is.
+        var m = PartyPush.MessageFor(ask, Sam, hub, id => id == Joe ? "joe" : "x")!;
+        Assert.Equal(ScheduleNews.Ask, m.Kind);
+        Assert.Equal("joe", m.FromName);
+        Assert.False(m.FromMe);
+        Assert.Equal(new[] { "Bear" }, m.Titles);
+        Assert.Equal(new[] { "joe", "kim" }, m.Others);
+        Assert.Equal(GroupSchedule.Weekly, m.Proposed.Cadence);
+        Assert.NotNull(m.Party);
+        Assert.Null(m.Outcome);
+        var json = System.Text.Json.JsonSerializer.Serialize(m);
+        Assert.Contains("\"Kind\":\"schedule-ask\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"ChangeId\"", json, StringComparison.Ordinal);
+        Assert.Null(PartyPush.MessageFor(ask, Out, hub, _ => "out"));
+
+        // A no doesn't settle it in a group of three; a yes does, and everyone hears.
+        hub.Vote(Kim, gid, ask.ChangeId, yes: false);
+        Assert.Single(said);
+        hub.Vote(Sam, gid, ask.ChangeId, yes: true);
+        var done = said[1];
+        Assert.Equal(ScheduleNews.Done, done.Kind);
+        Assert.Equal(ScheduleNews.Passed, done.Outcome);
+        Assert.Equal(Sam, done.By);
+        Assert.Equal(new[] { "joe", "sam", "kim" }, PartyPush.Targets(done, hub.MembersOf(gid), sessions).Select(s => s.SessionId));
+        var d = PartyPush.MessageFor(done, Joe, hub, id => id == Sam ? "sam" : "joe")!;
+        Assert.True(d.FromMe);
+        Assert.Equal("sam", d.ByName);
+        Assert.Equal(GroupSchedule.Weekly, d.Current?.Cadence);
+    }
+
+    [Fact]
+    public void FailedAndLapsedScheduleChangesAreTold()
+    {
+        var hub = Hub();
+        var gid = Group(hub);
+        var said = new List<ScheduleAnnouncement>();
+        hub.ScheduleAnnounced += said.Add;
+
+        hub.ProposeSchedule(Joe, gid, Thursdays(cadence: GroupSchedule.Weekly));
+        hub.Vote(Sam, gid, said.Single().ChangeId, yes: false);
+        Assert.Equal(ScheduleNews.Failed, said[1].Outcome);
+        Assert.Equal(GroupSchedule.Binge, PartyPush.MessageFor(said[1], Sam, hub, _ => "joe")!.Current?.Cadence);
+
+        hub.ProposeSchedule(Sam, gid, Thursdays(cadence: GroupSchedule.Days2));
+        Assert.Equal(ScheduleNews.Ask, said[2].Kind);
+        _time.Advance(TimeSpan.FromDays(7) + TimeSpan.FromMinutes(1));
+        var lapsed = hub.DueChanges().Single();
+        Assert.Equal(ScheduleNews.Done, lapsed.Kind);
+        Assert.Equal(ScheduleNews.Lapsed, lapsed.Outcome);
+        Assert.Equal(said[2].ChangeId, lapsed.ChangeId);
+        Assert.Null(lapsed.By);
+        Assert.Empty(hub.DueChanges());
+        Assert.Equal(4, said.Count);
+    }
 }
