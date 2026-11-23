@@ -1428,7 +1428,12 @@ class JellyfinClient(
     override suspend fun setPrivacy(private: Boolean) = partnersApi.setPrivacy(private)
     override suspend fun partnerPeople() = partnersApi.people()
     override suspend fun partners() = partnersApi.list()
-    override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule?) = partnersApi.ask(toUserId, toName, seriesId, seriesName, groupId, schedule)
+    override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule?, titles: List<dev.nitrate.core.partners.GroupTitle>?) =
+        partnersApi.ask(toUserId, toName, seriesId, seriesName, groupId, schedule, titles)
+    override suspend fun addGroupTitle(groupId: String, titleId: String, name: String) = partnersApi.addTitle(groupId, titleId, name)
+    override suspend fun removeGroupTitle(groupId: String, titleId: String) = partnersApi.removeTitle(groupId, titleId)
+    override suspend fun markForGroups(groupIds: List<String>, itemIds: List<String>, watched: Boolean) = partnersApi.mark(groupIds, itemIds, watched)
+    override suspend fun sessionForGroup(groupId: String, sessionId: String) = partnersApi.sessionFor(groupId, sessionId)
     override suspend fun proposeSchedule(groupId: String, schedule: dev.nitrate.core.partners.GroupSchedule) = partnersApi.proposeSchedule(groupId, schedule)
     override suspend fun voteSchedule(groupId: String, changeId: String, yes: Boolean) = partnersApi.voteSchedule(groupId, changeId, yes)
     override suspend fun watchParty(groupId: String) = partnersApi.party(groupId)
@@ -1452,8 +1457,8 @@ class JellyfinClient(
     override suspend fun groupStandings(): Map<String, dev.nitrate.core.partners.KeepUp> = coroutineScope {
         if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyMap()
         val groups = partners().groups
-        groups.map { it.seriesId }.distinct().map { id ->
-            // A together-only group's own record is the user's place in it (KeepUp.own).
+        groups.flatMap { g -> g.titles.map { it.id } }.distinct().map { id ->
+            // Each group's own record is the user's place in it (KeepUp.own).
             async { runCatching { dev.nitrate.core.partners.KeepUp.of(id, titleItems(id), partnerProgress(id), groups) }.getOrNull() }
         }.mapNotNull { it.await() }.associateBy { it.seriesId }
     }

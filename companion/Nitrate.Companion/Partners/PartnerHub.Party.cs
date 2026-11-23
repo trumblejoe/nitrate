@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace Nitrate.Companion.Partners;
 
 /// <summary>
-/// Watch party nights: a group's recurring party time (<see cref="GroupSchedule.Party"/>) and what
+/// Group Watch Sessions (stored and called "party" in code and JSON): a group's recurring time (<see cref="GroupSchedule.Party"/>) and what
 /// happens to each occurrence. +15 minutes applies at once (once per person per night); +30, +60
 /// and "Not tonight" are requests that pass on a majority of the group (the asker counts as yes,
 /// as with schedule changes) and lapse at the current start time; a failed "Not tonight" is its
@@ -36,16 +36,16 @@ public partial class PartnerHub
         lock (_lock)
         {
             var g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user));
-            return g is null ? null : (g.SeriesName, g.Members.Where(m => m != user).Select(m => _directory.NameOf(m) ?? "Former account").ToList());
+            return g is null ? null : (g.TitleNames, g.Members.Where(m => m != user).Select(m => _directory.NameOf(m) ?? "Former account").ToList());
         }
     }
 
     /// <summary>The caller's group's next (or current) watch party, or null when it has no party time.</summary>
     public PartyView? Party(Guid user, Guid groupId)
     {
+        SeedRecords();
         WatchGroup g;
         PartyView? stub;
-        List<Guid> members;
         List<GroupWatch> record;
         var said = new List<PartyAnnouncement>();
         lock (_lock)
@@ -53,18 +53,11 @@ public partial class PartnerHub
             g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user))
                 ?? throw new PartnerException(PartnerError.NotFound, "No such group.");
             stub = PartyStub(g, user, _time.GetUtcNow(), said);
-            members = g.Members.ToList();
             record = g.Watched.ToList();
         }
 
         Tell(said);
-        if (stub is null)
-        {
-            return null;
-        }
-
-        var everyone = members.Select(m => KeepsRecord(g) ? FromRecord(_watch.Progress(m, g.SeriesId), record, m) : _watch.Progress(m, g.SeriesId)).ToList();
-        return WithPart(stub, KeepsRecord(g), everyone);
+        return stub is null ? null : WithPart(stub, g, record, Orders(g, user));
     }
 
     /// <summary>
@@ -77,7 +70,7 @@ public partial class PartnerHub
         {
             if (n.Skipped || n.StartedBy is not null || now >= PartyRules.Start(n.At, n))
             {
-                throw new PartnerException(PartnerError.Invalid, "Tonight's watch party can't be moved now.");
+                throw new PartnerException(PartnerError.Invalid, "Tonight's Group Watch Session can't be moved now.");
             }
 
             if (minutes == 15)
@@ -116,7 +109,7 @@ public partial class PartnerHub
 
             if (n.StartedBy is not null)
             {
-                throw new PartnerException(PartnerError.Invalid, "Tonight's watch party has started.");
+                throw new PartnerException(PartnerError.Invalid, "Tonight's Group Watch Session has started.");
             }
 
             Ask(g, n, user, PartyRequest.Skip, 0, now, said);
@@ -169,12 +162,12 @@ public partial class PartnerHub
         {
             if (n.Skipped)
             {
-                throw new PartnerException(PartnerError.Invalid, "Tonight's watch party is off.");
+                throw new PartnerException(PartnerError.Invalid, "Tonight's Group Watch Session is off.");
             }
 
             if (now < PartyRules.Start(n.At, n) - EarlyJoin)
             {
-                throw new PartnerException(PartnerError.Invalid, "It's not time for the watch party yet.");
+                throw new PartnerException(PartnerError.Invalid, "It's not time for the Group Watch Session yet.");
             }
 
             n.CantMake.Remove(user);
@@ -192,14 +185,14 @@ public partial class PartnerHub
         return join! with { PartId = Party(user, groupId)?.PartId };
     }
 
-    /// <summary>The starter says which live session tonight's party is (later joiners join it).</summary>
+    /// <summary>The starter says which live session tonight's party is (later joiners join it; what it plays counts for the group).</summary>
     public void PartySession(Guid user, Guid groupId, string sessionId)
     {
         Night(user, groupId, (g, n, _, said) =>
         {
             if (n.StartedBy != user)
             {
-                throw new PartnerException(PartnerError.Invalid, "Someone else started tonight's watch party.");
+                throw new PartnerException(PartnerError.Invalid, "Someone else started tonight's Group Watch Session.");
             }
 
             n.SessionId = sessionId;
@@ -293,7 +286,7 @@ public partial class PartnerHub
             var g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user))
                 ?? throw new PartnerException(PartnerError.NotFound, "No such group.");
             var t = PartyRules.Tonight(g.Schedule, g.Id, _state.Parties, now)
-                ?? throw new PartnerException(PartnerError.Invalid, "This group has no watch party time.");
+                ?? throw new PartnerException(PartnerError.Invalid, "This group has no Group Watch Session time.");
             var n = t.Night ?? NewNight(g.Id, t.At);
             SettleNight(g, n, now, said);
             change(g, n, now, said);
@@ -414,17 +407,25 @@ public partial class PartnerHub
     }
 
     /// <summary>
-    /// What plays at the party: a together-only group's next part by its own record (the part
-    /// after the furthest anyone watched with it); else the part after the furthest everyone has
-    /// seen (so nobody misses one), labelled "S1:E4" or by name.
+    /// What plays at the Group Watch Session, by the group's record: in the title the group watched
+    /// most lately that still has a part to play (else the first such title), with Together on the
+    /// part after the furthest anyone watched with the group; else the part after the furthest
+    /// everyone has watched (so nobody misses one); labelled "S1:E4" or by name.
     /// </summary>
-    private PartyView WithPart(PartyView stub, bool record, IReadOnlyList<ShowProgress> everyone)
+    private PartyView WithPart(PartyView stub, WatchGroup g, IReadOnlyList<GroupWatch> record, IReadOnlyDictionary<Guid, IReadOnlyList<Guid>> orders)
     {
-        var part = PartOf(record, everyone);
+        var together = g.Schedule?.Together == true;
+        var parts = g.Titles.Select(t => orders.TryGetValue(t.Id, out var order) ? order : Array.Empty<Guid>())
+            .Where(order => order.Count > 0)
+            .Select(order => (
+                Part: PartOf(together, g.Members.Select(m => FromRecord(order, record, m)).ToList()),
+                Latest: record.Where(w => order.Contains(w.ItemId)).Select(w => w.At ?? DateTimeOffset.MinValue).DefaultIfEmpty(DateTimeOffset.MinValue).Max()))
+            .Where(x => x.Part is not null).ToList();
+        var part = parts.OrderByDescending(x => x.Latest).Select(x => x.Part).FirstOrDefault();
         return stub with { PartId = part, PartLabel = part is { } p ? Short(_watch.Label(p)) : null };
     }
 
-    /// <summary>The party's part (see <see cref="WithPart"/>); null when everyone's seen everything.</summary>
+    /// <summary>The session's part in one title (see <see cref="WithPart"/>; <paramref name="record"/>: Together on); null when everyone's seen everything.</summary>
     public static Guid? PartOf(bool record, IReadOnlyList<ShowProgress> everyone)
     {
         var order = everyone.Select(x => x.Order).FirstOrDefault(o => o is { Count: > 0 });

@@ -1,7 +1,8 @@
 package dev.nitrate.core.partners
 
 /**
- * A watch group's recurring watch party (Companion feature `party`): one or more weekdays
+ * A watch group's recurring Group Watch Session (Companion feature `party`; called "party" in code
+ * and stored data, which keep their names): one or more weekdays
  * ([days], 0 = Sunday) at [hour]:[minute] in the server's time zone, kept with the group's
  * schedule ([GroupSchedule.party]) and changed by a majority like the rest of it. It holds nothing
  * back: it's when the group meets to watch its next part together in one watch party.
@@ -50,8 +51,8 @@ data class PartyDelay(val name: String, val minutes: Int, val mine: Boolean)
 data class PartyAsk(val id: String, val fromName: String, val kind: String, val minutes: Int, val yes: List<String>, val no: List<String>, val voted: Boolean, val mine: Boolean) {
     val skip get() = kind == SKIP
 
-    /** "Suzy postponed 30 minutes", "Suzy asks to skip tonight's watch party". */
-    val text: String get() = if (skip) "$fromName asks to skip tonight's watch party" else "$fromName postponed $minutes minutes"
+    /** "Suzy postponed 30 minutes", "Suzy asks to skip tonight's Group Watch Session". */
+    val text: String get() = if (skip) "$fromName asks to skip tonight's Group Watch Session" else "$fromName postponed $minutes minutes"
 
     companion object {
         const val LATER = "later"
@@ -107,11 +108,11 @@ data class WatchParty(
     /** Whether it's tonight's, near enough to join now (from an hour before until it's over). */
     fun joinable(nowMs: Long): Boolean = !skipped && nowMs >= startsAtMs - JOIN_EARLY_MS && nowMs < startsAtMs + GRACE_MS
 
-    /** "Tonight's watch party: 8:15 · S1:E4", "Tonight's watch party is off", "Next watch party: Thursday 8:00". */
+    /** "Tonight's Group Watch Session: 8:15 · S1:E4", "Tonight's Group Watch Session is off", "Next Group Watch Session: Thursday 8:00". */
     fun line(nowMs: Long): String {
         val tonight = startsAtMs - nowMs < 18 * 3_600_000L
-        if (skipped) return if (tonight) "Tonight's watch party is off" else "The next watch party is off"
-        val head = if (tonight) "Tonight's watch party: $clock" else "Next watch party: ${dayOf(startsAtMs, offsetMinutes)} $clock"
+        if (skipped) return if (tonight) "Tonight's Group Watch Session is off" else "The next Group Watch Session is off"
+        val head = if (tonight) "Tonight's Group Watch Session: $clock" else "Next Group Watch Session: ${dayOf(startsAtMs, offsetMinutes)} $clock"
         return listOfNotNull(head, partLabel).joinToString(" · ")
     }
 
@@ -167,8 +168,8 @@ data class PartyNews(
 }
 
 /**
- * What to ask the user about a group's watch party, and the buttons: the reminder ("Watch party
- * with Tommy & Suzy · 8:00 · S1:E4": Join, +15/+30/+60 min, Not tonight, Can't make it), a
+ * What to ask the user about a group's watch party, and the buttons: the reminder ("Group Watch
+ * Session with Tommy & Suzy · 8:00 · S1:E4": Join, +15/+30/+60 min, Not tonight, Can't make it), a
  * postponement to agree to, the start-without question, or news to acknowledge. Easy mode keeps
  * only Join and Not tonight.
  */
@@ -192,31 +193,31 @@ data class PartyPrompt(val groupId: String, val title: String, val text: String,
             return when (news.kind) {
                 PartyNews.REMINDER -> if (!p.going) null else reminder(news.groupId, with, news.seriesName, p, easy)
                 PartyNews.OPEN -> if (p.skipped) PartyPrompt(
-                    news.groupId, news.seriesName, "The watch party with $with is off this time. ${news.seriesName} still goes on as the group's schedule says.",
+                    news.groupId, news.seriesName, "The Group Watch Session with $with is off this time. ${news.seriesName} still goes on as the group's schedule says.",
                     listOf(PartyChoice.Ok), p,
                 ) else reminder(news.groupId, with, news.seriesName, p, easy)
                 PartyNews.PUSHED -> if (news.byMe) null else PartyPrompt(
-                    news.groupId, "Watch party moved", "$by pushed it back ${news.minutes} min (${p.clock})",
+                    news.groupId, "Group Watch Session moved", "$by pushed it back ${news.minutes} min (${p.clock})",
                     listOf(PartyChoice.Ok), p,
                 )
                 PartyNews.ASKED -> {
                     val ask = p.ask ?: return null
                     if (news.byMe || ask.voted) null
                     else PartyPrompt(
-                        news.groupId, "Watch party with $with", "${ask.text}. Agree?",
+                        news.groupId, "Group Watch Session with $with", "${ask.text}. Agree?",
                         listOf(PartyChoice.Vote(ask.id, true), PartyChoice.Vote(ask.id, false)), p,
                     )
                 }
                 PartyNews.SKIPPED -> if (news.byMe) null else PartyPrompt(
-                    news.groupId, "No watch party tonight", "Tonight's watch party with $with is off. ${news.seriesName} still goes on as the group's schedule says.",
+                    news.groupId, "No Group Watch Session tonight", "Tonight's Group Watch Session with $with is off. ${news.seriesName} still goes on as the group's schedule says.",
                     listOf(PartyChoice.Ok), p,
                 )
                 PartyNews.WITHOUT -> {
                     if (p.iCantMake || p.cantMake.isEmpty() || p.started) return null
                     val missing = names(p.cantMake)
                     PartyPrompt(
-                        news.groupId, "Watch party with $with",
-                        "$missing can't tonight. Start the watch party without ${if (p.cantMake.size == 1) "them" else "them all"}? $missing will fall behind.",
+                        news.groupId, "Group Watch Session with $with",
+                        "$missing can't tonight. Start the Group Watch Session without ${if (p.cantMake.size == 1) "them" else "them all"}? $missing will fall behind.",
                         listOf(PartyChoice.Join, PartyChoice.NotTonight), p,
                     )
                 }
@@ -226,7 +227,7 @@ data class PartyPrompt(val groupId: String, val title: String, val text: String,
 
         /** The reminder (also what opening tonight's party from a card or Settings shows). */
         fun reminder(groupId: String, with: String, title: String, p: WatchParty, easy: Boolean = false): PartyPrompt {
-            val text = listOfNotNull("Watch party with $with", p.clock, p.partLabel).joinToString(" · ")
+            val text = listOfNotNull("Group Watch Session with $with", p.clock, p.partLabel).joinToString(" · ")
             val choices = buildList {
                 add(PartyChoice.Join)
                 if (!easy) {

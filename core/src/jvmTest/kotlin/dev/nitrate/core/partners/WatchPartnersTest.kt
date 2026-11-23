@@ -102,27 +102,6 @@ class WatchPartnersTest {
         assertTrue(TogetherRow.items(emptyList(), listOf(done)).isEmpty())
     }
 
-    /** Continue Watching takes what's watched together: invites, part way, your move, Next Up, waiting; each title once. */
-    @Test fun continueWatchingTakesTheSharedCards() {
-        val invite = MediaItem("dune", "Dune", ItemKind.SERIES)
-        val waiting = show("w", setOf("e1-1", "e1-2"), kim)
-        val yours = show("y", setOf("e1-1", "e1-2"), sam)
-        val catchUp = show("c", setOf("e1-1"), sam)
-        val cards = TogetherRow.cards(listOf(invite), listOf(waiting, yours, catchUp))
-        val partWay = MediaItem("film", "A film", ItemKind.MOVIE)
-        // Part way through the shared show "c": its card is the resume one, not added twice.
-        val resumingShared = MediaItem("c1-2", "Episode 2", ItemKind.EPISODE, seriesId = "c")
-        val otherShow = MediaItem("o1-4", "Episode 4", ItemKind.EPISODE, seriesId = "o")
-        val nextUpOfShared = MediaItem("y1-3", "Episode 3", ItemKind.EPISODE, seriesId = "y")
-        val merged = dev.nitrate.core.rows.ContinueAndNext.withTogether(listOf(partWay, resumingShared), listOf(nextUpOfShared, otherShow), cards)
-        assertEquals(listOf("dune", "film", "c1-2", "y1-3", "o1-4", "w1-3"), merged.map { it.id })
-        // Two rows: Continue Watching has them, Next Up leaves the shared titles out.
-        assertEquals(listOf("dune", "film", "c1-2", "y1-3", "w1-3"), dev.nitrate.core.rows.ContinueAndNext.continueWithTogether(listOf(partWay, resumingShared), cards).map { it.id })
-        assertEquals(listOf("o1-4"), dev.nitrate.core.rows.ContinueAndNext.nextUpWithout(listOf(nextUpOfShared, otherShow), cards).map { it.id })
-        // Nothing shared: Continue Watching as it always was.
-        assertEquals(listOf("film"), dev.nitrate.core.rows.ContinueAndNext.withTogether(listOf(partWay), emptyList(), TogetherCards()).map { it.id })
-    }
-
     @Test fun onlySharedCardsAnswerForWatchingTogether() {
         val info = PartnersInfo(listOf(WatchGroup("g1", "bear", "Bear", listOf(dev.nitrate.core.writing.UserRef("sam", "Sam")), 0L)), emptyList(), emptyList())
         val standings = mapOf("bear" to keep(setOf("e1-1"), sam))
@@ -146,7 +125,7 @@ class WatchPartnersTest {
         val labels = TogetherRow.choices(eps[2], info, mapOf("bear" to k), episodes, canWatchNow = true, ownSpoilers = emptySet()).map { it.label }
         assertEquals(
             listOf(
-                "Kim watched S1:E2 with me", "Start a watch party with Kim", "Invite someone to watch with Kim",
+                "Kim watched S1:E2 with me", "Watch now together with Kim", "Invite someone to watch with Kim",
                 "Change the schedule (Binge)", "Hide spoilers by my progress only", "Open the show", "Watch something with someone", "Leave the group with Kim",
             ),
             labels,
@@ -231,7 +210,7 @@ class WatchPartnersTest {
     @Test fun scheduleLabels() {
         assertEquals("Binge", GroupSchedule().label)
         assertEquals("Thursdays 7pm", GroupSchedule(GroupSchedule.WEEKLY, day = 4, hour = 19).label)
-        assertEquals("Every 2 days, 8pm, ask first", GroupSchedule(GroupSchedule.DAYS2, hour = 20, softLock = true).label)
+        assertEquals("Every 2 days, 8pm", GroupSchedule(GroupSchedule.DAYS2, hour = 20, softLock = true).label)
         assertEquals("12pm", GroupSchedule.clockOf(12, 0))
         assertEquals("7:30pm", GroupSchedule.clockOf(19, 30))
     }
@@ -247,12 +226,14 @@ class WatchPartnersTest {
         assertTrue(group.locks("e1-3", k.order))
         assertTrue(group.locks("e1-4", k.order))
         assertFalse(group.locks("e1-2", k.order))
-        val line = TogetherRow.line(eps[2], info, standings)!!
+        // On the group's card it says when it opens; elsewhere (Together off) nothing holds it.
+        val line = TogetherRow.line(eps[2].copy(watchGroupId = "g1"), info, standings)!!
         assertEquals("Opens Thursday 7pm", line.word)
         assertEquals("Sam level", line.partners)
-        // Hard lock: no "watch it together now"; the schedule can be changed.
+        assertEquals("Level", TogetherRow.line(eps[2], info, standings)!!.word)
+        // Nothing is locked: watching it together now is offered; the schedule can be changed.
         val c = TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = true, ownSpoilers = emptySet())
-        assertTrue(c.none { it is TogetherChoice.WatchNow })
+        assertTrue(c.any { it is TogetherChoice.WatchNow })
         assertTrue(c.any { it is TogetherChoice.ChangeSchedule && it.label == "Change the schedule (Thursdays 7pm)" })
     }
 
@@ -283,24 +264,27 @@ class WatchPartnersTest {
             override suspend fun saveRaw(pluginId: String, value: String) {}
         }
         val plugin = WatchPartnersPlugin()
-        val hard = plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(server(false), store)) as dev.nitrate.core.plugins.GuardDecision.Ask
-        assertEquals("Opens Thursday 7pm", hard.title)
-        assertEquals(listOf("OK"), hard.choices.map { it.label })
-        val soft = plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(server(true), store)) as dev.nitrate.core.plugins.GuardDecision.Ask
-        assertEquals(listOf("Watch anyway", "Not now"), soft.choices.map { it.label })
-        // What's open plays.
-        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[1], dev.nitrate.core.plugins.PluginHost(server(false), store)))
+        val card = dev.nitrate.core.partners.PlayOrigin.GroupCard("g1")
+        // From the group's card: when it opens, never refused (the old Locked/Ask first makes no difference).
+        for (soft in listOf(false, true)) {
+            val ask = plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(server(soft), store), card) as dev.nitrate.core.plugins.GuardDecision.Ask
+            assertEquals("Opens Thursday 7pm", ask.title)
+            assertEquals(listOf("Watch for myself", "Not now"), ask.choices.map { it.label })
+        }
+        // What's out plays; from anywhere else a group with Together off never asks.
+        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[1], dev.nitrate.core.plugins.PluginHost(server(false), store), card))
+        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(server(false), store)))
     }
 
-    // ---- Together only ----
+    // ---- Together ----
 
-    @Test fun howWeWatchIsPartOfTheLabel() {
-        assertEquals("Binge, together only", GroupSchedule(together = true).label)
-        assertEquals("Thursdays 7pm, together only, ask first", weekly.copy(together = true, softLock = true).label)
+    @Test fun togetherIsPartOfTheLabel() {
+        assertEquals("Binge, together", GroupSchedule(together = true).label)
+        assertEquals("Thursdays 7pm, together", weekly.copy(together = true, softLock = true).label)
         assertTrue(GroupSchedule(together = true).active)
         assertFalse(GroupSchedule().active)
-        assertEquals("Together only", GroupSchedule(together = true).how)
-        assertEquals("Separately, at the group's pace", GroupSchedule().how)
+        assertEquals("Together", GroupSchedule(together = true).how)
+        assertEquals("Together off", GroupSchedule().how)
     }
 
     private val samRef = dev.nitrate.core.writing.UserRef("sam", "Sam")
@@ -321,11 +305,13 @@ class WatchPartnersTest {
         val standings = mapOf("bear" to k)
         val lock = PartLock.of(eps[2], info, standings)!!
         assertTrue(lock.together)
-        assertEquals("Watch party", lock.word)
+        assertEquals("Watch together", lock.word)
         assertNull(PartLock.of(eps[1], info, standings))
         val line = TogetherRow.line(eps[2], info, standings)!!
-        assertEquals("Watch party", line.word)
-        assertEquals("Watch party · Sam level", line.short)
+        assertEquals("Watch together", line.word)
+        assertEquals("Watch together · Sam level", line.short)
+        // On the group's own card it's simply the next part.
+        assertNull(PartLock.of(eps[2].copy(watchGroupId = "g1"), info, standings))
         // Watching it together now is the way in, so it's offered.
         assertTrue(TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = true, ownSpoilers = emptySet()).any { it is TogetherChoice.WatchNow })
         // Not out yet wins over together only.
@@ -356,41 +342,35 @@ class WatchPartnersTest {
         override suspend fun start(item: MediaItem, groupId: String, userIds: List<String>, names: String) { started += "${item.id} $groupId $userIds $names" }
     }
 
-    @Test fun togetherOnlyPlaysInAWatchTogetherSessionWithTheGroup() = kotlinx.coroutines.runBlocking {
+    @Test fun togetherAsksBeforePlayingWhatTheGroupHasntWatched() = kotlinx.coroutines.runBlocking {
         val plugin = WatchPartnersPlugin()
         val session = Session(emptyList())
         fun host(g: WatchGroup) = dev.nitrate.core.plugins.PluginHost(serverWith(g), noStore, session)
-        // Alone: refused, with watching it together now offered first.
-        val hard = plugin.beforePlay(eps[2], host(togetherGroup())) as dev.nitrate.core.plugins.GuardDecision.Ask
-        assertEquals("Watch party", hard.title)
-        assertEquals(listOf("Start a watch party", "We're in the same room", "Not now"), hard.choices.map { it.label })
-        assertTrue(hard.message, hard.message.contains("Sam"))
-        // Choosing it starts the session with the group's members invited, then plays.
-        val run = hard.choices.first().action as dev.nitrate.core.plugins.GuardAction.RunThenPlay
-        run.run()
+        // From the library, alone: asked first, never refused.
+        val ask = plugin.beforePlay(eps[2], host(togetherGroup())) as dev.nitrate.core.plugins.GuardDecision.Ask
+        assertEquals("Watch together", ask.title)
+        assertEquals(listOf("Watch now together", "Watch for myself", "Not now"), ask.choices.map { it.label })
+        assertTrue(ask.message, ask.message.contains("Sam"))
+        // Watching now together starts the session with the group's members invited, then plays.
+        (ask.choices.first().action as dev.nitrate.core.plugins.GuardAction.RunThenPlay).run()
         assertEquals(listOf("e1-3 g1 [sam] Sam"), session.started)
-        // Ask first: watching anyway is allowed too.
-        val soft = plugin.beforePlay(eps[2], host(togetherGroup(soft = true))) as dev.nitrate.core.plugins.GuardDecision.Ask
-        assertEquals(listOf("Start a watch party", "We're in the same room", "Watch anyway", "Not now"), soft.choices.map { it.label })
-        // Catching up to the furthest member, and rewatching, are free.
+        // The old "Ask first" changes nothing.
+        assertEquals(ask.choices.map { it.label }, (plugin.beforePlay(eps[2], host(togetherGroup(soft = true))) as dev.nitrate.core.plugins.GuardDecision.Ask).choices.map { it.label })
+        // Catching up to the furthest member, and rewatching, are free; so is the group's own card.
         assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[1], host(togetherGroup())))
-        // In a watch-together session with someone else: still refused.
+        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[2], host(togetherGroup()), PlayOrigin.GroupCard("g1")))
+        // In a live session with someone else: still asked; with Sam in it: plays.
         session.names = listOf("me", "Kim")
         assertTrue(plugin.beforePlay(eps[2], host(togetherGroup())) is dev.nitrate.core.plugins.GuardDecision.Ask)
-        // With Sam in it: plays.
         session.names = listOf("me", "sam")
         assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[2], host(togetherGroup())))
-        // Not out yet stays locked even together.
+        // Not out yet is said first, even together.
+        session.names = emptyList()
         val notYet = togetherGroup(schedule = weekly.copy(together = true)).copy(lockedFromId = "e1-3", opensDay = 4)
         assertEquals("Opens Thursday 7pm", (plugin.beforePlay(eps[2], host(notYet)) as dev.nitrate.core.plugins.GuardDecision.Ask).title)
-        // Without a session to start from (no SyncPlay here): the same room, or not now.
-        session.names = emptyList()
+        // In the same room with Sam (the player's chip): it plays, now and for the next part.
         val bareHost = dev.nitrate.core.plugins.PluginHost(serverWith(togetherGroup()), noStore)
-        val bare = plugin.beforePlay(eps[2], bareHost) as dev.nitrate.core.plugins.GuardDecision.Ask
-        assertEquals(listOf("We're in the same room", "Not now"), bare.choices.map { it.label })
-        // We're in the same room: the whole group counts as there, so it plays, now and for the next part.
-        (bare.choices.first().action as dev.nitrate.core.plugins.GuardAction.RunThenPlay).run()
-        assertEquals(SameRoom("g1", listOf("sam")), plugin.roomOn(bareHost, "bear"))
+        plugin.setRoom(bareHost, "bear", SameRoom("g1", listOf("sam")))
         assertEquals(WatchingWith.Group("g1"), plugin.chosenOn(bareHost, "bear"))
         assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[2], bareHost))
         // Nobody in the room after all: asked again.

@@ -2,21 +2,36 @@ using System.Text.Json;
 
 namespace Nitrate.Companion.Partners;
 
+/// <summary>One of a watch group's titles: a show, film, playlist or collection.</summary>
+public class GroupTitle
+{
+    /// <summary>Gets or sets the title's id.</summary>
+    public Guid Id { get; set; }
+
+    /// <summary>Gets or sets its name.</summary>
+    public string Name { get; set; } = string.Empty;
+}
+
 /// <summary>
-/// People who watch one title together (a show, a film, a playlist or a collection) and see each
-/// other's progress in it. The title is kept as SeriesId/SeriesName: the names it was stored under
-/// when groups were for shows only.
+/// People and the titles they watch together (shows, films, playlists, collections; e.g. Severance
+/// and The Bear with Tommy), with one schedule and one Group Watch Session time. Groups stored
+/// before titles were a list have only <see cref="SeriesId"/>/<see cref="SeriesName"/>, read as a
+/// one-title list (<see cref="PartnerHub"/> moves them in on load); both are still written, as
+/// the first title, so an older plugin reads the group as before.
 /// </summary>
 public class WatchGroup
 {
     /// <summary>Gets or sets its id.</summary>
     public Guid Id { get; set; }
 
-    /// <summary>Gets or sets the title (a show, film, playlist or collection).</summary>
+    /// <summary>Gets or sets the first title (the only one, for groups stored before <see cref="Titles"/>).</summary>
     public Guid SeriesId { get; set; }
 
-    /// <summary>Gets or sets the title's name.</summary>
+    /// <summary>Gets or sets the first title's name.</summary>
     public string SeriesName { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the group's titles, in the order they were added.</summary>
+    public List<GroupTitle> Titles { get; set; } = new();
 
     /// <summary>Gets or sets who's in it (two or more).</summary>
     public List<Guid> Members { get; set; } = new();
@@ -24,23 +39,35 @@ public class WatchGroup
     /// <summary>Gets or sets since when.</summary>
     public DateTimeOffset Since { get; set; }
 
-    /// <summary>Gets or sets how the title is let out (null: all at once).</summary>
+    /// <summary>Gets or sets how the titles are let out, and whether the group watches together (null: all at once, Together off).</summary>
     public GroupSchedule? Schedule { get; set; }
 
     /// <summary>Gets or sets a change to the schedule waiting for the others' votes.</summary>
     public ScheduleChange? Pending { get; set; }
 
     /// <summary>
-    /// Gets or sets the group's own watched record, kept while it watches together only
-    /// (<see cref="GroupSchedule.Together"/>): which parts each member watched with this group.
-    /// Jellyfin keeps one watched state per person, so someone in several groups on one title is
-    /// counted per group here. Started from what every member had watched when the group became
-    /// together-only; empty (and unused) for groups that watch separately.
+    /// Gets or sets the group's own watched record: which parts of its titles each member watched
+    /// as far as this group goes. Every group keeps one; Jellyfin keeps one watched state per
+    /// person, so someone in several groups on one title is counted per group here, and group
+    /// marks never change anyone's own (Jellyfin) watched state or another group's record.
     /// </summary>
     public List<GroupWatch> Watched { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets a value indicating whether <see cref="Watched"/> is this group's record. False
+    /// for groups stored before every group kept one: a group that watched separately is seeded
+    /// once from each member's own watched state then; a together-only group keeps its record.
+    /// </summary>
+    public bool RecordKept { get; set; }
+
+    /// <summary>Whether <paramref name="titleId"/> is one of its titles.</summary>
+    public bool HasTitle(Guid titleId) => Titles.Any(t => t.Id == titleId);
+
+    /// <summary>"Severance & The Bear".</summary>
+    public string TitleNames => Titles.Count == 0 ? SeriesName : string.Join(" & ", Titles.Select(t => t.Name));
 }
 
-/// <summary>One part (an episode, a film of a list) a member watched with a together-only group.</summary>
+/// <summary>One part (an episode, a film of a list) a member watched as far as a group goes.</summary>
 public class GroupWatch
 {
     /// <summary>Gets or sets who.</summary>
@@ -49,7 +76,7 @@ public class GroupWatch
     /// <summary>Gets or sets the part.</summary>
     public Guid ItemId { get; set; }
 
-    /// <summary>Gets or sets when it was first counted; null when the record was started from what everyone had already watched (before the schedule).</summary>
+    /// <summary>Gets or sets when it was first counted; null when the record was started from what had already been watched (before the schedule).</summary>
     public DateTimeOffset? At { get; set; }
 }
 
@@ -71,11 +98,14 @@ public class PartnerRequest
     /// <summary>Gets or sets the group it invites to (empty: a new group with the asker).</summary>
     public Guid GroupId { get; set; }
 
-    /// <summary>Gets or sets the title (a show, film, playlist or collection).</summary>
+    /// <summary>Gets or sets the first title (a show, film, playlist or collection).</summary>
     public Guid SeriesId { get; set; }
 
-    /// <summary>Gets or sets the title's name.</summary>
+    /// <summary>Gets or sets the first title's name.</summary>
     public string SeriesName { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the titles a new group starts with (empty for invites stored before: <see cref="SeriesId"/> alone).</summary>
+    public List<GroupTitle> Titles { get; set; } = new();
 
     /// <summary>Gets or sets when it was asked.</summary>
     public DateTimeOffset At { get; set; }
@@ -192,8 +222,8 @@ public interface IWatchState
     /// <summary>Whether <paramref name="itemId"/> is part of the title (an episode of the show, an item of the list, the film itself).</summary>
     bool Belongs(Guid titleId, Guid itemId, Guid userId);
 
-    /// <summary>Marks the episode watched for <paramref name="userId"/>.</summary>
-    void MarkWatched(Guid userId, Guid itemId);
+    /// <summary>What the title holds, in watching order (one library read, no watched state).</summary>
+    IReadOnlyList<Guid> Order(Guid titleId, Guid userId) => Progress(userId, titleId).Order ?? Array.Empty<Guid>();
 
     /// <summary>"S2 E4" for an episode, else its name (null when unknown).</summary>
     string? Label(Guid itemId) => null;

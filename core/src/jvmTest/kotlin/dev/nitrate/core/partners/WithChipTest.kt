@@ -56,10 +56,16 @@ class WithChipTest {
     }
 
     @Test fun moreThanOneGroupFittingIsShownUntilChosen() {
-        val st = standings(tommySuzy, kim)
-        val chip = WithChip.of(eps[3], info(tommySuzy, kim), st, null, "Me")!!
+        // Kim's group has already watched episode 4: it's next only with Tommy & Suzy, so the chip says it counts there.
+        val kimAhead = kim.copy(ownRecord = (1..4).map { "e$it" }.toSet())
+        val chip = WithChip.of(eps[3], info(tommySuzy, kimAhead), standings(tommySuzy, kimAhead), null, "Me")!!
         assertTrue(chip.ambiguous)
         assertEquals("Counting for: Tommy & Suzy", chip.counting)
+        // Next in both groups and started elsewhere: it counts for neither until chosen.
+        val st = standings(tommySuzy, kim)
+        val neither = WithChip.of(eps[3], info(tommySuzy, kim), st, null, "Me")!!
+        assertFalse(neither.ambiguous)
+        assertEquals("Just me", neither.label)
         val chosen = WithChip.of(eps[3], info(tommySuzy, kim), st, null, "Me", with = WatchingWith.Group("k"))!!
         assertFalse(chosen.ambiguous)
         assertEquals("With Kim · on your own", chosen.label)

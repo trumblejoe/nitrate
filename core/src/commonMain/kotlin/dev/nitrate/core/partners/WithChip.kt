@@ -68,7 +68,7 @@ data class WithChip(
     }
 
     companion object {
-        private val AUTO = setOf(PlayContext.Reason.NEXT, PlayContext.Reason.LAST_USED, PlayContext.Reason.NEAREST)
+        private val AUTO = setOf(PlayContext.Reason.NEXT)
 
         /** A group's line in "Counts for": "Tommy & Suzy". */
         fun nameOf(g: WatchGroup): String = and(g.others.map { it.name }).ifEmpty { g.seriesName }
@@ -82,8 +82,8 @@ data class WithChip(
         }
 
         /**
-         * The chip for [item]: its context ([WatchPartners.contextFor] with [with], the party's
-         * names and [lastUsed]), and this device's watch party [party] (its participants by name,
+         * The chip for [item]: its context ([WatchPartners.contextFor] with [with] and the party's
+         * names), and this device's watch party [party] (its participants by name,
          * the user's own [selfName] left out). Null for a title the user shares with no group, outside a party.
          */
         fun of(
@@ -93,12 +93,11 @@ data class WithChip(
             party: SyncPlayGroup?,
             selfName: String?,
             with: WatchingWith? = null,
-            lastUsed: String? = null,
             room: SameRoom? = null,
         ): WithChip? {
             if (item == null) return null
             val others = party?.participants.orEmpty().filter { !it.equals(selfName, ignoreCase = true) }.distinct()
-            val context = WatchPartners.contextFor(item, info, standings, others, lastUsed, with)
+            val context = WatchPartners.contextFor(item, info, standings, others, with)
             val groups = context.titleId?.let { info?.on(it) }.orEmpty()
             val chip = WithChip(context, groups, partyOn = party != null, party = others, room = room?.takeIf { r -> groups.any { it.id == r.groupId } && r.present.isNotEmpty() })
             return chip.takeIf { it.shown }
@@ -120,8 +119,6 @@ class WatchCompany(
     standings: StateFlow<Map<String, KeepUp>>,
     party: StateFlow<SyncPlayGroup?>,
     private val selfName: () -> String?,
-    /** The group used last on a title (ties in [WatchPartners.contextFor]). */
-    private val lastUsed: (titleId: String) -> String? = { null },
     /** "Counts for" as chosen earlier on a title in this run of the app (the next episode keeps it). */
     private val chosen: (titleId: String) -> WatchingWith? = { null },
     /** The user chose who a title counts with. */
@@ -142,7 +139,7 @@ class WatchCompany(
 
     /** The chip now (null: none to show). */
     val chip: StateFlow<WithChip?> = combine(inputs, partners, standings, party) { (i, w, r), info, st, p ->
-        WithChip.of(i, info, st, p, selfName(), w, TogetherRow.titleOf(i ?: return@combine null, st)?.let(lastUsed), r)
+        WithChip.of(i ?: return@combine null, info, st, p, selfName(), w, r)
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
     /** An item starts: another title takes what was chosen on it earlier in this run of the app (a show's next episode keeps it). */

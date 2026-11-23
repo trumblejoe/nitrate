@@ -60,7 +60,7 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             new JellyfinPartnerDirectory(sp.GetRequiredService<IUserManager>()),
             new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>()),
             sp.GetRequiredService<TimeProvider>()));
-        // Together-only groups' own watched records, from the server's playback reports (live sessions and catching up).
+        // Groups' own watched records, from the server's playback reports of live sessions.
         serviceCollection.AddHostedService<TogetherRecorder>();
         // Watch party reminders and news, sent to the members' open Nitrate apps over Jellyfin's own connection.
         serviceCollection.AddHostedService<PartyPush>();

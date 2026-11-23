@@ -413,9 +413,13 @@ class AppContainer(
                 is dev.nitrate.core.partners.TogetherChoice.Accept -> { server.acceptPartner(choice.request.id); Unit }
                 is dev.nitrate.core.partners.TogetherChoice.Decline -> server.declinePartner(choice.request.id)
                 is dev.nitrate.core.partners.TogetherChoice.CatchUp -> {
-                    choice.episodeIds.forEach { server.setPlayed(it, true) }
-                    // A together-only group keeps its own record: catching up there counts in it too.
-                    choice.groupId?.let { server.watchedWithGroup(it, choice.episodeIds, emptyList()) }
+                    // In the group's own record only (the user's own watched state stays theirs); older servers: Jellyfin's.
+                    val groupId = choice.groupId
+                    if (groupId != null && companion.value?.features?.contains("groupwatch") == true) server.markForGroups(listOf(groupId), choice.episodeIds)
+                    else {
+                        choice.episodeIds.forEach { server.setPlayed(it, true) }
+                        groupId?.let { server.watchedWithGroup(it, choice.episodeIds, emptyList()) }
+                    }
                     Unit
                 }
                 is dev.nitrate.core.partners.TogetherChoice.WatchedWith -> { server.watchedTogether(choice.episodeId, choice.groupId); Unit }
@@ -455,9 +459,9 @@ class AppContainer(
     }.getOrDefault(emptyList())
 
     /**
-     * "Start a watch party": a watch party (SyncPlay group) named for the show, the group's members
-     * invited into it (when the server carries invites). The app then plays the episode, which
-     * becomes the group's.
+     * "Watch now together": a live session (SyncPlay group) named for the show, the group's members
+     * invited into it (when the server carries invites), and the server told it's for the group
+     * (what it plays to the end counts there). The app then plays the episode, which becomes the group's.
      */
     private suspend fun startWatchingNow(choice: dev.nitrate.core.partners.TogetherChoice.WatchNow) {
         if (!syncPlay.inGroup) {
@@ -466,6 +470,7 @@ class AppContainer(
         }
         val group = syncPlay.group.value ?: error("Couldn't start the watch party")
         if (invitesAvailable() && choice.userIds.isNotEmpty()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
+        if (choice.groupId.isNotEmpty() && companion.value?.features?.contains("groupwatch") == true) runCatching { server.sessionForGroup(choice.groupId, group.id) }
     }
 
     /** This device's watch-together session as the playback guards see it (a group that watches together only asks for it). */
@@ -486,7 +491,6 @@ class AppContainer(
         dev.nitrate.core.partners.WatchCompany(
             scope, partners, groupStandings, syncPlay.group,
             selfName = { accountState.value?.name },
-            lastUsed = { title -> watchPartners.lastUsedOn(plugins.host, title) },
             chosen = { title -> watchPartners.chosenOn(plugins.host, title) },
             onChosen = { title, with -> watchPartners.choose(plugins.host, title, with) },
             room = { title -> watchPartners.roomOn(plugins.host, title) },

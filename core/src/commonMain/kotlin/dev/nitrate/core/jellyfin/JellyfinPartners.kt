@@ -31,12 +31,18 @@ import kotlin.time.Instant
     val togetherFromId: String? = null,
     val record: Boolean = false, val mine: List<String>? = null,
     val party: PartyDto? = null,
+    val titles: List<TitleDto>? = null,
 )
-@Serializable internal data class IncomingDto(val id: String, val fromId: String, val fromName: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val willSee: List<String> = emptyList(), val at: String? = null, val schedule: ScheduleDto? = null)
+@Serializable internal data class TitleDto(val id: String, val name: String = "", val lockedFromId: String? = null, val opensAt: String? = null, val opensDay: Int? = null, val togetherFromId: String? = null)
+@Serializable internal data class TitleRefDto(val id: String, val name: String = "")
+@Serializable internal data class GroupMarkDto(val itemIds: List<String>, val watched: Boolean, val groupIds: List<String>? = null)
+@Serializable internal data class GroupMarkOutDto(val groupIds: List<String> = emptyList())
+@Serializable internal data class GroupSessionDto(val sessionId: String)
+@Serializable internal data class IncomingDto(val id: String, val fromId: String, val fromName: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val willSee: List<String> = emptyList(), val at: String? = null, val schedule: ScheduleDto? = null, val titles: List<TitleRefDto>? = null)
 @Serializable internal data class VoteDto(val yes: Boolean)
-@Serializable internal data class OutgoingDto(val id: String, val to: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val at: String? = null)
+@Serializable internal data class OutgoingDto(val id: String, val to: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val at: String? = null, val titles: List<TitleRefDto>? = null)
 @Serializable internal data class PartnersDto(val groups: List<GroupDto> = emptyList(), val incoming: List<IncomingDto> = emptyList(), val outgoing: List<OutgoingDto> = emptyList())
-@Serializable internal data class AskDto(val toUserId: String?, val toName: String?, val seriesId: String, val seriesName: String, val groupId: String?, val schedule: ScheduleDto? = null)
+@Serializable internal data class AskDto(val toUserId: String?, val toName: String?, val seriesId: String, val seriesName: String, val groupId: String?, val schedule: ScheduleDto? = null, val titles: List<TitleRefDto>? = null)
 @Serializable internal data class ProgressDto(val groupId: String, val userId: String, val userName: String = "", val watched: List<String> = emptyList(), val last: String? = null, val nextId: String? = null)
 @Serializable internal data class TogetherDto(val itemId: String, val groupId: String)
 @Serializable internal data class TogetherOutDto(val markedFor: List<String> = emptyList())
@@ -63,14 +69,44 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
     suspend fun list(): PartnersInfo = call { client.get("Nitrate", "Partners") }.decode<PartnersDto>().let { d ->
         PartnersInfo(
             d.groups.map { it.toModel() },
-            d.incoming.map { IncomingRequest(normalizeId(it.id), normalizeId(it.fromId), it.fromName, normalizeId(it.seriesId), it.seriesName, it.groupId?.let(::normalizeId), it.willSee, ms(it.at), it.schedule?.toModel()) },
+            d.incoming.map {
+                IncomingRequest(
+                    normalizeId(it.id), normalizeId(it.fromId), it.fromName, normalizeId(it.seriesId), it.seriesName, it.groupId?.let(::normalizeId), it.willSee, ms(it.at), it.schedule?.toModel(),
+                    titles(it.titles, it.seriesId, it.seriesName),
+                )
+            },
             d.outgoing.map { it.toModel() },
         )
     }
 
-    suspend fun ask(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule? = null): OutgoingRequest = call {
-        client.http.post(client.url("Nitrate", "Partners", "Requests")) { json(AskDto(toUserId, toName?.trim(), seriesId, seriesName, groupId, schedule?.toDto())) }
+    suspend fun ask(
+        toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?,
+        schedule: dev.nitrate.core.partners.GroupSchedule? = null, titles: List<dev.nitrate.core.partners.GroupTitle>? = null,
+    ): OutgoingRequest = call {
+        client.http.post(client.url("Nitrate", "Partners", "Requests")) {
+            json(AskDto(toUserId, toName?.trim(), seriesId, seriesName, groupId, schedule?.toDto(), titles?.map { TitleRefDto(it.id, it.name) }))
+        }
     }.decode<OutgoingDto>().toModel()
+
+    /** Adds a title to the group (any member may). */
+    suspend fun addTitle(groupId: String, titleId: String, name: String) {
+        call { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Titles")) { json(TitleRefDto(titleId, name)) } }
+    }
+
+    /** Removes a title from the group (any member may; a group keeps at least one). */
+    suspend fun removeTitle(groupId: String, titleId: String) {
+        call { client.http.delete(client.url("Nitrate", "Partners", "Groups", groupId, "Titles", titleId)) { with(client) { auth() } } }
+    }
+
+    /** Marks [itemIds] watched (or not) for the user in each of [groupIds]' own records only; returns the groups marked. */
+    suspend fun mark(groupIds: List<String>, itemIds: List<String>, watched: Boolean): List<String> =
+        call { client.http.post(client.url("Nitrate", "Partners", "Mark")) { json(GroupMarkDto(itemIds, watched, groupIds)) } }
+            .decode<GroupMarkOutDto>().groupIds.map(::normalizeId)
+
+    /** Says live (SyncPlay) session [sessionId] was started for group [groupId]: what it plays to the end counts for the group. */
+    suspend fun sessionFor(groupId: String, sessionId: String) {
+        call { client.http.put(client.url("Nitrate", "Partners", "Groups", groupId, "Session")) { json(GroupSessionDto(sessionId)) } }
+    }
 
     /** Asks the group to change its schedule (it takes effect once more than half agree). */
     suspend fun proposeSchedule(groupId: String, schedule: dev.nitrate.core.partners.GroupSchedule) {
@@ -154,7 +190,14 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
         lockedFromId?.let(::normalizeId), opensAt?.let(::ms), opensDay, togetherFromId?.let(::normalizeId),
         ownRecord = if (record) mine.orEmpty().map(::normalizeId).toSet() else null,
         party = party?.toModel(),
+        titleList = titles.orEmpty().map {
+            dev.nitrate.core.partners.GroupTitle(normalizeId(it.id), it.name, it.lockedFromId?.let(::normalizeId), it.opensAt?.let(::ms), it.opensDay, it.togetherFromId?.let(::normalizeId))
+        },
     )
+
+    private fun titles(dtos: List<TitleRefDto>?, seriesId: String, seriesName: String) =
+        dtos?.takeIf { it.isNotEmpty() }?.map { dev.nitrate.core.partners.GroupTitle(normalizeId(it.id), it.name) }
+            ?: listOf(dev.nitrate.core.partners.GroupTitle(normalizeId(seriesId), seriesName))
 
     private fun ScheduleDto.toModel() = dev.nitrate.core.partners.GroupSchedule(
         cadence, day, hour, minute, softLock, together,
@@ -164,7 +207,7 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
     private fun dev.nitrate.core.partners.GroupSchedule.toDto() =
         ScheduleDto(cadence, day, hour, minute, softLock, together = together, party = party?.let { PartyTimeDto(it.days, it.hour, it.minute) })
 
-    // ---- Watch parties (Companion feature `party`) ----
+    // ---- Group Watch Sessions (Companion feature `party`; "party" in the API) ----
 
     /** The group's next (or current) watch party; null when it has none (or the server doesn't have them). */
     suspend fun party(groupId: String): dev.nitrate.core.partners.WatchParty? = try {
@@ -197,5 +240,5 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
     private suspend fun partyCall(response: suspend () -> HttpResponse): dev.nitrate.core.partners.WatchParty? =
         call { response() }.bodyAsText().takeIf { it.isNotBlank() && it != "null" }?.let { JellyfinJson.decodeFromString<PartyDto>(it).toModel() }
 
-    private fun OutgoingDto.toModel() = OutgoingRequest(normalizeId(id), to, normalizeId(seriesId), seriesName, groupId?.let(::normalizeId), ms(at))
+    private fun OutgoingDto.toModel() = OutgoingRequest(normalizeId(id), to, normalizeId(seriesId), seriesName, groupId?.let(::normalizeId), ms(at), titles(titles, seriesId, seriesName))
 }

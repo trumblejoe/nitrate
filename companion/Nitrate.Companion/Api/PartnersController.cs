@@ -18,9 +18,22 @@ public record PartnersOut(IReadOnlyList<GroupView> Groups, IReadOnlyList<Incomin
 
 /// <summary>
 /// An invite: to someone the caller can see (<paramref name="ToUserId"/>) or an exact user name,
-/// into one of the caller's groups (<paramref name="GroupId"/>) or a new one for the show.
+/// into one of the caller's groups (<paramref name="GroupId"/>) or a new one for
+/// <paramref name="Titles"/> (older apps send one title as <paramref name="SeriesId"/>).
 /// </summary>
-public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, string SeriesName, Guid? GroupId = null, GroupSchedule? Schedule = null);
+public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, string SeriesName, Guid? GroupId = null, GroupSchedule? Schedule = null, IReadOnlyList<GroupTitle>? Titles = null);
+
+/// <summary>A title to add to a group.</summary>
+public record GroupTitlePost(Guid Id, string? Name);
+
+/// <summary>Parts marked watched (or, <paramref name="Watched"/> false, not) for the caller in one or more of their groups.</summary>
+public record GroupMarkPost(IReadOnlyList<Guid>? ItemIds, bool Watched = true, IReadOnlyList<Guid>? GroupIds = null);
+
+/// <summary>The groups it was marked in.</summary>
+public record GroupMarkOut(IReadOnlyList<Guid> GroupIds);
+
+/// <summary>The live (SyncPlay) session started for a group.</summary>
+public record GroupSessionPut(string SessionId);
 
 /// <summary>A vote on a group's waiting schedule change.</summary>
 public record VotePost(bool Yes);
@@ -93,7 +106,29 @@ public class PartnersController : ControllerBase
     /// <summary>Invites someone to watch a show together. Always answers "sent".</summary>
     [HttpPost("Partners/Requests")]
     public ActionResult<OutgoingView> Ask([FromBody] PartnerRequestPost body) =>
-        Run(me => _partners.Request(me, body.ToUserId, body.ToName, body.SeriesId, body.SeriesName ?? string.Empty, body.GroupId, body.Schedule));
+        Run(me => _partners.Request(me, body.ToUserId, body.ToName, body.SeriesId, body.SeriesName ?? string.Empty, body.GroupId, body.Schedule, body.Titles));
+
+    /// <summary>Adds a title to the caller's group (any member may).</summary>
+    [HttpPost("Partners/Groups/{id}/Titles")]
+    public ActionResult AddTitle([FromRoute] Guid id, [FromBody] GroupTitlePost body) => Done(me => _partners.AddTitle(me, id, body.Id, body.Name ?? string.Empty));
+
+    /// <summary>Removes a title from the caller's group (any member may; a group keeps at least one).</summary>
+    [HttpDelete("Partners/Groups/{id}/Titles/{titleId}")]
+    public ActionResult RemoveTitle([FromRoute] Guid id, [FromRoute] Guid titleId) => Done(me => _partners.RemoveTitle(me, id, titleId));
+
+    /// <summary>Marks parts watched or not for the caller in one group's own record only.</summary>
+    [HttpPost("Partners/Groups/{id}/Mark")]
+    public ActionResult<GroupMarkOut> Mark([FromRoute] Guid id, [FromBody] GroupMarkPost body) =>
+        Run(me => new GroupMarkOut(_partners.Mark(me, new[] { id }, body.ItemIds ?? Array.Empty<Guid>(), body.Watched)));
+
+    /// <summary>Marks parts watched or not for the caller in several of their groups at once ("All groups where it's next").</summary>
+    [HttpPost("Partners/Mark")]
+    public ActionResult<GroupMarkOut> MarkMany([FromBody] GroupMarkPost body) =>
+        Run(me => new GroupMarkOut(_partners.Mark(me, body.GroupIds ?? Array.Empty<Guid>(), body.ItemIds ?? Array.Empty<Guid>(), body.Watched)));
+
+    /// <summary>Says which live session was started for the group ("Watch now together"): what it plays counts for the group.</summary>
+    [HttpPut("Partners/Groups/{id}/Session")]
+    public ActionResult GroupSession([FromRoute] Guid id, [FromBody] GroupSessionPut body) => Done(me => _partners.SessionFor(me, id, body.SessionId ?? string.Empty));
 
     /// <summary>Asks the group to change its schedule (it takes effect once more than half agree).</summary>
     [HttpPost("Partners/Groups/{id}/Schedule")]
@@ -123,20 +158,20 @@ public class PartnersController : ControllerBase
     [HttpGet("Partners/Progress")]
     public ActionResult<IReadOnlyList<PartnerProgressView>> Progress([FromQuery] Guid seriesId) => Run(me => _partners.Progress(me, seriesId));
 
-    /// <summary>Marks an episode watched for the rest of the group the caller watched it with.</summary>
+    /// <summary>Counts an episode in the group's record for the caller and the rest of the group (who watched it with them).</summary>
     [HttpPost("Partners/Together")]
     public ActionResult<TogetherOut> Together([FromBody] TogetherPost body) =>
         Run(me => new TogetherOut(_partners.MarkTogether(me, body.ItemId, body.GroupId)));
 
     /// <summary>
-    /// Counts parts as watched with the group by the members who were there (the same room); for a
-    /// together-only group in its own record. Members only.
+    /// Counts parts as watched with the group by the members who were there (the same room), in
+    /// the group's own record. Members only.
     /// </summary>
     [HttpPost("Partners/Groups/{id}/Watched")]
     public ActionResult<WatchedWithOut> WatchedWith([FromRoute] Guid id, [FromBody] WatchedWithPost body) =>
         Run(me => new WatchedWithOut(_partners.WatchedWith(me, id, body.ItemIds ?? Array.Empty<Guid>(), body.Present ?? Array.Empty<Guid>())));
 
-    /// <summary>The group's next (or current) watch party; 204 when it has no party time.</summary>
+    /// <summary>The group's next (or current) Group Watch Session; 204 when it has no time set.</summary>
     [HttpGet("Partners/Groups/{id}/Party")]
     public ActionResult<PartyView?> Party([FromRoute] Guid id) => Party(me => _partners.Party(me, id));
 
