@@ -29,6 +29,7 @@ import kotlin.time.Instant
     val id: String, val seriesId: String, val seriesName: String = "", val others: List<PeopleDto> = emptyList(), val since: String? = null,
     val schedule: ScheduleDto? = null, val pending: ChangeDto? = null, val lockedFromId: String? = null, val opensAt: String? = null, val opensDay: Int? = null,
     val togetherFromId: String? = null,
+    val record: Boolean = false, val mine: List<String>? = null,
 )
 @Serializable internal data class IncomingDto(val id: String, val fromId: String, val fromName: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val willSee: List<String> = emptyList(), val at: String? = null, val schedule: ScheduleDto? = null)
 @Serializable internal data class VoteDto(val yes: Boolean)
@@ -38,6 +39,8 @@ import kotlin.time.Instant
 @Serializable internal data class ProgressDto(val groupId: String, val userId: String, val userName: String = "", val watched: List<String> = emptyList(), val last: String? = null, val nextId: String? = null)
 @Serializable internal data class TogetherDto(val itemId: String, val groupId: String)
 @Serializable internal data class TogetherOutDto(val markedFor: List<String> = emptyList())
+@Serializable internal data class WatchedWithDto(val itemIds: List<String>, val present: List<String>)
+@Serializable internal data class WatchedWithOutDto(val countedFor: List<String> = emptyList())
 @Serializable internal data class InviteDto(val id: String, val fromUserId: String, val fromName: String = "", val groupId: String, val itemId: String? = null, val itemName: String? = null, val at: String? = null)
 @Serializable internal data class InvitePostDto(val userIds: List<String>, val groupId: String, val itemId: String?, val itemName: String?)
 
@@ -99,6 +102,11 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
     suspend fun together(itemId: String, groupId: String): List<String> =
         call { client.http.post(client.url("Nitrate", "Partners", "Together")) { json(TogetherDto(itemId, groupId)) } }.decode<TogetherOutDto>().markedFor.map(::normalizeId)
 
+    /** "We're in the same room": [itemIds] watched with group [groupId]'s members [present] (the user counts as there). */
+    suspend fun watchedWith(groupId: String, itemIds: List<String>, present: List<String>): List<String> =
+        call { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Watched")) { json(WatchedWithDto(itemIds, present)) } }
+            .decode<WatchedWithOutDto>().countedFor.map(::normalizeId)
+
     /** Invites people to a watch-together group (`/Nitrate/Together/Invites`); always "sent". */
     suspend fun invite(groupId: String, userIds: List<String>, itemId: String?, itemName: String?) {
         call { client.http.post(client.url("Nitrate", "Together", "Invites")) { json(InvitePostDto(userIds, groupId, itemId, itemName)) } }
@@ -139,6 +147,7 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
         schedule?.toModel(),
         pending?.let { dev.nitrate.core.partners.ScheduleChange(it.id, it.fromName, it.proposed.toModel(), it.yes, it.no, it.voted, ms(it.at)) },
         lockedFromId?.let(::normalizeId), opensAt?.let(::ms), opensDay, togetherFromId?.let(::normalizeId),
+        ownRecord = if (record) mine.orEmpty().map(::normalizeId).toSet() else null,
     )
 
     private fun ScheduleDto.toModel() = dev.nitrate.core.partners.GroupSchedule(cadence, day, hour, minute, softLock, together)

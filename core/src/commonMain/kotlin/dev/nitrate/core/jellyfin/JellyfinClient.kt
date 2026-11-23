@@ -1427,14 +1427,17 @@ class JellyfinClient(
     override suspend fun leaveGroup(groupId: String) = partnersApi.leave(groupId)
     override suspend fun partnerProgress(seriesId: String) = partnersApi.progress(seriesId)
     override suspend fun watchedTogether(itemId: String, groupId: String) = partnersApi.together(itemId, groupId)
+    override suspend fun watchedWithGroup(groupId: String, itemIds: List<String>, present: List<String>) = partnersApi.watchedWith(groupId, itemIds, present)
     override suspend fun inviteToWatch(groupId: String, userIds: List<String>, itemId: String?, itemName: String?) = partnersApi.invite(groupId, userIds, itemId, itemName)
     override suspend fun watchInvites() = partnersApi.invites()
     override suspend fun dismissWatchInvite(id: String) = partnersApi.dismissInvite(id)
 
     override suspend fun groupStandings(): Map<String, dev.nitrate.core.partners.KeepUp> = coroutineScope {
         if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyMap()
-        partners().groups.map { it.seriesId }.distinct().map { id ->
-            async { runCatching { dev.nitrate.core.partners.KeepUp.of(id, titleItems(id), partnerProgress(id)) }.getOrNull() }
+        val groups = partners().groups
+        groups.map { it.seriesId }.distinct().map { id ->
+            // A together-only group's own record is the user's place in it (KeepUp.own).
+            async { runCatching { dev.nitrate.core.partners.KeepUp.of(id, titleItems(id), partnerProgress(id), groups) }.getOrNull() }
         }.mapNotNull { it.await() }.associateBy { it.seriesId }
     }
 

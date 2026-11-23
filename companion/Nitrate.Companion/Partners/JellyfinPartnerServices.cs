@@ -80,6 +80,9 @@ public class JellyfinWatchState : IWatchState
         return user is not null && TitleItems(titleId, user).Any(i => i.Id == itemId);
     }
 
+    /// <inheritdoc />
+    public string? Label(Guid itemId) => _library.GetItemById(itemId) is { } item ? Label(item) : null;
+
     /// <summary>"S2 E4" for an episode, else the title's name.</summary>
     private static string Label(BaseItem item) =>
         item is Episode e ? $"S{e.ParentIndexNumber ?? 0} E{e.IndexNumber ?? 0}" : item.Name;

@@ -36,7 +36,8 @@ class PartnerScheduleJsonTest {
                 {"Id":"$g1","SeriesId":"$show","SeriesName":"Bear","Others":[{"Id":"${"5".repeat(32)}","Name":"Sam"}],
                  "Schedule":{"Cadence":"weekly","Day":4,"Hour":19,"Minute":0,"SoftLock":false,"TimeZone":""}},
                 {"Id":"$g2","SeriesId":"$show","SeriesName":"Bear","Others":[{"Id":"${"6".repeat(32)}","Name":"Kim"}],
-                 "Schedule":{"Cadence":"binge","Day":4,"Hour":19,"Minute":0,"SoftLock":true,"Together":true},"TogetherFromId":"$ep3"}
+                 "Schedule":{"Cadence":"binge","Day":4,"Hour":19,"Minute":0,"SoftLock":true,"Together":true},"TogetherFromId":"$ep3",
+                 "Record":true,"Mine":["${"b".repeat(32)}"]}
             ]}"""
             else -> "{}"
         }
@@ -65,6 +66,17 @@ class PartnerScheduleJsonTest {
         assertTrue(together.schedule!!.softLock)
         assertEquals(normalizeId(ep3), together.togetherFromId)
         assertEquals("Binge, together only, ask first", together.schedule!!.label)
+        // A together-only group's own record: what the user watched with it. Separately: none.
+        assertEquals(setOf(normalizeId("b".repeat(32))), together.ownRecord)
+        assertNull(old.ownRecord)
+    }
+
+    @Test fun theSameRoomIsSentWithWhoWasThere() = runBlocking {
+        val c = client()
+        c.watchedWithGroup(normalizeId(g2), listOf(normalizeId(ep3)), listOf(normalizeId("6".repeat(32))))
+        val body = sent.single { it.startsWith("/Nitrate/Partners/Groups/") }
+        assertTrue(body, body.contains("/Watched "))
+        assertTrue(body, body.contains("\"ItemIds\":[") && body.contains("\"Present\":["))
     }
 
     @Test fun howWeWatchIsSentWithAChange() = runBlocking {

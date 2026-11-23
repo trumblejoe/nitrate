@@ -489,9 +489,9 @@ internal suspend fun JellyfinClient.togetherCards(): dev.nitrate.core.partners.T
         async {
             runCatching {
                 val items = titleItems(g.seriesId)
-                val k = dev.nitrate.core.partners.KeepUp.of(g.seriesId, items, partnerProgress(g.seriesId))
-                // The title itself only for a card with nothing of the user's left (waiting on the others).
-                val needsTitle = dev.nitrate.core.partners.TogetherRow.yourNext(items) == null
+                val k = dev.nitrate.core.partners.KeepUp.of(g.seriesId, items, partnerProgress(g.seriesId), info.groups)
+                // The title itself only for a card with nothing of the user's left (waiting on the others), in any of their places in it.
+                val needsTitle = dev.nitrate.core.partners.TogetherRow.needsTitle(items, k)
                 dev.nitrate.core.partners.SharedShow(if (needsTitle) series(g.seriesId, g.seriesName) else null, items, k)
             }.getOrNull()
         }

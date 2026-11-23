@@ -29,6 +29,28 @@ public class WatchGroup
 
     /// <summary>Gets or sets a change to the schedule waiting for the others' votes.</summary>
     public ScheduleChange? Pending { get; set; }
+
+    /// <summary>
+    /// Gets or sets the group's own watched record, kept while it watches together only
+    /// (<see cref="GroupSchedule.Together"/>): which parts each member watched with this group.
+    /// Jellyfin keeps one watched state per person, so someone in several groups on one title is
+    /// counted per group here. Started from what every member had watched when the group became
+    /// together-only; empty (and unused) for groups that watch separately.
+    /// </summary>
+    public List<GroupWatch> Watched { get; set; } = new();
+}
+
+/// <summary>One part (an episode, a film of a list) a member watched with a together-only group.</summary>
+public class GroupWatch
+{
+    /// <summary>Gets or sets who.</summary>
+    public Guid Member { get; set; }
+
+    /// <summary>Gets or sets the part.</summary>
+    public Guid ItemId { get; set; }
+
+    /// <summary>Gets or sets when it was first counted; null when the record was started from what everyone had already watched (before the schedule).</summary>
+    public DateTimeOffset? At { get; set; }
 }
 
 /// <summary>A request to watch a show together, waiting for the other person.</summary>
@@ -169,4 +191,7 @@ public interface IWatchState
 
     /// <summary>Marks the episode watched for <paramref name="userId"/>.</summary>
     void MarkWatched(Guid userId, Guid itemId);
+
+    /// <summary>"S2 E4" for an episode, else its name (null when unknown).</summary>
+    string? Label(Guid itemId) => null;
 }

@@ -31,6 +31,12 @@ public record TogetherPost(Guid ItemId, Guid GroupId);
 /// <summary>Who an episode was marked watched for.</summary>
 public record TogetherOut(IReadOnlyList<Guid> MarkedFor);
 
+/// <summary>"We're in the same room": parts of the group's title watched with <paramref name="Present"/> (members of the group; the caller counts as there).</summary>
+public record WatchedWithPost(IReadOnlyList<Guid> ItemIds, IReadOnlyList<Guid>? Present);
+
+/// <summary>Who it counted for, the caller included.</summary>
+public record WatchedWithOut(IReadOnlyList<Guid> CountedFor);
+
 /// <summary>Watch partners and private accounts (see <see cref="PartnerHub"/>).</summary>
 [ApiController]
 [Authorize]
@@ -112,6 +118,14 @@ public class PartnersController : ControllerBase
     [HttpPost("Partners/Together")]
     public ActionResult<TogetherOut> Together([FromBody] TogetherPost body) =>
         Run(me => new TogetherOut(_partners.MarkTogether(me, body.ItemId, body.GroupId)));
+
+    /// <summary>
+    /// Counts parts as watched with the group by the members who were there (the same room); for a
+    /// together-only group in its own record. Members only.
+    /// </summary>
+    [HttpPost("Partners/Groups/{id}/Watched")]
+    public ActionResult<WatchedWithOut> WatchedWith([FromRoute] Guid id, [FromBody] WatchedWithPost body) =>
+        Run(me => new WatchedWithOut(_partners.WatchedWith(me, id, body.ItemIds ?? Array.Empty<Guid>(), body.Present ?? Array.Empty<Guid>())));
 
     private Guid? Me()
     {

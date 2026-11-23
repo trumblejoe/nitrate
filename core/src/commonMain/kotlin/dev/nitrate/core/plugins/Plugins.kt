@@ -38,6 +38,12 @@ interface TogetherSession {
 /** Runs before an item plays and may warn or suggest something else. */
 interface PlaybackGuard : NitratePlugin {
     suspend fun beforePlay(item: MediaItem, host: PluginHost): GuardDecision
+
+    /**
+     * The same, with who the user chose to watch with this time ([with]: a watch group, or just
+     * them; null: worked out as usual, see [dev.nitrate.core.partners.WatchPartners.contextFor]).
+     */
+    suspend fun beforePlay(item: MediaItem, host: PluginHost, with: dev.nitrate.core.partners.WatchingWith?): GuardDecision = beforePlay(item, host)
 }
 
 sealed interface GuardDecision {
@@ -111,9 +117,14 @@ class PluginRegistry(val all: List<NitratePlugin>, val host: PluginHost) {
      * Runs enabled guards before [item] plays. [ask] shows a guard's question and returns the
      * user's choice; the first guard that asks decides. A failing guard never blocks playback.
      */
-    suspend fun checkBeforePlay(item: MediaItem, ask: suspend (GuardDecision.Ask) -> GuardAction): GuardAction {
+    suspend fun checkBeforePlay(
+        item: MediaItem,
+        /** Who the user chose to watch with this time (the player's chip); null: worked out as usual. */
+        with: dev.nitrate.core.partners.WatchingWith? = null,
+        ask: suspend (GuardDecision.Ask) -> GuardAction,
+    ): GuardAction {
         for (guard in enabledNow().filterIsInstance<PlaybackGuard>()) {
-            val decision = runCatching { guard.beforePlay(item, host) }.getOrDefault(GuardDecision.Allow)
+            val decision = runCatching { guard.beforePlay(item, host, with) }.getOrDefault(GuardDecision.Allow)
             if (decision is GuardDecision.Ask) return ask(decision)
         }
         return GuardAction.PlayAnyway
@@ -129,8 +140,9 @@ class PluginRegistry(val all: List<NitratePlugin>, val host: PluginHost) {
     suspend fun checkBeforeSending(
         item: MediaItem,
         ask: suspend (GuardDecision.Ask) -> GuardAction,
+        with: dev.nitrate.core.partners.WatchingWith? = null,
         markWatched: suspend (String) -> Unit,
-    ): MediaItem? = when (val action = checkBeforePlay(item, ask)) {
+    ): MediaItem? = when (val action = checkBeforePlay(item, with, ask)) {
         GuardAction.PlayAnyway -> item
         GuardAction.Cancel -> null
         is GuardAction.PlayInstead -> action.item

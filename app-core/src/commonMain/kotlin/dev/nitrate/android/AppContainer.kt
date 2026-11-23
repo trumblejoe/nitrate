@@ -358,7 +358,12 @@ class AppContainer(
             when (choice) {
                 is dev.nitrate.core.partners.TogetherChoice.Accept -> { server.acceptPartner(choice.request.id); Unit }
                 is dev.nitrate.core.partners.TogetherChoice.Decline -> server.declinePartner(choice.request.id)
-                is dev.nitrate.core.partners.TogetherChoice.CatchUp -> choice.episodeIds.forEach { server.setPlayed(it, true) }
+                is dev.nitrate.core.partners.TogetherChoice.CatchUp -> {
+                    choice.episodeIds.forEach { server.setPlayed(it, true) }
+                    // A together-only group keeps its own record: catching up there counts in it too.
+                    choice.groupId?.let { server.watchedWithGroup(it, choice.episodeIds, emptyList()) }
+                    Unit
+                }
                 is dev.nitrate.core.partners.TogetherChoice.WatchedWith -> { server.watchedTogether(choice.episodeId, choice.groupId); Unit }
                 is dev.nitrate.core.partners.TogetherChoice.OwnSpoilers -> {
                     val user = server.userId ?: return null

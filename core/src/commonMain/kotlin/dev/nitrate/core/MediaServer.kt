@@ -642,6 +642,16 @@ interface MediaServer {
     /** Marks an episode watched for the rest of the group the user watched it with; returns who it counted for. */
     suspend fun watchedTogether(itemId: String, groupId: String): List<String> = unsupported()
 
+    /**
+     * "We're in the same room" (Companion feature `grouprecord`): the user watched [itemIds] (parts
+     * of group [groupId]'s title) with [present] (members of the group; the user counts as there).
+     * A together-only group counts them in its own record for everyone there; any group marks them
+     * watched for the others there. With nobody else there it counts only as catching up on what
+     * the group already watched together. The server refuses anyone who isn't in the group.
+     * Returns who it counted for, the user included.
+     */
+    suspend fun watchedWithGroup(groupId: String, itemIds: List<String>, present: List<String>): List<String> = unsupported()
+
     /** The household's channels this user can watch (Companion feature "channels"); admins see all. */
     suspend fun houseChannels(): List<dev.nitrate.core.channels.HouseChannel> = unsupported()
 

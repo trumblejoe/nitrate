@@ -209,4 +209,19 @@ public sealed class GroupNotesTests : IDisposable
         _notes.Bring(Sam, Session, Guid.NewGuid());
         Assert.Empty(_notes.Brought(stranger, Session, Episode).Notes);
     }
+
+    [Fact]
+    public void APrivateAccountsBroughtNoteReachesOnlyItsOwnAudience()
+    {
+        // Hidden (a private account) wrote a note to the group; Sam brings the group's notes into a session.
+        Group(Sam, Kim, Hidden);
+        _notes.Pin(Hidden, "quiet", Episode, 70_000, ChatKind.Text, "yes chef", null);
+        _live.In[Session] = new List<Guid> { Sam, Kim, Jessica };
+        _notes.Bring(Sam, Session, Pair);
+        // Kim was there for it (the group it went to): it reaches her in the session.
+        Assert.Equal(new[] { "yes chef" }, _notes.Brought(Kim, Session, Episode).Notes.Select(n => n.Text));
+        // Jessica, outside its audience, never gets it, nor learns it exists.
+        Assert.Empty(_notes.Brought(Jessica, Session, Episode).Notes);
+        Assert.Empty(_notes.Page(Jessica, Episode).Notes);
+    }
 }

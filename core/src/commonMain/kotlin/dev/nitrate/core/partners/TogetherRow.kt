@@ -21,8 +21,11 @@ sealed interface TogetherChoice {
 
     data class Decline(val request: IncomingRequest) : TogetherChoice { override val label = "Decline" }
 
-    /** Mark what [who] has seen and the user hasn't as watched for the user. */
-    data class CatchUp(val who: String, val episodeIds: List<String>, val noun: String = "episode") : TogetherChoice {
+    /**
+     * Mark what [who] has seen and the user hasn't as watched for the user; [groupId]: the
+     * together-only group (keeping its own record) it's caught up in, where it's counted too.
+     */
+    data class CatchUp(val who: String, val episodeIds: List<String>, val noun: String = "episode", val groupId: String? = null) : TogetherChoice {
         override val label = "Catch up to $who (${WatchPartners.count(episodeIds.size, noun)})"
     }
 
@@ -88,28 +91,52 @@ object TogetherRow {
     /** The user's next part of a title: the first (in order) they haven't finished. */
     fun yourNext(episodes: List<MediaItem>): MediaItem? = real(episodes).firstOrNull { !it.user.played }
 
-    /** Whose move it is: someone ahead (catch up), else someone behind (waiting), else the user's. */
-    fun turn(k: KeepUp): Turn {
+    /** Whose move it is: someone ahead (catch up), else someone behind (waiting), else the user's; each partner against the user's place in their group. */
+    fun turn(k: KeepUp): Turn = turnIn(k, null)
+
+    /** [turn] among the partners of [groupIds] only (null: every group). */
+    private fun turnIn(k: KeepUp, groupIds: Set<String>?): Turn {
         val inShow = k.order.toSet()
-        val members = k.progress.distinctBy { it.userId }
-        if (members.any { p -> p.watched.any { it in inShow && it !in k.mine } }) return Turn.CATCH_UP
-        if (members.any { p -> k.mine.any { it in inShow && it !in p.watched } }) return Turn.WAITING
+        val members = k.progress.filter { groupIds == null || it.groupId in groupIds }.distinctBy { it.userId }
+        if (members.any { p -> p.watched.any { it in inShow && it !in k.mineIn(p.groupId) } }) return Turn.CATCH_UP
+        if (members.any { p -> k.mineIn(p.groupId).any { it in inShow && it !in p.watched } }) return Turn.WAITING
         return Turn.YOURS
     }
 
-    /** A title's card: the user's next part of it, else (waiting, all seen) the title; nothing when everyone's done. */
-    fun card(show: SharedShow): MediaItem? {
-        yourNext(show.episodes)?.let { return it }
-        if (turn(show.keepUp) != Turn.WAITING) return null
-        return show.series
+    /**
+     * The user's places in a shared title (group ids → what they've watched there): one for each
+     * together-only group keeping its own record, and one for the rest (Jellyfin's watched state).
+     */
+    private fun places(k: KeepUp): List<Pair<Set<String>?, Set<String>>> {
+        if (k.own.isEmpty()) return listOf(null to k.mine)
+        val rest = k.progress.map { it.groupId }.filter { it !in k.own }.toSet()
+        return listOfNotNull(rest.takeIf { it.isNotEmpty() }?.let { it to k.mine }) + k.own.entries.sortedBy { it.key }.map { setOf(it.key) to it.value }
     }
+
+    /**
+     * A title's cards, whose move first: in each of the user's places in it ([places]) their next
+     * part, else (waiting there, all seen) the title; nothing where everyone's done. One person at
+     * episode 3 with one group and 7 with another has a card for each.
+     */
+    fun cardsOf(show: SharedShow): List<Pair<MediaItem, Turn>> =
+        places(show.keepUp).mapNotNull { (groups, mine) ->
+            val turn = turnIn(show.keepUp, groups)
+            val next = real(show.episodes).firstOrNull { it.id !in mine } ?: show.series?.takeIf { turn == Turn.WAITING }
+            next?.let { it to turn }
+        }.sortedBy { it.second.ordinal }.distinctBy { it.first.id }
+
+    /** A title's card: the user's next part of it, else (waiting, all seen) the title; nothing when everyone's done. */
+    fun card(show: SharedShow): MediaItem? = cardsOf(show).firstOrNull()?.first
+
+    /** Whether a title's cards need the title itself: in one of the user's places in it they've seen everything. */
+    fun needsTitle(episodes: List<MediaItem>, k: KeepUp): Boolean = places(k).any { (_, mine) -> real(episodes).none { it.id !in mine } }
 
     /**
      * The row's cards: [invites] (each the invited show), then shared shows (yours, catching up,
      * waiting), then [start]. Empty when there's neither an invite nor a shared show to show.
      */
     fun items(invites: List<MediaItem>, shows: List<SharedShow>): List<MediaItem> {
-        val cards = shows.mapNotNull { s -> card(s)?.let { it to turn(s.keepUp) } }.sortedBy { it.second.ordinal }.map { it.first }
+        val cards = shows.flatMap { cardsOf(it) }.sortedBy { it.second.ordinal }.map { it.first }
         if (invites.isEmpty() && cards.isEmpty()) return emptyList()
         return (invites + cards).distinctBy { it.id } + start
     }
@@ -120,7 +147,7 @@ object TogetherRow {
      * to watch or catch up on), then those waiting on the others.
      */
     fun cards(invites: List<MediaItem>, shows: List<SharedShow>): TogetherCards {
-        val turns = shows.mapNotNull { s -> card(s)?.let { it to turn(s.keepUp) } }
+        val turns = shows.flatMap { cardsOf(it) }
         return TogetherCards(
             invites = invites.distinctBy { it.id },
             yours = turns.filter { it.second != Turn.WAITING }.sortedBy { it.second.ordinal }.map { it.first }.distinctBy { it.id },
@@ -181,14 +208,15 @@ object TogetherRow {
         val ordered = real(episodes)
         if (keepUp != null) {
             val inShow = keepUp.order.toSet()
+            // Each partner against the user's place in their group (a together-only group's own record).
             keepUp.progress.distinctBy { it.userId }
-                .map { p -> p to keepUp.order.filter { it in p.watched && it !in keepUp.mine } }
+                .map { p -> p to keepUp.order.filter { it in p.watched && it !in keepUp.mineIn(p.groupId) } }
                 .filter { it.second.isNotEmpty() }
                 .sortedByDescending { it.second.size }
-                .forEach { (p, ids) -> out += TogetherChoice.CatchUp(p.userName, ids, keepUp.noun) }
+                .forEach { (p, ids) -> out += TogetherChoice.CatchUp(p.userName, ids, keepUp.noun, p.groupId.takeIf { it in keepUp.own }) }
             // The user's latest finished part that someone in a group hasn't: "Sam watched S1:E3 with me".
-            val last = ordered.lastOrNull { it.id in keepUp.mine && it.id in inShow }
-            if (last != null) groups.forEach { g ->
+            groups.forEach { g ->
+                val last = ordered.lastOrNull { it.id in keepUp.mine && it.id in inShow } ?: return@forEach
                 val missing = keepUp.progress.filter { it.groupId == g.id && last.id !in it.watched }
                 if (missing.isNotEmpty()) {
                     out += TogetherChoice.WatchedWith(g.id, WatchPartners.names(missing.map { it.userName }), last.id, shortLabel(last))
@@ -229,7 +257,9 @@ object TogetherRow {
         }
         val title = titleOf(item, standings) ?: return null
         val k = standings[title] ?: return null
-        val st = WatchPartners.standing(item, k) ?: return null
+        // With several groups on the title, where the user stands with the group(s) this part would be watched with.
+        val context = WatchPartners.contextFor(item, info, standings).groups.map { it.id }.toSet()
+        val st = (if (context.isNotEmpty()) WatchPartners.standing(item, k, context) else null) ?: WatchPartners.standing(item, k) ?: return null
         // Locked by the group's schedule: when it opens, or that it's for watching together, in place of the user's word.
         PartLock.of(item, info, standings)?.let { l ->
             val why = if (l.together) "Nobody in the group has seen it yet: you watch it together with ${l.group.label}." else "${l.word}: the group's schedule is ${l.group.schedule?.label}."

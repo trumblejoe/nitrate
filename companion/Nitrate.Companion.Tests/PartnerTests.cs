@@ -409,12 +409,198 @@ public class PartnerTests
         _time.Advance(TimeSpan.FromHours(2));
         var g = hub.Groups(Sam).Single();
         Assert.True(g.Schedule?.Together);
+        Assert.True(g.Record);
         Assert.Null(g.LockedFromId);
-        // Sam catching up to episode 1 is free; episode 2 nobody has seen.
-        Assert.Equal(Ep2, g.TogetherFromId);
+        // Joe watching episode 1 on his own doesn't count for a group that watches together only.
+        Assert.Equal(Ep1, g.TogetherFromId);
+        // Watched together (a live session with both), it does: episode 2 is the next nobody has seen.
+        hub.RecordLive(Ep1, new[] { Joe, Sam });
+        Assert.Equal(Ep2, hub.Groups(Sam).Single().TogetherFromId);
         Assert.Equal(Ep2, hub.Groups(Joe).Single().TogetherFromId);
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Joe).Single().Mine);
         // Kept between restarts.
         Assert.True(Hub().Groups(Joe).Single().Schedule?.Together);
+        Assert.Equal(Ep2, Hub().Groups(Joe).Single().TogetherFromId);
+    }
+
+    // ---- A together-only group's own watched record ----
+
+    /// <summary>Joe, Sam and Kid in one together-only group on The Bear.</summary>
+    private (PartnerHub Hub, Guid Group) TogetherTrio(GroupSchedule? schedule = null)
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear", schedule: schedule ?? new GroupSchedule { Together = true });
+        hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        var gid = hub.Groups(Joe).Single().Id;
+        hub.Request(Joe, Kid, null, Bear, "The Bear", gid);
+        hub.Accept(Kid, hub.Incoming(Kid).Single().Id);
+        return (hub, gid);
+    }
+
+    [Fact]
+    public void ALiveSessionCountsForTheMembersWhoWereThere()
+    {
+        var (hub, gid) = TogetherTrio();
+        // Joe and Sam watch episode 1 together; Kid wasn't there (and a stranger in the session counts for nothing).
+        var stranger = Guid.NewGuid();
+        Assert.Equal(new[] { gid }, hub.RecordLive(Ep1, new[] { Joe, Sam, stranger }));
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Joe).Single().Mine);
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Sam).Single().Mine);
+        Assert.Empty(hub.Groups(Kid).Single().Mine!);
+        // Kid simply falls behind: the others are a part ahead of Kid, and nothing asks.
+        var kidSees = hub.Progress(Kid, Bear);
+        Assert.All(kidSees, p => Assert.Equal(new[] { Ep1 }, p.Watched));
+        Assert.Equal(Ep2, hub.Groups(Kid).Single().TogetherFromId);
+        // One member alone in a session isn't watching with the group.
+        Assert.Empty(hub.RecordLive(Ep2, new[] { Joe, stranger }));
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Joe).Single().Mine);
+        // Something outside the group's title counts for nothing.
+        Assert.Empty(hub.RecordLive(Guid.NewGuid(), new[] { Joe, Sam }));
+        // Kid catching up alone on what the group watched together counts; going further alone doesn't.
+        Assert.Equal(new[] { gid }, hub.RecordCatchUp(Kid, Ep1));
+        Assert.Empty(hub.RecordCatchUp(Kid, Ep2));
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Kid).Single().Mine);
+    }
+
+    [Fact]
+    public void SeparatelyGoesByJellyfinAndTogetherOnlyByItsRecord()
+    {
+        var hub = Hub();
+        // Joe watches The Bear with Sam, together only, and with Kid, separately.
+        hub.Request(Joe, Sam, null, Bear, "The Bear", schedule: new GroupSchedule { Together = true });
+        hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        hub.Request(Joe, Kid, null, Bear, "The Bear");
+        hub.Accept(Kid, hub.Incoming(Kid).Single().Id);
+        var together = hub.Groups(Joe).Single(g => g.Others.Any(o => o.Id == Sam));
+        var apart = hub.Groups(Joe).Single(g => g.Others.Any(o => o.Id == Kid));
+        // Episode 1 with Sam (live), then episodes 2 and 3 with Kid, from separate homes.
+        hub.RecordLive(Ep1, new[] { Joe, Sam });
+        _watch.Watched(Joe, Ep1, _time.GetUtcNow());
+        _watch.Watched(Sam, Ep1, _time.GetUtcNow());
+        _watch.Watched(Joe, Ep2, _time.GetUtcNow());
+        _watch.Watched(Joe, Ep3, _time.GetUtcNow());
+        _watch.Watched(Kid, Ep2, _time.GetUtcNow());
+        _watch.Watched(Kid, Ep3, _time.GetUtcNow());
+        // Sam sees Joe where they are together: episode 1, not 3.
+        var joeForSam = hub.Progress(Sam, Bear).Single(p => p.UserId == Joe);
+        Assert.Equal(new[] { Ep1 }, joeForSam.Watched);
+        Assert.Equal(Ep2, joeForSam.NextId);
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Joe).Single(g => g.Id == together.Id).Mine);
+        Assert.Equal(Ep2, hub.Groups(Sam).Single().TogetherFromId);
+        // Kid sees Joe by Jellyfin's watched state: all three.
+        Assert.Equal(new[] { Ep1, Ep2, Ep3 }, hub.Progress(Kid, Bear).Single(p => p.UserId == Joe).Watched);
+        Assert.False(apart.Record);
+        Assert.Null(hub.Groups(Joe).Single(g => g.Id == apart.Id).Mine);
+        // Joe sees each partner per group.
+        var mine = hub.Progress(Joe, Bear);
+        Assert.Equal(new[] { Ep1 }, mine.Single(p => p.UserId == Sam).Watched);
+        Assert.Equal(new[] { Ep2, Ep3 }, mine.Single(p => p.UserId == Kid).Watched);
+    }
+
+    [Fact]
+    public void ScheduleLocksGoByTheGroupsRecord()
+    {
+        var weekly = Weekly();
+        weekly.Together = true;
+        var (hub, gid) = TogetherTrio(weekly);
+        // Everyone watched episode 1 on their own: nothing counts for the group, so episode 1 is the next and open.
+        _watch.Watched(Joe, Ep1, _time.GetUtcNow());
+        _watch.Watched(Sam, Ep1, _time.GetUtcNow());
+        var g = hub.Groups(Joe).Single();
+        Assert.Equal(Ep2, g.LockedFromId);
+        Assert.Null(g.OpensAt);
+        Assert.Equal(Ep1, g.TogetherFromId);
+        // Watched together an hour later: episode 2 waits for Thursday 7pm (by when it was watched with the group).
+        _time.Advance(TimeSpan.FromHours(1));
+        hub.RecordLive(Ep1, new[] { Joe, Sam });
+        _time.Advance(TimeSpan.FromHours(1));
+        g = hub.Groups(Kid).Single();
+        Assert.Equal(Ep2, g.LockedFromId);
+        Assert.Equal(DateTimeOffset.Parse("2026-11-19T19:00:00Z", System.Globalization.CultureInfo.InvariantCulture), g.OpensAt);
+        Assert.Equal(Ep2, g.TogetherFromId);
+    }
+
+    [Fact]
+    public void SwitchingToTogetherOnlyStartsFromWhatEveryoneHasWatched()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear", schedule: Weekly());
+        hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        var gid = hub.Groups(Joe).Single().Id;
+        _watch.Watched(Joe, Ep1, _time.GetUtcNow());
+        _watch.Watched(Joe, Ep2, _time.GetUtcNow());
+        _watch.Watched(Sam, Ep1, _time.GetUtcNow());
+        Assert.False(hub.Groups(Joe).Single().Record);
+        _time.Advance(TimeSpan.FromHours(1));
+        hub.ProposeSchedule(Joe, gid, new GroupSchedule { Together = true });
+        hub.Vote(Sam, gid, hub.Groups(Sam).Single().Pending!.Id, yes: true);
+        // Only episode 1 is everyone's: the record starts there, and episode 2 is for watching together.
+        var g = hub.Groups(Joe).Single();
+        Assert.True(g.Record);
+        Assert.Equal(new[] { Ep1 }, g.Mine);
+        Assert.Equal(Ep2, g.TogetherFromId);
+        Assert.Equal(new[] { Ep1 }, hub.Progress(Sam, Bear).Single().Watched);
+        // What anyone watches on their own after the switch doesn't move it.
+        _watch.Watched(Sam, Ep2, _time.GetUtcNow());
+        Assert.Equal(Ep2, hub.Groups(Joe).Single().TogetherFromId);
+        // Back to separately: Jellyfin's watched state again, and no record kept.
+        hub.ProposeSchedule(Joe, gid, Weekly());
+        hub.Vote(Sam, gid, hub.Groups(Sam).Single().Pending!.Id, yes: true);
+        Assert.False(hub.Groups(Joe).Single().Record);
+        Assert.Null(hub.Groups(Joe).Single().Mine);
+        Assert.Empty(_storage.State.Groups.Single().Watched);
+    }
+
+    [Fact]
+    public void TheSameRoomCountsOnlyMembersWhoWereThere()
+    {
+        var (hub, gid) = TogetherTrio();
+        // Someone outside the group can't be counted, and nobody outside it can count anything.
+        var e = Assert.Throws<PartnerException>(() => hub.WatchedWith(Joe, gid, new[] { Ep1 }, new[] { Sam, Hidden }));
+        Assert.Equal(PartnerError.Invalid, e.Error);
+        Assert.Equal(PartnerError.NotFound, Assert.Throws<PartnerException>(() => hub.WatchedWith(Hidden, gid, new[] { Ep1 }, new[] { Joe })).Error);
+        // Only parts of the group's title, and something must be chosen.
+        Assert.Throws<PartnerException>(() => hub.WatchedWith(Joe, gid, new[] { Guid.NewGuid() }, new[] { Sam }));
+        Assert.Throws<PartnerException>(() => hub.WatchedWith(Joe, gid, Array.Empty<Guid>(), new[] { Sam }));
+        // Alone, only catching up on what the group already watched counts.
+        Assert.Throws<PartnerException>(() => hub.WatchedWith(Joe, gid, new[] { Ep1 }, Array.Empty<Guid>()));
+        Assert.Empty(hub.Groups(Joe).Single().Mine!);
+        // Joe and Sam in the same room: counted for both, marked watched for Sam, Kid not.
+        Assert.Equal(new[] { Joe, Sam }.OrderBy(x => x), hub.WatchedWith(Joe, gid, new[] { Ep1, Ep2 }, new[] { Sam }).OrderBy(x => x));
+        Assert.Equal(new[] { Ep1, Ep2 }, hub.Groups(Sam).Single().Mine);
+        Assert.Contains((Sam, Ep2), _watch.Played);
+        Assert.Empty(hub.Groups(Kid).Single().Mine!);
+        Assert.Equal(Ep3, hub.Groups(Joe).Single().TogetherFromId);
+        // Now Kid can count episode 1 alone, as catching up.
+        Assert.Equal(new[] { Kid }, hub.WatchedWith(Kid, gid, new[] { Ep1 }, Array.Empty<Guid>()));
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Kid).Single().Mine);
+        // A group that watches separately has no record: alone there's nothing to count.
+        hub.Request(Sam, Kid, null, Bear, "The Bear");
+        hub.Accept(Kid, hub.Incoming(Kid).Single().Id);
+        var apart = hub.Groups(Sam).Single(g => !g.Record).Id;
+        Assert.Throws<PartnerException>(() => hub.WatchedWith(Sam, apart, new[] { Ep3 }, Array.Empty<Guid>()));
+        Assert.Equal(2, hub.WatchedWith(Sam, apart, new[] { Ep3 }, new[] { Kid }).Count);
+        Assert.Contains((Kid, Ep3), _watch.Played);
+    }
+
+    [Fact]
+    public void WatchedWithMeCountsInTheRecord()
+    {
+        var (hub, gid) = TogetherTrio();
+        hub.MarkTogether(Joe, Ep1, gid);
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Joe).Single().Mine);
+        Assert.Equal(new[] { Ep1 }, hub.Groups(Kid).Single().Mine);
+        Assert.Equal(Ep2, hub.Groups(Sam).Single().TogetherFromId);
+    }
+
+    [Fact]
+    public void LeavingTakesTheLeaversRecordAlong()
+    {
+        var (hub, gid) = TogetherTrio();
+        hub.RecordLive(Ep1, new[] { Joe, Sam, Kid });
+        hub.Leave(Kid, gid);
+        Assert.DoesNotContain(_storage.State.Groups.Single().Watched, w => w.Member == Kid);
+        Assert.Equal(2, _storage.State.Groups.Single().Watched.Count);
     }
 
     [Fact]
