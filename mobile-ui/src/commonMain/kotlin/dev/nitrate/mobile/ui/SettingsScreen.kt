@@ -96,7 +96,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
     val account by c.account.collectAsState()
     val companion by c.companion.collectAsState()
     val easy = LocalDisplayPrefs.current.easyMode
-    fun open(page: SettingsPage) = actions.nav.navigate(SettingsPageRoute(page.name))
+    // Two-pane Settings (wide windows) shows the page beside the list instead.
+    val pane = LocalSettingsPane.current
+    fun open(page: SettingsPage) = pane?.invoke(page) ?: actions.nav.navigate(SettingsPageRoute(page.name))
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
@@ -213,13 +215,15 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
     val user = actions.server.userId
     val profile by remember(user) { user?.let { c.displaySettings.activeProfileName(it) } ?: kotlinx.coroutines.flow.flowOf(null) }.collectAsState(null)
     val caps = c.capabilities
+    val pane = LocalSettingsPane.current
 
     LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
-                androidx.compose.material3.IconButton(onClick = { actions.nav.popBackStack() }) {
+                // Beside the list (two-pane Settings) there's nothing to go back to.
+                if (!LocalInSettingsPane.current) androidx.compose.material3.IconButton(onClick = { actions.nav.popBackStack() }) {
                     androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                }
+                } else androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 12.dp))
                 Text(page.title, style = MaterialTheme.typography.headlineSmall)
             }
         }
@@ -289,7 +293,7 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                         updatePlayback { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
                     }
                 }
-                item { Link("Advanced", "Dolby Vision profile 7, 3D, resolution limit, direct play, and the formats this phone plays") { actions.nav.navigate(SettingsPageRoute(SettingsPage.ADVANCED.name)) } }
+                item { Link("Advanced", "Dolby Vision profile 7, 3D, resolution limit, direct play, and the formats this phone plays") { pane?.invoke(SettingsPage.ADVANCED) ?: actions.nav.navigate(SettingsPageRoute(SettingsPage.ADVANCED.name)) } }
             }
             SettingsPage.ADVANCED -> {
                 item {
@@ -351,7 +355,7 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                 item { ScopeTag(dev.nitrate.core.settings.SettingScope.PROFILE, profile) }
                 item { DisplayProfileRow(actions) }
                 displayLook(prefs, updatePrefs)
-                item { Link("What's shown", "Ratings, year, genres, descriptions, logos, progress and the rest on cards and pages") { actions.nav.navigate(SettingsPageRoute(SettingsPage.SHOWN.name)) } }
+                item { Link("What's shown", "Ratings, year, genres, descriptions, logos, progress and the rest on cards and pages") { pane?.invoke(SettingsPage.SHOWN) ?: actions.nav.navigate(SettingsPageRoute(SettingsPage.SHOWN.name)) } }
                 heading("Your server account", dev.nitrate.core.settings.SettingScope.EVERYWHERE)
                 item { MissingEpisodesToggle(actions) }
             }

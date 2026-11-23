@@ -370,7 +370,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<LicensesRoute> { LicensesScreen() }
             screen<SettingsPageRoute> { entry ->
                 val page = runCatching { SettingsPage.valueOf(entry.toRoute<SettingsPageRoute>().page) }.getOrDefault(SettingsPage.SOUND)
-                SettingsPageScreen(actions, page)
+                ReadableWidth(androidx.compose.ui.unit.Dp(900f)) { SettingsPageScreen(actions, page) }
             }
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
             screen<NowPlayingRoute> { NowPlayingScreen(actions, onBack = { nav.popBackStack() }) }

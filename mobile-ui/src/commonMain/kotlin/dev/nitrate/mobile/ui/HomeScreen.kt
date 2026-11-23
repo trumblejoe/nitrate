@@ -121,7 +121,7 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
 
     TogetherHost(actions, partnersAvailable(actions)) {
     when (val s = state) {
-        RowsState.Loading -> Loading(modifier)
+        RowsState.Loading -> RowsPlaceholder(modifier.padding(top = 56.dp))
         is RowsState.Error -> ErrorMessage(s.message, vm::refresh, modifier)
         is RowsState.Loaded -> {
             // The page takes its colour from the first piece of artwork on it.
