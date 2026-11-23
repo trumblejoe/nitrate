@@ -21,6 +21,12 @@
   <ItemGroup>
     <ProjectReference Include="../Nitrate.Companion/Nitrate.Companion.csproj" />
     <ProjectReference Include="../Nitrate.Companion.Logic/Nitrate.Companion.Logic.csproj" />
+    <!-- Built first but never referenced: the tests package it and load it into its own context. -->
+    <ProjectReference Include="../Nitrate.Companion.Tests.FakeLogic/Nitrate.Companion.Tests.FakeLogic.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Target Name="CopyFakeLogic" AfterTargets="Build">
+    <Copy SourceFiles="../Nitrate.Companion.Tests.FakeLogic/bin/$(Configuration)/net10.0/Nitrate.Companion.Tests.FakeLogic.dll" DestinationFolder="$(OutDir)fake-logic" />
+  </Target>
 
 </Project>

@@ -14,8 +14,6 @@ public sealed class LogicLoadContext : AssemblyLoadContext
 
     private readonly IReadOnlyDictionary<string, byte[]> _own;
     private readonly Assembly _shell;
-    private readonly Dictionary<string, Assembly> _loaded = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _lock = new();
 
     /// <summary>Initializes a new instance of the <see cref="LogicLoadContext"/> class.</summary>
     public LogicLoadContext(string name, IReadOnlyDictionary<string, byte[]> assemblies, Assembly? shell = null)
@@ -33,7 +31,9 @@ public sealed class LogicLoadContext : AssemblyLoadContext
         || HostPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Loads one of the package's own assemblies by simple name.</summary>
-    public Assembly LoadOwn(string name) => Load(new AssemblyName(name)) ?? throw new LogicPackageException($"The package has no '{name}'.");
+    public Assembly LoadOwn(string name) => _own.ContainsKey(name)
+        ? LoadFromAssemblyName(new AssemblyName(name))
+        : throw new LogicPackageException($"The package has no '{name}'.");
 
     /// <inheritdoc />
     protected override Assembly? Load(AssemblyName assemblyName)
@@ -49,18 +49,11 @@ public sealed class LogicLoadContext : AssemblyLoadContext
             return _shell;
         }
 
+        // Loaded once per name: the runtime keeps what this returns. (Keeping the assemblies here as well
+        // would tie this context to them for good, and it could never unload.)
         if (!IsHostOwned(name) && _own.TryGetValue(name, out var bytes))
         {
-            lock (_lock)
-            {
-                if (!_loaded.TryGetValue(name, out var loaded))
-                {
-                    loaded = LoadFromStream(new MemoryStream(bytes, writable: false));
-                    _loaded[name] = loaded;
-                }
-
-                return loaded;
-            }
+            return LoadFromStream(new MemoryStream(bytes, writable: false));
         }
 
         // As the shell sees it: Jellyfin loads plugins into their own context, which falls back to the server's.

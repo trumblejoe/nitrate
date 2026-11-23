@@ -296,7 +296,7 @@ public sealed class ApiRouter
             catch (Exception e) when (e is FormatException or NotSupportedException or ArgumentException or OverflowException || e.InnerException is FormatException or OverflowException)
             {
                 arguments[i] = Default(type);
-                context.ModelState.AddModelError(name, $"The value '{text}' is not valid for {name}.");
+                context.ModelState.AddModelError(name, $"The value '{text}' is not valid.");
             }
         }
 
@@ -323,8 +323,8 @@ public sealed class ApiRouter
             return (null, new UnsupportedMediaTypeResult());
         }
 
-        var key = string.Empty;
         object? value = null;
+        var empty = true;
         try
         {
             if (canHaveBody)
@@ -333,6 +333,7 @@ public sealed class ApiRouter
                 await request.Body.CopyToAsync(body, context.HttpContext.RequestAborted).ConfigureAwait(false);
                 if (body.Length > 0)
                 {
+                    empty = false;
                     value = JsonSerializer.Deserialize(body.GetBuffer().AsSpan(0, (int)body.Length), p.ParameterType, json);
                 }
             }
@@ -340,6 +341,7 @@ public sealed class ApiRouter
         catch (JsonException e)
         {
             context.ModelState.AddModelError(e.Path ?? "$", e.Message);
+            Required();
             return (null, Invalid(context));
         }
 
@@ -350,12 +352,26 @@ public sealed class ApiRouter
                 return (null, null);
             }
 
-            context.ModelState.AddModelError(key, "A non-empty request body is required.");
+            if (empty)
+            {
+                context.ModelState.AddModelError(string.Empty, "A non-empty request body is required.");
+            }
+
+            Required();
             return (null, Invalid(context));
         }
 
         Validate(value, string.Empty, context.ModelState, new NullabilityInfoContext(), 0);
         return context.ModelState.IsValid ? (value, null) : (null, Invalid(context));
+
+        // MVC's implicit [Required] on a non-nullable body parameter.
+        void Required()
+        {
+            if (!allowEmpty)
+            {
+                context.ModelState.AddModelError(p.Name!, $"The {p.Name} field is required.");
+            }
+        }
     }
 
     // MVC's implicit [Required] on non-nullable reference properties, down through objects and lists.

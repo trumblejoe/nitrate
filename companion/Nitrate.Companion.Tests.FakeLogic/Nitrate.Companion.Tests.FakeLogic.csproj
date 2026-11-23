@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A small logic for the shell's tests: packaged, signed, loaded, swapped and unloaded by them.
+       Never referenced as an assembly by the tests, so it only ever runs in its own context. It runs
+       its controllers through the real logic's ApiRouter (linked), so the tests cover that too. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="12.4.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="12.4.0" ExcludeAssets="runtime" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Nitrate.Companion/Nitrate.Companion.csproj" Private="false" />
+    <Compile Include="../Nitrate.Companion.Logic/Logic/ApiRouter.cs" Link="Linked/ApiRouter.cs" />
+    <Compile Include="../Nitrate.Companion.Tests/Shared/ProbeActions.cs" Link="Linked/ProbeActions.cs" />
+  </ItemGroup>
+
+</Project>

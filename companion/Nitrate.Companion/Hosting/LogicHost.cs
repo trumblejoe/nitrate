@@ -415,6 +415,7 @@ public sealed class LogicHost : IHostedService, IAsyncDisposable
         var until = DateTime.UtcNow + within;
         while (true)
         {
+            JsonCaches.Nudge();
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
@@ -571,4 +572,27 @@ public sealed class LogicHost : IHostedService, IAsyncDisposable
             }
         });
     }
+}
+
+/// <summary>
+/// System.Text.Json keeps the accessors it makes for each type's members in a process-wide cache,
+/// whose stale entries (unused for a second) are dropped only when it makes new ones. An old logic's
+/// types sit there after a swap, and keep its context from unloading, until then: this makes it
+/// make some (for a type of the shell's, uncached), so they go.
+/// </summary>
+internal static class JsonCaches
+{
+    public static void Nudge()
+    {
+        try
+        {
+            new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver().GetTypeInfo(typeof(NudgeShape), new System.Text.Json.JsonSerializerOptions());
+        }
+        catch (Exception)
+        {
+            // Only ever a nudge.
+        }
+    }
+
+    private sealed record NudgeShape(int Value);
 }
