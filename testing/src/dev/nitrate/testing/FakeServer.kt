@@ -158,7 +158,7 @@ class FakeServer : MediaServer {
         } ?: films.firstOrNull { it.id == id } ?: films[0]
     }
     override suspend fun seasons(seriesId: String) = seasonList
-    override suspend fun episodes(seriesId: String, seasonId: String) = (1..6).map { episode(2, it, it < 4) }
+    override suspend fun episodes(seriesId: String, seasonId: String) = (seasonId.removePrefix("season-").toIntOrNull() ?: 2).let { s -> (1..6).map { episode(s, it, s < 2 || (s == 2 && it < 4)) } }
     override suspend fun allEpisodes(seriesId: String) = (1..3).flatMap { s -> (1..6).map { episode(s, it, s < 2) } }
     override suspend fun nextUpFor(seriesId: String) = episode(2, 4, false)
     override suspend fun similar(itemId: String) = films

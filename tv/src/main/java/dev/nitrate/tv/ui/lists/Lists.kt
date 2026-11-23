@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
  * the contents scroll (a `LazyColumn` inside needs a set height).
  */
 @Composable
-fun TvDialog(onDismiss: () -> Unit, width: Int = 620, content: @Composable () -> Unit) {
+fun TvDialog(onDismiss: () -> Unit, width: Int = 520, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         SidePanel(width) {
             Column(
@@ -70,7 +70,7 @@ fun TvDialog(onDismiss: () -> Unit, width: Int = 620, content: @Composable () ->
  * takes the panel's height): track lists, fixes, Add to.
  */
 @Composable
-fun TvPanel(onDismiss: () -> Unit, width: Int = 620, content: @Composable () -> Unit) {
+fun TvPanel(onDismiss: () -> Unit, width: Int = 520, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         SidePanel(width) {
             androidx.compose.foundation.layout.Box(Modifier.ignoreHeldSelect().fillMaxSize().padding(horizontal = 32.dp, vertical = 40.dp)) { content() }

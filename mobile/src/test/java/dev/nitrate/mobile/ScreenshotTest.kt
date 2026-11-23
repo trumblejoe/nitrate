@@ -251,7 +251,10 @@ class ScreenshotTest {
 
     /** A tablet's details page: the picture, title and actions on the left, the season's episodes beside them. */
     @Test @Config(qualifiers = "w1280dp-h800dp-land-night-xhdpi")
-    fun tabletEpisode() = shoot("tablet-episode") { DetailsScreen(it, "s1e2", null) }
+    fun tabletEpisode() {
+        shoot("tablet-episode") { DetailsScreen(it, "s1e2", null) }
+        compose.onAllNodesWithText("This one").onFirst().assertExists()
+    }
 
     @Test @Config(qualifiers = "w1280dp-h800dp-land-night-xhdpi")
     fun tabletMovie() = shoot("tablet-movie") { DetailsScreen(it, "m1", null) }

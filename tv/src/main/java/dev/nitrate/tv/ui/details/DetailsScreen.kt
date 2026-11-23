@@ -636,7 +636,7 @@ private fun MorePanel(
     if (open == null) {
         val first = remember { FocusRequester() }
         dev.nitrate.tv.ui.lists.TvDialog(onDismiss) {
-            Text(item.displayTitle, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (item.kind == ItemKind.EPISODE) item.name.orEmpty() else item.displayTitle, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val entries = buildList<Triple<String, String?, () -> Unit>> {
                 if (item.isPlayable) add(Triple("How it plays", "Whether it plays as it is here, and why", { open = "plays" }))
                 if (video && "moments" in features) add(Triple("Moments", "Marked places, yours and your groups'", { open = "moments" }))
