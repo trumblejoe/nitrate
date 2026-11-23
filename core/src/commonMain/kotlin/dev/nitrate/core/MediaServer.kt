@@ -135,8 +135,22 @@ interface MediaServer {
      */
     suspend fun titleNotes(itemId: String): dev.nitrate.core.companion.TitleNotes? = null
 
-    /** Pins a message or reaction at [positionMs] for the caller's watch groups on the title (`notes`); throws [dev.nitrate.core.companion.ChatRejected]. */
-    suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String): dev.nitrate.core.companion.TimelineNote = unsupported()
+    /**
+     * Pins a message or reaction at [positionMs], once (`notes`): for the caller's watch groups on
+     * the title, or with [sessionId] (`livenotes`) in that live SyncPlay session, whose participants
+     * get it at once through the session's chat and keep it. Throws [dev.nitrate.core.companion.ChatRejected].
+     */
+    suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String? = null): dev.nitrate.core.companion.TimelineNote = unsupported()
+
+    /**
+     * "Bring our earlier notes" (`livenotes`): while the live session [sessionId] lasts, everyone in
+     * it gets the caller's readable notes that went to watch group [groupId] as playback passes them,
+     * never kept for them; null stops it. Throws [dev.nitrate.core.companion.ChatForbidden] outside the session.
+     */
+    suspend fun bringNotes(sessionId: String, groupId: String?): Unit = unsupported()
+
+    /** The notes brought into the live session [sessionId] on [itemId] (`livenotes`); empty when none or not in it. */
+    suspend fun broughtNotes(sessionId: String, itemId: String): List<dev.nitrate.core.companion.TimelineNote> = emptyList()
 
     /** Removes one of the caller's own notes (or older moments) on a title. */
     suspend fun deleteNote(itemId: String, id: String) {}

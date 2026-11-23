@@ -118,4 +118,23 @@ class PluginRegistry(val all: List<NitratePlugin>, val host: PluginHost) {
         }
         return GuardAction.PlayAnyway
     }
+
+    /**
+     * Before this device tells another one to play [item] (the phone as a remote, "Play on…"): the
+     * same guards, asked here with [ask]. The item to send there, or null when nothing should be
+     * sent: Cancel sends nothing, "play this instead" sends that one, marking watched happens first
+     * (through [markWatched]), and a plugin's own step runs first, sending only if it worked or the
+     * guard plays anyway on failure.
+     */
+    suspend fun checkBeforeSending(
+        item: MediaItem,
+        ask: suspend (GuardDecision.Ask) -> GuardAction,
+        markWatched: suspend (String) -> Unit,
+    ): MediaItem? = when (val action = checkBeforePlay(item, ask)) {
+        GuardAction.PlayAnyway -> item
+        GuardAction.Cancel -> null
+        is GuardAction.PlayInstead -> action.item
+        is GuardAction.MarkWatchedThenPlay -> item.also { action.itemIds.forEach { id -> runCatching { markWatched(id) } } }
+        is GuardAction.RunThenPlay -> item.takeIf { runCatching { action.run() }.isSuccess || action.playIfFailed }
+    }
 }

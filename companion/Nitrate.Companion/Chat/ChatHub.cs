@@ -45,8 +45,76 @@ public class ChatHub
     /// <summary>Initializes a new instance of the <see cref="ChatHub"/> class.</summary>
     public ChatHub(TimeProvider time) => _time = time;
 
-    /// <summary>Adds a message to a room and wakes everyone waiting there.</summary>
-    public ChatMessage Post(string roomId, Guid userId, string userName, ChatKind kind, string? text, long? positionMs)
+    /// <summary>
+    /// Adds a message to a room and wakes everyone waiting there. With an <paramref name="audience"/>,
+    /// only those people get it (someone who joins the room later never sees it).
+    /// </summary>
+    public ChatMessage Post(string roomId, Guid userId, string userName, ChatKind kind, string? text, long? positionMs, IReadOnlyCollection<Guid>? audience = null)
+    {
+        var body = Check(kind, text);
+        var now = _time.GetUtcNow();
+        lock (_lock)
+        {
+            Sweep(now);
+            var room = RoomFor(roomId, now);
+            var recent = room.Messages.Count(m => m.Message.UserId == userId && now - m.Message.SentAt < BurstWindow);
+            if (recent >= BurstLimit)
+            {
+                throw new ChatRejectedException("You're sending messages too fast.", tooFast: true);
+            }
+        }
+
+        return Deliver(roomId, new ChatMessage(0, userId, userName, kind, body, positionMs, now), audience);
+    }
+
+    /// <summary>
+    /// Hands a message already accepted elsewhere (a note pinned in a live session) to a room's
+    /// <paramref name="audience"/> (null: everyone in the room), numbered as the room's next.
+    /// </summary>
+    public ChatMessage Deliver(string roomId, ChatMessage message, IReadOnlyCollection<Guid>? audience)
+    {
+        var now = _time.GetUtcNow();
+        TaskCompletionSource waiting;
+        lock (_lock)
+        {
+            Sweep(now);
+            var room = RoomFor(roomId, now);
+            message = message with { Seq = ++room.Latest };
+            room.Messages.Add(new Entry(message, audience?.ToHashSet()));
+            if (room.Messages.Count > Kept)
+            {
+                room.Messages.RemoveRange(0, room.Messages.Count - Kept);
+            }
+
+            room.LastUsed = now;
+            waiting = room.Changed;
+            room.Changed = NewSignal();
+        }
+
+        waiting.TrySetResult();
+        return message;
+    }
+
+    /// <summary>Something about the room changed besides its messages (notes brought in): wakes everyone waiting.</summary>
+    public void Bump(string roomId)
+    {
+        var now = _time.GetUtcNow();
+        TaskCompletionSource waiting;
+        lock (_lock)
+        {
+            var room = RoomFor(roomId, now);
+            room.Brought++;
+            room.LastUsed = now;
+            waiting = room.Changed;
+            room.Changed = NewSignal();
+        }
+
+        waiting.TrySetResult();
+    }
+
+    /// <summary>The message as it will be kept: trimmed, and within the rules.</summary>
+    /// <exception cref="ChatRejectedException">Empty, too long or not one emoji.</exception>
+    public static string Check(ChatKind kind, string? text)
     {
         var body = (text ?? string.Empty).Trim();
         if (body.Length == 0)
@@ -64,46 +132,22 @@ public class ChatHub
             throw new ChatRejectedException($"Messages are at most {MaxLength} characters.");
         }
 
-        var now = _time.GetUtcNow();
-        TaskCompletionSource waiting;
-        ChatMessage message;
-        lock (_lock)
-        {
-            Sweep(now);
-            var room = RoomFor(roomId, now);
-            var recent = room.Messages.Count(m => m.UserId == userId && now - m.SentAt < BurstWindow);
-            if (recent >= BurstLimit)
-            {
-                throw new ChatRejectedException("You're sending messages too fast.", tooFast: true);
-            }
-
-            message = new ChatMessage(++room.Latest, userId, userName, kind, body, positionMs, now);
-            room.Messages.Add(message);
-            if (room.Messages.Count > Kept)
-            {
-                room.Messages.RemoveRange(0, room.Messages.Count - Kept);
-            }
-
-            room.LastUsed = now;
-            waiting = room.Changed;
-            room.Changed = NewSignal();
-        }
-
-        waiting.TrySetResult();
-        return message;
+        return body;
     }
 
     /// <summary>
     /// Messages after <paramref name="after"/> (a negative number: the recent backlog). With none
-    /// yet, waits up to <paramref name="wait"/> for one before answering with an empty page.
+    /// yet, waits up to <paramref name="wait"/> for one before answering with an empty page (or
+    /// with the room's <see cref="ChatPage.Brought"/> moved on). Only messages for
+    /// <paramref name="viewer"/> (in their audience, or sent to everyone) are in the page.
     /// </summary>
-    public async Task<ChatPage> WaitAsync(string roomId, long after, TimeSpan wait, CancellationToken cancellationToken)
+    public async Task<ChatPage> WaitAsync(string roomId, long after, TimeSpan wait, CancellationToken cancellationToken, Guid? viewer = null)
     {
         Task changed;
         lock (_lock)
         {
             var room = RoomFor(roomId, _time.GetUtcNow());
-            var page = PageOf(room, after);
+            var page = PageOf(room, after, viewer);
             if (page.Messages.Count > 0 || wait <= TimeSpan.Zero)
             {
                 return page;
@@ -124,18 +168,19 @@ public class ChatHub
         cancellationToken.ThrowIfCancellationRequested();
         lock (_lock)
         {
-            return PageOf(RoomFor(roomId, _time.GetUtcNow()), after);
+            return PageOf(RoomFor(roomId, _time.GetUtcNow()), after, viewer);
         }
     }
 
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private static ChatPage PageOf(Room room, long after)
+    private static ChatPage PageOf(Room room, long after, Guid? viewer)
     {
+        var mine = room.Messages.Where(m => viewer is not { } v || m.Audience is null || m.Audience.Contains(v));
         var messages = after < 0
-            ? room.Messages.TakeLast(Backlog).ToList()
-            : room.Messages.Where(m => m.Seq > after).ToList();
-        return new ChatPage(messages, room.Latest);
+            ? mine.TakeLast(Backlog).Select(m => m.Message).ToList()
+            : mine.Where(m => m.Message.Seq > after).Select(m => m.Message).ToList();
+        return new ChatPage(messages, room.Latest, room.Brought);
     }
 
     private Room RoomFor(string roomId, DateTimeOffset now)
@@ -158,11 +203,15 @@ public class ChatHub
         }
     }
 
+    private sealed record Entry(ChatMessage Message, HashSet<Guid>? Audience);
+
     private sealed class Room
     {
-        public List<ChatMessage> Messages { get; } = new();
+        public List<Entry> Messages { get; } = new();
 
         public long Latest { get; set; }
+
+        public long Brought { get; set; }
 
         public DateTimeOffset LastUsed { get; set; }
 

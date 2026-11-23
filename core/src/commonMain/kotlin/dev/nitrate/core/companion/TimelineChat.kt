@@ -13,8 +13,10 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
- * A chat message or reaction pinned to a point in a film or episode, for the writer's watch groups
- * on that title (Companion `notes`). Older "Mark this moment" bookmarks read as notes too.
+ * A chat message or reaction pinned to a point in a film or episode (Companion `notes`), readable
+ * by its audience: who was in the conversation when it was written (the writer's watch groups on
+ * that title then, or a live session's participants). Older "Mark this moment" bookmarks read as
+ * notes too.
  */
 data class TimelineNote(
     val id: String,
@@ -31,6 +33,8 @@ data class TimelineNote(
     val moment: Boolean = false,
     /** Came live from this device's SyncPlay group's chat. */
     val live: Boolean = false,
+    /** Brought into this live session by someone in it ("Bring our earlier notes"): for this session only. */
+    val brought: Boolean = false,
 )
 
 /** One of the viewer's watch groups on a title. */
@@ -57,13 +61,20 @@ object Notes {
      */
     fun listableUpTo(item: MediaItem): Long = if (item.user.played) Long.MAX_VALUE else item.user.positionMs
 
-    /** A live chat message read as a note at the sender's position (where they were, else [fallbackMs]). */
+    /**
+     * A live chat message read as a note at the sender's position (where they were, else
+     * [fallbackMs]); one kept as a note (`livenotes`) carries that note's id, so loading the notes
+     * again finds the same one.
+     */
     fun fromLive(m: ChatMessage, itemId: String, fallbackMs: Long): TimelineNote =
-        TimelineNote("live-${m.seq}", m.userId, m.userName, itemId, m.positionMs ?: fallbackMs, m.kind, m.text, atMs = m.sentAtMs, live = true)
+        TimelineNote(m.noteId ?: "live-${m.seq}", m.userId, m.userName, m.itemId ?: itemId, m.positionMs ?: fallbackMs, m.kind, m.text, atMs = m.sentAtMs, live = true)
 
-    /** The same message seen twice: live from the group, then pinned (same sender and words, within [SAME_MS] of the title). */
+    /**
+     * The same message seen twice: live from the group, then loaded with the notes (the same note,
+     * or from older servers the same sender and words within [SAME_MS] of the title).
+     */
     fun same(a: TimelineNote, b: TimelineNote): Boolean =
-        a.userId == b.userId && a.text == b.text && a.kind == b.kind && abs(a.positionMs - b.positionMs) <= SAME_MS
+        a.id == b.id || a.userId == b.userId && a.text == b.text && a.kind == b.kind && abs(a.positionMs - b.positionMs) <= SAME_MS
 
     const val SAME_MS = 5_000L
 }
@@ -115,7 +126,8 @@ class NoteClock(private val selfId: () -> String?) {
     /** A message from the live group (SyncPlay): shown at once when on, unless already shown pinned. */
     fun live(note: TimelineNote): TimelineNote? {
         if (notes.any { Notes.same(it, note) && it.id in shown }) return null
-        notes = (notes + note).sortedWith(compareBy({ it.positionMs }, { it.atMs }))
+        // The live copy of a note already loaded (not reached yet) takes its place: one entry each.
+        notes = (notes.filterNot { it.id == note.id } + note).sortedWith(compareBy({ it.positionMs }, { it.atMs }))
         if (!on || note.userId == selfId()) return null
         shown += note.id
         return note
@@ -169,8 +181,11 @@ class NoteClock(private val selfId: () -> String?) {
 /**
  * Group chat for one playback: the title's pinned notes (loaded once as it starts, again only
  * every [REFRESH_MS] or when the chat is opened after [REOPEN_MS]), pop-ups as the viewer reaches
- * them, live messages from this device's SyncPlay group at once, and sending (pinned for the
- * viewer's watch groups on the title, and to the live group when there is one).
+ * them, live messages from this device's SyncPlay group at once, and sending. Every message is
+ * written once, as a note (Companion `livenotes`): in a live session with the session, whose
+ * participants get it at once through its chat and keep it; otherwise for the viewer's watch
+ * groups on the title. In a live session, notes someone brought in ("Bring our earlier notes",
+ * [bring]) pop up as they're reached too, for this session only.
  */
 class TimelineChat(
     private val server: MediaServer,
@@ -178,6 +193,10 @@ class TimelineChat(
     private val selfId: () -> String?,
     /** The SyncPlay group chat this device follows, if any (its messages pop up at once). */
     private val live: GroupChat? = null,
+    /** Whether the server writes live messages as notes (`livenotes`); older ones get them twice, live and pinned. */
+    private val liveNotes: () -> Boolean = { true },
+    /** The title turned out to be shared with a watch group (once per playback): the app reloads its groups. */
+    private val onShared: () -> Unit = {},
     private val nowMs: () -> Long,
 ) {
     private val clock = NoteClock(selfId)
@@ -185,6 +204,13 @@ class TimelineChat(
     private var loadedAt = Long.MIN_VALUE / 2
     private var loadJob: Job? = null
     private var liveJob: Job? = null
+    private var broughtJob: Job? = null
+    private var pageNotes: List<TimelineNote> = emptyList()
+    private var brought: List<TimelineNote> = emptyList()
+    private var sharedTold = false
+
+    /** The live session this device is in, if any. */
+    private val sessionId: String? get() = live?.groupId?.value
 
     private val _groups = MutableStateFlow<List<NoteGroup>>(emptyList())
     /** The viewer's watch groups on this title (empty: notes can't be written here). */
@@ -230,11 +256,15 @@ class TimelineChat(
         clock.start(startMs, on)
         _on.value = on
         _showAll.value = false
+        pageNotes = emptyList()
+        brought = emptyList()
+        sharedTold = false
         clock.setNotes(emptyList())
         _groups.value = emptyList()
         publish()
         load()
         liveJob?.cancel()
+        broughtJob?.cancel()
         liveJob = live?.let { chat ->
             scope.launch {
                 chat.incoming.collect { m ->
@@ -244,6 +274,53 @@ class TimelineChat(
                 }
             }
         }
+        // Someone brought (or stopped bringing) earlier notes into the session: ask for them again.
+        broughtJob = live?.let { chat ->
+            scope.launch {
+                var seen: Long? = null
+                chat.brought.collect { n ->
+                    if (seen != null && n != seen) loadBrought()
+                    seen = n
+                }
+            }
+        }
+    }
+
+    private fun showNotes() {
+        clock.setNotes(pageNotes + brought.filter { b -> pageNotes.none { it.id == b.id } })
+        publish()
+    }
+
+    /** The notes brought into this device's live session on this title (none outside one). */
+    private suspend fun fetchBrought(id: String): List<TimelineNote> {
+        val session = sessionId ?: return emptyList()
+        return try {
+            server.broughtNotes(session, id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun loadBrought() {
+        val id = itemId ?: return
+        scope.launch {
+            val notes = fetchBrought(id)
+            if (itemId != id) return@launch
+            brought = notes
+            showNotes()
+        }
+    }
+
+    /**
+     * "Bring our earlier notes" from watch group [groupId] (one the viewer is or was in; null
+     * stops) into this device's live session: everyone there gets them as playback passes them,
+     * for this session only. Fails outside a live session or on servers without `livenotes`.
+     */
+    suspend fun bring(groupId: String?): Result<Unit> {
+        val session = sessionId ?: return Result.failure(IllegalStateException("Not in a watch-together session"))
+        return runCatching { server.bringNotes(session, groupId) }.onSuccess { loadBrought() }
     }
 
     private fun load() {
@@ -258,15 +335,21 @@ class TimelineChat(
             } catch (_: Exception) {
                 null
             } ?: return@launch
+            val broughtNow = fetchBrought(id)
             if (itemId != id) return@launch
             _groups.value = page.groups
+            if (page.groups.isNotEmpty() && !sharedTold) {
+                sharedTold = true
+                onShared()
+            }
             if (!turned) {
                 val on = onFor(keys)
                 clock.initially(on)
                 _on.value = on
             }
-            clock.setNotes(page.notes)
-            publish()
+            pageNotes = page.notes
+            brought = broughtNow
+            showNotes()
         }
     }
 
@@ -303,14 +386,22 @@ class TimelineChat(
     }
 
     /**
-     * Sends a message at [positionMs]: pinned for the viewer's watch groups on the title, and to the
-     * live group when this device is in one. Fails only when neither took it.
+     * Sends a message at [positionMs], written once as a note: in this device's live session with
+     * the session (its participants get it at once), else for the viewer's watch groups on the
+     * title. Older servers without `livenotes` get it twice, as before: to the live group and pinned.
      */
     suspend fun send(text: String, kind: ChatKind, positionMs: Long): Result<TimelineNote> {
         val id = itemId ?: return Result.failure(IllegalStateException("Nothing is playing"))
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Result.failure(ChatRejected("The message is empty.", tooFast = false))
-        val liveSent = live?.takeIf { it.groupId.value != null }?.send(trimmed, kind, positionMs)
+        val session = sessionId
+        if (session != null && liveNotes()) {
+            return runCatching { server.pinNote(id, positionMs, kind, trimmed, sessionId = session) }.onSuccess {
+                clock.own(it)
+                publish()
+            }
+        }
+        val liveSent = live?.takeIf { session != null }?.send(trimmed, kind, positionMs)
         val pinned = if (_groups.value.isEmpty()) null else runCatching { server.pinNote(id, positionMs, kind, trimmed) }
         val note = pinned?.getOrNull()
             ?: liveSent?.getOrNull()?.let { Notes.fromLive(it, id, positionMs) }
@@ -323,6 +414,7 @@ class TimelineChat(
     /** Stops listening to the live group (the player closed). */
     fun close() {
         liveJob?.cancel()
+        broughtJob?.cancel()
         loadJob?.cancel()
         itemId = null
     }

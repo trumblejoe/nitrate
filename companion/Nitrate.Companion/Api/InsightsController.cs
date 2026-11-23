@@ -20,7 +20,15 @@ public record SegmentFeedbackPost(Guid ItemId, SegmentPart Part);
 public record ProblemPost(Guid ItemId, string DeviceId, string DeviceName, string Kind, string? Reason);
 
 /// <summary>A message or reaction to pin at a point in a title.</summary>
-public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Companion.Chat.ChatKind Kind = Nitrate.Companion.Chat.ChatKind.Text);
+/// <param name="ItemId">The film or episode.</param>
+/// <param name="PositionMs">Where in it.</param>
+/// <param name="Text">What was said.</param>
+/// <param name="Kind">Text or a reaction.</param>
+/// <param name="SessionId">The live (SyncPlay) session it's sent in, if any: its participants get it at once and may read it later.</param>
+public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Companion.Chat.ChatKind Kind = Nitrate.Companion.Chat.ChatKind.Text, Guid? SessionId = null);
+
+/// <summary>Which watch group's earlier notes to bring into a live session (null: stop).</summary>
+public record BringPost(Guid? GroupId);
 
 /// <summary>A moment to keep.</summary>
 public record MomentPost(Guid ItemId, long PositionMs, string? Note, Guid? GroupId);
@@ -47,11 +55,13 @@ public class InsightsController : ControllerBase
     private readonly PeopleRecords _records;
     private readonly PartnerHub _partners;
     private readonly TimelineNoteBook _notes;
+    private readonly GroupNotes _groupNotes;
 
     /// <summary>Initializes a new instance of the <see cref="InsightsController"/> class.</summary>
-    public InsightsController(IUserManager users, ILibraryManager library, IMediaSegmentManager segments, IntroStore intros, CreditStore credits, SegmentVotes votes, PeopleRecords records, PartnerHub partners, TimelineNoteBook notes)
+    public InsightsController(IUserManager users, ILibraryManager library, IMediaSegmentManager segments, IntroStore intros, CreditStore credits, SegmentVotes votes, PeopleRecords records, PartnerHub partners, TimelineNoteBook notes, GroupNotes groupNotes)
     {
         _notes = notes;
+        _groupNotes = groupNotes;
         _users = users;
         _library = library;
         _segments = segments;
@@ -178,9 +188,10 @@ public class InsightsController : ControllerBase
     }
 
     /// <summary>
-    /// A title's pinned notes the caller may read (theirs, and those of their watch groups on it
-    /// written while they were in the group, by someone still in it with them), plus older moments
-    /// read as notes, and the caller's groups on the title. The apps load this once as playback
+    /// A title's pinned notes the caller may read (those whose audience they were in: theirs, those
+    /// written to their watch groups while they were in them, and those sent in live sessions they
+    /// were in; older notes by the older rule), plus older moments read as notes, and the caller's
+    /// groups on the title. Never notes merely brought into a session they were in. The apps load this once as playback
     /// starts and show each note only once the viewer reaches its point.
     /// </summary>
     [HttpGet("Notes")]
@@ -192,8 +203,7 @@ public class InsightsController : ControllerBase
             return Forbid();
         }
 
-        var groups = _partners.GroupsHolding(user.Id, itemId);
-        var notes = _notes.VisibleTo(user.Id, itemId, groups);
+        var page = _groupNotes.Page(user.Id, itemId);
         // Older moments, by the rules they were kept under: one's own, and those shared with a group one is in now.
         var mine = _partners.Groups(user.Id);
         var groupIds = mine.Select(g => g.Id).ToHashSet();
@@ -201,12 +211,14 @@ public class InsightsController : ControllerBase
             .Concat(mine.SelectMany(g => g.Others).Select(o => o.Id).Distinct().SelectMany(other => _records.Moments(other)).Where(m => m.GroupId is { } g && groupIds.Contains(g)))
             .Where(m => m.ItemId == itemId)
             .Select(TimelineNoteBook.FromMoment);
-        return new NotesPage(
-            groups.Select(g => new NoteGroupView(g.Id, g.Title)).ToList(),
-            notes.Concat(moments).OrderBy(n => n.PositionMs).ThenBy(n => n.At).ToList());
+        return page with { Notes = page.Notes.Concat(moments).OrderBy(n => n.PositionMs).ThenBy(n => n.At).ToList() };
     }
 
-    /// <summary>Pins a message or reaction at a point in a title for the caller's watch groups on it.</summary>
+    /// <summary>
+    /// Pins a message or reaction at a point in a title, once: for the caller's watch groups on it,
+    /// or with <see cref="NotePost.SessionId"/> for the live session the caller is in (its
+    /// participants get it at once through the session's chat, and keep it).
+    /// </summary>
     [HttpPost("Notes")]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -218,17 +230,14 @@ public class InsightsController : ControllerBase
             return Forbid();
         }
 
-        // Only members of a watch group on this title can write here.
-        var groups = _partners.GroupsHolding(user.Id, post.ItemId);
-        if (groups.Count == 0)
-        {
-            return Forbid();
-        }
-
+        // Only members of a watch group on this title, or someone in the live session, can write here.
         try
         {
-            var note = _notes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, groups);
-            return TimelineNoteBook.View(note, user.Id, groups)!;
+            return _groupNotes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, post.SessionId);
+        }
+        catch (NoteForbiddenException)
+        {
+            return Forbid();
         }
         catch (Nitrate.Companion.Chat.ChatRejectedException e)
         {
@@ -254,7 +263,53 @@ public class InsightsController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>The kept chat of a title's viewings the caller was part of (oldest first).</summary>
+    /// <summary>
+    /// "Bring our earlier notes" into a live session the caller is in: while it lasts, everyone in it
+    /// gets the caller's readable notes that went to that watch group as playback passes them (never
+    /// kept for them). <see cref="BringPost.GroupId"/> null stops it.
+    /// </summary>
+    [HttpPut("Notes/Brought/{sessionId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult Bring([FromRoute] Guid sessionId, [FromBody] BringPost post)
+    {
+        if (!ChatEnabled || Me() is not { } user)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            _groupNotes.Bring(user.Id, sessionId, post.GroupId);
+            return NoContent();
+        }
+        catch (NoteForbiddenException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>The notes brought into a live session the caller is in, on one title (403 once they're no longer in it).</summary>
+    [HttpGet("Notes/Brought/{sessionId}")]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<BroughtNotes> Brought([FromRoute] Guid sessionId, [FromQuery] Guid itemId)
+    {
+        if (!ChatEnabled || Me() is not { } user)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            return _groupNotes.Brought(user.Id, sessionId, itemId);
+        }
+        catch (NoteForbiddenException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>The kept chat of a title's viewings the caller was part of (oldest first; no longer written: live messages are notes now).</summary>
     [HttpGet("Chat/History")]
     public ActionResult<IReadOnlyList<ChatRecord>> ChatHistory([FromQuery] Guid itemId) =>
         Me() is { } user ? Ok(_records.Chat(itemId, user.Id)) : Unauthorized();

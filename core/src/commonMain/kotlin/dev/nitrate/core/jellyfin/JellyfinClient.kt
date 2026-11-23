@@ -78,12 +78,14 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
 import io.ktor.http.appendPathSegments
 import io.ktor.http.contentType
@@ -887,7 +889,7 @@ class JellyfinClient(
     private fun NoteDto.toNote() = dev.nitrate.core.companion.TimelineNote(
         normalizeId(id), normalizeId(userId), userName, normalizeId(itemId), positionMs,
         if (kind == "Reaction") dev.nitrate.core.companion.ChatKind.REACTION else dev.nitrate.core.companion.ChatKind.TEXT,
-        text, groupIds.map(::normalizeId), at, moment,
+        text, groupIds.map(::normalizeId), at, moment, brought = brought,
     )
 
     override suspend fun titleNotes(itemId: String): dev.nitrate.core.companion.TitleNotes? = when {
@@ -902,8 +904,28 @@ class JellyfinClient(
         else -> null
     }
 
-    override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String): dev.nitrate.core.companion.TimelineNote =
-        companionApi.pinNote(NotePostDto(dashless(listOf(itemId)), positionMs, text, if (kind == dev.nitrate.core.companion.ChatKind.REACTION) "Reaction" else "Text")).toNote()
+    override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?): dev.nitrate.core.companion.TimelineNote =
+        companionApi.pinNote(NotePostDto(dashless(listOf(itemId)), positionMs, text, if (kind == dev.nitrate.core.companion.ChatKind.REACTION) "Reaction" else "Text", sessionId)).toNote()
+
+    override suspend fun bringNotes(sessionId: String, groupId: String?) {
+        if (!companionHas("livenotes")) throw UnsupportedOperationException("Not supported by this server")
+        try {
+            http.put(url("Nitrate", "Notes", "Brought", sessionId)) {
+                auth()
+                contentType(ContentType.Application.Json)
+                setBody(BringPostDto(groupId?.let { dashless(listOf(it)) }))
+            }
+        } catch (e: io.ktor.client.plugins.ClientRequestException) {
+            if (e.response.status == HttpStatusCode.Forbidden || e.response.status == HttpStatusCode.NotFound) throw dev.nitrate.core.companion.ChatForbidden()
+            throw e
+        }
+    }
+
+    override suspend fun broughtNotes(sessionId: String, itemId: String): List<dev.nitrate.core.companion.TimelineNote> =
+        if (!companionHas("livenotes")) emptyList()
+        else runCatching {
+            get("Nitrate", "Notes", "Brought", sessionId, query = mapOf("itemId" to dashless(listOf(itemId)))).decode<BroughtNotesDto>().notes.map { it.toNote() }
+        }.getOrDefault(emptyList())
 
     override suspend fun deleteNote(itemId: String, id: String) {
         http.delete(url("Nitrate", "Notes", dashless(listOf(id)))) {

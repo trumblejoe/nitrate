@@ -41,12 +41,37 @@ public class TimelineNoteTests
     }
 
     [Fact]
-    public void LeavingTheGroupEndsSeeingItsNotes()
+    public void AFormerMemberKeepsWhatTheyWereThereForAndMissesWhatCameAfter()
     {
         using var db = new CompanionDb(":memory:");
         var book = new TimelineNoteBook(db, _time);
-        book.Pin(Sam, "sam", Episode, 60_000, ChatKind.Reaction, "😂", new[] { Group(Pair, Sam, Kim) });
-        // Kim left: her groups on the title no longer hold that one.
+        var before = book.Pin(Sam, "sam", Episode, 60_000, ChatKind.Reaction, "😂", new[] { Group(Pair, Sam, Kim) });
+        Assert.Equal(new[] { Sam, Kim }, before.Audience);
+        // Kim left: she keeps the note from her time in the group, though she shares no group with Sam now.
+        Assert.Single(book.VisibleTo(Kim, Episode, Array.Empty<GroupMembers>()));
+        // Written after she left (Lee took her place): never hers.
+        _time.Advance(TimeSpan.FromMinutes(1));
+        book.Pin(Sam, "sam", Episode, 90_000, ChatKind.Text, "later", new[] { Group(Pair, Sam, Lee) });
+        Assert.Equal(new[] { 60_000L }, book.VisibleTo(Kim, Episode, Array.Empty<GroupMembers>()).Select(n => n.PositionMs));
+        // Lee joined later: only what was written once he was there.
+        Assert.Equal(new[] { 90_000L }, book.VisibleTo(Lee, Episode, new[] { Group(Pair, Sam, Lee) }).Select(n => n.PositionMs));
+        // Sam leaving changes nothing for the others either.
+        Assert.Single(book.VisibleTo(Lee, Episode, Array.Empty<GroupMembers>()));
+    }
+
+    [Fact]
+    public void NotesKeptBeforeAudiencesKeepTheOlderRule()
+    {
+        using var db = new CompanionDb(":memory:");
+        var book = new TimelineNoteBook(db, _time);
+        // As kept before audiences: no Audience field.
+        var old = new TimelineNote(Guid.NewGuid(), Sam, "sam", Episode, 60_000, "Reaction", "😂", new[] { new NoteShare(Pair, new[] { Sam, Kim }) }, 1);
+        var json = System.Text.Json.JsonSerializer.Serialize(old).Replace(",\"Audience\":null", string.Empty, StringComparison.Ordinal).Replace(",\"SessionId\":null", string.Empty, StringComparison.Ordinal);
+        Assert.DoesNotContain("Audience", json, StringComparison.Ordinal);
+        db.PutRecord(TimelineNoteBook.Kind, Episode.ToString("N"), old.Id.ToString("N"), json, 1);
+        Assert.Null(Assert.Single(book.All(Episode)).Audience);
+        Assert.Single(book.VisibleTo(Kim, Episode, new[] { Group(Pair, Sam, Kim) }));
+        // Kim left: by the older rule she no longer sees it.
         Assert.Empty(book.VisibleTo(Kim, Episode, Array.Empty<GroupMembers>()));
         // Sam left (Kim's group goes on without him): his notes are no longer shown to her.
         Assert.Empty(book.VisibleTo(Kim, Episode, new[] { Group(Pair, Kim, Lee) }));

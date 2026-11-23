@@ -91,12 +91,18 @@ fun PlayOnDialog(actions: AppActions, item: MediaItem, startMs: Long, onDismiss:
                                 sending = d.id
                                 failed = null
                                 scope.launch {
+                                    // The guards first, asked here: nothing is sent unless they allow it.
+                                    val send = actions.checkBeforeSending(item)
+                                    if (send == null) {
+                                        sending = null
+                                        return@launch
+                                    }
                                     runCatching {
-                                        val tracks = runCatching { actions.container.trackSetup(item) }.getOrNull()
+                                        val tracks = runCatching { actions.container.trackSetup(send) }.getOrNull()
                                         actions.server.playOn(
-                                            d.id, listOf(item.id), startMs,
+                                            d.id, listOf(send.id), if (send.id == item.id) startMs else send.user.positionMs,
                                             audioIndex = tracks?.audioIndex, subtitleIndex = tracks?.subtitleIndex,
-                                            mediaSourceId = dev.nitrate.android.playback.VersionChoices[item.id],
+                                            mediaSourceId = dev.nitrate.android.playback.VersionChoices[send.id],
                                         )
                                     }.onSuccess {
                                         follow(d.id)

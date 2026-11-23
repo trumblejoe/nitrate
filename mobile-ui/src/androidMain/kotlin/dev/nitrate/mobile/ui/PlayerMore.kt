@@ -229,13 +229,18 @@ private fun PlayOn(actions: AppActions, session: PlaybackSession, onPlayed: () -
         else -> Column {
             list.forEach { t ->
                 MenuRow(t.deviceName ?: t.client ?: "Device", listOfNotNull(t.userName, t.client).joinToString(" · ")) {
-                    val id = item?.id ?: return@MenuRow
+                    val current = item ?: return@MenuRow
                     val at = session.player.currentPosition
                     // Carries on there with the same audio, subtitles and version as here.
                     val plan = session.plan.value
                     scope.launch {
-                        runCatching { actions.server.playOn(t.id, listOf(id), at, plan?.audioIndex, plan?.subtitleIndex, plan?.mediaSourceId) }
-                            .onSuccess { onPlayed(); actions.nav.navigate(RemoteRoute(t.id)) }
+                        // The guards first, asked here: nothing is sent unless they allow it.
+                        val send = actions.checkBeforeSending(current) ?: return@launch
+                        val same = send.id == current.id
+                        runCatching {
+                            if (same) actions.server.playOn(t.id, listOf(send.id), at, plan?.audioIndex, plan?.subtitleIndex, plan?.mediaSourceId)
+                            else actions.server.playOn(t.id, listOf(send.id), send.user.positionMs, null, null, null)
+                        }.onSuccess { onPlayed(); actions.nav.navigate(RemoteRoute(t.id)) }
                     }
                 }
             }

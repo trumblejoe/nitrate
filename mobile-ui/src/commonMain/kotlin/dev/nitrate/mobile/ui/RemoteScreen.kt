@@ -81,7 +81,7 @@ const val CAST_REMOTE = "cast"
 fun RemoteScreen(actions: AppActions, sessionId: String, target: RemoteTarget? = null) {
     val cast = dev.nitrate.mobile.platform.rememberCast()
     val remote = target ?: remember(sessionId, cast) {
-        if (sessionId == CAST_REMOTE) cast?.let { CastTarget(actions.container, it) } else SessionTarget(actions.container, sessionId)
+        if (sessionId == CAST_REMOTE) cast?.let { CastTarget(actions.container, it) } else SessionTarget(actions.container, sessionId, actions::checkBeforeSending)
     }
     if (remote == null) {
         Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Not casting") }

@@ -34,6 +34,10 @@ class GroupChat(
     /** New messages from other people, as they arrive (not the backlog on joining). */
     val incoming: SharedFlow<ChatMessage> = _incoming
 
+    private val _brought = MutableStateFlow(0L)
+    /** Counts up when someone brings earlier notes into the session (the server's [ChatPage.brought]). */
+    val brought: StateFlow<Long> = _brought
+
     private val _status = MutableStateFlow(Status.OFF)
     val status: StateFlow<Status> = _status
 
@@ -47,6 +51,7 @@ class GroupChat(
         job?.cancel()
         _groupId.value = groupId
         _messages.value = emptyList()
+        _brought.value = 0
         if (groupId == null) {
             _status.value = Status.OFF
             return
@@ -63,6 +68,7 @@ class GroupChat(
                 val page = server.chatMessages(groupId, after, if (after < 0) 0 else WAIT_MS)
                 val joining = after < 0
                 after = page.latest
+                _brought.value = page.brought
                 failures = 0
                 _status.value = Status.LIVE
                 if (page.messages.isNotEmpty()) add(page.messages, announce = !joining)

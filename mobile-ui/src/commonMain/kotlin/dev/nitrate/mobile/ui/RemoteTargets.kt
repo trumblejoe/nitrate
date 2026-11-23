@@ -48,8 +48,15 @@ interface RemoteTarget {
     suspend fun answer(prompt: RemotePrompt, choiceId: String) = Unit
 }
 
-/** Another of the user's devices, steered through the server. */
-class SessionTarget(private val container: AppContainer, private val sessionId: String) : RemoteTarget {
+/**
+ * Another of the user's devices, steered through the server. [beforeSending] runs the guards on
+ * this phone before anything is sent to play there (what to send, or null for nothing).
+ */
+class SessionTarget(
+    private val container: AppContainer,
+    private val sessionId: String,
+    private val beforeSending: suspend (MediaItem) -> MediaItem? = { it },
+) : RemoteTarget {
     private val server get() = container.server
     override val pollMs = 1_500L
 
@@ -78,8 +85,9 @@ class SessionTarget(private val container: AppContainer, private val sessionId: 
     override suspend fun answer(prompt: RemotePrompt, choiceId: String) = container.remote.answer(sessionId, prompt, choiceId)
 
     override suspend fun play(item: MediaItem, startMs: Long) {
-        val tracks = runCatching { container.trackSetup(item) }.getOrNull()
-        server.playOn(sessionId, listOf(item.id), startMs, audioIndex = tracks?.audioIndex, subtitleIndex = tracks?.subtitleIndex, mediaSourceId = null)
+        val send = beforeSending(item) ?: return
+        val tracks = runCatching { container.trackSetup(send) }.getOrNull()
+        server.playOn(sessionId, listOf(send.id), if (send.id == item.id) startMs else send.user.positionMs, audioIndex = tracks?.audioIndex, subtitleIndex = tracks?.subtitleIndex, mediaSourceId = null)
     }
 }
 

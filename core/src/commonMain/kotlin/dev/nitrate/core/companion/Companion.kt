@@ -25,10 +25,17 @@ data class ChatMessage(
     /** Where the sender was in what's playing, if anything. */
     val positionMs: Long?,
     val sentAtMs: Long,
+    /** The note it is kept as (Companion `livenotes`: a message in a live session is one note, delivered at once). */
+    val noteId: String? = null,
+    /** The film or episode that note is pinned to. */
+    val itemId: String? = null,
 )
 
-/** Messages after a point, and the chat's newest number (ask for messages after it next). */
-data class ChatPage(val messages: List<ChatMessage>, val latest: Long)
+/**
+ * Messages after a point, and the chat's newest number (ask for messages after it next).
+ * [brought] counts up whenever someone brings earlier notes into the session (ask for them again).
+ */
+data class ChatPage(val messages: List<ChatMessage>, val latest: Long, val brought: Long = 0)
 
 /** The server turned a message down: [message] says why, for the sender. */
 class ChatRejected(message: String, val tooFast: Boolean) : Exception(message)

@@ -117,7 +117,7 @@ class TimelineChatTest {
         var now = 0L
         val server = object : MediaServer by unused {
             override suspend fun titleNotes(itemId: String): TitleNotes { loads++; return TitleNotes(listOf(NoteGroup("g1", "The Bear")), notes) }
-            override suspend fun pinNote(itemId: String, positionMs: Long, kind: ChatKind, text: String): TimelineNote {
+            override suspend fun pinNote(itemId: String, positionMs: Long, kind: ChatKind, text: String, sessionId: String?): TimelineNote {
                 pinned += positionMs
                 return TimelineNote("new", "me", "me", itemId, positionMs, kind, text, listOf("g1"))
             }
@@ -149,5 +149,100 @@ class TimelineChatTest {
         assertTrue(chat.send("🔥", ChatKind.REACTION, 71_000).isSuccess)
         assertEquals(listOf(71_000L), pinned)
         assertTrue(chat.history.value.any { it.id == "new" })
+    }
+
+    /** A server with a live session "sess": its chat hands out [pages] one per long poll. */
+    private class LiveServer(val unused: MediaServer, val groups: List<NoteGroup> = listOf(NoteGroup("g1", "The Bear"))) : MediaServer by unused {
+        val pages = kotlinx.coroutines.channels.Channel<ChatPage>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        var stored = listOf<TimelineNote>()
+        var brought = listOf<TimelineNote>()
+        val pins = mutableListOf<String?>()
+        var liveSends = 0
+        var loads = 0
+        val brings = mutableListOf<String?>()
+        override suspend fun titleNotes(itemId: String): TitleNotes { loads++; return TitleNotes(groups, stored) }
+        override suspend fun pinNote(itemId: String, positionMs: Long, kind: ChatKind, text: String, sessionId: String?): TimelineNote {
+            pins += sessionId
+            return TimelineNote("n${pins.size}", "me", "me", itemId, positionMs, kind, text).also { stored = stored + it }
+        }
+        override suspend fun sendChat(groupId: String, kind: ChatKind, text: String, positionMs: Long?): ChatMessage { liveSends++; error("written twice") }
+        override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int): ChatPage =
+            if (after < 0) ChatPage(emptyList(), 0) else pages.receive()
+        override suspend fun broughtNotes(sessionId: String, itemId: String) = if (sessionId == "sess") brought else emptyList()
+        override suspend fun bringNotes(sessionId: String, groupId: String?) { brings += groupId }
+    }
+
+    @Test fun inALiveSessionAMessageIsWrittenOnceAsANoteAndArrivesLiveAsThatNote() = runTest(UnconfinedTestDispatcher()) {
+        val server = LiveServer(unused)
+        val live = GroupChat(server, backgroundScope) { "me" }
+        live.follow("sess")
+        var shared = 0
+        var now = 0L
+        val chat = TimelineChat(server, backgroundScope, { "me" }, live, onShared = { shared++ }) { now }
+        val popped = mutableListOf<TimelineNote>()
+        backgroundScope.launch { chat.popups.toList(popped) }
+        chat.start("ep1", 0) { true }
+        advanceUntilIdle()
+        // The title is shared with a group: told once.
+        assertEquals(1, shared)
+
+        assertTrue(chat.send("what a twist", ChatKind.TEXT, 30_000).isSuccess)
+        // One write, with the session: never also to the live chat.
+        assertEquals(listOf<String?>("sess"), server.pins)
+        assertEquals(0, server.liveSends)
+
+        // Kim's message comes live as her note: it pops up at once...
+        server.pages.send(ChatPage(listOf(ChatMessage(1, "kim", "Kim", ChatKind.REACTION, "😂", 31_000, 0, noteId = "k1", itemId = "ep1")), 1))
+        advanceUntilIdle()
+        assertEquals(listOf("k1"), popped.map { it.id })
+        // ...and the same note loaded later is that one, not a second (no second pop-up as playback passes it).
+        server.stored = server.stored + TimelineNote("k1", "kim", "Kim", "ep1", 31_000, ChatKind.REACTION, "😂")
+        now = TimelineChat.REOPEN_MS
+        chat.opened()
+        advanceUntilIdle()
+        assertEquals(2, server.loads)
+        (0..40L).forEach { chat.at(it * 1_000) }
+        assertEquals(listOf("k1"), popped.map { it.id })
+        assertEquals(1, chat.history.value.count { it.id == "k1" })
+        assertEquals(1, chat.history.value.count { it.text == "what a twist" })
+        // Told once per playback, however often the notes load.
+        assertEquals(1, shared)
+    }
+
+    @Test fun broughtNotesPopUpInTheSessionOnly() = runTest(UnconfinedTestDispatcher()) {
+        val server = LiveServer(unused, groups = emptyList())
+        server.brought = listOf(TimelineNote("b1", "sam", "Sam", "ep1", 20_000, ChatKind.TEXT, "the kitchen!", brought = true))
+        val live = GroupChat(server, backgroundScope) { "me" }
+        live.follow("sess")
+        var shared = 0
+        val chat = TimelineChat(server, backgroundScope, { "me" }, live, onShared = { shared++ }) { 0 }
+        val popped = mutableListOf<TimelineNote>()
+        backgroundScope.launch { chat.popups.toList(popped) }
+        chat.start("ep1", 0) { true }
+        advanceUntilIdle()
+        // Not shared with any of the viewer's groups: nothing to reload.
+        assertEquals(0, shared)
+        // Nothing ahead of the viewer: it pops up as playback passes it.
+        assertEquals(emptyList<String>(), popped.map { it.id })
+        (0..25L).forEach { chat.at(it * 1_000) }
+        assertEquals(listOf("b1"), popped.map { it.id })
+
+        // Someone brings another group's notes mid-play: the session's chat says so and they're asked for again.
+        server.brought = server.brought + TimelineNote("b2", "kim", "Kim", "ep1", 40_000, ChatKind.TEXT, "told you", brought = true)
+        server.pages.send(ChatPage(emptyList(), 0, brought = 1))
+        advanceUntilIdle()
+        (26..45L).forEach { chat.at(it * 1_000) }
+        assertEquals(listOf("b1", "b2"), popped.map { it.id })
+        assertTrue(chat.bring("g1").isSuccess)
+        assertEquals(listOf<String?>("g1"), server.brings)
+
+        // Outside a live session there's nothing brought (and nothing to bring into).
+        val alone = TimelineChat(server, backgroundScope, { "me" }, null) { 0 }
+        alone.start("ep1", 0) { true }
+        advanceUntilIdle()
+        assertEquals(emptyList<TimelineNote>(), alone.history.value)
+        (0..45L).forEach { alone.at(it * 1_000) }
+        assertEquals(emptyList<TimelineNote>(), alone.history.value.filter { it.brought })
+        assertTrue(alone.bring("g1").isFailure)
     }
 }

@@ -1,7 +1,5 @@
 using System.Net.Mime;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Session;
-using MediaBrowser.Controller.SyncPlay;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -32,20 +30,14 @@ public class CompanionController : ControllerBase
 
     private const string UserIdClaim = "Jellyfin-UserId";
 
-    private readonly ChatHub _chat;
-    private readonly Nitrate.Companion.Insights.PeopleRecords _records;
-    private readonly ISyncPlayManager _syncPlay;
-    private readonly ISessionManager _sessions;
+    private readonly Nitrate.Companion.Insights.GroupNotes _notes;
     private readonly IUserManager _users;
 
     /// <summary>Initializes a new instance of the <see cref="CompanionController"/> class.</summary>
-    public CompanionController(ChatHub chat, ISyncPlayManager syncPlay, ISessionManager sessions, IUserManager users, Nitrate.Companion.QueryTimes.QueryTimeStore queryTimes, Nitrate.Companion.Insights.PeopleRecords records)
+    public CompanionController(Nitrate.Companion.Insights.GroupNotes notes, IUserManager users, Nitrate.Companion.QueryTimes.QueryTimeStore queryTimes)
     {
-        _records = records;
         _queryTimes = queryTimes;
-        _chat = chat;
-        _syncPlay = syncPlay;
-        _sessions = sessions;
+        _notes = notes;
         _users = users;
     }
 
@@ -85,6 +77,8 @@ public class CompanionController : ControllerBase
         if (ChatEnabled)
         {
             features.Add("notes");
+            // One note per message, live sessions included (POST /Nitrate/Notes with a SessionId), and "Bring our earlier notes".
+            features.Add("livenotes");
         }
 
         if (ChatEnabled && (Plugin.Instance?.Configuration.KeepChatHistory ?? true))
@@ -127,14 +121,15 @@ public class CompanionController : ControllerBase
 
     /// <summary>
     /// Messages in a watch-together group's chat after <paramref name="after"/> (-1: the recent
-    /// ones). With none yet, waits up to <paramref name="waitMs"/> for one.
+    /// ones), only those the caller was there for. With none yet, waits up to
+    /// <paramref name="waitMs"/> for one. A message carrying a <c>NoteId</c> is that note, kept.
     /// </summary>
     [HttpGet("Chat/{groupId}/Messages")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<ChatPage>> Messages([FromRoute] Guid groupId, [FromQuery] long after = -1, [FromQuery] int waitMs = 0)
     {
-        if (!ChatEnabled || Caller() is not { } user || !InGroup(user.Id, user.Name, groupId))
+        if (!ChatEnabled || Caller() is not { } user)
         {
             return Forbid();
         }
@@ -142,7 +137,11 @@ public class CompanionController : ControllerBase
         var wait = TimeSpan.FromMilliseconds(Math.Clamp(waitMs, 0, MaxWaitMs));
         try
         {
-            return await _chat.WaitAsync(Room(groupId), after, wait, HttpContext.RequestAborted).ConfigureAwait(false);
+            return await _notes.Live(user.Id, groupId, after, wait, HttpContext.RequestAborted).ConfigureAwait(false);
+        }
+        catch (Nitrate.Companion.Insights.NoteForbiddenException)
+        {
+            return Forbid();
         }
         catch (OperationCanceledException)
         {
@@ -150,7 +149,11 @@ public class CompanionController : ControllerBase
         }
     }
 
-    /// <summary>Sends a message to a watch-together group's chat.</summary>
+    /// <summary>
+    /// Sends a message to a watch-together group's chat (the older way: the apps now pin it with
+    /// <c>POST /Nitrate/Notes</c> and the session). It is one note on what the group is playing,
+    /// for the people there (and the watch groups it's for), delivered to them at once.
+    /// </summary>
     [HttpPost("Chat/{groupId}/Messages")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -158,57 +161,24 @@ public class CompanionController : ControllerBase
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public ActionResult<ChatMessage> Send([FromRoute] Guid groupId, [FromBody] ChatPost post)
     {
-        if (!ChatEnabled || Caller() is not { } user || !InGroup(user.Id, user.Name, groupId))
+        if (!ChatEnabled || Caller() is not { } user)
         {
             return Forbid();
         }
 
         try
         {
-            var message = _chat.Post(Room(groupId), user.Id, user.Name, post.Kind, post.Text, post.PositionMs);
-            Keep(groupId, user.Id, message);
-            return message;
+            return _notes.SendLive(user.Id, user.Name, groupId, post.Kind, post.Text, post.PositionMs);
+        }
+        catch (Nitrate.Companion.Insights.NoteForbiddenException)
+        {
+            return Forbid();
         }
         catch (ChatRejectedException e)
         {
             return Problem(e.Message, statusCode: e.TooFast ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
         }
     }
-
-    /// <summary>
-    /// Keeps the message under the title being watched, readable later only by the people in the
-    /// group right now (the plugin's "Keep watch-together chat" switch, on by default).
-    /// </summary>
-    private void Keep(Guid groupId, Guid userId, ChatMessage message)
-    {
-        if (!(Plugin.Instance?.Configuration.KeepChatHistory ?? true))
-        {
-            return;
-        }
-
-        var session = _sessions.Sessions.FirstOrDefault(s => s.UserId.Equals(userId) && s.NowPlayingItem != null)
-            ?? _sessions.Sessions.FirstOrDefault(s => s.UserId.Equals(userId));
-        var group = session is null ? null : _syncPlay.GetGroup(session, groupId);
-        var itemId = _sessions.Sessions.Where(s => s.NowPlayingItem != null && group?.Participants?.Contains(s.UserName, StringComparer.OrdinalIgnoreCase) == true)
-            .Select(s => (Guid?)s.NowPlayingItem.Id).FirstOrDefault();
-        if (itemId is not { } item || group?.Participants is not { Count: > 0 } names)
-        {
-            return;
-        }
-
-        var members = _users.GetUsers().Where(u => names.Contains(u.Username, StringComparer.OrdinalIgnoreCase)).Select(u => u.Id).ToList();
-        if (!members.Contains(userId))
-        {
-            members.Add(userId);
-        }
-
-        _records.AddChat(
-            item,
-            message.SentAt.ToUnixTimeMilliseconds() + "|" + groupId.ToString("N") + "|" + message.Seq,
-            new Nitrate.Companion.Insights.ChatRecord(userId, message.UserName, message.Kind.ToString(), message.Text, message.PositionMs, message.SentAt.ToUnixTimeMilliseconds(), members));
-    }
-
-    private static string Room(Guid groupId) => "syncplay:" + groupId.ToString("N");
 
     private (Guid Id, string Name)? Caller()
     {
@@ -220,21 +190,5 @@ public class CompanionController : ControllerBase
 
         var user = _users.GetUserById(id);
         return user is null ? null : (id, user.Username);
-    }
-
-    /// <summary>
-    /// True when the user is watching in the group on any of their devices, so a phone can chat
-    /// for the TV it belongs with without playing along itself.
-    /// </summary>
-    private bool InGroup(Guid userId, string userName, Guid groupId)
-    {
-        var session = _sessions.Sessions.FirstOrDefault(s => s.UserId.Equals(userId));
-        if (session is null)
-        {
-            return false;
-        }
-
-        var group = _syncPlay.GetGroup(session, groupId);
-        return group?.Participants?.Contains(userName, StringComparer.OrdinalIgnoreCase) == true;
     }
 }

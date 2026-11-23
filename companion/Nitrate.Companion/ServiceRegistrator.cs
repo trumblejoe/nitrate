@@ -58,6 +58,21 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             new JellyfinPartnerDirectory(sp.GetRequiredService<IUserManager>()),
             new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>()),
             sp.GetRequiredService<TimeProvider>()));
+        // Group chat pinned to the timeline: one note per message, live sessions getting each at once.
+        serviceCollection.AddSingleton<Nitrate.Companion.Insights.ILiveSessions>(sp => new JellyfinLiveSessions(
+            sp.GetRequiredService<MediaBrowser.Controller.SyncPlay.ISyncPlayManager>(), sp.GetRequiredService<ISessionManager>(), sp.GetRequiredService<IUserManager>()));
+        serviceCollection.AddSingleton(sp =>
+        {
+            var partners = sp.GetRequiredService<PartnerHub>();
+            return new Nitrate.Companion.Insights.GroupNotes(
+                sp.GetRequiredService<Nitrate.Companion.Insights.TimelineNoteBook>(),
+                sp.GetRequiredService<ChatHub>(),
+                sp.GetRequiredService<Nitrate.Companion.Insights.ILiveSessions>(),
+                partners.GroupsHolding,
+                partners.IsPrivate,
+                () => Plugin.Instance?.Configuration.KeepChatHistory ?? true,
+                sp.GetRequiredService<TimeProvider>());
+        });
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Devices.DeviceHub(
             new Nitrate.Companion.Storage.DbDeviceReportStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "devices.json")),
             sp.GetRequiredService<TimeProvider>()));

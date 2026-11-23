@@ -120,9 +120,20 @@ class AppActions(
     val play: (MediaItem, Boolean) -> Unit,
     /** Home's "Watching together" row: its cards' own taps and long presses (null elsewhere). */
     val cards: TogetherCards? = null,
+    /**
+     * Before telling another device to play an item ("Play on…", the remote): the plugins' guards,
+     * asked here on the phone; what to send, or null to send nothing.
+     */
+    private val beforeSending: suspend (MediaItem) -> MediaItem? = { it },
 ) {
     /** The same, with a row's own handling of its cards. */
-    fun withCards(cards: TogetherCards) = AppActions(container, nav, scope, playAt, play, cards)
+    fun withCards(cards: TogetherCards) = AppActions(container, nav, scope, playAt, play, cards, beforeSending)
+
+    /**
+     * Runs the guards (`PluginRegistry.checkBeforePlay`) on this phone before [item] is sent to
+     * another device to play, showing any question here: what to send, or null when nothing should go.
+     */
+    suspend fun checkBeforeSending(item: MediaItem): MediaItem? = beforeSending(item)
 
     /** Plays [item] from [startMs] (falls back to resuming). */
     fun playFrom(item: MediaItem, startMs: Long) = playAt?.invoke(item, startMs) ?: play(item, false)
@@ -277,8 +288,19 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 }
         }
 
+        // Telling another device to play (Play on…, the remote): the same guards, asked on the phone first.
+        suspend fun checkedForSending(item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.model.MediaItem? =
+            container.plugins.checkBeforeSending(item, { ask ->
+                val answer = CompletableDeferred<GuardAction>()
+                pending = ask to answer
+                answer.await().also { pending = null }
+            }) { container.server.setPlayed(it, true) }
+
         val actions = remember(nav) {
-            AppActions(container, nav, appScope, playAt = { item, ms -> guarded(item, false, ms) }, play = { item, fromStart -> guarded(item, fromStart, null) })
+            AppActions(
+                container, nav, appScope, playAt = { item, ms -> guarded(item, false, ms) }, play = { item, fromStart -> guarded(item, fromStart, null) },
+                beforeSending = { checkedForSending(it) },
+            )
         }
 
         // The user is known only after sign-in, so their display choices (accent, true black) apply here.

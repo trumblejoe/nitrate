@@ -196,10 +196,16 @@ class AppContainer(
     /**
      * Group chat for one playback (Companion `notes`, or live in this device's SyncPlay group): the
      * title's notes pinned along it, popping up as they're reached. The player calls `start` and
-     * `at`, and `close` when it goes.
+     * `at`, and `close` when it goes. When the title turns out to be shared with a watch group (its
+     * notes, loaded anyway, list the groups), the groups are reloaded once for this playback, so new
+     * members and renamed accounts are known; unshared titles cost nothing more.
      */
     fun timelineChat(scope: kotlinx.coroutines.CoroutineScope, live: Boolean): dev.nitrate.core.companion.TimelineChat =
-        dev.nitrate.core.companion.TimelineChat(server, scope, { server.userId }, chat.takeIf { live }) { nowMs() }
+        dev.nitrate.core.companion.TimelineChat(
+            server, scope, { server.userId }, chat.takeIf { live },
+            liveNotes = { companionState.value?.features?.contains("livenotes") != false },
+            onShared = { networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch partners")) { refreshPartners() } },
+        ) { nowMs() }
 
     /** Group chat on or off for a title's watch groups: remembered per group, a display preference (per user). */
     suspend fun setGroupChat(groupIds: List<String>, on: Boolean) {

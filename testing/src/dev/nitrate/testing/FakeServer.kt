@@ -457,7 +457,7 @@ class FakeServer : MediaServer {
             notes.filter { it.itemId == itemId }.sortedBy { it.positionMs },
         )
 
-    override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String) =
+    override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?) =
         dev.nitrate.core.companion.TimelineNote("n${notes.size + 1}", "user-1", "nitrate", itemId, positionMs, kind, text, listOf("g1", "g2"), notes.size + 1L).also { notes += it }
 
     override suspend fun deleteNote(itemId: String, id: String) { notes.removeAll { it.id == id && it.userId == userId } }

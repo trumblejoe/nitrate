@@ -45,10 +45,12 @@ internal data class ChatMessageDto(
     val text: String = "",
     val positionMs: Long? = null,
     val sentAt: String? = null,
+    val noteId: String? = null,
+    val itemId: String? = null,
 )
 
 @Serializable
-internal data class ChatPageDto(val messages: List<ChatMessageDto> = emptyList(), val latest: Long = 0)
+internal data class ChatPageDto(val messages: List<ChatMessageDto> = emptyList(), val latest: Long = 0, val brought: Long = 0)
 
 @Serializable
 internal data class ChatPostDto(val text: String, val kind: String, val positionMs: Long?)
@@ -248,7 +250,7 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
             throw e
         }
         val dto: ChatPageDto = JellyfinJson.decodeFromString(response.bodyAsText())
-        return ChatPage(dto.messages.map { it.toModel() }, dto.latest)
+        return ChatPage(dto.messages.map { it.toModel() }, dto.latest, dto.brought)
     }
 
     suspend fun send(groupId: String, kind: ChatKind, text: String, positionMs: Long?): ChatMessage {
@@ -425,6 +427,8 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
         text = text,
         positionMs = positionMs,
         sentAtMs = sentAt?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() } ?: 0L,
+        noteId = noteId?.let(::normalizeId),
+        itemId = itemId?.let(::normalizeId),
     )
 }
 
