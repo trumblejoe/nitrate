@@ -89,6 +89,50 @@ enum class Occasion(val label: String, val detail: String, val onByDefault: Bool
     HALLOWEEN("Halloween", "25–31 October: bats, pumpkins and fog"),
     CHRISTMAS("Christmas", "18–26 December: snow, lights and a sleigh"),
     WINTER("Winter snow", "December to February: falling snow"),
+    ;
+
+    /** When it usually falls ("18–26 December"), from [detail]. */
+    val usual: String get() = detail.substringBefore(": ")
+
+    /** What it shows ("snow, lights and a sleigh"), from [detail]. */
+    val look: String get() = detail.substringAfter(": ")
+}
+
+/** A day of the year, without the year: for dates that come round every year. */
+@Serializable
+data class MonthDay(val month: Int, val day: Int) {
+    /** This day in [year] (29 February is the 28th in other years). */
+    fun inYear(year: Int): Day = Day(year, month, day.coerceAtMost(Day.monthLength(year, month)))
+
+    /** The day [days] on (or back), going round the year. */
+    fun plus(days: Int): MonthDay = Day(2001, month, day.coerceAtMost(Day.monthLength(2001, month))).plus(days).let { MonthDay(it.month, it.day) }
+
+    /** The same day [months] on (or back), kept within the month. */
+    fun plusMonths(months: Int): MonthDay {
+        val m = ((month - 1 + months) % 12 + 12) % 12 + 1
+        return MonthDay(m, day.coerceAtMost(Day.monthLength(2001, m)))
+    }
+}
+
+/**
+ * The user's dates for an occasion (per display profile, with the other effect settings): either
+ * their own, [from] to [to] every year (to before from runs on into the next year: 28 December to
+ * 2 January), or the usual ones started [earlier] days sooner and ended [later] days after.
+ */
+@Serializable
+data class OccasionDates(
+    val from: MonthDay? = null,
+    val to: MonthDay? = null,
+    val earlier: Int = 0,
+    val later: Int = 0,
+) {
+    val own: Boolean get() = from != null && to != null
+    val usual: Boolean get() = !own && earlier == 0 && later == 0
+
+    companion object {
+        /** The most a span may be moved or stretched, so a slip of the remote doesn't take over the year. */
+        const val MAX_SHIFT = 60
+    }
 }
 
 /** The global effect settings (per display profile, synced). */
@@ -104,7 +148,15 @@ data class EffectsPrefs(
     /** Occasions switched against their default. */
     val occasionsOff: Set<Occasion> = emptySet(),
     val occasionsOn: Set<Occasion> = emptySet(),
+    /** Occasions on dates of the user's own (missing: the usual dates). */
+    val occasionDates: Map<Occasion, OccasionDates> = emptyMap(),
 ) {
+    fun datesOf(o: Occasion): OccasionDates? = occasionDates[o]?.takeIf { !it.usual }
+
+    /** [o] on [dates], or back on its usual dates (null, or nothing changed). */
+    fun withDates(o: Occasion, dates: OccasionDates?): EffectsPrefs =
+        copy(occasionDates = if (dates == null || dates.usual) occasionDates - o else occasionDates + (o to dates))
+
     fun isOn(o: Occasion) = if (o.onByDefault) o !in occasionsOff else o in occasionsOn
 
     fun with(o: Occasion, on: Boolean) = if (o.onByDefault) {
@@ -131,10 +183,21 @@ data class Day(val year: Int, val month: Int, val day: Int) : Comparable<Day> {
 
     fun plus(days: Int): Day = fromEpochDay(epochDay + days)
 
+    /** As a day of the year, without the year. */
+    val monthDay: MonthDay get() = MonthDay(month, day)
+
     /** 1 = Monday … 7 = Sunday. */
     val dayOfWeek: Int get() = (((epochDay + 3) % 7 + 7) % 7 + 1).toInt()
 
     companion object {
+        fun isLeap(year: Int) = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+
+        fun monthLength(year: Int, month: Int) = when (month) {
+            2 -> if (isLeap(year)) 29 else 28
+            4, 6, 9, 11 -> 30
+            else -> 31
+        }
+
         fun fromEpochDay(epoch: Long): Day {
             val z = epoch + 719468
             val era = (if (z >= 0) z else z - 146096) / 146097
@@ -177,8 +240,24 @@ object Occasions {
         return first.plus(offset + 7 * (n - 1))
     }
 
-    /** The days [o] covers in [year] (inclusive), as epoch days. */
-    fun span(o: Occasion, year: Int): List<LongRange> = when (o) {
+    /**
+     * The days [o] covers starting in [year] (inclusive), as epoch days: the usual ones, or [dates]'
+     * (own dates running past New Year end in the next year; usual ones moved by their days).
+     */
+    fun span(o: Occasion, year: Int, dates: OccasionDates? = null): List<LongRange> {
+        if (dates != null && dates.own) {
+            val from = dates.from!!.inYear(year)
+            val toThisYear = dates.to!!.inYear(year)
+            val to = if (toThisYear < from) dates.to.inYear(year + 1) else toThisYear
+            return listOf(range(from, to))
+        }
+        val earlier = (dates?.earlier ?: 0).coerceIn(-OccasionDates.MAX_SHIFT, OccasionDates.MAX_SHIFT)
+        val later = (dates?.later ?: 0).coerceIn(-OccasionDates.MAX_SHIFT, OccasionDates.MAX_SHIFT)
+        return usualSpan(o, year).map { (it.first - earlier)..(it.last + later) }.filter { !it.isEmpty() }
+    }
+
+    /** The days [o] usually covers in [year] (inclusive), as epoch days. */
+    fun usualSpan(o: Occasion, year: Int): List<LongRange> = when (o) {
         Occasion.FESTIVUS -> listOf(range(Day(year, 12, 23), Day(year, 12, 23)))
         Occasion.NEW_YEAR -> listOf(range(Day(year, 1, 1), Day(year, 1, 1)), range(Day(year, 12, 31), Day(year, 12, 31)))
         Occasion.VALENTINES -> listOf(range(Day(year, 2, 14), Day(year, 2, 14)))
@@ -203,16 +282,30 @@ object Occasions {
     /** The occasion showing on [today] given [prefs] (the most specific one switched on), if any. */
     fun active(today: Day, prefs: EffectsPrefs): Occasion? {
         if (!prefs.on || !prefs.seasonal) return null
-        return Occasion.entries.firstOrNull { o -> prefs.isOn(o) && span(o, today.year).any { today.epochDay in it } }
+        return Occasion.entries.firstOrNull { o -> prefs.isOn(o) && on(o, today, prefs.datesOf(o)) }
+    }
+
+    /** Whether [o] is on [today] (a span started last year can still be running). */
+    fun on(o: Occasion, today: Day, dates: OccasionDates? = null): Boolean =
+        (today.year - 1..today.year).any { y -> span(o, y, dates).any { today.epochDay in it } }
+
+    /** The span of [o] running on [today], else the next one: its first and last day. */
+    fun current(o: Occasion, today: Day, dates: OccasionDates? = null): Pair<Day, Day> {
+        // Spans that meet (winter's December and the January after it) read as one.
+        val spans = (today.year - 1..today.year + 1).flatMap { span(o, it, dates) }.sortedBy { it.first }
+            .fold(mutableListOf<LongRange>()) { acc, r ->
+                val last = acc.lastOrNull()
+                if (last != null && r.first <= last.last + 1) acc[acc.lastIndex] = last.first..maxOf(last.last, r.last) else acc += r
+                acc
+            }
+        val r = spans.firstOrNull { it.last >= today.epochDay } ?: spans.last()
+        return Day.fromEpochDay(r.first) to Day.fromEpochDay(r.last)
     }
 
     /** When [o] next starts, from [today] (today itself if it's on now). */
-    fun next(o: Occasion, today: Day): Day {
-        for (year in today.year..today.year + 1) {
-            val start = span(o, year).filter { it.last >= today.epochDay }.minOfOrNull { maxOf(it.first, today.epochDay) }
-            if (start != null) return Day.fromEpochDay(start)
-        }
-        return Day.fromEpochDay(span(o, today.year + 1).first().first)
+    fun next(o: Occasion, today: Day, dates: OccasionDates? = null): Day {
+        val (first, _) = current(o, today, dates)
+        return if (first < today) today else first
     }
 }
 

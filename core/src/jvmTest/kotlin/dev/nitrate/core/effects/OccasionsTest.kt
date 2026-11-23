@@ -46,4 +46,46 @@ class OccasionsTest {
         assertEquals(Day(2026, 12, 1), Occasions.next(Occasion.WINTER, Day(2026, 11, 18)))
         assertEquals(Day(2026, 12, 20), Occasions.next(Occasion.CHRISTMAS, Day(2026, 12, 20)))
     }
+
+    @Test fun `own dates replace the usual ones`() {
+        // Christmas only from the 24th to the 26th.
+        val prefs = EffectsPrefs().withDates(Occasion.CHRISTMAS, OccasionDates(MonthDay(12, 24), MonthDay(12, 26)))
+        assertEquals(Occasion.WINTER, Occasions.active(Day(2026, 12, 20), prefs))
+        assertEquals(Occasion.CHRISTMAS, Occasions.active(Day(2026, 12, 24), prefs))
+        assertEquals(Day(2026, 12, 24), Occasions.next(Occasion.CHRISTMAS, Day(2026, 11, 18), prefs.datesOf(Occasion.CHRISTMAS)))
+    }
+
+    @Test fun `own dates can run on past New Year`() {
+        val dates = OccasionDates(MonthDay(12, 20), MonthDay(1, 6))
+        val prefs = EffectsPrefs().with(Occasion.FESTIVUS, false).with(Occasion.NEW_YEAR, false).withDates(Occasion.CHRISTMAS, dates)
+        assertEquals(Occasion.CHRISTMAS, Occasions.active(Day(2027, 1, 5), prefs))
+        assertEquals(Occasion.WINTER, Occasions.active(Day(2027, 1, 7), prefs))
+        assertEquals(Day(2026, 12, 20) to Day(2027, 1, 6), Occasions.current(Occasion.CHRISTMAS, Day(2027, 1, 2), dates))
+    }
+
+    @Test fun `usual dates stretched, moving holidays included`() {
+        // Easter 2026 is 5 April: usually Good Friday (3rd) to Easter Monday (6th), here five days sooner and a day longer.
+        val dates = OccasionDates(earlier = 5, later = 1)
+        assertEquals(Day(2026, 3, 29) to Day(2026, 4, 7), Occasions.current(Occasion.EASTER, Day(2026, 3, 1), dates))
+        val prefs = EffectsPrefs().withDates(Occasion.EASTER, dates)
+        assertEquals(Occasion.EASTER, Occasions.active(Day(2026, 3, 30), prefs))
+        assertNull(Occasions.active(Day(2026, 3, 30), EffectsPrefs()))
+    }
+
+    @Test fun `back to the usual dates`() {
+        val custom = EffectsPrefs().withDates(Occasion.HALLOWEEN, OccasionDates(MonthDay(10, 1), MonthDay(10, 31)))
+        assertEquals(EffectsPrefs(), custom.withDates(Occasion.HALLOWEEN, null))
+        assertEquals(EffectsPrefs(), EffectsPrefs().withDates(Occasion.HALLOWEEN, OccasionDates()))
+        // Winter's December and the following January read as one stretch.
+        assertEquals(Day(2026, 12, 1) to Day(2027, 2, 28), Occasions.current(Occasion.WINTER, Day(2026, 12, 15)))
+    }
+
+    @Test fun `days of the year go round`() {
+        assertEquals(MonthDay(1, 1), MonthDay(12, 31).plus(1))
+        assertEquals(MonthDay(12, 31), MonthDay(1, 1).plus(-1))
+        assertEquals(MonthDay(2, 28), MonthDay(1, 31).plusMonths(1))
+        assertEquals(MonthDay(12, 15), MonthDay(1, 15).plusMonths(-1))
+        assertEquals(Day(2028, 2, 29), MonthDay(2, 29).inYear(2028))
+        assertEquals(Day(2027, 2, 28), MonthDay(2, 29).inYear(2027))
+    }
 }

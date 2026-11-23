@@ -40,7 +40,11 @@ import dev.nitrate.android.AppContainer
 import dev.nitrate.core.effects.Day
 import dev.nitrate.core.effects.EffectsPrefs
 import dev.nitrate.core.effects.Occasion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import dev.nitrate.core.effects.Occasions
+import dev.nitrate.core.effects.OccasionDates
+import dev.nitrate.core.effects.MonthDay
 import dev.nitrate.core.effects.PageTheme
 import dev.nitrate.core.pages.DisplayPrefs
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
@@ -52,10 +56,13 @@ private val Months = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Au
 internal fun Day.short() = "$day ${Months[month - 1]}"
 
 /** When [o] is next on, from [today]: "On now" or its first day. */
-internal fun whenNext(o: Occasion, today: Day): String {
-    val next = Occasions.next(o, today)
+internal fun whenNext(o: Occasion, today: Day, dates: OccasionDates? = null): String {
+    val next = Occasions.next(o, today, dates)
     return if (next == today) "On now" else "Next: ${next.short()}"
 }
+
+/** "18 Dec – 26 Dec" (or one day). */
+internal fun spanText(span: Pair<Day, Day>) = if (span.first == span.second) span.first.short() else "${span.first.short()} – ${span.second.short()}"
 
 /**
  * Settings → Display → Effects: every effect on or off, Reduce motion, how much, and the calendar's
@@ -76,6 +83,7 @@ fun EffectsSettingsScreen(container: AppContainer) {
     }
     val today = remember { todayDay() }
     var previewing by remember { mutableStateOf<Pair<PageTheme?, Occasion?>?>(null) }
+    var editingDates by remember { mutableStateOf<Occasion?>(null) }
 
     @Composable
     fun Toggle(label: String, detail: String, on: Boolean, modifier: Modifier = Modifier, enabled: Boolean = true, flip: () -> Unit) = ListItem(
@@ -111,15 +119,23 @@ fun EffectsSettingsScreen(container: AppContainer) {
         }
         item { Toggle("Seasonal effects", "On the days below, over every page", fx.seasonal, enabled = fx.on) { update { it.copy(seasonal = !it.seasonal) } } }
         items(Occasion.entries, key = { it.name }) { o ->
+            val dates = fx.datesOf(o)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ListItem(
                     selected = false, enabled = fx.on && fx.seasonal,
                     onClick = { update { it.with(o, !it.isOn(o)) } },
                     headlineContent = { Text(o.label) },
-                    supportingContent = { Text("${o.detail} · ${whenNext(o, today)}") },
+                    // The dates it falls on (the user's own, when set) and what it shows.
+                    supportingContent = {
+                        Text(
+                            (if (dates == null) o.usual else "Your dates: ${spanText(Occasions.current(o, today, dates))}") +
+                                ": ${o.look} · ${whenNext(o, today, dates)}",
+                        )
+                    },
                     trailingContent = { Switch(checked = fx.isOn(o), onCheckedChange = null) },
                     modifier = Modifier.weight(1f),
                 )
+                OutlinedButton(onClick = { editingDates = o }) { Text("Dates") }
                 OutlinedButton(onClick = { previewing = null to o }) { Text("Preview") }
             }
         }
@@ -140,6 +156,76 @@ fun EffectsSettingsScreen(container: AppContainer) {
 
     previewing?.let { (theme, occasion) ->
         EffectPreview(theme, occasion, fx, onDismiss = { previewing = null })
+    }
+    editingDates?.let { o ->
+        OccasionDatesDialog(o, fx.datesOf(o), today, onSave = { d -> update { it.withDates(o, d) }; editingDates = null }, onDismiss = { editingDates = null })
+    }
+}
+
+/**
+ * When an occasion shows: its usual dates (moving ones included: Easter, Thanksgiving, Labor Day),
+ * started earlier or ended later by some days, or the user's own dates every year (which may run on
+ * past New Year). Shows the dates it'll actually cover next as the choices change.
+ */
+@Composable
+internal fun OccasionDatesDialog(o: Occasion, current: OccasionDates?, today: Day, onSave: (OccasionDates?) -> Unit, onDismiss: () -> Unit) {
+    val usualSpan = remember(o) { Occasions.current(o, today) }
+    var own by remember { mutableStateOf(current?.own == true) }
+    var earlier by remember { mutableStateOf(current?.takeIf { !it.own }?.earlier ?: 0) }
+    var later by remember { mutableStateOf(current?.takeIf { !it.own }?.later ?: 0) }
+    var from by remember { mutableStateOf(current?.from ?: usualSpan.first.monthDay) }
+    var to by remember { mutableStateOf(current?.to ?: usualSpan.second.monthDay) }
+    val chosen = if (own) OccasionDates(from, to) else OccasionDates(earlier = earlier, later = later)
+    val first = remember { FocusRequester() }
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 720) {
+        Text("${o.label}: dates", style = MaterialTheme.typography.headlineSmall)
+        Text("Usually ${o.usual}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            androidx.tv.material3.FilterChip(selected = !own, onClick = { own = false }, modifier = Modifier.focusRequester(first)) { Text("The usual dates") }
+            androidx.tv.material3.FilterChip(selected = own, onClick = { own = true }) { Text("Dates of my own") }
+        }
+        if (own) {
+            DayStepper("From", from) { from = it }
+            DayStepper("To", to) { to = it }
+            if (to.let { t -> Day(2001, t.month, t.day.coerceAtMost(28)) < Day(2001, from.month, from.day.coerceAtMost(28)) }) {
+                Text("Runs on past New Year into the next year.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            CountStepper("Start sooner", earlier, { "$it ${if (it == 1) "day" else "days"} before" }) { earlier = it }
+            CountStepper("End later", later, { "$it ${if (it == 1) "day" else "days"} after" }) { later = it }
+        }
+        Text("Covers: ${spanText(Occasions.current(o, today, chosen))}", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            androidx.tv.material3.Button(onClick = { onSave(chosen) }) { Text("Save") }
+            if (current != null) OutlinedButton(onClick = { onSave(null) }) { Text("Back to the usual dates") }
+            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+}
+
+/** "From  « ‹ 18 Dec › »": a day of the year stepped by days (‹ ›) or months (« »). */
+@Composable
+private fun DayStepper(label: String, value: MonthDay, onChange: (MonthDay) -> Unit) {
+    val months = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(110.dp))
+        OutlinedButton(onClick = { onChange(value.plusMonths(-1)) }) { Text("«", modifier = Modifier.semantics { contentDescription = "$label: a month earlier" }) }
+        OutlinedButton(onClick = { onChange(value.plus(-1)) }) { Text("‹", modifier = Modifier.semantics { contentDescription = "$label: a day earlier" }) }
+        Text("${value.day} ${months[value.month - 1]}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(170.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        OutlinedButton(onClick = { onChange(value.plus(1)) }) { Text("›", modifier = Modifier.semantics { contentDescription = "$label: a day later" }) }
+        OutlinedButton(onClick = { onChange(value.plusMonths(1)) }) { Text("»", modifier = Modifier.semantics { contentDescription = "$label: a month later" }) }
+    }
+}
+
+/** "Start sooner  − 3 days before +": a count of days, 0 up to [OccasionDates.MAX_SHIFT]. */
+@Composable
+private fun CountStepper(label: String, value: Int, text: (Int) -> String, onChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(160.dp))
+        OutlinedButton(onClick = { onChange((value - 1).coerceAtLeast(0)) }, enabled = value > 0) { Text("−", modifier = Modifier.semantics { contentDescription = "$label: one day fewer" }) }
+        Text(text(value), style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(170.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        OutlinedButton(onClick = { onChange((value + 1).coerceAtMost(OccasionDates.MAX_SHIFT)) }, enabled = value < OccasionDates.MAX_SHIFT) { Text("+", modifier = Modifier.semantics { contentDescription = "$label: one day more" }) }
     }
 }
 

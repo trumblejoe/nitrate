@@ -307,6 +307,26 @@ class TvScreenshotTest {
     @Test fun prerollSettings() = shoot("tv-preroll-settings") { c -> dev.nitrate.tv.ui.preroll.PrerollSettingsScreen(c) }
     @Test fun fxEffectsSettings() = shoot("tv-fx-settings") { c -> dev.nitrate.tv.ui.effects.EffectsSettingsScreen(c) }
 
+    /** An occasion's dates: the usual ones stretched, shown as the days it'll cover. */
+    @Test fun occasionDates() = shoot("tv-occasion-dates") {
+        dev.nitrate.tv.ui.effects.OccasionDatesDialog(
+            dev.nitrate.core.effects.Occasion.EASTER,
+            dev.nitrate.core.effects.OccasionDates(earlier = 5, later = 1),
+            dev.nitrate.core.effects.Day(2026, 3, 1),
+            onSave = {}, onDismiss = {},
+        )
+    }
+
+    /** Own dates running on past New Year. */
+    @Test fun occasionOwnDates() = shoot("tv-occasion-own-dates") {
+        dev.nitrate.tv.ui.effects.OccasionDatesDialog(
+            dev.nitrate.core.effects.Occasion.CHRISTMAS,
+            dev.nitrate.core.effects.OccasionDates(dev.nitrate.core.effects.MonthDay(12, 20), dev.nitrate.core.effects.MonthDay(1, 6)),
+            dev.nitrate.core.effects.Day(2026, 11, 22),
+            onSave = {}, onDismiss = {},
+        )
+    }
+
     @Test fun railRightExits() = prefsShot("tv-rail-exit", dev.nitrate.core.pages.DisplayPrefs(), {
         press("left")
         org.junit.Assert.assertTrue("Left reaches the rail", focusedHasText("Home"))
