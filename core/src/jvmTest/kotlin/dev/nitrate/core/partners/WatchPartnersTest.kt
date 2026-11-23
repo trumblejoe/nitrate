@@ -278,9 +278,12 @@ class WatchPartnersTest {
             assertEquals("Opens Thursday 7pm", ask.title)
             assertEquals(listOf("Watch for myself", "Not now"), ask.choices.map { it.label })
         }
-        // What's out plays; from anywhere else a group with Together off never asks.
+        // What's out plays; from anywhere else, not out yet asks too, even with Together off.
         assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[1], dev.nitrate.core.plugins.PluginHost(server(false), store), card))
-        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(server(false), store)))
+        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[1], dev.nitrate.core.plugins.PluginHost(server(false), store)))
+        val elsewhere = plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(server(false), store)) as dev.nitrate.core.plugins.GuardDecision.Ask
+        assertEquals("Opens Thursday 7pm", elsewhere.title)
+        assertEquals(listOf("Watch for myself", "Not now"), elsewhere.choices.map { it.label })
     }
 
     // ---- Together ----

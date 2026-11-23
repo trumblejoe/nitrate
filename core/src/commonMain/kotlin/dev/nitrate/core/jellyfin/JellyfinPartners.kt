@@ -23,7 +23,7 @@ import kotlin.time.Instant
 @Serializable internal data class PrivacyDto(val private: Boolean = false, val byAdmin: Boolean = false)
 @Serializable internal data class PrivacyPutDto(val private: Boolean)
 @Serializable internal data class PeopleDto(val id: String, val name: String = "")
-@Serializable internal data class ScheduleDto(val cadence: String = "binge", val day: Int = 4, val hour: Int = 19, val minute: Int = 0, val softLock: Boolean = false, val timeZone: String = "", val together: Boolean = false, val party: PartyTimeDto? = null)
+@Serializable internal data class ScheduleDto(val cadence: String = "binge", val day: Int = 4, val hour: Int = 19, val minute: Int = 0, val softLock: Boolean = false, val timeZone: String = "", val together: Boolean = false, val party: PartyTimeDto? = null, val locked: Boolean = false)
 @Serializable internal data class ChangeDto(val id: String, val fromName: String = "", val proposed: ScheduleDto = ScheduleDto(), val yes: List<String> = emptyList(), val no: List<String> = emptyList(), val voted: Boolean = false, val at: String? = null)
 @Serializable internal data class GroupDto(
     val id: String, val seriesId: String, val seriesName: String = "", val others: List<PeopleDto> = emptyList(), val since: String? = null,
@@ -202,10 +202,11 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
     private fun ScheduleDto.toModel() = dev.nitrate.core.partners.GroupSchedule(
         cadence, day, hour, minute, softLock, together,
         party?.takeIf { it.days.isNotEmpty() }?.let { dev.nitrate.core.partners.PartyTime(it.days, it.hour, it.minute) },
+        locked = locked,
     )
 
     private fun dev.nitrate.core.partners.GroupSchedule.toDto() =
-        ScheduleDto(cadence, day, hour, minute, softLock, together = together, party = party?.let { PartyTimeDto(it.days, it.hour, it.minute) })
+        ScheduleDto(cadence, day, hour, minute, softLock, together = together, party = party?.let { PartyTimeDto(it.days, it.hour, it.minute) }, locked = locked)
 
     // ---- Group Watch Sessions (Companion feature `party`; "party" in the API) ----
 

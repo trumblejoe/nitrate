@@ -207,11 +207,11 @@ class GroupRecordTest {
         // In a live session with Tommy, it's watching together already.
         session.names = listOf("me", "Tommy")
         assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[7], host, PlayOrigin.Elsewhere))
-        // With Together off everywhere, nothing started elsewhere is ever questioned, even past a schedule.
+        // With Together off everywhere, only what a schedule hasn't let out asks when started elsewhere.
         session.names = emptyList()
         val off = PluginHost(server(PartnersInfo(listOf(tommy.copy(schedule = null), suzy), emptyList(), emptyList())), noStore, session)
         assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[7], off, PlayOrigin.Elsewhere))
-        assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[8], off, null))
+        assertEquals("Opens Thursday 7pm", (plugin.beforePlay(eps[8], off, null) as GuardDecision.Ask).title)
         // Without a way to start a live session here: only for myself, or not now.
         val bare = plugin.beforePlay(eps[7], PluginHost(server(info), noStore), PlayOrigin.Elsewhere) as GuardDecision.Ask
         assertEquals(listOf("We're in the same room", "Watch for myself", "Not now"), bare.choices.map { it.label })

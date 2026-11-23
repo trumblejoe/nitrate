@@ -8,6 +8,7 @@ namespace Nitrate.Companion.Partners;
 /// ever locked: the apps say when it opens and offer to watch it for oneself. With
 /// <see cref="Together"/> on, what the group hasn't watched yet is for watching together (the apps
 /// ask first when it's played outside the group's card) and spoilers go by the group's progress.
+/// With <see cref="Locked"/> ("Don't allow") the apps refuse instead of asking.
 /// </summary>
 public class GroupSchedule
 {
@@ -45,6 +46,15 @@ public class GroupSchedule
     /// first. Off, the group only keeps track of its progress and pace.
     /// </summary>
     public bool Together { get; set; }
+
+    /// <summary>
+    /// Gets or sets "If someone plays ahead": false "Ask first" (the default, and what schedules
+    /// stored before it read as), true "Don't allow": Nitrate's apps refuse a part the schedule
+    /// hasn't let out from anywhere, and with <see cref="Together"/> on play what the group hasn't
+    /// watched yet only together. Only the apps keep to it; changed by majority like the rest.
+    /// Never the old <see cref="SoftLock"/>, which stays ignored.
+    /// </summary>
+    public bool Locked { get; set; }
 
     /// <summary>Gets or sets the time zone (IANA id) the times are in; empty: the server's own.</summary>
     public string TimeZone { get; set; } = string.Empty;

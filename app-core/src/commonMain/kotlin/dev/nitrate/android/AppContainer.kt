@@ -478,6 +478,14 @@ class AppContainer(
     fun upNextOrigin(next: dev.nitrate.core.model.MediaItem): dev.nitrate.core.partners.PlayOrigin? =
         watchPartners.upNextOrigin(plugins.host, next, groupStandings.value)
 
+    /**
+     * Where a play from a details page opened from watch group [groupId]'s card starts: that
+     * group's card for a part of its titles, like playing the card itself; null (elsewhere) for
+     * anything else, or when the page was opened any other way ([groupId] null).
+     */
+    fun detailsOrigin(groupId: String?, item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.partners.PlayOrigin? =
+        dev.nitrate.core.partners.PlayOrigin.fromDetails(groupId, item, partners.value, groupStandings.value)
+
     private val countAsksState = MutableStateFlow<List<dev.nitrate.core.partners.CountAsk>>(emptyList())
 
     /**
@@ -533,11 +541,14 @@ class AppContainer(
         val group = syncPlay.group.value ?: error("Couldn't start watching together")
         if (invitesAvailable() && choice.userIds.isNotEmpty()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
         if (choice.groupId.isNotEmpty() && companion.value?.features?.contains("groupwatch") == true) runCatching { server.sessionForGroup(choice.groupId, group.id) }
+        // While this device stays in it, what the group hasn't watched plays as watching together (a schedule that doesn't allow playing ahead).
+        if (choice.groupId.isNotEmpty()) watchPartners.watchingNow(plugins.host, choice.groupId, group.id)
     }
 
     /** This device's watch-together session as the playback guards see it (a group that watches together only asks for it). */
     private val togetherSession = object : dev.nitrate.core.plugins.TogetherSession {
         override fun participants(): List<String> = syncPlay.group.value?.participants.orEmpty()
+        override fun sessionId(): String? = syncPlay.group.value?.id
         override suspend fun start(item: dev.nitrate.core.model.MediaItem, groupId: String, userIds: List<String>, names: String) {
             startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, groupId, userIds, names))
         }

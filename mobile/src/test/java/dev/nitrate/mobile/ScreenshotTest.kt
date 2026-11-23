@@ -348,6 +348,40 @@ class ScreenshotTest {
         dev.nitrate.mobile.ui.GroupSetupPages(actions, start) {}
     }
 
+    /** The last step with a paced schedule and Together on: "If someone plays ahead", Don't allow chosen, and the summary saying locked. */
+    @Test fun groupSetupPlayAhead() = shoot("phone-group-setup-play-ahead", setup = { c -> c.refreshCompanionForTests() }) { actions ->
+        val start = dev.nitrate.core.partners.GroupSetup(
+            dev.nitrate.core.partners.GroupSetup.Step.TOGETHER,
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel")), people = listOf("user-2"),
+            schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, together = true, locked = true),
+        )
+        dev.nitrate.mobile.ui.GroupSetupPages(actions, start) {}
+    }.also {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText(dev.nitrate.core.partners.GroupSchedule.PLAY_AHEAD)).fetchSemanticsNodes().isNotEmpty()) { "the play-ahead line" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Thursdays 7pm, together, locked", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the summary says locked" }
+    }
+
+    /** A group whose schedule doesn't allow playing ahead: "Opens Thursday 7pm", why, and only OK (no Watch for myself). */
+    @Test fun playAheadRefused() {
+        var ask: dev.nitrate.core.plugins.GuardDecision.Ask? = null
+        shoot("phone-play-ahead-refused", setup = { c ->
+            (c.server as dev.nitrate.testing.FakeServer).partnerInfo = dev.nitrate.core.partners.PartnersInfo(
+                listOf(
+                    dev.nitrate.core.partners.WatchGroup(
+                        "g1", "series-1", "The Night Reel", listOf(dev.nitrate.core.writing.UserRef("user-2", "Will")), 0,
+                        dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, day = 4, hour = 19, locked = true),
+                        lockedFromId = "s2e1", opensDay = 4,
+                    ),
+                ),
+                emptyList(), emptyList(),
+            )
+            ask = c.watchPartners.beforePlay(c.server.getItem("s2e1"), c.plugins.host, null) as dev.nitrate.core.plugins.GuardDecision.Ask
+        }) { dev.nitrate.mobile.ui.GuardDialog(ask!!) {} }
+        check(ask!!.title == "Opens Thursday 7pm") { ask!!.title }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("OK")).fetchSemanticsNodes().isNotEmpty()) { "OK" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watch for myself")).fetchSemanticsNodes().isEmpty()) { "nothing to watch for oneself" }
+    }
+
     /** A long press on a group's card: that group's choices (mark for the group, same room, add a title, …). */
     @Test fun togetherChoices() = shoot("phone-together-choices", setup = { c -> c.refreshCompanionForTests() }) { actions ->
         val info = (actions.server as dev.nitrate.testing.FakeServer).partnerInfo

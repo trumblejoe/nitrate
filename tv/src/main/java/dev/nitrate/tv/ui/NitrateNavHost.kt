@@ -293,9 +293,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 repository = container.server,
                 itemId = route.itemId,
                 seasonId = route.seasonId,
-                onPlay = { item, fromStart -> gate.play(item, fromStart) },
-                onPlayFrom = { item, at -> gate.play(item, startMs = at) },
-                onOpen = nav::openItem,
+                // Opened from a watch group's card: its title's parts play (and open) from that card.
+                onPlay = { item, fromStart -> gate.play(item, fromStart, origin = container.detailsOrigin(route.group, item)) },
+                onPlayFrom = { item, at -> gate.play(item, startMs = at, origin = container.detailsOrigin(route.group, item)) },
+                onOpen = { item -> nav.openItem(item, (container.detailsOrigin(route.group, item) as? dev.nitrate.core.partners.PlayOrigin.GroupCard)?.groupId) },
                 onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
                 onPlayQueue = { items -> listen(items) },
@@ -739,16 +740,20 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     }
 }
 
-/** Where selecting an item goes. Seasons open their series with that season selected. */
-fun NavController.openItem(item: MediaItem) {
+/**
+ * Where selecting an item goes. Seasons open their series with that season selected. A details
+ * page remembers the watch group whose card opened it ([group]; a Watching together card's own
+ * [MediaItem.watchGroupId]), so what plays from it counts as from that card.
+ */
+fun NavController.openItem(item: MediaItem, group: String? = item.watchGroupId) {
     val seriesId = item.seriesId
     when {
         item.kind == ItemKind.SEASON && seriesId != null ->
-            navigate(DetailsRoute(seriesId, seasonId = item.id))
+            navigate(DetailsRoute(seriesId, seasonId = item.id, group = group))
         item.kind == ItemKind.LIBRARY ->
             navigate(LibraryRoute(item.id))
         item.kind == ItemKind.PLAYLIST -> navigate(PlaylistRoute(item.id))
-        else -> navigate(DetailsRoute(item.id))
+        else -> navigate(DetailsRoute(item.id, group = group))
     }
 }
 

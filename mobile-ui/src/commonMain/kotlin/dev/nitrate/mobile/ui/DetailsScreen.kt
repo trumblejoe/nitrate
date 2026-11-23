@@ -589,13 +589,13 @@ private fun WhereItBelongs(actions: AppActions, item: MediaItem, seasonName: Str
         Text(
             item.seriesName ?: "The show", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false).pressable({ actions.nav.navigate(DetailsRoute(seriesId)) }).padding(vertical = 4.dp),
+            modifier = Modifier.weight(1f, fill = false).pressable({ actions.nav.navigate(DetailsRoute(seriesId, group = actions.groupOf(item))) }).padding(vertical = 4.dp),
         )
         if (season != null) {
             Text("›", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f))
             Text(
                 season, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1,
-                modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(seriesId, seasonId = item.seasonId)) }).padding(vertical = 4.dp),
+                modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(seriesId, seasonId = item.seasonId, group = actions.groupOf(item))) }).padding(vertical = 4.dp),
             )
         }
     }
@@ -645,6 +645,6 @@ private fun ShowCrumb(actions: AppActions, show: MediaItem) {
     Text(
         "${show.displayTitle}  ›", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White,
         maxLines = 1, overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(show.id)) }).padding(vertical = 4.dp),
+        modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(show.id, group = actions.groupOf(show))) }).padding(vertical = 4.dp),
     )
 }

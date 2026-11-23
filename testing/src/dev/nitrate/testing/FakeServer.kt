@@ -474,7 +474,7 @@ class FakeServer : MediaServer {
     )
 
     /** The Companion's features; tests add `notes` for group chat pinned to the timeline. */
-    var companionFeatures = setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners", "diary", "lines", "invitebatch")
+    var companionFeatures = setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners", "diary", "lines", "invitebatch", "schedulelock")
 
     override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", companionFeatures)
 

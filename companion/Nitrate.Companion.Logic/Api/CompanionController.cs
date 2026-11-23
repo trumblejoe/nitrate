@@ -71,6 +71,8 @@ public class CompanionController : ControllerBase
         // (POST /Nitrate/Partners/Groups/{id}/Mark, /Nitrate/Partners/Mark), the Together switch, sessions said to be for a group.
         features.Add("groupwatch");
         features.Add("invitebatch");
+        // A schedule's "If someone plays ahead: Ask first / Don't allow" (GroupSchedule.Locked), kept and voted with the rest.
+        features.Add("schedulelock");
         features.Add("updates");
         features.Add("together");
         features.Add("credits");

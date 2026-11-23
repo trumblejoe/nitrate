@@ -63,7 +63,8 @@ import kotlinx.serialization.Serializable
 @Serializable object DiaryRoute
 @Serializable data class LibraryRoute(val libraryId: String)
 /** [artKey] names the card it was opened from, so its artwork can morph into the page. */
-@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null)
+/** [group]: opened from that watch group's card on Home's Watching together row (plays from the page count as from the card). */
+@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null, val group: String? = null)
 @Serializable data class PlaylistRoute(val playlistId: String)
 @Serializable data class PersonRoute(val personId: String, val name: String, val studio: String? = null, val year: Int? = null)
 
@@ -125,15 +126,35 @@ class AppActions(
      * asked here on the phone; what to send, or null to send nothing.
      */
     private val beforeSending: suspend (MediaItem) -> MediaItem? = { it },
+    /** What an item plays and opens as: on a details page opened from a watch group's card, its title's parts as that card's ([fromGroup]). */
+    private val tag: (MediaItem) -> MediaItem = { it },
 ) {
     /** The same, with a row's own handling of its cards. */
-    fun withCards(cards: TogetherCards) = AppActions(container, nav, scope, playAt, play, cards, beforeSending)
+    fun withCards(cards: TogetherCards) = AppActions(container, nav, scope, playAt, play, cards, beforeSending, tag)
+
+    /**
+     * For a details page opened from watch group [groupId]'s card (null: opened any other way, this
+     * as it is): the parts of that group's titles play, are sent ("Play on…") and open from that
+     * card ([MediaItem.watchGroupId], so the guards and the player get its `PlayOrigin`), exactly
+     * as from the card; anything else on the page (a trailer, something similar) as from anywhere.
+     */
+    fun fromGroup(groupId: String?): AppActions {
+        if (groupId == null) return this
+        val tagged: (MediaItem) -> MediaItem = { item -> if (container.detailsOrigin(groupId, item) != null) item.copy(watchGroupId = groupId) else item }
+        return AppActions(
+            container, nav, scope, playAt?.let { p -> { item, ms -> p(tagged(item), ms) } }, { item, fromStart -> play(tagged(item), fromStart) },
+            cards, { item -> beforeSending(tagged(item)) }, tagged,
+        )
+    }
 
     /**
      * Runs the guards (`PluginRegistry.checkBeforePlay`) on this phone before [item] is sent to
      * another device to play, showing any question here: what to send, or null when nothing should go.
      */
     suspend fun checkBeforeSending(item: MediaItem): MediaItem? = beforeSending(item)
+
+    /** The watch group whose card [item]'s details page counts plays for (see [fromGroup]); null elsewhere. */
+    fun groupOf(item: MediaItem): String? = tag(item).watchGroupId
 
     /** Plays [item] from [startMs] (falls back to resuming). */
     fun playFrom(item: MediaItem, startMs: Long) = playAt?.invoke(item, startMs) ?: play(item, false)
@@ -144,11 +165,13 @@ class AppActions(
     fun open(item: MediaItem, artKey: String? = null) {
         if (cards?.select(item) == true) return
         val series = item.seriesId
+        // A Watching together card's details page remembers its group (plays from there count as from the card).
+        val group = tag(item).watchGroupId
         when {
-            item.kind == ItemKind.SEASON && series != null -> nav.navigate(DetailsRoute(series, seasonId = item.id))
+            item.kind == ItemKind.SEASON && series != null -> nav.navigate(DetailsRoute(series, seasonId = item.id, group = group))
             item.kind == ItemKind.LIBRARY -> nav.navigate(LibraryRoute(item.id))
             item.kind == ItemKind.PLAYLIST -> nav.navigate(PlaylistRoute(item.id))
-            else -> nav.navigate(DetailsRoute(item.id, artKey = artKey))
+            else -> nav.navigate(DetailsRoute(item.id, artKey = artKey, group = group))
         }
     }
 
@@ -373,7 +396,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     if (themeOn) actions.container.themeMusic.show(route.itemId) else actions.container.themeMusic.stop()
                     onDispose { actions.container.themeMusic.hide(route.itemId) }
                 }
-                DetailsScreen(actions, route.itemId, route.seasonId, route.artKey)
+                DetailsScreen(actions.fromGroup(route.group), route.itemId, route.seasonId, route.artKey)
             }
             screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
             screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
@@ -533,21 +556,25 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         FirstRunSetupHost(container)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }
 
-        pending?.let { (ask, answer) ->
-            AlertDialog(
-                onDismissRequest = { answer.complete(GuardAction.Cancel) },
-                title = { Text(ask.title) },
-                text = { Text(ask.message) },
-                confirmButton = {
-                    Column(horizontalAlignment = Alignment.End) {
-                        ask.choices.forEach { choice ->
-                            TextButton(onClick = { answer.complete(choice.action) }) { Text(choice.label) }
-                        }
-                    }
-                },
-            )
-        }
+        pending?.let { (ask, answer) -> GuardDialog(ask) { answer.complete(it) } }
     }
+}
+
+/** A playback guard's question (or a refusal, whose only choice is OK): its choices in order; dismissing is Cancel. */
+@Composable
+fun GuardDialog(ask: GuardDecision.Ask, onAnswer: (GuardAction) -> Unit) {
+    AlertDialog(
+        onDismissRequest = { onAnswer(GuardAction.Cancel) },
+        title = { Text(ask.title) },
+        text = { Text(ask.message) },
+        confirmButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                ask.choices.forEach { choice ->
+                    TextButton(onClick = { onAnswer(choice.action) }) { Text(choice.label) }
+                }
+            }
+        },
+    )
 }
 
 

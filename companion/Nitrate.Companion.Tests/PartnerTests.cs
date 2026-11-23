@@ -397,6 +397,50 @@ public class PartnerTests
         Assert.Equal(GroupSchedule.Weekly, hub.Groups(Joe).Single().Schedule?.Cadence);
     }
 
+    // ---- If someone plays ahead: Ask first / Don't allow (Locked) ----
+
+    [Fact]
+    public void DontAllowIsStoredVotedAndRead()
+    {
+        // Groups stored before it ask first; the old SoftLock is never read as it.
+        var old = System.Text.Json.JsonSerializer.Deserialize<GroupSchedule>("{\"Cadence\":\"weekly\",\"Day\":4,\"Hour\":19,\"Minute\":0,\"SoftLock\":true,\"Together\":true}")!;
+        Assert.False(old.Locked);
+        var kept = System.Text.Json.JsonSerializer.Deserialize<GroupSchedule>(System.Text.Json.JsonSerializer.Serialize(new GroupSchedule { Cadence = GroupSchedule.Weekly, Locked = true }))!;
+        Assert.True(kept.Locked);
+
+        var hub = Hub();
+        var locked = Weekly();
+        locked.Locked = true;
+        locked.SoftLock = true;
+        // The inviter sets it; the invite shows it; accepting keeps it (the old SoftLock still dropped).
+        hub.Request(Joe, Sam, null, Bear, "The Bear", schedule: locked);
+        var invite = hub.Incoming(Sam).Single();
+        Assert.True(invite.Schedule?.Locked);
+        var gid = hub.Accept(Sam, invite.Id).Id;
+        Assert.True(hub.Groups(Joe).Single().Schedule?.Locked);
+        Assert.False(hub.Groups(Joe).Single().Schedule?.SoftLock);
+
+        // Changed by the same majority vote: asking alone changes nothing yet.
+        var ask = Weekly();
+        ask.Together = true;
+        hub.ProposeSchedule(Sam, gid, ask);
+        var waiting = hub.Groups(Joe).Single().Pending!;
+        Assert.False(waiting.Proposed.Locked);
+        Assert.True(hub.Groups(Joe).Single().Schedule?.Locked);
+        hub.Vote(Joe, gid, waiting.Id, yes: true);
+        Assert.False(hub.Groups(Joe).Single().Schedule?.Locked);
+        Assert.True(hub.Groups(Joe).Single().Schedule?.Together);
+
+        // And back on, by vote again; kept between restarts.
+        var back = Weekly();
+        back.Together = true;
+        back.Locked = true;
+        hub.ProposeSchedule(Joe, gid, back);
+        hub.Vote(Sam, gid, hub.Groups(Sam).Single().Pending!.Id, yes: true);
+        Assert.True(hub.Groups(Sam).Single().Schedule?.Locked);
+        Assert.True(Hub().Groups(Sam).Single().Schedule?.Locked);
+    }
+
     // ---- Together (stored as "together only") ----
 
     [Fact]

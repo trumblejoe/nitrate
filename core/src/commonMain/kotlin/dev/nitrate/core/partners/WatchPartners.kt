@@ -73,6 +73,9 @@ data class WatchGroup(
     /** The Together switch: spoilers by the group's progress, and playing what it hasn't watched from anywhere but its card asks first. */
     val together: Boolean get() = schedule?.together == true
 
+    /** "If someone plays ahead: Don't allow" ([GroupSchedule.locked]), on a schedule that holds something back. */
+    val locked: Boolean get() = schedule?.let { it.locked && it.active } == true
+
     /** Whether [titleId] is one of the group's titles. */
     fun holds(titleId: String): Boolean = titles.any { it.id == titleId }
 
@@ -104,12 +107,15 @@ data class WatchGroup(
  * How a group lets its titles out: all at once ([BINGE]), or one new part of each title every 2
  * days, every 3 days or weekly on [day], at [hour]:[minute] in the server's time zone. Anything
  * someone in the group has watched with it always stays open; only what nobody has watched yet is
- * paced, and nothing is ever locked: playing ahead of the schedule says when it opens and offers
- * to watch it for oneself. [together] is the Together switch (stored as the older "together
- * only"; off by default and for schedules stored before it): on, spoilers are hidden by the
- * group's progress and playing a part the group hasn't watched yet from anywhere but its card
- * asks first; off, the group only tracks progress and pace. [softLock] is the old Locked/Ask
- * first choice, kept so older servers and apps read it, and ignored.
+ * paced. [locked] is "If someone plays ahead" (stored as `Locked`; off, "Ask first", by default
+ * and for schedules stored before it): off, playing ahead of the schedule says when it opens and
+ * offers to watch it for oneself; on ("Don't allow"), Nitrate refuses a part not out yet from
+ * anywhere, and with Together on plays what the group hasn't watched yet only together.
+ * [together] is the Together switch (stored as the older "together only"; off by default and for
+ * schedules stored before it): on, spoilers are hidden by the group's progress and playing a part
+ * the group hasn't watched yet from anywhere but its card asks first; off, the group only tracks
+ * progress and pace. [softLock] is the old Locked/Ask first choice, kept so older servers and apps
+ * read it, and ignored (never reused for [locked]).
  */
 data class GroupSchedule(
     val cadence: String = BINGE,
@@ -120,6 +126,8 @@ data class GroupSchedule(
     val together: Boolean = false,
     /** The group's recurring Group Watch Session (null: none). It holds nothing back. */
     val party: PartyTime? = null,
+    /** "If someone plays ahead": false "Ask first" (the default), true "Don't allow". Only matters while [active]. */
+    val locked: Boolean = false,
 ) {
     val limits get() = cadence == DAYS2 || cadence == DAYS3 || cadence == WEEKLY
 
@@ -140,13 +148,27 @@ data class GroupSchedule(
         else -> "binge"
     }
 
-    /** "Binge", "Every 2 days, 7pm", "Thursdays 7pm", with ", together" when Together is on and the Group Watch Session's time. */
+    /**
+     * "Binge", "Every 2 days, 7pm", "Thursdays 7pm", with ", together" when Together is on,
+     * ", locked" when playing ahead isn't allowed, and the Group Watch Session's time.
+     */
     val label: String get() = when (cadence) {
         DAYS2 -> "Every 2 days, $clock"
         DAYS3 -> "Every 3 days, $clock"
         WEEKLY -> "${DAYS[day.coerceIn(0, 6)]}s $clock"
         else -> "Binge"
-    } + (if (together) ", together" else "") + (party?.let { ", Group Watch Session ${it.label}" } ?: "")
+    } + (if (together) ", together" else "") + (if (locked && active) ", locked" else "") + (party?.let { ", Group Watch Session ${it.label}" } ?: "")
+
+    /** "Ask first" / "Don't allow". */
+    val playAhead: String get() = playAheadLabel(locked)
+
+    /** The play-ahead choice's one line, for the pickers. */
+    val lockNote: String get() = when {
+        !locked -> LOCK_OFF
+        together && limits -> LOCK_ON
+        together -> "Don't allow: what the group hasn't watched yet plays only together (Watch now together, or in the same room)."
+        else -> "Don't allow: a part not out yet can't be played until it opens."
+    }
 
     /** "Group Watch Session Thursdays 8pm" (null without a time). */
     val partyLabel: String? get() = party?.let { "Group Watch Session ${it.label}" }
@@ -158,8 +180,14 @@ data class GroupSchedule(
     val terms: String get() {
         val meet = party?.let { " ${partyLabel}: the group meets then to watch its next part together." }.orEmpty()
         if (!active) return if (meet.isEmpty()) "" else "$meet Accepting agrees to it."
-        val pace = if (limits) " The group goes at its own pace: $label. Nothing is locked: playing ahead says when it opens." else ""
-        val with = if (together) " Together is on: spoilers are hidden by the group's progress, and playing something the group hasn't watched yet asks first." else ""
+        val pace = if (limits) {
+            " The group goes at its own pace: $label." +
+                if (locked) " Playing ahead isn't allowed: each part opens on the schedule." else " Nothing is locked: playing ahead says when it opens."
+        } else ""
+        val with = if (together) {
+            " Together is on: spoilers are hidden by the group's progress, and " +
+                if (locked) "what the group hasn't watched yet plays only when you watch it together." else "playing something the group hasn't watched yet asks first."
+        } else ""
         return "$pace$with$meet Accepting agrees to it."
     }
 
@@ -170,6 +198,7 @@ data class GroupSchedule(
     val note: String get() =
         "Anything someone in the group has watched with it stays open, so whoever's behind can catch up." +
             (if (together) " Together: spoilers are hidden by the group's progress, and playing what the group hasn't watched yet from anywhere but the group's card asks first." else "") +
+            (if (locked && active) " Playing ahead isn't allowed." else "") +
             " Only Nitrate keeps to it: Jellyfin's own apps don't know about it."
 
     companion object {
@@ -190,6 +219,23 @@ data class GroupSchedule(
         val HOW = listOf(false to "Together off", true to "Together")
 
         fun howLabel(together: Boolean) = HOW.first { it.first == together }.second
+
+        /** The play-ahead choice's heading. */
+        const val PLAY_AHEAD = "If someone plays ahead"
+
+        /** The play-ahead choice, as offered: Ask first (the default) or Don't allow. */
+        val LOCK_CHOICES = listOf(false to "Ask first", true to "Don't allow")
+
+        fun playAheadLabel(locked: Boolean) = LOCK_CHOICES.first { it.first == locked }.second
+
+        /** What Ask first means, in one line. */
+        const val LOCK_OFF = "Ask first: playing ahead says when it opens and offers to watch it for yourself."
+
+        /** What Don't allow means (paced, Together on), in one line. */
+        const val LOCK_ON = "Don't allow: a part not out yet can't be played, and what the group hasn't watched yet plays only together."
+
+        /** The Companion feature that keeps [locked]; older plugins drop it, so the choice isn't offered there. */
+        const val LOCK_FEATURE = "schedulelock"
 
         /** The times offered. */
         val HOURS = listOf(12, 17, 18, 19, 20, 21, 22)
@@ -507,6 +553,20 @@ sealed interface PlayOrigin {
     companion object {
         /** Where playing [card] starts from: its group's card, else elsewhere. */
         fun of(card: MediaItem): PlayOrigin = card.watchGroupId?.let(::GroupCard) ?: Elsewhere
+
+        /**
+         * Where a play from a details page opened from group [groupId]'s card starts (null
+         * [groupId]: opened any other way): that group's card when [item] is a part of one of the
+         * group's titles (the title holding it by [standings]), like playing the card itself; else
+         * null (elsewhere: a trailer, an extra, something similar). [info] not loaded yet: the card's group.
+         */
+        fun fromDetails(groupId: String?, item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): PlayOrigin? {
+            if (groupId == null) return null
+            if (info == null) return GroupCard(groupId)
+            val g = info.groups.firstOrNull { it.id == groupId } ?: return null
+            val title = TogetherRow.titleOf(item, standings) ?: return null
+            return if (g.holds(title)) GroupCard(groupId) else null
+        }
     }
 }
 
@@ -601,11 +661,11 @@ data class PartLock(val group: WatchGroup, val together: Boolean, val opens: Str
 }
 
 /**
- * The watch-partners plugin. Nothing is ever refused: before a part of a shared title plays it
- * asks first only when it isn't out yet by a group's schedule (played from that group's card, or
- * from anywhere else for a group with Together on), or when a group with Together on hasn't
- * watched it yet and it's played from anywhere but that group's card ("Watch now together",
- * "Watch for myself", "Not now"). Home's "Watching together" row ([TogetherRow]) and the cards'
+ * The watch-partners plugin. Before a part of a shared title plays it asks first when it isn't
+ * out yet by a group's schedule, or when a group with Together on hasn't watched it yet and it's
+ * played from anywhere but that group's card ("Watch now together", "Watch for myself", "Not
+ * now"); a group whose schedule doesn't allow playing ahead ([GroupSchedule.locked]) refuses what
+ * isn't out yet and, with Together on, plays what it hasn't watched only together. Home's "Watching together" row ([TogetherRow]) and the cards'
  * lines keep everyone in step. Its switch turns the whole feature on or off.
  */
 class WatchPartnersPlugin : PlaybackGuard {
@@ -690,13 +750,37 @@ class WatchPartnersPlugin : PlaybackGuard {
 
     override suspend fun beforePlay(item: MediaItem, host: PluginHost): GuardDecision = beforePlay(item, host, null)
 
+    /** The watch groups (ids) this device started a live session for ("Watch now together"), per account, with that session's id. */
+    private val liveFor = kotlinx.coroutines.flow.MutableStateFlow<Map<String, String>>(emptyMap())
+
     /**
-     * From a group's card ([origin] [PlayOrigin.GroupCard]): only that group's schedule asks, when
-     * the part isn't out yet ("Opens Thursday 7pm": Watch for myself / Not now). From anywhere
-     * else: each group on the title with Together on asks, first when it isn't out yet, then when
-     * the group hasn't watched it ("Watch now together", "Watch for myself", "Not now"); not while
-     * the user is in a live session or the same room with someone from that group. Groups with
-     * Together off never ask about plays started elsewhere.
+     * This device started live session [sessionId] (a SyncPlay group) for watch group [groupId]
+     * ("Watch now together", a Group Watch Session): while it's in that session, playing what the
+     * group hasn't watched counts as watching together, even before anyone else has joined.
+     */
+    fun watchingNow(host: PluginHost, groupId: String, sessionId: String) {
+        liveFor.update { it + (key(host, "live:$groupId") to sessionId) }
+    }
+
+    /** How strict one group is about a playback, strictest last. */
+    private enum class Strictness { ASK_TOGETHER, ASK_NOT_OUT, TOGETHER_ONLY, REFUSE }
+
+    private data class Verdict(val level: Strictness, val group: WatchGroup)
+
+    /**
+     * Ask first (the schedule's default): from a group's card ([origin] [PlayOrigin.GroupCard]),
+     * only that group's schedule asks, when the part isn't out yet ("Opens Thursday 7pm": Watch for
+     * myself / Not now). From anywhere else: each group on the title asks when the part isn't out
+     * yet, and a group with Together on when it hasn't watched it ("Watch now together", "We're in
+     * the same room", "Watch for myself", "Not now"); not while the user is in a live session or
+     * the same room with someone from that group. "Watch for myself" asks nothing more.
+     *
+     * Don't allow ([WatchGroup.locked]), from anywhere: a part the group's schedule hasn't let out
+     * is refused ("Opens Thursday 7pm", OK only), and with Together on a part the group hasn't
+     * watched plays only together ("Watch now together", "We're in the same room", "Not now")
+     * unless someone from the group is in the session or the room already. Catching up to what the
+     * group has watched, and rewatching (the user has seen it), stay free of the lock. With several
+     * groups on the title the strictest decides, and its question names it.
      */
     override suspend fun beforePlay(item: MediaItem, host: PluginHost, origin: PlayOrigin?): GuardDecision {
         // Handed to the player ([takeOrigin]); an answer to the question below takes its place.
@@ -705,24 +789,62 @@ class WatchPartnersPlugin : PlaybackGuard {
         if (host.server.companion()?.features?.contains(WatchPartners.FEATURE) != true) return GuardDecision.Allow
         val info = runCatching { host.server.partners() }.getOrNull() ?: return GuardDecision.Allow
         val card = (origin as? PlayOrigin.GroupCard)?.groupId
+        val mine = origin == PlayOrigin.ForMyself
+        fun held(g: WatchGroup) = g.schedule?.limits == true && g.titles.any { it.lockedFromId != null }
+        fun unseen(g: WatchGroup) = g.together && g.titles.any { it.togetherFromId != null }
         val asking = info.groups.filter { g ->
-            val held = g.titles.any { it.lockedFromId != null } && g.schedule?.limits == true
-            if (card != null) g.id == card && held else g.together && (held || g.titles.any { it.togetherFromId != null })
+            when {
+                !held(g) && !unseen(g) -> false
+                g.locked -> true
+                mine -> false
+                card != null -> g.id == card && held(g)
+                else -> true
+            }
         }
-        if (asking.isEmpty() || origin == PlayOrigin.ForMyself) return GuardDecision.Allow
-        val present = host.together?.participants().orEmpty().map { it.lowercase() }.toSet()
+        if (asking.isEmpty()) return GuardDecision.Allow
+        val together = host.together
+        val present = together?.participants().orEmpty().map { it.lowercase() }.toSet()
+        val session = runCatching { together?.sessionId() }.getOrNull()
         for (title in asking.flatMap { g -> g.titles.map { it.id } }.distinct()) {
             val items = runCatching { host.server.titleItems(title) }.getOrNull() ?: continue
             val order = WatchPartners.countable(items).map { it.id }
             if (item.id !in order) continue
             val room = roomOn(host, title)
-            val groups = asking.filter { it.holds(title) }
-                // With someone from the group, in a live session or the same room: that's watching together.
-                .filter { g -> card != null || g.others.none { it.name.lowercase() in present || (room?.groupId == g.id && it.id in room.present) } }
-            val lock = PartLock.of(item.id, order, groups, together = card == null) ?: continue
-            return if (lock.together) unwatched(item, lock.group, title, host) else notOutYet(item, lock, host)
+            val verdicts = asking.filter { it.holds(title) }.mapNotNull { g ->
+                // With someone from the group, in a live session or the same room (or a session started for it): that's watching together.
+                val withThem = g.others.any { it.name.lowercase() in present || (room?.groupId == g.id && it.id in room.present) } ||
+                    (session != null && liveFor.value[key(host, "live:${g.id}")] == session)
+                verdict(g, item, order, card, mine, withThem)
+            }
+            // The strictest decides; among equals, the first group.
+            val v = verdicts.maxByOrNull { it.level.ordinal } ?: continue
+            return when (v.level) {
+                Strictness.REFUSE -> refused(item, v.group, order)
+                Strictness.TOGETHER_ONLY -> unwatched(item, v.group, title, host, alone = false)
+                Strictness.ASK_NOT_OUT -> notOutYet(item, PartLock(v.group, together = false, opens = v.group.opensLabelFor(item.id, order)), host)
+                Strictness.ASK_TOGETHER -> unwatched(item, v.group, title, host, alone = true)
+            }
         }
         return GuardDecision.Allow
+    }
+
+    private fun verdict(g: WatchGroup, item: MediaItem, order: List<String>, card: String?, mine: Boolean, withThem: Boolean): Verdict? {
+        val notOut = g.schedule?.limits == true && g.locks(item.id, order)
+        val unseen = g.needsTogether(item.id, order)
+        // Don't allow (rewatching what the user has seen stays free of it: asked as Ask first).
+        if (g.locked && !item.user.played) return when {
+            notOut -> Verdict(Strictness.REFUSE, g)
+            unseen && !withThem -> Verdict(Strictness.TOGETHER_ONLY, g)
+            else -> null
+        }
+        if (mine) return null
+        if (card != null) return if (card == g.id && notOut) Verdict(Strictness.ASK_NOT_OUT, g) else null
+        if (withThem) return null
+        return when {
+            notOut -> Verdict(Strictness.ASK_NOT_OUT, g)
+            unseen -> Verdict(Strictness.ASK_TOGETHER, g)
+            else -> null
+        }
     }
 
     private fun forMyself(item: MediaItem, host: PluginHost) =
@@ -741,12 +863,26 @@ class WatchPartnersPlugin : PlaybackGuard {
         )
     }
 
+    /** Don't allow, not out yet: "Opens Thursday 7pm", why, and only OK. */
+    private fun refused(item: MediaItem, g: WatchGroup, order: List<String>): GuardDecision.Ask {
+        val lock = PartLock(g, together = false, opens = g.opensLabelFor(item.id, order))
+        val opens = lock.opens ?: "once the group has watched the one before"
+        val what = item.episodeLabel ?: item.name
+        return GuardDecision.Ask(
+            title = lock.word,
+            message = "$what isn't out yet for your group with ${g.label}. The group's schedule (${g.schedule!!.label}) doesn't allow playing ahead: " +
+                "it opens $opens. Most of the group can agree to change the schedule.",
+            choices = listOf(GuardChoice(OK, GuardAction.Cancel)),
+        )
+    }
+
     /**
      * "Tommy & Suzy haven't watched this yet": Watch now together (a live session for the group),
      * We're in the same room (everyone in the group here; it counts for them too, changeable in
-     * the player), Watch for myself (no group), Not now.
+     * the player), Watch for myself (no group; not when the group's schedule doesn't allow it,
+     * [alone] false), Not now.
      */
-    private fun unwatched(item: MediaItem, g: WatchGroup, titleId: String, host: PluginHost): GuardDecision.Ask {
+    private fun unwatched(item: MediaItem, g: WatchGroup, titleId: String, host: PluginHost, alone: Boolean): GuardDecision.Ask {
         val what = item.episodeLabel ?: item.name
         val together = host.together?.let { t ->
             GuardChoice("Watch now together", GuardAction.RunThenPlay(playIfFailed = false) {
@@ -760,14 +896,19 @@ class WatchPartnersPlugin : PlaybackGuard {
         })
         return GuardDecision.Ask(
             title = unwatchedTitle(g),
-            message = "You watch $what together with ${g.label}. Watch it now together, here in the same room, " +
-                "or for yourself (it counts for no group).",
-            choices = listOfNotNull(together, room, forMyself(item, host), GuardChoice("Not now", GuardAction.Cancel)),
+            message = if (alone) "You watch $what together with ${g.label}. Watch it now together, here in the same room, " +
+                "or for yourself (it counts for no group)."
+            else "You watch $what together with ${g.label}, and the group's schedule (${g.schedule!!.label}) keeps what it hasn't watched yet " +
+                "for watching together. Watch it now together, or here in the same room.",
+            choices = listOfNotNull(together, room, if (alone) forMyself(item, host) else null, GuardChoice("Not now", GuardAction.Cancel)),
         )
     }
 
     companion object {
         const val ID = "watch-partners"
+
+        /** The only choice when a group's schedule refuses a playback. */
+        const val OK = "OK"
 
         /** "Tommy & Suzy haven't watched this yet", "Tommy hasn't watched this yet". */
         fun unwatchedTitle(g: WatchGroup): String = WithChip.nameOf(g) + (if (g.others.size == 1) " hasn't" else " haven't") + " watched this yet"

@@ -2327,6 +2327,55 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.partners.GroupSetupDialog(c, start) {}
     }
 
+    /** The last step with a paced schedule: "If someone plays ahead" under the switch, reached with ▼; Don't allow shows in the summary. */
+    @Test fun groupSetupPlayAhead() = shoot("tv-group-setup-play-ahead", setup = { c -> c.refreshCompanionForTests() }, act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText(dev.nitrate.core.partners.GroupSchedule.PLAY_AHEAD)).fetchSemanticsNodes().isNotEmpty()) { "the play-ahead line" }
+        check(focusedHasText("Together: Off")) { "focus on the switch; focused: ${focusedNodes()}" }
+        press("down")
+        check(focusedHasText("Ask first") || focusedHasText("Don't allow")) { "▼ reaches the choice; focused: ${focusedNodes()}" }
+        if (focusedHasText("Ask first")) press("right")
+        check(focusedHasText("Don't allow")) { "Don't allow is reachable; focused: ${focusedNodes()}" }
+        press("ok")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Thursdays 7pm, locked", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the summary says locked" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText(dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, locked = true).lockNote)).fetchSemanticsNodes().isNotEmpty()) { "what Don't allow means" }
+    }) { c ->
+        val start = dev.nitrate.core.partners.GroupSetup(
+            dev.nitrate.core.partners.GroupSetup.Step.TOGETHER,
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel")), people = listOf("user-2"),
+            schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY),
+        )
+        dev.nitrate.tv.ui.partners.GroupSetupDialog(c, start) {}
+    }
+
+    /** A group whose schedule doesn't allow playing ahead, from anywhere: "Opens Thursday 7pm", why, and only OK, focused. */
+    @Test fun playAheadRefused() = shoot("tv-play-ahead-refused", setup = { c ->
+        (c.server as FakeServer).partnerInfo = dev.nitrate.core.partners.PartnersInfo(
+            listOf(
+                dev.nitrate.core.partners.WatchGroup(
+                    "g1", "series-1", "The Night Reel", listOf(dev.nitrate.core.writing.UserRef("user-2", "Will")), 0,
+                    dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, day = 4, hour = 19, locked = true),
+                    lockedFromId = "s2e1", opensDay = 4,
+                ),
+            ),
+            emptyList(), emptyList(),
+        )
+    }, act = {
+        // The guard reads the groups and the title's parts first.
+        repeat(40) {
+            if (compose.onAllNodes(androidx.compose.ui.test.hasText("Opens Thursday 7pm")).fetchSemanticsNodes().isEmpty()) {
+                Thread.sleep(50); compose.mainClock.advanceTimeBy(200); compose.waitForIdle()
+            }
+        }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Opens Thursday 7pm")).fetchSemanticsNodes().isNotEmpty()) { "says when it opens" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("doesn't allow playing ahead", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "says why" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watch for myself")).fetchSemanticsNodes().isEmpty()) { "nothing to watch for oneself" }
+        check(focusedHasText("OK")) { "focus on OK; focused: ${focusedNodes()}" }
+    }) { c ->
+        val gate = dev.nitrate.tv.plugins.core.rememberPlaybackGate(c.plugins) { _, _, _ -> }
+        androidx.compose.runtime.LaunchedEffect(Unit) { gate.play(c.server.getItem("s2e1")) }
+        dev.nitrate.tv.plugins.core.PlaybackGateDialog(gate)
+    }
+
     /** After a playback from a group's card that's next in another group too: the question, "Just this group" focused. */
     @Test fun countingPrompt() = shoot("tv-counting-prompt", act = {
         check(focusedHasText("Just this group")) { "focus on Just this group; focused: ${focusedNodes()}" }

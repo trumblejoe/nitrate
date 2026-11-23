@@ -28,6 +28,9 @@ interface TogetherSession {
     /** The names of the people in this device's watch-together group (the user among them); empty outside one. */
     fun participants(): List<String>
 
+    /** The id of this device's watch-together (SyncPlay) group, null outside one. */
+    fun sessionId(): String? = null
+
     /**
      * Starts watching [item] together: a watch-together group for this device named for it and
      * [names] (unless it's in one already), with [userIds] invited. The item is then played as usual.

@@ -57,6 +57,7 @@ internal fun decodePartyNews(text: String): dev.nitrate.core.partners.PartyNews?
 internal fun ScheduleDto.toScheduleModel() = dev.nitrate.core.partners.GroupSchedule(
     cadence, day, hour, minute, softLock, together,
     party?.takeIf { it.days.isNotEmpty() }?.let { dev.nitrate.core.partners.PartyTime(it.days, it.hour, it.minute) },
+    locked = locked,
 )
 
 /** A "Nitrate.Party" message's schedule news (null when it's party news, or not a message at all). */

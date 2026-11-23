@@ -117,5 +117,6 @@ fun PlaybackGateDialog(gate: PlaybackGate) {
             }
         }
     }
-    LaunchedEffect(ask) { runCatching { first.requestFocus() } }
+    // The dialog's window comes up a frame later: focus its first choice once it's there (a refusal's only choice, OK).
+    LaunchedEffect(ask) { kotlinx.coroutines.delay(60); runCatching { first.requestFocus() } }
 }

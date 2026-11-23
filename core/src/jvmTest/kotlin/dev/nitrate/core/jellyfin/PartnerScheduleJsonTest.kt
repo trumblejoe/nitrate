@@ -36,7 +36,7 @@ class PartnerScheduleJsonTest {
                 {"Id":"$g1","SeriesId":"$show","SeriesName":"Bear","Others":[{"Id":"${"5".repeat(32)}","Name":"Sam"}],
                  "Schedule":{"Cadence":"weekly","Day":4,"Hour":19,"Minute":0,"SoftLock":false,"TimeZone":""}},
                 {"Id":"$g2","SeriesId":"$show","SeriesName":"Bear","Others":[{"Id":"${"6".repeat(32)}","Name":"Kim"}],
-                 "Schedule":{"Cadence":"binge","Day":4,"Hour":19,"Minute":0,"SoftLock":true,"Together":true},"TogetherFromId":"$ep3",
+                 "Schedule":{"Cadence":"binge","Day":4,"Hour":19,"Minute":0,"SoftLock":true,"Together":true,"Locked":true},"TogetherFromId":"$ep3",
                  "Record":true,"Mine":["${"b".repeat(32)}"]}
             ]}"""
             else -> "{}"
@@ -64,8 +64,11 @@ class PartnerScheduleJsonTest {
         val together = groups.first { it.id == normalizeId(g2) }
         assertTrue(together.schedule!!.together)
         assertTrue(together.schedule!!.softLock)
+        // "If someone plays ahead": stored as Locked; groups from before it ask first.
+        assertTrue(together.schedule!!.locked)
+        assertFalse(old.schedule!!.locked)
+        assertEquals("Binge, together, locked", together.schedule!!.label)
         assertEquals(normalizeId(ep3), together.togetherFromId)
-        assertEquals("Binge, together", together.schedule!!.label)
         // A together-only group's own record: what the user watched with it. Separately: none.
         assertEquals(setOf(normalizeId("b".repeat(32))), together.ownRecord)
         assertNull(old.ownRecord)
@@ -88,5 +91,16 @@ class PartnerScheduleJsonTest {
         assertTrue(bodies[0], bodies[0].contains("\"Together\":true"))
         // Separately is the plugin's default, so it needn't be said.
         assertFalse(bodies[1], bodies[1].contains("\"Together\":true"))
+    }
+
+    @Test fun dontAllowIsSentWithAChange() = runBlocking {
+        val c = client()
+        c.proposeSchedule(normalizeId(g1), GroupSchedule(GroupSchedule.WEEKLY, locked = true))
+        c.proposeSchedule(normalizeId(g1), GroupSchedule(GroupSchedule.WEEKLY))
+        val bodies = sent.filter { it.contains("/Schedule ") }
+        assertTrue(bodies[0], bodies[0].contains("\"Locked\":true"))
+        // Ask first is the plugin's default (and the old SoftLock is never used for it).
+        assertFalse(bodies[1], bodies[1].contains("\"Locked\":true"))
+        assertFalse(bodies[0], bodies[0].contains("\"SoftLock\":true"))
     }
 }

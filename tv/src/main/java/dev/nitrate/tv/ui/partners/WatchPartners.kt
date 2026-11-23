@@ -132,7 +132,7 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
             }
             TvTextField(typed, { typed = it; if (it.isNotBlank()) chosen = null }, "Or their exact user name (for someone not listed)", modifier = Modifier.width(620.dp))
             // A new group's schedule is the inviter's choice; accepting agrees to it.
-            if (target == null) SchedulePicker(schedule) { schedule = it }
+            if (target == null) SchedulePicker(schedule, lockable(container)) { schedule = it }
             Text("Nothing here tells you whether an account exists.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -146,15 +146,40 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
 
 /**
  * A group's schedule: the release schedule (Binge, every 2 days, every 3 days or weekly with its
- * day, and the time new parts open), the Group Watch Session (optional days and time) and the
- * Together switch, with what it means.
+ * day, and the time new parts open), the Group Watch Session (optional days and time), the
+ * Together switch and, where the server keeps it ([lockable]), "If someone plays ahead", with what
+ * they mean.
  */
 @Composable
-fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
+fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, lockable: Boolean = true, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
     PacePicker(schedule, onChange)
     PartyTimePicker(schedule, onChange)
     TogetherSwitch(schedule, onChange)
+    if (lockable) PlayAheadPicker(schedule, onChange)
     Text(schedule.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** Whether the server keeps a schedule's "If someone plays ahead" (Companion feature `schedulelock`; older plugins drop it). */
+@Composable
+fun lockable(container: AppContainer): Boolean =
+    container.companion.collectAsState().value?.features?.contains(dev.nitrate.core.partners.GroupSchedule.LOCK_FEATURE) == true
+
+/**
+ * "If someone plays ahead": Ask first (the default) or Don't allow, with what the choice means.
+ * Only while the schedule holds something back (paced, or Together on): binge with Together off has nothing to lock.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PlayAheadPicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit, first: Modifier = Modifier) {
+    if (!schedule.active) return
+    val g = dev.nitrate.core.partners.GroupSchedule
+    Text(g.PLAY_AHEAD, style = MaterialTheme.typography.titleSmall)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        g.LOCK_CHOICES.forEachIndexed { i, (locked, label) ->
+            FilterChip(schedule.locked == locked, { onChange(schedule.copy(locked = locked)) }, if (i == 0) first else Modifier) { Text(label) }
+        }
+    }
+    Text(schedule.lockNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** The release schedule: Binge, every 2 days, every 3 days or weekly (with its day), and the time new parts open. */
@@ -199,7 +224,7 @@ fun ScheduleChangeDialog(container: AppContainer, group: dev.nitrate.core.partne
     TvDialog(onDismiss, width = 900) {
         Text("Change the schedule for ${group.titleNames}", style = MaterialTheme.typography.headlineSmall)
         Text("Now: ${group.schedule?.label ?: "Binge"}. ${if (group.others.size == 1) "${group.label} has to agree" else "Most of the group has to agree"} before it changes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SchedulePicker(schedule) { schedule = it }
+        SchedulePicker(schedule, lockable(container)) { schedule = it }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { scope.launch { val e = container.proposeSchedule(group.id, schedule); if (e != null) error = e else onDismiss() } }, modifier = Modifier.focusRequester(focus)) { Text("Ask the group") }
@@ -570,7 +595,7 @@ fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.G
                     if (!easy) Text("Nothing here tells you whether an account exists.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 dev.nitrate.core.partners.GroupSetup.Step.PACE -> {
-                    if (!easy) Text("How new parts are let out to the group. Anything someone has watched with the group stays open; nothing is ever locked.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!easy) Text("How new parts are let out to the group. Anything someone has watched with the group stays open; whether anyone may play ahead is the last step's choice.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     PacePicker(setup.schedule, { setup = setup.copy(schedule = it) }, Modifier.focusRequester(first))
                 }
                 dev.nitrate.core.partners.GroupSetup.Step.SESSION -> {
@@ -580,6 +605,8 @@ fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.G
                 dev.nitrate.core.partners.GroupSetup.Step.TOGETHER -> {
                     TogetherSwitch(setup.schedule, { setup = setup.copy(schedule = it) }, Modifier.focusRequester(first))
                     if (!easy) Text(if (setup.schedule.together) dev.nitrate.core.partners.GroupSchedule.TOGETHER_OFF else dev.nitrate.core.partners.GroupSchedule.TOGETHER_ON, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Whether anyone may play ahead of what the schedule and Together hold back (shown once something is held back).
+                    if (lockable(container)) PlayAheadPicker(setup.schedule, { setup = setup.copy(schedule = it) })
                     Text(setup.summary, style = MaterialTheme.typography.titleSmall)
                 }
             }
