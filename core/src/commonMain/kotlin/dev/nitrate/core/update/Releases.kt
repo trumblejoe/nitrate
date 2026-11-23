@@ -59,8 +59,11 @@ object Releases {
     private val json = Json { ignoreUnknownKeys = true }
     private val codeNote = Regex("""nitrate-version-code:\s*(\d+)""")
 
-    /** Releases with an APK for [app] ("mobile" or "tv"), newest first. */
-    fun parse(body: String, app: String): List<AppRelease> {
+    /**
+     * Releases with a build for [app] ("mobile" or "tv" APKs; "desktop" with [suffix] ".msi" or
+     * ".zip" for the Windows installer or portable copy), newest first.
+     */
+    fun parse(body: String, app: String, suffix: String = ".apk"): List<AppRelease> {
         val list = runCatching { json.parseToJsonElement(body) as? JsonArray }.getOrNull() ?: return emptyList()
         return list.mapNotNull { it as? JsonObject }.mapNotNull { r ->
             if (r.bool("draft")) return@mapNotNull null
@@ -68,7 +71,7 @@ object Releases {
             val notesText = r.str("body").orEmpty()
             val code = versionCode(tag, notesText) ?: return@mapNotNull null
             val assets = (r["assets"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
-            val apk = assets.firstOrNull { a -> a.str("name")?.let { it.startsWith("nitrate-$app-") && it.endsWith(".apk") } == true } ?: return@mapNotNull null
+            val apk = assets.firstOrNull { a -> a.str("name")?.let { it.startsWith("nitrate-$app-") && it.endsWith(suffix) } == true } ?: return@mapNotNull null
             AppRelease(
                 tag = tag,
                 title = r.str("name") ?: tag,

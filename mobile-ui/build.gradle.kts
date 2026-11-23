@@ -18,6 +18,10 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
+    // The desktop app (:desktop, Compose for Desktop on the JVM): Windows first, Linux and macOS run too.
+    jvm("desktop") {
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+    }
 
     compilerOptions {
         optIn.add("kotlinx.cinterop.ExperimentalForeignApi")
@@ -42,6 +46,13 @@ kotlin {
         iosMain.dependencies {
             implementation(libs.coil.network.ktor3)
             implementation(libs.ktor.client.darwin)
+        }
+        getByName("desktopMain").dependencies {
+            implementation(compose.desktop.common)
+            // Back (Esc) through Compose's own back navigation, as NavHost uses.
+            implementation(libs.cmp.ui.backhandler)
+            implementation(libs.coil.network.ktor3)
+            implementation(libs.ktor.client.okhttp)
         }
         androidMain.dependencies {
             api(project(":core-android"))
