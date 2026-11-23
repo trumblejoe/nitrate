@@ -939,7 +939,7 @@ class TvScreenshotTest {
         val rows = c.server.homeRows()
         c.displaySettings.save("user-1", rows[2], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.LIGHTNING))
     }, act = {
-        fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        fun at() = steadyFocus()
         press("right")
         val first = at()
         press("down", "down", "right", "right")
@@ -1507,6 +1507,26 @@ class TvScreenshotTest {
             compose.mainClock.advanceTimeBy(400)
             compose.waitForIdle()
         }
+    }
+
+    /**
+     * Where focus sits once it has come to rest: rows are placed (and focus asked for) over several
+     * frames, some of it after work off the test's clock, so one read can catch a row mid-move.
+     * Steps the clock until the focused node's bounds hold for three steps running (5 s at most).
+     */
+    private fun steadyFocus(): androidx.compose.ui.geometry.Rect {
+        fun read() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().firstOrNull()?.boundsInRoot
+        var last = read()
+        var same = 0
+        repeat(50) {
+            if (same >= 3 && last != null) return last!!
+            Thread.sleep(20) // lets work on other threads (settings, loads) land between steps
+            compose.mainClock.advanceTimeBy(100)
+            compose.waitForIdle()
+            val now = read()
+            if (now != null && now == last) same++ else { same = 0; last = now }
+        }
+        return checkNotNull(last) { "nothing has focus" }
     }
 
     private fun focusedHasText(text: String) =

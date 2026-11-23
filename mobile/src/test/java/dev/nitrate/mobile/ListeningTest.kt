@@ -87,7 +87,9 @@ class ListeningTest {
 
     @Test fun shuffleKeepsTheQueueInItsPlayingOrder() = run({ Server(it) }) { l, _ ->
         l.play((1..6).map { song("s$it") }, shuffle = true)
-        until { l.player.playbackState == Player.STATE_READY }
+        // Held still: under load the test's audio can run faster than real time and roll on to the next song.
+        l.pause()
+        until { l.player.playbackState == Player.STATE_READY && l.state.value.queue.size == 6 && l.state.value.current?.id == l.player.currentMediaItem?.mediaId }
         val st = l.state.value
         assertTrue(st.shuffle)
         assertEquals(6, st.queue.size)
