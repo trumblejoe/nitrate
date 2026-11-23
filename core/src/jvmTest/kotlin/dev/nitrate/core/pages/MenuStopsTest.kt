@@ -33,4 +33,41 @@ class MenuStopsTest {
         assertEquals(listOf("search", null, "settings"), MenuStops.remove(slots, 1))
         assertEquals(listOf("search", "settings"), MenuStops.linear(MenuStops.remove(slots, 1)))
     }
+
+    @Test fun cornerStopsLeaveOverlayAndRailOnly() {
+        val ids = listOf("search", "home", "library:m", "more", "settings", "profiles")
+        assertEquals(listOf("home", "library:m", "more"), MenuStops.shownIn(ids, TvMenuStyle.OVERLAY))
+        assertEquals(listOf("home", "library:m", "more"), MenuStops.shownIn(ids, TvMenuStyle.LEFT))
+        assertEquals(listOf("home", "library:m", "more"), MenuStops.shownIn(ids, TvMenuStyle.RIGHT))
+        // The bar and the dial keep them.
+        assertEquals(ids, MenuStops.shownIn(ids, TvMenuStyle.TOP))
+        assertEquals(ids, MenuStops.shownIn(ids, TvMenuStyle.RADIAL))
+    }
+
+    @Test fun movingStepsOverStopsNotShown() {
+        val arranged = listOf("search", "home", "library:m", "settings", "library:s")
+        // Down from Movies: past the unshown Settings, so it really moves on screen.
+        assertEquals(
+            listOf("search", "home", "settings", "library:s", "library:m"),
+            MenuLayout.move(arranged, emptyList(), emptyList(), "library:m", 1, MenuStops.IN_CORNER),
+        )
+        // Without skipping, it only swaps with Settings.
+        assertEquals(
+            listOf("search", "home", "settings", "library:m", "library:s"),
+            MenuLayout.move(arranged, emptyList(), emptyList(), "library:m", 1),
+        )
+    }
+
+    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = false; coerceInputValues = true }
+
+    @Test fun overlayIsTheDefaultButSavedSettingsKeepTheRail() {
+        assertEquals(TvMenuStyle.OVERLAY, DisplayPrefs().tvMenu)
+        // Saved before the overlay: no tvMenu meant the left rail.
+        assertEquals(TvMenuStyle.LEFT, DisplayPrefs.decode(json, """{"tvClock":true}""").tvMenu)
+        assertEquals(TvMenuStyle.TOP, DisplayPrefs.decode(json, """{"tvMenu":"TOP"}""").tvMenu)
+        // From now on the choice is always written, the default too, so it reads back as itself.
+        val saved = json.encodeToString(DisplayPrefs.serializer(), DisplayPrefs(tvClock = true))
+        assertEquals(true, "\"tvMenu\":\"OVERLAY\"" in saved, saved)
+        assertEquals(TvMenuStyle.OVERLAY, DisplayPrefs.decode(json, saved).tvMenu)
+    }
 }

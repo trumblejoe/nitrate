@@ -175,6 +175,13 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onNowPlaying = { nav.navigate(NowPlayingRoute) { launchSingleTop = true } },
                 onMore = { nav.navigate(MoreRoute, fromHome) },
                 onPlaylist = { id -> nav.navigate(PlaylistRoute(id), fromHome) },
+                onSignOut = {
+                    scope.launch {
+                        container.signOut()
+                        val next: Any = if (container.server.savedAccounts().isNotEmpty()) ProfilesRoute else ConnectRoute
+                        nav.navigate(next) { popUpTo(0) { inclusive = true } }
+                    }
+                },
             ),
         )
     }

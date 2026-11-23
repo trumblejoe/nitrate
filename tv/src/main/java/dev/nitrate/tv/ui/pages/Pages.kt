@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.pages
 
+import dev.nitrate.core.pages.TvMenuStyle
 import dev.nitrate.core.pages.applyToPage
 import dev.nitrate.core.pages.applyEverywhere
 import androidx.compose.material.icons.filled.Add
@@ -439,34 +440,42 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 trailingContent = { Text("${prefs.tvLetterBar.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
+        // Four kinds of menu: the overlay (default), the side rail, the top bar and the dial.
+        // "Fade in" is a switch below (the old FADE style reads as the top bar with it on).
+        val now = if (prefs.tvMenu == TvMenuStyle.FADE) TvMenuStyle.TOP else prefs.tvMenu
         item {
+            val kinds = listOf(TvMenuStyle.OVERLAY, TvMenuStyle.LEFT, TvMenuStyle.TOP, TvMenuStyle.RADIAL)
+            val kind = if (now == TvMenuStyle.RIGHT) TvMenuStyle.LEFT else now
             ListItem(
                 selected = false,
                 onClick = {
                     update {
-                        // "Fade in" is now a switch below, not a menu of its own.
-                        val styles = dev.nitrate.core.pages.TvMenuStyle.entries - dev.nitrate.core.pages.TvMenuStyle.FADE
-                        val now = if (it.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE) dev.nitrate.core.pages.TvMenuStyle.TOP else it.tvMenu
-                        it.copy(tvMenu = styles[(styles.indexOf(now) + 1) % styles.size], tvMenuAutoHide = it.tvMenuAutoHide || it.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE)
+                        val next = kinds[(kinds.indexOf(kind) + 1) % kinds.size]
+                        it.copy(tvMenu = next, tvMenuAutoHide = it.tvMenuAutoHide || it.tvMenu == TvMenuStyle.FADE)
                     }
                 },
                 headlineContent = { Text("Menu") },
-                supportingContent = { Text((if (prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE) dev.nitrate.core.pages.TvMenuStyle.TOP else prefs.tvMenu).detail) },
-                trailingContent = { Text("${(if (prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE) dev.nitrate.core.pages.TvMenuStyle.TOP else prefs.tvMenu).label}  ›", color = MaterialTheme.colorScheme.primary) },
+                supportingContent = { Text(now.detail) },
+                trailingContent = { Text("${menuKindName(kind)}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
-        if (prefs.tvMenu != dev.nitrate.core.pages.TvMenuStyle.RADIAL) item {
-            val on = prefs.tvMenuAutoHide || prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE
+        if (now.rail) item {
             ListItem(
                 selected = false,
-                onClick = {
-                    update {
-                        val style = if (it.tvMenu == dev.nitrate.core.pages.TvMenuStyle.FADE) dev.nitrate.core.pages.TvMenuStyle.TOP else it.tvMenu
-                        it.copy(tvMenu = style, tvMenuAutoHide = !on)
-                    }
-                },
+                onClick = { update { it.copy(tvMenu = if (it.tvMenu == TvMenuStyle.RIGHT) TvMenuStyle.LEFT else TvMenuStyle.RIGHT) } },
+                headlineContent = { Text("Rail side") },
+                supportingContent = { Text("Which edge of the screen the rail opens from") },
+                trailingContent = { Text("${if (now == TvMenuStyle.RIGHT) "Right" else "Left"}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+        // The overlay and the rail are hidden until called already; the dial only opens when asked.
+        if (now == TvMenuStyle.TOP) item {
+            val on = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvMenu = TvMenuStyle.TOP, tvMenuAutoHide = !on) } },
                 headlineContent = { Text("Fade in") },
-                supportingContent = { Text("Keep the menu out of sight until you move onto it or press Menu") },
+                supportingContent = { Text("Keep the bar out of sight until you move onto it or press Menu") },
                 trailingContent = { Switch(checked = on, onCheckedChange = null) },
             )
         }
@@ -502,7 +511,7 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 selected = false,
                 onClick = onMenuStops,
                 headlineContent = { Text("Menu stops") },
-                supportingContent = { Text(if (prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.RADIAL) "What's on the dial and where" else "What's in the menu and in what order") },
+                supportingContent = { Text(if (prefs.tvMenu == TvMenuStyle.RADIAL) "What's on the dial and where" else "What's in the menu and in what order") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
             )
         }
@@ -670,4 +679,12 @@ private fun MissingEpisodesToggle(container: AppContainer) {
         supportingContent = { Text("Seasons list episodes you don't have, marked Missing or with their air date. Saved to your server account") },
         trailingContent = { Switch(checked = on == true, onCheckedChange = null) },
     )
+}
+
+/** The menu's kind as Settings → Display names it (the rail's side is a line of its own). */
+internal fun menuKindName(style: TvMenuStyle): String = when (style) {
+    TvMenuStyle.OVERLAY -> "Overlay (default)"
+    TvMenuStyle.LEFT, TvMenuStyle.RIGHT -> "Side rail"
+    TvMenuStyle.TOP, TvMenuStyle.FADE -> "Top bar"
+    TvMenuStyle.RADIAL -> "Dial"
 }

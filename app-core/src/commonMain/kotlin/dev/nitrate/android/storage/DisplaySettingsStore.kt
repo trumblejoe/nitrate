@@ -126,7 +126,7 @@ class DisplaySettingsStore(
 
     /** What's shown about items in another profile (for importing its radial menu). */
     fun prefsOf(userId: String, profileId: String): Flow<DisplayPrefs> = store.data.map { prefs ->
-        prefs[prefKey(userId, DisplayProfiles.scoped(profileId, PREFS))]?.let { runCatching { json.decodeFromString<DisplayPrefs>(it) }.getOrNull() } ?: DisplayPrefs()
+        prefs[prefKey(userId, DisplayProfiles.scoped(profileId, PREFS))]?.let { runCatching { DisplayPrefs.decode(json, it) }.getOrNull() } ?: DisplayPrefs()
     }
 
     /**
@@ -239,7 +239,7 @@ class DisplaySettingsStore(
 
     /** What to show about items (ratings, overviews, badges...); spoiler hiding is the same on every device. */
     fun prefs(userId: String): Flow<DisplayPrefs> = store.data.map { prefs ->
-        val own = prefs[resolve(prefs, userId, PREFS)]?.let { runCatching { json.decodeFromString<DisplayPrefs>(it) }.getOrNull() } ?: DisplayPrefs()
+        val own = prefs[resolve(prefs, userId, PREFS)]?.let { runCatching { DisplayPrefs.decode(json, it) }.getOrNull() } ?: DisplayPrefs()
         val shared = prefs[prefKey(userId, DisplayProfiles.SHARED)]?.let { runCatching { json.decodeFromString<SharedPrefs>(it) }.getOrNull() }
         if (shared != null) own.copy(hideSpoilers = shared.hideSpoilers, recapPlaylists = shared.recapPlaylists) else own.copy(recapPlaylists = emptySet())
     }

@@ -24,6 +24,16 @@ object MenuStops {
     fun group(id: String) = "group:$id"
     fun playlist(id: String) = "playlist:$id"
 
+    /**
+     * In the profile corner (top right of every page): Search, Settings and Switch user. They keep
+     * their ids and places in the arrangement, but the overlay and the rail don't show them as stops.
+     */
+    val IN_CORNER = setOf(SEARCH, SETTINGS, PROFILES)
+
+    /** [ids] as a menu in [style] shows them: without the corner's stops where the corner holds them. */
+    fun shownIn(ids: List<String>, style: TvMenuStyle): List<String> =
+        if (style.cornerStops) ids.filter { it !in IN_CORNER } else ids
+
     /** The stops Easy mode keeps: Home, Search, the libraries (and their groups), Settings, switching user, and More. */
     fun essential(id: String): Boolean = id in setOf(HOME, SEARCH, SETTINGS, PROFILES, MORE) || id.startsWith("library:") || id.startsWith("group:")
 

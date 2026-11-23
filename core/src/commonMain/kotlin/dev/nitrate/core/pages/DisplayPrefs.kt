@@ -88,8 +88,14 @@ data class DisplayPrefs(
     val prerolls: dev.nitrate.core.preroll.PrerollPrefs = dev.nitrate.core.preroll.PrerollPrefs(),
     /** Where the TV library's A–Z bar sits in the All view. */
     val tvLetterBar: LetterBarPlace = LetterBarPlace.AUTO,
-    /** Where the TV's main menu sits. */
-    val tvMenu: TvMenuStyle = TvMenuStyle.LEFT,
+    /**
+     * Where the TV's main menu sits. Always written: settings saved before the overlay menu became
+     * the default have no `tvMenu` (the left rail, then the default, wasn't written), and [decode]
+     * keeps those on the rail.
+     */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault
+    val tvMenu: TvMenuStyle = TvMenuStyle.OVERLAY,
     /** Keep the menu invisible until you move onto it (any menu but the dial). */
     val tvMenuAutoHide: Boolean = false,
     /** The TV menu (rail, bar or dial) on solid black, so it stands out over page themes and art. */
@@ -143,6 +149,21 @@ data class DisplayPrefs(
 
     /** [groupChatOn] set for all of [groupIds] (a title's groups go together). */
     fun withGroupChat(groupIds: Collection<String>, on: Boolean): DisplayPrefs = copy(groupChat = groupChat + groupIds.associateWith { on })
+
+    companion object {
+        /**
+         * Display settings saved as [raw] JSON. Settings saved before the overlay menu became the
+         * default have no `tvMenu` and keep the left rail they had; new users (nothing saved) get
+         * [TvMenuStyle.OVERLAY].
+         */
+        fun decode(json: kotlinx.serialization.json.Json, raw: String): DisplayPrefs {
+            val obj = json.parseToJsonElement(raw) as? kotlinx.serialization.json.JsonObject
+                ?: return json.decodeFromString(serializer(), raw)
+            val fixed = if ("tvMenu" in obj) obj
+            else kotlinx.serialization.json.JsonObject(obj + ("tvMenu" to kotlinx.serialization.json.JsonPrimitive(TvMenuStyle.LEFT.name)))
+            return json.decodeFromJsonElement(serializer(), fixed)
+        }
+    }
 }
 
 /** Where the A–Z bar goes on TV library pages. */
@@ -259,12 +280,25 @@ enum class PageArrangement(val label: String, val note: String) {
 
 @Serializable
 enum class TvMenuStyle(val label: String, val detail: String) {
-    LEFT("Left", "Icons down the left; opens with labels when you move onto it"),
-    RIGHT("Right", "The same rail on the right-hand side"),
-    TOP("Top/Bottom", "A bar at the top while you're on the first row, at the bottom on the last row"),
+    /** Nothing on screen until called: a full-height panel of big stops over the dimmed page (the default). */
+    OVERLAY("Overlay", "Nothing on screen while you browse; Left at the page's edge or Menu opens big stops over the page"),
+    /** The side rail: hidden until called, then a column of icons and words at the edge, over the page. */
+    LEFT("Side rail", "Hidden until you move off the page's left edge or press Menu; then icons and words down the left"),
+    RIGHT("Side rail", "Hidden until you move off the page's right edge or press Menu; then icons and words down the right"),
+    TOP("Top bar", "A bar at the top while you're on the first row, at the bottom on the last row"),
     /** Kept so older saved settings still read; shown as Top/Bottom with "Fade in" on. */
     FADE("Fade in", "Top/Bottom, hidden until you reach it"),
     RADIAL("Dial", "Rings of destinations straight up, right, down and left; move up past the top or press Menu"),
+    ;
+
+    /** The side rail, on either side. */
+    val rail: Boolean get() = this == LEFT || this == RIGHT
+
+    /**
+     * Search, Settings and Switch user live in the profile corner (top right of every page) and
+     * leave the menu's stops: on the overlay and the rail. The bar and the dial keep them.
+     */
+    val cornerStops: Boolean get() = this == OVERLAY || rail
 }
 
 @Serializable

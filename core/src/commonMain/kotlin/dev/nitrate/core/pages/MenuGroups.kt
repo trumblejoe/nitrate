@@ -153,8 +153,9 @@ object MenuLayout {
      * The arrangement (`tvMenuStops`) with [id] moved one place up ([delta] −1) or down (+1) among the
      * stops as shown, groups moving as one.
      */
-    fun move(arranged: List<String>, groups: List<MenuGroup>, more: List<String>, id: String, delta: Int): List<String> {
-        val shown = main(arranged, groups, more).filter { it != MenuStops.MORE }
+    fun move(arranged: List<String>, groups: List<MenuGroup>, more: List<String>, id: String, delta: Int, notShown: Set<String> = emptySet()): List<String> {
+        // [notShown]: stops the menu doesn't show (the corner's, `MenuStops.shownIn`), stepped over.
+        val shown = main(arranged, groups, more).filter { it != MenuStops.MORE && it !in notShown }
         val i = shown.indexOf(id)
         val j = i + delta
         if (i < 0 || j !in shown.indices) return arranged
