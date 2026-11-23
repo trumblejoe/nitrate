@@ -884,13 +884,32 @@ class JellyfinClient(
             get("Nitrate", "Moments", query = mapOf("itemId" to itemId?.let { dashless(listOf(it)) })).decode<List<MomentDto>>().map { it.toMoment() }
         }.getOrDefault(emptyList())
 
-    override suspend fun addMoment(itemId: String, positionMs: Long, note: String?, groupId: String?): dev.nitrate.core.companion.Moment? =
-        if (!companionHas("moments")) null
-        else post<MomentPostDto>("Nitrate", "Moments", body = MomentPostDto(dashless(listOf(itemId)), positionMs, note, groupId?.let { dashless(listOf(it)) }))
-            .decode<MomentDto>().toMoment()
+    private fun NoteDto.toNote() = dev.nitrate.core.companion.TimelineNote(
+        normalizeId(id), normalizeId(userId), userName, normalizeId(itemId), positionMs,
+        if (kind == "Reaction") dev.nitrate.core.companion.ChatKind.REACTION else dev.nitrate.core.companion.ChatKind.TEXT,
+        text, groupIds.map(::normalizeId), at, moment,
+    )
 
-    override suspend fun deleteMoment(id: String) {
-        http.delete(url("Nitrate", "Moments", dashless(listOf(id)))) { auth() }
+    override suspend fun titleNotes(itemId: String): dev.nitrate.core.companion.TitleNotes? = when {
+        companionHas("notes") ->
+            get("Nitrate", "Notes", query = mapOf("itemId" to dashless(listOf(itemId)))).decode<NotesPageDto>().let { page ->
+                dev.nitrate.core.companion.TitleNotes(page.groups.map { dev.nitrate.core.companion.NoteGroup(normalizeId(it.id), it.title) }, page.notes.map { it.toNote() })
+            }
+        // Before notes: the moments, read as notes (nothing can be written).
+        companionHas("moments") -> dev.nitrate.core.companion.TitleNotes(emptyList(), moments(itemId).map {
+            dev.nitrate.core.companion.TimelineNote(it.id, it.userId, it.userName, it.itemId, it.positionMs, dev.nitrate.core.companion.ChatKind.TEXT, it.note.orEmpty(), listOfNotNull(it.groupId), it.atMs, moment = true)
+        })
+        else -> null
+    }
+
+    override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String): dev.nitrate.core.companion.TimelineNote =
+        companionApi.pinNote(NotePostDto(dashless(listOf(itemId)), positionMs, text, if (kind == dev.nitrate.core.companion.ChatKind.REACTION) "Reaction" else "Text")).toNote()
+
+    override suspend fun deleteNote(itemId: String, id: String) {
+        http.delete(url("Nitrate", "Notes", dashless(listOf(id)))) {
+            auth()
+            url { parameters.append("itemId", dashless(listOf(itemId))) }
+        }
     }
 
     override suspend fun chatHistory(itemId: String): List<dev.nitrate.core.companion.ChatRecord> =

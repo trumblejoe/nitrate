@@ -437,7 +437,30 @@ class FakeServer : MediaServer {
         dev.nitrate.core.playback.CheckClip("dolby_truehd_51", "Dolby TrueHD 5.1", "Sound", "truehd", "The receiver shows Dolby TrueHD, and each speaker plays when it's named."),
     )
 
-    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners", "diary", "lines"))
+    /** The Companion's features; tests add `notes` for group chat pinned to the timeline. */
+    var companionFeatures = setOf(dev.nitrate.core.companion.CompanionInfo.CHAT, "scripts", "channels", "partners", "diary", "lines")
+
+    override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", companionFeatures)
+
+    /** Group chat pinned along each title (feature `notes`): the group's, at points through the episode. */
+    val notes = mutableListOf(
+        dev.nitrate.core.companion.TimelineNote("n1", "user-2", "Will", "s1e2", 4_000, dev.nitrate.core.companion.ChatKind.TEXT, "The opening shot!", listOf("g1"), 1),
+        dev.nitrate.core.companion.TimelineNote("n2", "user-4", "Frank", "s1e2", 6_000, dev.nitrate.core.companion.ChatKind.REACTION, "😱", listOf("g2"), 2),
+        dev.nitrate.core.companion.TimelineNote("n3", "user-2", "Will", "s1e2", 1_500_000, dev.nitrate.core.companion.ChatKind.TEXT, "Called it.", listOf("g1"), 3),
+        dev.nitrate.core.companion.TimelineNote("m1", "user-1", "nitrate", "s1e2", 900_000, dev.nitrate.core.companion.ChatKind.TEXT, "", listOf("g1"), 4, moment = true),
+    )
+
+    override suspend fun titleNotes(itemId: String): dev.nitrate.core.companion.TitleNotes? =
+        if ("notes" !in companionFeatures) null
+        else dev.nitrate.core.companion.TitleNotes(
+            if (itemId.startsWith("s1e")) listOf(dev.nitrate.core.companion.NoteGroup("g1", "The Night Reel"), dev.nitrate.core.companion.NoteGroup("g2", "The Night Reel")) else emptyList(),
+            notes.filter { it.itemId == itemId }.sortedBy { it.positionMs },
+        )
+
+    override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String) =
+        dev.nitrate.core.companion.TimelineNote("n${notes.size + 1}", "user-1", "nitrate", itemId, positionMs, kind, text, listOf("g1", "g2"), notes.size + 1L).also { notes += it }
+
+    override suspend fun deleteNote(itemId: String, id: String) { notes.removeAll { it.id == id && it.userId == userId } }
 
     /** A few weeks of watching, for the diary. */
     val diaryEntries = mutableListOf(

@@ -228,6 +228,22 @@ public class PartnerTests
     }
 
     [Fact]
+    public void NotesGoToTheGroupsWhoseTitleHoldsTheItem()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        var withSam = Pair(hub, Joe, Sam);
+        // An episode of the group's show, or the show itself: the group with everyone in it.
+        var holding = Assert.Single(hub.GroupsHolding(Joe, Ep2));
+        Assert.Equal(withSam, holding.Id);
+        Assert.Equal(new[] { Joe, Sam }, holding.Members.OrderBy(m => m == Sam));
+        Assert.Single(hub.GroupsHolding(Sam, Bear));
+        // Something else, or someone outside the group: nobody to write to.
+        Assert.Empty(hub.GroupsHolding(Joe, Guid.NewGuid()));
+        Assert.Empty(hub.GroupsHolding(Kid, Ep2));
+    }
+
+    [Fact]
     public void KeptBetweenRestarts()
     {
         var hub = Hub();

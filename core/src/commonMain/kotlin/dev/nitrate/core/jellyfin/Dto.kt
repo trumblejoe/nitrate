@@ -414,7 +414,19 @@ internal data class ProblemTitleDto(val itemId: String, val name: String = "", v
 internal data class MomentDto(val id: String, val userId: String, val userName: String = "", val itemId: String, val positionMs: Long = 0, val note: String? = null, val groupId: String? = null, val at: Long = 0)
 
 @Serializable
-internal data class MomentPostDto(val itemId: String, val positionMs: Long, val note: String? = null, val groupId: String? = null)
+internal data class NoteDto(
+    val id: String, val userId: String, val userName: String = "", val itemId: String, val positionMs: Long = 0,
+    val kind: String = "Text", val text: String = "", val groupIds: List<String> = emptyList(), val at: Long = 0, val moment: Boolean = false,
+)
+
+@Serializable
+internal data class NoteGroupDto(val id: String, val title: String = "")
+
+@Serializable
+internal data class NotesPageDto(val groups: List<NoteGroupDto> = emptyList(), val notes: List<NoteDto> = emptyList())
+
+@Serializable
+internal data class NotePostDto(val itemId: String, val positionMs: Long, val text: String, val kind: String = "Text")
 
 @Serializable
 internal data class ChatRecordDto(val from: String, val name: String = "", val kind: String = "Text", val text: String = "", val positionMs: Long? = null, val at: Long = 0)

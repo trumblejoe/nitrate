@@ -187,10 +187,14 @@ internal class PlayerChoices(
     val refreshNote: String? = null,
     /** Pages of their own (Speakers, Second subtitles, Find subtitles, Watch together): label → content. */
     val pages: List<Pair<String, @Composable (onBack: () -> Unit) -> Unit>> = emptyList(),
-    /** Saves where the film or episode is now as a moment (Companion `moments`; null without it). */
-    val onMarkMoment: (() -> Unit)? = null,
-    /** What happened to the last moment marked ("Marked at 1:02:03"). */
-    val momentNote: String? = null,
+    /** Group chat (the watch group's notes popping up as they're reached) on or off; null: no group to chat with here. */
+    val groupChat: Boolean? = null,
+    /** What it starts as (on; off in easy mode). */
+    val defaultGroupChat: Boolean = true,
+    val onGroupChat: (Boolean) -> Unit = {},
+    /** Others' notes passed before group chat was turned on in this playback, for "Show what I missed". */
+    val missedNotes: Int = 0,
+    val onShowMissed: () -> Unit = {},
 )
 
 internal val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
@@ -263,12 +267,11 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
             }
             if (choices.sound != choices.defaultSound) MakeDefault(choices.onSoundAsDefault)
         }
-        choices.onMarkMoment?.let { mark ->
-            Line("This moment") {
-                DefaultChip("Mark this moment", selected = false, isDefault = false) { mark() }
-                choices.momentNote?.let {
-                    Text(it, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.CenterVertically))
-                }
+        choices.groupChat?.let { on ->
+            Line("Group chat", if (on) "On" else "Off") {
+                DefaultChip("Off", selected = !on, isDefault = !choices.defaultGroupChat) { choices.onGroupChat(false) }
+                DefaultChip("On", selected = on, isDefault = choices.defaultGroupChat) { choices.onGroupChat(true) }
+                if (on && choices.missedNotes > 0) DefaultChip("Show what I missed (${choices.missedNotes})", selected = false, isDefault = false) { choices.onShowMissed() }
             }
         }
         Line("Sleep timer", when { choices.sleepAtEnd -> "End of this"; choices.sleepAt != null -> "On"; else -> "Off" }) {
@@ -436,6 +439,11 @@ internal fun rememberPlayerChoices(
     onFrameRate: (dev.nitrate.core.playback.FrameRateMatch) -> Unit = {},
     /** The TV's refresh rate now (null: unknown). */
     displayHz: Float? = null,
+    /** This playback's group chat, when there's a group to chat with ([groupChatAvailable]). */
+    groupChat: dev.nitrate.core.companion.TimelineChat? = null,
+    groupChatAvailable: Boolean = false,
+    onGroupChat: (Boolean) -> Unit = {},
+    onShowMissed: () -> Unit = {},
 ): PlayerChoices {
     val scope = rememberCoroutineScope()
     val saved by settings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
@@ -460,23 +468,14 @@ internal fun rememberPlayerChoices(
         add("Find subtitles" to { back -> SubtitleSearch(repository, session, onDone = { lang -> session.reloadWithNewSubtitle(lang); onDone() }, onBack = back) })
         if (syncPlay != null) add("Watch together" to { _ -> dev.nitrate.tv.ui.together.WatchTogetherPanel(syncPlay, "Movie night") })
     }
-    // Moments need the Companion plugin: asked once as More opens.
-    val canMark by androidx.compose.runtime.produceState(false, repository) {
-        value = runCatching { repository.companion()?.features?.contains("moments") == true }.getOrDefault(false)
-    }
-    var momentNote by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    val chatOn = groupChat?.on?.collectAsState()?.value
+    val missed = groupChat?.missed?.collectAsState()?.value.orEmpty()
     return PlayerChoices(
-        onMarkMoment = if (!canMark) null else {
-            {
-                val itemId = plan?.itemId
-                val at = session.player.currentPosition
-                if (itemId != null) scope.launch {
-                    momentNote = runCatching { repository.addMoment(itemId, at, null) }.getOrNull()
-                        ?.let { "Marked at " + dev.nitrate.core.companion.Moments.clock(it.positionMs) } ?: "Couldn't mark it"
-                }
-            }
-        },
-        momentNote = momentNote,
+        groupChat = chatOn?.takeIf { groupChatAvailable },
+        defaultGroupChat = !dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.easyMode,
+        onGroupChat = onGroupChat,
+        missedNotes = missed.size,
+        onShowMissed = onShowMissed,
         speed = speed,
         onSpeed = session::setSpeed,
         sound = sound,

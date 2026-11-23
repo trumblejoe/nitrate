@@ -474,6 +474,26 @@ public class PartnerHub
         return others;
     }
 
+    /// <summary>
+    /// The caller's groups whose title holds <paramref name="itemId"/> (the title itself, an episode
+    /// of its show, an item of its list), each with everyone in it now: who a note pinned there
+    /// goes to. Empty for anyone not in such a group.
+    /// </summary>
+    public IReadOnlyList<Nitrate.Companion.Insights.GroupMembers> GroupsHolding(Guid user, Guid itemId)
+    {
+        List<(Guid Id, Guid Title, string Name, List<Guid> Members)> mine;
+        lock (_lock)
+        {
+            mine = _state.Groups.Where(g => g.Members.Contains(user)).Select(g => (g.Id, g.SeriesId, g.SeriesName, g.Members.ToList())).ToList();
+        }
+
+        // Outside the lock: it reads the library (once per title).
+        var holds = new Dictionary<Guid, bool>();
+        return mine.Where(g => g.Title == itemId || (holds.TryGetValue(g.Title, out var h) ? h : holds[g.Title] = _watch.Belongs(g.Title, itemId, user)))
+            .Select(g => new Nitrate.Companion.Insights.GroupMembers(g.Id, g.Name, g.Members.Where(m => _directory.NameOf(m) is not null).ToList()))
+            .ToList();
+    }
+
     private bool SharesGroup(Guid a, Guid b) => _state.Groups.Any(g => g.Members.Contains(a) && g.Members.Contains(b));
 
     private GroupView View(WatchGroup g, Guid user, IReadOnlyList<ShowProgress> everyone)

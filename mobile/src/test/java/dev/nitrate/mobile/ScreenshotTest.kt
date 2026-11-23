@@ -188,6 +188,34 @@ class ScreenshotTest {
         }
     }
 
+    /** The player's group chat sheet at 16:40: the switch, the group's notes up to there (not the one at 25:00), reactions. */
+    @Test fun groupChat() = shoot("phone-group-chat", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
+    }) { actions ->
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val chat = androidx.compose.runtime.remember { actions.container.timelineChat(scope, live = false) }
+        androidx.compose.runtime.LaunchedEffect(Unit) { chat.start("s1e2", 1_000_000) { true } }
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            dev.nitrate.mobile.ui.GroupChatSheet(chat, "The Night Reel", positionMs = { 1_000_000 }, onTurn = { chat.turn(it, 1_000_000) }, onDismiss = {})
+        }
+    }
+
+    /** The group's notes popping up over the video as they're reached. */
+    @Test fun groupChatPopups() = shoot("phone-group-chat-popups", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
+    }) { actions ->
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val chat = androidx.compose.runtime.remember { actions.container.timelineChat(scope, live = false) }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            chat.start("s1e2", 0) { true }
+            kotlinx.coroutines.delay(100)
+            for (s in 0..8L) chat.at(s * 1_000)
+        }
+        Box(Modifier.fillMaxSize().background(Color.DarkGray)) {
+            dev.nitrate.mobile.ui.NoteToasts(chat.popups, Modifier.align(androidx.compose.ui.Alignment.CenterStart).padding(start = 16.dp))
+        }
+    }
+
     /** A script shared by sam, who is writing in it now: the header names them and their cursor is marked. */
     @Test fun sharedScript() = shoot("phone-shared-script", setup = { c ->
         c.writing.account = c.server.currentAccountKey

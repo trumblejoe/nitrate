@@ -151,7 +151,11 @@ actual fun PlayerScreen(
 
     // Watch-together chat, while this device is in a group with chat (Companion plugin).
     val syncGroup = container.syncPlay.group.collectAsState().value
-    val chatGroup = container.chat.groupId.collectAsState().value?.takeIf { !local && !easy }
+    val chatGroup = container.chat.groupId.collectAsState().value?.takeIf { !local && syncGroup != null && it == syncGroup.id }
+    // Group chat: the watch group's notes along this title pop up as they're reached (live in a SyncPlay group too).
+    val groupChat = rememberGroupChat(actions, item?.id, enabled = !local && clipEndMs == null) { session.currentMs() }
+    val chatAvailable = groupChatAvailable(groupChat, chatGroup != null)
+    val chatOn = groupChat?.on?.collectAsState()?.value ?: false
     val playerPrefs by container.playbackSettings.settings.collectAsState(null)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -182,7 +186,7 @@ actual fun PlayerScreen(
                 TextButton(onClick = { pressed(); picking = StreamKind.AUDIO }) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { pressed(); picking = StreamKind.SUBTITLE }) { Text("Subtitles", color = Color.White) }
                 if (!easy) {
-                    if (chatGroup != null) TextButton(onClick = { pressed(); chatting = true }) { Text("Chat", color = Color.White) }
+                    if (chatAvailable) TextButton(onClick = { pressed(); chatting = true }) { Text("Group chat: " + if (chatOn) "On" else "Off", color = Color.White) }
                     TextButton(onClick = { pressed(); more = true }) { Text("More", color = Color.White) }
                 }
             }
@@ -233,7 +237,7 @@ actual fun PlayerScreen(
                 )
             }
         }
-        if (chatGroup != null && !chatting) ChatToasts(container.chat, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+        if (groupChat != null && chatAvailable && !chatting) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
 
         stillAsk?.let { next ->
             val rewind = remember(next) { still.rewind() }
@@ -270,8 +274,16 @@ actual fun PlayerScreen(
     }
 
     val p = plan
-    if (chatting) ChatSheet(container.chat, "Chat" + (syncGroup?.name?.let { " · $it" } ?: ""), positionMs = { session.currentMs() }) { chatting = false }
-    if (more && p != null) IosPlayerMore(actions, session, p, local, sleepAt, sleepAtEnd, onSleep = { at, end -> sleepAt = at; sleepAtEnd = end }) { more = false }
+    if (chatting && groupChat != null) GroupChatSheet(
+        groupChat, syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title, positionMs = { session.currentMs() },
+        onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) },
+    ) { chatting = false }
+    if (more && p != null) IosPlayerMore(
+        actions, session, p, local, sleepAt, sleepAtEnd, onSleep = { at, end -> sleepAt = at; sleepAtEnd = end },
+        groupChat = if (groupChat != null && chatAvailable) { {
+            GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) }, onShowMissed = { groupChat.showMissed(); more = false; chatting = true })
+        } } else null,
+    ) { more = false }
     when {
         p == null || picking == null -> Unit
         picking == StreamKind.AUDIO -> TrackPicker("Audio", p.audioChoices(), p.audioIndex, { session.selectTrack(StreamKind.AUDIO, it); picking = null }) { picking = null }
@@ -343,7 +355,8 @@ private fun clockOf(ms: Long): String {
 @Composable
 private fun IosPlayerMore(
     actions: AppActions, session: ApplePlayerSession, plan: dev.nitrate.core.model.PlaybackPlan, local: Boolean,
-    sleepAt: Long?, sleepAtEnd: Boolean, onSleep: (at: Long?, atEnd: Boolean) -> Unit, onDismiss: () -> Unit,
+    sleepAt: Long?, sleepAtEnd: Boolean, onSleep: (at: Long?, atEnd: Boolean) -> Unit,
+    groupChat: (@Composable () -> Unit)? = null, onDismiss: () -> Unit,
 ) {
     val speed by session.speed.collectAsState()
     val second by session.secondSubtitle.collectAsState()
@@ -359,7 +372,7 @@ private fun IosPlayerMore(
             Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
         ) {
-            MarkMomentRow(actions, item?.id) { session.positionMs.value }
+            groupChat?.invoke()
             if (session.canChangeSpeed) {
                 Text("Speed", style = MaterialTheme.typography.titleSmall)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {

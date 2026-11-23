@@ -614,7 +614,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Bool
     // A choice opening a dialog replaces the sheet with it; one going elsewhere closes it.
     if (open == null) ChoiceSheet(item.displayTitle, onDismiss, onChoose = {}) { entry ->
         if (video) entry("How it plays", "Whether it plays as it is here, and why") { open = "plays" }
-        if (video && container.companionOffers("moments")) entry("Moments", "Marked places, yours and your groups'") { open = "moments" }
+        if (video && (container.companionOffers("notes") || container.companionOffers("moments"))) entry("Group notes", "What your groups said along it, up to where you've got") { open = "moments" }
         if (video && container.companionOffers("chathistory")) entry("Earlier chat", "What was said watching it together") { open = "chat" }
         // In one of the user's watch groups: the same choices as a long press on its Watching together card.
         if (together) entry("Watching together…", "Catch up, watched it together, watch now, invite, leave") { open = "together" }
@@ -625,7 +625,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Bool
     }
     when (open) {
         "plays" -> CheckPlaybackDialog(actions, item, onDismiss)
-        "moments" -> MomentsDialog(actions, item.id, { at -> actions.playFrom(item, at) }, onDismiss)
+        "moments" -> GroupNotesDialog(actions, item, { at -> actions.playFrom(item, at) }, onDismiss)
         "chat" -> EarlierChatDialog(actions, item.id, onDismiss)
         "add" -> AddToListDialog(actions, item, onDismiss)
         "together" -> TogetherChoicesSheet(actions, item, onStart = {}, onDismiss = onDismiss)

@@ -271,6 +271,27 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
         return JellyfinJson.decodeFromString<ChatMessageDto>(response.bodyAsText()).toModel()
     }
 
+    /** Pins a note on a title's timeline (feature `notes`): refused when not in a watch group on it, or the message is turned down. */
+    internal suspend fun pinNote(post: NotePostDto): NoteDto {
+        val response = try {
+            client.http.post(client.url("Nitrate", "Notes")) {
+                with(client) { auth() }
+                contentType(ContentType.Application.Json)
+                setBody(post)
+            }
+        } catch (e: ClientRequestException) {
+            when (e.response.status) {
+                HttpStatusCode.Forbidden, HttpStatusCode.NotFound -> throw ChatForbidden()
+                HttpStatusCode.BadRequest, HttpStatusCode.TooManyRequests -> {
+                    val why = runCatching { JellyfinJson.decodeFromString<ProblemDto>(e.response.bodyAsText()).detail }.getOrNull()
+                    throw ChatRejected(why ?: "The server didn't take that message.", tooFast = e.response.status == HttpStatusCode.TooManyRequests)
+                }
+                else -> throw e
+            }
+        }
+        return JellyfinJson.decodeFromString<NoteDto>(response.bodyAsText())
+    }
+
     // ---- Shared scripts ----
 
     suspend fun sharingUsers(name: String?): List<UserRef> =

@@ -110,7 +110,7 @@ internal fun MorePanel(
             Text(if (item.kind == ItemKind.EPISODE) item.name.orEmpty() else item.displayTitle, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val entries = buildList<Triple<String, String?, () -> Unit>> {
                 if (item.isPlayable) add(Triple("How it plays", "Whether it plays as it is here, and why", { open = "plays" }))
-                if (video && "moments" in features) add(Triple("Moments", "Marked places, yours and your groups'", { open = "moments" }))
+                if (video && ("notes" in features || "moments" in features)) add(Triple("Group notes", "What your groups said along it, up to where you've got", { open = "moments" }))
                 if (video && "chathistory" in features) add(Triple("Earlier chat", "What was said watching it together", { open = "chat" }))
                 if (together) add(Triple("Watching together…", "Catch up, watched it together, watch now, invite, leave", { open = "together" }))
                 if (item.isPlayable || item.kind == ItemKind.SERIES) add(Triple("Add to a playlist or collection", null, { open = "add" }))
@@ -133,7 +133,7 @@ internal fun MorePanel(
     }
     when (open) {
         "plays" -> if (checkPlayback != null) CheckPlaybackDialog(item, checkPlayback, applyPlaybackFix, onDismiss) else PlaybackDecisionDialog(repository, item, onDismiss)
-        "moments" -> MomentsDialog(repository, item.id, { at -> onPlayFrom(item, at) }, onDismiss)
+        "moments" -> GroupNotesDialog(repository, item, { at -> onPlayFrom(item, at) }, onDismiss)
         "chat" -> EarlierChatDialog(repository, item.id, onDismiss)
         "add" -> dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect, onDismiss)
         "comic" -> dev.nitrate.tv.ui.comics.ComicInfoDialog(repository, item, onDismiss)

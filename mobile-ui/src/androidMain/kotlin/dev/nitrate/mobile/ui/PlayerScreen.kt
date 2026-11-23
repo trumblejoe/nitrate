@@ -244,6 +244,10 @@ actual fun PlayerScreen(
 
     val item by session.item.collectAsState()
     val plan by session.plan.collectAsState()
+    // Group chat: the watch group's notes along this title pop up as they're reached (live in a SyncPlay group too).
+    val groupChat = rememberGroupChat(actions, item?.id, enabled = !local && clipEndMs == null && testPlay == null) { session.player.currentPosition }
+    val chatAvailable = groupChatAvailable(groupChat, chatGroup != null)
+    val chatOn = groupChat?.on?.collectAsState()?.value ?: false
     val error by session.error.collectAsState()
     val notice by session.notice.collectAsState()
     val videoDecoder by session.videoDecoder.collectAsState()
@@ -416,7 +420,7 @@ actual fun PlayerScreen(
                 if (lyrics != null) TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "Hide lyrics" else "Lyrics", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.AUDIO }, enabled = plan != null) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { dialog = PlayerDialog.SUBTITLES }, enabled = plan != null) { Text("Subtitles", color = Color.White) }
-                if (chatGroup != null && !easy) IconButton(onClick = { dialog = PlayerDialog.CHAT }) { Icon(Icons.Default.Email, "Chat", tint = Color.White) }
+                if (chatAvailable && !easy) IconButton(onClick = { dialog = PlayerDialog.CHAT }) { Icon(Icons.Default.Email, "Group chat: " + if (chatOn) "On" else "Off", tint = if (chatOn) Color.White else Color.White.copy(alpha = 0.5f)) }
                 if (!easy) IconButton(onClick = { dialog = PlayerDialog.INFO }, enabled = plan != null) { Icon(Icons.Default.Info, "Playback info", tint = Color.White) }
                 if (!easy) IconButton(onClick = { dialog = PlayerDialog.MORE }, enabled = plan != null) { Icon(Icons.Default.MoreVert, "More", tint = Color.White) }
             }
@@ -520,7 +524,7 @@ actual fun PlayerScreen(
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 16.dp)
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), MaterialTheme.shapes.medium).padding(horizontal = 12.dp, vertical = 8.dp),
         )
-        if (chatGroup != null && dialog != PlayerDialog.CHAT) ChatToasts(actions.container.chat, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+        if (groupChat != null && chatAvailable && dialog != PlayerDialog.CHAT) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
     }
 
     val p = plan
@@ -538,8 +542,14 @@ actual fun PlayerScreen(
             onPictureInPicture = { dialog = PlayerDialog.NONE; pip.enterNow(aspect) },
             onPlayedElsewhere = { dialog = PlayerDialog.NONE; onExit() },
             onDismiss = { dialog = PlayerDialog.NONE },
+            groupChat = if (groupChat != null && chatAvailable) { {
+                GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.player.currentPosition) }, onShowMissed = { groupChat.showMissed(); dialog = PlayerDialog.CHAT })
+            } } else null,
         )
-        dialog == PlayerDialog.CHAT -> ChatSheet(actions.container.chat, "Chat" + (syncGroup?.name?.let { " · $it" } ?: ""), positionMs = { session.player.currentPosition }) { dialog = PlayerDialog.NONE }
+        dialog == PlayerDialog.CHAT && groupChat != null -> GroupChatSheet(
+            groupChat, syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title, positionMs = { session.player.currentPosition },
+            onTurn = { turnGroupChat(actions, groupChat, it, session.player.currentPosition) },
+        ) { dialog = PlayerDialog.NONE }
         dialog == PlayerDialog.FIX -> {
             val diagnosis by androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackDiagnosis?>(null, p) {
                 value = session.diagnosis(actions.container.capabilities)

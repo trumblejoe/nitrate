@@ -19,6 +19,9 @@ public record SegmentFeedbackPost(Guid ItemId, SegmentPart Part);
 /// <summary>A device's trouble with a title.</summary>
 public record ProblemPost(Guid ItemId, string DeviceId, string DeviceName, string Kind, string? Reason);
 
+/// <summary>A message or reaction to pin at a point in a title.</summary>
+public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Companion.Chat.ChatKind Kind = Nitrate.Companion.Chat.ChatKind.Text);
+
 /// <summary>A moment to keep.</summary>
 public record MomentPost(Guid ItemId, long PositionMs, string? Note, Guid? GroupId);
 
@@ -43,10 +46,12 @@ public class InsightsController : ControllerBase
     private readonly SegmentVotes _votes;
     private readonly PeopleRecords _records;
     private readonly PartnerHub _partners;
+    private readonly TimelineNoteBook _notes;
 
     /// <summary>Initializes a new instance of the <see cref="InsightsController"/> class.</summary>
-    public InsightsController(IUserManager users, ILibraryManager library, IMediaSegmentManager segments, IntroStore intros, CreditStore credits, SegmentVotes votes, PeopleRecords records, PartnerHub partners)
+    public InsightsController(IUserManager users, ILibraryManager library, IMediaSegmentManager segments, IntroStore intros, CreditStore credits, SegmentVotes votes, PeopleRecords records, PartnerHub partners, TimelineNoteBook notes)
     {
+        _notes = notes;
         _users = users;
         _library = library;
         _segments = segments;
@@ -172,10 +177,89 @@ public class InsightsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// A title's pinned notes the caller may read (theirs, and those of their watch groups on it
+    /// written while they were in the group, by someone still in it with them), plus older moments
+    /// read as notes, and the caller's groups on the title. The apps load this once as playback
+    /// starts and show each note only once the viewer reaches its point.
+    /// </summary>
+    [HttpGet("Notes")]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<NotesPage> Notes([FromQuery] Guid itemId)
+    {
+        if (!ChatEnabled || Me() is not { } user)
+        {
+            return Forbid();
+        }
+
+        var groups = _partners.GroupsHolding(user.Id, itemId);
+        var notes = _notes.VisibleTo(user.Id, itemId, groups);
+        // Older moments, by the rules they were kept under: one's own, and those shared with a group one is in now.
+        var mine = _partners.Groups(user.Id);
+        var groupIds = mine.Select(g => g.Id).ToHashSet();
+        var moments = _records.Moments(user.Id)
+            .Concat(mine.SelectMany(g => g.Others).Select(o => o.Id).Distinct().SelectMany(other => _records.Moments(other)).Where(m => m.GroupId is { } g && groupIds.Contains(g)))
+            .Where(m => m.ItemId == itemId)
+            .Select(TimelineNoteBook.FromMoment);
+        return new NotesPage(
+            groups.Select(g => new NoteGroupView(g.Id, g.Title)).ToList(),
+            notes.Concat(moments).OrderBy(n => n.PositionMs).ThenBy(n => n.At).ToList());
+    }
+
+    /// <summary>Pins a message or reaction at a point in a title for the caller's watch groups on it.</summary>
+    [HttpPost("Notes")]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public ActionResult<NoteView> PinNote([FromBody] NotePost post)
+    {
+        if (!ChatEnabled || Me() is not { } user || _library.GetItemById(post.ItemId) is null)
+        {
+            return Forbid();
+        }
+
+        // Only members of a watch group on this title can write here.
+        var groups = _partners.GroupsHolding(user.Id, post.ItemId);
+        if (groups.Count == 0)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var note = _notes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, groups);
+            return TimelineNoteBook.View(note, user.Id, groups)!;
+        }
+        catch (Nitrate.Companion.Chat.ChatRejectedException e)
+        {
+            return Problem(e.Message, statusCode: e.TooFast ? StatusCodes.Status429TooManyRequests : StatusCodes.Status400BadRequest);
+        }
+    }
+
+    /// <summary>Forgets one of the caller's own notes on a title (or an older moment of theirs).</summary>
+    [HttpDelete("Notes/{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public ActionResult DeleteNote([FromRoute] Guid id, [FromQuery] Guid itemId)
+    {
+        if (Me() is not { } user)
+        {
+            return Unauthorized();
+        }
+
+        if (!_notes.Delete(user.Id, itemId, id))
+        {
+            _records.DeleteMoment(user.Id, id);
+        }
+
+        return NoContent();
+    }
+
     /// <summary>The kept chat of a title's viewings the caller was part of (oldest first).</summary>
     [HttpGet("Chat/History")]
     public ActionResult<IReadOnlyList<ChatRecord>> ChatHistory([FromQuery] Guid itemId) =>
         Me() is { } user ? Ok(_records.Chat(itemId, user.Id)) : Unauthorized();
+
+    private static bool ChatEnabled => Plugin.Instance?.Configuration.EnableChat ?? true;
 
     private Jellyfin.Database.Implementations.Entities.User? Me() =>
         Guid.TryParse(User.FindFirst(UserIdClaim)?.Value, out var id) ? _users.GetUserById(id) : null;

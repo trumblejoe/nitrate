@@ -127,8 +127,15 @@ fun PlayerScreen(
     sendLog: (suspend (PlaybackSession) -> Result<String>)? = null,
     /** What this TV reports, for "Why converting?" (left out: no fixer). */
     capabilities: dev.nitrate.core.playback.DeviceCapabilities? = null,
-    /** Watch-together chat (Companion plugin), shown while this TV is in a group. */
+    /** Watch-together chat (Companion plugin), live while this TV is in a SyncPlay group. */
     chat: dev.nitrate.core.companion.GroupChat? = null,
+    /**
+     * Group chat for this playback: the watch group's notes pinned along the title pop up as they're
+     * reached, and the chat panel writes new ones here (Companion `notes`; live in a SyncPlay group too).
+     */
+    groupChat: dev.nitrate.core.companion.TimelineChat? = null,
+    /** Remembers Group chat on or off for these watch groups (a display preference, per user). */
+    onGroupChat: (List<String>, Boolean) -> Unit = { _, _ -> },
     /** A recap clip: plays from [startMs] to here, unreported, then ends. */
     clipEndMs: Long? = null,
     /** The user's audio-description preference. */
@@ -239,6 +246,17 @@ fun PlayerScreen(
     }
     var showLyrics by remember { mutableStateOf(false) }
     val easy = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.easyMode
+    // Group chat: the title's notes load once as it starts; on or off as remembered for its groups.
+    val displayPrefs by rememberUpdatedState(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current)
+    val noteGroups = groupChat?.groups?.collectAsState()?.value.orEmpty()
+    val groupChatOn = groupChat?.on?.collectAsState()?.value ?: false
+    val chatAvailable = groupChat != null && clipEndMs == null && testPlay == null && (noteGroups.isNotEmpty() || chatGroup != null)
+    LaunchedEffect(groupChat, item?.id) {
+        val i = item ?: return@LaunchedEffect
+        if (groupChat == null || clipEndMs != null || testPlay != null) return@LaunchedEffect
+        groupChat.start(i.id, player.currentPosition) { ids -> displayPrefs.groupChatOn(ids) }
+    }
+    DisposableEffect(groupChat) { onDispose { groupChat?.close() } }
     // What follows: the next episode in viewing order, or the next film in its collection.
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
@@ -441,6 +459,13 @@ fun PlayerScreen(
         skipFaded = skipSegment
     }
     LaunchedEffect(item?.id, position / 1000) { item?.let { skipWatch?.position(it.id, position, System.currentTimeMillis()) } }
+    // Notes pop up as playback reaches them (never ahead).
+    LaunchedEffect(item?.id, position / 1000) { if (item != null && clipEndMs == null && testPlay == null) groupChat?.at(position) }
+    fun turnGroupChat(on: Boolean) {
+        val chat = groupChat ?: return
+        chat.turn(on, player.currentPosition)
+        onGroupChat(chat.keys, on)
+    }
     val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE &&
         upNextAt != null && position >= upNextAt
 
@@ -597,7 +622,7 @@ fun PlayerScreen(
                     PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },
                     PlayerAction(if (outOfStep != null) "Out of step? Fix it" else "Why converting?") { panel = Panel.FIX }
                         .takeIf { !easy && capabilities != null && p != null && (outOfStep != null || p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY) },
-                    PlayerAction(if (panel == Panel.CHAT) "Hide chat" else "Chat") { toggle(Panel.CHAT) }.takeIf { !easy && chatGroup != null },
+                    PlayerAction("Group chat: " + if (groupChatOn) "On" else "Off", key = "group-chat") { toggle(Panel.CHAT) }.takeIf { !easy && chatAvailable },
                 ) + (if (easy) emptyList() else panels.map { PlayerAction(it.panelLabel) { togglePanel(it) } }) +
                     listOfNotNull(sendLog?.takeIf { !easy }?.let { send ->
                         PlayerAction("Send log") {
@@ -615,11 +640,14 @@ fun PlayerScreen(
             )
         }
 
-        if (chat != null && chatGroup != null) {
+        if (groupChat != null && chatAvailable) {
             // Pop-ups from the others, out of the way of the controls and any open chat panel.
-            if (panel != Panel.CHAT) ChatToastsSlot(chat, Modifier.align(Alignment.CenterStart).padding(start = 32.dp))
+            if (panel != Panel.CHAT) dev.nitrate.tv.ui.together.NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 32.dp))
             if (panel == Panel.CHAT) {
-                dev.nitrate.tv.ui.together.ChatPanel(chat, syncGroup?.name, positionMs = { player.currentPosition }, modifier = Modifier.align(Alignment.TopEnd))
+                dev.nitrate.tv.ui.together.GroupChatPanel(
+                    groupChat, syncGroup?.name ?: noteGroups.firstOrNull()?.title, positionMs = { player.currentPosition },
+                    onTurn = ::turnGroupChat, modifier = Modifier.align(Alignment.TopEnd),
+                )
             }
         }
 
@@ -770,7 +798,9 @@ fun PlayerScreen(
                     onPerson = { person = it },
                     choices = rememberPlayerChoices(session, playbackSettings, repository, sleepAt, sleepAtEndState.value, syncPlay,
                         onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDone = { panel = Panel.NONE },
-                        frameRate = frameRateOverride, onFrameRate = { frameRateOverride = it }, displayHz = rememberDisplayHz()),
+                        frameRate = frameRateOverride, onFrameRate = { frameRateOverride = it }, displayHz = rememberDisplayHz(),
+                        groupChat = groupChat, groupChatAvailable = chatAvailable, onGroupChat = ::turnGroupChat,
+                        onShowMissed = { groupChat?.showMissed(); panel = Panel.CHAT }),
                 ),
                 // Never reopens on the episodes or collection (spoilers): Settings instead.
                 initial = moreTab?.takeIf { it != "siblings" },
@@ -843,8 +873,4 @@ fun PlayerScreen(
         TrackDialog("Subtitles", p.subtitleChoices(), p.subtitleIndex, onSelect = { selectTrack(StreamKind.SUBTITLE, it); panel = Panel.NONE }, onDismiss = { panel = Panel.NONE })
     }
 }
-
-@Composable
-private fun ChatToastsSlot(chat: dev.nitrate.core.companion.GroupChat, modifier: Modifier) =
-    dev.nitrate.tv.ui.together.ChatToasts(chat, modifier)
 

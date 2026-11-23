@@ -60,6 +60,8 @@ fun PlayerMoreSheet(
     onPictureInPicture: () -> Unit,
     onPlayedElsewhere: () -> Unit,
     onDismiss: () -> Unit,
+    /** The Group chat switch, when there's a group to chat with in this playback. */
+    groupChat: (@Composable () -> Unit)? = null,
 ) {
     var page by remember { mutableStateOf(MorePage.MAIN) }
     val speed by session.speed.collectAsState()
@@ -90,7 +92,7 @@ fun PlayerMoreSheet(
                         FilterChip(selected = second == null, onClick = { session.setSecondSubtitle(null) }, label = { Text("Off") })
                         seconds.forEach { c -> FilterChip(selected = second?.index == c.index, onClick = { session.setSecondSubtitle(c.index) }, label = { Text(c.title + (c.detail?.let { " · $it" } ?: "")) }) }
                     }
-                    MarkMomentRow(actions, plan?.itemId) { session.player.currentPosition }
+                    groupChat?.invoke()
                     Section("Speed") {
                         SPEEDS.forEach { s -> FilterChip(selected = speed == s, onClick = { session.setSpeed(s) }, label = { Text(if (s == 1f) "Normal" else "${s}×") }) }
                     }
