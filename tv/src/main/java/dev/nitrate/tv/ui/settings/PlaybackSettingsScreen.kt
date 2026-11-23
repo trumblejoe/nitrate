@@ -351,7 +351,7 @@ fun ScopeTag(scope: dev.nitrate.core.settings.SettingScope, profile: String? = n
 
 /** Settings → Updates: check now, and whether to check when Nitrate opens. */
 @Composable
-fun UpdatesScreen(updater: dev.nitrate.android.update.AppUpdater) {
+fun UpdatesScreen(updater: dev.nitrate.android.update.AppUpdater, container: dev.nitrate.android.AppContainer? = null) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     LazyColumn(contentPadding = PaddingValues(horizontal = PagePadding, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxSize()) {
@@ -362,6 +362,43 @@ fun UpdatesScreen(updater: dev.nitrate.android.update.AppUpdater) {
             }
         }
         item { UpdateRows(updater, Modifier.focusRequester(first)) }
+        // Admins: the server's Nitrate Companion plugin, checked now and finished with a restart.
+        if (container != null) item { CompanionUpdateRows(container) }
+    }
+}
+
+@Composable
+private fun CompanionUpdateRows(container: dev.nitrate.android.AppContainer) {
+    val u by container.companionUpdates.collectAsState()
+    LaunchedEffect(Unit) { container.refreshCompanionUpdates() }
+    val status = u ?: return
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var busy by remember { mutableStateOf<String?>(null) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var confirming by remember { mutableStateOf(false) }
+    Column(Modifier.padding(top = 24.dp)) {
+        Text("Nitrate Companion on your server", style = MaterialTheme.typography.titleLarge)
+        Text("Its new versions start only once the server restarts.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ChoiceRow("Check for updates now", busy ?: "Version ${status.running}", note ?: status.summary) {
+            if (busy != null) return@ChoiceRow
+            busy = "Checking…"
+            scope.launch { note = container.checkCompanionUpdates(); busy = null }
+        }
+        if (status.restartNeeded) ChoiceRow(
+            "Restart the server now",
+            if (status.playing > 0) "Something is playing" else "Starts version ${status.waiting}",
+            if (status.playing > 0) "Restarting would stop it for everyone: restart when it ends." else "Everyone using the server is back in a minute or two.",
+        ) { if (status.canRestart) confirming = true else scope.launch { container.refreshCompanionUpdates() } }
+    }
+    if (confirming) dev.nitrate.tv.ui.lists.TvDialog({ confirming = false }, width = 520) {
+        val focus = remember { FocusRequester() }
+        Text("Restart the server now?", style = MaterialTheme.typography.headlineSmall)
+        Text("Nitrate Companion ${status.waiting} starts once it's back. Anyone using the server is reconnected in a minute or two.")
+        androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            androidx.tv.material3.OutlinedButton(onClick = { confirming = false }, modifier = Modifier.focusRequester(focus)) { Text("Not now") }
+            androidx.tv.material3.Button(onClick = { confirming = false; scope.launch { note = container.restartForCompanionUpdate() ?: "Restarting the server…" } }) { Text("Restart") }
+        }
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     }
 }
 

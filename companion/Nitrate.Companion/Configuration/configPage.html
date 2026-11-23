@@ -12,12 +12,20 @@
                 <h2>Nitrate Companion</h2>
 
                 <h3>Updates</h3>
+                <div id="UpdateBox" style="margin-bottom:1em;">
+                    <div id="UpdateBanner" class="fieldDescription" style="display:none;padding:.8em 1em;border-radius:.3em;background:rgba(0,164,220,.15);margin-bottom:.6em;">
+                        <span id="UpdateBannerText"></span>
+                        <button is="emby-button" type="button" id="UpdateRestart" class="raised button-submit emby-button" style="margin-left:1em;"><span>Restart now</span></button>
+                    </div>
+                    <div id="UpdateStatus" class="fieldDescription"></div>
+                    <button is="emby-button" type="button" id="UpdateCheck" class="raised emby-button"><span>Check for updates now</span></button>
+                </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label class="emby-checkbox-label">
                         <input id="RestartForUpdates" type="checkbox" is="emby-checkbox" />
                         <span>Finish updates by restarting at night</span>
                     </label>
-                    <div class="fieldDescription checkboxFieldDescription">The plugin installs its own new versions from this server's plugin repositories every few hours (switch updates off for it on its plugin page to stop that). A new version only runs once the server restarts (Jellyfin shows "restart required"): off, you restart when it suits you; on, the server restarts itself in the two hours from the hour below when an update is waiting and nothing is playing.</div>
+                    <div class="fieldDescription checkboxFieldDescription">The plugin installs its own new versions from this server's plugin repositories every few hours, or at once with "Check for updates now" above (switch automatic updates off for it on its plugin page to stop the regular checks). A new version only runs once the server restarts (Jellyfin shows "restart required"): off, you restart when it suits you; on, the server restarts itself in the two hours from the hour below when an update is waiting and nothing is playing.</div>
                 </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="RestartHour">Restart from (hour, server time, 0–23)</label>
@@ -171,7 +179,44 @@
                 var base = (page.querySelector('#SsoPublicUrl').value || ApiClient.serverAddress()).replace(/\/+$/, '');
                 page.querySelector('#RedirectUri').textContent = base + '/Nitrate/Sso/Callback';
             }
+            // Updates: where they stand, a check now, and a restart to finish a waiting one.
+            function showUpdates(u) {
+                var line = 'Running version ' + u.Running + '.';
+                if (u.LastCheckedAt) line += ' Last checked ' + new Date(u.LastCheckedAt).toLocaleString() + (u.LastCheck ? ': ' + u.LastCheck : '.');
+                else line += ' Not checked since the server started' + (u.AutoUpdate ? ' (it looks every few hours).' : '; automatic updates are off for this plugin.');
+                page.querySelector('#UpdateStatus').textContent = line;
+                var banner = page.querySelector('#UpdateBanner');
+                banner.style.display = u.RestartNeeded ? 'block' : 'none';
+                if (u.RestartNeeded) {
+                    page.querySelector('#UpdateBannerText').textContent = 'Version ' + u.Waiting + ' is installed and starts after a restart.'
+                        + (u.Playing > 0 ? ' Something is playing now (' + u.Playing + '): restart when it ends.' : '');
+                    page.querySelector('#UpdateRestart').disabled = u.Playing > 0;
+                }
+            }
+            function loadUpdates() {
+                return ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('Nitrate/Updates'), dataType: 'json' }).then(showUpdates, function () {});
+            }
+            page.querySelector('#UpdateCheck').addEventListener('click', function () {
+                var button = this;
+                button.disabled = true;
+                page.querySelector('#UpdateStatus').textContent = 'Checking…';
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('Nitrate/Updates/Check'), dataType: 'json' })
+                    .then(showUpdates, function () { page.querySelector('#UpdateStatus').textContent = "Couldn't check for updates."; })
+                    .then(function () { button.disabled = false; });
+            });
+            page.querySelector('#UpdateRestart').addEventListener('click', function () {
+                if (!window.confirm('Restart the server now? Anyone using it is signed back in once it is up again.')) return;
+                ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('Nitrate/Updates/Restart') }).then(function () {
+                    page.querySelector('#UpdateBannerText').textContent = 'Restarting… this page comes back once the server is up.';
+                    page.querySelector('#UpdateRestart').disabled = true;
+                }, function (r) {
+                    loadUpdates();
+                    Dashboard.alert({ message: "The server wasn't restarted: something may be playing, or no update is waiting." });
+                });
+            });
+
             page.addEventListener('pageshow', function () {
+                loadUpdates();
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                     checks.forEach(function (k) { page.querySelector('#' + k).checked = !!config[k]; });

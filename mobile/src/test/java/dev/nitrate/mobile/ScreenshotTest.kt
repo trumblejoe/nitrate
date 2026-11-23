@@ -808,6 +808,13 @@ class ScreenshotTest {
         compose.onAllNodesWithText("Sound: Normal, Clearer dialogue, Night").onFirst().assertExists()
     }
 
+    /** Admins: the server's Nitrate Companion with a newer version waiting for a restart (Settings → Updates). */
+    @Test fun companionUpdateWaiting() = shoot("phone-companion-update", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "updates"
+        c.refreshCompanionForTests()
+        c.refreshAccount()
+    }) { SettingsPageScreen(it, SettingsPage.UPDATES) }
+
     @Test fun pictureAndSound() = shoot("phone-picture-and-sound") { SettingsPageScreen(it, SettingsPage.SOUND) }
 
     @Test fun whileWatching() = shoot("phone-while-watching", setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true)) }) { SettingsPageScreen(it, SettingsPage.WATCHING) }

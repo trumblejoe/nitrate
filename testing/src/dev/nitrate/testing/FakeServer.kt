@@ -457,6 +457,13 @@ class FakeServer : MediaServer {
 
     override suspend fun companion() = dev.nitrate.core.companion.CompanionInfo("0.1.0", companionFeatures)
 
+    /** The Companion's own updates (feature `updates`, admins): a newer version waiting for a restart. */
+    var companionUpdatesAnswer = dev.nitrate.core.companion.CompanionUpdates("0.1.0.71", "0.1.0.72", restartNeeded = true, playing = 0, lastCheckedAtMs = null, lastCheck = null, autoUpdate = true)
+    var restartedForUpdate = false
+    override suspend fun companionUpdates() = companionUpdatesAnswer
+    override suspend fun checkCompanionUpdates() = companionUpdatesAnswer
+    override suspend fun restartForCompanionUpdate() { restartedForUpdate = true }
+
     /** Group chat pinned along each title (feature `notes`): the group's, at points through the episode. */
     val notes = mutableListOf(
         dev.nitrate.core.companion.TimelineNote("n1", "user-2", "Will", "s1e2", 4_000, dev.nitrate.core.companion.ChatKind.TEXT, "The opening shot!", listOf("g1"), 1),

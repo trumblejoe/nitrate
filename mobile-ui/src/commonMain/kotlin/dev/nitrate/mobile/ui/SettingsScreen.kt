@@ -97,6 +97,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
     val scope = rememberCoroutineScope()
     val account by c.account.collectAsState()
     val companion by c.companion.collectAsState()
+    // Admins: a Companion update waiting for a server restart shows at the very top.
+    val companionUpdates by c.companionUpdates.collectAsState()
+    LaunchedEffect(account?.isAdmin, companion) { c.refreshCompanionUpdates() }
     val easy = LocalDisplayPrefs.current.easyMode
     // Two-pane Settings (wide windows) shows the page beside the list instead.
     val pane = LocalSettingsPane.current
@@ -124,6 +127,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             if (found.isEmpty()) item { Text("No setting matches \"$query\".", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
             found.forEach { e -> item(key = "found/${e.place}/${e.title}") { Link(e.title, e.place.path) { openPlace(actions, e.place, ::open) } } }
             return@LazyColumn
+        }
+        companionUpdates?.takeIf { it.restartNeeded }?.let { u ->
+            item { Link("Server update waiting: Nitrate Companion ${u.waiting}", u.summary + " Tap to restart the server.") { open(SettingsPage.UPDATES) } }
         }
         item { Link("Picture & sound", "Sound, speakers, audio sync; Advanced for formats and fixes") { open(SettingsPage.SOUND) } }
         item { Link("Subtitles", "Size, colour, background and styled subtitles") { open(SettingsPage.SUBTITLES) } }

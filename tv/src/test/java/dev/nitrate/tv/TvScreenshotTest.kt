@@ -1774,6 +1774,21 @@ class TvScreenshotTest {
         }
     }
 
+    /** Admins: the server's Nitrate Companion with a newer version waiting; Restart asks first. */
+    @Test fun companionUpdateWaiting() = shoot("tv-companion-update", { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "updates"
+        c.refreshCompanionForTests()
+        c.refreshAccount()
+    }, act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Version 0.1.0.72 is installed", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "The waiting update should show" }
+        // Down past the app's own rows and "Check for updates now" to the restart, then OK.
+        repeat(6) { if (!focusedHasText("Restart the server now")) press("down") }
+        check(focusedHasText("Restart the server now")) { "The restart line should be reachable with the D-pad" }
+        press("ok")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Restart the server now?")).fetchSemanticsNodes().isNotEmpty()) { "Restart should ask first" }
+        check(focusedHasText("Not now")) { "The question should open on Not now" }
+    }) { c -> dev.nitrate.tv.ui.settings.UpdatesScreen(c.updater, c) }
+
     /** Your pages sits in the menu like any top-level page: it opens on its first tile and Left reaches the menu. */
     @Test fun yourPagesInMenu() = shoot("tv-your-pages", { c ->
         c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT))

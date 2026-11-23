@@ -1464,6 +1464,9 @@ class JellyfinClient(
     override suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean) = channelsApi.save(channel, startOver)
     override suspend fun deleteChannel(channelId: String) = channelsApi.delete(channelId)
     override suspend fun companion() = companionApi.info()
+    override suspend fun companionUpdates() = companionApi.updates()
+    override suspend fun checkCompanionUpdates() = companionApi.checkUpdates()
+    override suspend fun restartForCompanionUpdate() = companionApi.restartForUpdate()
 
     /** The Companion plugin's own times for this run's requests (tag → ms), the caller's only. */
     override suspend fun serverQueryTimes(run: String): Map<String, Long> =

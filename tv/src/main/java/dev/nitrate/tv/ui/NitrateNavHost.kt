@@ -330,7 +330,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<AdvancedPlaybackRoute> { PlaybackSettingsScreen(container.playbackSettings, container.capabilities, dev.nitrate.tv.ui.settings.PlaybackPage.ADVANCED) }
         composable<SubtitleSettingsRoute> { PlaybackSettingsScreen(container.playbackSettings, container.capabilities, dev.nitrate.tv.ui.settings.PlaybackPage.SUBTITLES) }
-        composable<UpdatesRoute> { dev.nitrate.tv.ui.settings.UpdatesScreen(container.updater) }
+        composable<UpdatesRoute> { dev.nitrate.tv.ui.settings.UpdatesScreen(container.updater, container) }
         composable<OfflineRoute> {
             OfflineScreen(
                 repository = container.server,

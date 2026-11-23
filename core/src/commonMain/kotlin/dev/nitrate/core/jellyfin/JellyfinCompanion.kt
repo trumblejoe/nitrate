@@ -160,6 +160,24 @@ internal data class SsoPollDto(val state: String = "Failed", val message: String
 
 internal class JellyfinCompanion(private val client: JellyfinClient) {
 
+    suspend fun updates(): dev.nitrate.core.companion.CompanionUpdates =
+        JellyfinJson.decodeFromString<UpdateStatusDto>(client.get("Nitrate", "Updates").bodyAsText()).toModel()
+
+    suspend fun checkUpdates(): dev.nitrate.core.companion.CompanionUpdates =
+        JellyfinJson.decodeFromString<UpdateStatusDto>(
+            client.http.post(client.url("Nitrate", "Updates", "Check")) { with(client) { auth() } }.bodyAsText(),
+        ).toModel()
+
+    suspend fun restartForUpdate() {
+        try {
+            client.http.post(client.url("Nitrate", "Updates", "Restart")) { with(client) { auth() } }
+        } catch (e: io.ktor.client.plugins.ClientRequestException) {
+            // 409: nothing waiting, or something playing; the plugin says which.
+            if (e.response.status.value != 409) throw e
+            throw dev.nitrate.core.companion.RestartRefused(e.response.bodyAsText().trim().trim('"').ifBlank { "The server wasn't restarted." })
+        }
+    }
+
     suspend fun sendDeviceSummary(deviceId: String, deviceName: String, summary: dev.nitrate.core.playback.DeviceSummary) {
         client.http.post(client.url("Nitrate", "Devices", "Report")) {
             with(client) { auth() }
@@ -510,3 +528,20 @@ internal data class TimingIssueDto(val kind: String, val atMs: Long? = null, val
 
 @kotlinx.serialization.Serializable
 internal data class TimingDto(val itemId: String, val issues: List<TimingIssueDto> = emptyList())
+
+@kotlinx.serialization.Serializable
+internal data class UpdateStatusDto(
+    val running: String = "?",
+    val waiting: String? = null,
+    val restartNeeded: Boolean = false,
+    val playing: Int = 0,
+    val lastCheckedAt: String? = null,
+    val lastCheck: String? = null,
+    val autoUpdate: Boolean = true,
+) {
+    fun toModel() = dev.nitrate.core.companion.CompanionUpdates(
+        running, waiting, restartNeeded, playing,
+        lastCheckedAt?.let { runCatching { kotlin.time.Instant.parse(it).toEpochMilliseconds() }.getOrNull() },
+        lastCheck, autoUpdate,
+    )
+}

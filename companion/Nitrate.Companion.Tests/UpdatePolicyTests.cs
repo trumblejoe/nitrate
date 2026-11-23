@@ -32,4 +32,19 @@ public class UpdatePolicyTests
         Assert.False(UpdatePolicy.UpdateWaiting(new[] { (new Version(0, 1, 0, 62), true) }));
         Assert.False(UpdatePolicy.UpdateWaiting(new[] { (new Version(0, 1, 0, 62), true), (new Version(0, 1, 0, 54), false) }));
     }
+
+    [Fact]
+    public void TheWaitingVersionIsTheNewestCopyAboveTheRunningOne()
+    {
+        Assert.Equal(new Version(0, 1, 0, 72), UpdatePolicy.WaitingVersion(new[] { (new Version(0, 1, 0, 62), true), (new Version(0, 1, 0, 70), false), (new Version(0, 1, 0, 72), false) }));
+        Assert.Null(UpdatePolicy.WaitingVersion(new[] { (new Version(0, 1, 0, 62), true), (new Version(0, 1, 0, 54), false) }));
+    }
+
+    [Fact]
+    public void RestartNowOnlyFinishesAWaitingUpdateAndNeverStopsSomethingPlaying()
+    {
+        Assert.Equal(RestartAnswer.Restarting, UpdatePolicy.CanRestartNow(true, 0));
+        Assert.Equal(RestartAnswer.SomethingPlaying, UpdatePolicy.CanRestartNow(true, 2));
+        Assert.Equal(RestartAnswer.NothingWaiting, UpdatePolicy.CanRestartNow(false, 0));
+    }
 }

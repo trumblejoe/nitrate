@@ -70,6 +70,9 @@ import kotlinx.serialization.Serializable
 internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.NavHostController, scope: kotlinx.coroutines.CoroutineScope) {
     val account by container.account.collectAsState()
     val companion by container.companion.collectAsState()
+    // Admins: a Companion update waiting for a server restart shows at the very top.
+    val companionUpdates by container.companionUpdates.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(account?.isAdmin, companion) { container.refreshCompanionUpdates() }
     val enabledIds by container.plugins.enabledIds.collectAsState(emptySet())
     val enabledPlugins = TV_PLUGIN_UI.filter { it.pluginId in enabledIds }
     // Watch partners: the server's Companion plugin has them and the plugin is on.
@@ -86,7 +89,12 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
         }
         var reportMessage by remember { mutableStateOf<String?>(null) }
         dev.nitrate.tv.ui.settings.SettingsHubScreen(
-            listOf(
+            listOfNotNull(
+                companionUpdates?.takeIf { it.restartNeeded }?.let { u ->
+                    dev.nitrate.tv.ui.settings.SettingsSection("Server update waiting", listOf(
+                        dev.nitrate.tv.ui.settings.SettingsLink("Nitrate Companion ${u.waiting}", u.summary + " Open to restart the server.") { nav.navigate(UpdatesRoute) },
+                    ))
+                },
                 dev.nitrate.tv.ui.settings.SettingsSection(null, listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Picture & sound", "Sound, speakers, audio sync, frame rate; Advanced for formats and fixes") { nav.navigate(SettingsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Subtitles", "Size, colour, background and styled subtitles") { nav.navigate(SubtitleSettingsRoute) },
@@ -135,7 +143,7 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
                     dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) },
                 ) else emptyList())),
                 dev.nitrate.tv.ui.settings.SettingsSection("About", listOf(
-                    dev.nitrate.tv.ui.settings.SettingsLink("Updates", "Nitrate ${container.updater.versionName}; check now or when Nitrate opens") { nav.navigate(UpdatesRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Updates", "Nitrate ${container.updater.versionName}; check now or when Nitrate opens" + if (companionUpdates != null) "; the server's Nitrate Companion" else "") { nav.navigate(UpdatesRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Plugins", "Built-in extras, on or off") { nav.navigate(PluginsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Open-source licences", "FFmpeg, Media3, Kotlin and the rest Nitrate is built with") { nav.navigate(LicensesRoute) },
                 )),

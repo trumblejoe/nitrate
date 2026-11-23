@@ -577,6 +577,18 @@ interface MediaServer {
     /** The Nitrate Companion plugin on this server, or null when it isn't installed. */
     suspend fun companion(): dev.nitrate.core.companion.CompanionInfo? = null
 
+    /** Where the Companion plugin's own updates stand (admins; feature `updates`). */
+    suspend fun companionUpdates(): dev.nitrate.core.companion.CompanionUpdates = unsupported()
+
+    /** Asks the Companion to look for a newer version of itself now and install it (admins). */
+    suspend fun checkCompanionUpdates(): dev.nitrate.core.companion.CompanionUpdates = unsupported()
+
+    /**
+     * Restarts the server to finish the Companion's waiting update (admins). Fails with
+     * [dev.nitrate.core.companion.RestartRefused] when nothing is waiting or something is playing.
+     */
+    suspend fun restartForCompanionUpdate(): Unit = unsupported()
+
     /** Whether this user is private (Companion feature "partners"). */
     /** The user's watch diary between two moments (either open), newest first (Companion feature `diary`). */
     suspend fun diary(fromMs: Long? = null, toMs: Long? = null): List<dev.nitrate.core.diary.DiaryEntry> = unsupported()

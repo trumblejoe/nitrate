@@ -258,6 +258,7 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
             SettingsPage.UPDATES -> {
                 item { Text("New versions from Nitrate's releases. Android asks before installing.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
                 item { UpdatesSection(c.updater) }
+                item { CompanionUpdatesSection(c) }
             }
             SettingsPage.PLUGINS -> {
                 item { Text("Built in; switch them on or off for this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
@@ -635,6 +636,42 @@ internal fun UpdatesSection(updater: dev.nitrate.android.update.AppUpdater) {
         )
         Toggle("Check automatically", "Look for a new version when Nitrate opens", auto, updater::setAutoCheck)
     }
+}
+
+/** Admins: the server's Nitrate Companion plugin, checked now and finished with a server restart. */
+@Composable
+internal fun CompanionUpdatesSection(c: dev.nitrate.android.AppContainer) {
+    val u by c.companionUpdates.collectAsState()
+    LaunchedEffect(Unit) { c.refreshCompanionUpdates() }
+    val status = u ?: return
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var confirming by remember { mutableStateOf(false) }
+    Column(Modifier.padding(top = 16.dp)) {
+        Text("Nitrate Companion on your server", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+        ListItem(
+            headlineContent = { Text("Version ${status.running}") },
+            supportingContent = { Text(if (checking) "Checking…" else note ?: status.summary) },
+            trailingContent = {
+                OutlinedButton(onClick = { checking = true; scope.launch { note = c.checkCompanionUpdates(); checking = false } }, enabled = !checking) { Text("Check now") }
+            },
+        )
+        if (status.restartNeeded) ListItem(
+            headlineContent = { Text("Restart the server") },
+            supportingContent = {
+                Text(if (status.playing > 0) "Something is playing: restarting would stop it for everyone. Restart when it ends." else "Starts version ${status.waiting}. Everyone using the server is back in a minute or two.")
+            },
+            trailingContent = { androidx.compose.material3.Button(onClick = { confirming = true }, enabled = status.canRestart) { Text("Restart now") } },
+        )
+    }
+    if (confirming) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { confirming = false },
+        title = { Text("Restart the server now?") },
+        text = { Text("Nitrate Companion ${status.waiting} starts once it's back. Anyone using the server is reconnected in a minute or two.") },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { confirming = false; scope.launch { note = c.restartForCompanionUpdate() ?: "Restarting the server…" } }) { Text("Restart") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { confirming = false }) { Text("Not now") } },
+    )
 }
 
 /** Season lists include episodes you don't have (marked Missing, or with their air date): your server account's setting. */

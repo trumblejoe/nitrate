@@ -548,6 +548,36 @@ class AppContainer(
         accountState.value = runCatching { server.account() }.getOrNull()
     }
 
+    private val companionUpdatesState = MutableStateFlow<dev.nitrate.core.companion.CompanionUpdates?>(null)
+
+    /**
+     * Where the Companion plugin's own updates stand, for admins (null for everyone else, or until
+     * Settings asks): a newer version waiting for a server restart shows at the top of Settings.
+     */
+    val companionUpdates: StateFlow<dev.nitrate.core.companion.CompanionUpdates?> = companionUpdatesState
+
+    private fun canSeeCompanionUpdates() = accountState.value?.isAdmin == true &&
+        companionState.value?.features?.contains(dev.nitrate.core.companion.CompanionUpdates.FEATURE) == true
+
+    /** Asks where the Companion's updates stand (admins; one request, when Settings opens). */
+    suspend fun refreshCompanionUpdates() {
+        if (!canSeeCompanionUpdates()) { companionUpdatesState.value = null; return }
+        runCatching { server.companionUpdates() }.onSuccess { companionUpdatesState.value = it }
+    }
+
+    /** "Check for updates now": the Companion looks and installs a newer version at once. Returns an error, if any. */
+    suspend fun checkCompanionUpdates(): String? {
+        if (!canSeeCompanionUpdates()) return "Only an administrator can update the Nitrate Companion."
+        return runCatching { server.checkCompanionUpdates() }.fold({ companionUpdatesState.value = it; null }, { it.message ?: "Couldn't check for updates" })
+    }
+
+    /** "Restart now": restarts the server to finish the Companion's update. Returns why it didn't, if it didn't. */
+    suspend fun restartForCompanionUpdate(): String? =
+        runCatching { server.restartForCompanionUpdate() }.fold(
+            { companionUpdatesState.value = companionUpdatesState.value?.copy(restartNeeded = false, lastCheck = "Restarting the server…"); null },
+            { e -> refreshCompanionUpdates(); e.message ?: "The server wasn't restarted" },
+        )
+
     /** New-episode notifications (phone). */
     val newEpisodes: dev.nitrate.android.notifications.NewEpisodeNotifier by lazy { platform.newEpisodes(server) }
 
@@ -937,6 +967,7 @@ class AppContainer(
         accountState.value = null
         chatOnlyGroup.value = null
         companionState.value = null
+        companionUpdatesState.value = null
         // Group standings belong to the account that's leaving.
         standingsState.value = emptyMap()
         // So do its watch parties: nothing asked, no reminders set.
