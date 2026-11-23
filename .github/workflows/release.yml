@@ -184,8 +184,12 @@ jobs:
             ./gradlew test :core:jvmTest --console=plain
           fi
 
-      # The Nitrate Companion server plugin: tested, built for Jellyfin's .NET, zipped with the
-      # meta.json Jellyfin reads. Listed in the plugin repository below only when it changed.
+      # The Nitrate Companion server plugin: tested, built for Jellyfin's .NET. Two parts
+      # (docs/features/companion-hotswap.md): the logic, zipped as a logic package and signed with
+      # the COMPANION_LOGIC_SIGNING_KEY secret (an EC P-256 private key, PEM), which servers swap in
+      # without a restart; and the shell Jellyfin loads, built with that key's public half and
+      # zipped with meta.json and the logic package it starts from. Each is listed below only when
+      # its sources changed. Without the secret the logic isn't signed or listed (no hot updates).
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
@@ -194,11 +198,26 @@ jobs:
           companion_version="0.1.0.$GITHUB_RUN_NUMBER"
           echo "COMPANION_VERSION=$companion_version" >> "$GITHUB_ENV"
           if [ "$TESTED" != "yes" ]; then dotnet test companion/Nitrate.Companion.Tests --configuration Release; fi
-          dotnet publish companion/Nitrate.Companion --configuration Release -o companion-out -p:Version=$companion_version
-          python3 tools/companion-manifest.py package companion-out "$companion_version" "$COMPANION_ABI" companion.zip
+          dotnet publish companion/Nitrate.Companion.Logic --configuration Release -o companion-logic-out -p:Version=$companion_version
+          python3 tools/companion-manifest.py logic companion-logic-out "$companion_version" companion-logic.zip
+          shell_flags=()
+          if [ -n "$COMPANION_LOGIC_SIGNING_KEY" ]; then
+            key="$RUNNER_TEMP/companion-logic-key.pem"
+            (umask 077 && printf '%s\n' "$COMPANION_LOGIC_SIGNING_KEY" > "$key")
+            openssl dgst -sha256 -sign "$key" -out companion-logic.sig companion-logic.zip
+            public_key=$(openssl pkey -in "$key" -pubout -outform DER | base64 -w0)
+            rm -f "$key"
+            shell_flags+=("-p:LogicPublicKey=$public_key" "-p:LogicManifestUrl=https://github.com/$GITHUB_REPOSITORY/releases/download/companion-repo/logic.json")
+            echo "COMPANION_LOGIC_SIGNED=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning::COMPANION_LOGIC_SIGNING_KEY isn't set: the Companion's logic isn't signed, so servers take it only with a plugin update (restart)."
+          fi
+          dotnet publish companion/Nitrate.Companion --configuration Release -o companion-out -p:Version=$companion_version "${shell_flags[@]}"
+          python3 tools/companion-manifest.py package companion-out "$companion_version" "$COMPANION_ABI" companion.zip companion-logic.zip
         env:
           COMPANION_ABI: "12.4.0.0"
           TESTED: ${{ steps.tested.outputs.companion }}
+          COMPANION_LOGIC_SIGNING_KEY: ${{ secrets.COMPANION_LOGIC_SIGNING_KEY }}
 
       - name: Publish
         env:
@@ -212,6 +231,7 @@ jobs:
           cp mobile/build/outputs/apk/release/mobile-release.apk "dist/nitrate-mobile-$NAME.apk"
           cp tv/build/outputs/apk/release/tv-release.apk "dist/nitrate-tv-$NAME.apk"
           cp companion.zip "dist/nitrate-companion-$COMPANION_VERSION.zip"
+          if [ "$COMPANION_LOGIC_SIGNED" = "true" ]; then cp companion-logic.zip "dist/nitrate-companion-logic-$COMPANION_VERSION.zip"; fi
           (cd dist && sha256sum *.apk > SHA256SUMS)
           # Commits since the previous build of the same kind; the apps show these when offering the update.
           if [ "$PRERELEASE" = "true" ]; then match='dev-*'; else match='v*'; fi
@@ -246,10 +266,21 @@ jobs:
           gh release view "$repo_tag" >/dev/null 2>&1 || gh release create "$repo_tag" --title "Nitrate Companion plugin repository" \
             --notes "Add https://github.com/$GITHUB_REPOSITORY/releases/download/$repo_tag/manifest.json in Jellyfin: Dashboard -> Plugins -> Repositories." --latest=false
           gh release download "$repo_tag" --pattern manifest.json --dir repo 2>/dev/null || mkdir -p repo
-          source_hash=$(git rev-parse HEAD:companion)
+          # A new plugin version (installed by Jellyfin, runs after a restart) only when the shell or
+          # its packaging changed; logic-only changes go to the logic list below and need no restart.
+          source_hash="$(git rev-parse HEAD:companion/Nitrate.Companion)-$(git rev-parse HEAD:tools/companion-manifest.py)"
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/nitrate-companion-$COMPANION_VERSION.zip"
           added=$(python3 tools/companion-manifest.py add repo/manifest.json "$COMPANION_VERSION" "12.4.0.0" companion.zip "$url" "$source_hash" "Built with $title")
           if [ "$added" = "added" ]; then gh release upload "$repo_tag" repo/manifest.json --clobber; fi
+          # The logic list the shell checks (logic.json beside manifest.json): each signed logic build
+          # whose sources changed.
+          if [ "$COMPANION_LOGIC_SIGNED" = "true" ]; then
+            gh release download "$repo_tag" --pattern logic.json --dir repo 2>/dev/null || true
+            logic_hash="$(git rev-parse HEAD:companion/Nitrate.Companion.Logic)-$(git rev-parse HEAD:companion/Nitrate.Companion/Hosting)"
+            logic_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/nitrate-companion-logic-$COMPANION_VERSION.zip"
+            logic_added=$(python3 tools/companion-manifest.py logic-add repo/logic.json companion-logic.zip companion-logic.sig "$logic_url" "$logic_hash")
+            if [ "$logic_added" = "added" ]; then gh release upload "$repo_tag" repo/logic.json --clobber; fi
+          fi
 
   # The iPhone/iPad app: built on macOS at the same time as the Android apps (it only needs the
   # release's name, worked out the same way), then added to the release by ios-publish as an

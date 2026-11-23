@@ -139,7 +139,16 @@ server restarts, it's gone.
 ## Develop
 
     dotnet test companion/Nitrate.Companion.Tests
+    dotnet publish companion/Nitrate.Companion.Logic -c Release -o logic-out
+    python3 tools/companion-manifest.py logic logic-out 0.1.0.0 logic.zip
     dotnet publish companion/Nitrate.Companion -c Release -o out
+    python3 tools/companion-manifest.py package out 0.1.0.0 12.4.0.0 plugin.zip logic.zip
+
+The plugin is two parts: the shell Jellyfin loads (`Nitrate.Companion`: plugin id, settings,
+dashboard page, the fixed registrations) and the logic it loads into a context it can unload
+(`Nitrate.Companion.Logic`: everything else), which updates without restarting Jellyfin. See
+`docs/features/companion-hotswap.md`. A plugin zip without its `logic/nitrate-companion-logic.zip`
+answers 503 on `/Nitrate/*`.
 
 The plugin id (`Plugin.PluginId`, also in `tools/companion-manifest.py`) is where Jellyfin keeps
 its settings: never change it.
