@@ -37,6 +37,15 @@ public record WatchedWithPost(IReadOnlyList<Guid> ItemIds, IReadOnlyList<Guid>? 
 /// <summary>Who it counted for, the caller included.</summary>
 public record WatchedWithOut(IReadOnlyList<Guid> CountedFor);
 
+/// <summary>Push tonight's watch party back by 15 (at once), 30 or 60 minutes (asks the group).</summary>
+public record PartyLaterPost(int Minutes);
+
+/// <summary>Can't make tonight's watch party (or can after all).</summary>
+public record PartyCantPost(bool Cant = true);
+
+/// <summary>The live session the starter of tonight's watch party made.</summary>
+public record PartySessionPut(string SessionId);
+
 /// <summary>Watch partners and private accounts (see <see cref="PartnerHub"/>).</summary>
 [ApiController]
 [Authorize]
@@ -126,6 +135,40 @@ public class PartnersController : ControllerBase
     [HttpPost("Partners/Groups/{id}/Watched")]
     public ActionResult<WatchedWithOut> WatchedWith([FromRoute] Guid id, [FromBody] WatchedWithPost body) =>
         Run(me => new WatchedWithOut(_partners.WatchedWith(me, id, body.ItemIds ?? Array.Empty<Guid>(), body.Present ?? Array.Empty<Guid>())));
+
+    /// <summary>The group's next (or current) watch party; 204 when it has no party time.</summary>
+    [HttpGet("Partners/Groups/{id}/Party")]
+    public ActionResult<PartyView?> Party([FromRoute] Guid id) => Party(me => _partners.Party(me, id));
+
+    /// <summary>Pushes tonight's watch party back: 15 minutes at once (once each per night), 30 or 60 if the group agrees.</summary>
+    [HttpPost("Partners/Groups/{id}/Party/Later")]
+    public ActionResult<PartyView?> PartyLater([FromRoute] Guid id, [FromBody] PartyLaterPost body) => Party(me => _partners.PushBack(me, id, body.Minutes));
+
+    /// <summary>Asks the group to skip tonight's watch party.</summary>
+    [HttpPost("Partners/Groups/{id}/Party/Skip")]
+    public ActionResult<PartyView?> PartySkip([FromRoute] Guid id) => Party(me => _partners.SkipTonight(me, id));
+
+    /// <summary>The caller can't make tonight's watch party (or can after all).</summary>
+    [HttpPost("Partners/Groups/{id}/Party/CantMake")]
+    public ActionResult<PartyView?> PartyCantMake([FromRoute] Guid id, [FromBody] PartyCantPost body) => Party(me => _partners.CantMake(me, id, body?.Cant ?? true));
+
+    /// <summary>Says yes or no to tonight's waiting postponement or "Not tonight".</summary>
+    [HttpPost("Partners/Groups/{id}/Party/Requests/{requestId}/Vote")]
+    public ActionResult<PartyView?> PartyVote([FromRoute] Guid id, [FromRoute] Guid requestId, [FromBody] VotePost body) => Party(me => _partners.PartyVote(me, id, requestId, body.Yes));
+
+    /// <summary>Joins tonight's watch party: the first to join starts it.</summary>
+    [HttpPost("Partners/Groups/{id}/Party/Join")]
+    public ActionResult<PartyJoin> PartyJoin([FromRoute] Guid id) => Run(me => _partners.JoinParty(me, id));
+
+    /// <summary>The starter says which live session tonight's watch party is.</summary>
+    [HttpPut("Partners/Groups/{id}/Party/Session")]
+    public ActionResult PartySession([FromRoute] Guid id, [FromBody] PartySessionPut body) => Done(me => _partners.PartySession(me, id, body.SessionId ?? string.Empty));
+
+    private ActionResult<PartyView?> Party(Func<Guid, PartyView?> action)
+    {
+        var result = Run(action);
+        return result.Result is null && result.Value is null ? NoContent() : result;
+    }
 
     private Guid? Me()
     {

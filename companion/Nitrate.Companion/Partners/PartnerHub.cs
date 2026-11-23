@@ -39,7 +39,7 @@ public record ScheduleChangeView(Guid Id, string FromName, GroupSchedule Propose
 public record GroupView(
     Guid Id, Guid SeriesId, string SeriesName, IReadOnlyList<MemberView> Others, DateTimeOffset Since,
     GroupSchedule? Schedule = null, ScheduleChangeView? Pending = null, Guid? LockedFromId = null, DateTimeOffset? OpensAt = null, int? OpensDay = null,
-    Guid? TogetherFromId = null, bool Record = false, IReadOnlyList<Guid>? Mine = null);
+    Guid? TogetherFromId = null, bool Record = false, IReadOnlyList<Guid>? Mine = null, PartyView? Party = null);
 
 /// <summary>
 /// An invite someone sent the caller. <paramref name="WillSee"/> is everyone who learns the
@@ -61,7 +61,7 @@ public record PartnerProgressView(Guid GroupId, Guid UserId, string UserName, IR
 /// "sent" and stays waiting until it's accepted or lapses, whether or not that account exists,
 /// was declined, or is private. Before accepting, a person sees exactly who will learn their name.
 /// </summary>
-public class PartnerHub
+public partial class PartnerHub
 {
     /// <summary>How long a request waits.</summary>
     public static readonly TimeSpan RequestLifetime = TimeSpan.FromDays(14);
@@ -192,7 +192,7 @@ public class PartnerHub
                     Id = Guid.NewGuid(), From = from, To = to, ToLabel = label, GroupId = gidOrEmpty,
                     SeriesId = seriesId, SeriesName = seriesName.Trim(), At = _time.GetUtcNow(),
                     // A new group's schedule is the inviter's choice; joining a group takes the group's.
-                    Schedule = group is null && schedule is { Active: true } ? Valid(schedule) : null,
+                    Schedule = group is null && schedule is not null && (schedule.Active || schedule.Party is not null) ? Valid(schedule) : null,
                 };
                 _state.Requests.Add(existing);
                 _storage.Save(_state);
@@ -302,25 +302,29 @@ public class PartnerHub
     /// <summary>The caller's groups, each with what its schedule has locked now.</summary>
     public IReadOnlyList<GroupView> Groups(Guid user)
     {
-        List<(WatchGroup Group, List<GroupWatch> Record, List<Guid> Members)> mine;
+        List<(WatchGroup Group, List<GroupWatch> Record, List<Guid> Members, PartyView? Party)> mine;
+        var said = new List<PartyAnnouncement>();
         lock (_lock)
         {
             PruneChanges();
-            mine = _state.Groups.Where(g => g.Members.Contains(user)).Select(g => (g, g.Watched.ToList(), g.Members.ToList())).ToList();
+            var now = _time.GetUtcNow();
+            mine = _state.Groups.Where(g => g.Members.Contains(user)).Select(g => (g, g.Watched.ToList(), g.Members.ToList(), PartyStub(g, user, now, said))).ToList();
         }
 
-        // Where everyone is, for groups that ration their title or watch it together only (outside the lock: it reads the library);
-        // a together-only group by its own record.
+        Tell(said);
+
+        // Where everyone is, for groups that ration their title, watch it together only or meet for a
+        // watch party (outside the lock: it reads the library); a together-only group by its own record.
         return mine.Select(x =>
             {
                 var g = x.Group;
-                if (g.Schedule is not { Active: true })
+                if (g.Schedule is not { Active: true } && x.Party is null)
                 {
                     return View(g, user, Array.Empty<ShowProgress>(), x.Record);
                 }
 
                 var everyone = x.Members.Select(m => KeepsRecord(g) ? FromRecord(_watch.Progress(m, g.SeriesId), x.Record, m) : _watch.Progress(m, g.SeriesId)).ToList();
-                return View(g, user, everyone, x.Record);
+                return View(g, user, everyone, x.Record) with { Party = x.Party is { } p ? WithPart(p, KeepsRecord(g), everyone) : null };
             })
             .OrderBy(g => g.SeriesName, StringComparer.OrdinalIgnoreCase).ToList();
     }
@@ -380,7 +384,7 @@ public class PartnerHub
             var s = p.Proposed.Copy();
             s.Since = _time.GetUtcNow();
             var wasTogether = KeepsRecord(g);
-            g.Schedule = s.Cadence == GroupSchedule.Binge && !s.SoftLock && !s.Together ? null : s;
+            g.Schedule = s.Cadence == GroupSchedule.Binge && !s.SoftLock && !s.Together && s.Party is null ? null : s;
             g.Pending = null;
             if (KeepsRecord(g) && !wasTogether)
             {
@@ -427,6 +431,7 @@ public class PartnerHub
         v.Hour = Math.Clamp(v.Hour, 0, 23);
         v.Minute = Math.Clamp(v.Minute, 0, 59);
         v.TimeZone = string.IsNullOrWhiteSpace(v.TimeZone) ? string.Empty : ScheduleRules.Zone(v).Id;
+        v.Party = PartyRules.Valid(v.Party);
         return v;
     }
 
@@ -439,6 +444,7 @@ public class PartnerHub
                 ?? throw new PartnerException(PartnerError.NotFound, "No such group.");
             g.Members.Remove(user);
             g.Watched.RemoveAll(w => w.Member == user);
+            ForgetInParties(groupId, user);
             if (g.Members.Count < 2)
             {
                 _state.Groups.Remove(g);

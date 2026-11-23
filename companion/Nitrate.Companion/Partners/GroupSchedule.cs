@@ -56,8 +56,20 @@ public class GroupSchedule
     /// <summary>Gets a value indicating whether it holds anything back: rationed, or together only.</summary>
     public bool Active => Limits || Together;
 
+    /// <summary>
+    /// Gets or sets the group's watch party time: one or more weekdays at a time of day, in this
+    /// schedule's time zone (null: none; groups stored before it have none). It holds nothing
+    /// back: it's when the group meets to watch its next part together (see <see cref="PartyRules"/>).
+    /// </summary>
+    public PartyTime? Party { get; set; }
+
     /// <summary>A copy, to keep apart from requests and views.</summary>
-    public GroupSchedule Copy() => (GroupSchedule)MemberwiseClone();
+    public GroupSchedule Copy()
+    {
+        var c = (GroupSchedule)MemberwiseClone();
+        c.Party = Party?.Copy();
+        return c;
+    }
 }
 
 /// <summary>A member's request to change a group's schedule, and who has said yes or no.</summary>

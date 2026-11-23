@@ -58,6 +58,11 @@ class RemoteControlHub(
                     is ServerEvent.Playstate -> active?.handleRemote(e.command, e.seekMs)
                     is ServerEvent.SyncPlayCommand, is ServerEvent.SyncPlayGroupUpdate -> syncPlay?.handle(e)
                     is ServerEvent.LibraryChanged -> if (e.added.isNotEmpty()) onItemsAdded()
+                    // Watch party news from the Companion: never shown as a message.
+                    is ServerEvent.General if e.name == "DisplayMessage" && e.arguments["Header"] == dev.nitrate.core.partners.PartyNews.HEADER -> {
+                        dev.nitrate.core.partners.PartyNews.decode(e.arguments["Text"].orEmpty())?.let { _partyNews.tryEmit(it) }
+                        return@collect
+                    }
                     // Questions between the user's own TV and phones: never shown as messages.
                     is ServerEvent.General if e.name == "DisplayMessage" && RemotePrompt.isOurs(e.arguments["Header"]) -> {
                         prompted(e.arguments["Header"], e.arguments["Text"].orEmpty())
@@ -74,6 +79,11 @@ class RemoteControlHub(
             }
         }
     }
+
+    private val _partyNews = MutableSharedFlow<dev.nitrate.core.partners.PartyNews>(extraBufferCapacity = 16)
+
+    /** What the Companion tells this app about the user's groups' watch parties (reminders, postponements, requests), as it happens. */
+    val partyNews: SharedFlow<dev.nitrate.core.partners.PartyNews> = _partyNews
 
     // ---- Questions the TV asks, answered from a phone ----
 

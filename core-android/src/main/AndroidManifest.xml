@@ -18,5 +18,9 @@
         <receiver
             android:name="dev.nitrate.android.update.InstallResultReceiver"
             android:exported="false" />
+        <!-- A watch party notification's buttons (+15 min, Not tonight, Yes/No), answered without opening the app. -->
+        <receiver
+            android:name="dev.nitrate.android.notifications.PartyActionReceiver"
+            android:exported="false" />
     </application>
 </manifest>

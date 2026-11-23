@@ -189,6 +189,7 @@ fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: 
             g.HOURS.forEach { h -> FilterChip(schedule.hour == h && schedule.minute == 0, { onChange(schedule.copy(hour = h, minute = 0)) }, label = { Text(g.clockOf(h, 0)) }) }
         }
     }
+    PartyTimePicker(schedule, onChange)
     if (!schedule.active) return
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FilterChip(!schedule.softLock, { onChange(schedule.copy(softLock = false)) }, label = { Text(if (schedule.limits) "Locked until then" else "Locked") })
@@ -294,7 +295,9 @@ fun WatchPartnersScreen(actions: AppActions) {
                 Text(g.seriesName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(g.seriesId)) }))
                 Text("With ${g.label} · ${g.schedule?.label ?: "Binge"}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 g.pending?.let { p -> Text("${p.fromName} asks: ${p.proposed.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                g.party?.let { p -> Text(p.line(dev.nitrate.android.nowMs()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Row {
+                    if (g.party != null) TextButton(onClick = { actions.container.parties.open(g) }) { Text("Watch party") }
                     TextButton(onClick = { changingSchedule = g }) { Text("Schedule") }
                     TextButton(onClick = { inviting = g }) { Text("Invite someone") }
                     TextButton(onClick = { leaving = g }) { Text("Leave") }
@@ -402,7 +405,7 @@ fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Un
         value = if (series == null || dev.nitrate.core.partners.TogetherRow.isStart(item)) emptyList()
         else runCatching { container.server.titleItems(series) }.getOrDefault(emptyList())
     }
-    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.invitesAvailable(), prefs.ownSpoilerShows)
+    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.invitesAvailable(), prefs.ownSpoilerShows, dev.nitrate.android.nowMs())
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<String?>(null) }
     var changing by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
@@ -410,6 +413,8 @@ fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Un
     fun run(c: dev.nitrate.core.partners.TogetherChoice) {
         when (c) {
             is dev.nitrate.core.partners.TogetherChoice.ChangeSchedule -> changing = c.group
+            // Tonight's watch party: the same sheet as its reminder.
+            is dev.nitrate.core.partners.TogetherChoice.Party -> { onDismiss(); container.parties.open(c.group) }
             is dev.nitrate.core.partners.TogetherChoice.Start -> { onDismiss(); onStart() }
             is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); actions.nav.navigate(DetailsRoute(c.seriesId)) }
             is dev.nitrate.core.partners.TogetherChoice.Invite -> inviting = c.groupId

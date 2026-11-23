@@ -246,6 +246,7 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                 item { NewSeasonsToggle(actions) }
                 item { InvitesToggle(actions) }
                 item { PartnerRequestsToggle(actions) }
+                item { PartyRemindersToggle(actions) }
             }
             SettingsPage.BACKUP -> {
                 item {
@@ -521,6 +522,19 @@ internal fun PartnerRequestsToggle(actions: AppActions) {
     val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setPartnerRequestsEnabled(true) } }
     Toggle("Watch partner requests", "When someone asks to watch a show with you", on) { want ->
         if (want) askPermission { scope.launch { notifier.setPartnerRequestsEnabled(true) } } else scope.launch { notifier.setPartnerRequestsEnabled(false) }
+    }
+}
+
+/** Watch party reminders, 15 minutes before each group's party (on until switched off). */
+@Composable
+internal fun PartyRemindersToggle(actions: AppActions) {
+    val notifier = actions.container.newEpisodes
+    val scope = rememberCoroutineScope()
+    val on by notifier.partyRemindersEnabled.collectAsState(false)
+    fun turnOn() = scope.launch { notifier.setPartyRemindersEnabled(true); actions.container.refreshPartners() }
+    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { turnOn() }
+    Toggle("Watch party reminders", "15 minutes before your watch groups' watch parties, set by this phone itself; postponing and \"Not tonight\" from the notification", on) { want ->
+        if (want) askPermission { turnOn() } else scope.launch { notifier.setPartyRemindersEnabled(false) }
     }
 }
 

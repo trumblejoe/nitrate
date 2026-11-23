@@ -2181,6 +2181,13 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.partners.InviteAnswerDialog(c, (c.server as dev.nitrate.testing.FakeServer).partnerInfo.incoming.first()) {}
     }
 
+    /** A watch party's reminder: Join first and focused; the postponements and Not tonight beside it. */
+    @Test fun watchParty() = shoot("tv-watch-party", act = {
+        compose.onNode(androidx.compose.ui.test.hasText("Join") and androidx.compose.ui.test.hasClickAction()).assertIsFocusedOrHasFocusedChild()
+    }) { c ->
+        dev.nitrate.tv.ui.partners.WatchPartyDialog((c.server as dev.nitrate.testing.FakeServer).samplePartyPrompt(), onDismiss = {}, onChoose = {})
+    }
+
     @Test fun togetherChoices() = shoot("tv-together-choices", setup = { c -> c.refreshCompanionForTests() }) { c ->
         val info by c.partners.collectAsState()
         val episode = dev.nitrate.core.model.MediaItem("ep-together", "The Long Night", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 1, indexNumber = 4)
@@ -2316,4 +2323,17 @@ class TvScreenshotTest {
 
     /** The query analyzer: costliest kinds of request first, with where they came from and hints. */
     @Test fun queryAnalyzer() = shoot("tv-query-analyzer") { c -> dev.nitrate.tv.ui.settings.QueryAnalyzerScreen(c) }
+}
+
+/** Focus is on this node or inside it (a button's text sits inside the focused button). */
+private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsFocusedOrHasFocusedChild() {
+    val node = fetchSemanticsNode()
+    fun focused(n: androidx.compose.ui.semantics.SemanticsNode): Boolean =
+        (androidx.compose.ui.semantics.SemanticsProperties.Focused in n.config && n.config[androidx.compose.ui.semantics.SemanticsProperties.Focused]) || n.children.any(::focused)
+    var p: androidx.compose.ui.semantics.SemanticsNode? = node
+    while (p != null) {
+        if (focused(p)) return
+        p = p.parent
+    }
+    error("Not focused: ${node.config}")
 }

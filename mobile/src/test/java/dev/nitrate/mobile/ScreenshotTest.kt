@@ -249,6 +249,19 @@ class ScreenshotTest {
 
     @Test fun channelEditor() = shoot("phone-channel-editor") { dev.nitrate.mobile.ui.ChannelEditorScreen(it, "c1") }
 
+    /** A watch party's reminder as the in-app sheet shows it, and simply in easy mode. */
+    @Test fun watchParty() = shoot("phone-watch-party") { actions ->
+        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+            dev.nitrate.mobile.ui.WatchPartyChoices((actions.server as dev.nitrate.testing.FakeServer).samplePartyPrompt(), onDismiss = {}, onChoose = {})
+        }
+    }
+
+    @Test fun watchPartyEasy() = shoot("phone-watch-party-easy") { actions ->
+        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+            dev.nitrate.mobile.ui.WatchPartyChoices((actions.server as dev.nitrate.testing.FakeServer).samplePartyPrompt(easy = true), onDismiss = {}, onChoose = {})
+        }
+    }
+
     @Test fun watchPartners() = shoot("phone-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { dev.nitrate.mobile.ui.WatchPartnersScreen(it) }
 
     @Test fun seriesWithPartner() = shoot("phone-series-partner", setup = { c ->

@@ -47,4 +47,37 @@ class NewEpisodeNotifierTest {
         assertEquals(1, manager.allNotifications.size)
         notifier.setEnabled(false)
     }
+
+    @Test
+    fun `a watch party reminder takes one look and says the time as it stands`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        shadowOf(context as Application).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        val now = System.currentTimeMillis()
+        val party = dev.nitrate.core.partners.WatchParty("g2", now + 10 * 60_000, now + 15 * 60_000, partLabel = "S1:E4", offsetMinutes = 0)
+        val server = FakeServer().apply { watchPartyState = party }
+        val notifier = dev.nitrate.android.notifications.AndroidNewEpisodeNotifier(context, server)
+        val manager = shadowOf(context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancelAll()
+
+        notifier.remindParty("g2", "The Night Reel", "Tommy & Suzy")
+        val posted = manager.allNotifications.single()
+        assertEquals("The Night Reel", posted.extras.getString("android.title"))
+        assertEquals("Watch party with Tommy & Suzy · ${party.clock} · S1:E4", posted.extras.getCharSequence("android.text").toString())
+        assertEquals(listOf("Join", "+15 min", "Not tonight"), posted.actions.map { it.title.toString() })
+
+        // Pushed back an hour since the wake-up was set, or off tonight: nothing now.
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancelAll()
+        server.watchPartyState = party.copy(startsAtMs = now + 75 * 60_000)
+        notifier.remindParty("g2", "The Night Reel", "Tommy & Suzy")
+        server.watchPartyState = party.copy(skipped = true)
+        notifier.remindParty("g2", "The Night Reel", "Tommy & Suzy")
+        assertEquals(0, manager.allNotifications.size)
+
+        // Switched off: no look at all.
+        notifier.setPartyRemindersEnabled(false)
+        server.watchPartyState = party
+        notifier.remindParty("g2", "The Night Reel", "Tommy & Suzy")
+        assertEquals(0, manager.allNotifications.size)
+        notifier.setPartyRemindersEnabled(true)
+    }
 }

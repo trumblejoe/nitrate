@@ -64,6 +64,15 @@ sealed interface TogetherChoice {
         override val label = if (yes) "Agree to $from's change: ${proposed.label}" else "Keep the schedule as it is"
     }
 
+    /**
+     * The group's next watch party: "Tonight's watch party: 8:15 · S1:E4 · Postpone… · Not tonight".
+     * Opens the same prompt as its reminder (Join, +15/+30/+60 min, Not tonight, Can't make it),
+     * so nothing depends on catching the reminder.
+     */
+    data class Party(val group: WatchGroup, val party: WatchParty, val nowMs: Long) : TogetherChoice {
+        override val label = party.line(nowMs) + if (party.skipped) "" else " · Postpone… · Not tonight"
+    }
+
     /** Pick a title and people to start watching with ([TogetherRow.start]'s card). */
     data object Start : TogetherChoice { override val label = "Watch something with someone" }
 }
@@ -195,6 +204,8 @@ object TogetherRow {
         episodes: List<MediaItem>,
         canWatchNow: Boolean,
         ownSpoilers: Set<String>,
+        /** Now, for the watch party's "Tonight's watch party: 8:15". */
+        nowMs: Long = 0L,
     ): List<TogetherChoice> {
         if (isStart(item)) return listOf(TogetherChoice.Start)
         val series = titleOf(item, standings) ?: return emptyList()
@@ -231,6 +242,9 @@ object TogetherRow {
                 out.add(0, TogetherChoice.Vote(g.id, p.id, yes = true, proposed = p.proposed, from = p.fromName))
             }
         }
+        // Each group's watch party (tonight's, or the next), after any votes.
+        val votes = out.count { it is TogetherChoice.Vote }
+        groups.mapNotNull { g -> g.party?.let { TogetherChoice.Party(g, it, nowMs) } }.forEachIndexed { i, c -> out.add(votes + i, c) }
         val hardLocked = lockOf(item, info, standings)?.schedule?.softLock == false
         if (canWatchNow && item.isPlayable && !hardLocked) groups.forEach { g ->
             out += TogetherChoice.WatchNow(item, g.id, g.others.map { it.id }, g.label)

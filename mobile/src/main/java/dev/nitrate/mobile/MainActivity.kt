@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
     private fun take(intent: Intent?) {
         intent?.getStringExtra(NewEpisodeNotifier.EXTRA_OPEN_ITEM)?.let { openItem.value = it }
         intent?.removeExtra(NewEpisodeNotifier.EXTRA_OPEN_ITEM)
+        intent?.getStringExtra(NewEpisodeNotifier.EXTRA_OPEN_PARTY)?.let { openItem.value = dev.nitrate.mobile.ui.PARTY_PREFIX + it }
+        intent?.removeExtra(NewEpisodeNotifier.EXTRA_OPEN_PARTY)
         // A widget's title: straight into the player, resuming.
         intent?.getStringExtra(dev.nitrate.mobile.widgets.WatchWidgets.EXTRA_PLAY_ITEM)?.let { openItem.value = dev.nitrate.mobile.ui.PLAY_ITEM_PREFIX + it }
         intent?.removeExtra(dev.nitrate.mobile.widgets.WatchWidgets.EXTRA_PLAY_ITEM)
