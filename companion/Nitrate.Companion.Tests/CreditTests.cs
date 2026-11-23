@@ -112,10 +112,10 @@ public class CreditTests
     public void KeyframeTimesAreReadAndHeldOntoAGrid()
     {
         var log = "[Parsed_showinfo_2 @ 0x1] n:   0 pts:  101 pts_time:8.41667 duration: 1\n[Parsed_showinfo_2 @ 0x1] n:   1 pts: 200 pts_time:20 duration: 1\n";
-        Assert.Equal(new long[] { 8416, 20000 }, CreditScanner.Times(log));
+        Assert.Equal(new long[] { 8416, 20000 }, CreditScanJob.Times(log));
         byte[] a = { 1 }, b = { 2 };
         // From 0 to 30 s every 5 s: before the first keyframe its picture stands in; then each is held.
-        var grid = CreditScanner.Resample(new[] { (8_416L, a), (20_000L, b) }, 0, 30_000, 5_000);
+        var grid = CreditScanJob.Resample(new[] { (8_416L, a), (20_000L, b) }, 0, 30_000, 5_000);
         Assert.Equal(new[] { a, a, a, a, b, b }, grid);
     }
 }

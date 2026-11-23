@@ -89,14 +89,43 @@ public enum RestartAnswer
 /// <param name="LastCheckedAt">When the repositories were last asked, if they have been since the start.</param>
 /// <param name="LastCheck">What that look found, in words.</param>
 /// <param name="AutoUpdate">Whether the plugin installs its new versions by itself.</param>
-public record UpdateStatus(string Running, string? Waiting, bool RestartNeeded, int Playing, DateTimeOffset? LastCheckedAt, string? LastCheck, bool AutoUpdate);
+public record UpdateStatus(string Running, string? Waiting, bool RestartNeeded, int Playing, DateTimeOffset? LastCheckedAt, string? LastCheck, bool AutoUpdate)
+{
+    /// <summary>Gets the shell's version (the plugin Jellyfin runs; same as <see cref="Running"/>).</summary>
+    public string? Shell { get; init; }
+
+    /// <summary>Gets the running logic's version (swapped without a restart), or null when none runs.</summary>
+    public string? Logic { get; init; }
+
+    /// <summary>Gets where the logic came from: "built-in" (with the plugin) or "downloaded".</summary>
+    public string? LogicSource { get; init; }
+
+    /// <summary>Gets when the running logic started.</summary>
+    public DateTimeOffset? LogicLoadedAt { get; init; }
+
+    /// <summary>Gets when a logic swap was last tried.</summary>
+    public DateTimeOffset? LastSwapAt { get; init; }
+
+    /// <summary>Gets what that swap did, in words.</summary>
+    public string? LastSwap { get; init; }
+
+    /// <summary>Gets what kind of update waits: "restart" (a plugin update, finished by a restart), or null.</summary>
+    public string? WaitingKind { get; init; }
+
+    /// <summary>Gets a newer logic version that needs a newer plugin (so a restart), if any.</summary>
+    public string? LogicNeedsPlugin { get; init; }
+
+    /// <summary>Gets a value indicating whether this build takes logic updates (signed, from the release).</summary>
+    public bool LogicUpdates { get; init; }
+}
 
 /// <summary>
 /// Keeps the plugin up to date without anyone visiting the plugin page: every few hours it asks the
 /// server's plugin repositories for a newer version of itself and installs it (as Jellyfin's own
 /// "Update Plugins" task would, only sooner), unless auto-update is switched off for it. A new
 /// version only runs after a restart, so (with <c>RestartForUpdates</c> switched on; off by default) the server is restarted
-/// at night once nothing is playing.
+/// at night once nothing is playing. The same looks also fetch newer logic (<see cref="LogicUpdater"/>),
+/// which runs at once, with no restart.
 /// </summary>
 public sealed class SelfUpdater : IHostedService, IDisposable
 {
@@ -106,11 +135,15 @@ public sealed class SelfUpdater : IHostedService, IDisposable
     private readonly ISystemManager _system;
     private readonly ISessionManager _sessions;
     private readonly ILogger<SelfUpdater> _log;
+    private readonly Hosting.LogicHost _logicHost;
+    private readonly LogicUpdater _logic;
     private readonly CancellationTokenSource _stop = new();
 
     /// <summary>Initializes a new instance of the <see cref="SelfUpdater"/> class.</summary>
-    public SelfUpdater(IInstallationManager installs, IPluginManager plugins, IApplicationHost host, ISystemManager system, ISessionManager sessions, ILogger<SelfUpdater> log)
+    public SelfUpdater(IInstallationManager installs, IPluginManager plugins, IApplicationHost host, ISystemManager system, ISessionManager sessions, ILogger<SelfUpdater> log, Hosting.LogicHost logicHost, LogicUpdater logic)
     {
+        _logicHost = logicHost;
+        _logic = logic;
         _installs = installs;
         _plugins = plugins;
         _host = host;
@@ -156,14 +189,28 @@ public sealed class SelfUpdater : IHostedService, IDisposable
     {
         var running = Copies().FirstOrDefault(p => p.Instance is not null);
         var waiting = Waiting();
+        var restartNeeded = waiting is not null && _host.HasPendingRestart;
+        var shell = running?.Version.ToString() ?? typeof(SelfUpdater).Assembly.GetName().Version?.ToString() ?? "?";
+        var logic = _logicHost.Status;
         return new UpdateStatus(
-            running?.Version.ToString() ?? typeof(SelfUpdater).Assembly.GetName().Version?.ToString() ?? "?",
+            shell,
             waiting?.ToString(),
-            waiting is not null && _host.HasPendingRestart,
+            restartNeeded,
             PlayingNow(),
             _lastCheckedAt,
             _lastCheck,
-            running?.Manifest.AutoUpdate != false);
+            running?.Manifest.AutoUpdate != false)
+        {
+            Shell = shell,
+            Logic = logic.Version,
+            LogicSource = logic.Source,
+            LogicLoadedAt = logic.LoadedAt,
+            LastSwapAt = logic.LastSwapAt,
+            LastSwap = logic.LastSwap,
+            WaitingKind = restartNeeded ? "restart" : null,
+            LogicNeedsPlugin = _logic.NeedsPlugin,
+            LogicUpdates = _logic.Enabled,
+        };
     }
 
     /// <summary>
@@ -217,6 +264,18 @@ public sealed class SelfUpdater : IHostedService, IDisposable
                 return;
             }
 
+            // The logic first: it runs at once, with no restart.
+            string? logicCheck = null;
+            try
+            {
+                logicCheck = _logic.Enabled ? await _logic.CheckAsync(stop).ConfigureAwait(false) : null;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                logicCheck = "Couldn't look for newer logic: " + e.Message;
+                _log.LogWarning(e, "Nitrate Companion: couldn't check for newer logic");
+            }
+
             var updates = (await _installs.GetAvailablePluginUpdates(stop).ConfigureAwait(false)).Where(u => u.Id == Plugin.PluginId).ToList();
             _lastCheckedAt = DateTimeOffset.UtcNow;
             _lastCheck = updates.Count == 0
@@ -227,6 +286,11 @@ public sealed class SelfUpdater : IHostedService, IDisposable
                 _log.LogInformation("Nitrate Companion: installing version {Version}; it runs after the server restarts", update.Version);
                 await _installs.InstallPackage(update, stop).ConfigureAwait(false);
                 _lastCheck = $"Installed version {update.Version}; it starts after a restart.";
+            }
+
+            if (logicCheck is not null)
+            {
+                _lastCheck = $"{_lastCheck} {logicCheck}".Trim();
             }
         }
         catch (Exception e) when (e is not OperationCanceledException)

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The logic: everything the plugin does, loaded by the shell (Nitrate.Companion) into a context
+       it can unload, and swapped without restarting Jellyfin. Shipped as a logic package
+       (tools/companion-manifest.py logic); see docs/features/companion-hotswap.md. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Nitrate.Companion</RootNamespace>
+    <AssemblyName>Nitrate.Companion.Logic</AssemblyName>
+    <!-- Releases pass -p:Version=0.1.0.<run>: the logic package's version. -->
+    <Version>0.1.0.0</Version>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Provided by the server at run time: compile against them, never ship them. -->
+    <PackageReference Include="Jellyfin.Controller" Version="12.4.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="12.4.0" ExcludeAssets="runtime" />
+    <!-- The server ships SQLite (with full-text search) for its own database: use its copy. -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" ExcludeAssets="runtime" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Reads CBR, CB7 and CBT comics (MIT); shipped in the logic package. -->
+    <PackageReference Include="SharpCompress" Version="0.50.10" />
+    <!-- The shell is already loaded by the server: compile against it, never ship it. -->
+    <ProjectReference Include="../Nitrate.Companion/Nitrate.Companion.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

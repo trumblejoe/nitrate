@@ -1,32 +1,47 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- The shell: the only assembly Jellyfin loads. It registers what Jellyfin finds only at start
+       and runs the logic (Nitrate.Companion.Logic), which it can swap without a restart; see
+       docs/features/companion-hotswap.md. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Nitrate.Companion</RootNamespace>
     <!-- Releases pass -p:Version=0.1.0.<run>, which sets the assembly and file versions too: Jellyfin
-         compares the running DLL's version with the repository's, so they must match meta.json. -->
+         compares the running DLL's version with meta.json and the repository's, so they must match. -->
     <Version>0.1.0.0</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Releases pass the logic packages' signing public key (base64 SubjectPublicKeyInfo, derived from
+         the COMPANION_LOGIC_SIGNING_KEY secret) and where the logic list is. Empty: no hot updates. -->
+    <LogicPublicKey Condition="'$(LogicPublicKey)' == ''"></LogicPublicKey>
+    <LogicManifestUrl Condition="'$(LogicManifestUrl)' == ''"></LogicManifestUrl>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>NitrateLogicPublicKey</_Parameter1>
+      <_Parameter2>$(LogicPublicKey)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>NitrateLogicManifestUrl</_Parameter1>
+      <_Parameter2>$(LogicManifestUrl)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Provided by the server at run time: compile against them, never ship them. -->
     <PackageReference Include="Jellyfin.Controller" Version="12.4.0" ExcludeAssets="runtime" />
     <PackageReference Include="Jellyfin.Model" Version="12.4.0" ExcludeAssets="runtime" />
-    <!-- The server ships SQLite (with full-text search) for its own database: use its copy. -->
-    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" ExcludeAssets="runtime" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <!-- Reads CBR, CB7 and CBT comics (MIT); shipped beside the plugin. -->
-    <PackageReference Include="SharpCompress" Version="0.50.10" />
   </ItemGroup>
 
   <ItemGroup>
     <None Remove="Configuration/configPage.html" />
     <EmbeddedResource Include="Configuration/configPage.html" />
-    <!-- The TV and receiver check clips (tools/generate-badge-clips.sh), served at /Nitrate/TestClips. -->
+    <!-- The TV and receiver check clips (tools/generate-badge-clips.sh), served at /Nitrate/TestClips
+         by the logic, which reads them from here (they never change, so they aren't downloaded again). -->
     <EmbeddedResource Include="TestClips/*" LogicalName="Nitrate.Companion.TestClips.%(Filename)%(Extension)" />
   </ItemGroup>
 

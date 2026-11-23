@@ -1,0 +1,175 @@
+using System.Reflection;
+using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Devices;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Session;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Nitrate.Companion.Channels;
+using Nitrate.Companion.Chat;
+using Nitrate.Companion.Partners;
+using Nitrate.Companion.Scripts;
+using Nitrate.Companion.Sso;
+
+namespace Nitrate.Companion.Logic;
+
+/// <summary>
+/// The logic's own services, in its own container (never the server's, so nothing of the logic is
+/// kept by the server after a swap). The server's services it needs are passed through from the
+/// server's container; logging comes from the server's logger factory.
+/// </summary>
+public static class LogicServices
+{
+    /// <summary>The logic's API controllers.</summary>
+    public static IReadOnlyList<Type> Controllers { get; } = typeof(LogicServices).Assembly.GetTypes()
+        .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract && t.GetCustomAttribute<RouteAttribute>() is not null)
+        .ToList();
+
+    /// <summary>Registers everything the plugin does.</summary>
+    public static void Register(IServiceCollection serviceCollection, IServiceProvider host, ILoggerFactory logs)
+    {
+        serviceCollection.AddSingleton(logs);
+        serviceCollection.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
+        serviceCollection.AddSingleton(TimeProvider.System);
+        serviceCollection.AddSingleton<ChatHub>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.QueryTrendStore(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
+        serviceCollection.AddHostedService<Nitrate.Companion.Insights.QueryTrendRecorder>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.SegmentVotes(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.PeopleRecords(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.TimelineNoteBook(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), TimeProvider.System));
+        serviceCollection.AddSingleton<Nitrate.Companion.Insights.SittingRecorder>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Insights.SittingRecorder>());
+        serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.BecauseStore>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.BecauseRowsBuilder>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.BecauseWarmup>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Recommendations.BecauseWarmup>());
+        serviceCollection.AddSingleton<Nitrate.Companion.Formats.FormatIndex>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Formats.FormatIndex>());
+        // The server's own time for each request Nitrate tags (the apps' query analyzer); the shell's middleware times them.
+        serviceCollection.AddSingleton<Nitrate.Companion.QueryTimes.QueryTimeStore>();
+        // Shared scripts live in the server's data folder (not the plugin's own, which each version replaces).
+        serviceCollection.AddSingleton<IScriptStorage>(sp =>
+            new DbScriptStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "scripts")));
+        serviceCollection.AddSingleton<ScriptHub>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Diary.DiaryHub(
+            new Nitrate.Companion.Storage.DbDiaryStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "diary")),
+            sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddHostedService<Nitrate.Companion.Diary.DiaryRecorder>();
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Lines.LineIndex(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "lines.db")));
+        serviceCollection.AddSingleton(sp => new ChannelHub(
+            new FileChannelStorage(Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "channels")),
+            new JellyfinChannelLibrary(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>()),
+            sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddSingleton(sp => new PartnerHub(
+            new DbPartnerStorage(
+                sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
+                Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "partners.json")),
+            new JellyfinPartnerDirectory(sp.GetRequiredService<IUserManager>()),
+            new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>()),
+            sp.GetRequiredService<TimeProvider>()));
+        // Together-only groups' own watched records, from the server's playback reports (live sessions and catching up).
+        serviceCollection.AddSingleton<TogetherRecorder>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<TogetherRecorder>());
+        // Watch party reminders and news, sent to the members' open Nitrate apps over Jellyfin's own connection.
+        serviceCollection.AddHostedService<PartyPush>();
+        // Group chat pinned to the timeline: one note per message, live sessions getting each at once.
+        serviceCollection.AddSingleton<Nitrate.Companion.Insights.ILiveSessions>(sp => new JellyfinLiveSessions(
+            sp.GetRequiredService<MediaBrowser.Controller.SyncPlay.ISyncPlayManager>(), sp.GetRequiredService<ISessionManager>(), sp.GetRequiredService<IUserManager>()));
+        serviceCollection.AddSingleton(sp =>
+        {
+            var partners = sp.GetRequiredService<PartnerHub>();
+            return new Nitrate.Companion.Insights.GroupNotes(
+                sp.GetRequiredService<Nitrate.Companion.Insights.TimelineNoteBook>(),
+                sp.GetRequiredService<ChatHub>(),
+                sp.GetRequiredService<Nitrate.Companion.Insights.ILiveSessions>(),
+                partners.GroupsHolding,
+                partners.IsPrivate,
+                () => Plugin.Instance?.Configuration.KeepChatHistory ?? true,
+                sp.GetRequiredService<TimeProvider>());
+        });
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Devices.DeviceHub(
+            new Nitrate.Companion.Storage.DbDeviceReportStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "devices.json")),
+            sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Together.InviteHub(sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.SmartCollections.SmartCollectionStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "smart-collections.json")));
+        serviceCollection.AddHostedService<Nitrate.Companion.SmartCollections.SmartCollectionWatcher>();
+        // The nightly tasks' results, fingerprints and unreadable files: one database, one row per
+        // title (results from the older JSON files and fingerprint folder are moved in once).
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Storage.CompanionDb(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "companion.db")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Timing.TimingStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "timing.json")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Credits.CreditStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "credits.json")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Intros.IntroStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Comics.ComicStore(
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().CachePath, "nitrate-companion", "comics")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Catalogs.CatalogFetcher(
+            Nitrate.Companion.Catalogs.CatalogFetcher.NewClient(),
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().CachePath, "nitrate-companion", "catalog-books")));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Catalogs.CatalogPositions(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
+            Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "catalog-positions")));
+        serviceCollection.AddSingleton(sp => new SsoService(
+            () => SsoSettings.From(Plugin.Instance?.Configuration),
+            new JellyfinSsoAccounts(sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IDeviceManager>(), sp.GetRequiredService<ISessionManager>()),
+            new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
+            sp.GetRequiredService<TimeProvider>()));
+
+        // The nightly tasks (run through the shell's adapters, which keep their old names) and the segment provider.
+        serviceCollection.AddSingleton<Nitrate.Companion.Credits.CreditScanJob>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Intros.IntroScanJob>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Lines.LineIndexJob>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Timing.TimingScanJob>();
+        serviceCollection.AddSingleton<Nitrate.Companion.SmartCollections.SmartCollectionJob>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Segments.CompanionSegmentProvider>();
+
+        ForwardServerServices(serviceCollection, host, Controllers);
+    }
+
+    /// <summary>
+    /// Passes through every server service the logic's classes take that the logic doesn't make
+    /// itself (Jellyfin's managers, paths, the encoder...), looked up in the server's container.
+    /// </summary>
+    public static void ForwardServerServices(IServiceCollection services, IServiceProvider host, IEnumerable<Type> alsoBuilt)
+    {
+        var registered = services.Select(d => d.ServiceType).ToHashSet();
+        var built = services.Select(d => d.ImplementationType).OfType<Type>().Concat(alsoBuilt).ToList();
+        var wanted = new HashSet<Type>
+        {
+            typeof(IApplicationPaths), typeof(ILibraryManager), typeof(IUserManager), typeof(IUserDataManager),
+            typeof(ISessionManager), typeof(IDeviceManager), typeof(MediaBrowser.Controller.SyncPlay.ISyncPlayManager),
+        };
+        foreach (var type in built)
+        {
+            var constructor = type.GetConstructors().OrderByDescending(c => c.GetParameters().Length).FirstOrDefault();
+            foreach (var p in constructor?.GetParameters() ?? [])
+            {
+                wanted.Add(p.ParameterType);
+            }
+        }
+
+        foreach (var type in wanted)
+        {
+            if (registered.Contains(type) || (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ILogger<>))
+                || type == typeof(IServiceProvider) || type.Assembly == typeof(LogicServices).Assembly || type.IsValueType || type == typeof(string))
+            {
+                continue;
+            }
+
+            services.AddSingleton(type, _ => host.GetService(type) ?? throw new InvalidOperationException($"The server has no {type}."));
+        }
+    }
+
+    /// <summary>The hosted services, in the order they're started.</summary>
+    public static IReadOnlyList<IHostedService> Hosted(IServiceProvider services) => services.GetServices<IHostedService>().ToList();
+}

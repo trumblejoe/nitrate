@@ -46,24 +46,20 @@ public class QueryTimeTests
     }
 
     [Fact]
-    public async Task TheMiddlewareTimesTaggedRequestsOfTheSignedInUser()
+    public void TaggedRequestsOfTheSignedInUserAreKept()
     {
+        // The shell's middleware times every request and hands it over once answered.
         var store = new QueryTimeStore(_time);
-        var middleware = new QueryTimingMiddleware(
-            ctx =>
-            {
-                // The server's sign-in check runs further down the pipeline.
-                ctx.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("Jellyfin-UserId", _sam.ToString()) }, "test"));
-                return Task.Delay(30);
-            },
-            store);
         var tagged = new DefaultHttpContext();
         tagged.Request.Headers[QueryTimeStore.Header] = "run7-1";
-        await middleware.InvokeAsync(tagged);
-        await middleware.InvokeAsync(new DefaultHttpContext());
+        QueryTiming.Starting(store);
+        // The server's sign-in check ran further down the pipeline.
+        tagged.User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("Jellyfin-UserId", _sam.ToString()) }, "test"));
+        QueryTiming.Finished(store, tagged, TimeSpan.FromMilliseconds(30));
+        QueryTiming.Finished(store, new DefaultHttpContext(), TimeSpan.FromMilliseconds(30));
         Assert.True(store.Active);
         var times = store.For(_sam, "run7");
         Assert.Single(times);
-        Assert.True(times[0].Ms >= 25, $"{times[0].Ms} ms");
+        Assert.Equal(30, times[0].Ms);
     }
 }
