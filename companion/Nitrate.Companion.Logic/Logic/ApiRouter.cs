@@ -135,7 +135,7 @@ public sealed class ApiRouter
 
         var context = new ControllerContext(new ActionContext(http, routeData, shellContext.ActionDescriptor, new ModelStateDictionary()));
         var json = Json(http);
-        var (arguments, refused) = await BindAsync(endpoint, matched.Values, context, json).ConfigureAwait(false);
+        var (arguments, refused) = await BindAsync(endpoint, matched.Values, context, json, services).ConfigureAwait(false);
         IActionResult result;
         if (refused is not null)
         {
@@ -208,7 +208,7 @@ public sealed class ApiRouter
         return _json = json;
     }
 
-    private async Task<(object?[] Arguments, IActionResult? Refused)> BindAsync(Endpoint endpoint, IReadOnlyDictionary<string, string> routeValues, ControllerContext context, JsonSerializerOptions json)
+    private async Task<(object?[] Arguments, IActionResult? Refused)> BindAsync(Endpoint endpoint, IReadOnlyDictionary<string, string> routeValues, ControllerContext context, JsonSerializerOptions json, IServiceProvider services)
     {
         var http = context.HttpContext;
         var parameters = endpoint.Method.GetParameters();
@@ -221,6 +221,15 @@ public sealed class ApiRouter
             if (type == typeof(CancellationToken))
             {
                 arguments[i] = http.RequestAborted;
+                continue;
+            }
+
+            // [FromServices], or (as [ApiController] infers) a type the logic's container has.
+            if (p.GetCustomAttribute<FromServicesAttribute>() is not null
+                || (p.GetCustomAttributes().All(a => a is not (FromBodyAttribute or FromQueryAttribute or FromRouteAttribute))
+                    && services.GetService<IServiceProviderIsService>()?.IsService(type) == true))
+            {
+                arguments[i] = services.GetRequiredService(type);
                 continue;
             }
 

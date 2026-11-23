@@ -71,6 +71,9 @@ public sealed class CompanionLogic : ICompanionLogic
     /// <inheritdoc />
     public IMediaSegmentProvider? Segments { get; }
 
+    /// <summary>Gets the logic's own services.</summary>
+    public IServiceProvider Services => _services;
+
     /// <summary>Gets the routes served, as "METHOD template".</summary>
     public IEnumerable<string> Routes => _router.Routes;
 
