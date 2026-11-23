@@ -104,7 +104,7 @@ fun chatFocus(chip: WithChip?): List<String>? = when {
 fun WithChipButton(chip: WithChip, easy: Boolean, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(50)
     val base = modifier.widthIn(max = 260.dp).background(Color.White.copy(alpha = 0.16f), shape)
-    val label = chip.label
+    val label = if (easy) chip.plain else chip.label
     Text(
         label,
         color = Color.White,
@@ -200,7 +200,7 @@ fun broughtText(chip: WithChip, by: String?, me: String?, mine: String?): String
     if (by == null && mine == null) return null
     if (by == null || by == me) return chip.groups.firstOrNull { it.id == mine }?.let { "You brought your notes with " + WithChip.nameOf(it) } ?: "You brought earlier notes"
     val name = chip.groups.flatMap { it.others }.firstOrNull { it.id == by }?.name
-    return (name ?: "Someone in the party") + " brought earlier notes"
+    return (name ?: "Someone watching") + " brought earlier notes"
 }
 
 private enum class WithPage { MAIN, ROOM, INVITE, BRING }
@@ -261,19 +261,19 @@ private fun WithMain(
     Text(chip.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     Text(chip.who, color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (chip.groups.isNotEmpty() && !chip.partyOn) {
-        Heading("Counts for")
+        Heading("Counting for")
         val chosen = chip.group?.id
         chip.groups.forEach { g ->
             Choice("With " + WithChip.nameOf(g), selected = chosen == g.id) { onCountFor(WatchingWith.Group(g.id)) }
         }
-        Choice("Just me", selected = chosen == null) { onCountFor(WatchingWith.JustMe) }
+        Choice("No group", selected = chosen == null) { onCountFor(WatchingWith.JustMe) }
     }
-    Heading("Watch party")
+    Heading("Watch now together")
     if (chip.partyOn) {
-        Action("Invite someone to the party", "They get an invite to join and watch in step") { go(WithPage.INVITE) }
+        Action("Invite someone to watch now", "They get an invite to join and watch in step") { go(WithPage.INVITE) }
     } else {
         Action(
-            "Start a watch party" + (chip.group?.let { " with " + WithChip.nameOf(it) } ?: ""),
+            "Watch now together" + (chip.group?.let { " with " + WithChip.nameOf(it) } ?: ""),
             "Play in step on each other's screens; pausing pauses for everyone",
             onStartParty,
         )
@@ -286,7 +286,7 @@ private fun WithMain(
     }
     if (chatOn != null && onGroupChat != null) GroupChatSwitch(chatOn, onGroupChat)
     if (onBring != null && chip.groups.isNotEmpty()) {
-        Action("Bring our earlier notes", brought ?: "Your group's notes on this pop up for everyone in the party, this time only") { go(WithPage.BRING) }
+        Action("Bring our earlier notes", brought ?: "Your group's notes on this pop up for everyone watching, this time only") { go(WithPage.BRING) }
     } else brought?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
     problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 }
@@ -324,7 +324,7 @@ private fun InvitePicker(
     var outsiders by remember { mutableStateOf<List<UserRef>?>(null) }
     var sent by remember { mutableStateOf(false) }
     val group = chip.group ?: chip.groups.firstOrNull()
-    Text(if (sent) "Invites sent" else "Invite someone to the party", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    Text(if (sent) "Invites sent" else "Invite someone to watch now", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     when {
         sent -> Text("They'll see it on their phone or when they open Nitrate.")
         list == null -> Text("Loading…")
@@ -368,9 +368,9 @@ private fun InvitePicker(
 @Composable
 private fun BringPicker(chip: WithChip, onBring: (String?) -> Unit, onBack: () -> Unit) {
     Text("Bring our earlier notes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-    Text("Notes from one of your groups on this pop up for everyone in the party as playback passes them, this time only. Nobody keeps them.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Notes from one of your groups on this pop up for everyone watching as playback passes them, this time only. Nobody keeps them.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     chip.groups.forEach { g -> Action("Our notes with " + WithChip.nameOf(g), g.seriesName) { onBring(g.id) } }
-    Action("Stop bringing them", "Only what's said in the party pops up") { onBring(null) }
+    Action("Stop bringing them", "Only what's said while watching now pops up") { onBring(null) }
     TextButton(onClick = onBack) { Text("Back") }
 }
 

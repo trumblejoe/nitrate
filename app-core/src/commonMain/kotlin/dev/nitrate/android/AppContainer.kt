@@ -423,6 +423,12 @@ class AppContainer(
                     Unit
                 }
                 is dev.nitrate.core.partners.TogetherChoice.WatchedWith -> { server.watchedTogether(choice.episodeId, choice.groupId); Unit }
+                // In that group's record only; never the user's own watched state.
+                is dev.nitrate.core.partners.TogetherChoice.Mark -> { server.markForGroups(listOf(choice.groupId), choice.itemIds, choice.watched); Unit }
+                // Everyone in the group here (changeable in the player); the app then plays from the group's card.
+                is dev.nitrate.core.partners.TogetherChoice.InTheRoom ->
+                    watchPartners.setRoom(plugins.host, choice.titleId, dev.nitrate.core.partners.SameRoom(choice.groupId, choice.present))
+                is dev.nitrate.core.partners.TogetherChoice.RemoveTitle -> server.removeGroupTitle(choice.group.id, choice.titleId)
                 is dev.nitrate.core.partners.TogetherChoice.OwnSpoilers -> {
                     val user = server.userId ?: return null
                     val prefs = displaySettings.prefs(user).first()
@@ -439,6 +445,47 @@ class AppContainer(
         refreshGroupStandings(1_000)
         pagesChanged()
         return result.exceptionOrNull()?.let { it.message ?: "That didn't work" }
+    }
+
+    /** Adds [titles] to [groupId] (any member may). Returns an error, if any. */
+    suspend fun addGroupTitles(groupId: String, titles: List<dev.nitrate.core.model.MediaItem>): String? {
+        val r = runCatching { titles.forEach { server.addGroupTitle(groupId, it.id, it.name) } }
+        refreshPartners()
+        refreshGroupStandings(1_000)
+        pagesChanged()
+        return r.exceptionOrNull()?.let { it.message ?: "That didn't work" }
+    }
+
+    /**
+     * Where Up Next's [next] plays from: the same title carries on from where its playback started
+     * (a group's card, "for myself"), for the guards and the next player.
+     */
+    fun upNextOrigin(next: dev.nitrate.core.model.MediaItem): dev.nitrate.core.partners.PlayOrigin? =
+        watchPartners.upNextOrigin(plugins.host, next, groupStandings.value)
+
+    private val countAsksState = MutableStateFlow<List<dev.nitrate.core.partners.CountAsk>>(emptyList())
+
+    /**
+     * "Also count it for Suzy, where it's next too?": playbacks from a group's card that finished
+     * and are next in other groups too, asked once the player has closed (TV dialog, phone sheet).
+     */
+    val countAsks: StateFlow<List<dev.nitrate.core.partners.CountAsk>> = countAsksState
+
+    private fun asked(ask: dev.nitrate.core.partners.CountAsk) {
+        countAsksState.value = countAsksState.value.let { list ->
+            val same = list.indexOfFirst { it.sameAs(ask) }
+            if (same < 0) list + ask else list.mapIndexed { i, a -> if (i == same) a.copy(itemIds = (a.itemIds + ask.itemIds).distinct()) else a }
+        }
+    }
+
+    /** The answer: "All groups where it's next" ([all]) counts it there too; "Just this group" leaves it as it is (counted already). */
+    suspend fun answerCounting(ask: dev.nitrate.core.partners.CountAsk, all: Boolean): String? {
+        countAsksState.value = countAsksState.value - ask
+        if (!all) return null
+        val r = runCatching { server.markForGroups(ask.others, ask.itemIds) }
+        refreshGroupStandings(1_000)
+        pagesChanged()
+        return r.exceptionOrNull()?.let { it.message ?: "That didn't work" }
     }
 
     /** Asks [groupId] to change its schedule (it takes effect once most of the group agrees). Returns an error, if any. */
@@ -468,7 +515,7 @@ class AppContainer(
             syncPlay.create("${choice.episode.seriesName ?: choice.episode.name} with ${choice.names}")
             kotlinx.coroutines.withTimeoutOrNull(5_000) { syncPlay.group.first { it != null } }
         }
-        val group = syncPlay.group.value ?: error("Couldn't start the watch party")
+        val group = syncPlay.group.value ?: error("Couldn't start watching together")
         if (invitesAvailable() && choice.userIds.isNotEmpty()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
         if (choice.groupId.isNotEmpty() && companion.value?.features?.contains("groupwatch") == true) runCatching { server.sessionForGroup(choice.groupId, group.id) }
     }
@@ -501,6 +548,17 @@ class AppContainer(
                     refreshGroupStandings(1_000)
                 }
             },
+            originOf = { item -> watchPartners.takeOrigin(plugins.host, item) },
+            onPlaying = { title, origin -> watchPartners.nowPlaying(plugins.host, title, origin) },
+            // What a playback counted for, in those groups' records (older servers keep none: nothing to write).
+            mark = { groups, items ->
+                if (companion.value?.features?.contains("groupwatch") == true) networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch groups")) {
+                    runCatching { server.markForGroups(groups, items) }
+                    refreshGroupStandings(1_000)
+                    pagesChanged()
+                }
+            },
+            ask = { if (companion.value?.features?.contains("groupwatch") == true) asked(it) },
         )
 
     /**
@@ -511,7 +569,7 @@ class AppContainer(
     suspend fun startWatchParty(item: dev.nitrate.core.model.MediaItem, group: dev.nitrate.core.partners.WatchGroup?): String? = runCatching {
         val names = group?.let { dev.nitrate.core.partners.WithChip.nameOf(it) } ?: "friends"
         startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, group?.id.orEmpty(), group?.others.orEmpty().map { it.id }, names))
-    }.exceptionOrNull()?.let { it.message ?: "Couldn't start the watch party" }
+    }.exceptionOrNull()?.let { it.message ?: "Couldn't start watching together" }
 
     /**
      * Invites [userIds] to this device's watch party (what it plays, by [item]). Asking someone
@@ -519,14 +577,14 @@ class AppContainer(
      * offered by the panel. Returns an error message, if any.
      */
     suspend fun inviteToParty(userIds: List<String>, item: dev.nitrate.core.model.MediaItem?): String? = runCatching {
-        val party = syncPlay.group.value ?: error("Not in a watch party")
+        val party = syncPlay.group.value ?: error("Not watching together now")
         server.inviteToWatch(party.id, userIds, item?.id, item?.let { it.seriesName ?: it.name })
         Unit
     }.exceptionOrNull()?.let { it.message ?: "Couldn't send the invites" }
 
     /** "Add them to the group too?": the usual watch-group invite of [userIds] into [group] (each reads "sent"). */
     suspend fun inviteToGroup(group: dev.nitrate.core.partners.WatchGroup, userIds: List<String>): String? {
-        val r = runCatching { userIds.forEach { server.askPartner(it, null, group.seriesId, group.seriesName, group.id) } }
+        val r = runCatching { userIds.forEach { server.askPartner(it, null, group.seriesId, group.seriesName, group.id, titles = group.titles) } }
         refreshPartners()
         return r.exceptionOrNull()?.let { it.message ?: "Couldn't send the invites" }
     }
@@ -977,6 +1035,7 @@ class AppContainer(
         // So do its watch parties: nothing asked, no reminders set.
         parties.clear()
         partnersState.value = null
+        countAsksState.value = emptyList()
         if (deviceKind != dev.nitrate.core.pages.DeviceKind.TV) runCatching { newEpisodes.scheduleParties(emptyList(), nowMs()) }
         writing.account = null
         scriptSyncJob?.cancel()

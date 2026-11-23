@@ -408,6 +408,17 @@ class FakeServer : MediaServer {
         return dev.nitrate.core.partners.PartyPrompt.of(news, easy)!!
     }
     override suspend fun privacy() = dev.nitrate.core.partners.Privacy(isPrivate = false, byAdmin = false)
+
+    /** What the watch-group setup offers before anything is typed. */
+    override suspend fun recentlyWatched(limit: Int): List<MediaItem> = listOfNotNull(runCatching { getItem("series-1") }.getOrNull(), runCatching { getItem("m1") }.getOrNull())
+
+    /** What was marked for groups ("[g1] [e1]" per call), for tests. */
+    val groupMarks = mutableListOf<String>()
+
+    override suspend fun markForGroups(groupIds: List<String>, itemIds: List<String>, watched: Boolean): List<String> {
+        groupMarks += "$groupIds $itemIds" + if (watched) "" else " unwatched"
+        return groupIds
+    }
     override suspend fun partnerPeople() = listOf(dev.nitrate.core.writing.UserRef("user-2", "Will"), dev.nitrate.core.writing.UserRef("user-3", "Jessica"))
     override suspend fun partnerProgress(seriesId: String) =
         if (seriesId == "series-1") listOf(

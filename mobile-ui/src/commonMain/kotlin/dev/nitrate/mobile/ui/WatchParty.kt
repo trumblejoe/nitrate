@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun PartyTimePicker(schedule: GroupSchedule, onChange: (GroupSchedule) -> Unit) {
     val party = schedule.party
-    Text("Watch party", style = MaterialTheme.typography.labelLarge)
+    Text("Group Watch Session", style = MaterialTheme.typography.labelLarge)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FilterChip(party == null, { onChange(schedule.copy(party = null)) }, label = { Text("None") })
         GroupSchedule.DAYS.forEachIndexed { i, d ->
@@ -53,7 +53,7 @@ fun PartyTimePicker(schedule: GroupSchedule, onChange: (GroupSchedule) -> Unit) 
             }
         }
         Text(
-            "${party.label}: you're all reminded 15 minutes before, and the first to join starts the watch party with the next part.",
+            "${party.label}: you're all reminded 15 minutes before, and the first to join starts watching the next part together.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

@@ -52,7 +52,7 @@ fun WatchTogetherScreen(syncPlay: SyncPlayController, defaultName: String, chat:
             Modifier.weight(1f).fillMaxHeight().padding(horizontal = 58.dp, vertical = 32.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Watch party", style = MaterialTheme.typography.headlineMedium)
+            Text("Watch now together", style = MaterialTheme.typography.headlineMedium)
             Column(Modifier.width(720.dp)) { WatchTogetherPanel(syncPlay, defaultName) }
         }
         // While choosing what to watch: the group's chat (with the Companion plugin on the server).
@@ -162,8 +162,8 @@ fun WatchInvitePrompt(container: dev.nitrate.android.AppContainer) {
     val invite = invites.firstOrNull() ?: return
     val focus = remember(invite.id) { FocusRequester() }
     dev.nitrate.tv.ui.lists.TvDialog({ scope.launch { container.dismissInvite(invite) } }, width = 640) {
-        Text("Join the watch party?", style = MaterialTheme.typography.headlineSmall)
-        Text(invite.text + ". Joining puts this TV in their watch party: what they play, plays here.")
+        Text("Watch now together?", style = MaterialTheme.typography.headlineSmall)
+        Text(invite.text + ". Joining puts this TV in their session: what they play, plays here.")
         androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             androidx.tv.material3.Button(onClick = { scope.launch { runCatching { container.joinInvite(invite) } } }, modifier = Modifier.focusRequester(focus)) { Text("Join") }
             OutlinedButton(onClick = { scope.launch { container.dismissInvite(invite) } }) { Text("Not now") }
@@ -191,7 +191,7 @@ private fun FindGroup(syncPlay: SyncPlayController, defaultName: String, first: 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Watch in step with friends and family on other devices, wherever they are.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         val list = groups?.getOrNull()
-        Text("Join a watch party", style = MaterialTheme.typography.titleSmall)
+        Text("Join someone watching now", style = MaterialTheme.typography.titleSmall)
         when {
             groups == null -> Text("Looking for watch parties…")
             groups!!.isFailure -> Text("Couldn't list watch parties. Your account may not be allowed to join them (ask your server admin).", color = MaterialTheme.colorScheme.error)
@@ -208,7 +208,7 @@ private fun FindGroup(syncPlay: SyncPlayController, defaultName: String, first: 
                 )
             }
         }
-        Text("Start a watch party", style = MaterialTheme.typography.titleSmall)
+        Text("Start watching now together", style = MaterialTheme.typography.titleSmall)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TvTextField(name, { name = it }, placeholder = "Party name", modifier = Modifier.weight(1f).then(if (list.isNullOrEmpty()) Modifier.focusRequester(first) else Modifier))
             Button(onClick = { act { syncPlay.create(name.ifBlank { defaultName }) } }, enabled = !busy) { Text("Start") }

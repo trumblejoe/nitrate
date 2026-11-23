@@ -97,7 +97,7 @@ class GroupChat(
 
     /** Sends a message to the followed group; the failure says why (too fast, too long...). */
     suspend fun send(text: String, kind: ChatKind = ChatKind.TEXT, positionMs: Long? = null): Result<ChatMessage> {
-        val groupId = _groupId.value ?: return Result.failure(IllegalStateException("Not in a watch party"))
+        val groupId = _groupId.value ?: return Result.failure(IllegalStateException("Not watching now together"))
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Result.failure(ChatRejected("The message is empty.", tooFast = false))
         return runCatching { server.sendChat(groupId, kind, trimmed, positionMs) }

@@ -177,8 +177,8 @@ class GroupRecordTest {
         val host = PluginHost(server(info), noStore, session)
         // Episode 8 from the library: Tommy's group (Together on) hasn't watched it, so it asks first.
         val ask = plugin.beforePlay(eps[7], host, PlayOrigin.Elsewhere) as GuardDecision.Ask
-        assertEquals(PartLock.WATCH_TOGETHER, ask.title)
-        assertEquals(listOf("Watch now together", "Watch for myself", "Not now"), ask.choices.map { it.label })
+        assertEquals("Tommy hasn't watched this yet", ask.title)
+        assertEquals(listOf("Watch now together", "We're in the same room", "Watch for myself", "Not now"), ask.choices.map { it.label })
         assertTrue(ask.message, ask.message.contains("Tommy"))
         // "Watch now together" starts the live session for Tommy's group, and the playback counts there.
         (ask.choices[0].action as GuardAction.RunThenPlay).run()
@@ -187,8 +187,14 @@ class GroupRecordTest {
         // The answer is used once.
         assertEquals(PlayOrigin.Elsewhere, plugin.originOf(host, eps[7]))
         // "Watch for myself" plays and counts for no group.
-        (ask.choices[1].action as GuardAction.RunThenPlay).run()
+        (ask.choices[2].action as GuardAction.RunThenPlay).run()
         assertEquals(PlayOrigin.ForMyself, plugin.originOf(host, eps[7], PlayOrigin.Elsewhere))
+        // "We're in the same room": the whole group's here, and it counts from the group's card.
+        (ask.choices[1].action as GuardAction.RunThenPlay).run()
+        assertEquals(SameRoom("tommy", listOf("t")), plugin.roomOn(host, "bear"))
+        assertEquals(PlayOrigin.GroupCard("tommy"), plugin.takeOrigin(host, eps[7]))
+        assertNull(plugin.takeOrigin(host, eps[7]))
+        plugin.setRoom(host, "bear", null)
         // From Suzy's card, episode 8 is her group's next: no question (Tommy's switch is about plays started elsewhere).
         assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[7], host, PlayOrigin.GroupCard("suzy")))
         // Episode 9 from Suzy's card isn't out yet: it says when, and offers it for oneself.
@@ -208,6 +214,6 @@ class GroupRecordTest {
         assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[8], off, null))
         // Without a way to start a live session here: only for myself, or not now.
         val bare = plugin.beforePlay(eps[7], PluginHost(server(info), noStore), PlayOrigin.Elsewhere) as GuardDecision.Ask
-        assertEquals(listOf("Watch for myself", "Not now"), bare.choices.map { it.label })
+        assertEquals(listOf("We're in the same room", "Watch for myself", "Not now"), bare.choices.map { it.label })
     }
 }

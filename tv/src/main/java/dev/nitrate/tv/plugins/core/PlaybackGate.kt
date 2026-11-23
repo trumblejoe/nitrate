@@ -45,17 +45,22 @@ class PlaybackGate(
     var checking by mutableStateOf(false)
         private set
 
-    /** Plays [item] (from the start, resuming, or from [startMs]) once the guards agree. */
-    fun play(item: MediaItem, fromStart: Boolean = false, startMs: Long? = null) {
+    /**
+     * Plays [item] (from the start, resuming, or from [startMs]) once the guards agree. [origin]:
+     * where it's played from (null: a watch group's card by [MediaItem.watchGroupId], else
+     * elsewhere), told to the guards, which hand it on to the player.
+     */
+    fun play(item: MediaItem, fromStart: Boolean = false, startMs: Long? = null, origin: dev.nitrate.core.partners.PlayOrigin? = null) {
         if (checking) return
         scope.launch {
             checking = true
+            val from = origin ?: dev.nitrate.core.partners.PlayOrigin.of(item).takeIf { it is dev.nitrate.core.partners.PlayOrigin.GroupCard }
             // A show or season on a card: its next episode (else its first) is what plays.
             val item = if (dev.nitrate.core.playback.PlayTargets.needsEpisode(item)) {
                 dev.nitrate.core.playback.PlayTargets.episodeFor(registry.host.server, item) ?: run { checking = false; return@launch }
             } else item
             val action = try {
-                registry.checkBeforePlay(item) { ask ->
+                registry.checkBeforePlay(item, from) { ask ->
                     val answer = CompletableDeferred<GuardAction>()
                     pending = ask to answer
                     answer.await().also { pending = null }

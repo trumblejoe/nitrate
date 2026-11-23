@@ -121,6 +121,9 @@ fun FullArtPage(
     val fx = dev.nitrate.tv.ui.effects.rememberCardFx(overrides[row.key] ?: row.defaultDisplay, prefs.effects, prefs.easyMode)
     val plainActions = remember(onOpen, onPlay) { dev.nitrate.tv.ui.rows.RowActions(onFocus = {}, onOpen = onOpen, onPlay = onPlay, onEditRow = {}) }
     val open = (fx?.wrap(plainActions) ?: plainActions).onOpen
+    // Home's Watching together row: an invite or the start card answers OK itself, and holding OK on
+    // a shared card offers its group's choices (with Customize this row among them), as on rows pages.
+    val together = dev.nitrate.tv.ui.partners.LocalTogetherCards.current?.takeIf { row.key in dev.nitrate.core.partners.TogetherRow.ROW_KEYS }
 
     val along = LocalDisplayPrefs.current.tvUpDownAlong
     Box(
@@ -164,14 +167,15 @@ fun FullArtPage(
                         if (down && event.nativeKeyEvent.repeatCount > 0 && !longPressHandled) {
                             longPressHandled = true
                             // The Customize panel when the page's rows are known, else the row's dialog.
-                            customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row }
+                            val customizeRow = { customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row } }
+                            if (together != null && together.shares(item)) together.hold(item) { customizeRow() } else customizeRow()
                         } else if (!down) {
-                            if (!longPressHandled) open(item)
+                            if (!longPressHandled && together?.select(item) != true) open(item)
                             longPressHandled = false
                         }
                         true
                     }
-                    Key.MediaPlay, Key.MediaPlayPause -> { if (!down) onPlay(item); true }
+                    Key.MediaPlay, Key.MediaPlayPause -> { if (!down && together?.select(item) != true) onPlay(item); true }
                     else -> false
                 }
             }

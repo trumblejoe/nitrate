@@ -48,6 +48,24 @@ sealed interface TogetherChoice {
         override val label = "$names watched $episodeLabel with me"
     }
 
+    /**
+     * Mark [itemIds] watched ([watched]) or unwatched for the user in group [groupId]'s own record
+     * only ("Mark S1:E3 watched for this group", "Mark everything up to here watched").
+     */
+    data class Mark(val groupId: String, val itemIds: List<String>, val watched: Boolean, override val label: String) : TogetherChoice
+
+    /**
+     * "We're in the same room": [item] plays with the group's [present] members here, counting for
+     * them too (who's here can be changed in the player).
+     */
+    data class InTheRoom(val groupId: String, val titleId: String, val item: MediaItem, val present: List<String>, override val label: String = "We're in the same room") : TogetherChoice
+
+    /** Add a title to group [group] (any member may). */
+    data class AddTitle(val group: WatchGroup, override val label: String = "Add a title to the group") : TogetherChoice
+
+    /** Remove title [titleId] from group [group] (any member may; a group keeps at least one; what was watched stays in the record). */
+    data class RemoveTitle(val group: WatchGroup, val titleId: String, val name: String, override val label: String = "Remove $name from the group") : TogetherChoice
+
     /** "Watch now together": a live (SyncPlay) session, the group's members invited, then [episode] plays (counting for the group). */
     data class WatchNow(val episode: MediaItem, val groupId: String, val userIds: List<String>, val names: String) : TogetherChoice {
         override val label = "Watch now together with $names"
@@ -68,9 +86,9 @@ sealed interface TogetherChoice {
     /** Leave group [group] (asked to confirm first). */
     data class Leave(val group: WatchGroup) : TogetherChoice { override val label = "Leave the group with ${group.label}" }
 
-    /** Ask the group to change its schedule (opens the schedule picker; takes effect once most agree). */
-    data class ChangeSchedule(val group: WatchGroup) : TogetherChoice {
-        override val label = "Change the schedule (${group.schedule?.label ?: "Binge"})"
+    /** Ask the group to change its schedule or Group Watch Session (opens the schedule picker; takes effect once most agree). */
+    data class ChangeSchedule(val group: WatchGroup, val suffix: String = "") : TogetherChoice {
+        override val label = "Change the schedule or Group Watch Session (${group.schedule?.label ?: "Binge"})$suffix"
     }
 
     /** A yes or no to the group's waiting schedule change. */
@@ -181,11 +199,16 @@ object TogetherRow {
     }
 
     /**
-     * What holding OK on [item] offers: an invite's Accept/Decline; for a shared title, catching up
-     * to whoever's ahead, counting the user's last episode for a group that watched it with them,
-     * watching it together now ([canWatchNow]: the server carries invites), inviting someone,
-     * spoilers by the user's own progress ([ownSpoilers]: the shows that already do), opening the
-     * title and leaving each group. A group's card ([MediaItem.watchGroupId]) offers its group's only.
+     * What holding OK on [item] (or "Watch group…" on its details page) offers, per group: an
+     * invite's Accept/Decline; for a shared title, a waiting schedule change's vote and the Group
+     * Watch Session first, then for its part (the item itself, else the user's next part with that
+     * group): mark it watched or unwatched for this group (with "Mark everything up to here
+     * watched" when earlier parts aren't in the record yet), catching up to whoever's ahead, Watch
+     * now together ([canWatchNow]: the server carries invites), We're in the same room, invite
+     * someone, change the schedule or Group Watch Session, add a title or remove this one,
+     * spoilers by the user's own progress (shows in a Together group; [ownSpoilers]: the shows
+     * that already do), open it, start something new, leave. A group's card
+     * ([MediaItem.watchGroupId]) offers its group's only; with several groups each choice names its group.
      */
     fun choices(
         item: MediaItem,
@@ -194,7 +217,7 @@ object TogetherRow {
         episodes: List<MediaItem>,
         canWatchNow: Boolean,
         ownSpoilers: Set<String>,
-        /** Now, for the watch party's "Tonight's watch party: 8:15". */
+        /** Now, for the Group Watch Session's "Tonight's Group Watch Session: 8:15". */
         nowMs: Long = 0L,
     ): List<TogetherChoice> {
         if (isStart(item)) return listOf(TogetherChoice.Start)
@@ -205,45 +228,64 @@ object TogetherRow {
         }
         val groups = info?.on(series).orEmpty().filter { item.watchGroupId == null || it.id == item.watchGroupId }
         val ids = groups.map { it.id }.toSet()
+        val several = groups.size > 1
+        fun whose(g: WatchGroup) = if (several) "the group with ${g.label}" else "this group"
+        fun tag(g: WatchGroup) = if (several) " (with ${g.label})" else ""
         val isShow = keepUp?.noun != "title" && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.SERIES)
         val out = mutableListOf<TogetherChoice>()
         val ordered = real(episodes)
+        // Changes to a group's schedule waiting for the user's vote come first, then each group's Group Watch Session.
+        groups.forEach { g ->
+            val p = g.pending ?: return@forEach
+            if (!p.voted) {
+                out += TogetherChoice.Vote(g.id, p.id, yes = true, proposed = p.proposed, from = p.fromName)
+                out += TogetherChoice.Vote(g.id, p.id, yes = false, proposed = p.proposed, from = p.fromName)
+            }
+        }
+        groups.forEach { g -> g.party?.let { out += TogetherChoice.Party(g, it, nowMs) } }
+        // The part each group's choices are about: the item itself, else the user's next part with that group.
+        fun partOf(g: WatchGroup): MediaItem? = when {
+            keepUp == null -> item.takeIf { it.isPlayable }
+            item.id in keepUp.order -> ordered.firstOrNull { it.id == item.id } ?: item
+            else -> ordered.firstOrNull { it.id !in keepUp.mineIn(g.id) }
+        }
+        // Where the user stands isn't known yet: the part itself can still be marked for the group.
+        if (keepUp == null) groups.forEach { g ->
+            val part = partOf(g) ?: return@forEach
+            out += TogetherChoice.Mark(g.id, listOf(part.id), watched = true, "Mark ${shortLabel(part)} watched for ${whose(g)}")
+        }
+        if (keepUp != null) groups.forEach { g ->
+            val part = partOf(g) ?: return@forEach
+            val mine = keepUp.mineIn(g.id)
+            val what = shortLabel(part)
+            if (part.id in mine) out += TogetherChoice.Mark(g.id, listOf(part.id), watched = false, "Mark $what unwatched for ${whose(g)}")
+            else {
+                out += TogetherChoice.Mark(g.id, listOf(part.id), watched = true, "Mark $what watched for ${whose(g)}")
+                val upTo = keepUp.order.indexOf(part.id).takeIf { it >= 0 }?.let { at -> keepUp.order.take(at + 1).filter { it !in mine } }.orEmpty()
+                if (upTo.size > 1) out += TogetherChoice.Mark(g.id, upTo, watched = true, "Mark everything up to here watched (${WatchPartners.count(upTo.size, keepUp.noun)})${tag(g)}")
+            }
+        }
         if (keepUp != null) {
-            val inShow = keepUp.order.toSet()
             // Each partner against the user's place in their group (its own record).
             keepUp.progress.filter { it.groupId in ids }.distinctBy { it.userId }
                 .map { p -> p to keepUp.order.filter { it in p.watched && it !in keepUp.mineIn(p.groupId) } }
                 .filter { it.second.isNotEmpty() }
                 .sortedByDescending { it.second.size }
                 .forEach { (p, ids) -> out += TogetherChoice.CatchUp(p.userName, ids, keepUp.noun, p.groupId.takeIf { it in keepUp.own }) }
-            // The user's latest finished part that someone in a group hasn't: "Sam watched S1:E3 with me".
-            groups.forEach { g ->
-                val last = ordered.lastOrNull { it.id in keepUp.mineIn(g.id) && it.id in inShow } ?: return@forEach
-                val missing = keepUp.progress.filter { it.groupId == g.id && last.id !in it.watched }
-                if (missing.isNotEmpty()) {
-                    out += TogetherChoice.WatchedWith(g.id, WatchPartners.names(missing.map { it.userName }), last.id, shortLabel(last))
-                }
-            }
         }
-        // Changes to a group's schedule waiting for the user's vote come first.
         groups.forEach { g ->
-            val p = g.pending ?: return@forEach
-            if (!p.voted) {
-                out.add(0, TogetherChoice.Vote(g.id, p.id, yes = false, proposed = p.proposed, from = p.fromName))
-                out.add(0, TogetherChoice.Vote(g.id, p.id, yes = true, proposed = p.proposed, from = p.fromName))
-            }
-        }
-        // Each group's watch party (tonight's, or the next), after any votes.
-        val votes = out.count { it is TogetherChoice.Vote }
-        groups.mapNotNull { g -> g.party?.let { TogetherChoice.Party(g, it, nowMs) } }.forEachIndexed { i, c -> out.add(votes + i, c) }
-        if (canWatchNow && item.isPlayable) groups.forEach { g ->
-            out += TogetherChoice.WatchNow(item, g.id, g.others.map { it.id }, g.label)
+            val part = partOf(g)?.takeIf { it.isPlayable } ?: return@forEach
+            if (canWatchNow) out += TogetherChoice.WatchNow(part, g.id, g.others.map { it.id }, g.label)
+            out += TogetherChoice.InTheRoom(g.id, series, part, g.others.map { it.id }, "We're in the same room${tag(g)}")
         }
         groups.forEach { g -> out += TogetherChoice.Invite(g.id, g.label) }
-        groups.forEach { g -> if (g.pending == null) out += TogetherChoice.ChangeSchedule(g) }
-        if (isShow) out += TogetherChoice.OwnSpoilers(series, on = series !in ownSpoilers)
+        groups.forEach { g -> if (g.pending == null) out += TogetherChoice.ChangeSchedule(g, tag(g)) }
+        groups.forEach { g ->
+            out += TogetherChoice.AddTitle(g, "Add a title to the group${tag(g)}")
+            if (g.titles.size > 1) g.titles.firstOrNull { it.id == series }?.let { t -> out += TogetherChoice.RemoveTitle(g, t.id, t.name, "Remove ${t.name} from the group${tag(g)}") }
+        }
+        if (isShow && groups.any { it.together }) out += TogetherChoice.OwnSpoilers(series, on = series !in ownSpoilers)
         out += TogetherChoice.OpenShow(series, if (isShow) "Open the show" else "Open it")
-        // Home's own "Watch with someone" card went with the row: starting something new is here too.
         out += TogetherChoice.Start
         groups.forEach { g -> out += TogetherChoice.Leave(g) }
         return out

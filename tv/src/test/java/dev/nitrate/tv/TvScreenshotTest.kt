@@ -1422,6 +1422,8 @@ class TvScreenshotTest {
     /** The real player on an episode of a show shared with two watch groups (Will; Frank, Tommy and Jane), with its With… button. */
     private fun withPlayer(name: String, easy: Boolean = false, act: () -> Unit) = shoot(name, setup = { c ->
         c.refreshCompanionForTests()
+        // Played from Will's card on Home's Watching together row: the guards hand that on to the player.
+        c.plugins.checkBeforePlay(c.server.getItem("s1e2"), dev.nitrate.core.partners.PlayOrigin.GroupCard("g1")) { dev.nitrate.core.plugins.GuardAction.PlayAnyway }
         if (easy) c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(easyMode = true))
     }, act = act) { c ->
         dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {}, watchGroups = c)
@@ -1437,8 +1439,8 @@ class TvScreenshotTest {
     }
 
     private fun reachWith() {
-        repeat(8) { if (!focusedHasText("With Will")) press("right") }
-        check(focusedHasText("With Will · on your own")) { "the With… button says who it counts with; focused: ${focusedNodes()}" }
+        repeat(8) { if (!focusedHasText("Counting for Will")) press("right") }
+        check(focusedHasText("Counting for Will · Change")) { "the With… button says which group it counts for; focused: ${focusedNodes()}" }
     }
 
     /** The With… button in the controls: which situation this playback is in, a button like the others. */
@@ -1449,8 +1451,11 @@ class TvScreenshotTest {
         reachWith()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counts for")).fetchSemanticsNodes().isNotEmpty()) { "the panel shows Counts for" }
-        check(focusedHasText("With Will")) { "focus starts on the first group; focused: ${focusedNodes()}" }
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for")).fetchSemanticsNodes().isNotEmpty()) { "the panel shows Counting for" }
+        // The group it counts for is ticked. (Robolectric keeps window focus with the player's button as the panel
+        // opens, so where focus lands is checked on a page change instead: playerWithBack.)
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("With Will") and androidx.compose.ui.test.hasText("✓")).fetchSemanticsNodes().isNotEmpty()) { "Will's group is the one counted" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("We're in the same room")).fetchSemanticsNodes().isNotEmpty()) { "the same room is offered" }
     }
 
@@ -1468,18 +1473,18 @@ class TvScreenshotTest {
         check(focusedHasText("Frank")) { "the room page opens on the first member; focused: ${focusedNodes()}" }
         pressInDialog("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counts for")).fetchSemanticsNodes().isNotEmpty()) { "Back on a page goes back to the panel" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for")).fetchSemanticsNodes().isNotEmpty()) { "Back on a page goes back to the panel" }
         pressInDialog("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counts for")).fetchSemanticsNodes().isEmpty()) { "the next Back closes it" }
-        check(focusedHasText("With Frank, Tommy & Jane · on your own")) { "focus returns to the button, which says the new choice; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for")).fetchSemanticsNodes().isEmpty()) { "the next Back closes it" }
+        check(focusedHasText("Counting for Frank, Tommy & Jane · Change")) { "focus returns to the button, which says the new choice; focused: ${focusedNodes()}" }
     }
 
     /** Easy mode: who it's watched with is said beside the buttons, never a button. */
     @Test fun playerWithEasy() = withPlayer("tv-player-with-easy", easy = true) {
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("With Will · on your own")).fetchSemanticsNodes().isNotEmpty()) { "the chip's words show in easy mode" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for Will")).fetchSemanticsNodes().isNotEmpty()) { "the chip's words show in easy mode, without Change" }
         repeat(6) { press("right") }
-        check(!focusedHasText("With Will")) { "but it never takes focus" }
+        check(!focusedHasText("Counting for Will")) { "but it never takes focus" }
     }
 
     /** The group's notes pop up over the video as playback reaches them: the first two, a few seconds in, not the later one. */
@@ -1552,7 +1557,7 @@ class TvScreenshotTest {
         audioDelayMs = audioDelay, defaultAudioDelayMs = 0, onAudioDelay = {}, onAudioDelayAsDefault = {},
         frameRate = dev.nitrate.core.playback.FrameRateMatch.ALWAYS, defaultFrameRate = dev.nitrate.core.playback.FrameRateMatch.SEAMLESS,
         refreshNote = dev.nitrate.tv.ui.player.refreshNote(23.976f, 59.94f),
-        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch party").map { it to { _: () -> Unit -> androidx.tv.material3.OutlinedButton(onClick = {}) { androidx.tv.material3.Text("$it page") } } },
+        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch now together").map { it to { _: () -> Unit -> androidx.tv.material3.OutlinedButton(onClick = {}) { androidx.tv.material3.Text("$it page") } } },
     )
 
     /** The More panel over the video, opened on [tab]. */
@@ -2266,7 +2271,53 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.partners.WatchPartyDialog((c.server as dev.nitrate.testing.FakeServer).samplePartyPrompt(), onDismiss = {}, onChoose = {})
     }
 
-    @Test fun togetherChoices() = shoot("tv-together-choices", setup = { c -> c.refreshCompanionForTests() }) { c ->
+    /** The guided setup: step 1 picks titles (focus in the search); Next goes on to Who, focus on the first person; Back steps back with the picks kept. */
+    @Test fun groupSetupBack() = shoot("tv-group-setup-what", setup = { c -> c.refreshCompanionForTests() }, act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Step 1 of 5 · What to watch")).fetchSemanticsNodes().isNotEmpty()) { "the first step" }
+        fun click(text: String) {
+            compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText(text, substring = true)).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        }
+        click("The Night Reel")
+        click("Nitrate · 2023")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Picked: The Night Reel and Nitrate")).fetchSemanticsNodes().isNotEmpty()) { "both picked" }
+        click("Next")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Step 2 of 5 · Who with")).fetchSemanticsNodes().isNotEmpty()) { "on to Who" }
+        check(focusedHasText("Will")) { "focus on the first person; focused: ${focusedNodes()}" }
+        pressInDialog("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Step 1 of 5 · What to watch")).fetchSemanticsNodes().isNotEmpty()) { "Back steps back one page" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Picked: The Night Reel and Nitrate")).fetchSemanticsNodes().isNotEmpty()) { "the picks are kept" }
+    }) { c -> dev.nitrate.tv.ui.partners.GroupSetupDialog(c) {} }
+
+    /** The last step: the Together switch (focused) with what on means, what's chosen, and Send. */
+    @Test fun groupSetupTogether() = shoot("tv-group-setup-together", setup = { c -> c.refreshCompanionForTests() }, act = {
+        check(focusedHasText("Together: Off")) { "focus on the switch; focused: ${focusedNodes()}" }
+        press("ok")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Together: On")).fetchSemanticsNodes().isNotEmpty()) { "OK turns it on" }
+    }) { c ->
+        val start = dev.nitrate.core.partners.GroupSetup(
+            dev.nitrate.core.partners.GroupSetup.Step.TOGETHER,
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")), personId = "user-2",
+            schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, party = dev.nitrate.core.partners.PartyTime(listOf(5), 21)),
+        )
+        dev.nitrate.tv.ui.partners.GroupSetupDialog(c, start) {}
+    }
+
+    /** After a playback from a group's card that's next in another group too: the question, "Just this group" focused. */
+    @Test fun countingPrompt() = shoot("tv-counting-prompt", act = {
+        check(focusedHasText("Just this group")) { "focus on Just this group; focused: ${focusedNodes()}" }
+    }) { c ->
+        val info = (c.server as dev.nitrate.testing.FakeServer).partnerInfo
+        val counting = dev.nitrate.core.partners.Counting(dev.nitrate.core.partners.PlayOrigin.GroupCard("g1"), listOf(info.groups[0]), listOf(info.groups[1]))
+        dev.nitrate.tv.ui.partners.CountingDialog(dev.nitrate.core.partners.CountAsk(listOf("s1e2"), "S1:E2 · Episode 2", counting)) {}
+    }
+
+    @Test fun togetherChoices() = shoot("tv-together-choices", setup = { c -> c.refreshCompanionForTests() }, act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("We're in the same room", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the same room is offered" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Add a title to the group", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "adding a title is offered" }
+    }) { c ->
         val info by c.partners.collectAsState()
         val episode = dev.nitrate.core.model.MediaItem("ep-together", "The Long Night", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 1, indexNumber = 4)
         dev.nitrate.tv.ui.partners.TogetherChoicesDialog(c, episode, info, onPlay = {}, onOpenShow = {}, onStart = {}, onCustomize = {}) {}

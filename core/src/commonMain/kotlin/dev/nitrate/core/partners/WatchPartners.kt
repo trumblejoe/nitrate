@@ -163,6 +163,9 @@ data class GroupSchedule(
         return "$pace$with$meet Accepting agrees to it."
     }
 
+    /** The Together switch's one line, on or off (the setup's last step and the schedule pickers). */
+    val togetherNote: String get() = if (together) TOGETHER_ON else TOGETHER_OFF
+
     /** The schedule picker's note under its choices. */
     val note: String get() =
         "Anything someone in the group has watched with it stays open, so whoever's behind can catch up." +
@@ -176,6 +179,12 @@ data class GroupSchedule(
         const val WEEKLY = "weekly"
         val CADENCES = listOf(BINGE to "Binge", DAYS2 to "Every 2 days", DAYS3 to "Every 3 days", WEEKLY to "Weekly")
         val DAYS = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+        /** What Together on means, in one line. */
+        const val TOGETHER_ON = "Together on: spoilers are hidden by the group's progress, and playing what the group hasn't watched yet asks first."
+
+        /** What Together off means, in one line. */
+        const val TOGETHER_OFF = "Together off: the group keeps track of progress and pace; everyone watches when they like."
 
         /** The Together switch, as offered: off (the default) or on. */
         val HOW = listOf(false to "Together off", true to "Together")
@@ -211,8 +220,8 @@ data class WatchInvite(
     val itemName: String?,
     val atMs: Long,
 ) {
-    /** "Will invites you to a watch party: Nitrate" (or just "… to a watch party" when nothing's playing yet). */
-    val text: String get() = "$fromName invites you to a watch party" + (itemName?.let { ": $it" } ?: "")
+    /** "Will invites you to watch now together: Nitrate" (or just "… to watch now together" when nothing's playing yet). */
+    val text: String get() = "$fromName invites you to watch now together" + (itemName?.let { ": $it" } ?: "")
 }
 
 /**
@@ -232,7 +241,10 @@ data class IncomingRequest(
     val schedule: GroupSchedule? = null,
     /** What the group watches ([seriesId] is the first). */
     val titles: List<GroupTitle> = listOf(GroupTitle(seriesId, seriesName)),
-)
+) {
+    /** "Severance and The Bear". */
+    val titleNames: String get() = WatchPartners.names(titles.map { it.name })
+}
 
 /** An invite the user sent: always just "waiting" until accepted or lapsed (nothing says whether the account exists). */
 data class OutgoingRequest(
@@ -243,7 +255,10 @@ data class OutgoingRequest(
     val groupId: String?,
     val atMs: Long,
     val titles: List<GroupTitle> = listOf(GroupTitle(seriesId, seriesName)),
-)
+) {
+    /** "Severance and The Bear". */
+    val titleNames: String get() = WatchPartners.names(titles.map { it.name })
+}
 
 data class PartnersInfo(val groups: List<WatchGroup>, val incoming: List<IncomingRequest>, val outgoing: List<OutgoingRequest>) {
     /** The user's groups one of whose titles is [titleId]. */
@@ -445,7 +460,8 @@ object WatchPartners {
      * ([with]: a group on the title, or just them); in a live session ([liveParticipants], names),
      * every group on the title with a member there; else as [countingFor] an item started
      * elsewhere: the one group it's next in, if exactly one, else just the user. Empty for a title
-     * the user shares with nobody.
+     * the user shares with nobody. [origin]: where the playback started (a group's card counts for
+     * that group, "Watch for myself" for none), after the user's own choice and a live session.
      */
     fun contextFor(
         item: MediaItem,
@@ -453,6 +469,7 @@ object WatchPartners {
         standings: Map<String, KeepUp>,
         liveParticipants: List<String> = emptyList(),
         with: WatchingWith? = null,
+        origin: PlayOrigin = PlayOrigin.Elsewhere,
     ): PlayContext {
         val title = TogetherRow.titleOf(item, standings)
         val groups = title?.let { info?.on(it) }.orEmpty()
@@ -466,6 +483,11 @@ object WatchPartners {
         if (present.isNotEmpty()) {
             val live = groups.filter { g -> g.others.any { it.name.lowercase() in present } }
             if (live.isNotEmpty()) return PlayContext(title, live, PlayContext.Reason.LIVE)
+        }
+        when (origin) {
+            is PlayOrigin.GroupCard -> groups.firstOrNull { it.id == origin.groupId }?.let { return PlayContext(title, listOf(it), PlayContext.Reason.CARD) }
+            PlayOrigin.ForMyself -> return PlayContext(title, emptyList(), PlayContext.Reason.CHOSEN)
+            PlayOrigin.Elsewhere -> Unit
         }
         val next = countingFor(PlayOrigin.Elsewhere, item, info, standings).groups
         return if (next.isNotEmpty()) PlayContext(title, next, PlayContext.Reason.NEXT) else PlayContext(title, emptyList(), PlayContext.Reason.NONE)
@@ -524,6 +546,9 @@ data class PlayContext(val titleId: String?, val groups: List<WatchGroup>, val r
 
         /** In a live (SyncPlay) session with members of these groups. */
         LIVE,
+
+        /** Played from this group's card ([PlayOrigin.GroupCard]). */
+        CARD,
 
         /** The part is next for exactly this group (by its own record). */
         NEXT,
@@ -618,16 +643,45 @@ class WatchPartnersPlugin : PlaybackGuard {
         if (room != null && room.present.isNotEmpty()) choose(host, titleId, WatchingWith.Group(room.groupId))
     }
 
+    /** Where the user's current (or last) playback of each title started, per account and title: Up Next carries it on. */
+    private val playing = kotlinx.coroutines.flow.MutableStateFlow<Map<String, PlayOrigin>>(emptyMap())
+
     /**
      * Where playing [item] really starts from: what the user answered the guard's question with
-     * ("Watch for myself": [PlayOrigin.ForMyself]; "Watch now together": that group's card), else
-     * [given] (the card it was played from), else elsewhere. The answer is used once.
+     * ("Watch for myself": [PlayOrigin.ForMyself]; "Watch now together", "We're in the same room":
+     * that group's card), else [given] (the card it was played from), else elsewhere. The answer is used once.
      */
-    fun originOf(host: PluginHost, item: MediaItem, given: PlayOrigin? = null): PlayOrigin {
+    fun originOf(host: PluginHost, item: MediaItem, given: PlayOrigin? = null): PlayOrigin =
+        takeOrigin(host, item) ?: given ?: PlayOrigin.Elsewhere
+
+    /**
+     * The player takes where [item]'s playback started, as the guards left it (the card it was
+     * played from, or the guard's answer); null when nothing was said (a queue, a playback the
+     * guards never saw). Used once: the player keeps it for the playback and its Up Next.
+     */
+    fun takeOrigin(host: PluginHost, item: MediaItem): PlayOrigin? {
         val k = key(host, "item:" + item.id)
-        val said = answered.value[k]
-        if (said != null) answered.update { it - k }
-        return said ?: given ?: PlayOrigin.Elsewhere
+        val said = answered.value[k] ?: return null
+        answered.update { it - k }
+        return said
+    }
+
+    /** The player says where its playback of [titleId] started ([origin]), so Up Next in the same title carries on from there. */
+    fun nowPlaying(host: PluginHost, titleId: String, origin: PlayOrigin) {
+        playing.update { it + (key(host, titleId) to origin) }
+    }
+
+    /**
+     * Where Up Next's [next] plays from: the same title's playback carries on from where it
+     * started (a group's card, or "for myself"); null when [next] is another title or it started elsewhere.
+     */
+    fun upNextOrigin(host: PluginHost, next: MediaItem, standings: Map<String, KeepUp>): PlayOrigin? {
+        val title = TogetherRow.titleOf(next, standings) ?: return null
+        return playing.value[key(host, title)]?.takeIf { it != PlayOrigin.Elsewhere }
+    }
+
+    override fun cancelled(item: MediaItem, host: PluginHost) {
+        answered.update { it - key(host, "item:" + item.id) }
     }
 
     private fun answer(host: PluginHost, item: MediaItem, origin: PlayOrigin) {
@@ -645,6 +699,8 @@ class WatchPartnersPlugin : PlaybackGuard {
      * Together off never ask about plays started elsewhere.
      */
     override suspend fun beforePlay(item: MediaItem, host: PluginHost, origin: PlayOrigin?): GuardDecision {
+        // Handed to the player ([takeOrigin]); an answer to the question below takes its place.
+        if (origin != null) answer(host, item, origin) else cancelled(item, host)
         if (!item.isPlayable) return GuardDecision.Allow
         if (host.server.companion()?.features?.contains(WatchPartners.FEATURE) != true) return GuardDecision.Allow
         val info = runCatching { host.server.partners() }.getOrNull() ?: return GuardDecision.Allow
@@ -664,7 +720,7 @@ class WatchPartnersPlugin : PlaybackGuard {
                 // With someone from the group, in a live session or the same room: that's watching together.
                 .filter { g -> card != null || g.others.none { it.name.lowercase() in present || (room?.groupId == g.id && it.id in room.present) } }
             val lock = PartLock.of(item.id, order, groups, together = card == null) ?: continue
-            return if (lock.together) unwatched(item, lock.group, host) else notOutYet(item, lock, host)
+            return if (lock.together) unwatched(item, lock.group, title, host) else notOutYet(item, lock, host)
         }
         return GuardDecision.Allow
     }
@@ -685,7 +741,12 @@ class WatchPartnersPlugin : PlaybackGuard {
         )
     }
 
-    private fun unwatched(item: MediaItem, g: WatchGroup, host: PluginHost): GuardDecision.Ask {
+    /**
+     * "Tommy & Suzy haven't watched this yet": Watch now together (a live session for the group),
+     * We're in the same room (everyone in the group here; it counts for them too, changeable in
+     * the player), Watch for myself (no group), Not now.
+     */
+    private fun unwatched(item: MediaItem, g: WatchGroup, titleId: String, host: PluginHost): GuardDecision.Ask {
         val what = item.episodeLabel ?: item.name
         val together = host.together?.let { t ->
             GuardChoice("Watch now together", GuardAction.RunThenPlay(playIfFailed = false) {
@@ -693,15 +754,22 @@ class WatchPartnersPlugin : PlaybackGuard {
                 answer(host, item, PlayOrigin.GroupCard(g.id))
             })
         }
+        val room = GuardChoice("We're in the same room", GuardAction.RunThenPlay {
+            setRoom(host, titleId, SameRoom(g.id, g.others.map { it.id }))
+            answer(host, item, PlayOrigin.GroupCard(g.id))
+        })
         return GuardDecision.Ask(
-            title = PartLock.WATCH_TOGETHER,
-            message = "Your group with ${g.label} hasn't watched $what yet, and you watch together. " +
-                "Watch it now together with them, or for yourself (it counts for no group).",
-            choices = listOfNotNull(together, forMyself(item, host), GuardChoice("Not now", GuardAction.Cancel)),
+            title = unwatchedTitle(g),
+            message = "You watch $what together with ${g.label}. Watch it now together, here in the same room, " +
+                "or for yourself (it counts for no group).",
+            choices = listOfNotNull(together, room, forMyself(item, host), GuardChoice("Not now", GuardAction.Cancel)),
         )
     }
 
     companion object {
         const val ID = "watch-partners"
+
+        /** "Tommy & Suzy haven't watched this yet", "Tommy hasn't watched this yet". */
+        fun unwatchedTitle(g: WatchGroup): String = WithChip.nameOf(g) + (if (g.others.size == 1) " hasn't" else " haven't") + " watched this yet"
     }
 }

@@ -62,7 +62,7 @@ class NewEpisodeNotifierTest {
         notifier.remindParty("g2", "The Night Reel", "Tommy & Suzy")
         val posted = manager.allNotifications.single()
         assertEquals("The Night Reel", posted.extras.getString("android.title"))
-        assertEquals("Watch party with Tommy & Suzy · ${party.clock} · S1:E4", posted.extras.getCharSequence("android.text").toString())
+        assertEquals("Group Watch Session with Tommy & Suzy · ${party.clock} · S1:E4", posted.extras.getCharSequence("android.text").toString())
         assertEquals(listOf("Join", "+15 min", "Not tonight"), posted.actions.map { it.title.toString() })
 
         // Pushed back an hour since the wake-up was set, or off tonight: nothing now.

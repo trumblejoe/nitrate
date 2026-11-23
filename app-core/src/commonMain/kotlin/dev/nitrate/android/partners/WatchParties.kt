@@ -84,7 +84,7 @@ class WatchParties(
                 PartyChoice.NotTonight -> {
                     val p = server.partySkip(groupId)
                     updated(groupId, p)
-                    PartyOutcome.Done(if (p?.skipped == true) "Tonight's watch party is off." else "Asked the group. If most don't agree, the others go ahead without you.")
+                    PartyOutcome.Done(if (p?.skipped == true) "Tonight's Group Watch Session is off." else "Asked the group. If most don't agree, the others go ahead without you.")
                 }
                 PartyChoice.CantMake -> {
                     updated(groupId, server.partyCantMake(groupId, true))
@@ -110,7 +110,7 @@ class WatchParties(
             return PartyOutcome.Start(news.groupId, TogetherChoice.WatchNow(item, news.groupId, people.map { it.id }, PartyPrompt.names(people.map { it.name })))
         }
         val session = j.sessionId ?: return PartyOutcome.Done(
-            "${news.party?.startedBy ?: "Someone"} is starting the watch party. You'll be asked to join in a moment.",
+            "${news.party?.startedBy ?: "Someone"} is starting the Group Watch Session. You'll be asked to join in a moment.",
         )
         joinSession(session)
         return PartyOutcome.Joined

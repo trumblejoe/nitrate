@@ -44,6 +44,9 @@ interface PlaybackGuard : NitratePlugin {
      * "for myself"; null: not said, taken as elsewhere; see [dev.nitrate.core.partners.WatchPartners.countingFor]).
      */
     suspend fun beforePlay(item: MediaItem, host: PluginHost, origin: dev.nitrate.core.partners.PlayOrigin?): GuardDecision = beforePlay(item, host)
+
+    /** The user said "Not now" (or the play went no further): forget anything kept for [item]'s playback. */
+    fun cancelled(item: MediaItem, host: PluginHost) {}
 }
 
 sealed interface GuardDecision {
@@ -123,9 +126,10 @@ class PluginRegistry(val all: List<NitratePlugin>, val host: PluginHost) {
         origin: dev.nitrate.core.partners.PlayOrigin? = null,
         ask: suspend (GuardDecision.Ask) -> GuardAction,
     ): GuardAction {
-        for (guard in enabledNow().filterIsInstance<PlaybackGuard>()) {
+        val guards = enabledNow().filterIsInstance<PlaybackGuard>()
+        for (guard in guards) {
             val decision = runCatching { guard.beforePlay(item, host, origin) }.getOrDefault(GuardDecision.Allow)
-            if (decision is GuardDecision.Ask) return ask(decision)
+            if (decision is GuardDecision.Ask) return ask(decision).also { if (it == GuardAction.Cancel) guards.forEach { g -> g.cancelled(item, host) } }
         }
         return GuardAction.PlayAnyway
     }

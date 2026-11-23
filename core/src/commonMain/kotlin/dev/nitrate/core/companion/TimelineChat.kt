@@ -345,7 +345,7 @@ class TimelineChat(
      * for this session only. Fails outside a live session or on servers without `livenotes`.
      */
     suspend fun bring(groupId: String?): Result<Unit> {
-        val session = sessionId ?: return Result.failure(IllegalStateException("Not in a watch party"))
+        val session = sessionId ?: return Result.failure(IllegalStateException("Not watching now together"))
         return runCatching { server.bringNotes(session, groupId) }.onSuccess { loadBrought() }
     }
 

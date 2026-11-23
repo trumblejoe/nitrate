@@ -10,14 +10,14 @@ import dev.nitrate.core.companion.CompanionInfo
 object CompanionStatus {
     /** Every feature Nitrate knows, with what it's called and what it does. */
     val FEATURES = listOf(
-        Triple("chat", "Watch party chat", "Messages and reactions in a watch party"),
+        Triple("chat", "Watch now together chat", "Messages and reactions while watching now together"),
         Triple("scripts", "Shared screenplays", "Writing with others, and syncing your own scripts"),
         Triple("channels", "Channels", "The household's own TV channels"),
         Triple("partners", "Watch groups", "Shows watched with someone, and private accounts"),
         Triple("sso", "Single sign-on", "Signing in with the identity provider"),
         Triple("lines", "Search what people say", "Lines from subtitles in search"),
         Triple("diary", "Watch diary", "Every watch kept, with ratings and notes"),
-        Triple("together", "Watch party invites", "Asking people to join a watch party"),
+        Triple("together", "Watch now together invites", "Asking people to join you watching now together"),
         Triple("devices", "Household devices", "Each device's playback summary, for admins"),
         Triple("testclips", "TV & receiver check", "Clips to check what the TV and receiver show"),
         Triple("credits", "Scenes in the credits", "Found nightly by \"Find scenes in the credits\", with the final credits given to Jellyfin as an Outro"),

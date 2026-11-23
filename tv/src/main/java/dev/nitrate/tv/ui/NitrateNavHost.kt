@@ -538,7 +538,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 subtitleIndex = route.subtitleIndex.takeIf { it != NO_TRACK },
                 describedAudio = container::prefersDescribedAudio,
                 // Up Next (episodes, a film's collection) only outside queues and recap clips.
-                onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { next -> nav.popBackStack(); gate.play(next) } else null,
+                onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { next -> nav.popBackStack(); gate.play(next, origin = container.upNextOrigin(next)) } else null,
                 syncPlay = container.syncPlay.takeIf { !route.test },
                 stillWatching = container.stillWatching,
                 skipWatch = container.skipWatch,
@@ -592,6 +592,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     if (companion?.features?.contains("party") == true) {
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
         dev.nitrate.tv.ui.partners.WatchPartyPrompt(container, inPlayer, displayPrefs.easyMode) { item -> gate.play(item) }
+    }
+    // "Also count it for Suzy, where it's next too?": once the player has closed (it never interrupts one).
+    run {
+        val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
+        if (!inPlayer) dev.nitrate.tv.ui.partners.CountingPrompt(container)
     }
     LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.
