@@ -18,7 +18,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.tv.material3.OutlinedButton
 import coil3.compose.AsyncImage
 import dev.nitrate.core.pages.Browse
-import dev.nitrate.core.pages.hidesDescription
 import dev.nitrate.tv.ui.components.ItemMetaLine
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.border
@@ -135,7 +134,7 @@ private fun Featured(item: MediaItem, args: ShowArgs, modifier: Modifier) {
         Text(args.titleOf(item), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
         ItemMetaLine(item)
         val prefs = LocalDisplayPrefs.current
-        if (prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
+        if (prefs.overview && !dev.nitrate.tv.ui.partners.descriptionHidden(item)) item.overview?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
     }

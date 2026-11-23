@@ -224,16 +224,16 @@ object TogetherRow {
     fun line(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): Standing? {
         if (isStart(item)) return Standing("Start · Pick what and who", "Watch something with someone: pick what, then who to ask", catchUp = false, word = "Start", partners = "Pick what and who")
         inviteFor(item, info)?.let { r ->
-            val on = r.schedule?.takeIf { it.limits }?.let { " on a schedule: ${it.label}" }.orEmpty()
+            val on = r.schedule?.takeIf { it.active }?.let { " on a schedule: ${it.label}" }.orEmpty()
             return Standing("Invited · by ${r.fromName}", "${r.fromName} asked you to watch this with them$on", catchUp = false, word = "Invited", partners = "by ${r.fromName}")
         }
         val title = titleOf(item, standings) ?: return null
         val k = standings[title] ?: return null
         val st = WatchPartners.standing(item, k) ?: return null
-        // Locked by the group's schedule: when it opens, in place of the user's word.
-        lockOf(item, info, standings)?.let { g ->
-            val opens = g.opensLabel ?: g.schedule?.label ?: "Later"
-            return Standing("$opens · ${st.partners}", "Opens $opens: the group's schedule is ${g.schedule?.label}. ${st.long}", catchUp = false, word = opens, partners = st.partners)
+        // Locked by the group's schedule: when it opens, or that it's for watching together, in place of the user's word.
+        PartLock.of(item, info, standings)?.let { l ->
+            val why = if (l.together) "Nobody in the group has seen it yet: you watch it together with ${l.group.label}." else "${l.word}: the group's schedule is ${l.group.schedule?.label}."
+            return Standing("${l.word} · ${st.partners}", "$why ${st.long}", catchUp = false, word = l.word, partners = st.partners)
         }
         g@ for (g in info?.on(title).orEmpty()) {
             val p = g.pending ?: continue@g
@@ -242,12 +242,9 @@ object TogetherRow {
         return st
     }
 
-    /** The group whose schedule locks [item] (it's past what the group has let out), if any. */
-    fun lockOf(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): WatchGroup? {
-        val title = titleOf(item, standings) ?: return null
-        val order = standings[title]?.order ?: return null
-        return info?.on(title).orEmpty().firstOrNull { it.schedule?.limits == true && it.locks(item.id, order) }
-    }
+    /** The group whose schedule locks [item] (it's past what the group has let out), if any; together only is [PartLock]'s. */
+    fun lockOf(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): WatchGroup? =
+        PartLock.of(item, info, standings)?.takeIf { !it.together }?.group
 
     /** What kind of title it is, for the picker ("Show", "Film"...). */
     fun kindLabel(item: MediaItem): String? = when (item.kind) {

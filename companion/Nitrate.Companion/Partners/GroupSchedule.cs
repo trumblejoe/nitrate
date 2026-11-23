@@ -4,7 +4,8 @@ namespace Nitrate.Companion.Partners;
 /// How a watch group lets its title out: all at once (binge), or one new part (an episode, a
 /// film of a list) every 2 days, every 3 days or weekly, at a time of day in the time zone it was
 /// set in. Anything someone in the group has already seen always stays open, so whoever's behind
-/// can catch up; only what nobody has seen yet is rationed.
+/// can catch up; only what nobody has seen yet is rationed. With <see cref="Together"/>, what
+/// nobody has seen yet is also only for watching together (Nitrate's apps hold to it).
 /// </summary>
 public class GroupSchedule
 {
@@ -35,6 +36,14 @@ public class GroupSchedule
     /// <summary>Gets or sets a value indicating whether a locked part can still be played after a warning (else it can't be played in Nitrate).</summary>
     public bool SoftLock { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether the group watches together only: a part nobody in
+    /// the group has seen yet plays in Nitrate only in a watch-together session with another
+    /// member (false, the default and what schedules stored before it read as: separately, at the
+    /// group's pace).
+    /// </summary>
+    public bool Together { get; set; }
+
     /// <summary>Gets or sets the time zone (IANA id) the times are in; empty: the server's own.</summary>
     public string TimeZone { get; set; } = string.Empty;
 
@@ -43,6 +52,9 @@ public class GroupSchedule
 
     /// <summary>Gets a value indicating whether anything is rationed.</summary>
     public bool Limits => Cadence is Days2 or Days3 or Weekly;
+
+    /// <summary>Gets a value indicating whether it holds anything back: rationed, or together only.</summary>
+    public bool Active => Limits || Together;
 
     /// <summary>A copy, to keep apart from requests and views.</summary>
     public GroupSchedule Copy() => (GroupSchedule)MemberwiseClone();
@@ -70,8 +82,12 @@ public class ScheduleChange
     public DateTimeOffset At { get; set; }
 }
 
-/// <summary>What's locked in a group's title, and when the first locked part opens (null: once someone watches the open one).</summary>
-public record ScheduleLock(Guid? LockedFromId, DateTimeOffset? OpensAt)
+/// <summary>
+/// What's locked in a group's title, and when the first locked part opens (null: once someone
+/// watches the open one); <paramref name="TogetherFromId"/>: for a together-only group, the first
+/// part nobody in the group has seen (it and everything after it are for watching together).
+/// </summary>
+public record ScheduleLock(Guid? LockedFromId, DateTimeOffset? OpensAt, Guid? TogetherFromId = null)
 {
     /// <summary>The day it opens in the schedule's time zone (0 = Sunday), for "Thursday 7pm".</summary>
     public int? OpensDay(GroupSchedule s) => OpensAt is { } at ? (int)TimeZoneInfo.ConvertTime(at, ScheduleRules.Zone(s)).DayOfWeek : null;
@@ -144,11 +160,12 @@ public static class ScheduleRules
     /// part watched by anyone is at [frontier] (-1: none), first watched at [frontierAt]: the part
     /// after the frontier opens at the first release after that (straight away if it was watched
     /// before the schedule was set, or nothing has been watched), and everything after it waits
-    /// until someone has watched it.
+    /// until someone has watched it. A together-only schedule also marks the part after the
+    /// frontier (open or not) as the first for watching together.
     /// </summary>
     public static ScheduleLock Of(GroupSchedule? s, IReadOnlyList<Guid> order, int frontier, DateTimeOffset? frontierAt, DateTimeOffset now)
     {
-        if (s is null || !s.Limits)
+        if (s is null || !s.Active)
         {
             return new ScheduleLock(null, null);
         }
@@ -159,12 +176,19 @@ public static class ScheduleRules
             return new ScheduleLock(null, null);
         }
 
+        // Together only: what nobody in the group has seen yet is for watching together.
+        Guid? together = s.Together ? order[next] : null;
+        if (!s.Limits)
+        {
+            return new ScheduleLock(null, null, together);
+        }
+
         var opensAt = frontierAt is { } at && at >= s.Since ? NextRelease(s, at) : (DateTimeOffset?)null;
         if (opensAt is { } o && now < o)
         {
-            return new ScheduleLock(order[next], o);
+            return new ScheduleLock(order[next], o, together);
         }
 
-        return next + 1 < order.Count ? new ScheduleLock(order[next + 1], null) : new ScheduleLock(null, null);
+        return next + 1 < order.Count ? new ScheduleLock(order[next + 1], null, together) : new ScheduleLock(null, null, together);
     }
 }

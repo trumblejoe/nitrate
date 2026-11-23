@@ -13,7 +13,6 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
-import dev.nitrate.core.pages.hidesDescription
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -629,7 +628,7 @@ private fun FocusedSummary(item: MediaItem?, size: dev.nitrate.core.pages.Captio
             )
         }
         // Compact and Minimal leave the description out, as a caption does.
-        item.overview?.takeIf { size == dev.nitrate.core.pages.CaptionSize.NORMAL && LocalDisplayPrefs.current.overview && !LocalDisplayPrefs.current.hidesDescription(item) }?.let {
+        item.overview?.takeIf { size == dev.nitrate.core.pages.CaptionSize.NORMAL && LocalDisplayPrefs.current.overview && !dev.nitrate.tv.ui.partners.descriptionHidden(item) }?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)

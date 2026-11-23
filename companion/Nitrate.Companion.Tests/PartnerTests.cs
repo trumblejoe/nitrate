@@ -343,4 +343,88 @@ public class PartnerTests
         hub.Vote(Sam, gid, hub.Groups(Sam).Single().Pending!.Id, yes: true);
         Assert.Equal(GroupSchedule.Weekly, hub.Groups(Joe).Single().Schedule?.Cadence);
     }
+
+    // ---- Together only ----
+
+    [Fact]
+    public void TogetherOnlyMarksWhatNobodyHasSeen()
+    {
+        var since = _time.GetUtcNow();
+        var order = new[] { Ep1, Ep2, Ep3 };
+        // Binge, together only: nothing is rationed, but what nobody has seen is for watching together.
+        var binge = new GroupSchedule { Together = true, Since = since };
+        Assert.Equal(new ScheduleLock(null, null, Ep2), ScheduleRules.Of(binge, order, 0, since.AddHours(1), since.AddHours(2)));
+        Assert.Equal(new ScheduleLock(null, null, Ep1), ScheduleRules.Of(binge, order, -1, null, since));
+        // Everyone's seen everything: nothing held back.
+        Assert.Equal(new ScheduleLock(null, null), ScheduleRules.Of(binge, order, 2, since.AddHours(1), since.AddHours(2)));
+        // Weekly and together: the next waits for Thursday, and then is for watching together.
+        var weekly = Weekly();
+        weekly.Together = true;
+        weekly.Since = since;
+        var thursday = DateTimeOffset.Parse("2026-11-19T19:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(new ScheduleLock(Ep3, thursday, Ep3), ScheduleRules.Of(weekly, order, 1, since.AddHours(1), since.AddHours(2)));
+        Assert.Equal(new ScheduleLock(null, null, Ep3), ScheduleRules.Of(weekly, order, 1, since.AddHours(1), thursday));
+        // Separately (the default) marks nothing for watching together.
+        Assert.Null(ScheduleRules.Of(Weekly(), order, 1, since.AddHours(1), thursday).TogetherFromId);
+    }
+
+    [Fact]
+    public void SchedulesStoredBeforeItReadAsSeparately()
+    {
+        var old = System.Text.Json.JsonSerializer.Deserialize<GroupSchedule>("{\"Cadence\":\"weekly\",\"Day\":4,\"Hour\":19,\"Minute\":0,\"SoftLock\":false}")!;
+        Assert.False(old.Together);
+        Assert.True(old.Active);
+        var kept = System.Text.Json.JsonSerializer.Deserialize<GroupSchedule>(System.Text.Json.JsonSerializer.Serialize(new GroupSchedule { Together = true }))!;
+        Assert.True(kept.Together);
+        Assert.False(kept.Limits);
+        Assert.True(kept.Active);
+    }
+
+    [Fact]
+    public void TheInviterCanAskToWatchTogetherOnly()
+    {
+        var hub = Hub();
+        // Binge but together only is kept (a plain binge invite carries no schedule).
+        hub.Request(Joe, Sam, null, Bear, "The Bear", schedule: new GroupSchedule { Together = true });
+        var invite = hub.Incoming(Sam).Single();
+        Assert.True(invite.Schedule?.Together);
+        hub.Accept(Sam, invite.Id);
+        _watch.Watched(Joe, Ep1, _time.GetUtcNow().AddHours(1));
+        _time.Advance(TimeSpan.FromHours(2));
+        var g = hub.Groups(Sam).Single();
+        Assert.True(g.Schedule?.Together);
+        Assert.Null(g.LockedFromId);
+        // Sam catching up to episode 1 is free; episode 2 nobody has seen.
+        Assert.Equal(Ep2, g.TogetherFromId);
+        Assert.Equal(Ep2, hub.Groups(Joe).Single().TogetherFromId);
+        // Kept between restarts.
+        Assert.True(Hub().Groups(Joe).Single().Schedule?.Together);
+    }
+
+    [Fact]
+    public void HowWeWatchIsChangedByVoteLikeTheRest()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear", schedule: Weekly());
+        hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        var gid = hub.Groups(Joe).Single().Id;
+        var together = Weekly();
+        together.Together = true;
+        hub.ProposeSchedule(Joe, gid, together);
+        // Joe alone isn't a majority of two.
+        Assert.False(hub.Groups(Joe).Single().Schedule?.Together);
+        Assert.True(hub.Groups(Sam).Single().Pending?.Proposed.Together);
+        hub.Vote(Sam, gid, hub.Groups(Sam).Single().Pending!.Id, yes: true);
+        Assert.True(hub.Groups(Joe).Single().Schedule?.Together);
+        // Binge but still together only keeps the schedule.
+        hub.ProposeSchedule(Sam, gid, new GroupSchedule { Together = true });
+        hub.Vote(Joe, gid, hub.Groups(Joe).Single().Pending!.Id, yes: true);
+        var s = hub.Groups(Joe).Single().Schedule;
+        Assert.Equal(GroupSchedule.Binge, s?.Cadence);
+        Assert.True(s?.Together);
+        // Back to separately, binge: no schedule at all.
+        hub.ProposeSchedule(Sam, gid, new GroupSchedule());
+        hub.Vote(Joe, gid, hub.Groups(Joe).Single().Pending!.Id, yes: true);
+        Assert.Null(hub.Groups(Joe).Single().Schedule);
+    }
 }

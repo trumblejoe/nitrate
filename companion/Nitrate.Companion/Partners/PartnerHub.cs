@@ -30,11 +30,13 @@ public record ScheduleChangeView(Guid Id, string FromName, GroupSchedule Propose
 /// <summary>
 /// A watch group, as one member sees it: the others in it, its schedule, a change waiting for
 /// votes, and what's locked now (<paramref name="LockedFromId"/> and everything after it in the
-/// title; it opens at <paramref name="OpensAt"/>, or once someone watches the part before it).
+/// title; it opens at <paramref name="OpensAt"/>, or once someone watches the part before it),
+/// and for a together-only group the first part nobody in it has seen (<paramref name="TogetherFromId"/>).
 /// </summary>
 public record GroupView(
     Guid Id, Guid SeriesId, string SeriesName, IReadOnlyList<MemberView> Others, DateTimeOffset Since,
-    GroupSchedule? Schedule = null, ScheduleChangeView? Pending = null, Guid? LockedFromId = null, DateTimeOffset? OpensAt = null, int? OpensDay = null);
+    GroupSchedule? Schedule = null, ScheduleChangeView? Pending = null, Guid? LockedFromId = null, DateTimeOffset? OpensAt = null, int? OpensDay = null,
+    Guid? TogetherFromId = null);
 
 /// <summary>
 /// An invite someone sent the caller. <paramref name="WillSee"/> is everyone who learns the
@@ -187,7 +189,7 @@ public class PartnerHub
                     Id = Guid.NewGuid(), From = from, To = to, ToLabel = label, GroupId = gidOrEmpty,
                     SeriesId = seriesId, SeriesName = seriesName.Trim(), At = _time.GetUtcNow(),
                     // A new group's schedule is the inviter's choice; joining a group takes the group's.
-                    Schedule = group is null && schedule is { Limits: true } ? Valid(schedule) : null,
+                    Schedule = group is null && schedule is { Active: true } ? Valid(schedule) : null,
                 };
                 _state.Requests.Add(existing);
                 _storage.Save(_state);
@@ -298,8 +300,8 @@ public class PartnerHub
             mine = _state.Groups.Where(g => g.Members.Contains(user)).ToList();
         }
 
-        // Where everyone is, for groups that ration their title (outside the lock: it reads the library).
-        return mine.Select(g => View(g, user, g.Schedule is { Limits: true } ? g.Members.Select(m => _watch.Progress(m, g.SeriesId)).ToList() : Array.Empty<ShowProgress>()))
+        // Where everyone is, for groups that ration their title or watch it together only (outside the lock: it reads the library).
+        return mine.Select(g => View(g, user, g.Schedule is { Active: true } ? g.Members.Select(m => _watch.Progress(m, g.SeriesId)).ToList() : Array.Empty<ShowProgress>()))
             .OrderBy(g => g.SeriesName, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
@@ -357,7 +359,7 @@ public class PartnerHub
         {
             var s = p.Proposed.Copy();
             s.Since = _time.GetUtcNow();
-            g.Schedule = s.Cadence == GroupSchedule.Binge && !s.SoftLock ? null : s;
+            g.Schedule = s.Cadence == GroupSchedule.Binge && !s.SoftLock && !s.Together ? null : s;
             g.Pending = null;
         }
         else if (ScheduleRules.Fails(p.No.Count(g.Members.Contains), members))
@@ -484,7 +486,7 @@ public class PartnerHub
             : null;
         var lockNow = new ScheduleLock(null, null);
         var order = everyone.Select(x => x.Order).FirstOrDefault(o => o is { Count: > 0 });
-        if (g.Schedule is { Limits: true } && order is not null)
+        if (g.Schedule is { Active: true } && order is not null)
         {
             // The group's frontier: the furthest part anyone has seen, and when it was first watched.
             var index = order.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
@@ -497,7 +499,7 @@ public class PartnerHub
         return new GroupView(
             g.Id, g.SeriesId, g.SeriesName,
             g.Members.Where(m => m != user).Select(m => new MemberView(m, Name(m))).ToList(),
-            g.Since, g.Schedule, pending, lockNow.LockedFromId, lockNow.OpensAt, g.Schedule is { } sc ? lockNow.OpensDay(sc) : null);
+            g.Since, g.Schedule, pending, lockNow.LockedFromId, lockNow.OpensAt, g.Schedule is { } sc ? lockNow.OpensDay(sc) : null, lockNow.TogetherFromId);
     }
 
     private static OutgoingView Outgoing(PartnerRequest r) => new(r.Id, r.ToLabel, r.SeriesId, r.SeriesName, r.GroupId == Guid.Empty ? null : r.GroupId, r.At);

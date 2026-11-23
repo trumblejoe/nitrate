@@ -20,8 +20,20 @@ interface NitratePlugin {
     val enabledByDefault: Boolean get() = false
 }
 
-/** What plugins get to work with. */
-class PluginHost(val server: MediaServer, val store: PluginStorage)
+/** What plugins get to work with; [together]: this device's watch-together session (null where there's none to ask). */
+class PluginHost(val server: MediaServer, val store: PluginStorage, val together: TogetherSession? = null)
+
+/** This device's watch-together (SyncPlay) session, as plugins see it. */
+interface TogetherSession {
+    /** The names of the people in this device's watch-together group (the user among them); empty outside one. */
+    fun participants(): List<String>
+
+    /**
+     * Starts watching [item] together: a watch-together group for this device named for it and
+     * [names] (unless it's in one already), with [userIds] invited. The item is then played as usual.
+     */
+    suspend fun start(item: MediaItem, groupId: String, userIds: List<String>, names: String)
+}
 
 /** Runs before an item plays and may warn or suggest something else. */
 interface PlaybackGuard : NitratePlugin {
@@ -42,8 +54,11 @@ sealed interface GuardAction {
     data object Cancel : GuardAction
     data class PlayInstead(val item: MediaItem) : GuardAction
 
-    /** Runs [run] (a plugin's own step, e.g. noting who's watching), then plays the original item. */
-    class RunThenPlay(val run: suspend () -> Unit) : GuardAction
+    /**
+     * Runs [run] (a plugin's own step, e.g. noting who's watching, or starting a watch-together
+     * session), then plays the original item; if [run] fails, plays only when [playIfFailed].
+     */
+    class RunThenPlay(val playIfFailed: Boolean = true, val run: suspend () -> Unit) : GuardAction
 
     /** Marks [itemIds] watched, then plays the original item. */
     data class MarkWatchedThenPlay(val itemIds: List<String>) : GuardAction

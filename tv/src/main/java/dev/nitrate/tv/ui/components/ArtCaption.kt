@@ -25,7 +25,6 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.pages.CaptionSize
-import dev.nitrate.core.pages.hidesDescription
 
 /**
  * The caption on a full-screen picture (rows one at a time, Artwork with its cards hidden, full-art pages), laid out like the
@@ -83,7 +82,7 @@ fun ArtCaption(
                 color = if (st.catchUp) Color(0xFFFFC94D) else Color(0xDDFFFFFF),
             )
         }
-        if (!compact && !minimal && showOverview && prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
+        if (!compact && !minimal && showOverview && prefs.overview && !dev.nitrate.tv.ui.partners.descriptionHidden(item)) item.overview?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 color = Color.White.copy(alpha = 0.8f), textAlign = textAlign, modifier = Modifier.padding(top = 2.dp))
         }

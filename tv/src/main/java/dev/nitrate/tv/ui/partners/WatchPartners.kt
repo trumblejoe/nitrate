@@ -58,21 +58,29 @@ class TogetherCards(
 
 val LocalTogetherCards = staticCompositionLocalOf<TogetherCards?> { null }
 
-/** Whether an episode still is blurred: unwatched by the user, or (on a shared show) by a partner. */
+/**
+ * Whether an episode still is blurred: unwatched by the user, or (on a shared show) by a partner;
+ * and, whatever the user's spoiler settings, anything a group's schedule locks for them now.
+ */
 @Composable
 fun spoilerStill(item: MediaItem): Boolean {
     val prefs = LocalDisplayPrefs.current
     val progress = LocalPartnerProgress.current
-    return prefs.isSpoiler(item) || (progress.isNotEmpty() && WatchPartners.isSpoiler(prefs, item, progress))
+    return prefs.isSpoiler(item) || (progress.isNotEmpty() && WatchPartners.isSpoiler(prefs, item, progress)) || lockedNow(item)
 }
 
-/** Whether a description waits behind "Show": unwatched by the user, or (on a shared show) by a partner. */
+/** Whether a description waits behind "Show": by the same rules as [spoilerStill]. */
 @Composable
 fun descriptionHidden(item: MediaItem): Boolean {
     val prefs = LocalDisplayPrefs.current
     val progress = LocalPartnerProgress.current
-    return prefs.hidesDescription(item) || (progress.isNotEmpty() && WatchPartners.hidesDescription(prefs, item, progress))
+    return prefs.hidesDescription(item) || (progress.isNotEmpty() && WatchPartners.hidesDescription(prefs, item, progress)) || lockedNow(item)
 }
+
+/** Whether a group's schedule locks [item] for the user now (not out yet, or for watching together). */
+@Composable
+private fun lockedNow(item: MediaItem): Boolean =
+    dev.nitrate.core.partners.PartLock.of(item, dev.nitrate.tv.ui.components.LocalPartnersInfo.current, dev.nitrate.tv.ui.components.LocalGroupStandings.current) != null
 
 /** Invites someone to watch a show together: into one of the user's groups for it, or a new group. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -131,32 +139,36 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
 }
 
 /**
- * A group's schedule: Binge, every 2 days, every 3 days or weekly (with its day), the time new
- * parts open, and whether a locked part can still be played after a warning.
+ * A group's schedule: how the group watches (separately at the group's pace, or together only),
+ * Binge, every 2 days, every 3 days or weekly (with its day), the time new parts open, and
+ * whether a locked part can still be played after a warning.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
     val g = dev.nitrate.core.partners.GroupSchedule
+    Text("How we watch", style = MaterialTheme.typography.titleSmall)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        g.HOW.forEach { (together, label) -> FilterChip(schedule.together == together, { onChange(schedule.copy(together = together)) }) { Text(label) } }
+    }
     Text("How it's let out", style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         g.CADENCES.forEach { (id, label) -> FilterChip(schedule.cadence == id, { onChange(schedule.copy(cadence = id)) }) { Text(label) } }
     }
-    if (!schedule.limits) return
-    if (schedule.cadence == g.WEEKLY) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        g.DAYS.forEachIndexed { i, d -> FilterChip(schedule.day == i, { onChange(schedule.copy(day = i)) }) { Text(d.take(3)) } }
+    if (schedule.limits) {
+        if (schedule.cadence == g.WEEKLY) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            g.DAYS.forEachIndexed { i, d -> FilterChip(schedule.day == i, { onChange(schedule.copy(day = i)) }) { Text(d.take(3)) } }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            g.HOURS.forEach { h -> FilterChip(schedule.hour == h && schedule.minute == 0, { onChange(schedule.copy(hour = h, minute = 0)) }) { Text(g.clockOf(h, 0)) } }
+        }
     }
+    if (!schedule.active) return
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        g.HOURS.forEach { h -> FilterChip(schedule.hour == h && schedule.minute == 0, { onChange(schedule.copy(hour = h, minute = 0)) }) { Text(g.clockOf(h, 0)) } }
-    }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(!schedule.softLock, { onChange(schedule.copy(softLock = false)) }) { Text("Locked until then") }
+        FilterChip(!schedule.softLock, { onChange(schedule.copy(softLock = false)) }) { Text(if (schedule.limits) "Locked until then" else "Locked") }
         FilterChip(schedule.softLock, { onChange(schedule.copy(softLock = true)) }) { Text("Ask first") }
     }
-    Text(
-        "Anything someone in the group has seen stays open, so whoever's behind can catch up. Only Nitrate keeps to it: Jellyfin's own apps don't know about it.",
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Text(schedule.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** Asks the group to change its schedule: it takes effect once most of the group agrees (both, in a pair). */
@@ -184,8 +196,7 @@ fun inviteText(r: dev.nitrate.core.partners.IncomingRequest): String {
     val others = r.willSee.filter { it != r.fromName }
     val into = if (others.isEmpty()) "${r.fromName} would like to watch ${r.seriesName} with you."
     else "${r.fromName} invites you to watch ${r.seriesName} with ${WatchPartners.names(others)}."
-    val pace = r.schedule?.takeIf { it.limits }?.let { " The group goes at its own pace: ${it.label}, ${if (it.softLock) "with a warning before watching ahead" else "locked until then"}; accepting agrees to it." }.orEmpty()
-    return "$into If you accept, ${WatchPartners.names(r.willSee)} will see your name and your progress in it.$pace"
+    return "$into If you accept, ${WatchPartners.names(r.willSee)} will see your name and your progress in it.${r.schedule?.terms.orEmpty()}"
 }
 
 /** Settings → Watch partners: privacy, requests, partners and their shows. */
