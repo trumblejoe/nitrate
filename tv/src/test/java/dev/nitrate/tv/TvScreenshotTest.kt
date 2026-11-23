@@ -1495,7 +1495,7 @@ class TvScreenshotTest {
     @Test fun refreshRateInfo() = shoot("tv-refresh-rate-info") { _ -> dev.nitrate.tv.ui.settings.RefreshRateInfo {} }
     @Test fun moreSettings() = moreSheet("tv-more-settings", "settings", "down") { check(focusedHasText("Normal")) }
     /** ◀▶ on the tabs shows each one as it's reached. */
-    @Test fun moreTabsMove() = moreSheet("tv-more-tabs-move", "siblings", "right") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("Crossing")).fetchSemanticsNodes().isNotEmpty()) }
+    @Test fun moreTabsMove() = moreSheet("tv-more-tabs-move", "settings", "right") { check(compose.onAllNodes(androidx.compose.ui.test.hasText("Crossing")).fetchSemanticsNodes().isNotEmpty()) }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun press(vararg keys: String) {

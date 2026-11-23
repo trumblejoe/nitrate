@@ -57,7 +57,7 @@ internal class MoreTab(val key: String, val label: String, val content: @Composa
 /**
  * "More": a panel across the bottom of the player, the video still showing above. Tabs along the
  * top (◀▶ moves between them, a tab shows as soon as it's focused), one tab's content below (▼ goes
- * into it, ▲ back to the tabs). Opens on [initial] (the tab used last), else the first.
+ * into it, ▲ back to the tabs). Opens on [initial] (the tab used last, never the episodes or collection), else the first.
  */
 @Composable
 internal fun MoreSheet(tabs: List<MoreTab>, initial: String?, onTab: (String) -> Unit, modifier: Modifier = Modifier) {
@@ -382,13 +382,10 @@ internal fun moreTabs(
     val chapters = current?.chapters.orEmpty()
     val extras = titleStrips.firstOrNull { it.label == EXTRAS }
     val siblings = titleStrips.firstOrNull { it.label != EXTRAS }
+    // Settings first and the season's episodes (or the collection's films) last, so opening More
+    // never lands on stills or titles further on: spoilers stay a few presses away.
     return listOfNotNull(
-        siblings?.let { strip ->
-            // The season goes round: ▶ on its last episode comes back to the first.
-            MoreTab("siblings", if (current?.isEpisode == true) "Episodes" else "Collection") {
-                CardRow(strip.cards.size, strip.start, wrap = true) { i, modifier -> strip.cards[i].let { c -> TitleCardView(c, onClick = { strip.onClick(c.item) }, modifier = modifier) } }
-            }
-        },
+        MoreTab("settings", "Settings") { PlayerChoicesTab(choices) },
         chapters.takeIf { it.size > 1 }?.let { list ->
             MoreTab("chapters", "Chapters") {
                 val now = dev.nitrate.core.playback.Chapters.current(list, position).coerceAtLeast(0)
@@ -407,7 +404,12 @@ internal fun moreTabs(
                 CardRow(strip.cards.size, 0) { i, modifier -> strip.cards[i].let { c -> TitleCardView(c, onClick = { strip.onClick(c.item) }, modifier = modifier) } }
             }
         },
-        MoreTab("settings", "Settings") { PlayerChoicesTab(choices) },
+        siblings?.let { strip ->
+            // The season goes round: ▶ on its last episode comes back to the first.
+            MoreTab("siblings", if (current?.isEpisode == true) "Episodes" else "Collection") {
+                CardRow(strip.cards.size, strip.start, wrap = true) { i, modifier -> strip.cards[i].let { c -> TitleCardView(c, onClick = { strip.onClick(c.item) }, modifier = modifier) } }
+            }
+        },
     )
 }
 

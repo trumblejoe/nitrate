@@ -772,7 +772,8 @@ fun PlayerScreen(
                         onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDone = { panel = Panel.NONE },
                         frameRate = frameRateOverride, onFrameRate = { frameRateOverride = it }, displayHz = rememberDisplayHz()),
                 ),
-                initial = moreTab,
+                // Never reopens on the episodes or collection (spoilers): Settings instead.
+                initial = moreTab?.takeIf { it != "siblings" },
                 onTab = { moreTab = it },
                 modifier = Modifier.align(Alignment.BottomStart),
             )
