@@ -91,63 +91,80 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.DrawerValue
 import androidx.tv.material3.Icon
-import androidx.tv.material3.NavigationDrawer
-import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.Text
-import androidx.tv.material3.rememberDrawerState
 import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.MediaItem
 
+
 internal val BarHeight = 76.dp
 
-internal val RailWidth = 40.dp
-
 /**
- * Icons down the side that open with labels when focused. Over full-screen art the icons float on
- * the picture and the opened menu darkens it; otherwise the rail has its own column.
+ * The overlay ([large], the default menu) and the side rail: nothing on screen until called, then
+ * a full-height column of stops at the edge ([end]: the right), each its icon and its words, laid
+ * over the page (never pushing it). The overlay dims the page behind a wide panel of big stops; the
+ * rail is a narrower column. Focus starts on the current page's stop ([menuFocus]); ▲▼ move, a group
+ * opens in place (its stops indented under it, focus on the first; moving off it or Back folds it,
+ * and the page's own group shows open with its stop marked), and towards the page ([exitKey]) closes
+ * it, as Back and Menu do (`TvMenu`). Choosing a stop closes it first ([onClose]).
  */
 @Composable
-internal fun Rail(
+internal fun SideMenu(
     stops: List<NavEntry>,
-    overlay: Boolean,
+    large: Boolean,
+    end: Boolean,
     menuFocus: FocusRequester,
-    trackMenu: Modifier,
-    /** Towards the page: leaves the rail (the open drawer covers the page, so focus can't find it). */
     exitKey: Key,
-    toContent: () -> Unit,
-    content: @Composable () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val state = rememberDrawerState(DrawerValue.Closed)
+    val black = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvMenuBlack
     val target = stops.firstOrNull { it.selected } ?: stops.firstOrNull()
     // The group opened with OK (the page's own group shows open anyway).
     var openGroup by remember { mutableStateOf<String?>(null) }
-    val drawer: @Composable androidx.tv.material3.NavigationDrawerScope.(DrawerValue) -> Unit = { drawerValue ->
+    val choose: (NavEntry) -> () -> Unit = { e -> { onClose(); e.onClick() } }
+    Box(
+        Modifier.fillMaxSize()
+            // The overlay dims the whole page; the rail only shades its own column.
+            .then(if (large) Modifier.background(Color.Black.copy(alpha = if (black) 0.8f else 0.55f)) else Modifier),
+        contentAlignment = if (end) Alignment.TopEnd else Alignment.TopStart,
+    ) {
         Column(
-            Modifier.fillMaxHeight()
-                .then(if (dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvMenuBlack) Modifier.background(Color.Black) else Modifier)
-                .then(trackMenu)
+            modifier.fillMaxHeight().width(if (large) 440.dp else 280.dp)
+                .background(
+                    if (black) Brush.horizontalGradient(listOf(Color.Black, Color.Black))
+                    else Brush.horizontalGradient(
+                        listOf(Color(0xF2101014), Color(0xE6101014)).let { if (end) it.reversed() else it },
+                    ),
+                )
                 .onPreviewKeyEvent { e ->
                     if (e.key != exitKey) return@onPreviewKeyEvent false
-                    if (e.type == KeyEventType.KeyDown) toContent()
+                    if (e.type == KeyEventType.KeyDown) onClose()
                     true
                 }
-                .padding(vertical = 24.dp, horizontal = 8.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                // Nothing past its ends: ▲▼ stop at the first and last stop, the far side goes nowhere
+                // (only moves are held; closing hands focus back to the page by request).
+                .focusProperties {
+                    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+                    exit = { d ->
+                        val move = d == androidx.compose.ui.focus.FocusDirection.Up || d == androidx.compose.ui.focus.FocusDirection.Down ||
+                            d == androidx.compose.ui.focus.FocusDirection.Left || d == androidx.compose.ui.focus.FocusDirection.Right
+                        if (move) FocusRequester.Cancel else FocusRequester.Default
+                    }
+                }
+                .focusGroup()
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = if (large) 48.dp else 28.dp, horizontal = if (large) 28.dp else 14.dp),
+            verticalArrangement = Arrangement.spacedBy(if (large) 10.dp else 4.dp),
         ) {
             stops.forEach { entry ->
-                if (entry.children.isEmpty()) NavigationDrawerItem(
-                    selected = entry.selected,
-                    onClick = entry.onClick,
-                    onLongClick = entry.onLongClick,
-                    // Closed, the rail shows icons alone: each says its stop's name.
-                    leadingContent = { Icon(entry.icon, contentDescription = if (drawerValue == DrawerValue.Closed) entry.label else null) },
-                    modifier = if (entry == target) Modifier.focusRequester(menuFocus) else Modifier,
-                ) { Text(entry.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                else {
-                    // A group opens in place: OK shows its stops indented under it, focus on the first;
-                    // moving off it (or Back) folds it again. The page's own group stays open, its stop marked.
+                if (entry.children.isEmpty()) {
+                    MenuPanelItem(
+                        entry, large, indent = false, onClick = choose(entry),
+                        onLongClick = entry.onLongClick?.let { l -> { onClose(); l() } },
+                        modifier = if (entry == target) Modifier.focusRequester(menuFocus) else Modifier,
+                    )
+                } else {
                     val here = entry.children.any { it.selected }
                     val open = openGroup == entry.id || here
                     val groupFocus = remember(entry.id) { FocusRequester() }
@@ -165,25 +182,22 @@ internal fun Rail(
                                 if (e.type == KeyEventType.KeyUp) { openGroup = null; runCatching { groupFocus.requestFocus() } }
                                 true
                             },
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(if (large) 10.dp else 4.dp),
                     ) {
-                        NavigationDrawerItem(
-                            selected = entry.selected && !open,
+                        MenuPanelItem(
+                            entry.copy(selected = entry.selected && !open), large, indent = false,
+                            label = entry.label + if (open) "  ▾" else "  ▸",
                             onClick = { if (openGroup == entry.id) openGroup = null else { openGroup = entry.id; focusFirst = true } },
-                            leadingContent = { Icon(entry.icon, contentDescription = if (drawerValue == DrawerValue.Closed) entry.label else null) },
                             modifier = Modifier.focusRequester(groupFocus).then(if (entry == target && !here) Modifier.focusRequester(menuFocus) else Modifier),
-                        ) { Text(entry.label + if (open) "  ▾" else "  ▸", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        )
                         if (open) entry.children.forEachIndexed { i, child ->
-                            NavigationDrawerItem(
-                                selected = child.selected,
-                                onClick = child.onClick,
-                                onLongClick = child.onLongClick,
-                                leadingContent = { Icon(child.icon, contentDescription = if (drawerValue == DrawerValue.Closed) "${entry.label}: ${child.label}" else null, modifier = Modifier.size(20.dp)) },
+                            MenuPanelItem(
+                                child, large, indent = true, onClick = choose(child),
+                                onLongClick = child.onLongClick?.let { l -> { onClose(); l() } },
                                 modifier = Modifier
-                                    .padding(start = if (drawerValue == DrawerValue.Open) 20.dp else 0.dp)
                                     .then(if (i == 0) Modifier.focusRequester(firstChild) else Modifier)
                                     .then(if (child.selected) Modifier.focusRequester(menuFocus) else Modifier),
-                            ) { Text(child.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            )
                         }
                     }
                     LaunchedEffect(focusFirst, open) {
@@ -193,27 +207,59 @@ internal fun Rail(
             }
         }
     }
-    if (overlay) {
-        androidx.tv.material3.ModalNavigationDrawer(
-            drawerContent = drawer,
-            drawerState = state,
-            // Dark on the menu's side, fading across the picture.
-            scrimBrush = Brush.horizontalGradient(
-                listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent).let { if (LocalLayoutDirection.current == LayoutDirection.Rtl) it.reversed() else it },
-            ),
-            content = content,
-        )
-    } else {
-        NavigationDrawer(drawerContent = drawer, drawerState = state, content = content)
+}
+
+/** One stop in the overlay or rail: its icon and words (never the icon alone), the current page marked. */
+@Composable
+private fun MenuPanelItem(
+    entry: NavEntry,
+    large: Boolean,
+    indent: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = entry.label,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    Surface(
+        onClick = onClick,
+        onLongClick = onLongClick,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(if (large) 16.dp else 12.dp)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (entry.selected) Color.White.copy(alpha = 0.12f) else Color.Transparent,
+            contentColor = Color.White.copy(alpha = 0.9f),
+            focusedContainerColor = Color.White,
+            focusedContentColor = Color.Black,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+        modifier = Modifier.padding(start = if (indent) (if (large) 36.dp else 20.dp) else 0.dp).fillMaxWidth().then(modifier),
+    ) {
+        Row(
+            Modifier.padding(horizontal = if (large) 22.dp else 14.dp, vertical = if (large) 14.dp else 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (large) 20.dp else 12.dp),
+        ) {
+            Icon(entry.icon, contentDescription = null, modifier = Modifier.size(if (indent) (if (large) 26.dp else 18.dp) else if (large) 32.dp else 22.dp))
+            Text(
+                label,
+                style = if (large) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            // Where you are.
+            if (entry.selected) Box(Modifier.size(if (large) 10.dp else 8.dp).background(accent, CircleShape))
+        }
     }
 }
 
 /**
  * A row of icon-and-word stops with the current page underlined. Pressing towards the page from
- * any stop goes back to it.
+ * any stop goes back to it; Up from the top bar goes to the profile corner ([toCorner]), which sits
+ * at the bar's end ([endRoom] kept clear for it).
  */
 @Composable
-internal fun MenuBar(entries: List<NavEntry>, edge: Edge, overlay: Boolean, menuFocus: FocusRequester, toContent: () -> Unit, modifier: Modifier) {
+internal fun MenuBar(entries: List<NavEntry>, edge: Edge, overlay: Boolean, menuFocus: FocusRequester, toContent: () -> Unit, modifier: Modifier, endRoom: androidx.compose.ui.unit.Dp = 0.dp, toCorner: (() -> Unit)? = null) {
     val shade = Color.Black.copy(alpha = 0.6f)
     val background = when {
         dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.tvMenuBlack -> Modifier.background(Color.Black)
@@ -240,18 +286,23 @@ internal fun MenuBar(entries: List<NavEntry>, edge: Edge, overlay: Boolean, menu
     LaunchedEffect(inBar) { if (!inBar) { kotlinx.coroutines.delay(48); openGroup = null } }
     LaunchedEffect(focusFirst, openGroup) { if (focusFirst && openGroup != null) { kotlinx.coroutines.delay(16); runCatching { firstChild.requestFocus() }; focusFirst = false } }
     LazyRow(
-        modifier.fillMaxWidth().height(BarHeight).then(background)
+        // The bar's shade runs the whole width; its stops stop short of the corner.
+        modifier.fillMaxWidth().height(BarHeight).then(background).padding(end = endRoom)
             .onFocusChanged { inBar = it.hasFocus }
             .onPreviewKeyEvent { e ->
                 if (e.key == Key.Back && openGroup != null) {
                     if (e.type == KeyEventType.KeyUp) { openGroup = null }
                     return@onPreviewKeyEvent true
                 }
+                if (edge == Edge.TOP && e.key == Key.DirectionUp && toCorner != null) {
+                    if (e.type == KeyEventType.KeyDown) toCorner()
+                    return@onPreviewKeyEvent true
+                }
                 if (e.key != towardsPage) return@onPreviewKeyEvent false
                 if (e.type == KeyEventType.KeyDown) toContent()
                 true
             },
-        contentPadding = PaddingValues(horizontal = 50.dp),
+        contentPadding = PaddingValues(start = 50.dp, end = if (endRoom > 0.dp) 12.dp else 50.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

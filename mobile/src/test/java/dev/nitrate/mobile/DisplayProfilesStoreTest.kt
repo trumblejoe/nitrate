@@ -36,7 +36,7 @@ class DisplayProfilesStoreTest {
         assertTrue(s.export(user).keys.none { it.startsWith("p:tv:") })
         // Back on the built-in TV profile: still the defaults.
         s.useProfile(user, "tv")
-        assertEquals(TvMenuStyle.LEFT, s.prefs(user).first().tvMenu)
+        assertEquals(TvMenuStyle.OVERLAY, s.prefs(user).first().tvMenu)
         s.useProfile(user, active)
         assertEquals(TvMenuStyle.RADIAL, s.prefs(user).first().tvMenu)
     }

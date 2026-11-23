@@ -95,7 +95,12 @@ internal fun MenuStopsEditor(prefs: DisplayPrefs, catalog: MenuCatalog, update: 
         Text("Menu stops", style = MaterialTheme.typography.headlineMedium)
         Text(
             if (dial) "Pick a spot on the dial with the D-pad and press OK to choose what goes there. Stops sit straight up, right, down and left, ring after ring."
-            else "Choose a stop to move it, put it in More (a page of its own, one press away) or hide it. Groups open in the menu onto their libraries. ${prefs.tvMenu.label} menu.",
+            else "Choose a stop to move it, put it in More (a page of its own, one press away) or hide it. Groups open in the menu onto their libraries. ${dev.nitrate.tv.ui.pages.menuKindName(prefs.tvMenu)} menu.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (prefs.tvMenu.cornerStops) Text(
+            "Search, Settings and Switch user are in the top-right corner of every page (Up from the top of a page), so they aren't stops in this menu.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -158,9 +163,11 @@ private fun StopsList(
     val available = catalog.available(prefs)
     val arranged = MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, available, catalog.defaults))
     val more = dev.nitrate.core.pages.MenuLayout.more(prefs.tvMoreStops, catalog.moreDefaults, available, prefs.tvMenuGroups)
-    val shown = dev.nitrate.core.pages.MenuLayout.main(arranged, prefs.tvMenuGroups, more).filter { it != MenuStops.MORE }
+    // The overlay and the rail: Search, Settings and Switch user are in the profile corner, not offered here.
+    val notShown = if (prefs.tvMenu.cornerStops) MenuStops.IN_CORNER else emptySet()
+    val shown = MenuStops.shownIn(dev.nitrate.core.pages.MenuLayout.main(arranged, prefs.tvMenuGroups, more), prefs.tvMenu).filter { it != MenuStops.MORE }
     val members = prefs.tvMenuGroups.flatMap { it.stops }.toSet()
-    val hidden = available.filter { it !in shown && it !in more && it !in members && it != MenuStops.MORE }
+    val hidden = available.filter { it !in shown && it !in more && it !in members && it != MenuStops.MORE && it !in notShown }
     val libraries = catalog.entries.filterKeys { it.startsWith("library:") }.mapValues { it.value.label }
     val suggestions = dev.nitrate.core.pages.MenuGroups.suggest(libraries, prefs.tvMenuGroups, prefs.tvGroupSuggestionsDismissed)
     var choosing by remember { mutableStateOf<String?>(null) }
@@ -197,13 +204,13 @@ private fun StopsList(
             }
         }
         section("In the menu", shown, numbered = true)
-        section("In More", more, numbered = false)
+        section("In More", more.filter { it !in notShown }, numbered = false)
         section("Hidden", hidden, numbered = false)
     }
 
     choosing?.let { id ->
         StopChoices(
-            id, prefs, catalog, arranged, more, shown, canMove, update,
+            id, prefs, catalog, arranged, more, shown, canMove, update, notShown,
             onDismiss = { choosing = null },
         )
     }
@@ -220,6 +227,7 @@ private fun StopChoices(
     shown: List<String>,
     canMove: Boolean,
     update: ((DisplayPrefs) -> DisplayPrefs) -> Unit,
+    notShown: Set<String>,
     onDismiss: () -> Unit,
 ) {
     val entry = catalog.entry(id, prefs) ?: return
@@ -267,8 +275,8 @@ private fun StopChoices(
         fun takeFirst(): Modifier = if (!firstUsed) { firstUsed = true; Modifier.focusRequester(first) } else Modifier
         if (canMove && place == dev.nitrate.core.pages.StopPlace.MENU) {
             val at = shown.indexOf(id)
-            if (at > 0) ListItem(selected = false, onClick = { update { p -> p.copy(tvMenuStops = dev.nitrate.core.pages.MenuLayout.move(arranged, p.tvMenuGroups, more, id, -1)) } }, headlineContent = { Text("Move up") }, modifier = takeFirst())
-            if (at in 0 until shown.lastIndex) ListItem(selected = false, onClick = { update { p -> p.copy(tvMenuStops = dev.nitrate.core.pages.MenuLayout.move(arranged, p.tvMenuGroups, more, id, +1)) } }, headlineContent = { Text("Move down") }, modifier = takeFirst())
+            if (at > 0) ListItem(selected = false, onClick = { update { p -> p.copy(tvMenuStops = dev.nitrate.core.pages.MenuLayout.move(arranged, p.tvMenuGroups, more, id, -1, notShown)) } }, headlineContent = { Text("Move up") }, modifier = takeFirst())
+            if (at in 0 until shown.lastIndex) ListItem(selected = false, onClick = { update { p -> p.copy(tvMenuStops = dev.nitrate.core.pages.MenuLayout.move(arranged, p.tvMenuGroups, more, id, +1, notShown)) } }, headlineContent = { Text("Move down") }, modifier = takeFirst())
         }
         if (fixed) Text("Always in the menu.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         else dev.nitrate.core.pages.StopPlace.entries.forEach { p ->

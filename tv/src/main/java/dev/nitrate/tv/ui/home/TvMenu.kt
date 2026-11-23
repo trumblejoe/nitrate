@@ -91,12 +91,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.DrawerValue
 import androidx.tv.material3.Icon
-import androidx.tv.material3.NavigationDrawer
-import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.Text
-import androidx.tv.material3.rememberDrawerState
 import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.MediaItem
 
@@ -155,16 +151,22 @@ val LocalMenuRows = androidx.compose.runtime.staticCompositionLocalOf<(first: Bo
 
 internal enum class Edge { TOP, BOTTOM }
 
+
 /**
  * The TV's main menu in the user's chosen [style], around [content]. [stops] are the menu in the
  * user's order; [dial] the dial's spots (`ring * 4 + spoke`, null = empty). [overlay] draws the
- * menu over the content (full-screen art) instead of beside it; [content] gets the space the menu
- * keeps clear at each edge.
+ * Top/Bottom bar over the content (full-screen art) instead of above it; [content] gets the space
+ * the menu keeps clear at each edge.
  *
- * You reach the menu by moving to where it is (past the first item or row); the fade-in bar and
- * the dial wait at the top edge, and the Top/Bottom bar is at the top on the first row and at the
- * bottom on the last. The remote's Menu key jumps to it from anywhere and back again, and Back
- * from the menu returns to the page. Back on the page is never taken over.
+ * The overlay (the default) and the side rail show nothing while you browse: moving off the page's
+ * edge (left; the right for a rail on the right) or the Menu key opens them over the page, focus on
+ * the current page's stop, and towards the page, Back or Menu close them, focus going back where it
+ * was on the page. The fade-in bar and the dial wait at the top edge, and the Top/Bottom bar is at
+ * the top on the first row and at the bottom on the last. The remote's Menu key opens and closes the
+ * menu from anywhere, and Back from the menu returns to the page. Back on the page is never taken over.
+ *
+ * With [corner], the profile corner sits top right (Search and the avatar, [ProfileCorner]): Up from
+ * the page's top reaches it (on the Top bar and the dial, Up from the bar or past the dial's top).
  */
 @Composable
 fun TvMenu(
@@ -174,55 +176,97 @@ fun TvMenu(
     overlay: Boolean,
     /** Keep the menu invisible until focus reaches it, fading in over the page (as on Home). */
     autoHide: Boolean = false,
+    corner: CornerActions? = null,
     content: @Composable (MenuInsets) -> Unit,
 ) {
     // A hidden menu takes no room of its own: it fades in over the page on every page, not only
     // over Home's full-screen art (a column of its own left a blank strip while hidden).
     @Suppress("NAME_SHADOWING") val overlay = overlay || autoHide
+    // The overlay and the rail: nothing on screen until called, then a column over the page.
+    val panel = style == TvMenuStyle.OVERLAY || style.rail
     val contentFocus = remember { FocusRequester() }
     val menuFocus = remember { FocusRequester() }
     var inMenu by remember { mutableStateOf(false) }
     var dialOpen by remember { mutableStateOf(false) }
+    var panelOpen by remember { mutableStateOf(false) }
+    var focusPanel by remember { mutableStateOf(0) }
     // Top/Bottom: which rows the page is on, and where the bar is (kept while you're in it).
     var onFirst by remember { mutableStateOf(true) }
     var onLast by remember { mutableStateOf(true) }
     var forcedTop by remember { mutableStateOf(false) }
     var focusBar by remember { mutableStateOf(0) }
+    // The profile corner and its account panel.
+    val searchFocus = remember { FocusRequester() }
+    val avatarFocus = remember { FocusRequester() }
+    var inCorner by remember { mutableStateOf(false) }
+    var accountOpen by remember { mutableStateOf(false) }
+    var focusAvatar by remember { mutableStateOf(0) }
     // Back to the page where it was left (the card in the row, not the first thing on the page) when
     // the page can say where that was (dev.nitrate.tv.ui.rows.FocusReturn), else to its start.
     val focusReturn = remember { dev.nitrate.tv.ui.rows.FocusReturn() }
     val toContent: () -> Unit = {
         dialOpen = false; forcedTop = false
         if (focusReturn.restore?.invoke() != true) runCatching { contentFocus.requestFocus() }
+        panelOpen = false
     }
     val toMenu: () -> Unit = {
         when (style) {
             TvMenuStyle.RADIAL -> dialOpen = true
             // On the first or last row the bar is already there; elsewhere Menu brings it to the top first.
             TvMenuStyle.TOP, TvMenuStyle.FADE -> if (onFirst || onLast) runCatching { menuFocus.requestFocus() } else { forcedTop = true; focusBar++ }
-            else -> runCatching { menuFocus.requestFocus() }
+            // Shown at once, focus on the current page's stop as soon as it's there.
+            else -> { panelOpen = true; focusPanel++ }
         }
+    }
+    val toCorner: () -> Unit = {
+        dialOpen = false; forcedTop = false; panelOpen = false
+        if (!runCatching { avatarFocus.requestFocus() }.getOrDefault(false)) focusAvatar++
     }
     // The bar may only just have been placed: focus it once it's there.
     LaunchedEffect(focusBar) { if (focusBar > 0) runCatching { kotlinx.coroutines.delay(16); menuFocus.requestFocus() } }
-    BackHandler(enabled = inMenu || dialOpen, onBack = toContent)
+    // The panel's stops are composed when it opens: focus the current one at once (asked again for a
+    // few frames in case the column isn't placed yet; nothing waits on an animation).
+    LaunchedEffect(focusPanel) {
+        if (focusPanel > 0) repeat(10) {
+            if (runCatching { menuFocus.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+            kotlinx.coroutines.delay(16)
+        }
+    }
+    LaunchedEffect(focusAvatar) {
+        if (focusAvatar > 0) repeat(10) {
+            if (runCatching { avatarFocus.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+            kotlinx.coroutines.delay(16)
+        }
+    }
+    // Focus gone from the open panel for good (not just handed between stops): it closes.
+    LaunchedEffect(panelOpen, inMenu) {
+        if (panelOpen && !inMenu) { kotlinx.coroutines.delay(250); if (!inMenu) panelOpen = false }
+    }
+    BackHandler(enabled = inMenu || dialOpen || panelOpen || inCorner, onBack = toContent)
 
     val side: (Key) -> Boolean = { key ->
         when (style) {
-            TvMenuStyle.LEFT -> key == Key.DirectionLeft
+            TvMenuStyle.OVERLAY, TvMenuStyle.LEFT -> key == Key.DirectionLeft
             TvMenuStyle.RIGHT -> key == Key.DirectionRight
             // With one row the bar is only at the top.
             TvMenuStyle.TOP, TvMenuStyle.FADE -> (key == Key.DirectionUp && onFirst) || (key == Key.DirectionDown && onLast && !onFirst)
             else -> key == Key.DirectionUp
         }
     }
-    val reach: (Key) -> Boolean = { key -> side(key).also { if (it) toMenu() } }
+    // Past the page's top (where the menu isn't): the profile corner.
+    val reach: (Key) -> Boolean = { key ->
+        when {
+            side(key) -> { toMenu(); true }
+            key == Key.DirectionUp && corner != null -> { toCorner(); true }
+            else -> false
+        }
+    }
     val rows: (Boolean, Boolean) -> Unit = { first, last -> onFirst = first; onLast = last }
 
     // Leaving the page towards the menu always lands on the menu (its current stop, or the dial),
-    // whatever the page is (rows, a grid, a list), instead of whichever piece of it happens to be
-    // nearest. Moves within the page are left alone; a page that handles its own edges (full art)
-    // never lets focus leave this way.
+    // and leaving it upwards elsewhere on the profile corner, whatever the page is (rows, a grid, a
+    // list), instead of whichever piece of it happens to be nearest. Moves within the page are left
+    // alone; a page that handles its own edges (full art) never lets focus leave this way.
     val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     @Composable
     fun page(insets: MenuInsets) = Box(
@@ -238,32 +282,46 @@ fun TvMenu(
                         androidx.compose.ui.focus.FocusDirection.Down -> Key.DirectionDown
                         else -> null
                     }
-                    if (key != null && side(key)) {
-                        mainHandler.post { toMenu() }
-                        FocusRequester.Cancel
-                    } else FocusRequester.Default
+                    when {
+                        key != null && side(key) -> { mainHandler.post { toMenu() }; FocusRequester.Cancel }
+                        key == Key.DirectionUp && corner != null -> { mainHandler.post { toCorner() }; FocusRequester.Cancel }
+                        else -> FocusRequester.Default
+                    }
                 }
             }
             .focusRequester(contentFocus).focusGroup(),
     ) {
-        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows, dev.nitrate.tv.ui.rows.LocalFocusReturn provides focusReturn) { content(insets) }
+        CompositionLocalProvider(
+            LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows,
+            dev.nitrate.tv.ui.rows.LocalFocusReturn provides focusReturn,
+            LocalCornerRoom provides if (corner != null) CornerRoom else 0.dp,
+        ) { content(insets) }
     }
     val shown by animateFloatAsState(if (!autoHide || inMenu) 1f else 0f, label = "menu-fade")
     val trackMenu = Modifier.alpha(shown).onFocusChanged { inMenu = it.hasFocus; if (!it.hasFocus) forcedTop = false }
+    val account = if (corner != null) rememberCornerAccount() else null
 
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { e ->
             if (e.key != Key.Menu) return@onPreviewKeyEvent false
-            if (e.type == KeyEventType.KeyUp) { if (inMenu || dialOpen) toContent() else toMenu() }
+            if (e.type == KeyEventType.KeyUp) { if (inMenu || dialOpen || panelOpen) toContent() else toMenu() }
             true
-        },
+        }
+            // Back from the menu or the corner, taken as a key too (as well as BackHandler) once what's
+            // inside (an open group) has passed on it: back to the page.
+            .onKeyEvent { e ->
+                if (e.key != Key.Back || !(inMenu || dialOpen || panelOpen || inCorner)) return@onKeyEvent false
+                if (e.type == KeyEventType.KeyUp) toContent()
+                true
+            },
     ) {
         when (style) {
-            TvMenuStyle.LEFT -> Rail(stops, overlay, menuFocus, trackMenu, Key.DirectionRight, toContent) { page(if (overlay && !autoHide) MenuInsets(start = RailWidth) else MenuInsets()) }
-            TvMenuStyle.RIGHT -> CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                Rail(stops, overlay, menuFocus, trackMenu, Key.DirectionLeft, toContent) {
-                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { page(if (overlay && !autoHide) MenuInsets(end = RailWidth) else MenuInsets()) }
-                }
+            TvMenuStyle.OVERLAY, TvMenuStyle.LEFT, TvMenuStyle.RIGHT -> Box(Modifier.fillMaxSize()) {
+                page(MenuInsets())
+                // Hidden, the menu has nothing focus could move to: these slivers at the edges are
+                // where moving off the page goes (the page's exit sends it on to the menu or corner).
+                EdgeCatcher("Menu", Modifier.align(if (style == TvMenuStyle.RIGHT) Alignment.CenterEnd else Alignment.CenterStart).fillMaxHeight().width(1.dp), enabled = !panelOpen, onFocus = toMenu)
+                if (corner != null) EdgeCatcher("Account and search", Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp), enabled = !panelOpen, onFocus = toCorner)
             }
             TvMenuStyle.TOP, TvMenuStyle.FADE -> if (overlay) {
                 // At the top on the first row (and when there's only one), at the bottom on the last.
@@ -280,13 +338,16 @@ fun TvMenu(
                         else -> MenuInsets(bottom = BarHeight)
                     })
                     edge?.let { e ->
-                        MenuBar(stops, e, overlay = true, menuFocus, toContent, Modifier.align(if (e == Edge.TOP) Alignment.TopStart else Alignment.BottomStart).then(trackMenu))
+                        MenuBar(
+                            stops, e, overlay = true, menuFocus, toContent, Modifier.align(if (e == Edge.TOP) Alignment.TopStart else Alignment.BottomStart).then(trackMenu),
+                            endRoom = if (e == Edge.TOP && corner != null) CornerRoom else 0.dp, toCorner = toCorner.takeIf { corner != null },
+                        )
                     }
                 }
             } else {
                 // The classic rows scroll on their own, so the bar stays at the top.
                 Column(Modifier.fillMaxSize()) {
-                    MenuBar(stops, Edge.TOP, overlay = false, menuFocus, toContent, trackMenu)
+                    MenuBar(stops, Edge.TOP, overlay = false, menuFocus, toContent, trackMenu, endRoom = if (corner != null) CornerRoom else 0.dp, toCorner = toCorner.takeIf { corner != null })
                     Box(Modifier.weight(1f)) { page(MenuInsets()) }
                 }
             }
@@ -298,16 +359,51 @@ fun TvMenu(
                         .onFocusChanged { if (it.isFocused) dialOpen = true }
                         .focusable(enabled = !dialOpen),
                 )
-                if (dialOpen) Dial(dial, onClose = toContent)
             }
         }
+        // The profile corner, top right on every page; under the open menu (its dimming covers it).
+        if (corner != null && account != null) {
+            ProfileCorner(
+                account,
+                onSearch = corner.onSearch,
+                onAvatar = { accountOpen = true },
+                searchFocus = searchFocus,
+                avatarFocus = avatarFocus,
+                onKey = { key ->
+                    when {
+                        key == Key.DirectionDown -> toContent()
+                        // Left from Search (or Right from the avatar) when the menu is that way.
+                        panel && side(key) -> toMenu()
+                    }
+                },
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 26.dp)
+                    .onFocusChanged { inCorner = it.hasFocus },
+            )
+            if (accountOpen) AccountPanel(account, corner) {
+                accountOpen = false
+                // Back on the avatar once the panel's window has gone.
+                focusAvatar++
+            }
+        }
+        if (panel && panelOpen) {
+            SideMenu(
+                stops,
+                large = style == TvMenuStyle.OVERLAY,
+                end = style == TvMenuStyle.RIGHT,
+                menuFocus = menuFocus,
+                exitKey = if (style == TvMenuStyle.RIGHT) Key.DirectionLeft else Key.DirectionRight,
+                onClose = toContent,
+                modifier = Modifier.onFocusChanged { inMenu = it.hasFocus },
+            )
+        }
+        if (style == TvMenuStyle.RADIAL && dialOpen) Dial(dial, onClose = toContent, onCorner = toCorner.takeIf { corner != null })
     }
 }
 
 /**
  * The main menu around a top-level page ([current] is its [MenuStops] id), in the user's style and
- * arrangement. [overlay] for pages that fill the screen with art. Without a catalog (tests,
- * previews) the page shows alone.
+ * arrangement, with the profile corner top right. [overlay] for pages that fill the screen with art.
+ * Without a catalog (tests, previews) the page shows alone.
  */
 @Composable
 fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets) -> Unit) {
@@ -322,13 +418,35 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     val music = listening?.state?.collectAsState()?.value?.active == true
     // The page's Customize panel, held here so the menu's Customize stop can open it.
     val customize = remember { dev.nitrate.tv.ui.pages.CustomizeHost() }
-    // "Customize" (a pencil) just before Settings on every page with a layout of its own: the way to
-    // change the page without knowing to hold OK on a row. Not in easy mode.
+    // "Customize" (a pencil) just before Settings (at the end where Settings is in the corner) on
+    // every page with a layout of its own: the way to change the page without knowing to hold OK
+    // on a row. Not in easy mode.
     val customizeStop = if (pageKey != null && !prefs.easyMode) NavEntry("Customize this page", NavIcons.customize, id = CUSTOMIZE_STOP, onClick = { customize.openPage() }) else null
     val stops = marked.stops(prefs)
         .let { s -> if (customizeStop == null) s else s.indexOfFirst { it.id == dev.nitrate.core.pages.MenuStops.SETTINGS }.let { at -> if (at < 0) s + customizeStop else s.take(at) + customizeStop + s.drop(at) } }
         .let { s -> if (music && marked.nowPlaying != null) listOf(marked.nowPlaying) + s else s }
-    TvMenu(style, stops, marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
+    // The profile corner: Search, and the account panel's Switch user, Settings and Sign out.
+    val corner = remember(marked) {
+        CornerActions(
+            onSearch = marked.entries[MenuStops.SEARCH]?.onClick,
+            onSettings = marked.entries[MenuStops.SETTINGS]?.onClick,
+            onProfiles = marked.entries[MenuStops.PROFILES]?.onClick,
+            onQuickSwitch = marked.entries[MenuStops.PROFILES]?.onLongClick,
+            onSignOut = marked.signOut,
+        )
+    }
+    TvMenu(style, stops, marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE, corner = corner) { insets ->
         ThemedPage(pageKey, insets, customize) { content(insets) }
     }
+}
+
+/** An invisible sliver at the screen's edge that moving off the page can land on, named for where it leads. */
+@Composable
+private fun EdgeCatcher(name: String, modifier: Modifier, enabled: Boolean, onFocus: () -> Unit) {
+    Box(
+        modifier
+            .onFocusChanged { if (it.isFocused) onFocus() }
+            .semantics { contentDescription = name }
+            .focusable(enabled = enabled),
+    )
 }
