@@ -111,6 +111,19 @@ in `companion.db` and the other files already, or rebuilt (formats, presence, ra
   updates through Jellyfin as before and swaps logic updates in at once. A logic that needs a newer
   contract is left for the plugin update (restart), and `/Nitrate/Updates` says so.
 
+## One-time setup (repository owner)
+
+Hot updates start with the first release after the signing key exists:
+
+    openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out companion-logic-key.pem
+    gh secret set COMPANION_LOGIC_SIGNING_KEY < companion-logic-key.pem
+
+Keep a copy of the PEM somewhere safe and offline, never in the repository. Servers trust the key
+compiled into the plugin they run: with a new key (lost or rotated), the next release is a plugin
+update (restart), and logic signed with the new key reaches a server only once it runs that
+plugin. Until the secret is set, releases warn, nothing is signed or listed, and servers run the
+logic that came with their plugin.
+
 ## Status
 
 `/Nitrate/Updates` keeps its fields and adds `Shell`, `Logic`, `LogicSource`, `LogicLoadedAt`,
