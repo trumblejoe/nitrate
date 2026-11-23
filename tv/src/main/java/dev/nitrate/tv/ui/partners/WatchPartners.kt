@@ -49,7 +49,12 @@ val LocalPartnerProgress = staticCompositionLocalOf<List<PartnerProgress>> { emp
  * [select]: OK on a card; true when it took it (an invite, the start card), else the card opens
  * or plays as usual. [hold]: holding OK on a card, with the row's usual Customize to offer too.
  */
-class TogetherCards(val select: (MediaItem) -> Boolean, val hold: (MediaItem, customize: () -> Unit) -> Unit)
+class TogetherCards(
+    val select: (MediaItem) -> Boolean,
+    val hold: (MediaItem, customize: () -> Unit) -> Unit,
+    /** Whether a card is about watching together (an invite, a shared title): only those answer here. */
+    val shares: (MediaItem) -> Boolean = { true },
+)
 
 val LocalTogetherCards = staticCompositionLocalOf<TogetherCards?> { null }
 
@@ -316,6 +321,7 @@ fun TogetherHost(container: AppContainer, enabled: Boolean, onPlay: (MediaItem) 
                 }
             },
             hold = { item, customize -> holding = item to customize },
+            shares = { item -> dev.nitrate.core.partners.TogetherRow.isShared(item, container.partners.value, container.groupStandings.value) },
         )
     }
     androidx.compose.runtime.CompositionLocalProvider(LocalTogetherCards provides cards) { content() }

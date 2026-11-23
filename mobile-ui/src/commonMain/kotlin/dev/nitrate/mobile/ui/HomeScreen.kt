@@ -201,13 +201,13 @@ fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVec
  */
 @Composable
 fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
-    // Home's "Watching together" row: invites and the start card answer a tap themselves, a long press
-    // offers the show's choices, and the cards say whose turn it is.
-    val cards = if (row.key == dev.nitrate.core.partners.TogetherRow.KEY) LocalTogetherCards.current else null
+    // What's watched together sits in Continue Watching: invites answer a tap themselves, a long press
+    // on a shared title offers its choices, and those cards say whose turn it is. Others are as anywhere.
+    val cards = if (row.key in dev.nitrate.core.partners.TogetherRow.ROW_KEYS) LocalTogetherCards.current else null
     val actions = if (cards != null) rowActions.withCards(cards) else rowActions
     val partnersInfo by rowActions.container.partners.collectAsState()
     val standings by rowActions.container.groupStandings.collectAsState()
-    fun line(item: dev.nitrate.core.model.MediaItem) = if (cards == null) null else dev.nitrate.core.partners.TogetherRow.line(item, partnersInfo, standings)?.short
+    fun line(item: dev.nitrate.core.model.MediaItem) = if (cards == null || !cards.shares(item)) null else dev.nitrate.core.partners.TogetherRow.line(item, partnersInfo, standings)?.short
     // Retired styles show as what replaced them (Showcase as Artwork, Full Showcase with the cards hidden).
     val display = shownAs.normalized()
     // Poster and Artwork rows: the next cards' pictures load before they scroll in (the other styles do their own).
@@ -238,7 +238,7 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onD
                         subtitle = line(item) ?: listOfNotNull(dev.nitrate.core.model.AirDates.status(item, dev.nitrate.android.nowMs()) ?: item.episodeLabel ?: item.productionYear?.toString(), timeLeft(item)).joinToString(" · ").takeIf { display.showTitles },
                         sharedKey = key,
                         onClick = { actions.open(item, key) },
-                        onLongClick = cards?.let { c -> { c.hold(item) } },
+                        onLongClick = cards?.takeIf { it.shares(item) }?.let { c -> { c.hold(item) } },
                     )
                 }
             }
@@ -254,7 +254,7 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onD
                         subtitle = line(item) ?: item.productionYear?.toString().takeIf { display.showTitles },
                         sharedKey = key,
                         onClick = { actions.open(item, key) },
-                        onLongClick = cards?.let { c -> { c.hold(item) } },
+                        onLongClick = cards?.takeIf { it.shares(item) }?.let { c -> { c.hold(item) } },
                     )
                 }
             }

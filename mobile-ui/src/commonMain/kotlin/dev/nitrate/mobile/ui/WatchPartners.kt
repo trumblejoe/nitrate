@@ -317,7 +317,12 @@ fun WatchPartnersScreen(actions: AppActions) {
  * Home's "Watching together" row's own handling of its cards. [select]: a tap; true when it took
  * it (an invite, the start card), else the card opens as usual. [hold]: a long press.
  */
-class TogetherCards(val select: (MediaItem) -> Boolean, val hold: (MediaItem) -> Unit)
+class TogetherCards(
+    val select: (MediaItem) -> Boolean,
+    val hold: (MediaItem) -> Unit,
+    /** Whether a card is about watching together (an invite, a shared title): only those answer here. */
+    val shares: (MediaItem) -> Boolean = { true },
+)
 
 val LocalTogetherCards = staticCompositionLocalOf<TogetherCards?> { null }
 
@@ -337,6 +342,7 @@ fun TogetherHost(actions: AppActions, enabled: Boolean, content: @Composable () 
                 }
             },
             hold = { holding = it },
+            shares = { item -> dev.nitrate.core.partners.TogetherRow.isShared(item, container.partners.value, container.groupStandings.value) },
         )
     }
     androidx.compose.runtime.CompositionLocalProvider(LocalTogetherCards provides cards) { content() }

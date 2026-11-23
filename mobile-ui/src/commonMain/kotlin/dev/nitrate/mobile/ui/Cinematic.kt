@@ -137,7 +137,7 @@ fun Modifier.pressable(onClick: () -> Unit, role: Role = Role.Button, onLongClic
 /** A card's press: [onClick], and holding it offers the "Watching together" choices when [actions] carries them. */
 @Composable
 fun Modifier.cardPress(actions: AppActions, item: dev.nitrate.core.model.MediaItem, onClick: () -> Unit): Modifier =
-    pressable(onClick, onLongClick = actions.cards?.let { c -> { c.hold(item) } })
+    pressable(onClick, onLongClick = actions.cards?.takeIf { it.shares(item) }?.let { c -> { c.hold(item) } })
 
 // ---- Floating glass navigation ----
 

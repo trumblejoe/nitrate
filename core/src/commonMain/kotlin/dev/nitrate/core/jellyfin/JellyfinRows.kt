@@ -202,25 +202,43 @@ internal fun JellyfinClient.homeJobs(fresh: Boolean = false, skip: Set<String> =
     return homeJobList(fresh, skip, combine).map { it.after(first) }
 }
 
+/** How long Continue Watching waits for what's watched together before showing without it. */
+internal const val TOGETHER_WAIT_MS = 4_000L
+
 internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combine: Boolean): List<dev.nitrate.core.rows.RowJob> {
     suspend fun nextUp() = items("Shows", "NextUp", query = NEXT_UP_QUERY)
+    // What's watched together goes into Continue Watching (Home has no row of its own for it), asked
+    // once for both rows; a slow answer never holds Continue Watching back for long.
+    val togetherLock = kotlinx.coroutines.sync.Mutex()
+    var togetherKept: dev.nitrate.core.partners.TogetherCards? = null
+    suspend fun together(): dev.nitrate.core.partners.TogetherCards = togetherLock.withLock {
+        togetherKept ?: (kotlinx.coroutines.withTimeoutOrNull(TOGETHER_WAIT_MS) { runCatching { togetherCards() }.getOrNull() } ?: dev.nitrate.core.partners.TogetherCards())
+            .also { togetherKept = it }
+    }
     // Continue Watching and Next Up as one row, or the two rows.
     val watching = if (combine) listOf(
         dev.nitrate.core.rows.RowJob(dev.nitrate.core.rows.ContinueAndNext.TITLE, dev.nitrate.core.rows.ContinueAndNext.KEY) {
             coroutineScope {
                 val resume = async { resumeItems(parentId = null, types = null) }
                 val next = async { nextUp() }
-                dev.nitrate.core.rows.ContinueAndNext.merge(resume.await(), next.await()).let {
+                val shared = async { together() }
+                dev.nitrate.core.rows.ContinueAndNext.withTogether(resume.await(), next.await(), shared.await()).let {
                     if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.rows.ContinueAndNext.KEY, dev.nitrate.core.rows.ContinueAndNext.TITLE, it, WIDE_DEFAULT))
                 }
             }
         },
     ) else listOf(
         dev.nitrate.core.rows.RowJob("Continue Watching", "home/continue_watching") {
-            resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT, resumeMore(null, null))) }
+            coroutineScope {
+                val shared = async { together() }
+                dev.nitrate.core.rows.ContinueAndNext.continueWithTogether(resumeItems(parentId = null, types = null), shared.await())
+            }.let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT, resumeMore(null, null))) }
         },
         dev.nitrate.core.rows.RowJob("Next Up", "home/next_up") {
-            nextUp().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT, rowMore("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)))) }
+            coroutineScope {
+                val shared = async { together() }
+                dev.nitrate.core.rows.ContinueAndNext.nextUpWithout(nextUp(), shared.await())
+            }.let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT, rowMore("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)))) }
         },
     )
     return watching + listOf(
@@ -232,9 +250,6 @@ internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combi
         },
         dev.nitrate.core.rows.RowJob("Continue Reading", "home/continue_reading") {
             continueReading(null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
-        },
-        dev.nitrate.core.rows.RowJob("Watching together", dev.nitrate.core.partners.TogetherRow.KEY) {
-            watchingTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.partners.TogetherRow.KEY, dev.nitrate.core.partners.TogetherRow.TITLE, it, WIDE_DEFAULT)) }
         },
         dev.nitrate.core.rows.RowJob.showing(LATEST_JOB) { show ->
             coroutineScope {
@@ -458,8 +473,15 @@ internal fun JellyfinClient.queryParams(
  * each shared show's next episode for the user by whose turn it is. Nothing without the
  * Companion plugin's partners.
  */
-internal suspend fun JellyfinClient.watchingTogether(): List<MediaItem> = coroutineScope {
-    if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyList()
+internal suspend fun JellyfinClient.watchingTogether(): List<MediaItem> =
+    togetherCards().let { c -> if (c.isEmpty) emptyList() else c.invites + c.yours + c.waiting + dev.nitrate.core.partners.TogetherRow.start }
+
+/**
+ * What's watched together, for Continue Watching ([dev.nitrate.core.rows.ContinueAndNext.withTogether]):
+ * invites, then the shared titles by whose move it is. Empty without the Companion plugin's partners.
+ */
+internal suspend fun JellyfinClient.togetherCards(): dev.nitrate.core.partners.TogetherCards = coroutineScope {
+    if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope dev.nitrate.core.partners.TogetherCards()
     val info = partners()
     suspend fun series(id: String, name: String) = runCatching { getItem(id) }.getOrElse { MediaItem(id, name, ItemKind.SERIES) }
     val invites = info.incoming.distinctBy { it.seriesId }.map { r -> async { series(r.seriesId, r.seriesName) } }
@@ -474,5 +496,5 @@ internal suspend fun JellyfinClient.watchingTogether(): List<MediaItem> = corout
             }.getOrNull()
         }
     }
-    dev.nitrate.core.partners.TogetherRow.items(invites.map { it.await() }, shows.mapNotNull { it.await() })
+    dev.nitrate.core.partners.TogetherRow.cards(invites.map { it.await() }, shows.mapNotNull { it.await() })
 }

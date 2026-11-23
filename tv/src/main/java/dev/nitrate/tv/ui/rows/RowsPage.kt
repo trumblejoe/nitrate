@@ -180,11 +180,12 @@ fun RowsPage(
             runCatching { requester?.requestFocus() }
         }
     }
-    // Home's "Watching together" row: its invite and start cards answer OK themselves, and holding OK
-    // on any of its cards offers the show's choices (with Customize this row among them).
+    // What's watched together sits in Continue Watching: an invite's card answers OK itself, and
+    // holding OK on a shared title's card offers its choices (with Customize this row among them).
+    // Other cards in the row behave as anywhere else.
     val together = dev.nitrate.tv.ui.partners.LocalTogetherCards.current
     val currentRows by androidx.compose.runtime.rememberUpdatedState(rows)
-    fun inTogetherRow() = lastCard?.first?.let { currentRows.getOrNull(it)?.key } == dev.nitrate.core.partners.TogetherRow.KEY
+    fun inTogetherRow() = lastCard?.first?.let { currentRows.getOrNull(it)?.key } in dev.nitrate.core.partners.TogetherRow.ROW_KEYS
     val actions = remember(onOpen, onPlay, customize, pageRows, together) {
         fun customizeRow(row: MediaRow) { customize?.takeIf { pageRows != null }?.openRow(row, pageRows!!) ?: run { editing = row } }
         RowActions(
@@ -196,7 +197,7 @@ fun RowsPage(
             },
             onEditRow = { row ->
                 val card = focused
-                if (together != null && row.key == dev.nitrate.core.partners.TogetherRow.KEY && card != null && inTogetherRow()) together.hold(card) { customizeRow(row) }
+                if (together != null && row.key in dev.nitrate.core.partners.TogetherRow.ROW_KEYS && card != null && inTogetherRow() && together.shares(card)) together.hold(card) { customizeRow(row) }
                 else customizeRow(row)
             },
         )

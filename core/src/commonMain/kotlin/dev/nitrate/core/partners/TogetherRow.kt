@@ -114,6 +114,31 @@ object TogetherRow {
         return (invites + cards).distinctBy { it.id } + start
     }
 
+    /**
+     * The shared cards Continue Watching takes in (Home has no row of its own for them any more):
+     * [invites] first, then the titles whose move it is for the user ([TogetherCards.yours]: theirs
+     * to watch or catch up on), then those waiting on the others.
+     */
+    fun cards(invites: List<MediaItem>, shows: List<SharedShow>): TogetherCards {
+        val turns = shows.mapNotNull { s -> card(s)?.let { it to turn(s.keepUp) } }
+        return TogetherCards(
+            invites = invites.distinctBy { it.id },
+            yours = turns.filter { it.second != Turn.WAITING }.sortedBy { it.second.ordinal }.map { it.first }.distinctBy { it.id },
+            waiting = turns.filter { it.second == Turn.WAITING }.map { it.first }.distinctBy { it.id },
+            titles = shows.map { it.keepUp.seriesId }.toSet(),
+        )
+    }
+
+    /** Rows whose shared cards answer for watching together: Continue Watching (alone or with Next Up), and this row where a page still shows it. */
+    val ROW_KEYS = setOf(KEY, "home/continue_watching", dev.nitrate.core.rows.ContinueAndNext.KEY)
+
+    /** Whether [item]'s card is about watching together: the start card, an invite, or a title the user shares with a group. */
+    fun isShared(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): Boolean {
+        if (isStart(item) || inviteFor(item, info) != null) return true
+        val title = titleOf(item, standings) ?: return false
+        return title in standings || info?.on(title).orEmpty().isNotEmpty()
+    }
+
     /** The invite a card stands for (a title's card while someone's asking the user to watch it with them). */
     fun inviteFor(item: MediaItem, info: PartnersInfo?): IncomingRequest? =
         if (item.kind == ItemKind.EPISODE || isStart(item)) null else info?.incoming?.firstOrNull { it.seriesId == item.id }
@@ -186,6 +211,8 @@ object TogetherRow {
         groups.forEach { g -> if (g.pending == null) out += TogetherChoice.ChangeSchedule(g) }
         if (isShow) out += TogetherChoice.OwnSpoilers(series, on = series !in ownSpoilers)
         out += TogetherChoice.OpenShow(series, if (isShow) "Open the show" else "Open it")
+        // Home's own "Watch with someone" card went with the row: starting something new is here too.
+        out += TogetherChoice.Start
         groups.forEach { g -> out += TogetherChoice.Leave(g) }
         return out
     }
@@ -236,4 +263,17 @@ object TogetherRow {
 
     /** "S1:E3" for an episode, else its name. */
     fun shortLabel(e: MediaItem) = if (e.kind == ItemKind.EPISODE) "S${e.seasonNumber ?: "?"}:E${e.indexNumber ?: "?"}" else e.name
+}
+
+/**
+ * Watching together's cards for Continue Watching: invites, the shared titles that are the user's
+ * move, those waiting on the others, and every shared title's id (their episodes leave Next Up).
+ */
+data class TogetherCards(
+    val invites: List<MediaItem> = emptyList(),
+    val yours: List<MediaItem> = emptyList(),
+    val waiting: List<MediaItem> = emptyList(),
+    val titles: Set<String> = emptySet(),
+) {
+    val isEmpty get() = invites.isEmpty() && yours.isEmpty() && waiting.isEmpty()
 }

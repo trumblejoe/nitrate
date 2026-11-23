@@ -62,7 +62,7 @@ The long descriptions of each feature live in `docs/features/`. Read the one for
 - `docs/features/playback.md` – Playback: Deciding how things play, tracks, sound (dialogue boost, upmix), refresh rate, Dolby Vision 7, 3D, credits scenes, Up Next, recaps, downloads and the player's Info.
 - `docs/features/diagnostics.md` – Diagnostics and troubleshooting tools: Playback fixer, predictions, test plays and the TV check, reports, server settings, library health, stats, speed check and the query analyzer.
 - `docs/features/remote.md` – Remote control, Cast and SyncPlay: The phone as a remote, Google Cast through Jellyfin's receiver, and SyncPlay.
-- `docs/features/partners.md` – Watch partners and watching together: Watch groups, schedules, private accounts (privacy rules here are strict), the Watching together row, and watch-together chat and invites.
+- `docs/features/partners.md` – Watch partners and watching together: Watch groups, schedules, private accounts (privacy rules here are strict), watching together in Continue Watching, and watch-together chat and invites.
 - `docs/features/companion.md` – Nitrate Companion (server plugin): What the plugin does and how the apps use it.
 - `docs/features/writing.md` – Shared screenplays and script story: Writing: OT sessions, ownership and sync, scenes, lists, the story map and history.
 - `docs/features/comics.md` – Comics and books: Comic and EPUB reading, series, catalogs (OPDS/CLU) and ComicInfo editing.

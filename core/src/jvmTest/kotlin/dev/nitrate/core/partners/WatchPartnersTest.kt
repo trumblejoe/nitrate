@@ -102,6 +102,34 @@ class WatchPartnersTest {
         assertTrue(TogetherRow.items(emptyList(), listOf(done)).isEmpty())
     }
 
+    /** Continue Watching takes what's watched together: invites, part way, your move, Next Up, waiting; each title once. */
+    @Test fun continueWatchingTakesTheSharedCards() {
+        val invite = MediaItem("dune", "Dune", ItemKind.SERIES)
+        val waiting = show("w", setOf("e1-1", "e1-2"), kim)
+        val yours = show("y", setOf("e1-1", "e1-2"), sam)
+        val catchUp = show("c", setOf("e1-1"), sam)
+        val cards = TogetherRow.cards(listOf(invite), listOf(waiting, yours, catchUp))
+        val partWay = MediaItem("film", "A film", ItemKind.MOVIE)
+        // Part way through the shared show "c": its card is the resume one, not added twice.
+        val resumingShared = MediaItem("c1-2", "Episode 2", ItemKind.EPISODE, seriesId = "c")
+        val otherShow = MediaItem("o1-4", "Episode 4", ItemKind.EPISODE, seriesId = "o")
+        val nextUpOfShared = MediaItem("y1-3", "Episode 3", ItemKind.EPISODE, seriesId = "y")
+        val merged = dev.nitrate.core.rows.ContinueAndNext.withTogether(listOf(partWay, resumingShared), listOf(nextUpOfShared, otherShow), cards)
+        assertEquals(listOf("dune", "film", "c1-2", "y1-3", "o1-4", "w1-3"), merged.map { it.id })
+        // Two rows: Continue Watching has them, Next Up leaves the shared titles out.
+        assertEquals(listOf("dune", "film", "c1-2", "y1-3", "w1-3"), dev.nitrate.core.rows.ContinueAndNext.continueWithTogether(listOf(partWay, resumingShared), cards).map { it.id })
+        assertEquals(listOf("o1-4"), dev.nitrate.core.rows.ContinueAndNext.nextUpWithout(listOf(nextUpOfShared, otherShow), cards).map { it.id })
+        // Nothing shared: Continue Watching as it always was.
+        assertEquals(listOf("film"), dev.nitrate.core.rows.ContinueAndNext.withTogether(listOf(partWay), emptyList(), TogetherCards()).map { it.id })
+    }
+
+    @Test fun onlySharedCardsAnswerForWatchingTogether() {
+        val info = PartnersInfo(listOf(WatchGroup("g1", "bear", "Bear", listOf(dev.nitrate.core.writing.UserRef("sam", "Sam")), 0L)), emptyList(), emptyList())
+        val standings = mapOf("bear" to keep(setOf("e1-1"), sam))
+        assertTrue(TogetherRow.isShared(eps[1], info, standings))
+        assertFalse(TogetherRow.isShared(MediaItem("x", "Other", ItemKind.EPISODE, seriesId = "other"), info, standings))
+    }
+
     @Test fun waitingWithNothingLeftShowsTheShow() {
         val all = eps.map { it.id }.toSet()
         val s = show("w", all, kim)
@@ -119,7 +147,7 @@ class WatchPartnersTest {
         assertEquals(
             listOf(
                 "Kim watched S1:E2 with me", "Watch it together now with Kim", "Invite someone to watch with Kim",
-                "Change the schedule (Binge)", "Hide spoilers by my progress only", "Open the show", "Leave the group with Kim",
+                "Change the schedule (Binge)", "Hide spoilers by my progress only", "Open the show", "Watch something with someone", "Leave the group with Kim",
             ),
             labels,
         )
