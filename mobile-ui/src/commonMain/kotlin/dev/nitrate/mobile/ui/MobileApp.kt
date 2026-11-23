@@ -477,10 +477,15 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             LaunchedEffect(header, text) { kotlinx.coroutines.delay(10_000); message = null }
         }
 
-        UpdatePrompt(container.updater)
-        BackupPrompt(container.backups)
-        SpeakersSetupPrompt(container)
-        WatchInvitePrompt(actions)
+        // The first-run setup; while it shows, the prompts it replaces wait.
+        val setupActive by container.setup.active.collectAsState()
+        if (!setupActive) {
+            UpdatePrompt(container.updater)
+            BackupPrompt(container.backups)
+            SpeakersSetupPrompt(container)
+            WatchInvitePrompt(actions)
+        }
+        FirstRunSetupHost(container)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }
 
         pending?.let { (ask, answer) ->

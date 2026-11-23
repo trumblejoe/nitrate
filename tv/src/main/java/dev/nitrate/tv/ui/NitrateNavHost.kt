@@ -442,6 +442,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         dev.nitrate.tv.ui.settings.SettingsLink("Server-side settings", "Languages, subtitles and permissions set on your Jellyfin server, not on this TV") { nav.navigate(ServerSettingsRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Display profile", "Which profile this TV uses; new, rename, import a radial menu") { nav.navigate(DisplayProfilesRoute) },
                         dev.nitrate.tv.ui.settings.SettingsLink("Device backup", "This TV's settings on your server; restore another device's") { nav.navigate(DeviceBackupRoute) },
+                        dev.nitrate.tv.ui.settings.SettingsLink("Set up this device again", "Copy another device's settings, your speakers and the menu, a step at a time") { container.setup.rerun() },
                         dev.nitrate.tv.ui.settings.SettingsLink("Sign out", container.server.serverUrl) { if (easy) askSignOut = true else signOut() },
                     )),
                     dev.nitrate.tv.ui.settings.SettingsSection("Your watching", listOf(
@@ -501,6 +502,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         dev.nitrate.core.settings.SettingsPlace.SERVERS -> nav.navigate(ServerAddressesRoute)
                         dev.nitrate.core.settings.SettingsPlace.SERVER_SETTINGS -> nav.navigate(ServerSettingsRoute)
                         dev.nitrate.core.settings.SettingsPlace.BACKUP -> nav.navigate(DeviceBackupRoute)
+                        dev.nitrate.core.settings.SettingsPlace.SETUP -> container.setup.rerun()
                         dev.nitrate.core.settings.SettingsPlace.STATS -> nav.navigate(StatsRoute)
                         dev.nitrate.core.settings.SettingsPlace.DIARY -> nav.navigate(DiaryRoute)
                         dev.nitrate.core.settings.SettingsPlace.PARTNERS -> nav.navigate(WatchPartnersRoute)
@@ -782,9 +784,15 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         onDismiss = { quickSwitch = false },
     )
     PlaybackGateDialog(gate)
-    dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)
-    dev.nitrate.tv.ui.settings.BackupPrompt(container.backups)
-    dev.nitrate.tv.ui.player.SpeakersSetupPrompt(container)
+    // The first-run setup, once signed in; while it shows, the prompts it replaces wait.
+    val setupActive by container.setup.active.collectAsState()
+    val onHome = nav.currentBackStack.collectAsState().value.any { it.destination.hasRoute(HomeRoute::class) }
+    if (onHome) dev.nitrate.tv.ui.setup.FirstRunSetupHost(container, menuCatalog) { a -> container.saveScope.launch { container.setup.finish() }; nav.navigate(LoginRoute(a.serverUrl, a.serverName)) }
+    if (!setupActive) {
+        dev.nitrate.tv.ui.components.UpdatePrompt(container.updater)
+        dev.nitrate.tv.ui.settings.BackupPrompt(container.backups)
+        dev.nitrate.tv.ui.player.SpeakersSetupPrompt(container)
+    }
     if (companion?.features?.contains("together") == true) dev.nitrate.tv.ui.together.WatchInvitePrompt(container)
     LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.

@@ -306,6 +306,43 @@ class TvScreenshotTest {
     @Test fun prerollJellyfish() = shoot("tv-preroll-jellyfish") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.JELLYFISH, at = 3f) }
     @Test fun prerollAnimals() = shoot("tv-preroll-animals") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.WILD_ANIMALS, at = 8.5f) }
     @Test fun prerollSettings() = shoot("tv-preroll-settings") { c -> dev.nitrate.tv.ui.preroll.PrerollSettingsScreen(c) }
+    /** The first-run setup, one step at a time (big text, Skip and Back on each, "Step n of N"). */
+    private fun setupShot(name: String, step: dev.nitrate.core.setup.SetupStep, check: () -> Unit = {}) = shoot(name, act = { compose.mainClock.advanceTimeBy(500); compose.waitForIdle(); check() }) { c ->
+        val libraries by androidx.compose.runtime.produceState(emptyList<dev.nitrate.core.model.MediaItem>()) { value = c.server.views() }
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(
+            libraries + listOf(
+                dev.nitrate.core.model.MediaItem("anime-movies", "Anime Movies", dev.nitrate.core.model.ItemKind.LIBRARY),
+                dev.nitrate.core.model.MediaItem("anime-shows", "Anime TV Shows", dev.nitrate.core.model.ItemKind.LIBRARY),
+            ),
+            emptyList(), dev.nitrate.tv.ui.home.MenuActions(),
+        )
+        val data = dev.nitrate.tv.ui.setup.SetupData(
+            steps = dev.nitrate.core.setup.FirstRunSetup.steps(dev.nitrate.core.setup.SetupFacts(tv = true, profilesToAsk = true, backupsOffered = true, askSound = true, menuSuggestions = true)),
+            accounts = listOf(
+                dev.nitrate.core.model.SavedAccount(c.server.currentAccountKey ?: "me", "http://demo", "Home server", "user-1", "Alex", null),
+                dev.nitrate.core.model.SavedAccount("other", "http://demo", "Home server", "user-2", "Sam", null),
+            ),
+            backups = listOf(
+                dev.nitrate.core.backup.BackupSummary("living-room", "Living room TV", "SHIELD Android TV", "tv", System.currentTimeMillis() - 3 * 86_400_000L),
+                dev.nitrate.core.backup.BackupSummary("phone", "Pixel 9", "Pixel 9", "mobile", System.currentTimeMillis() - 86_400_000L),
+            ),
+            output = dev.nitrate.core.playback.SoundOutput(dev.nitrate.core.playback.OutputKind.HDMI, "Living room soundbar", 6),
+            suggestions = listOf(dev.nitrate.core.pages.GroupSuggestion("Anime", listOf("library:anime-movies", "library:anime-shows"))),
+        )
+        androidx.compose.foundation.layout.Column(
+            androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF0B0D12)).padding(horizontal = 72.dp, vertical = 48.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+        ) { dev.nitrate.tv.ui.setup.SetupSteps(c, data, catalog, onSignInAgain = {}, startAt = step) }
+    }
+
+    @Test fun setupProfile() = setupShot("tv-setup-profile", dev.nitrate.core.setup.SetupStep.PROFILE) { check(focusedHasText("Continue as")) { "Continue should take focus" } }
+    @Test fun setupCopy() = setupShot("tv-setup-copy", dev.nitrate.core.setup.SetupStep.COPY_SETTINGS) {
+        compose.onAllNodesWithText("Start fresh").onFirst().assertExists(); compose.onAllNodesWithText("Step 2 of 4").onFirst().assertExists()
+    }
+    @Test fun setupSound() = setupShot("tv-setup-sound", dev.nitrate.core.setup.SetupStep.SOUND)
+    @Test fun setupMenu() = setupShot("tv-setup-menu", dev.nitrate.core.setup.SetupStep.MENU) { compose.onAllNodesWithText("Your menu:", substring = true).onFirst().assertExists() }
+    @Test fun setupDone() = setupShot("tv-setup-done", dev.nitrate.core.setup.SetupStep.DONE) { check(focusedHasText("Start watching")) { "Start watching should take focus" } }
+
     /** Settings search: a setting found by the words around it, with where it lives. */
     @Test fun settingsSearch() = shoot("tv-settings-search") {
         dev.nitrate.tv.ui.settings.SettingsHubScreen(emptyList(), initialQuery = "subtitle")
