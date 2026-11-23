@@ -52,7 +52,8 @@ if [[ ! -f "$PREFIX/lib/pkgconfig/libavcodec.pc" ]]; then
             --disable-autodetect --disable-postproc --disable-avdevice \
             --enable-zlib --enable-iconv --enable-schannel \
             --enable-d3d11va --enable-dxva2 --enable-ffnvcodec --enable-nvdec \
-            --enable-libdav1d
+            --enable-libdav1d \
+            --extra-libs="-liconv"
         # The configuration must be LGPL: GPL or non-free parts are a mistake here.
         if grep -Eq '^CONFIG_(GPL|NONFREE|GPLV3)=yes' ffbuild/config.mak; then echo "FFmpeg was configured with GPL or non-free parts"; exit 1; fi
         make -j"$(nproc)"

@@ -60,12 +60,12 @@ class PartnerScheduleJsonTest {
         val old = groups.first { it.id == normalizeId(g1) }
         assertFalse(old.schedule!!.together)
         assertNull(old.togetherFromId)
-        assertEquals("Separately, at the group's pace", old.schedule!!.how)
+        assertEquals("Together off", old.schedule!!.how)
         val together = groups.first { it.id == normalizeId(g2) }
         assertTrue(together.schedule!!.together)
         assertTrue(together.schedule!!.softLock)
         assertEquals(normalizeId(ep3), together.togetherFromId)
-        assertEquals("Binge, together only, ask first", together.schedule!!.label)
+        assertEquals("Binge, together", together.schedule!!.label)
         // A together-only group's own record: what the user watched with it. Separately: none.
         assertEquals(setOf(normalizeId("b".repeat(32))), together.ownRecord)
         assertNull(old.ownRecord)
