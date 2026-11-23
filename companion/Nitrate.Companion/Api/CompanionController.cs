@@ -81,6 +81,8 @@ public class CompanionController : ControllerBase
             features.Add("notes");
             // One note per message, live sessions included (POST /Nitrate/Notes with a SessionId), and "Bring our earlier notes".
             features.Add("livenotes");
+            // A note can go to just the watch group a playback counts for (NotePost.GroupIds).
+            features.Add("notegroups");
         }
 
         if (ChatEnabled && (Plugin.Instance?.Configuration.KeepChatHistory ?? true))

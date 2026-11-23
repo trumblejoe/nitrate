@@ -200,6 +200,53 @@ class ScreenshotTest {
         }
     }
 
+    /** An episode of The Night Reel, shared with two watch groups (Will; Frank, Tommy and Jane). */
+    private fun withChip(
+        actions: AppActions,
+        with: dev.nitrate.core.partners.WatchingWith? = null,
+        room: dev.nitrate.core.partners.SameRoom? = null,
+        party: List<String>? = null,
+    ): dev.nitrate.core.partners.WithChip {
+        val episode = dev.nitrate.core.model.MediaItem("s1e2", "Episode 2", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel")
+        val group = party?.let { dev.nitrate.core.syncplay.SyncPlayGroup("p1", "Movie night", dev.nitrate.core.syncplay.GroupState.PLAYING, listOf("Me") + it) }
+        return dev.nitrate.core.partners.WithChip.of(episode, (actions.server as dev.nitrate.testing.FakeServer).partnerInfo, emptyMap(), group, "Me", with, room = room)!!
+    }
+
+    /** The player's With… chip, and "Counting for" as it starts when more than one group fits. */
+    @Test @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun withChipShown() = shoot("phone-with-chip") { actions ->
+        val chip = withChip(actions)
+        Box(Modifier.fillMaxSize().background(Color(0xFF203040))) {
+            dev.nitrate.mobile.ui.WithChipButton(chip, easy = false, onOpen = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(12.dp))
+            dev.nitrate.mobile.ui.CountingBanner(chip, easy = false, onOpen = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 72.dp))
+        }
+    }
+
+    /** The panel behind the chip: who's here, Counts for, the watch party, the same room, group chat. */
+    @Test fun withSheet() = shoot("phone-with-sheet") { actions ->
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            dev.nitrate.mobile.ui.WithSheet(withChip(actions), chatOn = true, onGroupChat = {}, onDismiss = {})
+        }
+    }
+
+    /** "We're in the same room": who's here of the group it counts for. */
+    @Test fun withRoom() = shoot("phone-with-room") { actions ->
+        val chip = withChip(actions, room = dev.nitrate.core.partners.SameRoom("g2", listOf("user-5")))
+        check(chip.label == "In the room with Tommy") { chip.label }
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            dev.nitrate.mobile.ui.WithSheet(chip, initialPage = "ROOM", onDismiss = {})
+        }
+    }
+
+    /** In a watch party: inviting someone, and bringing a group's earlier notes. */
+    @Test fun withParty() = shoot("phone-with-party") { actions ->
+        val chip = withChip(actions, party = listOf("Will"))
+        check(chip.label == "Watch party with Will") { chip.label }
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            dev.nitrate.mobile.ui.WithSheet(chip, chatOn = true, brought = "Will brought earlier notes", onGroupChat = {}, onBring = {}, onDismiss = {})
+        }
+    }
+
     /** The group's notes popping up over the video as they're reached. */
     @Test fun groupChatPopups() = shoot("phone-group-chat-popups", setup = { c ->
         (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"

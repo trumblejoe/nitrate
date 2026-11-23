@@ -95,7 +95,7 @@ class GroupRecordTest {
         assertEquals("Level · Suzy level", TogetherRow.line(eps[7], info, standings)!!.short)
         // Episode 4 is next with Tommy: for watching together.
         assertEquals(PartLock.WATCH_TOGETHER, PartLock.of(eps[3], info, standings)!!.word)
-        assertEquals("Watch together · Tommy level", TogetherRow.line(eps[3], info, standings)!!.short)
+        assertEquals("Watch party · Tommy level", TogetherRow.line(eps[3], info, standings)!!.short)
         // Episode 9 is past Suzy's schedule.
         assertEquals("Opens Thursday 7pm", PartLock.of(eps[8], info, standings)!!.word)
     }

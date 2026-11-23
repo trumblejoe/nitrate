@@ -77,7 +77,7 @@ fun PlayerMoreSheet(
                     MorePage.MAIN -> "Playback"
                     MorePage.SUBTITLES -> "Find subtitles"
                     MorePage.PLAY_ON -> "Play on another device"
-                    MorePage.TOGETHER -> "Watch together"
+                    MorePage.TOGETHER -> "Watch party"
                 },
             )
         },
@@ -121,7 +121,7 @@ fun PlayerMoreSheet(
                     HorizontalDivider()
                     MenuRow("Find subtitles…", "Search subtitle sites through your server") { page = MorePage.SUBTITLES }
                     val group by actions.container.syncPlay.group.collectAsState()
-                    MenuRow("Watch together…", group?.let { "In ${it.name} · ${it.participants.size} watching" } ?: "Play in step with others, anywhere") { page = MorePage.TOGETHER }
+                    MenuRow("Watch party…", group?.let { "In ${it.name} · ${it.participants.size} watching" } ?: "Play in step with others, anywhere") { page = MorePage.TOGETHER }
                     MenuRow("Play on another device…", "Continue on your TV or another app") { page = MorePage.PLAY_ON }
                     MenuRow("Picture-in-picture", "Keep watching in a small window", onPictureInPicture)
                 }

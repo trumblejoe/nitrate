@@ -905,7 +905,15 @@ class JellyfinClient(
     }
 
     override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?): dev.nitrate.core.companion.TimelineNote =
-        companionApi.pinNote(NotePostDto(dashless(listOf(itemId)), positionMs, text, if (kind == dev.nitrate.core.companion.ChatKind.REACTION) "Reaction" else "Text", sessionId)).toNote()
+        pinNote(itemId, positionMs, kind, text, sessionId, null)
+
+    override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?, groupIds: List<String>?): dev.nitrate.core.companion.TimelineNote =
+        companionApi.pinNote(
+            NotePostDto(
+                dashless(listOf(itemId)), positionMs, text, if (kind == dev.nitrate.core.companion.ChatKind.REACTION) "Reaction" else "Text", sessionId,
+                groupIds = groupIds?.takeIf { companionHas("notegroups") }?.map { dashless(listOf(it)) },
+            ),
+        ).toNote()
 
     override suspend fun bringNotes(sessionId: String, groupId: String?) {
         if (!companionHas("livenotes")) throw UnsupportedOperationException("Not supported by this server")
@@ -924,7 +932,9 @@ class JellyfinClient(
     override suspend fun broughtNotes(sessionId: String, itemId: String): List<dev.nitrate.core.companion.TimelineNote> =
         if (!companionHas("livenotes")) emptyList()
         else runCatching {
-            get("Nitrate", "Notes", "Brought", sessionId, query = mapOf("itemId" to dashless(listOf(itemId)))).decode<BroughtNotesDto>().notes.map { it.toNote() }
+            get("Nitrate", "Notes", "Brought", sessionId, query = mapOf("itemId" to dashless(listOf(itemId)))).decode<BroughtNotesDto>().let { page ->
+                page.notes.map { it.toNote().copy(brought = true, broughtBy = page.by?.let(::normalizeId)) }
+            }
         }.getOrDefault(emptyList())
 
     override suspend fun deleteNote(itemId: String, id: String) {

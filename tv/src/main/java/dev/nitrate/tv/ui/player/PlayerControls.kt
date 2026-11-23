@@ -105,6 +105,8 @@ internal fun PlayerControls(
     buttons: List<PlayerAction>,
     /** Down from the buttons: opens the More panel. */
     onDown: () -> Unit = {},
+    /** Said beside the buttons, not pressed (easy mode's "With Will · on your own"). */
+    note: String? = null,
 ) {
     Column(
         Modifier
@@ -129,6 +131,9 @@ internal fun PlayerControls(
             PlayPauseButton(playing, onPlayPause, Modifier.remembered(focus, ControlFocus.PLAY_PAUSE))
             for (b in buttons) {
                 PlayerButton(b.label, b.onClick, Modifier.remembered(focus, b.key), enabled = b.enabled)
+            }
+            note?.let {
+                Text(it, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(start = 12.dp))
             }
             plan?.takeIf { it.method != PlayMethod.DIRECT_PLAY }?.let {
                 Text(

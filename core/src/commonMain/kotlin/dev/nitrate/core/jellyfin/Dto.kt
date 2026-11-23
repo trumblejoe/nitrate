@@ -427,7 +427,7 @@ internal data class NoteGroupDto(val id: String, val title: String = "")
 internal data class NotesPageDto(val groups: List<NoteGroupDto> = emptyList(), val notes: List<NoteDto> = emptyList())
 
 @Serializable
-internal data class NotePostDto(val itemId: String, val positionMs: Long, val text: String, val kind: String = "Text", val sessionId: String? = null)
+internal data class NotePostDto(val itemId: String, val positionMs: Long, val text: String, val kind: String = "Text", val sessionId: String? = null, val groupIds: List<String>? = null)
 
 @Serializable
 internal data class BringPostDto(val groupId: String?)

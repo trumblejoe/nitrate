@@ -85,7 +85,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         val fresh = mutableSetOf<String>()
         if (invitesOn) runCatching { server.watchInvites() }.getOrDefault(emptyList()).forEach { inv ->
             fresh += "i:" + inv.id
-            if ("i:" + inv.id !in notified) postSocial("i:" + inv.id, "Watch together", inv.text, INVITES_CHANNEL, "Watch together invites")
+            if ("i:" + inv.id !in notified) postSocial("i:" + inv.id, "Watch party", inv.text, INVITES_CHANNEL, "Watch party invites")
         }
         if (requestsOn) runCatching { server.partners().incoming }.getOrDefault(emptyList()).forEach { r ->
             fresh += "r:" + r.id

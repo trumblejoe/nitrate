@@ -113,7 +113,7 @@ data class GroupSchedule(
         if (!active) return ""
         val pace = if (limits) " The group goes at its own pace: $label, ${if (softLock) "with a warning before watching ahead" else "locked until then"}." else ""
         val with = if (together) {
-            " You'd watch it together only: anything nobody in the group has seen yet plays in Nitrate only while watching together with someone from the group" +
+            " You'd watch it together only: anything nobody in the group has seen yet plays in Nitrate only in a watch party with someone from the group" +
                 (if (softLock) " (or after a warning)." else ".")
         } else ""
         return "$pace$with Accepting agrees to it."
@@ -122,7 +122,7 @@ data class GroupSchedule(
     /** The schedule picker's note under its choices. */
     val note: String get() =
         "Anything someone in the group has seen stays open, so whoever's behind can catch up." +
-            (if (together) " What nobody has seen yet is for watching together: in Nitrate it plays only in a watch-together session with someone from the group." else "") +
+            (if (together) " What nobody has seen yet is for watching together: in Nitrate it plays only in a watch party with someone from the group." else "") +
             " Only Nitrate keeps to it: Jellyfin's own apps don't know about it."
 
     companion object {
@@ -167,8 +167,8 @@ data class WatchInvite(
     val itemName: String?,
     val atMs: Long,
 ) {
-    /** "Will invited you to watch Nitrate together" (or "to watch together" when nothing's playing yet). */
-    val text: String get() = "$fromName invited you to watch " + (itemName?.let { "$it together" } ?: "together")
+    /** "Will invites you to a watch party: Nitrate" (or just "… to a watch party" when nothing's playing yet). */
+    val text: String get() = "$fromName invites you to a watch party" + (itemName?.let { ": $it" } ?: "")
 }
 
 /**
@@ -445,11 +445,11 @@ data class PartLock(val group: WatchGroup, val together: Boolean) {
     /** When it opens ("Thursday 7pm"), for a part not out yet; null while it waits on someone watching the open one. */
     val opens: String? get() = if (together) null else group.opensLabel
 
-    /** The card's word in place of the user's standing: "Opens Thursday 7pm", "Opens later", "Watch together". */
+    /** The card's word in place of the user's standing: "Opens Thursday 7pm", "Opens later", "Watch party". */
     val word: String get() = if (together) WATCH_TOGETHER else opens?.let { "Opens $it" } ?: "Opens later"
 
     companion object {
-        const val WATCH_TOGETHER = "Watch together"
+        const val WATCH_TOGETHER = "Watch party"
 
         /**
          * The lock on [itemId] (a part of the title in [order]) from any of [groups] (the user's
@@ -486,7 +486,7 @@ data class PartLock(val group: WatchGroup, val together: Boolean) {
  */
 class WatchPartnersPlugin : PlaybackGuard {
     override val id = ID
-    override val name = "Watch partners"
+    override val name = "Watch groups"
     override val description = "Keeps what you watch with others in step (shows, films, playlists and collections): groups who see each other's progress, " +
         "schedules that let a title out one part at a time or keep it for watching together, and a Home row of where everyone is. Needs the Nitrate Companion server plugin."
     override val enabledByDefault = true
@@ -502,6 +502,30 @@ class WatchPartnersPlugin : PlaybackGuard {
     /** Notes that the user is watching [titleId] with group [groupId] (the player's chip, or a playback that went ahead). */
     fun used(host: PluginHost, titleId: String, groupId: String) {
         lastUsed.update { it + (key(host, titleId) to groupId) }
+    }
+
+    /** "Counts for" as chosen on the player's chip, per account and title, for this run of the app: later parts play with it too. */
+    private val chosen = kotlinx.coroutines.flow.MutableStateFlow<Map<String, WatchingWith>>(emptyMap())
+
+    /** "We're in the same room", per account and title, for this run of the app. */
+    private val rooms = kotlinx.coroutines.flow.MutableStateFlow<Map<String, SameRoom>>(emptyMap())
+
+    /** Who the user chose to watch [titleId] with (the player's chip), if they did. */
+    fun chosenOn(host: PluginHost, titleId: String): WatchingWith? = chosen.value[key(host, titleId)]
+
+    /** The user chose who [titleId] counts with ("Counts for": a group, or just them). */
+    fun choose(host: PluginHost, titleId: String, with: WatchingWith) {
+        chosen.update { it + (key(host, titleId) to with) }
+        if (with is WatchingWith.Group) used(host, titleId, with.groupId)
+    }
+
+    /** Who's in the room watching [titleId] with the user, if anyone. */
+    fun roomOn(host: PluginHost, titleId: String): SameRoom? = rooms.value[key(host, titleId)]
+
+    /** "We're in the same room" for [titleId] ([room]; null: no longer), which also counts it for that group. */
+    fun setRoom(host: PluginHost, titleId: String, room: SameRoom?) {
+        rooms.update { if (room == null || room.present.isEmpty()) it - key(host, titleId) else it + (key(host, titleId) to room) }
+        if (room != null && room.present.isNotEmpty()) choose(host, titleId, WatchingWith.Group(room.groupId))
     }
 
     override suspend fun beforePlay(item: MediaItem, host: PluginHost): GuardDecision = beforePlay(item, host, null)
@@ -527,12 +551,15 @@ class WatchPartnersPlugin : PlaybackGuard {
             val items = runCatching { host.server.titleItems(title) }.getOrNull() ?: continue
             val k = KeepUp.of(title, items, emptyList(), info.groups)
             if (item.id !in k.order) continue
-            val context = WatchPartners.contextFor(item, info, mapOf(title to k), present, lastUsedOn(host, title), with)
+            val context = WatchPartners.contextFor(item, info, mapOf(title to k), present, lastUsedOn(host, title), with ?: chosenOn(host, title))
             val locks = context.groups.mapNotNull { PartLock.of(item.id, k.order, listOf(it)) }
             // Not out yet: nothing gets it out early, watching together or not.
             locks.firstOrNull { !it.together }?.let { return notOutYet(item, it.group) }
-            // Together only: fine in a watch-together session with someone from that group.
-            locks.firstOrNull { l -> l.group.others.none { it.name.lowercase() in presentLower } }?.let { return togetherOnly(item, it.group, host) }
+            // Together only: fine in a watch party with someone from that group, or with them in the room.
+            val room = roomOn(host, title)
+            locks.firstOrNull { l ->
+                l.group.others.none { it.name.lowercase() in presentLower || (room?.groupId == l.group.id && it.id in room.present) }
+            }?.let { return togetherOnly(item, it.group, host) }
             // Another group's schedule: watching counts as seen for it when it goes by Jellyfin's watched state.
             warnings += info.on(title).filter { g ->
                 g !in context.groups && g.ownRecord == null && g.schedule?.limits == true && g.locks(item.id, k.order)
@@ -564,14 +591,17 @@ class WatchPartnersPlugin : PlaybackGuard {
     private fun togetherOnly(item: MediaItem, g: WatchGroup, host: PluginHost): GuardDecision.Ask {
         val what = item.episodeLabel ?: item.name
         val together = host.together?.let { t ->
-            GuardChoice("Watch it together now", GuardAction.RunThenPlay(playIfFailed = false) { t.start(item, g.id, g.others.map { it.id }, g.label) })
+            GuardChoice("Start a watch party", GuardAction.RunThenPlay(playIfFailed = false) { t.start(item, g.id, g.others.map { it.id }, g.label) })
         }
+        // Watching it side by side: everyone in the group counts as there (the player's chip changes who).
+        val room = GuardChoice("We're in the same room", GuardAction.RunThenPlay(playIfFailed = false) { setRoom(host, g.seriesId, SameRoom(g.id, g.others.map { it.id })) })
         return GuardDecision.Ask(
             title = PartLock.WATCH_TOGETHER,
             message = "Nobody in your group with ${g.label} has seen $what yet, and you watch ${g.seriesName} together only: " +
-                "play it in a watch-together session with them. Catching up and rewatching are always free.",
+                "play it in a watch party with them, or together in the same room. Catching up and rewatching are always free.",
             choices = listOfNotNull(
                 together,
+                room,
                 GuardChoice("Watch anyway", GuardAction.PlayAnyway).takeIf { g.schedule?.softLock == true },
                 GuardChoice("Not now", GuardAction.Cancel),
             ),

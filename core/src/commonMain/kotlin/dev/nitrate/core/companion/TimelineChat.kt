@@ -35,6 +35,8 @@ data class TimelineNote(
     val live: Boolean = false,
     /** Brought into this live session by someone in it ("Bring our earlier notes"): for this session only. */
     val brought: Boolean = false,
+    /** Who brought it in (their user id), for a brought note. */
+    val broughtBy: String? = null,
 )
 
 /** One of the viewer's watch groups on a title. */
@@ -231,6 +233,10 @@ class TimelineChat(
     /** "Show what I missed" pressed: the history holds what came before too. */
     val showAll: StateFlow<Boolean> = _showAll
 
+    private val _broughtBy = MutableStateFlow<String?>(null)
+    /** Who brought earlier notes into this watch party (user id; null: nobody), for the player's panel. */
+    val broughtBy: StateFlow<String?> = _broughtBy
+
     private val _popups = MutableSharedFlow<TimelineNote>(extraBufferCapacity = 32)
     /** Notes to pop up over the video, as they're reached (or arrive live). */
     val popups: SharedFlow<TimelineNote> = _popups
@@ -241,8 +247,27 @@ class TimelineChat(
     private var onFor: (List<String>) -> Boolean = { true }
     private var turned = false
 
-    /** What the on/off choice is remembered under: the title's watch groups, else the live group. */
-    val keys: List<String> get() = _groups.value.map { it.id }.ifEmpty { listOfNotNull(live?.groupId?.value) }
+    /** What the on/off choice is remembered under: the title's watch groups (those in [focus]), else the live group. */
+    val keys: List<String> get() = _groups.value.map { it.id }.filter { f -> focus?.let { f in it } ?: true }.ifEmpty { listOfNotNull(live?.groupId?.value) }
+
+    private var focus: List<String>? = null
+
+    /**
+     * The watch groups this playback counts for (the player's chip, "Counts for"; empty: just the
+     * viewer; null: all their groups on the title, as in a watch party). Only those groups' notes pop
+     * up and list (the viewer's own, and a party's or brought ones, always do), and new notes go to
+     * them only (servers with `notegroups`); with none, nothing is written outside a party.
+     */
+    fun focus(groupIds: List<String>?) {
+        if (focus == groupIds) return
+        focus = groupIds
+        showNotes()
+    }
+
+    private fun inFocus(n: TimelineNote): Boolean {
+        val f = focus ?: return true
+        return n.groupIds.isEmpty() || n.userId == selfId() || n.groupIds.any { it in f }
+    }
 
     /**
      * A playback of [itemId] starts at [startMs]: one request for its notes. Group chat starts as
@@ -287,7 +312,8 @@ class TimelineChat(
     }
 
     private fun showNotes() {
-        clock.setNotes(pageNotes + brought.filter { b -> pageNotes.none { it.id == b.id } })
+        _broughtBy.value = brought.firstNotNullOfOrNull { it.broughtBy }
+        clock.setNotes(pageNotes.filter(::inFocus) + brought.filter { b -> pageNotes.none { it.id == b.id } })
         publish()
     }
 
@@ -319,7 +345,7 @@ class TimelineChat(
      * for this session only. Fails outside a live session or on servers without `livenotes`.
      */
     suspend fun bring(groupId: String?): Result<Unit> {
-        val session = sessionId ?: return Result.failure(IllegalStateException("Not in a watch-together session"))
+        val session = sessionId ?: return Result.failure(IllegalStateException("Not in a watch party"))
         return runCatching { server.bringNotes(session, groupId) }.onSuccess { loadBrought() }
     }
 
@@ -401,8 +427,16 @@ class TimelineChat(
                 publish()
             }
         }
+        val to = focus
+        if (session == null && to != null && _groups.value.none { it.id in to }) {
+            return Result.failure(ChatRejected("You're watching just for you, so nothing is sent. Count it for a watch group to write a note.", tooFast = false))
+        }
         val liveSent = live?.takeIf { session != null }?.send(trimmed, kind, positionMs)
-        val pinned = if (_groups.value.isEmpty()) null else runCatching { server.pinNote(id, positionMs, kind, trimmed) }
+        val pinned = when {
+            _groups.value.isEmpty() -> null
+            to != null -> runCatching { server.pinNote(id, positionMs, kind, trimmed, null, to) }
+            else -> runCatching { server.pinNote(id, positionMs, kind, trimmed) }
+        }
         val note = pinned?.getOrNull()
             ?: liveSent?.getOrNull()?.let { Notes.fromLive(it, id, positionMs) }
             ?: return Result.failure(pinned?.exceptionOrNull() ?: liveSent?.exceptionOrNull() ?: IllegalStateException("No watch group for this title"))

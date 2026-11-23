@@ -96,7 +96,7 @@ class SyncPlayController(
         when (update) {
             is SyncPlayUpdate.Joined -> {
                 _group.value = update.group
-                notice("Watching together in ${update.group.name}")
+                notice("Watch party: ${update.group.name}")
                 startClock()
             }
             SyncPlayUpdate.Left -> if (inGroup) {

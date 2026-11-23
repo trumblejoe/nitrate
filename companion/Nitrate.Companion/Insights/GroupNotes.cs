@@ -87,11 +87,17 @@ public class GroupNotes
     /// session <paramref name="sessionId"/> (one the caller is watching in) for its participants and
     /// the groups it's for, who get it at once.
     /// </summary>
+    /// <param name="onlyGroups">The watch groups the viewer's playback counts for (the player's "Counts for"): the note goes to these of their groups on the title only; null: all of them.</param>
     /// <exception cref="NoteForbiddenException">Not in that session, or (without one) in no watch group on the title.</exception>
     /// <exception cref="ChatRejectedException">The message breaks the chat's rules.</exception>
-    public NoteView Pin(Guid caller, string name, Guid itemId, long positionMs, ChatKind kind, string? text, Guid? sessionId)
+    public NoteView Pin(Guid caller, string name, Guid itemId, long positionMs, ChatKind kind, string? text, Guid? sessionId, IReadOnlyCollection<Guid>? onlyGroups = null)
     {
         var groups = _groupsHolding(caller, itemId);
+        if (onlyGroups is not null)
+        {
+            groups = groups.Where(g => onlyGroups.Contains(g.Id)).ToList();
+        }
+
         LiveSession? session = null;
         if (sessionId is { } id)
         {

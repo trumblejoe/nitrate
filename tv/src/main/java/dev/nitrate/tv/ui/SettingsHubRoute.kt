@@ -108,7 +108,7 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
                 ) + (if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Watch diary", "Every film and episode you finish, with your ratings and notes") { nav.navigate(DiaryRoute) },
                 ) else emptyList()) + (if (partnersOn) listOf(
-                    dev.nitrate.tv.ui.settings.SettingsLink("Watch partners", "Shows you watch with someone, requests, and keeping your account private") { nav.navigate(WatchPartnersRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Watch groups", "What you watch with others, invites, and keeping your account private") { nav.navigate(WatchPartnersRoute) },
                 ) else emptyList()) +
                     enabledPlugins.filterIsInstance<ScreenPlugin>().map { p -> dev.nitrate.tv.ui.settings.SettingsLink(p.screenLabel) { nav.navigate(PluginScreenRoute(p.pluginId)) } }),
                 dev.nitrate.tv.ui.settings.SettingsSection("Tools", listOf(

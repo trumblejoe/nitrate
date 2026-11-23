@@ -300,7 +300,7 @@ internal fun LazyListScope.pluginSettings(actions: AppActions) {
                             }
                             ScriptSyncSettings(actions)
                         }
-                        dev.nitrate.core.partners.WatchPartnersPlugin.ID -> if (partnersAvailable(actions)) PluginLink("Watch partners", "Your groups, invites, and keeping your account private") {
+                        dev.nitrate.core.partners.WatchPartnersPlugin.ID -> if (partnersAvailable(actions)) PluginLink("Watch groups", "Your groups, invites, and keeping your account private") {
                             actions.nav.navigate(WatchPartnersRoute)
                         } else PluginNote("Needs the Nitrate Companion plugin on your server.")
                         dev.nitrate.core.channels.ChannelsPlugin.id -> {
@@ -507,7 +507,7 @@ internal fun InvitesToggle(actions: AppActions) {
     val scope = rememberCoroutineScope()
     val on by notifier.invitesEnabled.collectAsState(false)
     val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setInvitesEnabled(true) } }
-    Toggle("Watch together invites", "When someone invites you to join their group (checked every 15 minutes in the background)", on) { want ->
+    Toggle("Watch party invites", "When someone invites you to their watch party (checked every 15 minutes in the background)", on) { want ->
         if (want) askPermission { scope.launch { notifier.setInvitesEnabled(true) } } else scope.launch { notifier.setInvitesEnabled(false) }
     }
 }

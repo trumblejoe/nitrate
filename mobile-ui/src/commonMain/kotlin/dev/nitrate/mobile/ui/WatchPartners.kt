@@ -249,7 +249,7 @@ fun WatchPartnersScreen(actions: AppActions) {
         container.refreshPartners()
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = ScreenPadding, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Watch partners", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Watch groups", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
             "Watch a show, film, playlist or collection with a group, and everyone in it sees each other's progress. Home's Watching together row shows whose turn it is; press and hold a card there for more. One title can have several groups.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -224,4 +224,23 @@ public sealed class GroupNotesTests : IDisposable
         Assert.Empty(_notes.Brought(Jessica, Session, Episode).Notes);
         Assert.Empty(_notes.Page(Jessica, Episode).Notes);
     }
+
+    [Fact]
+    public void ANoteGoesOnlyToTheGroupThePlaybackCountsFor()
+    {
+        var other = Guid.NewGuid();
+        _groups[Sam] = new List<GroupMembers> { new(Pair, "The Bear", new[] { Sam, Kim }), new(other, "The Bear", new[] { Sam, Jessica }) };
+        _groups[Kim] = new List<GroupMembers> { new(Pair, "The Bear", new[] { Sam, Kim }) };
+        _groups[Jessica] = new List<GroupMembers> { new(other, "The Bear", new[] { Sam, Jessica }) };
+
+        _notes.Pin(Sam, "sam", Episode, 60_000, ChatKind.Text, "just us two", null, new[] { Pair });
+
+        var kept = Assert.Single(_book.All(Episode));
+        Assert.Equal(new[] { Pair }, kept.Shares.Select(s => s.GroupId));
+        Assert.Single(_notes.Page(Kim, Episode).Notes);
+        Assert.Empty(_notes.Page(Jessica, Episode).Notes);
+
+        // None of the caller's groups on the title: nowhere to write it.
+        Assert.Throws<NoteForbiddenException>(() => _notes.Pin(Sam, "sam", Episode, 70_000, ChatKind.Text, "nobody", null, Array.Empty<Guid>()));
+    }
 }

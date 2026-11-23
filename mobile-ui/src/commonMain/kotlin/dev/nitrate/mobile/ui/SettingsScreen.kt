@@ -163,7 +163,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
             Link("Watch diary", "Every film and episode you finish, with your ratings and notes; export for Letterboxd") { actions.nav.navigate(DiaryRoute) }
         }
         item { WatchTogetherRow(actions) }
-        item { if (partnersAvailable(actions)) Link("Watch partners", "Shows you watch with someone, requests, and keeping your account private") { actions.nav.navigate(WatchPartnersRoute) } }
+        item { if (partnersAvailable(actions)) Link("Watch groups", "What you watch with others, invites, and keeping your account private") { actions.nav.navigate(WatchPartnersRoute) } }
         item { Link("Control a device", "Play, pause, seek and change volume on your TV or another app") { open(SettingsPage.REMOTE) } }
 
         group("Tools")

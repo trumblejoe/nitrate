@@ -143,6 +143,14 @@ interface MediaServer {
     suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String? = null): dev.nitrate.core.companion.TimelineNote = unsupported()
 
     /**
+     * The same, for only [groupIds] of the caller's watch groups on the title (the group the
+     * playback counts for, the player's "Counts for"; `notegroups`); null: all of them. Servers
+     * without `notegroups` write it for all of them.
+     */
+    suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?, groupIds: List<String>?): dev.nitrate.core.companion.TimelineNote =
+        pinNote(itemId, positionMs, kind, text, sessionId)
+
+    /**
      * "Bring our earlier notes" (`livenotes`): while the live session [sessionId] lasts, everyone in
      * it gets the caller's readable notes that went to watch group [groupId] as playback passes them,
      * never kept for them; null stops it. Throws [dev.nitrate.core.companion.ChatForbidden] outside the session.

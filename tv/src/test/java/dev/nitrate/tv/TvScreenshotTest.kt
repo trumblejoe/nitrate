@@ -1419,6 +1419,69 @@ class TvScreenshotTest {
         check(focusedHasText("Group chat")) { "focus returns to the button that opened it; focused: ${focusedNodes()}" }
     }
 
+    /** The real player on an episode of a show shared with two watch groups (Will; Frank, Tommy and Jane), with its With… button. */
+    private fun withPlayer(name: String, easy: Boolean = false, act: () -> Unit) = shoot(name, setup = { c ->
+        c.refreshCompanionForTests()
+        if (easy) c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(easyMode = true))
+    }, act = act) { c ->
+        dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {}, watchGroups = c)
+    }
+
+    /** A key to the open dialog's window (a side panel), whichever root it is. */
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+    private fun pressInDialog(name: String) {
+        val k = when (name) { "ok" -> androidx.compose.ui.input.key.Key.DirectionCenter; "back" -> androidx.compose.ui.input.key.Key.Back; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; else -> androidx.compose.ui.input.key.Key.DirectionDown }
+        compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().performKeyInput { pressKey(k) }
+        compose.mainClock.advanceTimeBy(400)
+        compose.waitForIdle()
+    }
+
+    private fun reachWith() {
+        repeat(8) { if (!focusedHasText("With Will")) press("right") }
+        check(focusedHasText("With Will · on your own")) { "the With… button says who it counts with; focused: ${focusedNodes()}" }
+    }
+
+    /** The With… button in the controls: which situation this playback is in, a button like the others. */
+    @Test fun playerWithChip() = withPlayer("tv-player-with-chip") { reachWith() }
+
+    /** OK on it opens the panel beside the video, focus on the first choice of Counts for. */
+    @Test fun playerWithPanel() = withPlayer("tv-player-with-panel") {
+        reachWith()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counts for")).fetchSemanticsNodes().isNotEmpty()) { "the panel shows Counts for" }
+        check(focusedHasText("With Will")) { "focus starts on the first group; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("We're in the same room")).fetchSemanticsNodes().isNotEmpty()) { "the same room is offered" }
+    }
+
+    /** Choosing the other group changes the button; a sub-page's Back goes back a page, the next closes the panel, focus back on the button. */
+    @Test fun playerWithBack() = withPlayer("tv-player-with-back") {
+        reachWith()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        fun choose(text: String) {
+            compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText(text, substring = true)).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        }
+        choose("With Frank, Tommy & Jane")
+        choose("We're in the same room")
+        check(focusedHasText("Frank")) { "the room page opens on the first member; focused: ${focusedNodes()}" }
+        pressInDialog("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counts for")).fetchSemanticsNodes().isNotEmpty()) { "Back on a page goes back to the panel" }
+        pressInDialog("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counts for")).fetchSemanticsNodes().isEmpty()) { "the next Back closes it" }
+        check(focusedHasText("With Frank, Tommy & Jane · on your own")) { "focus returns to the button, which says the new choice; focused: ${focusedNodes()}" }
+    }
+
+    /** Easy mode: who it's watched with is said beside the buttons, never a button. */
+    @Test fun playerWithEasy() = withPlayer("tv-player-with-easy", easy = true) {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("With Will · on your own")).fetchSemanticsNodes().isNotEmpty()) { "the chip's words show in easy mode" }
+        repeat(6) { press("right") }
+        check(!focusedHasText("With Will")) { "but it never takes focus" }
+    }
+
     /** The group's notes pop up over the video as playback reaches them: the first two, a few seconds in, not the later one. */
     @Test fun groupChatPopups() = shoot("tv-group-chat-popups", setup = { c ->
         (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
@@ -1489,7 +1552,7 @@ class TvScreenshotTest {
         audioDelayMs = audioDelay, defaultAudioDelayMs = 0, onAudioDelay = {}, onAudioDelayAsDefault = {},
         frameRate = dev.nitrate.core.playback.FrameRateMatch.ALWAYS, defaultFrameRate = dev.nitrate.core.playback.FrameRateMatch.SEAMLESS,
         refreshNote = dev.nitrate.tv.ui.player.refreshNote(23.976f, 59.94f),
-        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch together").map { it to { _: () -> Unit -> androidx.tv.material3.OutlinedButton(onClick = {}) { androidx.tv.material3.Text("$it page") } } },
+        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch party").map { it to { _: () -> Unit -> androidx.tv.material3.OutlinedButton(onClick = {}) { androidx.tv.material3.Text("$it page") } } },
     )
 
     /** The More panel over the video, opened on [tab]. */

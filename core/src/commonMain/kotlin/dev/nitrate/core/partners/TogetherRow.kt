@@ -34,9 +34,9 @@ sealed interface TogetherChoice {
         override val label = "$names watched $episodeLabel with me"
     }
 
-    /** Start a watch-together group, invite the group's members and play [episode]. */
+    /** Start a watch party (a SyncPlay group), invite the group's members and play [episode]. */
     data class WatchNow(val episode: MediaItem, val groupId: String, val userIds: List<String>, val names: String) : TogetherChoice {
-        override val label = "Watch it together now with $names"
+        override val label = "Start a watch party with $names"
     }
 
     /** Invite someone else into group [groupId]. */
@@ -262,7 +262,7 @@ object TogetherRow {
         val st = (if (context.isNotEmpty()) WatchPartners.standing(item, k, context) else null) ?: WatchPartners.standing(item, k) ?: return null
         // Locked by the group's schedule: when it opens, or that it's for watching together, in place of the user's word.
         PartLock.of(item, info, standings)?.let { l ->
-            val why = if (l.together) "Nobody in the group has seen it yet: you watch it together with ${l.group.label}." else "${l.word}: the group's schedule is ${l.group.schedule?.label}."
+            val why = if (l.together) "Nobody in the group has seen it yet: you watch it in a watch party with ${l.group.label}." else "${l.word}: the group's schedule is ${l.group.schedule?.label}."
             return Standing("${l.word} · ${st.partners}", "$why ${st.long}", catchUp = false, word = l.word, partners = st.partners)
         }
         g@ for (g in info?.on(title).orEmpty()) {

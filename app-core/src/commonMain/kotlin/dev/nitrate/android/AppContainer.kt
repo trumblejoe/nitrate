@@ -401,7 +401,7 @@ class AppContainer(
     }.getOrDefault(emptyList())
 
     /**
-     * "Watch it together now": a watch-together group named for the show, the group's members
+     * "Start a watch party": a watch party (SyncPlay group) named for the show, the group's members
      * invited into it (when the server carries invites). The app then plays the episode, which
      * becomes the group's.
      */
@@ -410,8 +410,8 @@ class AppContainer(
             syncPlay.create("${choice.episode.seriesName ?: choice.episode.name} with ${choice.names}")
             kotlinx.coroutines.withTimeoutOrNull(5_000) { syncPlay.group.first { it != null } }
         }
-        val group = syncPlay.group.value ?: error("Couldn't start watching together")
-        if (invitesAvailable()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
+        val group = syncPlay.group.value ?: error("Couldn't start the watch party")
+        if (invitesAvailable() && choice.userIds.isNotEmpty()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
     }
 
     /** This device's watch-together session as the playback guards see it (a group that watches together only asks for it). */
@@ -420,6 +420,57 @@ class AppContainer(
         override suspend fun start(item: dev.nitrate.core.model.MediaItem, groupId: String, userIds: List<String>, names: String) {
             startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, groupId, userIds, names))
         }
+    }
+
+    /**
+     * Who one playback is watched with, for the player's "With…" chip ([dev.nitrate.core.partners.WatchCompany]):
+     * from the groups, standings and this device's watch party already loaded, nothing polled. What's
+     * played to the end in the same room is counted for those there (`watchedWithGroup`), and the
+     * standings reload after.
+     */
+    fun watchCompany(scope: kotlinx.coroutines.CoroutineScope): dev.nitrate.core.partners.WatchCompany =
+        dev.nitrate.core.partners.WatchCompany(
+            scope, partners, groupStandings, syncPlay.group,
+            selfName = { accountState.value?.name },
+            lastUsed = { title -> watchPartners.lastUsedOn(plugins.host, title) },
+            chosen = { title -> watchPartners.chosenOn(plugins.host, title) },
+            onChosen = { title, with -> watchPartners.choose(plugins.host, title, with) },
+            room = { title -> watchPartners.roomOn(plugins.host, title) },
+            onRoom = { title, room -> watchPartners.setRoom(plugins.host, title, room) },
+            record = { group, items, present ->
+                networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch groups")) {
+                    runCatching { server.watchedWithGroup(group, items, present) }
+                    refreshGroupStandings(1_000)
+                }
+            },
+        )
+
+    /**
+     * "Start a watch party" from the player's chip: a watch party for this device (unless it's in
+     * one) for [item], with [group]'s members invited (or nobody yet, to invite from the panel).
+     * The player already showing [item] joins it. Returns an error message, if any.
+     */
+    suspend fun startWatchParty(item: dev.nitrate.core.model.MediaItem, group: dev.nitrate.core.partners.WatchGroup?): String? = runCatching {
+        val names = group?.let { dev.nitrate.core.partners.WithChip.nameOf(it) } ?: "friends"
+        startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, group?.id.orEmpty(), group?.others.orEmpty().map { it.id }, names))
+    }.exceptionOrNull()?.let { it.message ?: "Couldn't start the watch party" }
+
+    /**
+     * Invites [userIds] to this device's watch party (what it plays, by [item]). Asking someone
+     * outside the title's group to join that too is the group invite ([dev.nitrate.core.MediaServer.askPartner]),
+     * offered by the panel. Returns an error message, if any.
+     */
+    suspend fun inviteToParty(userIds: List<String>, item: dev.nitrate.core.model.MediaItem?): String? = runCatching {
+        val party = syncPlay.group.value ?: error("Not in a watch party")
+        server.inviteToWatch(party.id, userIds, item?.id, item?.let { it.seriesName ?: it.name })
+        Unit
+    }.exceptionOrNull()?.let { it.message ?: "Couldn't send the invites" }
+
+    /** "Add them to the group too?": the usual watch-group invite of [userIds] into [group] (each reads "sent"). */
+    suspend fun inviteToGroup(group: dev.nitrate.core.partners.WatchGroup, userIds: List<String>): String? {
+        val r = runCatching { userIds.forEach { server.askPartner(it, null, group.seriesId, group.seriesName, group.id) } }
+        refreshPartners()
+        return r.exceptionOrNull()?.let { it.message ?: "Couldn't send the invites" }
     }
 
     /** Comics read from the server, kept on the device (see [dev.nitrate.android.comics.ComicLibrary]). */

@@ -41,7 +41,7 @@ data class ChatPage(val messages: List<ChatMessage>, val latest: Long, val broug
 class ChatRejected(message: String, val tooFast: Boolean) : Exception(message)
 
 /** Not allowed in that chat (not watching in the group, or the group is gone). */
-class ChatForbidden : Exception("You're not in this watch-together group")
+class ChatForbidden : Exception("You're not in this watch party")
 
 /** Quick reactions, sendable with a remote. */
 val QUICK_REACTIONS = listOf("😂", "😮", "😍", "👏", "🔥", "😢", "😱", "🍿")

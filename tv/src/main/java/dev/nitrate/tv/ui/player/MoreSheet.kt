@@ -185,7 +185,7 @@ internal class PlayerChoices(
     val onFrameRateAsDefault: () -> Unit = {},
     /** What the video's frame rate looks like at the TV's rate now, e.g. "23.976 fps at 59.94 Hz: slight judder". */
     val refreshNote: String? = null,
-    /** Pages of their own (Speakers, Second subtitles, Find subtitles, Watch together): label → content. */
+    /** Pages of their own (Speakers, Second subtitles, Find subtitles, Watch party): label → content. */
     val pages: List<Pair<String, @Composable (onBack: () -> Unit) -> Unit>> = emptyList(),
     /** Group chat (the watch group's notes popping up as they're reached) on or off; null: no group to chat with here. */
     val groupChat: Boolean? = null,
@@ -466,7 +466,7 @@ internal fun rememberPlayerChoices(
             }
         })
         add("Find subtitles" to { back -> SubtitleSearch(repository, session, onDone = { lang -> session.reloadWithNewSubtitle(lang); onDone() }, onBack = back) })
-        if (syncPlay != null) add("Watch together" to { _ -> dev.nitrate.tv.ui.together.WatchTogetherPanel(syncPlay, "Movie night") })
+        if (syncPlay != null) add("Watch party" to { _ -> dev.nitrate.tv.ui.together.WatchTogetherPanel(syncPlay, "Movie night") })
     }
     val chatOn = groupChat?.on?.collectAsState()?.value
     val missed = groupChat?.missed?.collectAsState()?.value.orEmpty()

@@ -25,7 +25,7 @@ enum class SettingsPlace(val path: String) {
     SETUP("Account › Set up this device again"),
     STATS("Your watching › Your year"),
     DIARY("Your watching › Watch diary"),
-    PARTNERS("Your watching › Watch partners"),
+    PARTNERS("Your watching › Watch groups"),
     CATALOGS("Your watching › Comic catalogs"),
     REMOTE("Your watching › Control a device"),
     GUIDE("Tools › Checking how things play"),
@@ -162,7 +162,7 @@ object SettingsSearch {
         // Your watching
         SettingEntry("Your year", SettingsPlace.STATS, "stats statistics wrapped top shows genres"),
         SettingEntry("Watch diary", SettingsPlace.DIARY, "letterboxd ratings notes log"),
-        SettingEntry("Watch partners", SettingsPlace.PARTNERS, "together schedule privacy private account groups"),
+        SettingEntry("Watch groups", SettingsPlace.PARTNERS, "partners together schedule privacy private account watch party"),
         SettingEntry("Comic catalogs", SettingsPlace.CATALOGS, "opds komga kavita calibre clu books"),
         SettingEntry("Control a device", SettingsPlace.REMOTE, "remote tv play on cast", P),
         // Tools

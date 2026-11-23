@@ -224,7 +224,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 58.dp, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Watch partners", style = MaterialTheme.typography.headlineMedium)
+                Text("Watch groups", style = MaterialTheme.typography.headlineMedium)
                 Text(
                     "Watch a show, film, playlist or collection with a group, and everyone in it sees each other's progress. Home's Watching together row shows whose turn it is; hold OK on a card there for more. One title can have several groups.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

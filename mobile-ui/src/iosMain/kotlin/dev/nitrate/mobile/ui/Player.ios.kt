@@ -157,6 +157,13 @@ actual fun PlayerScreen(
     val chatAvailable = groupChatAvailable(groupChat, chatGroup != null)
     val chatOn = groupChat?.on?.collectAsState()?.value ?: false
     val playerPrefs by container.playbackSettings.settings.collectAsState(null)
+    // Who this is watched with: the "With…" chip, for titles shared with a watch group and watch parties.
+    val company = rememberWatchCompany(
+        actions, item, enabled = !local && clipEndMs == null && testPlay == null, groupChat,
+        positionMs = { session.currentMs() }, durationMs = { session.durationMs.value },
+    )
+    val withChip = company?.chip?.collectAsState()?.value
+    var withOpen by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val engine by session.engine.collectAsState()
@@ -182,6 +189,7 @@ actual fun PlayerScreen(
                 color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelLarge,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
+            withChip?.let { WithChipButton(it, easy, onOpen = { pressed(); withOpen = true }, modifier = Modifier.padding(horizontal = 4.dp)) }
             if (plan != null && clipEndMs == null) {
                 TextButton(onClick = { pressed(); picking = StreamKind.AUDIO }) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { pressed(); picking = StreamKind.SUBTITLE }) { Text("Subtitles", color = Color.White) }
@@ -238,6 +246,8 @@ actual fun PlayerScreen(
             }
         }
         if (groupChat != null && chatAvailable && !chatting) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+        // More than one group would count this: which one, plainly, as it starts.
+        CountingBanner(withChip, easy, onOpen = { withOpen = true }, modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 56.dp))
 
         stillAsk?.let { next ->
             val rewind = remember(next) { still.rewind() }
@@ -274,6 +284,9 @@ actual fun PlayerScreen(
     }
 
     val p = plan
+    if (withOpen && !easy && company != null && withChip != null) {
+        PlayerWithSheet(actions, company, withChip, item, groupChat, chatAvailable, positionMs = { session.currentMs() }) { withOpen = false }
+    }
     if (chatting && groupChat != null) GroupChatSheet(
         groupChat, syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title, positionMs = { session.currentMs() },
         onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) },

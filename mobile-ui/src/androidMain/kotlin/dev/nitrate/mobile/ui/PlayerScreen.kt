@@ -248,6 +248,13 @@ actual fun PlayerScreen(
     val groupChat = rememberGroupChat(actions, item?.id, enabled = !local && clipEndMs == null && testPlay == null) { session.player.currentPosition }
     val chatAvailable = groupChatAvailable(groupChat, chatGroup != null)
     val chatOn = groupChat?.on?.collectAsState()?.value ?: false
+    // Who this is watched with: the "With…" chip, for titles shared with a watch group and watch parties.
+    val company = rememberWatchCompany(
+        actions, item, enabled = !local && clipEndMs == null && testPlay == null, groupChat,
+        positionMs = { session.player.currentPosition }, durationMs = { session.player.duration.coerceAtLeast(0) },
+    )
+    val withChip = company?.chip?.collectAsState()?.value
+    var withOpen by remember { mutableStateOf(false) }
     val error by session.error.collectAsState()
     val notice by session.notice.collectAsState()
     val videoDecoder by session.videoDecoder.collectAsState()
@@ -415,6 +422,7 @@ actual fun PlayerScreen(
                     val sub = listOfNotNull(item?.episodeLabel, "Downloaded".takeIf { local }, plan?.method?.takeIf { it != PlayMethod.DIRECT_PLAY }?.let { if (it == PlayMethod.TRANSCODE) "Transcoding" else "Direct stream" })
                     if (sub.isNotEmpty()) Text(sub.joinToString(" · "), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                 }
+                withChip?.let { WithChipButton(it, easy, onOpen = { withOpen = true }, modifier = Modifier.padding(horizontal = 4.dp)) }
                 if (canWrite && !writing && !easy) IconButton(onClick = { writing = true }) { Icon(Icons.Default.Edit, "Write beside the video (Ctrl+E)", tint = Color.White) }
                 if ((item?.chapters?.size ?: 0) > 1 && !easy) TextButton(onClick = { dialog = PlayerDialog.CHAPTERS }) { Text("Chapters", color = Color.White) }
                 if (lyrics != null) TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "Hide lyrics" else "Lyrics", color = Color.White) }
@@ -525,6 +533,11 @@ actual fun PlayerScreen(
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), MaterialTheme.shapes.medium).padding(horizontal = 12.dp, vertical = 8.dp),
         )
         if (groupChat != null && chatAvailable && dialog != PlayerDialog.CHAT) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+        // More than one group would count this: which one, plainly, as it starts.
+        if (!inPip) CountingBanner(withChip, easy, onOpen = { withOpen = true }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
+    }
+    if (withOpen && !easy && company != null && withChip != null) {
+        PlayerWithSheet(actions, company, withChip, item, groupChat, chatAvailable, positionMs = { session.player.currentPosition }) { withOpen = false }
     }
 
     val p = plan

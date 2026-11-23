@@ -617,7 +617,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Bool
         if (video && (container.companionOffers("notes") || container.companionOffers("moments"))) entry("Group notes", "What your groups said along it, up to where you've got") { open = "moments" }
         if (video && container.companionOffers("chathistory")) entry("Earlier chat", "What was said watching it together") { open = "chat" }
         // In one of the user's watch groups: the same choices as a long press on its Watching together card.
-        if (together) entry("Watching together…", "Catch up, watched it together, watch now, invite, leave") { open = "together" }
+        if (together) entry("Watch group…", "Catch up, same room, watch party, invite, leave") { open = "together" }
         if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) entry("Add to a playlist or collection", null) { open = "add" }
         studio?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", it, studio = it)) } }
         year?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", "From $it", year = it)) } }

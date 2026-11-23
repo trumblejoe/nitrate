@@ -246,3 +246,42 @@ class TimelineChatTest {
         assertTrue(alone.bring("g1").isFailure)
     }
 }
+
+class TimelineChatFocusTest {
+    private val unused: MediaServer = java.lang.reflect.Proxy.newProxyInstance(MediaServer::class.java.classLoader, arrayOf(MediaServer::class.java)) { _, method, _ ->
+        error("not used: ${method.name}")
+    } as MediaServer
+
+    @Test fun countingForOneGroupShowsItsNotesAndWritesToItOnly() = runTest(UnconfinedTestDispatcher()) {
+        val sent = mutableListOf<List<String>?>()
+        val server = object : MediaServer by unused {
+            override suspend fun titleNotes(itemId: String) = TitleNotes(
+                listOf(NoteGroup("tommy", "The Bear"), NoteGroup("kim", "The Bear")),
+                listOf(
+                    TimelineNote("t", "tommy", "Tommy", itemId, 10_000, ChatKind.TEXT, "t", listOf("tommy")),
+                    TimelineNote("k", "kim", "Kim", itemId, 20_000, ChatKind.TEXT, "k", listOf("kim")),
+                ),
+            )
+            override suspend fun broughtNotes(sessionId: String, itemId: String) = emptyList<TimelineNote>()
+            override suspend fun pinNote(itemId: String, positionMs: Long, kind: ChatKind, text: String, sessionId: String?, groupIds: List<String>?): TimelineNote {
+                sent += groupIds
+                return TimelineNote("n", "me", "me", itemId, positionMs, kind, text, groupIds.orEmpty())
+            }
+        }
+        val chat = TimelineChat(server, backgroundScope, { "me" }, null) { 0 }
+        val popped = mutableListOf<String>()
+        backgroundScope.launch { chat.popups.collect { popped += it.id } }
+        chat.start("ep1", 0) { true }
+        advanceUntilIdle()
+        chat.focus(listOf("tommy"))
+        (0..30L).forEach { chat.at(it * 1_000) }
+        assertEquals(listOf("t"), popped)
+        assertEquals(listOf("tommy"), chat.keys)
+        assertTrue(chat.send("hi", ChatKind.TEXT, 30_000).isSuccess)
+        assertEquals(listOf<List<String>?>(listOf("tommy")), sent)
+        // Just me: nothing is written.
+        chat.focus(emptyList())
+        assertTrue(chat.send("hi", ChatKind.TEXT, 31_000).isFailure)
+        assertEquals(1, sent.size)
+    }
+}

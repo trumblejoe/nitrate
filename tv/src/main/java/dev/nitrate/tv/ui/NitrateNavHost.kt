@@ -552,6 +552,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     remember(route.itemId) { container.timelineChat(chatScope, live = true) }
                 } else null,
                 onGroupChat = { groups, on -> scope.launch { container.setGroupChat(groups, on) } },
+                watchGroups = container.takeIf { route.clipEndMs < 0 && !route.test },
                 testPlay = if (route.test) { result -> scope.launch { container.saveTestPlay(result) } } else null,
                 onEnded = {
                     val next = route.queue.split(',').filter(String::isNotBlank)

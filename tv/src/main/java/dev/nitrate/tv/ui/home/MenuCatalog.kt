@@ -204,7 +204,7 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
         actions.onChannels?.let { add(NavEntry("Channels", NavIcons.channels, id = MenuStops.CHANNELS, onClick = it)) }
         add(NavEntry("Your pages", NavIcons.pages, id = MenuStops.PAGES, onClick = actions.onPages))
         add(NavEntry("Comics", NavIcons.comics, id = MenuStops.COMICS, onClick = actions.onComics))
-        add(NavEntry("Watch together", NavIcons.together, id = MenuStops.TOGETHER, onClick = actions.onTogether))
+        add(NavEntry("Watch party", NavIcons.together, id = MenuStops.TOGETHER, onClick = actions.onTogether))
         add(NavEntry("More", NavIcons.more, id = MenuStops.MORE, onClick = actions.onMore))
         add(NavEntry("Settings", NavIcons.settings, id = MenuStops.SETTINGS, onClick = actions.onSettings))
         add(NavEntry("Switch user", NavIcons.profile, id = MenuStops.PROFILES, onLongClick = actions.onQuickSwitch, onClick = actions.onProfiles))

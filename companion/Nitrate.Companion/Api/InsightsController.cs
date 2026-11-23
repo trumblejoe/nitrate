@@ -25,7 +25,8 @@ public record ProblemPost(Guid ItemId, string DeviceId, string DeviceName, strin
 /// <param name="Text">What was said.</param>
 /// <param name="Kind">Text or a reaction.</param>
 /// <param name="SessionId">The live (SyncPlay) session it's sent in, if any: its participants get it at once and may read it later.</param>
-public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Companion.Chat.ChatKind Kind = Nitrate.Companion.Chat.ChatKind.Text, Guid? SessionId = null);
+/// <param name="GroupIds">Only these of the caller's watch groups on the title (the group the playback counts for); null: all of them (feature <c>notegroups</c>).</param>
+public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Companion.Chat.ChatKind Kind = Nitrate.Companion.Chat.ChatKind.Text, Guid? SessionId = null, IReadOnlyList<Guid>? GroupIds = null);
 
 /// <summary>Which watch group's earlier notes to bring into a live session (null: stop).</summary>
 public record BringPost(Guid? GroupId);
@@ -233,7 +234,7 @@ public class InsightsController : ControllerBase
         // Only members of a watch group on this title, or someone in the live session, can write here.
         try
         {
-            return _groupNotes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, post.SessionId);
+            return _groupNotes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, post.SessionId, post.GroupIds);
         }
         catch (NoteForbiddenException)
         {

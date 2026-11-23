@@ -88,7 +88,7 @@ internal object JellyfinServerSettings {
                     "Titles rated above it are hidden by the server."),
                 ServerSetting("Blocked tags", policy.list("BlockedTags").ifEmpty { listOf("None") }.joinToString(", "), APPLIES),
                 ServerSetting("Live TV", yesNo(policy.flag("EnableLiveTvAccess")), APPLIES),
-                ServerSetting("Watch together (SyncPlay)", policy.text("SyncPlayAccess") ?: "Not set", APPLIES),
+                ServerSetting("Watch parties", policy.text("SyncPlayAccess") ?: "Not set", APPLIES),
                 ServerSetting("Access away from home", yesNo(policy.flag("EnableRemoteAccess")), APPLIES),
             ),
         )

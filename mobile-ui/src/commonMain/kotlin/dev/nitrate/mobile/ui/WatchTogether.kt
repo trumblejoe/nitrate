@@ -42,7 +42,7 @@ fun GroupState.label() = when (this) {
 }
 
 /**
- * Watch together (SyncPlay): start a group or join one, see who's in it, leave. Whatever anyone
+ * Watch party (SyncPlay): start a group or join one, see who's in it, leave. Whatever anyone
  * in the group plays, pauses or seeks happens for everyone.
  */
 @Composable
@@ -85,7 +85,7 @@ private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup, onChat: 
             group.state.label() + if (queue?.itemIds?.size?.let { it > 1 } == true) " · ${queue!!.index + 1} of ${queue!!.itemIds.size}" else "",
             color = accentColor(),
         )
-        Text("In the group", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("In the party", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         group.participants.groupingBy { it }.eachCount().forEach { (name, count) ->
             Text(if (count > 1) "$name ($count devices)" else name, style = MaterialTheme.typography.bodyLarge)
         }
@@ -97,7 +97,7 @@ private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup, onChat: 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             onChat?.let { Button(onClick = it) { Text("Chat") } }
             onInvite?.let { OutlinedButton(onClick = it) { Text("Invite people") } }
-            OutlinedButton(onClick = { scope.launch { syncPlay.leave() } }) { Text("Leave group") }
+            OutlinedButton(onClick = { scope.launch { syncPlay.leave() } }) { Text("Leave the party") }
         }
     }
 }
@@ -125,18 +125,18 @@ private fun FindGroup(syncPlay: SyncPlayController, defaultName: String, myName:
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(name, { name = it }, label = { Text("New group") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(name, { name = it }, label = { Text("New watch party") }, singleLine = true, modifier = Modifier.weight(1f))
             Button(onClick = { act { syncPlay.create(name.ifBlank { defaultName }) } }, enabled = !busy) { Text("Start") }
         }
-        Text("Join a group", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Join a watch party", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val list = groups?.getOrNull()
         when {
-            groups == null -> Text("Looking for groups…")
+            groups == null -> Text("Looking for watch parties…")
             groups!!.isFailure -> Text(
-                "Couldn't list groups. Your account may not be allowed to use SyncPlay (ask your server admin).",
+                "Couldn't list watch parties. Your account may not be allowed to join them (ask your server admin).",
                 color = MaterialTheme.colorScheme.error,
             )
-            list.isNullOrEmpty() -> Text("No groups right now. Start one, then join it from the other devices.")
+            list.isNullOrEmpty() -> Text("No watch parties right now. Start one, then join it from the other devices.")
             else -> list.forEach { g ->
                 // Already watching in it on another device (the TV): chat from here without playing.
                 val mine = myName != null && g.participants.any { it.equals(myName, ignoreCase = true) }
@@ -163,7 +163,7 @@ private fun FindGroup(syncPlay: SyncPlayController, defaultName: String, myName:
 fun WatchTogetherDialog(actions: AppActions, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Watch together") },
+        title = { Text("Watch party") },
         text = { Column(Modifier.fillMaxWidth()) { WatchTogetherPanel(actions, defaultName = defaultGroupName(actions)) } },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
@@ -242,8 +242,8 @@ fun WatchInvitePrompt(actions: AppActions) {
     val invite = invites.firstOrNull() ?: return
     AlertDialog(
         onDismissRequest = { scope.launch { container.dismissInvite(invite) } },
-        title = { Text("Watch together?") },
-        text = { Text(invite.text + ". Joining puts you in their group: what they play, plays for you.") },
+        title = { Text("Join the watch party?") },
+        text = { Text(invite.text + ". Joining puts you in their watch party: what they play, plays for you.") },
         confirmButton = { TextButton(onClick = { scope.launch { runCatching { container.joinInvite(invite) } } }) { Text("Join") } },
         dismissButton = { TextButton(onClick = { scope.launch { container.dismissInvite(invite) } }) { Text("Not now") } },
     )

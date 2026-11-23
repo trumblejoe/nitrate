@@ -94,10 +94,13 @@ import dev.nitrate.core.model.SubtitleDelivery
 private const val CONTROLS_TIMEOUT_MS = 5_000L
 
 
-private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, FIX, CHAT }
+private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, FIX, CHAT, WITH }
 
 /** Panels shown as dialogs (their own window, with focus of their own). */
-private val DIALOG_PANELS = setOf(Panel.AUDIO, Panel.SUBTITLES, Panel.FIX)
+private val DIALOG_PANELS = setOf(Panel.AUDIO, Panel.SUBTITLES, Panel.FIX, Panel.WITH)
+
+/** The With… button's place for focus (its label changes with who's watching). */
+private const val WITH_KEY = "with"
 
 /** Keys that, with the controls hidden, only bring them back. */
 private val WAKE_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)
@@ -156,6 +159,11 @@ fun PlayerScreen(
     playlistNext: (suspend (MediaItem) -> dev.nitrate.android.playlists.PlaylistContext?)? = null,
     /** Hears skips and jumps back into what was skipped, so wrong intro/recap marks get fixed (Companion). */
     skipWatch: dev.nitrate.core.companion.SkipWatch? = null,
+    /**
+     * Who this is watched with (the With… button: watch groups, watch parties, the same room), from
+     * the app's groups, standings and watch party; null: no button.
+     */
+    watchGroups: dev.nitrate.android.AppContainer? = null,
 ) {
     val context = LocalContext.current
     // "End of this" sleep timer: when it ends, leave instead of rolling on through a queue.
@@ -257,6 +265,12 @@ fun PlayerScreen(
         groupChat.start(i.id, player.currentPosition) { ids -> displayPrefs.groupChatOn(ids) }
     }
     DisposableEffect(groupChat) { onDispose { groupChat?.close() } }
+    // Who it's watched with: the With… button, for titles shared with a watch group and watch parties.
+    val company = rememberWatchCompany(
+        watchGroups, item, enabled = clipEndMs == null && testPlay == null, groupChat,
+        positionMs = { player.currentPosition }, durationMs = { player.duration.coerceAtLeast(0L) },
+    )
+    val withChip = company?.chip?.collectAsState()?.value
     // What follows: the next episode in viewing order, or the next film in its collection.
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
@@ -617,6 +631,8 @@ fun PlayerScreen(
                 buttons = listOfNotNull(
                     PlayerAction("Audio", ready) { panel = Panel.AUDIO },
                     PlayerAction("Subtitles", ready) { panel = Panel.SUBTITLES },
+                    // Who it's watched with; in easy mode only said, beside the buttons.
+                    withChip?.takeIf { !easy }?.let { PlayerAction(it.label, key = WITH_KEY) { panel = Panel.WITH } },
                     PlayerAction("Info", ready) { panel = Panel.INFO }.takeIf { !easy },
                     PlayerAction("More", ready) { panel = Panel.MORE }.takeIf { !easy },
                     PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },
@@ -637,6 +653,7 @@ fun PlayerScreen(
                     }),
                 // Down opens More (not in easy mode, which has no More).
                 onDown = { if (!easy && ready) panel = Panel.MORE },
+                note = withChip?.label?.takeIf { easy },
             )
         }
 
@@ -670,6 +687,9 @@ fun PlayerScreen(
             }
             AskPhones(remote, ask) { choice -> if (choice == "play") onPlayNext?.invoke(nextUp) else { upNextHidden = true; refocus() } }
         }
+
+        // More than one group would count this: which one, plainly, as it starts (the With… button changes it).
+        CountingBanner(withChip, Modifier.align(Alignment.TopCenter).padding(top = 32.dp))
 
         SecondSubtitleLine(session, settingsNow.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp))
 
@@ -862,6 +882,12 @@ fun PlayerScreen(
             onDismiss = { panel = Panel.NONE },
         )
     }
+    if (panel == Panel.WITH && company != null && withChip != null && watchGroups != null && !easy) {
+        // Back goes back a page, then closes it; focus returns to the With… button.
+        PlayerWithPanel(watchGroups, company, withChip, item, groupChat, chatAvailable, onGroupChat = ::turnGroupChat) { panel = Panel.NONE }
+    }
+    // The button went (the title stopped being shared, or the party ended) while its panel was open.
+    LaunchedEffect(withChip == null) { if (withChip == null && panel == Panel.WITH) panel = Panel.NONE }
     person?.let { who ->
         // Focus stays on their photo in the cast strip; the controls stay up a while longer.
         PersonDialog(repository, who, item, onDismiss = { person = null; touch() })
