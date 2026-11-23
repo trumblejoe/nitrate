@@ -1,5 +1,7 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -90,17 +92,37 @@ enum class SettingsPage(val title: String) {
  * watching, tools, about), each opening its own page.
  */
 @Composable
-fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modifier = Modifier) {
+fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modifier = Modifier, initialQuery: String = "") {
     val c = actions.container
     val scope = rememberCoroutineScope()
     val account by c.account.collectAsState()
     val companion by c.companion.collectAsState()
     val easy = LocalDisplayPrefs.current.easyMode
     fun open(page: SettingsPage) = actions.nav.navigate(SettingsPageRoute(page.name))
+    var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialQuery) }
 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
         item { Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        // Any setting by name or the words around it (core SettingsSearch); the groups below while nothing's typed.
+        item {
+            androidx.compose.material3.OutlinedTextField(
+                query, { query = it },
+                placeholder = { Text("Search settings") },
+                singleLine = true,
+                leadingIcon = { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Search, null) },
+                trailingIcon = if (query.isNotEmpty()) ({
+                    androidx.compose.material3.IconButton(onClick = { query = "" }) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Close, "Clear search") }
+                }) else null,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        if (query.isNotBlank()) {
+            val found = dev.nitrate.core.settings.SettingsSearch.find(query, tv = false, admin = account?.isAdmin == true)
+            if (found.isEmpty()) item { Text("No setting matches \"$query\".", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+            found.forEach { e -> item(key = "found/${e.place}/${e.title}") { Link(e.title, e.place.path) { openPlace(actions, e.place) } } }
+            return@LazyColumn
+        }
         item { Link("Picture & sound", "Sound, speakers, audio sync; Advanced for formats and fixes") { open(SettingsPage.SOUND) } }
         item { Link("Subtitles", "Size, colour, background and styled subtitles") { open(SettingsPage.SUBTITLES) } }
         item { Link("Display", "Look, colours, display profile, what's shown about titles") { open(SettingsPage.DISPLAY) } }
@@ -158,6 +180,38 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         item { Link("Updates", "Nitrate ${c.updater.versionName}; check now or when Nitrate opens") { open(SettingsPage.UPDATES) } }
         item { Link("Plugins", "Built-in extras, on or off for this phone") { open(SettingsPage.PLUGINS) } }
         item { Link("Open-source licences", "FFmpeg, Media3, Kotlin and the rest Nitrate is built with") { actions.nav.navigate(LicensesRoute) } }
+    }
+}
+
+/** Opens the page a found setting lives on. */
+private fun openPlace(actions: AppActions, place: dev.nitrate.core.settings.SettingsPlace) {
+    fun page(p: SettingsPage) = actions.nav.navigate(SettingsPageRoute(p.name))
+    when (place) {
+        dev.nitrate.core.settings.SettingsPlace.SOUND -> page(SettingsPage.SOUND)
+        dev.nitrate.core.settings.SettingsPlace.SOUND_ADVANCED -> page(SettingsPage.ADVANCED)
+        dev.nitrate.core.settings.SettingsPlace.SUBTITLES -> page(SettingsPage.SUBTITLES)
+        dev.nitrate.core.settings.SettingsPlace.DISPLAY_SHOWN -> page(SettingsPage.SHOWN)
+        dev.nitrate.core.settings.SettingsPlace.WATCHING, dev.nitrate.core.settings.SettingsPlace.BEFORE_IT_PLAYS -> page(SettingsPage.WATCHING)
+        dev.nitrate.core.settings.SettingsPlace.NOTIFICATIONS -> page(SettingsPage.NOTIFICATIONS)
+        dev.nitrate.core.settings.SettingsPlace.BACKUP -> page(SettingsPage.BACKUP)
+        dev.nitrate.core.settings.SettingsPlace.REMOTE -> page(SettingsPage.REMOTE)
+        dev.nitrate.core.settings.SettingsPlace.UPDATES -> page(SettingsPage.UPDATES)
+        dev.nitrate.core.settings.SettingsPlace.PLUGINS -> page(SettingsPage.PLUGINS)
+        dev.nitrate.core.settings.SettingsPlace.PROFILES -> actions.nav.navigate(ProfilesRoute)
+        dev.nitrate.core.settings.SettingsPlace.SERVERS -> actions.nav.navigate(ServerAddressesRoute)
+        dev.nitrate.core.settings.SettingsPlace.STATS -> actions.nav.navigate(StatsRoute)
+        dev.nitrate.core.settings.SettingsPlace.DIARY -> actions.nav.navigate(DiaryRoute)
+        dev.nitrate.core.settings.SettingsPlace.PARTNERS -> actions.nav.navigate(WatchPartnersRoute)
+        dev.nitrate.core.settings.SettingsPlace.CATALOGS -> actions.nav.navigate(CatalogsRoute)
+        dev.nitrate.core.settings.SettingsPlace.GUIDE -> actions.nav.navigate(GuideRoute)
+        dev.nitrate.core.settings.SettingsPlace.OVERVIEW -> actions.nav.navigate(PlaybackOverviewRoute)
+        dev.nitrate.core.settings.SettingsPlace.QUERY_ANALYZER -> actions.nav.navigate(QueryAnalyzerRoute)
+        dev.nitrate.core.settings.SettingsPlace.HOUSEHOLD -> actions.nav.navigate(HouseholdDevicesRoute)
+        dev.nitrate.core.settings.SettingsPlace.HEALTH -> actions.nav.navigate(LibraryHealthRoute)
+        dev.nitrate.core.settings.SettingsPlace.MANAGE_SERVER -> actions.nav.navigate(ServerAdminRoute)
+        dev.nitrate.core.settings.SettingsPlace.LICENCES -> actions.nav.navigate(LicensesRoute)
+        // The phone's Display page holds what the TV splits into several.
+        else -> page(SettingsPage.DISPLAY)
     }
 }
 

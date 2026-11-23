@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.pages
 
+import dev.nitrate.core.pages.applyToPage
+import dev.nitrate.core.pages.applyEverywhere
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -327,7 +329,13 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
         fun set(change: (PageLook) -> PageLook) = container.changePrefs { PageLooks.change(it, owner, change) }
         val arrangement = look.arrangement ?: PageArrangement.ROWS
         Column {
-            ChoiceItem("Arrangement", arrangement.label, first?.let { Modifier.focusRequester(it) } ?: Modifier) {
+            // A named look sets everything below at once; the choices under it fine-tune it.
+            val preset = dev.nitrate.core.pages.LayoutPreset.matching(look)
+            ChoiceItem("Look", preset?.label ?: "Your own", first?.let { Modifier.focusRequester(it) } ?: Modifier) {
+                val next = dev.nitrate.core.pages.LayoutPreset.entries.let { all -> all[((preset?.ordinal ?: -1) + 1) % all.size] }
+                container.changePrefs { dev.nitrate.core.pages.PageLooks.applyToPage(it, owner, next) }
+            }
+            ChoiceItem("Arrangement", arrangement.label) {
                 set { it.copy(arrangement = (it.arrangement ?: PageArrangement.ROWS).next()) }
             }
             // Stacked rows keep their summary at the top left: no corner to choose there.

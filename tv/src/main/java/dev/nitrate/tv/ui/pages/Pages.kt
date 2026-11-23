@@ -1,5 +1,7 @@
 package dev.nitrate.tv.ui.pages
 
+import dev.nitrate.core.pages.applyToPage
+import dev.nitrate.core.pages.applyEverywhere
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -252,6 +254,21 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 Text("Layout for every page", style = MaterialTheme.typography.titleMedium)
                 Text("A page can have its own: hold OK on one of its rows → Customize → Layout, or Pages below", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        item {
+            // A named look for every page (each page's own layout dropped); the choices below fine-tune it.
+            val preset = dev.nitrate.core.pages.LayoutPreset.matching(dev.nitrate.core.pages.PageLooks.defaults(prefs, dev.nitrate.core.pages.PageKeys.HOME))
+                ?.takeIf { prefs.pageLooks.isEmpty() && prefs.tvLibraryArrangement == null }
+            ListItem(
+                selected = false,
+                onClick = {
+                    val next = dev.nitrate.core.pages.LayoutPreset.entries.let { all -> all[((preset?.ordinal ?: -1) + 1) % all.size] }
+                    update { dev.nitrate.core.pages.PageLooks.applyEverywhere(it, next) }
+                },
+                headlineContent = { Text("Look") },
+                supportingContent = { Text(preset?.detail ?: "Set by hand below (or pages with their own layouts). OK steps through the named looks: Cinematic, Classic rows, Showcase, Compact, Minimal") },
+                trailingContent = { Text("${preset?.label ?: "Your own"}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
         }
         item {
             ListItem(

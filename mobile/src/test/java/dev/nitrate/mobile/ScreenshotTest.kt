@@ -680,6 +680,12 @@ class ScreenshotTest {
 
     @Test fun settingsFolded() = shoot("phone-settings") { SettingsScreen(it, {}) }
 
+    /** Settings search: settings found by the words around them, with where each lives. */
+    @Test fun settingsSearch() {
+        shoot("phone-settings-search") { SettingsScreen(it, {}, initialQuery = "night") }
+        compose.onAllNodesWithText("Sound: Normal, Clearer dialogue, Night").onFirst().assertExists()
+    }
+
     @Test fun pictureAndSound() = shoot("phone-picture-and-sound") { SettingsPageScreen(it, SettingsPage.SOUND) }
 
     @Test fun whileWatching() = shoot("phone-while-watching", setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true)) }) { SettingsPageScreen(it, SettingsPage.WATCHING) }

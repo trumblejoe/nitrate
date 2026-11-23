@@ -139,3 +139,60 @@ object PageLooks {
         )
     }
 }
+
+/**
+ * Named layouts ("Looks") that set every layout choice at once, for picking a style without going
+ * through each switch; the switches stay below for fine-tuning. Applied to every page
+ * ([PageLooks.applyEverywhere]) or one page ([PageLooks.applyToPage]).
+ */
+enum class LayoutPreset(val label: String, val detail: String, val look: PageLook) {
+    CINEMATIC(
+        "Cinematic", "One title fills the screen, its name bottom left",
+        PageLook(PageArrangement.FULL_ART, CaptionCorner.BOTTOM_LEFT, CaptionSize.NORMAL, RowPlace.BOTTOM, RowExtent.FULL, TabStyle.UNDERLINE, false, FocusStyle.GROW, CardCorners.ROUNDED, CardSpacing.NORMAL),
+    ),
+    CLASSIC(
+        "Classic rows", "Rows stacked down the page under the focused title's summary",
+        PageLook(PageArrangement.STACKED, CaptionCorner.TOP_LEFT, CaptionSize.NORMAL, RowPlace.BOTTOM, RowExtent.FULL, TabStyle.CHIPS, false, FocusStyle.GROW, CardCorners.ROUNDED, CardSpacing.NORMAL),
+    ),
+    SHOWCASE(
+        "Showcase", "One row at a time over the picture, captions changing sides, roomy cards",
+        PageLook(PageArrangement.ROWS, CaptionCorner.ALTERNATE, CaptionSize.NORMAL, RowPlace.BOTTOM, RowExtent.PARTIAL, TabStyle.PILL, false, FocusStyle.GROW, CardCorners.ROUNDED, CardSpacing.ROOMY),
+    ),
+    COMPACT(
+        "Compact", "Stacked rows, short captions, tight square cards: the most titles on screen",
+        PageLook(PageArrangement.STACKED, CaptionCorner.TOP_LEFT, CaptionSize.COMPACT, RowPlace.BOTTOM, RowExtent.FULL, TabStyle.UNDERLINE, false, FocusStyle.OUTLINE, CardCorners.SQUARE, CardSpacing.TIGHT),
+    ),
+    MINIMAL(
+        "Minimal", "One row at a time, logos instead of names, nothing but the picture",
+        PageLook(PageArrangement.ROWS, CaptionCorner.BOTTOM_LEFT, CaptionSize.MINIMAL, RowPlace.BOTTOM, RowExtent.FULL, TabStyle.LARGE, false, FocusStyle.GLOW, CardCorners.ROUNDED, CardSpacing.NORMAL),
+    ),
+    ;
+
+    companion object {
+        /** The preset a page's full layout is, if it's exactly one of them (else it's been fine-tuned). */
+        fun matching(look: PageLook): LayoutPreset? = entries.firstOrNull { it.look == look }
+    }
+}
+
+/** Every page takes [preset], and no page keeps a layout of its own. */
+fun PageLooks.applyEverywhere(prefs: DisplayPrefs, preset: LayoutPreset): DisplayPrefs {
+    val look = preset.look
+    return prefs.copy(
+        tvArrangement = look.arrangement!!,
+        tvLibraryArrangement = null,
+        tvCaptionCorner = look.captionCorner!!,
+        tvCaptionSize = look.captionSize!!,
+        tvRowPlace = look.rowPlace!!,
+        tvRowExtent = look.rowExtent!!,
+        tvTabStyle = look.tabStyle!!,
+        tvUpDownAlong = look.upDownAlong!!,
+        tvFocusStyle = look.focusStyle!!,
+        tvCardCorners = look.cardCorners!!,
+        tvCardSpacing = look.cardSpacing!!,
+        pageLooks = emptyMap(),
+    )
+}
+
+/** Just [pageKey]'s page takes [preset] (kept as what differs from every page's layout). */
+fun PageLooks.applyToPage(prefs: DisplayPrefs, pageKey: String, preset: LayoutPreset): DisplayPrefs =
+    change(prefs, pageKey) { preset.look }

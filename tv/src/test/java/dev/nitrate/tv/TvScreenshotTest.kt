@@ -63,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.width
 import org.junit.Rule
 import org.junit.Test
+import dev.nitrate.core.pages.applyEverywhere
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -305,6 +306,16 @@ class TvScreenshotTest {
     @Test fun prerollJellyfish() = shoot("tv-preroll-jellyfish") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.JELLYFISH, at = 3f) }
     @Test fun prerollAnimals() = shoot("tv-preroll-animals") { dev.nitrate.tv.ui.preroll.SceneView(dev.nitrate.core.preroll.PrerollScene.WILD_ANIMALS, at = 8.5f) }
     @Test fun prerollSettings() = shoot("tv-preroll-settings") { c -> dev.nitrate.tv.ui.preroll.PrerollSettingsScreen(c) }
+    /** Settings search: a setting found by the words around it, with where it lives. */
+    @Test fun settingsSearch() = shoot("tv-settings-search") {
+        dev.nitrate.tv.ui.settings.SettingsHubScreen(emptyList(), initialQuery = "subtitle")
+    }
+
+    /** The layout's Look: named presets over the choices that fine-tune them. */
+    @Test fun layoutLook() = shoot("tv-layout-look", setup = { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.PageLooks.applyEverywhere(dev.nitrate.core.pages.DisplayPrefs(), dev.nitrate.core.pages.LayoutPreset.SHOWCASE))
+    }) { c -> dev.nitrate.tv.ui.pages.DisplaySettingsScreen(c) }
+
     @Test fun fxEffectsSettings() = shoot("tv-fx-settings") { c -> dev.nitrate.tv.ui.effects.EffectsSettingsScreen(c) }
 
     /** An occasion's dates: the usual ones stretched, shown as the days it'll cover. */

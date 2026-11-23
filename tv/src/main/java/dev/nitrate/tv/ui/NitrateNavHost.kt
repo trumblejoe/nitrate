@@ -435,6 +435,45 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     )),
                 ),
                 message = reportMessage,
+                admin = account?.isAdmin == true,
+                onFound = { place ->
+                    when (place) {
+                        dev.nitrate.core.settings.SettingsPlace.SOUND -> nav.navigate(SettingsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.SOUND_ADVANCED -> nav.navigate(AdvancedPlaybackRoute)
+                        dev.nitrate.core.settings.SettingsPlace.SUBTITLES -> nav.navigate(SubtitleSettingsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.DISPLAY, dev.nitrate.core.settings.SettingsPlace.DISPLAY_LAYOUT -> nav.navigate(DisplaySettingsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.DISPLAY_SHOWN -> nav.navigate(ShownSettingsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.DISPLAY_EFFECTS -> nav.navigate(EffectsSettingsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.DISPLAY_PAGES -> nav.navigate(PageSetupRoute)
+                        dev.nitrate.core.settings.SettingsPlace.MENU_STOPS -> nav.navigate(MenuStopsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.DISPLAY_PROFILE -> nav.navigate(DisplayProfilesRoute)
+                        dev.nitrate.core.settings.SettingsPlace.WATCHING -> nav.navigate(WhileWatchingRoute)
+                        dev.nitrate.core.settings.SettingsPlace.BEFORE_IT_PLAYS -> nav.navigate(PrerollSettingsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.PROFILES -> nav.navigate(ProfilesRoute)
+                        dev.nitrate.core.settings.SettingsPlace.SERVERS -> nav.navigate(ServerAddressesRoute)
+                        dev.nitrate.core.settings.SettingsPlace.SERVER_SETTINGS -> nav.navigate(ServerSettingsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.BACKUP -> nav.navigate(DeviceBackupRoute)
+                        dev.nitrate.core.settings.SettingsPlace.STATS -> nav.navigate(StatsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.DIARY -> nav.navigate(DiaryRoute)
+                        dev.nitrate.core.settings.SettingsPlace.PARTNERS -> nav.navigate(WatchPartnersRoute)
+                        dev.nitrate.core.settings.SettingsPlace.CATALOGS -> nav.navigate(CatalogsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.GUIDE -> nav.navigate(GuideRoute)
+                        dev.nitrate.core.settings.SettingsPlace.PLAYBACK_TEST -> nav.navigate(PlaybackTestRoute)
+                        dev.nitrate.core.settings.SettingsPlace.AUDIO_TEST -> nav.navigate(AudioChannelTestRoute)
+                        dev.nitrate.core.settings.SettingsPlace.TV_CHECK -> nav.navigate(TvCheckRoute)
+                        dev.nitrate.core.settings.SettingsPlace.OVERVIEW -> nav.navigate(PlaybackOverviewRoute)
+                        dev.nitrate.core.settings.SettingsPlace.SPEED_CHECK -> nav.navigate(SpeedCheckRoute)
+                        dev.nitrate.core.settings.SettingsPlace.QUERY_ANALYZER -> nav.navigate(QueryAnalyzerRoute)
+                        dev.nitrate.core.settings.SettingsPlace.HOUSEHOLD -> nav.navigate(HouseholdDevicesRoute)
+                        dev.nitrate.core.settings.SettingsPlace.HEALTH -> nav.navigate(LibraryHealthRoute)
+                        dev.nitrate.core.settings.SettingsPlace.MANAGE_SERVER -> nav.navigate(ServerAdminRoute)
+                        dev.nitrate.core.settings.SettingsPlace.UPDATES -> nav.navigate(UpdatesRoute)
+                        dev.nitrate.core.settings.SettingsPlace.PLUGINS -> nav.navigate(PluginsRoute)
+                        dev.nitrate.core.settings.SettingsPlace.LICENCES -> nav.navigate(LicensesRoute)
+                        // Phone only.
+                        dev.nitrate.core.settings.SettingsPlace.NOTIFICATIONS, dev.nitrate.core.settings.SettingsPlace.REMOTE -> Unit
+                    }
+                },
             )
             // Easy mode asks first.
             if (askSignOut) androidx.compose.ui.window.Dialog(onDismissRequest = { askSignOut = false }) {
