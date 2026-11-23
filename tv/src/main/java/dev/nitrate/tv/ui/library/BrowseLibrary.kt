@@ -201,7 +201,7 @@ fun BrowseLibrary(
             bar()
             when {
                 state.error != null && state.items.isEmpty() -> Column { Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error); Button(onClick = vm::retry) { Text("Try again") } }
-                state.loading -> Text("Loading…")
+                state.loading -> dev.nitrate.tv.ui.components.GridPlaceholder()
                 state.items.isEmpty() -> Text(if (options.filterCount > 0) "Nothing matches these filters." else "Nothing here yet.", style = MaterialTheme.typography.titleMedium)
                 else -> {
                     val args = ShowArgs(
@@ -255,7 +255,7 @@ fun BrowseLibrary(
             state.error != null && state.items.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
                 Column { Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error); Button(onClick = vm::retry) { Text("Try again") } }
             }
-            state.loading -> item(span = { GridItemSpan(maxLineSpan) }) { Text("Loading…") }
+            state.loading -> item(span = { GridItemSpan(maxLineSpan) }) { dev.nitrate.tv.ui.components.GridPlaceholder() }
             state.items.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(if (options.filterCount > 0) "Nothing matches these filters." else "Nothing here yet.", style = MaterialTheme.typography.titleMedium)
             }
@@ -351,8 +351,9 @@ private fun ListCard(repository: MediaServer, item: MediaItem, modifier: Modifie
 @Composable
 private fun SortDialog(options: BrowseOptions, onPick: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
     val first = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss) {
-        Column(Modifier.width(420.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 420) {
+        Column(
+            Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Sort by", style = MaterialTheme.typography.headlineSmall)
             BROWSE_SORTS.forEach { sort ->
                 FilterChip(
@@ -379,8 +380,9 @@ internal fun ViewDialog(
     rows: Boolean? = null, onRows: () -> Unit = {},
 ) {
     val first = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss) {
-        Column(Modifier.width(620.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 620) {
+        Column(
+            Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("View", style = MaterialTheme.typography.headlineSmall)
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (rows != null) FilterChip(selected = rows, onClick = onRows, modifier = if (rows) Modifier.focusRequester(first) else Modifier) { Text("Rows") }
@@ -405,9 +407,9 @@ internal fun ViewDialog(
 @Composable
 private fun FilterDialog(options: BrowseOptions, genres: List<String>, available: dev.nitrate.core.model.LibraryFilters, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
     val first = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss) {
+    dev.nitrate.tv.ui.lists.TvPanel(onDismiss, width = 860) {
         Column(
-            Modifier.width(860.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp).verticalScroll(rememberScrollState()),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {

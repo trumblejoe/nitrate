@@ -2,6 +2,7 @@ package dev.nitrate.tv.ui.pages
 
 import dev.nitrate.core.pages.applyToPage
 import dev.nitrate.core.pages.applyEverywhere
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -108,8 +109,9 @@ private fun PageCard(title: String, modifier: Modifier = Modifier, onClick: () -
 internal fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var name by remember { mutableStateOf(initial) }
     val first = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss) {
-        Column(Modifier.width(480.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 480) {
+        Column(
+            Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(title, style = MaterialTheme.typography.headlineSmall)
             TvTextField(name, { name = it }, placeholder = "e.g. Friday night", modifier = Modifier.focusRequester(first))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -176,7 +178,7 @@ fun CustomPageScreen(
             }
         }
         is RowsState.Error -> Column { header(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
-        RowsState.Loading -> Column { header(); Text("Loading…", Modifier.padding(PagePadding)) }
+        RowsState.Loading -> Column { header(); dev.nitrate.tv.ui.components.RowsPlaceholder(top = 40.dp) }
     }
     if (renaming && page != null) NameDialog("Rename page", page.title, onDismiss = { renaming = false }) { name ->
         renaming = false

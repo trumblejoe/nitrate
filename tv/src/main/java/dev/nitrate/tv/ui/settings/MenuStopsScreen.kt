@@ -199,9 +199,9 @@ private fun StopPicker(
     onDismiss: () -> Unit,
 ) {
     val first = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss) {
+    dev.nitrate.tv.ui.lists.TvPanel(onDismiss, width = 520) {
         Column(
-            Modifier.width(520.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp),
+            Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(title, style = MaterialTheme.typography.headlineSmall)

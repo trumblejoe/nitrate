@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import dev.nitrate.android.sendPlaybackReport
 import dev.nitrate.android.playbackReport
 import kotlinx.coroutines.flow.map
@@ -870,8 +871,9 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
     }
     message?.let { (header, text) ->
-        androidx.compose.ui.window.Dialog(onDismissRequest = { message = null }) {
-            Column(Modifier.width(560.dp).background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(28.dp)) {
+        dev.nitrate.tv.ui.lists.TvDialog({ message = null }, width = 560) {
+            Column(
+                Modifier.fillMaxWidth().padding(28.dp)) {
                 Text(header, style = MaterialTheme.typography.headlineSmall)
                 Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 10.dp))
             }

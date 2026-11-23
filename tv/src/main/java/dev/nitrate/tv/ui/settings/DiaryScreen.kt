@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.settings
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -115,9 +116,9 @@ private fun DiaryEditDialog(e: DiaryEntry, onSave: (rating: Int?, note: String) 
     var note by remember { mutableStateOf(e.note.orEmpty()) }
     var confirmDelete by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss) {
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 820) {
         Column(
-            Modifier.width(820.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp)).padding(32.dp),
+            Modifier.fillMaxWidth().padding(32.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(e.title, style = MaterialTheme.typography.headlineSmall)

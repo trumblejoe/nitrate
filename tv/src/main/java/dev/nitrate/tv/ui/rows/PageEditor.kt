@@ -194,9 +194,9 @@ private fun EntryDialog(
     var look by remember { mutableStateOf(false) }
     var contents by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
-    Dialog(onDismissRequest = { onRename(name); onDismiss() }) {
+    dev.nitrate.tv.ui.lists.TvDialog({ onRename(name); onDismiss() }, width = 520) {
         Column(
-            Modifier.width(520.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp),
+            Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Edit row", style = MaterialTheme.typography.headlineSmall)

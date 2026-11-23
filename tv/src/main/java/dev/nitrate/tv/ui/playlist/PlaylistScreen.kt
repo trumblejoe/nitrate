@@ -2,6 +2,7 @@ package dev.nitrate.tv.ui.playlist
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -105,6 +106,8 @@ fun PlaylistScreen(
     var entryMenu by remember { mutableStateOf<MediaItem?>(null) }
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
+    var more by remember { mutableStateOf(false) }
+    var hint by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var focused by remember { mutableStateOf<MediaItem?>(null) }
     val playFocus = remember { FocusRequester() }
@@ -112,7 +115,7 @@ fun PlaylistScreen(
     val list = items
     val pl = playlist
     if (pl == null || list == null) {
-        Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Loading…") }
+        dev.nitrate.tv.ui.components.ListPlaceholder()
         return
     }
     LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
@@ -161,28 +164,45 @@ fun PlaylistScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // As on a details page: one primary button, a second way to play, then round Shuffle and
+                // More (editing, renaming, deleting, story order), the focused one's name under the row.
                 // Continue from where it was left (or the first one under way), when that isn't the very start.
                 val canContinue = video && next != null && (placeAt != null || next.id != all.firstOrNull()?.id)
-                if (canContinue) {
-                    Button(onClick = { onPlayFrom!!(pl, next!!) }, modifier = Modifier.focusRequester(playFocus)) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(next!!)}") }
-                }
-                Button(
-                    onClick = { if (video) onPlayFrom!!(pl, list.first()) else onPlayQueue(list) },
-                    enabled = list.isNotEmpty(),
-                    modifier = if (canContinue) Modifier else Modifier.focusRequester(playFocus),
-                ) { Text(if (video) "Play from the start" else "Play all") }
-                OutlinedButton(onClick = { onPlayQueue(list.shuffled()) }, enabled = list.isNotEmpty()) { Text("Shuffle") }
                 // Story order (not a video playlist played as itself): carry on from the first unwatched, with a recap after a break.
                 val storyNext = list.firstOrNull { !it.user.played }
-                if (!video && inOrder && storyNext != null && storyNext != list.first() && onContinue != null) {
-                    Button(onClick = { onContinue(pl, storyNext, list.dropWhile { it.id != storyNext.id }) }) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(storyNext)}") }
+                val storyContinue = !video && inOrder && storyNext != null && storyNext != list.first() && onContinue != null
+                if (canContinue) {
+                    Button(onClick = { onPlayFrom!!(pl, next!!) }, modifier = Modifier.focusRequester(playFocus)) { Text("Continue: ${dev.nitrate.core.recap.Recaps.label(next!!)}") }
+                } else if (storyContinue) {
+                    Button(onClick = { onContinue!!(pl, storyNext!!, list.dropWhile { it.id != storyNext.id }) }, modifier = Modifier.focusRequester(playFocus)) {
+                        Text("Continue: ${dev.nitrate.core.recap.Recaps.label(storyNext!!)}")
+                    }
                 }
-                if (onStoryOrder != null) androidx.tv.material3.FilterChip(inOrder, { onStoryOrder(pl.id, !inOrder) }) { Text("In story order") }
-                OutlinedButton(onClick = { editing = !editing }) { Text(if (editing) "Done editing" else "Edit") }
-                if (editing) {
-                    OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
-                    OutlinedButton(onClick = { deleting = true }) { Text("Delete playlist") }
+                val playAll: () -> Unit = { if (video) onPlayFrom!!(pl, list.first()) else onPlayQueue(list) }
+                val playAllLabel = if (video) "Play from the start" else "Play all"
+                if (canContinue || storyContinue) OutlinedButton(onClick = playAll, enabled = list.isNotEmpty()) { Text(playAllLabel) }
+                else Button(onClick = playAll, enabled = list.isNotEmpty(), modifier = Modifier.focusRequester(playFocus)) { Text(playAllLabel) }
+                dev.nitrate.tv.ui.components.RoundAction(dev.nitrate.tv.ui.components.ShuffleIcon, "Shuffle", onHint = { hint = it }) { if (list.isNotEmpty()) onPlayQueue(list.shuffled()) }
+                dev.nitrate.tv.ui.components.RoundAction(androidx.compose.material.icons.Icons.Filled.MoreVert, "More", onHint = { hint = it }) { more = true }
+                if (editing) OutlinedButton(onClick = { editing = false }) { Text("Done editing") }
+            }
+            Box(Modifier.padding(start = PagePadding)) { dev.nitrate.tv.ui.components.ActionHint(hint) }
+            if (more) {
+                val first = remember { FocusRequester() }
+                dev.nitrate.tv.ui.lists.TvDialog({ more = false }) {
+                    Text(pl.name.orEmpty(), style = MaterialTheme.typography.headlineSmall)
+                    ListItem(selected = false, onClick = { more = false; editing = !editing }, headlineContent = { Text(if (editing) "Done editing" else "Edit") },
+                        supportingContent = { Text("Move or remove what's in it") }, modifier = Modifier.focusRequester(first))
+                    if (onStoryOrder != null) ListItem(
+                        selected = false, onClick = { onStoryOrder(pl.id, !inOrder) },
+                        headlineContent = { Text("In story order") },
+                        supportingContent = { Text("Carry on where you left off, with a recap after a break") },
+                        trailingContent = { androidx.tv.material3.Switch(checked = inOrder, onCheckedChange = null) },
+                    )
+                    ListItem(selected = false, onClick = { more = false; renaming = true }, headlineContent = { Text("Rename") })
+                    ListItem(selected = false, onClick = { more = false; deleting = true }, headlineContent = { Text("Delete playlist") }, supportingContent = { Text("What's in it stays") })
                 }
+                LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
             }
 
             LazyColumn(

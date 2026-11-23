@@ -69,6 +69,8 @@ import dev.nitrate.tv.ui.components.GenreLine
 import dev.nitrate.tv.ui.components.ItemMetaLine
 import dev.nitrate.tv.ui.components.MediaCard
 import dev.nitrate.tv.ui.components.TitleOrLogo
+import dev.nitrate.tv.ui.components.RoundAction
+import dev.nitrate.tv.ui.components.Crumb
 import dev.nitrate.core.model.formatClock
 import dev.nitrate.core.model.formatRuntime
 import dev.nitrate.core.model.MediaItem
@@ -123,9 +125,9 @@ fun DetailsScreen(
 
     val item = state.item
     if (item == null) {
-        Box(Modifier.fillMaxSize(), Alignment.Center) {
-            Text(state.error ?: "Loading…", color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onBackground)
-        }
+        // On its way: the page in its own shape; a failure says so.
+        if (state.error != null) Box(Modifier.fillMaxSize(), Alignment.Center) { Text(state.error!!, color = MaterialTheme.colorScheme.error) }
+        else dev.nitrate.tv.ui.components.DetailsPlaceholder()
         return
     }
 
@@ -148,7 +150,8 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack, onPlayFrom)
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack, onPlayFrom,
+                    season = if (seasonId != null && item.kind == ItemKind.SERIES) state.seasons.getOrNull(state.selectedSeason) else null)
             }
 
             // A show's seasons and episodes; on an episode's page, the rest of its season (and the show's other seasons).
@@ -392,6 +395,8 @@ private fun Header(
     trackSetup: (suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup)? = null,
     pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
     onPlayFrom: (MediaItem, Long) -> Unit = { i, _ -> onPlay(i, false) },
+    /** The season this show's page was opened at (a season's page): the heading names it. */
+    season: MediaItem? = null,
 ) {
     // Music pages have more buttons in a row.
     val wideHeader = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
@@ -406,19 +411,35 @@ private fun Header(
                 listOfNotNull(item.indexNumber?.let { "$it." }, item.name).joinToString(" "),
                 style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
+        } else if (season != null) {
+            // A season's page: the show (opening its own page), the season, and how far through it the user is.
+            Row(Modifier.offset(x = (-10).dp), verticalAlignment = Alignment.CenterVertically) {
+                Crumb(item.name) { onOpen(item) }
+                Text("›", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
+                Text(season.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 10.dp))
+            }
+            Text(season.name.ifBlank { "Season ${season.indexNumber}" }, style = MaterialTheme.typography.displaySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val episodes = state.episodes.filter { !it.isMissing }
+            if (episodes.isNotEmpty()) Text(
+                "${episodes.size} ${if (episodes.size == 1) "episode" else "episodes"} · ${episodes.count { it.user.played }} watched",
+                style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         } else {
             TitleOrLogo(item, repository.logoUrl(item))
             item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleLarge) }
         }
         val music = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
         if (item.kind == ItemKind.MUSIC_ALBUM) item.albumArtist?.let { Text("by $it", style = MaterialTheme.typography.titleLarge) }
-        ItemMetaLine(item)
-        GenreLine(item)
+        if (season == null) {
+            ItemMetaLine(item)
+            GenreLine(item)
+        }
         val prefs = LocalDisplayPrefs.current
-        item.tagline?.takeIf { prefs.tagline }?.let {
+        item.tagline?.takeIf { prefs.tagline && season == null }?.let {
             Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
         }
-        item.overview?.takeIf { prefs.overview }?.let { overview ->
+        // A season's own description when it has one, else the show's.
+        (season?.overview?.takeIf { it.isNotBlank() } ?: item.overview)?.takeIf { prefs.overview }?.let { overview ->
             // Spoiler hiding: unwatched movies and episodes keep their description until asked for.
             var revealed by remember(item.id) { mutableStateOf(false) }
             if (!dev.nitrate.tv.ui.partners.descriptionHidden(item) || revealed) Text(overview, style = MaterialTheme.typography.bodyLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -447,7 +468,13 @@ private fun Header(
             }
         } else {
             // What "Play" means depends on the type: resume a movie, or the next episode of a series.
-            val playTarget: MediaItem? = if (item.kind == ItemKind.SERIES) state.nextUp ?: state.episodes.firstOrNull() else item
+            // A season's page plays that season: its next unwatched episode, else its first.
+            val seasonEpisodes = state.episodes.filter { !it.isMissing }
+            val playTarget: MediaItem? = when {
+                season != null -> seasonEpisodes.firstOrNull { !it.user.played } ?: seasonEpisodes.firstOrNull()
+                item.kind == ItemKind.SERIES -> state.nextUp ?: state.episodes.firstOrNull()
+                else -> item
+            }
             val resumeMs = playTarget?.user?.positionMs ?: 0L
             val playLabel = when {
                 // A comic: Read (or where it was left), opened in the reader.
@@ -487,7 +514,7 @@ private fun Header(
                 RoundAction(Icons.Filled.MoreVert, "More", active = false, onHint = { hint = it }, onClick = { moreOpen = true })
             }
             // The focused round button's name, in room kept for it so nothing moves.
-            Text(hint.orEmpty(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.height(18.dp))
+            dev.nitrate.tv.ui.components.ActionHint(hint)
             // What Play starts with: sound, subtitles and which version, in one quiet line.
             StartsWithLine(item, playTarget, trackSetup, pickTrack)
             if (moreOpen) MorePanel(item, repository, playTarget, canCollect, onManage, onBrowse, checkPlayback, applyPlaybackFix, onPlayFrom) { moreOpen = false }
@@ -500,34 +527,6 @@ private fun Header(
             )
         }
     }
-}
-
-/** A round icon button for the action row; its name shows under the row while focused (and is read out). */
-@Composable
-private fun RoundAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, active: Boolean, onHint: (String?) -> Unit, onClick: () -> Unit) {
-    androidx.tv.material3.OutlinedIconButton(
-        onClick = onClick,
-        modifier = Modifier.onFocusChanged { if (it.isFocused) onHint(label) else onHint(null) },
-    ) {
-        androidx.tv.material3.Icon(icon, contentDescription = label, tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-/** A quiet link: text that's only a button once focused. */
-@Composable
-private fun Crumb(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    androidx.tv.material3.Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
-        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
-            containerColor = androidx.compose.ui.graphics.Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            focusedContainerColor = MaterialTheme.colorScheme.onSurface,
-            focusedContentColor = MaterialTheme.colorScheme.surface,
-        ),
-        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
-    ) { Text(text, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) }
 }
 
 /** "The Night Reel  ›  Season 1": an episode's show and season, each opening its page. */
