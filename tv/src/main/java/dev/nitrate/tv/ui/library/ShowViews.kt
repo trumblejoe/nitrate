@@ -76,7 +76,6 @@ import dev.nitrate.core.MediaServer
 import dev.nitrate.core.model.ImageKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.pages.BrowseView
-import dev.nitrate.core.pages.hidesDescription
 import dev.nitrate.tv.ui.components.ItemMetaLine
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import kotlinx.coroutines.launch
@@ -163,7 +162,7 @@ private fun Details(item: MediaItem, args: ShowArgs, modifier: Modifier = Modifi
         Text(args.titleOf(item), style = MaterialTheme.typography.headlineSmall, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
         item.episodeLabel?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
         ItemMetaLine(item)
-        if (prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
+        if (prefs.overview && !dev.nitrate.tv.ui.partners.descriptionHidden(item)) item.overview?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = lines, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -331,7 +330,7 @@ private fun Rolodex(args: ShowArgs, modifier: Modifier) {
                     Text(listOfNotNull(item.productionYear?.toString(), item.officialRating, item.runtimeMs?.let { "${it / 60_000} min" }).joinToString("  ·  "),
                         color = Color(0xFF4A453C), fontSize = 15.sp, fontFamily = FontFamily.Monospace)
                     val prefs = LocalDisplayPrefs.current
-                    if (prefs.overview && !prefs.hidesDescription(item)) item.overview?.let {
+                    if (prefs.overview && !dev.nitrate.tv.ui.partners.descriptionHidden(item)) item.overview?.let {
                         Text(it, color = Color(0xFF3A362E), fontSize = 15.sp, fontFamily = FontFamily.Serif, maxLines = 5, overflow = TextOverflow.Ellipsis)
                     }
                 }

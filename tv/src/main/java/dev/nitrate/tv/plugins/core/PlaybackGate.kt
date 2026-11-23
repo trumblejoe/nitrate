@@ -72,8 +72,7 @@ class PlaybackGate(
                     start(item, fromStart, startMs)
                 }
                 is GuardAction.RunThenPlay -> {
-                    runCatching { action.run() }
-                    start(item, fromStart, startMs)
+                    if (runCatching { action.run() }.isSuccess || action.playIfFailed) start(item, fromStart, startMs)
                 }
             }
         }

@@ -23,11 +23,12 @@ import kotlin.time.Instant
 @Serializable internal data class PrivacyDto(val private: Boolean = false, val byAdmin: Boolean = false)
 @Serializable internal data class PrivacyPutDto(val private: Boolean)
 @Serializable internal data class PeopleDto(val id: String, val name: String = "")
-@Serializable internal data class ScheduleDto(val cadence: String = "binge", val day: Int = 4, val hour: Int = 19, val minute: Int = 0, val softLock: Boolean = false, val timeZone: String = "")
+@Serializable internal data class ScheduleDto(val cadence: String = "binge", val day: Int = 4, val hour: Int = 19, val minute: Int = 0, val softLock: Boolean = false, val timeZone: String = "", val together: Boolean = false)
 @Serializable internal data class ChangeDto(val id: String, val fromName: String = "", val proposed: ScheduleDto = ScheduleDto(), val yes: List<String> = emptyList(), val no: List<String> = emptyList(), val voted: Boolean = false, val at: String? = null)
 @Serializable internal data class GroupDto(
     val id: String, val seriesId: String, val seriesName: String = "", val others: List<PeopleDto> = emptyList(), val since: String? = null,
     val schedule: ScheduleDto? = null, val pending: ChangeDto? = null, val lockedFromId: String? = null, val opensAt: String? = null, val opensDay: Int? = null,
+    val togetherFromId: String? = null,
 )
 @Serializable internal data class IncomingDto(val id: String, val fromId: String, val fromName: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val willSee: List<String> = emptyList(), val at: String? = null, val schedule: ScheduleDto? = null)
 @Serializable internal data class VoteDto(val yes: Boolean)
@@ -137,12 +138,12 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
         normalizeId(id), normalizeId(seriesId), seriesName, others.map { UserRef(normalizeId(it.id), it.name) }, ms(since),
         schedule?.toModel(),
         pending?.let { dev.nitrate.core.partners.ScheduleChange(it.id, it.fromName, it.proposed.toModel(), it.yes, it.no, it.voted, ms(it.at)) },
-        lockedFromId?.let(::normalizeId), opensAt?.let(::ms), opensDay,
+        lockedFromId?.let(::normalizeId), opensAt?.let(::ms), opensDay, togetherFromId?.let(::normalizeId),
     )
 
-    private fun ScheduleDto.toModel() = dev.nitrate.core.partners.GroupSchedule(cadence, day, hour, minute, softLock)
+    private fun ScheduleDto.toModel() = dev.nitrate.core.partners.GroupSchedule(cadence, day, hour, minute, softLock, together)
 
-    private fun dev.nitrate.core.partners.GroupSchedule.toDto() = ScheduleDto(cadence, day, hour, minute, softLock)
+    private fun dev.nitrate.core.partners.GroupSchedule.toDto() = ScheduleDto(cadence, day, hour, minute, softLock, together = together)
 
     private fun OutgoingDto.toModel() = OutgoingRequest(normalizeId(id), to, normalizeId(seriesId), seriesName, groupId?.let(::normalizeId), ms(at))
 }

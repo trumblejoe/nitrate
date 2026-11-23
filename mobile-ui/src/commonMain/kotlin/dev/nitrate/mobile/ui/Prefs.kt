@@ -23,7 +23,13 @@ fun ProvideDisplayPrefs(container: AppContainer, userId: String?, content: @Comp
     // Easy mode: everything a little bigger (touch targets too), text more so.
     val density = androidx.compose.ui.platform.LocalDensity.current
     val scaled = if (prefs.easyMode) androidx.compose.ui.unit.Density(density.density * EASY_SCALE, density.fontScale * EASY_TEXT) else density
-    CompositionLocalProvider(LocalDisplayPrefs provides prefs, androidx.compose.ui.platform.LocalDensity provides scaled) { content() }
+    // Watch groups and where the user stands: what a group's schedule locks is shown spoiler-free.
+    val standings by container.groupStandings.collectAsState()
+    val partners by container.partners.collectAsState()
+    CompositionLocalProvider(
+        LocalDisplayPrefs provides prefs, LocalGroupStandings provides standings, LocalPartnersInfo provides partners,
+        androidx.compose.ui.platform.LocalDensity provides scaled,
+    ) { content() }
 }
 
 /** The fixed accent the user picked, or null to take it from artwork. */

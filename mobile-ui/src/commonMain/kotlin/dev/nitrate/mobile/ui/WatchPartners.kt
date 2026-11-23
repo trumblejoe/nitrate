@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -44,21 +45,35 @@ import kotlinx.coroutines.launch
 /** Where the user's watch partners are in the show on screen (empty: none). */
 val LocalPartnerProgress = staticCompositionLocalOf<List<PartnerProgress>> { emptyList() }
 
-/** Whether an episode still is blurred: unwatched by the user, or (on a shared show) by a partner. */
+/** The user's watch groups and invites (null: none known, or no watch partners). */
+val LocalPartnersInfo = compositionLocalOf<dev.nitrate.core.partners.PartnersInfo?> { null }
+
+/** Where the user stands in each title they watch with a group, by title id (empty without any). */
+val LocalGroupStandings = compositionLocalOf { emptyMap<String, dev.nitrate.core.partners.KeepUp>() }
+
+/**
+ * Whether an episode still is blurred: unwatched by the user, or (on a shared show) by a partner;
+ * and, whatever the user's spoiler settings, anything a group's schedule locks for them now.
+ */
 @Composable
 fun spoilerStill(item: MediaItem): Boolean {
     val prefs = LocalDisplayPrefs.current
     val progress = LocalPartnerProgress.current
-    return prefs.isSpoiler(item) || (progress.isNotEmpty() && WatchPartners.isSpoiler(prefs, item, progress))
+    return prefs.isSpoiler(item) || (progress.isNotEmpty() && WatchPartners.isSpoiler(prefs, item, progress)) || lockedNow(item)
 }
 
-/** Whether a description waits behind "Show": unwatched by the user, or (on a shared show) by a partner. */
+/** Whether a description waits behind "Show": by the same rules as [spoilerStill]. */
 @Composable
 fun descriptionHidden(item: MediaItem): Boolean {
     val prefs = LocalDisplayPrefs.current
     val progress = LocalPartnerProgress.current
-    return prefs.hidesDescription(item) || (progress.isNotEmpty() && WatchPartners.hidesDescription(prefs, item, progress))
+    return prefs.hidesDescription(item) || (progress.isNotEmpty() && WatchPartners.hidesDescription(prefs, item, progress)) || lockedNow(item)
 }
+
+/** Whether a group's schedule locks [item] for the user now (not out yet, or for watching together). */
+@Composable
+private fun lockedNow(item: MediaItem): Boolean =
+    dev.nitrate.core.partners.PartLock.of(item, LocalPartnersInfo.current, LocalGroupStandings.current) != null
 
 /** Whether this server has watch partners (the Companion plugin). */
 @Composable
@@ -150,32 +165,36 @@ fun WatchWithDialog(actions: AppActions, series: MediaItem, groupId: String? = n
 }
 
 /**
- * A group's schedule: Binge, every 2 days, every 3 days or weekly (with its day), the time new
- * parts open, and whether a locked part can still be played after a warning.
+ * A group's schedule: how the group watches (separately at the group's pace, or together only),
+ * Binge, every 2 days, every 3 days or weekly (with its day), the time new parts open, and
+ * whether a locked part can still be played after a warning.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
     val g = dev.nitrate.core.partners.GroupSchedule
+    Text("How we watch", style = MaterialTheme.typography.labelLarge)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        g.HOW.forEach { (together, label) -> FilterChip(schedule.together == together, { onChange(schedule.copy(together = together)) }, label = { Text(label) }) }
+    }
     Text("How it's let out", style = MaterialTheme.typography.labelLarge)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         g.CADENCES.forEach { (id, label) -> FilterChip(schedule.cadence == id, { onChange(schedule.copy(cadence = id)) }, label = { Text(label) }) }
     }
-    if (!schedule.limits) return
-    if (schedule.cadence == g.WEEKLY) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        g.DAYS.forEachIndexed { i, d -> FilterChip(schedule.day == i, { onChange(schedule.copy(day = i)) }, label = { Text(d.take(3)) }) }
+    if (schedule.limits) {
+        if (schedule.cadence == g.WEEKLY) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            g.DAYS.forEachIndexed { i, d -> FilterChip(schedule.day == i, { onChange(schedule.copy(day = i)) }, label = { Text(d.take(3)) }) }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            g.HOURS.forEach { h -> FilterChip(schedule.hour == h && schedule.minute == 0, { onChange(schedule.copy(hour = h, minute = 0)) }, label = { Text(g.clockOf(h, 0)) }) }
+        }
     }
+    if (!schedule.active) return
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        g.HOURS.forEach { h -> FilterChip(schedule.hour == h && schedule.minute == 0, { onChange(schedule.copy(hour = h, minute = 0)) }, label = { Text(g.clockOf(h, 0)) }) }
-    }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        FilterChip(!schedule.softLock, { onChange(schedule.copy(softLock = false)) }, label = { Text("Locked until then") })
+        FilterChip(!schedule.softLock, { onChange(schedule.copy(softLock = false)) }, label = { Text(if (schedule.limits) "Locked until then" else "Locked") })
         FilterChip(schedule.softLock, { onChange(schedule.copy(softLock = true)) }, label = { Text("Ask first") })
     }
-    Text(
-        "Anything someone in the group has seen stays open, so whoever's behind can catch up. Only Nitrate keeps to it: Jellyfin's own apps don't know about it.",
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Text(schedule.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** Asks the group to change its schedule: it takes effect once most of the group agrees (both, in a pair). */
@@ -204,8 +223,7 @@ fun inviteText(r: dev.nitrate.core.partners.IncomingRequest): String {
     val others = r.willSee.filter { it != r.fromName }
     val into = if (others.isEmpty()) "${r.fromName} would like to watch ${r.seriesName} with you."
     else "${r.fromName} invites you to watch ${r.seriesName} with ${WatchPartners.names(others)}."
-    val pace = r.schedule?.takeIf { it.limits }?.let { " The group goes at its own pace: ${it.label}, ${if (it.softLock) "with a warning before watching ahead" else "locked until then"}; accepting agrees to it." }.orEmpty()
-    return "$into If you accept, ${WatchPartners.names(r.willSee)} will see your name and your progress in it.$pace"
+    return "$into If you accept, ${WatchPartners.names(r.willSee)} will see your name and your progress in it.${r.schedule?.terms.orEmpty()}"
 }
 
 /** Settings → Watch partners: privacy, invites, and the user's groups. */

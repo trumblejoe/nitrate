@@ -278,6 +278,8 @@ class AppContainer(
         standingsJob = networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch partners")) {
             kotlinx.coroutines.delay(delayMs)
             runCatching { server.groupStandings() }.onSuccess { standingsState.value = it }
+            // What a schedule locks moves as the group watches: cards and spoiler hiding go by it.
+            if (partnersState.value?.groups.orEmpty().any { it.schedule?.active == true }) refreshPartners()
         }
     }
 
@@ -384,6 +386,14 @@ class AppContainer(
         }
         val group = syncPlay.group.value ?: error("Couldn't start watching together")
         if (invitesAvailable()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
+    }
+
+    /** This device's watch-together session as the playback guards see it (a group that watches together only asks for it). */
+    private val togetherSession = object : dev.nitrate.core.plugins.TogetherSession {
+        override fun participants(): List<String> = syncPlay.group.value?.participants.orEmpty()
+        override suspend fun start(item: dev.nitrate.core.model.MediaItem, groupId: String, userIds: List<String>, names: String) {
+            startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, groupId, userIds, names))
+        }
     }
 
     /** Comics read from the server, kept on the device (see [dev.nitrate.android.comics.ComicLibrary]). */
@@ -815,7 +825,7 @@ class AppContainer(
 
     val plugins = PluginRegistry(
         all = listOf(PreviousEpisodePlugin, watchPartners, WritingPlugin, dev.nitrate.core.channels.ChannelsPlugin),
-        host = PluginHost(server, pluginStore),
+        host = PluginHost(server, pluginStore, togetherSession),
     )
 
     /** The first-run setup: whether it's showing, and whether this device finished it. */

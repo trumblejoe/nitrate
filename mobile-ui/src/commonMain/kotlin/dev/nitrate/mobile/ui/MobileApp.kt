@@ -270,7 +270,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                             nav.navigate(playerRoute(item.id, fromStart))
                         }
                         is GuardAction.RunThenPlay -> {
-                            runCatching { action.run() }
+                            if (runCatching { action.run() }.isFailure && !action.playIfFailed) return@launch
                             if (startMs != null) nav.navigate(playerRoute(item.id, false).copy(startMs = startMs)) else go(item, fromStart)
                         }
                     }

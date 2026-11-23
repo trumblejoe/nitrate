@@ -220,7 +220,7 @@ class WatchPartnersTest {
         assertTrue(group.locks("e1-4", k.order))
         assertFalse(group.locks("e1-2", k.order))
         val line = TogetherRow.line(eps[2], info, standings)!!
-        assertEquals("Thursday 7pm", line.word)
+        assertEquals("Opens Thursday 7pm", line.word)
         assertEquals("Sam level", line.partners)
         // Hard lock: no "watch it together now"; the schedule can be changed.
         val c = TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = true, ownSpoilers = emptySet())
@@ -262,5 +262,102 @@ class WatchPartnersTest {
         assertEquals(listOf("Watch anyway", "Not now"), soft.choices.map { it.label })
         // What's open plays.
         assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[1], dev.nitrate.core.plugins.PluginHost(server(false), store)))
+    }
+
+    // ---- Together only ----
+
+    @Test fun howWeWatchIsPartOfTheLabel() {
+        assertEquals("Binge, together only", GroupSchedule(together = true).label)
+        assertEquals("Thursdays 7pm, together only, ask first", weekly.copy(together = true, softLock = true).label)
+        assertTrue(GroupSchedule(together = true).active)
+        assertFalse(GroupSchedule().active)
+        assertEquals("Together only", GroupSchedule(together = true).how)
+        assertEquals("Separately, at the group's pace", GroupSchedule().how)
+    }
+
+    private val samRef = dev.nitrate.core.writing.UserRef("sam", "Sam")
+
+    /** Sam and the user have both seen 1 and 2; nobody's seen 3 (together only from there). */
+    private fun togetherGroup(soft: Boolean = false, schedule: GroupSchedule = GroupSchedule(together = true, softLock = soft)) =
+        WatchGroup("g1", "bear", "Bear", listOf(samRef), 0, schedule, togetherFromId = "e1-3")
+
+    @Test fun whatNobodyHasSeenIsForWatchingTogether() {
+        val k = keep(setOf("e1-1", "e1-2"), sam)
+        val g = togetherGroup()
+        assertFalse(g.needsTogether("e1-2", k.order))
+        assertTrue(g.needsTogether("e1-3", k.order))
+        assertTrue(g.needsTogether("e1-4", k.order))
+        // Separately: nothing needs anyone.
+        assertFalse(g.copy(schedule = GroupSchedule(GroupSchedule.WEEKLY)).needsTogether("e1-3", k.order))
+        val info = PartnersInfo(listOf(g), emptyList(), emptyList())
+        val standings = mapOf("bear" to k)
+        val lock = PartLock.of(eps[2], info, standings)!!
+        assertTrue(lock.together)
+        assertEquals("Watch together", lock.word)
+        assertNull(PartLock.of(eps[1], info, standings))
+        val line = TogetherRow.line(eps[2], info, standings)!!
+        assertEquals("Watch together", line.word)
+        assertEquals("Watch together · Sam level", line.short)
+        // Watching it together now is the way in, so it's offered.
+        assertTrue(TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = true, ownSpoilers = emptySet()).any { it is TogetherChoice.WatchNow })
+        // Not out yet wins over together only.
+        val both = g.copy(schedule = weekly.copy(together = true), lockedFromId = "e1-3", opensDay = 4)
+        assertEquals("Opens Thursday 7pm", PartLock.of(eps[2], PartnersInfo(listOf(both), emptyList(), emptyList()), standings)!!.word)
+    }
+
+    private val noStore = object : dev.nitrate.core.plugins.PluginStorage {
+        override val enabledOverrides = kotlinx.coroutines.flow.flowOf(emptyMap<String, Boolean>())
+        override suspend fun setEnabled(pluginId: String, enabled: Boolean) {}
+        override fun raw(pluginId: String) = kotlinx.coroutines.flow.flowOf<String?>(null)
+        override suspend fun saveRaw(pluginId: String, value: String) {}
+    }
+
+    private fun serverWith(group: WatchGroup): dev.nitrate.core.MediaServer =
+        java.lang.reflect.Proxy.newProxyInstance(dev.nitrate.core.MediaServer::class.java.classLoader, arrayOf(dev.nitrate.core.MediaServer::class.java)) { _, m, _ ->
+            when (m.name) {
+                "companion" -> dev.nitrate.core.companion.CompanionInfo("1", setOf("partners"))
+                "partners" -> PartnersInfo(listOf(group), emptyList(), emptyList())
+                "titleItems" -> eps
+                else -> throw UnsupportedOperationException(m.name)
+            }
+        } as dev.nitrate.core.MediaServer
+
+    private class Session(var names: List<String>) : dev.nitrate.core.plugins.TogetherSession {
+        val started = mutableListOf<String>()
+        override fun participants() = names
+        override suspend fun start(item: MediaItem, groupId: String, userIds: List<String>, names: String) { started += "${item.id} $groupId $userIds $names" }
+    }
+
+    @Test fun togetherOnlyPlaysInAWatchTogetherSessionWithTheGroup() = kotlinx.coroutines.runBlocking {
+        val plugin = WatchPartnersPlugin()
+        val session = Session(emptyList())
+        fun host(g: WatchGroup) = dev.nitrate.core.plugins.PluginHost(serverWith(g), noStore, session)
+        // Alone: refused, with watching it together now offered first.
+        val hard = plugin.beforePlay(eps[2], host(togetherGroup())) as dev.nitrate.core.plugins.GuardDecision.Ask
+        assertEquals("Watch together", hard.title)
+        assertEquals(listOf("Watch it together now", "Not now"), hard.choices.map { it.label })
+        assertTrue(hard.message, hard.message.contains("Sam"))
+        // Choosing it starts the session with the group's members invited, then plays.
+        val run = hard.choices.first().action as dev.nitrate.core.plugins.GuardAction.RunThenPlay
+        run.run()
+        assertEquals(listOf("e1-3 g1 [sam] Sam"), session.started)
+        // Ask first: watching anyway is allowed too.
+        val soft = plugin.beforePlay(eps[2], host(togetherGroup(soft = true))) as dev.nitrate.core.plugins.GuardDecision.Ask
+        assertEquals(listOf("Watch it together now", "Watch anyway", "Not now"), soft.choices.map { it.label })
+        // Catching up to the furthest member, and rewatching, are free.
+        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[1], host(togetherGroup())))
+        // In a watch-together session with someone else: still refused.
+        session.names = listOf("me", "Kim")
+        assertTrue(plugin.beforePlay(eps[2], host(togetherGroup())) is dev.nitrate.core.plugins.GuardDecision.Ask)
+        // With Sam in it: plays.
+        session.names = listOf("me", "sam")
+        assertEquals(dev.nitrate.core.plugins.GuardDecision.Allow, plugin.beforePlay(eps[2], host(togetherGroup())))
+        // Not out yet stays locked even together.
+        val notYet = togetherGroup(schedule = weekly.copy(together = true)).copy(lockedFromId = "e1-3", opensDay = 4)
+        assertEquals("Opens Thursday 7pm", (plugin.beforePlay(eps[2], host(notYet)) as dev.nitrate.core.plugins.GuardDecision.Ask).title)
+        // Without a session to start from (no SyncPlay here): only Not now.
+        session.names = emptyList()
+        val bare = plugin.beforePlay(eps[2], dev.nitrate.core.plugins.PluginHost(serverWith(togetherGroup()), noStore)) as dev.nitrate.core.plugins.GuardDecision.Ask
+        assertEquals(listOf("Not now"), bare.choices.map { it.label })
     }
 }

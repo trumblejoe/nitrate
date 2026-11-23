@@ -1,7 +1,6 @@
 package dev.nitrate.mobile.ui
 
 import dev.nitrate.core.pages.facts
-import dev.nitrate.core.pages.isSpoiler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -103,7 +102,7 @@ fun MediaCard(
                     imageUrl,
                     contentDescription = item.name,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().then(if (prefs.isSpoiler(item)) Modifier.blur(16.dp) else Modifier),
+                    modifier = Modifier.fillMaxSize().then(if (spoilerStill(item)) Modifier.blur(16.dp) else Modifier),
                 )
             } else {
                 Text(item.name, Modifier.align(Alignment.Center).padding(8.dp), style = MaterialTheme.typography.labelLarge, maxLines = 3)
