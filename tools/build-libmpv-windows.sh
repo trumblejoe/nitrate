@@ -100,7 +100,7 @@ declare -A ALLOWED=(
     ['avfilter-*.dll']='FFmpeg, LGPL 2.1+' ['swscale-*.dll']='FFmpeg, LGPL 2.1+' ['swresample-*.dll']='FFmpeg, LGPL 2.1+'
     ['libass-*.dll']='libass, ISC' ['libfreetype-*.dll']='FreeType, FreeType License' ['libharfbuzz-*.dll']='HarfBuzz, MIT'
     ['libfribidi-*.dll']='GNU FriBidi, LGPL 2.1+' ['libplacebo-*.dll']='libplacebo, LGPL 2.1+' ['libdav1d*.dll']='dav1d, BSD 2-Clause'
-    ['liblcms2-*.dll']='Little CMS, MIT' ['zlib1.dll']='zlib, zlib License' ['libbz2-*.dll']='bzip2, BSD-style'
+    ['liblcms2-*.dll']='Little CMS, MIT' ['zlib1.dll']='zlib, zlib License' ['libz-*.dll']='zlib, zlib License' ['libbz2-*.dll']='bzip2, BSD-style'
     ['libpng16-*.dll']='libpng, libpng License' ['libbrotli*.dll']='Brotli, MIT' ['libglib-2.0-*.dll']='GLib, LGPL 2.1+'
     ['libintl-*.dll']='gettext runtime, LGPL 2.1+' ['libiconv-*.dll']='libiconv, LGPL 2.1+' ['libpcre2-8-*.dll']='PCRE2, BSD 3-Clause'
     ['libgraphite2.dll']='Graphite2, LGPL 2.1+ (of its licence choices)' ['libshaderc_shared.dll']='shaderc, Apache 2.0'

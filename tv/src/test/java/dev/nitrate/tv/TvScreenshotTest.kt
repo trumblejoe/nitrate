@@ -741,7 +741,8 @@ class TvScreenshotTest {
             val node = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first()
             val at = node.boundsInRoot
             looks += "$step:$at"
-            check(at.left >= 140f) { "Step $step: focus went to the menu, at $at (so far $looks)" }
+            // The menu is hidden until called (overlay): focus must not have opened it.
+            check(!menuOpen()) { "Step $step: focus went to the menu, at $at (so far $looks)" }
         }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
@@ -771,7 +772,7 @@ class TvScreenshotTest {
             val at = node?.boundsInRoot
             val label = node?.config?.firstOrNull { it.key == androidx.compose.ui.semantics.SemanticsProperties.ContentDescription }?.value?.toString()
             trail += "$key→$label@${at?.left?.toInt()},${at?.top?.toInt()}"
-            check(at != null && at.left >= 140f && at.top >= -5f && at.bottom <= 1085f) { "Focus lost or off screen: $trail" }
+            check(at != null && !menuOpen() && at.left >= 0f && at.top >= -5f && at.bottom <= 1085f) { "Focus lost or off screen: $trail" }
         }
         repeat(12) { step("down") }
         repeat(12) { step("up") }
@@ -1680,6 +1681,9 @@ class TvScreenshotTest {
         }
         return checkNotNull(last) { "nothing has focus" }
     }
+
+    /** Whether the menu (overlay or rail) is open: its "Customize this page" stop is on screen. */
+    private fun menuOpen() = compose.onAllNodes(androidx.compose.ui.test.hasText("Customize this page")).fetchSemanticsNodes().isNotEmpty()
 
     private fun focusedHasText(text: String) =
         compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText(text, substring = true, ignoreCase = false), useUnmergedTree = false)
