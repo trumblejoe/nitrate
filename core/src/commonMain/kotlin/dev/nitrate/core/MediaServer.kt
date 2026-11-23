@@ -776,6 +776,15 @@ interface MediaServer {
      */
     suspend fun recentlyWatched(limit: Int = 20): List<MediaItem> = emptyList()
 
+    /**
+     * The films and episodes played most recently (finished or part way), newest first, as lightly as
+     * the server allows: ids, where they sit (show, season) and their watch state; no pictures or counts.
+     */
+    suspend fun recentlyPlayed(limit: Int = 40): List<MediaItem> = emptyList()
+
+    /** What a playlist holds, ids and kinds only (no pictures, watch state or extra fields): for telling what's in it. */
+    suspend fun playlistMembers(playlistId: String): List<MediaItem> = playlistItems(playlistId)
+
     suspend fun search(query: String): SearchResults = unsupported()
 
     /** Movies and shows [personId] appears in, newest first. */

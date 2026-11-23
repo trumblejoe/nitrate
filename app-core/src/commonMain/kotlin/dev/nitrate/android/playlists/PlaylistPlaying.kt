@@ -18,11 +18,16 @@ data class PlaylistContext(val playlistId: String, val index: Int, val total: In
 
 /**
  * Video playlists played in their own order: everything in each (whole shows and seasons as their
- * episodes), kept a minute in memory and on disk so a big one opens at once next time. Where each was
- * left comes from Jellyfin itself (each entry's last-played date, so watching in any app on any device
- * counts); Nitrate keeps nothing of its own but, for this run, which playlist a title was just started
- * from (before the server has a play date for it). From those: what comes next in the player, Home's
- * "Continue your playlists" and each playlist page's Continue.
+ * episodes). Where each was left comes from Jellyfin itself (each entry's last-played date, so watching
+ * in any app on any device counts); Nitrate keeps nothing of its own but, for this run, which playlist a
+ * title was just started from (before the server has a play date for it). From those: what comes next
+ * in the player, Home's "Continue your playlists" and each playlist page's Continue.
+ *
+ * Kept light for the server, since Home asks on every reload: which playlists are being watched comes
+ * from one small "played lately" list (`MediaServer.recentlyPlayed`) checked against each playlist's
+ * members (ids only, kept [STRUCTURE_MS]); only those being watched have their whole contents read
+ * (shows put in whole as their episodes, also kept [STRUCTURE_MS], in memory and on disk), with the
+ * watch state laid over them from the played-lately list, which is always fresh.
  */
 class PlaylistPlaying(
     private val server: MediaServer,
@@ -31,26 +36,41 @@ class PlaylistPlaying(
 ) {
     private class Kept(val atMs: Long, val entries: List<MediaItem>)
 
+    @kotlinx.serialization.Serializable
+    private data class OnDisk(val atMs: Long, val entries: List<MediaItem>)
+
     private val lock = Mutex()
     private val kept = HashMap<String, Kept>()
+    private val members = HashMap<String, Kept>()
+    private var playlistList: Kept? = null
 
     /** What was shown last time (this device), for opening at once while it's fetched again. */
     suspend fun cached(playlistId: String): List<MediaItem>? {
         lock.withLock { kept[playlistId]?.let { return it.entries } }
+        return fromDisk(playlistId)?.entries
+    }
+
+    private suspend fun fromDisk(playlistId: String): OnDisk? {
         val account = server.currentAccountKey ?: return null
-        return runCatching { cache?.read(account, cacheKey(playlistId), ListSerializer(MediaItem.serializer())) }.getOrNull()
+        return runCatching { cache?.read(account, cacheKey(playlistId), OnDisk.serializer()) }.getOrNull()
     }
 
     /** Everything in [playlistId] in its order, fresh within [fresherThanMs]. */
     suspend fun entries(playlistId: String, fresherThanMs: Long = KEEP_MS): List<MediaItem> {
         lock.withLock { kept[playlistId]?.takeIf { nowMs() - it.atMs < fresherThanMs }?.let { return it.entries } }
+        // Kept on disk from an earlier run, still fresh enough.
+        fromDisk(playlistId)?.takeIf { nowMs() - it.atMs < fresherThanMs }?.let { disk ->
+            lock.withLock { kept[playlistId] = Kept(disk.atMs, disk.entries) }
+            return disk.entries
+        }
         val entries = load(playlistId)
-        lock.withLock { kept[playlistId] = Kept(nowMs(), entries) }
-        server.currentAccountKey?.let { account -> runCatching { cache?.write(account, cacheKey(playlistId), entries, ListSerializer(MediaItem.serializer())) } }
+        val at = nowMs()
+        lock.withLock { kept[playlistId] = Kept(at, entries) }
+        server.currentAccountKey?.let { account -> runCatching { cache?.write(account, cacheKey(playlistId), OnDisk(at, entries), OnDisk.serializer()) } }
         return entries
     }
 
-    private fun cacheKey(playlistId: String) = "playlist-entries/$playlistId"
+    private fun cacheKey(playlistId: String) = "playlist-kept/$playlistId"
 
     private suspend fun load(playlistId: String): List<MediaItem> = coroutineScope {
         val items = server.playlistItems(playlistId)
@@ -59,8 +79,30 @@ class PlaylistPlaying(
         PlaylistPlaces.entries(items, (shows + seasons).awaitAll().toMap())
     }
 
+    /** The ids a playlist holds (titles, and shows or seasons put in whole), kept [STRUCTURE_MS]. */
+    private suspend fun membersOf(playlistId: String): Set<String> {
+        lock.withLock { members[playlistId]?.takeIf { nowMs() - it.atMs < STRUCTURE_MS }?.let { k -> return k.entries.mapTo(HashSet()) { it.id } } }
+        val list = server.playlistMembers(playlistId)
+        lock.withLock { members[playlistId] = Kept(nowMs(), list) }
+        return list.mapTo(HashSet()) { it.id }
+    }
+
+    /** The user's video playlists, kept [LIST_MS]. */
+    private suspend fun videoPlaylists(): List<MediaItem> {
+        lock.withLock { playlistList?.takeIf { nowMs() - it.atMs < LIST_MS }?.let { return it.entries } }
+        val list = PlaylistPlaces.candidates(server.playlists())
+        lock.withLock { playlistList = Kept(nowMs(), list) }
+        return list
+    }
+
+    /** [entries] with the watch state of anything in [recent] (newer than what was kept). */
+    private fun withWatchState(entries: List<MediaItem>, recent: Map<String, MediaItem>): List<MediaItem> =
+        if (recent.isEmpty()) entries else entries.map { e -> recent[e.id]?.let { e.copy(user = it.user) } ?: e }
+
     /** Lets go of what's kept (watched marks changed): the next ask fetches again. */
-    suspend fun forget(playlistId: String? = null) = lock.withLock { if (playlistId == null) kept.clear() else kept.remove(playlistId) }
+    suspend fun forget(playlistId: String? = null) = lock.withLock {
+        if (playlistId == null) { kept.clear(); members.clear(); playlistList = null } else { kept.remove(playlistId); members.remove(playlistId) }
+    }
 
     // Titles just started from a playlist (title id → playlist id), for this run only: the server has no
     // play date for them yet. Rolling on adds the next one, so a sitting carries on before the server catches up.
@@ -73,19 +115,28 @@ class PlaylistPlaying(
         while (started.size > 200) started.remove(started.keys.first())
     }
 
-    /** The video playlists the user is watching through (played within `PlaylistPlaces.ACTIVE_MS`), most recent first, with their entries. */
-    private suspend fun active(maxPlaylists: Int, fresherThanMs: Long?): List<Pair<String, List<MediaItem>>> = coroutineScope {
-        val playlists = runCatching { PlaylistPlaces.candidates(server.playlists()) }.getOrDefault(emptyList()).take(maxPlaylists)
+    /**
+     * The video playlists the user is watching through (something in them played within
+     * `PlaylistPlaces.ACTIVE_MS`), most recent first, with their entries and fresh watch state: one
+     * "played lately" request, each playlist's kept members, and only the matching ones' contents.
+     */
+    private suspend fun active(maxPlaylists: Int): List<Pair<String, List<MediaItem>>> = coroutineScope {
         val since = nowMs() - PlaylistPlaces.ACTIVE_MS
-        playlists.map { pl ->
+        val recent = runCatching { server.recentlyPlayed() }.getOrDefault(emptyList()).filter { (it.user.lastPlayedMs ?: 0) >= since }
+        if (recent.isEmpty()) return@coroutineScope emptyList()
+        val playlists = runCatching { videoPlaylists() }.getOrDefault(emptyList()).take(maxPlaylists)
+        val watched = playlists.map { pl ->
             async {
-                val entries = runCatching {
-                    if (fresherThanMs == null) cached(pl.id) ?: entries(pl.id) else entries(pl.id, fresherThanMs = fresherThanMs)
-                }.getOrNull() ?: return@async null
-                val at = PlaylistPlaces.lastPlayedMs(entries) ?: return@async null
-                if (at < since) null else Triple(pl.id, entries, at)
+                val ids = runCatching { membersOf(pl.id) }.getOrNull() ?: return@async null
+                // A title in it, or an episode of a show (or season) put in whole.
+                val latest = recent.filter { it.id in ids || it.seriesId in ids || it.seasonId in ids }.maxOfOrNull { it.user.lastPlayedMs ?: 0 }
+                latest?.let { pl.id to it }
             }
-        }.awaitAll().filterNotNull().sortedByDescending { it.third }.map { it.first to it.second }
+        }.awaitAll().filterNotNull().sortedByDescending { it.second }
+        val byId = recent.associateBy { it.id }
+        watched.map { (id, _) ->
+            async { runCatching { id to withWatchState(entries(id, fresherThanMs = STRUCTURE_MS), byId) }.getOrNull() }
+        }.awaitAll().filterNotNull()
     }
 
     /**
@@ -96,11 +147,11 @@ class PlaylistPlaying(
     suspend fun contextOf(item: MediaItem): PlaylistContext? {
         val from = lock.withLock { started[item.id] }
         if (from != null) {
-            val entries = runCatching { cached(from) ?: entries(from) }.getOrNull()
+            val entries = runCatching { entries(from, fresherThanMs = STRUCTURE_MS) }.getOrNull()
             val at = entries?.let { PlaylistPlaces.placeIndex(it, item.id) }?.takeIf { it >= 0 }
             if (entries != null && at != null) return remember(from, entries, at)
         }
-        for ((playlistId, entries) in runCatching { active(LOOK_IN, fresherThanMs = null) }.getOrDefault(emptyList())) {
+        for ((playlistId, entries) in runCatching { active(LOOK_IN) }.getOrDefault(emptyList())) {
             val place = PlaylistPlaces.lastPlayed(entries) ?: continue
             val at = PlaylistPlaces.indexNearPlace(entries, place, item.id) ?: continue
             return remember(playlistId, entries, at)
@@ -120,7 +171,7 @@ class PlaylistPlaying(
      * on from its last-played entry; finished ones drop out.
      */
     suspend fun continueRow(max: Int = 12): MediaRow? {
-        val next = runCatching { active(LOOK_IN, fresherThanMs = FRESH_FOR_HOME_MS) }.getOrDefault(emptyList()).take(max)
+        val next = runCatching { active(LOOK_IN) }.getOrDefault(emptyList()).take(max)
             .mapNotNull { (_, entries) -> PlaylistPlaces.lastPlayed(entries)?.let { PlaylistPlaces.continueFrom(entries, it) } }
             .distinctBy { it.id }
         return if (next.isEmpty()) null else MediaRow(ROW_KEY, "Continue your playlists", next, RowDisplay())
@@ -145,7 +196,10 @@ class PlaylistPlaying(
         /** Stored in page layouts: never rename. */
         const val ROW_KEY = "home/continue_playlists"
         const val KEEP_MS = 60_000L
-        const val FRESH_FOR_HOME_MS = 20_000L
+        /** How long what a playlist holds is trusted before it's read again (watch state comes fresh regardless). */
+        const val STRUCTURE_MS = 6 * 60 * 60_000L
+        /** How long the list of the user's playlists is kept. */
+        const val LIST_MS = 10 * 60_000L
         /** How many video playlists are looked through for one being watched. */
         const val LOOK_IN = 20
     }

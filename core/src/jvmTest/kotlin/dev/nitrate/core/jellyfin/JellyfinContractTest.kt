@@ -148,6 +148,8 @@ class JellyfinContractTest {
         client.nextUpFor(DASHED)
         client.similar(DASHED)
         client.playlistItems(DASHED)
+        client.playlistMembers(DASHED)
+        client.recentlyPlayed()
         for (on in listOf(true, false)) {
             client.setPlayed(DASHED, on)
             client.setFavorite(DASHED, on)

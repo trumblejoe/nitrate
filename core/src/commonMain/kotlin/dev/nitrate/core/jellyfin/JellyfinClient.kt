@@ -1413,6 +1413,23 @@ class JellyfinClient(
     override suspend fun playlistItems(playlistId: String) =
         items("Playlists", playlistId, "Items", query = mapOf("fields" to "Overview,PrimaryImageAspectRatio,Genres,Tags"))
 
+    override suspend fun playlistMembers(playlistId: String) =
+        items("Playlists", playlistId, "Items", query = mapOf("enableImages" to false, "enableUserData" to false))
+
+    override suspend fun recentlyPlayed(limit: Int): List<MediaItem> = items(
+        "Items",
+        query = mapOf(
+            "userId" to userId,
+            "includeItemTypes" to "Movie,Episode",
+            "recursive" to true,
+            "sortBy" to "DatePlayed",
+            "sortOrder" to "Descending",
+            "limit" to limit,
+            "enableTotalRecordCount" to false,
+            "enableImages" to false,
+        ),
+    ).filter { it.user.lastPlayedMs != null }
+
     override suspend fun setPlayed(itemId: String, played: Boolean) {
         if (played) post<Unit>("UserPlayedItems", itemId) else http.delete(url("UserPlayedItems", itemId)) { auth() }
     }
