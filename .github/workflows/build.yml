@@ -55,6 +55,7 @@ jobs:
       # The FFmpeg audio decoder isn't built here (tests don't need it; release.yml builds it), so
       # these debug APKs leave DTS/TrueHD to the server.
       # KMP core: jvmTest is not part of `test`; the iOS compile catches JVM-only APIs in commonMain.
+      # `test` includes :desktop:test (the Windows app's window and player, with fakes; no libmpv here).
       - run: ./gradlew test :core:jvmTest :core:compileKotlinIosArm64 assembleDebug --console=plain
       - uses: actions/upload-artifact@v4
         with:
@@ -71,6 +72,7 @@ jobs:
           path: |
             mobile/build/outputs/roborazzi/*.png
             tv/build/outputs/roborazzi/*.png
+            desktop/build/outputs/desktop/*.png
 
   # The Nitrate Companion server plugin (C#, for Jellyfin's own .NET version).
   companion:

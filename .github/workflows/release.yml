@@ -218,7 +218,7 @@ jobs:
           previous=$(git describe --tags --abbrev=0 --match "$match" HEAD^ 2>/dev/null || true)
           if [ -n "$previous" ]; then range="$previous..HEAD"; else range="-8"; fi
           changes=$(git log $range --no-merges --format='- %s' | head -12)
-          notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk · iPhone/iPad (unsigned, sideload with AltStore, SideStore or Sideloadly): nitrate-ios-$NAME.ipa, added a little later · Jellyfin server plugin: nitrate-companion-$COMPANION_VERSION.zip
+          notes="Phone/tablet: nitrate-mobile-$NAME.apk · Android TV: nitrate-tv-$NAME.apk · iPhone/iPad (unsigned, sideload with AltStore, SideStore or Sideloadly): nitrate-ios-$NAME.ipa, added a little later · Windows (unsigned; Windows may ask before running it): nitrate-desktop-$NAME.msi to install, or nitrate-desktop-$NAME.zip to unzip and run, added a little later · Jellyfin server plugin: nitrate-companion-$COMPANION_VERSION.zip
 
           What's new:
           $changes
@@ -332,3 +332,100 @@ jobs:
           gh release download "$TAG" --pattern SHA256SUMS --dir sums
           (cd dist && sha256sum "nitrate-ios-$NAME.ipa") >> sums/SHA256SUMS
           gh release upload "$TAG" "dist/nitrate-ios-$NAME.ipa" sums/SHA256SUMS --clobber
+
+  # The Windows app: libmpv built LGPL-only in MSYS2 (cached until the script changes), then the
+  # MSI installer and a portable ZIP with their own Java runtime, built at the same time as the
+  # Android apps; windows-publish adds them (and their checksums) once the release exists.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Version
+        id: version
+        shell: bash
+        env:
+          # The same rule as the release job: a tag makes a release only with the release key.
+          HAS_KEY: ${{ secrets.NITRATE_KEYSTORE_BASE64 != '' && secrets.NITRATE_KEYSTORE_PASSWORD != '' && secrets.NITRATE_KEY_ALIAS != '' }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$HAS_KEY" = "true" ]; then
+            name="${GITHUB_REF_NAME#v}"; channel=stable
+          else
+            name="0.0.0-dev.$GITHUB_RUN_NUMBER"; channel=dev
+          fi
+          {
+            echo "NITRATE_VERSION_NAME=$name"
+            echo "NITRATE_VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))"
+            echo "NITRATE_DESKTOP_CHANNEL=$channel"
+          } >> "$GITHUB_ENV"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - name: libmpv cache
+        id: libmpv
+        uses: actions/cache@v4
+        with:
+          path: desktop/resources/windows-x64
+          key: libmpv-windows-${{ hashFiles('tools/build-libmpv-windows.sh') }}
+      - uses: msys2/setup-msys2@v2
+        if: steps.libmpv.outputs.cache-hit != 'true'
+        with:
+          msystem: UCRT64
+          update: true
+      - name: Build libmpv (LGPL)
+        if: steps.libmpv.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: tools/build-libmpv-windows.sh
+      - name: Check libmpv
+        shell: bash
+        env:
+          NITRATE_MPV_DIR: ${{ github.workspace }}/desktop/resources/windows-x64
+          NITRATE_REQUIRE_MPV: "1"
+        run: |
+          test -f desktop/resources/windows-x64/libmpv-2.dll
+          cat desktop/resources/windows-x64/licenses/DLLs.txt
+          ./gradlew :desktop:test --tests '*LibMpvLoaderTest' --tests '*MpvIntegrationTest' --console=plain
+      - name: Package
+        shell: bash
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+        run: |
+          ./gradlew :desktop:packageMsi :desktop:createDistributable --console=plain
+          mkdir -p dist
+          cp desktop/build/compose/binaries/main/msi/*.msi "dist/nitrate-desktop-$NAME.msi"
+          app=$(ls -d desktop/build/compose/binaries/main/app/*/ | head -1)
+          # The portable copy knows not to run the installer when it updates.
+          echo "Nitrate, portable: unzip anywhere and run the Nitrate .exe in this folder. Updates open the release page." > "$app/portable.txt"
+          (cd "$app/.." && 7z a -tzip -mx=9 "$GITHUB_WORKSPACE/dist/nitrate-desktop-$NAME.zip" "$(basename "$app")" > /dev/null)
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop
+          path: dist/*
+          retention-days: 3
+
+  # Adds the Windows app to the release once both exist. Waits for ios-publish (whatever it did)
+  # so the two never rewrite SHA256SUMS at the same time.
+  windows-publish:
+    needs: [release, windows, ios-publish]
+    if: always() && needs.release.result == 'success' && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-desktop
+          path: dist
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.release.outputs.tag }}
+          NAME: ${{ needs.release.outputs.name }}
+        run: |
+          test -f "dist/nitrate-desktop-$NAME.msi"
+          test -f "dist/nitrate-desktop-$NAME.zip"
+          gh release download "$TAG" --pattern SHA256SUMS --dir sums
+          (cd dist && sha256sum "nitrate-desktop-$NAME.msi" "nitrate-desktop-$NAME.zip") >> sums/SHA256SUMS
+          gh release upload "$TAG" "dist/nitrate-desktop-$NAME.msi" "dist/nitrate-desktop-$NAME.zip" sums/SHA256SUMS --clobber

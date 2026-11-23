@@ -109,7 +109,7 @@ Release builds include FFmpeg decoders for DTS, Dolby TrueHD, Dolby Digital (Plu
 - **Release:** push a tag such as `v0.2.0`.
 - **Test build:** Actions → Release → *Run workflow*, on any branch. It is published as a pre-release named `dev-<run number>`.
 
-Every build has a higher version code, so it installs over the previous one. On a phone, open the release on GitHub and tap the `nitrate-mobile-….apk` (allow installs from your browser when asked). On a TV, use an app such as Downloader, or `adb install -r nitrate-tv-….apk`.
+Every build has a higher version code, so it installs over the previous one. On a phone, open the release on GitHub and tap the `nitrate-mobile-….apk` (allow installs from your browser when asked). On a TV, use an app such as Downloader, or `adb install -r nitrate-tv-….apk`. On Windows, run `nitrate-desktop-….msi` (it isn't code-signed yet, so SmartScreen asks first: *More info* → *Run anyway*), or unzip `nitrate-desktop-….zip` anywhere and run `Nitrate.exe`; the installed app updates itself the same way, the ZIP opens the release page (see `docs/features/windows.md`).
 
 **Updates in the app.** After the first install, Nitrate updates itself: when it opens (at most every six hours) it checks this repository's releases for a newer build of the same kind (dev builds follow dev pre-releases, release builds follow releases), shows what's new, downloads the APK, checks it against the release's `SHA256SUMS`, and hands it to Android's installer. Android asks once to let Nitrate install apps, and may ask to confirm each update. *Check for updates* and the automatic check are in Settings (phone) and Playback settings (TV). Debug builds don't update.
 
@@ -148,6 +148,7 @@ gh secret set NITRATE_KEY_ALIAS -R trumblejoe/nitrate --body nitrate
 | `core` | Kotlin Multiplatform (JVM + iOS): Nitrate's own models, the `MediaServer` interface and its Jellyfin client, and all platform-neutral logic (rows, playback rules and test advisor, episode order, Fountain/.fadein, transfer server, plugins). |
 | `core-android` | Android implementation: HTTP engine and device identity for the Jellyfin client, on-device storage, the decoder/display probe, `PlaybackSession` (Media3), settings sync, shared view models and `AppContainer`. |
 | `tv` | Android TV app (Compose for TV), application ID `dev.nitrate.tv`. |
+| `desktop` | Windows app (Compose for Desktop; Linux and macOS run it too): the phone/tablet screens in a window, playing in libmpv (LGPL build). `./gradlew :desktop:run` starts it; `tools/build-libmpv-windows.sh` builds libmpv for Windows. |
 | `mobile` | Android phone/tablet app (Material 3, bottom bar on phones, side rail on tablets), application ID `dev.nitrate.app`. Screens use only multiplatform-ready libraries; Android-only pieces live in its `platform` package. |
 
 Builds: `./gradlew assembleDebug` produces `tv/build/outputs/apk/debug/tv-debug.apk` and `mobile/build/outputs/apk/debug/mobile-debug.apk`. `./gradlew :mobile:testDebugUnitTest` also renders phone and tablet screenshots against a fake server into `mobile/build/outputs/roborazzi/`.
