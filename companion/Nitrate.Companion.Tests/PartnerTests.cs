@@ -163,6 +163,36 @@ public class PartnerTests
     }
 
     [Fact]
+    public void PeopleInvitedTogetherEndUpInOneGroup()
+    {
+        var hub = Hub();
+        var batch = Guid.NewGuid();
+        var titles = new[] { new GroupTitle { Id = Bear, Name = "The Bear" } };
+        hub.Request(Joe, Sam, null, Bear, "The Bear", titles: titles, batch: batch);
+        hub.Request(Joe, Kid, null, Bear, "The Bear", titles: titles, batch: batch);
+        // Before anyone accepts, each invitee only learns the inviter's name.
+        Assert.Equal(new[] { "joe" }, hub.Incoming(Kid).Single().WillSee.Select(n => n.ToLowerInvariant()));
+        var made = hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        // The next one joins the group the first made, and is told who's in it now.
+        Assert.Contains("sam", hub.Incoming(Kid).Single().WillSee.Select(n => n.ToLowerInvariant()));
+        var joined = hub.Accept(Kid, hub.Incoming(Kid).Single().Id);
+        Assert.Equal(made.Id, joined.Id);
+        Assert.Single(hub.Groups(Joe));
+        Assert.Equal(2, hub.Groups(Joe).Single().Others.Count);
+    }
+
+    [Fact]
+    public void InvitesSentApartStillMakeSeparateGroups()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        hub.Request(Joe, Kid, null, Bear, "The Bear");
+        hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        hub.Accept(Kid, hub.Incoming(Kid).Single().Id);
+        Assert.Equal(2, hub.Groups(Joe).Count);
+    }
+
+    [Fact]
     public void OnlyTheRightPeopleAnswerOrCancel()
     {
         var hub = Hub();

@@ -316,11 +316,20 @@ class ScreenshotTest {
         dev.nitrate.mobile.ui.GroupSetupPages(actions, dev.nitrate.core.partners.GroupSetup(titles = listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel")))) {}
     }
 
+    /** Who: several people ticked (and names typed), all invited into one group. */
+    @Test fun groupSetupWho() = shoot("phone-group-setup-who", setup = { c -> c.refreshCompanionForTests() }) { actions ->
+        val start = dev.nitrate.core.partners.GroupSetup(
+            dev.nitrate.core.partners.GroupSetup.Step.WHO,
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel")), people = listOf("user-2", "user-3"), typed = "suzy",
+        )
+        dev.nitrate.mobile.ui.GroupSetupPages(actions, start) {}
+    }
+
     /** Its last step: the Together switch, what it means, what's chosen, and Send the invite. */
     @Test fun groupSetupTogether() = shoot("phone-group-setup-together", setup = { c -> c.refreshCompanionForTests() }) { actions ->
         val start = dev.nitrate.core.partners.GroupSetup(
             dev.nitrate.core.partners.GroupSetup.Step.TOGETHER,
-            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")), personId = "user-2",
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")), people = listOf("user-2"),
             schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, together = true, party = dev.nitrate.core.partners.PartyTime(listOf(5), 21)),
         )
         dev.nitrate.mobile.ui.GroupSetupPages(actions, start) {}

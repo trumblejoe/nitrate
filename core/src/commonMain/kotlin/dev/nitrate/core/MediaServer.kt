@@ -626,6 +626,8 @@ interface MediaServer {
         schedule: dev.nitrate.core.partners.GroupSchedule? = null,
         /** A new group's titles (Companion feature `groupwatch`; older servers take [seriesId] alone). */
         titles: List<dev.nitrate.core.partners.GroupTitle>? = null,
+        /** Invites sent together for one new group share it (Companion feature `invitebatch`): they all end up in one group. */
+        batch: String? = null,
     ): dev.nitrate.core.partners.OutgoingRequest = unsupported()
 
     /** Adds a title to one of the user's groups (Companion feature `groupwatch`; any member may). */

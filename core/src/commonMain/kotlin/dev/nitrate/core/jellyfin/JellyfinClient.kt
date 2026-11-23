@@ -1428,8 +1428,8 @@ class JellyfinClient(
     override suspend fun setPrivacy(private: Boolean) = partnersApi.setPrivacy(private)
     override suspend fun partnerPeople() = partnersApi.people()
     override suspend fun partners() = partnersApi.list()
-    override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule?, titles: List<dev.nitrate.core.partners.GroupTitle>?) =
-        partnersApi.ask(toUserId, toName, seriesId, seriesName, groupId, schedule, titles)
+    override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule?, titles: List<dev.nitrate.core.partners.GroupTitle>?, batch: String?) =
+        partnersApi.ask(toUserId, toName, seriesId, seriesName, groupId, schedule, titles, batch)
     override suspend fun addGroupTitle(groupId: String, titleId: String, name: String) = partnersApi.addTitle(groupId, titleId, name)
     override suspend fun removeGroupTitle(groupId: String, titleId: String) = partnersApi.removeTitle(groupId, titleId)
     override suspend fun markForGroups(groupIds: List<String>, itemIds: List<String>, watched: Boolean) = partnersApi.mark(groupIds, itemIds, watched)

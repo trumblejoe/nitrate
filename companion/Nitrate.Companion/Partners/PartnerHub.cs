@@ -271,7 +271,7 @@ public partial class PartnerHub
     /// already shares a group with) or by exact name (anyone, private too). Always "sent": nothing
     /// tells the caller whether the account exists.
     /// </summary>
-    public OutgoingView Request(Guid from, Guid? toId, string? toName, Guid seriesId, string seriesName, Guid? groupId = null, GroupSchedule? schedule = null, IReadOnlyList<GroupTitle>? titles = null)
+    public OutgoingView Request(Guid from, Guid? toId, string? toName, Guid seriesId, string seriesName, Guid? groupId = null, GroupSchedule? schedule = null, IReadOnlyList<GroupTitle>? titles = null, Guid? batch = null)
     {
         lock (_lock)
         {
@@ -330,13 +330,15 @@ public partial class PartnerHub
 
             var gidOrEmpty = group?.Id ?? Guid.Empty;
             var first = wanted[0].Id;
-            var existing = _state.Requests.FirstOrDefault(r => r.From == from && r.SeriesId == first && r.GroupId == gidOrEmpty
+            // Invites sent together for one new group carry the same batch (never for an existing group).
+            var batchOrEmpty = group is null ? batch ?? Guid.Empty : Guid.Empty;
+            var existing = _state.Requests.FirstOrDefault(r => r.From == from && r.SeriesId == first && r.GroupId == gidOrEmpty && r.Batch == batchOrEmpty
                 && (to != Guid.Empty ? r.To == to : string.Equals(r.ToLabel, label, StringComparison.OrdinalIgnoreCase)));
             if (existing is null)
             {
                 existing = new PartnerRequest
                 {
-                    Id = Guid.NewGuid(), From = from, To = to, ToLabel = label, GroupId = gidOrEmpty,
+                    Id = Guid.NewGuid(), From = from, To = to, ToLabel = label, GroupId = gidOrEmpty, Batch = batchOrEmpty,
                     SeriesId = first, SeriesName = wanted[0].Name, Titles = wanted, At = _time.GetUtcNow(),
                     // A new group's schedule is the inviter's choice; joining a group takes the group's.
                     Schedule = group is null && schedule is not null && (schedule.Active || schedule.Party is not null) ? Valid(schedule) : null,
@@ -358,7 +360,7 @@ public partial class PartnerHub
             return _state.Requests.Where(r => r.To == user && !r.Declined)
                 .Select(r =>
                 {
-                    var group = r.GroupId == Guid.Empty ? null : _state.Groups.FirstOrDefault(g => g.Id == r.GroupId);
+                    var group = r.GroupId == Guid.Empty ? BatchGroup(r) : _state.Groups.FirstOrDefault(g => g.Id == r.GroupId);
                     var willSee = (group?.Members ?? new List<Guid> { r.From }).Append(r.From).Distinct()
                         .Where(id => id != user).Select(id => _directory.NameOf(id)).OfType<string>().ToList();
                     var titles = (group?.Titles ?? r.Titles).Select(t => new GroupTitle { Id = t.Id, Name = t.Name }).ToList();
@@ -390,7 +392,16 @@ public partial class PartnerHub
                 ?? throw new PartnerException(PartnerError.NotFound, "That invite has lapsed.");
             _state.Requests.Remove(r);
             WatchGroup group;
-            if (r.GroupId == Guid.Empty)
+            if (r.GroupId == Guid.Empty && BatchGroup(r) is { } made)
+            {
+                // Invited together with others: someone already accepted, so join the group they made.
+                group = made;
+                if (!group.Members.Contains(user))
+                {
+                    group.Members.Add(user);
+                }
+            }
+            else if (r.GroupId == Guid.Empty)
             {
                 var schedule = r.Schedule?.Copy();
                 if (schedule is not null)
@@ -401,7 +412,7 @@ public partial class PartnerHub
                 group = new WatchGroup
                 {
                     Id = Guid.NewGuid(), Titles = r.Titles.Select(t => new GroupTitle { Id = t.Id, Name = t.Name }).ToList(),
-                    Members = new() { r.From, user }, Since = _time.GetUtcNow(), Schedule = schedule, RecordKept = true,
+                    Members = new() { r.From, user }, Since = _time.GetUtcNow(), Schedule = schedule, RecordKept = true, FromBatch = r.Batch,
                 };
                 FirstTitle(group);
                 _state.Groups.Add(group);
@@ -421,6 +432,10 @@ public partial class PartnerHub
             return View(group, user, group.Watched.ToList(), null);
         }
     }
+
+    /// <summary>The group an invite's batch already made (someone invited with it accepted), while the inviter is still in it.</summary>
+    private WatchGroup? BatchGroup(PartnerRequest r) =>
+        r.Batch == Guid.Empty ? null : _state.Groups.FirstOrDefault(g => g.FromBatch == r.Batch && g.Members.Contains(r.From));
 
     /// <summary>Says no. The inviter isn't told: their invite waits until it lapses.</summary>
     public void Decline(Guid user, Guid requestId)

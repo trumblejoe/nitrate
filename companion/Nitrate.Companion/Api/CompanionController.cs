@@ -70,6 +70,7 @@ public class CompanionController : ControllerBase
         // Groups with several titles, a watched record kept by every group, marks per group
         // (POST /Nitrate/Partners/Groups/{id}/Mark, /Nitrate/Partners/Mark), the Together switch, sessions said to be for a group.
         features.Add("groupwatch");
+        features.Add("invitebatch");
         features.Add("updates");
         features.Add("together");
         features.Add("credits");

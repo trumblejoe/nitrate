@@ -2299,7 +2299,7 @@ class TvScreenshotTest {
     }) { c ->
         val start = dev.nitrate.core.partners.GroupSetup(
             dev.nitrate.core.partners.GroupSetup.Step.TOGETHER,
-            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")), personId = "user-2",
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")), people = listOf("user-2"),
             schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, party = dev.nitrate.core.partners.PartyTime(listOf(5), 21)),
         )
         dev.nitrate.tv.ui.partners.GroupSetupDialog(c, start) {}

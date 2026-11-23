@@ -42,7 +42,7 @@ import kotlin.time.Instant
 @Serializable internal data class VoteDto(val yes: Boolean)
 @Serializable internal data class OutgoingDto(val id: String, val to: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val at: String? = null, val titles: List<TitleRefDto>? = null)
 @Serializable internal data class PartnersDto(val groups: List<GroupDto> = emptyList(), val incoming: List<IncomingDto> = emptyList(), val outgoing: List<OutgoingDto> = emptyList())
-@Serializable internal data class AskDto(val toUserId: String?, val toName: String?, val seriesId: String, val seriesName: String, val groupId: String?, val schedule: ScheduleDto? = null, val titles: List<TitleRefDto>? = null)
+@Serializable internal data class AskDto(val toUserId: String?, val toName: String?, val seriesId: String, val seriesName: String, val groupId: String?, val schedule: ScheduleDto? = null, val titles: List<TitleRefDto>? = null, val batch: String? = null)
 @Serializable internal data class ProgressDto(val groupId: String, val userId: String, val userName: String = "", val watched: List<String> = emptyList(), val last: String? = null, val nextId: String? = null)
 @Serializable internal data class TogetherDto(val itemId: String, val groupId: String)
 @Serializable internal data class TogetherOutDto(val markedFor: List<String> = emptyList())
@@ -81,10 +81,10 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
 
     suspend fun ask(
         toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?,
-        schedule: dev.nitrate.core.partners.GroupSchedule? = null, titles: List<dev.nitrate.core.partners.GroupTitle>? = null,
+        schedule: dev.nitrate.core.partners.GroupSchedule? = null, titles: List<dev.nitrate.core.partners.GroupTitle>? = null, batch: String? = null,
     ): OutgoingRequest = call {
         client.http.post(client.url("Nitrate", "Partners", "Requests")) {
-            json(AskDto(toUserId, toName?.trim(), seriesId, seriesName, groupId, schedule?.toDto(), titles?.map { TitleRefDto(it.id, it.name) }))
+            json(AskDto(toUserId, toName?.trim(), seriesId, seriesName, groupId, schedule?.toDto(), titles?.map { TitleRefDto(it.id, it.name) }, batch))
         }
     }.decode<OutgoingDto>().toModel()
 

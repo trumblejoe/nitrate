@@ -126,7 +126,7 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
                     groups.forEach { g -> FilterChip(target == g.id, { target = g.id }) { Text("With ${g.label}") } }
                 }
             }
-            Text("They'll be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Pick everyone to invite. They'll each be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (everyone.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 everyone.forEach { u -> FilterChip(chosen == u.id, { chosen = if (chosen == u.id) null else u.id; typed = "" }) { Text(u.name) } }
             }
@@ -517,7 +517,10 @@ fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.G
     val easy = LocalDisplayPrefs.current.easyMode
     val info by container.partners.collectAsState()
     val people by produceState(emptyList<dev.nitrate.core.writing.UserRef>()) { value = runCatching { container.server.partnerPeople() }.getOrDefault(emptyList()) }
+    // Several people into one group when the server can (feature `invitebatch`), else one as before.
+    val several = container.companion.collectAsState().value?.features?.contains("invitebatch") == true
     var setup by remember { mutableStateOf(start) }
+    if (setup.several != several) setup = setup.copy(several = several)
     var sent by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -557,13 +560,13 @@ fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.G
                     TitlePicker(container, setup::picked, setup.titles.map { it.name }, { setup = setup.toggle(it) }, Modifier.focusRequester(first))
                 }
                 dev.nitrate.core.partners.GroupSetup.Step.WHO -> {
-                    if (!easy) Text("They'll be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!easy) Text("Pick everyone to invite. They'll each be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     // People known from other groups, then everyone listed (never private accounts).
                     val everyone = (info?.groups.orEmpty().flatMap { it.others } + people).distinctBy { it.id }
                     if (everyone.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        everyone.forEachIndexed { i, u -> FilterChip(setup.personId == u.id, { setup = setup.pick(u.id) }, if (i == 0) Modifier.focusRequester(first) else Modifier) { Text(u.name) } }
+                        everyone.forEachIndexed { i, u -> FilterChip(setup.picked(u.id), { setup = setup.pick(u.id) }, if (i == 0) Modifier.focusRequester(first) else Modifier) { Text(u.name) } }
                     }
-                    TvTextField(setup.typed, { setup = setup.type(it) }, "Or their exact user name (for someone not listed)", modifier = (if (everyone.isEmpty()) Modifier.focusRequester(first) else Modifier).width(620.dp))
+                    TvTextField(setup.typed, { setup = setup.type(it) }, if (setup.several) "And/or exact user names, separated by commas (for people not listed)" else "Or their exact user name (for someone not listed)", modifier = (if (everyone.isEmpty()) Modifier.focusRequester(first) else Modifier).width(620.dp))
                     if (!easy) Text("Nothing here tells you whether an account exists.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 dev.nitrate.core.partners.GroupSetup.Step.PACE -> {

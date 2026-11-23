@@ -151,7 +151,7 @@ fun WatchWithDialog(actions: AppActions, series: MediaItem, groupId: String? = n
                         }
                     }
                     Text(
-                        "They'll be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.",
+                        "Pick everyone to invite. They'll each be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (everyone.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -160,7 +160,7 @@ fun WatchWithDialog(actions: AppActions, series: MediaItem, groupId: String? = n
                     OutlinedTextField(
                         typed, { typed = it; if (it.isNotBlank()) chosen = null },
                         label = { Text("Or their exact user name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        supportingText = { Text("For someone not listed. Nothing here tells you whether the account exists.") },
+                        supportingText = { Text("For people not listed. Nothing here tells you whether an account exists.") },
                     )
                     // A new group's schedule is the inviter's choice; accepting agrees to it.
                     if (target == null) SchedulePicker(schedule) { schedule = it }
@@ -566,7 +566,10 @@ fun GroupSetupPages(actions: AppActions, start: dev.nitrate.core.partners.GroupS
     val easy = LocalDisplayPrefs.current.easyMode
     val info by container.partners.collectAsState()
     val people by produceState(emptyList<dev.nitrate.core.writing.UserRef>()) { value = runCatching { container.server.partnerPeople() }.getOrDefault(emptyList()) }
+    // Several people into one group when the server can (feature `invitebatch`), else one as before.
+    val several = container.companion.collectAsState().value?.features?.contains("invitebatch") == true
     var setup by remember { mutableStateOf(start) }
+    if (setup.several != several) setup = setup.copy(several = several)
     var sent by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -600,16 +603,16 @@ fun GroupSetupPages(actions: AppActions, start: dev.nitrate.core.partners.GroupS
                     TitlePicker(actions, setup::picked, setup.titles.map { it.name }) { setup = setup.toggle(it) }
                 }
                 dev.nitrate.core.partners.GroupSetup.Step.WHO -> {
-                    if (!easy) Text("They'll be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!easy) Text("Pick everyone to invite. They'll each be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     // People known from other groups, then everyone listed (never private accounts).
                     val everyone = (info?.groups.orEmpty().flatMap { it.others } + people).distinctBy { it.id }
                     if (everyone.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        everyone.forEach { u -> FilterChip(setup.personId == u.id, { setup = setup.pick(u.id) }, label = { Text(u.name) }) }
+                        everyone.forEach { u -> FilterChip(setup.picked(u.id), { setup = setup.pick(u.id) }, label = { Text(u.name) }) }
                     }
                     OutlinedTextField(
                         setup.typed, { setup = setup.type(it) },
-                        label = { Text("Or their exact user name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        supportingText = if (easy) null else ({ Text("For someone not listed. Nothing here tells you whether the account exists.") }),
+                        label = { Text(if (setup.several) "And/or exact user names, separated by commas" else "Or their exact user name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        supportingText = if (easy) null else ({ Text("For people not listed. Nothing here tells you whether an account exists.") }),
                     )
                 }
                 dev.nitrate.core.partners.GroupSetup.Step.PACE -> {

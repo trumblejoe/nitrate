@@ -24,6 +24,9 @@ public class WatchGroup
     /// <summary>Gets or sets its id.</summary>
     public Guid Id { get; set; }
 
+    /// <summary>Gets or sets the invite batch it was made from (its other invitees join it), if any.</summary>
+    public Guid FromBatch { get; set; }
+
     /// <summary>Gets or sets the first title (the only one, for groups stored before <see cref="Titles"/>).</summary>
     public Guid SeriesId { get; set; }
 
@@ -97,6 +100,12 @@ public class PartnerRequest
 
     /// <summary>Gets or sets the group it invites to (empty: a new group with the asker).</summary>
     public Guid GroupId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the invites sent together for one new group (empty: on its own). The first of a
+    /// batch to accept makes the group; the others join that same group when they accept.
+    /// </summary>
+    public Guid Batch { get; set; }
 
     /// <summary>Gets or sets the first title (a show, film, playlist or collection).</summary>
     public Guid SeriesId { get; set; }

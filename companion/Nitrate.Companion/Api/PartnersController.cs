@@ -21,7 +21,7 @@ public record PartnersOut(IReadOnlyList<GroupView> Groups, IReadOnlyList<Incomin
 /// into one of the caller's groups (<paramref name="GroupId"/>) or a new one for
 /// <paramref name="Titles"/> (older apps send one title as <paramref name="SeriesId"/>).
 /// </summary>
-public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, string SeriesName, Guid? GroupId = null, GroupSchedule? Schedule = null, IReadOnlyList<GroupTitle>? Titles = null);
+public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, string SeriesName, Guid? GroupId = null, GroupSchedule? Schedule = null, IReadOnlyList<GroupTitle>? Titles = null, Guid? Batch = null);
 
 /// <summary>A title to add to a group.</summary>
 public record GroupTitlePost(Guid Id, string? Name);
@@ -106,7 +106,7 @@ public class PartnersController : ControllerBase
     /// <summary>Invites someone to watch a show together. Always answers "sent".</summary>
     [HttpPost("Partners/Requests")]
     public ActionResult<OutgoingView> Ask([FromBody] PartnerRequestPost body) =>
-        Run(me => _partners.Request(me, body.ToUserId, body.ToName, body.SeriesId, body.SeriesName ?? string.Empty, body.GroupId, body.Schedule, body.Titles));
+        Run(me => _partners.Request(me, body.ToUserId, body.ToName, body.SeriesId, body.SeriesName ?? string.Empty, body.GroupId, body.Schedule, body.Titles, body.Batch));
 
     /// <summary>Adds a title to the caller's group (any member may).</summary>
     [HttpPost("Partners/Groups/{id}/Titles")]
