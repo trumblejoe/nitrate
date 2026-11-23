@@ -177,6 +177,9 @@ public sealed class LogicHost : IHostedService, IAsyncDisposable
     /// <summary>Gets or sets how long the old logic may take to stop.</summary>
     public TimeSpan StopTime { get; set; } = TimeSpan.FromSeconds(20);
 
+    /// <summary>Gets or sets how long a caller waits for the first start before going without a logic.</summary>
+    public TimeSpan StartWait { get; set; } = TimeSpan.FromMinutes(1);
+
     /// <summary>Gets the store the logic packages are kept in.</summary>
     public LogicStore Store => _store;
 
@@ -212,7 +215,16 @@ public sealed class LogicHost : IHostedService, IAsyncDisposable
     /// </summary>
     public async ValueTask<LogicLease?> AcquireAsync(CancellationToken cancellationToken)
     {
-        await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Never held up for long by a start that hasn't happened (the server asking before it starts its services).
+            await _ready.Task.WaitAsync(StartWait, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+
         while (true)
         {
             if (Volatile.Read(ref _held) is { } held)

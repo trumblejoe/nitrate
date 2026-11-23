@@ -118,6 +118,30 @@ in `companion.db` and the other files already, or rebuilt (formats, presence, ra
 null) and `LogicNeedsPlugin` (a logic version waiting for a newer plugin). The dashboard page shows
 the shell and logic versions and the last swap.
 
+## Keeping old logic unloadable
+
+An old logic unloads only when nothing outside its context still points into it. What the logic
+must keep to:
+
+- Its own container and its own JSON options (`ApiRouter` copies the server's MVC JSON settings
+  with a fresh resolver; logic types are turned into a `JsonElement` before MVC sees them). Never
+  hand a logic type to the server's serializers, caches or containers.
+- `StopAsync` removes every event handler on the server's managers and ends every loop and timer;
+  `DisposeAsync` closes the databases.
+- No static events, `AppDomain` handlers or SQLite functions pointing at logic code.
+- The load context never keeps its own assemblies (the runtime does; a second reference ties the
+  context to them for good), and System.Text.Json's process-wide member accessor cache drops stale
+  entries only when it makes new ones, so the unload watcher (`JsonCaches.Nudge`) makes some.
+
+`LogicHostTests` and `RealLogicTests` check that the old context really goes after requests have
+been through it.
+
+## Smaller differences from before the split
+
+- The API no longer appears in Jellyfin's generated OpenAPI document (the catch-all is hidden from it).
+- A wrong method on a path the shell owns (`GET /Nitrate/Updates/Check`) is a 404 rather than 405.
+- Callers that come before the logic has started wait at most a minute (`LogicHost.StartWait`).
+
 ## Failure and rollback
 
 - No usable logic at all: `/Nitrate/*` answers 503 (except `/Nitrate/Updates`), tasks and segments
