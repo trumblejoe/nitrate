@@ -58,6 +58,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         if let item = response.notification.request.content.userInfo["nitrateItem"] as? String {
             MainKt.openItem(itemId: item)
         }
+        // A watch party reminder opens that group's party.
+        if let group = response.notification.request.content.userInfo["nitrateParty"] as? String {
+            MainKt.openItem(itemId: "party:" + group)
+        }
         completionHandler()
     }
 

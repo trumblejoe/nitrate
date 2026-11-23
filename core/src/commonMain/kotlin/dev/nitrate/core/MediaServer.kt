@@ -619,6 +619,27 @@ interface MediaServer {
     /** A yes or no to the group's waiting schedule change. */
     suspend fun voteSchedule(groupId: String, changeId: String, yes: Boolean): Unit = unsupported()
 
+    /** The group's next (or current) watch party (Companion feature `party`); null when it has no party time. One quick request. */
+    suspend fun watchParty(groupId: String): dev.nitrate.core.partners.WatchParty? = null
+
+    /** Pushes tonight's watch party back: 15 minutes at once (once per person per night), 30 or 60 asks the group. Returns the party now. */
+    suspend fun partyLater(groupId: String, minutes: Int): dev.nitrate.core.partners.WatchParty? = unsupported()
+
+    /** Asks the group to skip tonight's watch party ("Not tonight"); if it doesn't pass, the user can't make it. */
+    suspend fun partySkip(groupId: String): dev.nitrate.core.partners.WatchParty? = unsupported()
+
+    /** The user can't make tonight's watch party ([cant] false: can after all). */
+    suspend fun partyCantMake(groupId: String, cant: Boolean): dev.nitrate.core.partners.WatchParty? = unsupported()
+
+    /** A yes or no to tonight's postponement or "Not tonight" request. */
+    suspend fun partyVote(groupId: String, requestId: String, yes: Boolean): dev.nitrate.core.partners.WatchParty? = unsupported()
+
+    /** Joins tonight's watch party: the first to join starts it ([dev.nitrate.core.partners.PartyJoin.start]). */
+    suspend fun partyJoin(groupId: String): dev.nitrate.core.partners.PartyJoin = unsupported()
+
+    /** The starter tells the others' apps which live (SyncPlay) group tonight's watch party is. */
+    suspend fun partySession(groupId: String, sessionId: String): Unit = unsupported()
+
     suspend fun acceptPartner(requestId: String): dev.nitrate.core.partners.WatchGroup = unsupported()
     suspend fun declinePartner(requestId: String): Unit = unsupported()
     suspend fun cancelPartnerRequest(requestId: String): Unit = unsupported()

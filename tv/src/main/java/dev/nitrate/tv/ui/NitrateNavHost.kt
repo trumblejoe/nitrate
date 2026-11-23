@@ -588,6 +588,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         dev.nitrate.tv.ui.player.SpeakersSetupPrompt(container)
     }
     if (companion?.features?.contains("together") == true) dev.nitrate.tv.ui.together.WatchInvitePrompt(container)
+    // Watch parties: what the Companion sends as it happens; in the player only a quiet note, never taking focus.
+    if (companion?.features?.contains("party") == true) {
+        val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
+        dev.nitrate.tv.ui.partners.WatchPartyPrompt(container, inPlayer, displayPrefs.easyMode) { item -> gate.play(item) }
+    }
     LaunchedEffect(Unit) { container.updater.checkIfDue() }
     // What other apps ask of this TV: play something, show a message, change volume.
     var message by remember { mutableStateOf<Pair<String, String>?>(null) }

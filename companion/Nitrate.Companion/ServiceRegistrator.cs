@@ -60,6 +60,8 @@ public class ServiceRegistrator : IPluginServiceRegistrator
             sp.GetRequiredService<TimeProvider>()));
         // Together-only groups' own watched records, from the server's playback reports (live sessions and catching up).
         serviceCollection.AddHostedService<TogetherRecorder>();
+        // Watch party reminders and news, sent to the members' open Nitrate apps over Jellyfin's own connection.
+        serviceCollection.AddHostedService<PartyPush>();
         // Group chat pinned to the timeline: one note per message, live sessions getting each at once.
         serviceCollection.AddSingleton<Nitrate.Companion.Insights.ILiveSessions>(sp => new JellyfinLiveSessions(
             sp.GetRequiredService<MediaBrowser.Controller.SyncPlay.ISyncPlayManager>(), sp.GetRequiredService<ISessionManager>(), sp.GetRequiredService<IUserManager>()));

@@ -39,6 +39,8 @@ data class WatchGroup(
      * server without it): Jellyfin's watched state is the group's progress.
      */
     val ownRecord: Set<String>? = null,
+    /** The group's next (or current) watch party, when it has a party time ([GroupSchedule.party]; Companion feature `party`). */
+    val party: WatchParty? = null,
 ) {
     /** "Sam", "Frank, Tommy and Jane". */
     val label get() = WatchPartners.names(others.map { it.name })
@@ -80,6 +82,8 @@ data class GroupSchedule(
     val minute: Int = 0,
     val softLock: Boolean = false,
     val together: Boolean = false,
+    /** The group's recurring watch party (null: none). It holds nothing back. */
+    val party: PartyTime? = null,
 ) {
     val limits get() = cadence == DAYS2 || cadence == DAYS3 || cadence == WEEKLY
 
@@ -106,17 +110,25 @@ data class GroupSchedule(
         DAYS3 -> "Every 3 days, $clock"
         WEEKLY -> "${DAYS[day.coerceIn(0, 6)]}s $clock"
         else -> "Binge"
-    } + (if (together) ", together only" else "") + if (active && softLock) ", ask first" else ""
+    } + (if (together) ", together only" else "") + (if (active && softLock) ", ask first" else "") +
+        (party?.let { ", watch party ${it.label}" } ?: "")
+
+    /** "Watch party Thursdays 8pm" (null without a party time). */
+    val partyLabel: String? get() = party?.let { "Watch party ${it.label}" }
+
+    /** Whether there's anything to keep: it holds something back, or the group has a party time. */
+    val kept get() = active || party != null
 
     /** What accepting an invite agrees to, for the invite's text (empty when the schedule holds nothing back). */
     val terms: String get() {
-        if (!active) return ""
+        val meet = party?.let { " ${partyLabel}: the group meets then to watch its next part together in one watch party." }.orEmpty()
+        if (!active) return if (meet.isEmpty()) "" else "$meet Accepting agrees to it."
         val pace = if (limits) " The group goes at its own pace: $label, ${if (softLock) "with a warning before watching ahead" else "locked until then"}." else ""
         val with = if (together) {
             " You'd watch it together only: anything nobody in the group has seen yet plays in Nitrate only in a watch party with someone from the group" +
                 (if (softLock) " (or after a warning)." else ".")
         } else ""
-        return "$pace$with Accepting agrees to it."
+        return "$pace$with$meet Accepting agrees to it."
     }
 
     /** The schedule picker's note under its choices. */

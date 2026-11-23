@@ -187,6 +187,9 @@ class AppActions(
 /** [MobileApp]'s openItem with this in front plays the item instead of opening it (home-screen widgets). */
 const val PLAY_ITEM_PREFIX = "play:"
 
+/** [MobileApp]'s openItem with this in front opens that group's watch party (a tapped reminder). */
+const val PARTY_PREFIX = "party:"
+
 @Composable
 fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null)) {
     var start by remember { mutableStateOf<Any?>(null) }
@@ -459,6 +462,10 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             if (signedIn && !busy) {
                 openItem.value = null
                 // A home-screen widget's title: into the player, resuming, through the usual checks.
+                if (id.startsWith(PARTY_PREFIX)) {
+                    container.openParty(id.removePrefix(PARTY_PREFIX))
+                    return@LaunchedEffect
+                }
                 if (id.startsWith(PLAY_ITEM_PREFIX)) {
                     runCatching { container.server.getItem(id.removePrefix(PLAY_ITEM_PREFIX)) }.getOrNull()?.let { guarded(it, false, null) }
                     return@LaunchedEffect
@@ -506,6 +513,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             BackupPrompt(container.backups)
             SpeakersSetupPrompt(container)
             WatchInvitePrompt(actions)
+            // Watch parties: what the Companion sends as it happens; waits while the player is open.
+            WatchPartyPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
         }
         FirstRunSetupHost(container)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }

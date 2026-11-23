@@ -23,13 +23,14 @@ import kotlin.time.Instant
 @Serializable internal data class PrivacyDto(val private: Boolean = false, val byAdmin: Boolean = false)
 @Serializable internal data class PrivacyPutDto(val private: Boolean)
 @Serializable internal data class PeopleDto(val id: String, val name: String = "")
-@Serializable internal data class ScheduleDto(val cadence: String = "binge", val day: Int = 4, val hour: Int = 19, val minute: Int = 0, val softLock: Boolean = false, val timeZone: String = "", val together: Boolean = false)
+@Serializable internal data class ScheduleDto(val cadence: String = "binge", val day: Int = 4, val hour: Int = 19, val minute: Int = 0, val softLock: Boolean = false, val timeZone: String = "", val together: Boolean = false, val party: PartyTimeDto? = null)
 @Serializable internal data class ChangeDto(val id: String, val fromName: String = "", val proposed: ScheduleDto = ScheduleDto(), val yes: List<String> = emptyList(), val no: List<String> = emptyList(), val voted: Boolean = false, val at: String? = null)
 @Serializable internal data class GroupDto(
     val id: String, val seriesId: String, val seriesName: String = "", val others: List<PeopleDto> = emptyList(), val since: String? = null,
     val schedule: ScheduleDto? = null, val pending: ChangeDto? = null, val lockedFromId: String? = null, val opensAt: String? = null, val opensDay: Int? = null,
     val togetherFromId: String? = null,
     val record: Boolean = false, val mine: List<String>? = null,
+    val party: PartyDto? = null,
 )
 @Serializable internal data class IncomingDto(val id: String, val fromId: String, val fromName: String = "", val seriesId: String, val seriesName: String = "", val groupId: String? = null, val willSee: List<String> = emptyList(), val at: String? = null, val schedule: ScheduleDto? = null)
 @Serializable internal data class VoteDto(val yes: Boolean)
@@ -42,6 +43,10 @@ import kotlin.time.Instant
 @Serializable internal data class WatchedWithDto(val itemIds: List<String>, val present: List<String>)
 @Serializable internal data class WatchedWithOutDto(val countedFor: List<String> = emptyList())
 @Serializable internal data class InviteDto(val id: String, val fromUserId: String, val fromName: String = "", val groupId: String, val itemId: String? = null, val itemName: String? = null, val at: String? = null)
+@Serializable internal data class PartyLaterDto(val minutes: Int)
+@Serializable internal data class PartyCantDto(val cant: Boolean)
+@Serializable internal data class PartySessionDto(val sessionId: String)
+@Serializable internal class PartyEmptyDto
 @Serializable internal data class InvitePostDto(val userIds: List<String>, val groupId: String, val itemId: String?, val itemName: String?)
 
 /** The Companion plugin's watch partners and privacy (`/Nitrate/Partners`, `/Nitrate/Privacy`); outside the OpenAPI contract test. */
@@ -148,11 +153,49 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
         pending?.let { dev.nitrate.core.partners.ScheduleChange(it.id, it.fromName, it.proposed.toModel(), it.yes, it.no, it.voted, ms(it.at)) },
         lockedFromId?.let(::normalizeId), opensAt?.let(::ms), opensDay, togetherFromId?.let(::normalizeId),
         ownRecord = if (record) mine.orEmpty().map(::normalizeId).toSet() else null,
+        party = party?.toModel(),
     )
 
-    private fun ScheduleDto.toModel() = dev.nitrate.core.partners.GroupSchedule(cadence, day, hour, minute, softLock, together)
+    private fun ScheduleDto.toModel() = dev.nitrate.core.partners.GroupSchedule(
+        cadence, day, hour, minute, softLock, together,
+        party?.takeIf { it.days.isNotEmpty() }?.let { dev.nitrate.core.partners.PartyTime(it.days, it.hour, it.minute) },
+    )
 
-    private fun dev.nitrate.core.partners.GroupSchedule.toDto() = ScheduleDto(cadence, day, hour, minute, softLock, together = together)
+    private fun dev.nitrate.core.partners.GroupSchedule.toDto() =
+        ScheduleDto(cadence, day, hour, minute, softLock, together = together, party = party?.let { PartyTimeDto(it.days, it.hour, it.minute) })
+
+    // ---- Watch parties (Companion feature `party`) ----
+
+    /** The group's next (or current) watch party; null when it has none (or the server doesn't have them). */
+    suspend fun party(groupId: String): dev.nitrate.core.partners.WatchParty? = try {
+        val r = client.get("Nitrate", "Partners", "Groups", groupId, "Party")
+        if (r.status == HttpStatusCode.NoContent) null else r.bodyAsText().takeIf { it.isNotBlank() && it != "null" }?.let { JellyfinJson.decodeFromString<PartyDto>(it).toModel() }
+    } catch (e: ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound) null else throw e
+    }
+
+    suspend fun partyLater(groupId: String, minutes: Int): dev.nitrate.core.partners.WatchParty? =
+        partyCall { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Party", "Later")) { json(PartyLaterDto(minutes)) } }
+
+    suspend fun partySkip(groupId: String): dev.nitrate.core.partners.WatchParty? =
+        partyCall { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Party", "Skip")) { json(PartyEmptyDto()) } }
+
+    suspend fun partyCantMake(groupId: String, cant: Boolean): dev.nitrate.core.partners.WatchParty? =
+        partyCall { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Party", "CantMake")) { json(PartyCantDto(cant)) } }
+
+    suspend fun partyVote(groupId: String, requestId: String, yes: Boolean): dev.nitrate.core.partners.WatchParty? =
+        partyCall { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Party", "Requests", requestId, "Vote")) { json(VoteDto(yes)) } }
+
+    suspend fun partyJoin(groupId: String): dev.nitrate.core.partners.PartyJoin =
+        call { client.http.post(client.url("Nitrate", "Partners", "Groups", groupId, "Party", "Join")) { json(PartyEmptyDto()) } }
+            .decode<PartyJoinDto>().let { dev.nitrate.core.partners.PartyJoin(it.start, it.sessionId, it.partId?.let(::normalizeId)) }
+
+    suspend fun partySession(groupId: String, sessionId: String) {
+        call { client.http.put(client.url("Nitrate", "Partners", "Groups", groupId, "Party", "Session")) { json(PartySessionDto(sessionId)) } }
+    }
+
+    private suspend fun partyCall(response: suspend () -> HttpResponse): dev.nitrate.core.partners.WatchParty? =
+        call { response() }.bodyAsText().takeIf { it.isNotBlank() && it != "null" }?.let { JellyfinJson.decodeFromString<PartyDto>(it).toModel() }
 
     private fun OutgoingDto.toModel() = OutgoingRequest(normalizeId(id), to, normalizeId(seriesId), seriesName, groupId?.let(::normalizeId), ms(at))
 }

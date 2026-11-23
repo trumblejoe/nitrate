@@ -249,6 +249,7 @@ class AppContainer(
         if (companionState.value?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) == true) {
             refreshPartners()
             followStandings()
+            followParties()
         }
         chat
     }
@@ -305,7 +306,60 @@ class AppContainer(
     }
 
     suspend fun refreshPartners() {
-        runCatching { server.partners() }.onSuccess { partnersState.value = it }
+        runCatching { server.partners() }.onSuccess { partnersState.value = it; partiesChanged() }
+    }
+
+    /**
+     * Watch parties (Companion feature `party`): the prompts the Companion's news brings to the open
+     * app, and their choices. Phones also set their own reminders from the groups' party times.
+     */
+    val parties by lazy {
+        dev.nitrate.android.partners.WatchParties(
+            server,
+            groups = { partnersState.value?.groups.orEmpty() },
+            updated = { groupId, party ->
+                partnersState.value = partnersState.value?.let { info ->
+                    info.copy(groups = info.groups.map { if (it.id == groupId) it.copy(party = party) else it })
+                }
+                partiesChanged()
+            },
+            joinSession = { syncPlay.join(it) },
+        )
+    }
+
+    private var followingParties = false
+
+    /** Listens for the Companion's watch party news on the live connection (sent, never polled). */
+    private fun followParties() {
+        if (followingParties) return
+        followingParties = true
+        networkScope.launch { remote.partyNews.collect { parties.heard(it) } }
+    }
+
+    /** The groups' parties changed: a phone moves its own reminders (TVs show the prompts only while open). */
+    private fun partiesChanged() {
+        if (deviceKind == dev.nitrate.core.pages.DeviceKind.TV) return
+        val groups = partnersState.value?.groups ?: return
+        saveScope.launch { runCatching { newEpisodes.scheduleParties(groups, nowMs()) } }
+    }
+
+    /** Opens [groupId]'s watch party (a tapped reminder): one quick look at it, then its prompt. */
+    suspend fun openParty(groupId: String) {
+        if (partnersState.value == null) refreshPartners()
+        val group = partnersState.value?.groups?.firstOrNull { it.id == groupId } ?: return
+        val party = runCatching { server.watchParty(groupId) }.getOrNull() ?: group.party ?: return
+        parties.open(group.copy(party = party))
+    }
+
+    /**
+     * The user is first to join tonight's watch party: the live session starts and the others are
+     * invited (as "Watch it together now"), and the others' apps learn which session it is. The app
+     * then plays the part through the guards. Returns an error, if any.
+     */
+    suspend fun startParty(start: dev.nitrate.android.partners.PartyOutcome.Start): String? {
+        runTogether(start.choice)?.let { return it }
+        syncPlay.group.value?.id?.let { session -> runCatching { server.partySession(start.groupId, session) } }
+        return null
     }
 
     private val invitesState = MutableStateFlow<List<dev.nitrate.core.partners.WatchInvite>>(emptyList())
@@ -885,6 +939,10 @@ class AppContainer(
         companionState.value = null
         // Group standings belong to the account that's leaving.
         standingsState.value = emptyMap()
+        // So do its watch parties: nothing asked, no reminders set.
+        parties.clear()
+        partnersState.value = null
+        if (deviceKind != dev.nitrate.core.pages.DeviceKind.TV) runCatching { newEpisodes.scheduleParties(emptyList(), nowMs()) }
         writing.account = null
         scriptSyncJob?.cancel()
         themeMusic.stop()

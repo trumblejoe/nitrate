@@ -98,6 +98,9 @@ public class PartnerState
 
     /// <summary>Gets or sets the open requests.</summary>
     public List<PartnerRequest> Requests { get; set; } = new();
+
+    /// <summary>Gets or sets the groups' watch party nights that something happened to (postponed, skipped, started…); kept for a couple of days.</summary>
+    public List<PartyNight> Parties { get; set; } = new();
 }
 
 /// <summary>Where the partner state is kept.</summary>

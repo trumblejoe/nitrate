@@ -28,6 +28,18 @@ interface NewEpisodeNotifier {
     /** Looks for invites and partner requests not notified yet (every 15 minutes in the background). */
     suspend fun checkInvites() = Unit
 
+    /** Watch party reminders, 15 minutes before each of the user's groups' parties (on until switched off). */
+    val partyRemindersEnabled: Flow<Boolean> get() = MutableStateFlow(false)
+    suspend fun setPartyRemindersEnabled(on: Boolean) = Unit
+
+    /**
+     * Sets this device's own reminders, 15 minutes before each group's next watch party
+     * ([dev.nitrate.core.partners.WatchGroup.party]), replacing any set before (an empty list
+     * clears them: signing out). Nothing is pushed from outside: the device wakes itself, takes one
+     * quick look at the party (postponed or off) and reminds, or not.
+     */
+    suspend fun scheduleParties(groups: List<dev.nitrate.core.partners.WatchGroup>, nowMs: Long) = Unit
+
     /** The server added things: check in a moment. */
     fun checkSoon()
     suspend fun check()
@@ -49,5 +61,8 @@ interface NewEpisodeNotifier {
 
         /** A tapped invite or request notification: the app opens and its prompt asks. */
         const val EXTRA_OPEN_INVITES = "dev.nitrate.OPEN_INVITES"
+
+        /** A tapped watch party reminder: the app opens on that group's party ([String] group id). */
+        const val EXTRA_OPEN_PARTY = "dev.nitrate.OPEN_PARTY"
     }
 }

@@ -392,6 +392,21 @@ class FakeServer : MediaServer {
         outgoing = listOf(dev.nitrate.core.partners.OutgoingRequest("rq2", "kim", "series-1", "The Night Reel", null, 0)),
     )
     override suspend fun partners() = partnerInfo
+
+    /** What [watchParty] answers (one quick look, as a phone's reminder takes). */
+    var watchPartyState: dev.nitrate.core.partners.WatchParty? = null
+    override suspend fun watchParty(groupId: String) = watchPartyState?.takeIf { it.groupId == groupId }
+
+    /** A sample watch party reminder: Tommy and Suzy, 8:15 after Suzy's +15, S1:E4. */
+    fun samplePartyPrompt(easy: Boolean = false): dev.nitrate.core.partners.PartyPrompt {
+        val at = java.time.Instant.parse("2026-11-19T20:00:00Z").toEpochMilli()
+        val party = dev.nitrate.core.partners.WatchParty(
+            "g2", at, at + 15 * 60_000, partLabel = "S1:E4", canPushBack = true,
+            delays = listOf(dev.nitrate.core.partners.PartyDelay("Suzy", 15, false)),
+        )
+        val news = dev.nitrate.core.partners.PartyNews(dev.nitrate.core.partners.PartyNews.REMINDER, "g2", "The Night Reel", listOf("Tommy", "Suzy"), null, false, 0, party)
+        return dev.nitrate.core.partners.PartyPrompt.of(news, easy)!!
+    }
     override suspend fun privacy() = dev.nitrate.core.partners.Privacy(isPrivate = false, byAdmin = false)
     override suspend fun partnerPeople() = listOf(dev.nitrate.core.writing.UserRef("user-2", "Will"), dev.nitrate.core.writing.UserRef("user-3", "Jessica"))
     override suspend fun partnerProgress(seriesId: String) =

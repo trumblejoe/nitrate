@@ -47,6 +47,59 @@ class IosNewEpisodeNotifier(private val server: MediaServer, private val store: 
     // Background refresh is asked for by the Swift app whenever it goes to the background.
     override suspend fun ensureScheduled() = Unit
 
+    private val partyKey = booleanPreferencesKey("party_reminders")
+
+    /** Watch party reminders: on until switched off. */
+    override val partyRemindersEnabled: Flow<Boolean> = store.data.map { it[partyKey] ?: true }
+
+    override suspend fun setPartyRemindersEnabled(on: Boolean) {
+        store.edit { it[partyKey] = on }
+        if (!on) clearParties()
+    }
+
+    /**
+     * One local notification per group, 15 minutes before its next watch party, on a calendar
+     * trigger (no push service). iOS gives the app no time to look again when it fires, so the
+     * text is what the group's party said when the groups last loaded; each load (opening the app,
+     * the background refresh, a postponement heard while open) sets them again, and a party that's
+     * off or that the user can't make sets none.
+     */
+    override suspend fun scheduleParties(groups: List<dev.nitrate.core.partners.WatchGroup>, nowMs: Long) {
+        clearParties()
+        if (!partyRemindersEnabled.first()) return
+        val center = UNUserNotificationCenter.currentNotificationCenter()
+        groups.forEach { g ->
+            val party = g.party ?: return@forEach
+            val at = party.nextReminderAt(nowMs) ?: return@forEach
+            // This party's own reminder knows its time and part; the one after it only its time.
+            val shown = if (at == party.reminderAtMs) party else party.copy(atMs = party.nextAtMs, startsAtMs = party.nextAtMs, delays = emptyList(), ask = null)
+            val with = dev.nitrate.core.partners.PartyPrompt.names(g.others.map { it.name })
+            val content = UNMutableNotificationContent().apply {
+                setTitle(g.seriesName)
+                setBody(listOfNotNull("Watch party with $with", shown.clock, shown.partLabel.takeIf { at == party.reminderAtMs }).joinToString(" · "))
+                setUserInfo(mapOf<Any?, Any?>(PARTY to g.id))
+            }
+            val date = platform.Foundation.NSDate(timeIntervalSinceReferenceDate = at / 1000.0 - 978_307_200.0)
+            val parts = platform.Foundation.NSCalendar.currentCalendar.components(
+                platform.Foundation.NSCalendarUnitYear or platform.Foundation.NSCalendarUnitMonth or platform.Foundation.NSCalendarUnitDay or
+                    platform.Foundation.NSCalendarUnitHour or platform.Foundation.NSCalendarUnitMinute,
+                fromDate = date,
+            )
+            val trigger = platform.UserNotifications.UNCalendarNotificationTrigger.triggerWithDateMatchingComponents(parts, repeats = false)
+            center.addNotificationRequest(UNNotificationRequest.requestWithIdentifier(PARTY_PREFIX + g.id, content, trigger), null)
+        }
+    }
+
+    private suspend fun clearParties() {
+        val center = UNUserNotificationCenter.currentNotificationCenter()
+        val ids = kotlinx.coroutines.suspendCancellableCoroutine<List<String>> { done ->
+            center.getPendingNotificationRequestsWithCompletionHandler { list ->
+                done.resumeWith(Result.success(list.orEmpty().mapNotNull { (it as? UNNotificationRequest)?.identifier?.takeIf { id -> id.startsWith(PARTY_PREFIX) } }))
+            }
+        }
+        if (ids.isNotEmpty()) center.removePendingNotificationRequestsWithIdentifiers(ids)
+    }
+
     override fun checkSoon() {
         scope.launch {
             delay(30_000)
@@ -55,6 +108,8 @@ class IosNewEpisodeNotifier(private val server: MediaServer, private val store: 
     }
 
     override suspend fun check() {
+        // The background refresh also sets the watch party reminders again from the groups as they stand.
+        if (partyRemindersEnabled.first()) runCatching { scheduleParties(server.partners().groups, kotlin.time.Clock.System.now().toEpochMilliseconds()) }
         val episodesOn = enabled.first()
         val seasonsOn = seasonsEnabled.first()
         if (!episodesOn && !seasonsOn) return
@@ -89,6 +144,10 @@ class IosNewEpisodeNotifier(private val server: MediaServer, private val store: 
     companion object {
         /** The item a notification opens, in its user info. */
         const val ITEM = "nitrateItem"
+
+        /** The group whose watch party a reminder is for, in its user info. */
+        const val PARTY = "nitrateParty"
+        private const val PARTY_PREFIX = "party-"
         private const val RECENT = 150
     }
 }

@@ -153,6 +153,7 @@ object SettingsSearch {
         SettingEntry("Notifications", SettingsPlace.NOTIFICATIONS, "alerts", P),
         SettingEntry("New episodes", SettingsPlace.NOTIFICATIONS, "notify followed shows", P),
         SettingEntry("New seasons", SettingsPlace.NOTIFICATIONS, "notify season premiere", P),
+        SettingEntry("Watch party reminders", SettingsPlace.NOTIFICATIONS, "notify watch group party together postpone tonight", P),
         // Account & servers
         SettingEntry("Switch user", SettingsPlace.PROFILES, "account profile pin who's watching users"),
         SettingEntry("Servers", SettingsPlace.SERVERS, "address url vpn local remote primary connection"),
