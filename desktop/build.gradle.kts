@@ -62,6 +62,7 @@ dependencies {
     @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
     testImplementation(compose.uiTest)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.jb.navigation.compose)
 }
 
 compose.desktop {

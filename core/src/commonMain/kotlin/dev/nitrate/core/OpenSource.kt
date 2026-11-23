@@ -63,6 +63,53 @@ object OpenSource {
                 "FriBidi, GnuTLS/Nettle (LGPL) and their own licences. Sources: https://github.com/mpvkit/MPVKit and the " +
                 "projects it builds; Nitrate's own source to rebuild the app with them: https://github.com/trumblejoe/nitrate.",
         ),
+        OpenSourceComponent(
+            "mpv (libmpv, Windows app)", "GNU LGPL 2.1 or later (the LGPL build)", "LGPL-2.1.txt", "https://mpv.io",
+            note = "The Windows app's player: libmpv 0.40.0 built with -Dgpl=false and no player program, never a GPL " +
+                "build, as a separate library (libmpv-2.dll) beside the app. Source: " +
+                "https://github.com/mpv-player/mpv; build script: tools/build-libmpv-windows.sh in " +
+                "https://github.com/trumblejoe/nitrate. Nitrate calls it through its own bindings (JNA), written from " +
+                "mpv's public client.h and render.h. The DLLs' own licence files and sources are listed in the app's " +
+                "windows-x64/licenses folder.",
+        ),
+        OpenSourceComponent(
+            "FFmpeg (Windows app)", "GNU LGPL 2.1 or later", "LGPL-2.1.txt", "https://ffmpeg.org",
+            note = "Decodes and reads files for mpv on Windows: FFmpeg 7.1.1 configured without --enable-gpl or " +
+                "--enable-nonfree, without libpostproc and without autodetected extras (D3D11VA, DXVA2 and NVDEC " +
+                "hardware decoding, Schannel for HTTPS), as separate DLLs (avcodec, avformat, avutil, avfilter, " +
+                "swscale, swresample). Source: https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz; options: " +
+                "tools/build-libmpv-windows.sh in https://github.com/trumblejoe/nitrate.",
+        ),
+        OpenSourceComponent(
+            "libplacebo (Windows app)", "GNU LGPL 2.1 or later", "LGPL-2.1.txt", "https://code.videolan.org/videolan/libplacebo",
+            note = "mpv's renderer on Windows (gpu-next): scaling, HDR and Dolby Vision tone mapping. A separate DLL from MSYS2's package.",
+        ),
+        OpenSourceComponent("dav1d (Windows app)", "BSD 2-Clause License", "BSD-2-dav1d.txt", "https://code.videolan.org/videolan/dav1d",
+            note = "AV1 decoding for FFmpeg on PCs without AV1 hardware."),
+        OpenSourceComponent("Little CMS (Windows app)", "MIT License", "MIT-lcms2.txt", "https://www.littlecms.com",
+            note = "Colour management for mpv's renderer."),
+        OpenSourceComponent("zlib (Windows app)", "zlib License", "Zlib.txt", "https://zlib.net"),
+        OpenSourceComponent(
+            "shaderc, SPIRV-Cross and the Vulkan loader (Windows app)", APACHE, "Apache-2.0.txt", "https://github.com/KhronosGroup",
+            note = "Compile mpv's shaders for Direct3D 11 and Vulkan. Further libraries the Windows DLLs bring (GLib, " +
+                "gettext and libiconv: LGPL 2.1+; Graphite2: LGPL 2.1+; Brotli: MIT; libpng, bzip2, PCRE2: their " +
+                "BSD-style licences) are listed with their licence files in windows-x64/licenses beside the app.",
+        ),
+        OpenSourceComponent(
+            "GCC runtime libraries (Windows app)", "GNU GPL 3 with the GCC Runtime Library Exception", "GCC-RLE-3.1.txt", "https://gcc.gnu.org",
+            note = "libstdc++ and libgcc, used by the DLLs above; the exception lets programs use them under their own licences.",
+        ),
+        OpenSourceComponent(
+            "Java Native Access (JNA, Windows app)", APACHE, "Apache-2.0.txt", "https://github.com/java-native-access/jna",
+            note = "Calls libmpv from the app. JNA is offered under Apache 2.0 or LGPL 2.1+; Nitrate uses it under Apache 2.0.",
+        ),
+        OpenSourceComponent(
+            "OpenJDK runtime (Windows app)", "GNU GPL 2 with the Classpath Exception", "GPL-2.0-Classpath-OpenJDK.txt", "https://openjdk.org",
+            note = "The Java runtime the Windows app brings with it (Eclipse Temurin 21, trimmed by jlink). The Classpath " +
+                "Exception lets programs run on it under their own licences; its own notices are in the app's runtime/legal folder.",
+        ),
+        OpenSourceComponent("Compose Multiplatform and Skiko (Windows app)", APACHE, "Apache-2.0.txt", "https://github.com/JetBrains/compose-multiplatform",
+            note = "The Windows app's screens. Skiko carries Skia (BSD 3-Clause, https://skia.org/license)."),
         OpenSourceComponent("Kotlin, kotlinx.coroutines, kotlinx.serialization, kotlinx-io", APACHE, "Apache-2.0.txt", "https://github.com/JetBrains/kotlin"),
         OpenSourceComponent("Ktor", APACHE, "Apache-2.0.txt", "https://github.com/ktorio/ktor"),
         OpenSourceComponent("OkHttp and Okio", APACHE, "Apache-2.0.txt", "https://github.com/square/okhttp"),

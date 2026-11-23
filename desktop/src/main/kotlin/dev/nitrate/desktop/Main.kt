@@ -51,16 +51,19 @@ object DesktopApp {
     val downloads = DesktopDownloadScheduler { container }
 
     val platform: DesktopPlatform by lazy {
-        DesktopPlatform(version, bitstream = { dev.nitrate.mobile.ui.DesktopPlayerSettings.shared(DesktopFolders.system().data.absolutePath).bitstream })
+        val folders = DesktopFolders.system()
+        DesktopPlatform(version, folders, bitstream = { dev.nitrate.mobile.ui.DesktopPlayerSettings.shared(folders.data.absolutePath).bitstream })
     }
 
     val container: AppContainer by lazy { AppContainer(platform, clientName = "Nitrate", version = version.name) }
 }
 
 fun main() {
+    val playerSettings = dev.nitrate.mobile.ui.DesktopPlayerSettings.shared(DesktopApp.platform.filesDir)
     // Popups and dialogs as windows of their own, so the player's controls can sit over mpv's video
-    // (a native window inside Compose's): see docs/features/windows.md.
-    System.setProperty("compose.layers.type", "WINDOW")
+    // when it's a native window inside Compose's: see docs/features/windows.md.
+    if (playerSettings.values.value.output == dev.nitrate.mobile.ui.VideoOutput.WINDOW) System.setProperty("compose.layers.type", "WINDOW")
+    registerMpv()
     // Windows' own look for the file dialogs.
     runCatching { javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName()) }
     application {
@@ -77,6 +80,17 @@ fun main() {
             DesktopContent(DesktopApp.container, DesktopApp.openItem, cacheDir = DesktopApp.platform.cacheDir) { mouseBack(window) }
             LaunchedEffect(Unit) { DesktopApp.downloads.resume() }
         }
+    }
+}
+
+/** libmpv, when it's beside the app: the player plays through it; without it, the player says what's missing. */
+private fun registerMpv() {
+    when (val lib = dev.nitrate.desktop.mpv.LibMpvLoader.load()) {
+        is dev.nitrate.desktop.mpv.LibMpvLoader.Result.Loaded -> dev.nitrate.mobile.ui.DesktopMpv.factory = { config ->
+            val api = dev.nitrate.desktop.mpv.JnaMpvApi.create(lib) ?: error("libmpv couldn't start a player")
+            dev.nitrate.desktop.mpv.LibMpvPlayer(api, config, windowId = { com.sun.jna.Native.getComponentID(it) })
+        }
+        is dev.nitrate.desktop.mpv.LibMpvLoader.Result.Missing -> dev.nitrate.mobile.ui.DesktopMpv.missing = lib.reason
     }
 }
 
