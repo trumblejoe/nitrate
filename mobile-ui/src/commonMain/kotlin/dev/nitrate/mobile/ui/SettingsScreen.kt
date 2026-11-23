@@ -155,6 +155,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         item { ServerSettingsRow(actions) }
         item { QuickConnectRow(actions) }
         item { Link("Device backup", "This phone's settings on your server; restore another device's") { open(SettingsPage.BACKUP) } }
+        item { Link("Set up this device again", "Copy another device's settings and your speakers, a step at a time") { c.setup.rerun() } }
 
         group("Your watching")
         item { Link("Your year", "Films, episodes and songs, top shows, genres and artists") { actions.nav.navigate(StatsRoute) } }
@@ -195,6 +196,7 @@ private fun openPlace(actions: AppActions, place: dev.nitrate.core.settings.Sett
         dev.nitrate.core.settings.SettingsPlace.WATCHING, dev.nitrate.core.settings.SettingsPlace.BEFORE_IT_PLAYS -> page(SettingsPage.WATCHING)
         dev.nitrate.core.settings.SettingsPlace.NOTIFICATIONS -> page(SettingsPage.NOTIFICATIONS)
         dev.nitrate.core.settings.SettingsPlace.BACKUP -> page(SettingsPage.BACKUP)
+        dev.nitrate.core.settings.SettingsPlace.SETUP -> actions.container.setup.rerun()
         dev.nitrate.core.settings.SettingsPlace.REMOTE -> page(SettingsPage.REMOTE)
         dev.nitrate.core.settings.SettingsPlace.UPDATES -> page(SettingsPage.UPDATES)
         dev.nitrate.core.settings.SettingsPlace.PLUGINS -> page(SettingsPage.PLUGINS)

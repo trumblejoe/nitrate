@@ -29,7 +29,7 @@ import dev.nitrate.core.backup.BackupSummary
 import dev.nitrate.tv.ui.lists.TvDialog
 import kotlinx.coroutines.launch
 
-private fun age(savedAtMs: Long, now: Long = System.currentTimeMillis()): String {
+internal fun age(savedAtMs: Long, now: Long = System.currentTimeMillis()): String {
     val minutes = (now - savedAtMs) / 60_000
     return when {
         minutes < 1 -> "just now"
@@ -39,7 +39,7 @@ private fun age(savedAtMs: Long, now: Long = System.currentTimeMillis()): String
     }
 }
 
-private fun title(b: BackupSummary, thisDevice: String) = if (b.deviceId == thisDevice) "This TV (saved before)" else b.deviceName
+internal fun title(b: BackupSummary, thisDevice: String) = if (b.deviceId == thisDevice) "This TV (saved before)" else b.deviceName
 
 /**
  * Asked once after signing in on a TV that hasn't backed up for this account: set it up like one

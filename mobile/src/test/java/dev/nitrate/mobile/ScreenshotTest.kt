@@ -775,4 +775,24 @@ class ScreenshotTest {
     @Test
     @Config(qualifiers = "w411dp-h891dp-notnight-xxhdpi")
     fun lightDetails() = shoot("phone-movie-light") { DetailsScreen(it, "m1", null) }
+
+    /** The first-run setup, one step at a time (big text, Skip and Back on each, "Step n of N"). */
+    private fun setupShot(name: String, step: dev.nitrate.core.setup.SetupStep) = shoot(name) { a ->
+        val c = a.container
+        val data = dev.nitrate.mobile.ui.PhoneSetupData(
+            steps = dev.nitrate.core.setup.FirstRunSetup.steps(dev.nitrate.core.setup.SetupFacts(tv = false, profilesToAsk = true, backupsOffered = true, askSound = true, menuSuggestions = false)),
+            accounts = listOf(
+                dev.nitrate.core.model.SavedAccount(c.server.currentAccountKey ?: "me", "http://demo", "Home server", "user-1", "Alex", null),
+                dev.nitrate.core.model.SavedAccount("other", "http://demo", "Home server", "user-2", "Sam", null),
+            ),
+            backups = dev.nitrate.testing.SampleBackups.list,
+            output = dev.nitrate.core.playback.SoundOutput(dev.nitrate.core.playback.OutputKind.USB, "Desk speakers", 6),
+        )
+        dev.nitrate.mobile.ui.PhoneSetupFrame { dev.nitrate.mobile.ui.PhoneSetupSteps(c, data, startAt = step) }
+    }
+
+    @Test fun setupProfile() = setupShot("phone-setup-profile", dev.nitrate.core.setup.SetupStep.PROFILE)
+    @Test fun setupCopy() = setupShot("phone-setup-copy", dev.nitrate.core.setup.SetupStep.COPY_SETTINGS)
+    @Test fun setupSound() = setupShot("phone-setup-sound", dev.nitrate.core.setup.SetupStep.SOUND)
+    @Test fun setupDone() = setupShot("phone-setup-done", dev.nitrate.core.setup.SetupStep.DONE)
 }

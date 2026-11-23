@@ -196,7 +196,8 @@ class DeviceBackupManager(
         settings = currentSettings(),
     )
 
-    private suspend fun isSettled(key: String) = key in store.data.first()[settledKey].orEmpty()
+    /** Whether this device was already set up for the account [key] (answered the backup offer). */
+    suspend fun isSettled(key: String) = key in store.data.first()[settledKey].orEmpty()
     private suspend fun settle(key: String) { store.edit { it[settledKey] = it[settledKey].orEmpty() + key } }
     private suspend fun markSaved(key: String) { store.edit { it[savedKey(key)] = dev.nitrate.android.nowMs() } }
     private fun savedKey(account: String?) = longPreferencesKey("saved_${account.orEmpty()}")

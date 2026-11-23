@@ -687,6 +687,8 @@ class AppContainer(
     /** After signing in or switching account: settings, account details and the live connection. */
     suspend fun onSignedIn() {
         settingsSync.pull()
+        // The first-run setup decides before the backup offer settles a device with no other backups.
+        setup.onSignedIn(accountSettledBefore = server.currentAccountKey?.let { backups.isSettled(it) } ?: true)
         backups.onSignedIn()
         remote.start()
         // Not waited for: Home shouldn't wait on the account details (admin tools appear when they arrive).
@@ -815,6 +817,16 @@ class AppContainer(
         all = listOf(PreviousEpisodePlugin, watchPartners, WritingPlugin, dev.nitrate.core.channels.ChannelsPlugin),
         host = PluginHost(server, pluginStore),
     )
+
+    /** The first-run setup: whether it's showing, and whether this device finished it. */
+    val setup by lazy { dev.nitrate.android.backup.FirstRunSetupStore(platform.stores.backup) }
+
+    /**
+     * Backups to copy from in the setup: the backup offer's after a first sign-in, else (the setup
+     * run again from Settings) every other device's.
+     */
+    suspend fun setupBackups(): List<dev.nitrate.core.backup.BackupSummary> =
+        backups.offer.value?.backups ?: runCatching { backups.backups() }.getOrDefault(emptyList()).filter { it.deviceId != backups.deviceId }
 
     /** This device's playback and plugin settings, backed up to the user's server and restorable on another device. */
     val backups by lazy {

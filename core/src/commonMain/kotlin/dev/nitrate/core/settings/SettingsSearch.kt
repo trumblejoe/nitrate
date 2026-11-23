@@ -22,6 +22,7 @@ enum class SettingsPlace(val path: String) {
     SERVERS("Account › Servers"),
     SERVER_SETTINGS("Account › Server-side settings"),
     BACKUP("Account › Device backup"),
+    SETUP("Account › Set up this device again"),
     STATS("Your watching › Your year"),
     DIARY("Your watching › Watch diary"),
     PARTNERS("Your watching › Watch partners"),
@@ -157,6 +158,7 @@ object SettingsSearch {
         SettingEntry("Servers", SettingsPlace.SERVERS, "address url vpn local remote primary connection"),
         SettingEntry("Server-side settings", SettingsPlace.SERVER_SETTINGS, "languages audio language subtitle language permissions jellyfin account", T),
         SettingEntry("Device backup", SettingsPlace.BACKUP, "restore copy settings another device"),
+        SettingEntry("Set up this device again", SettingsPlace.SETUP, "first run setup welcome start over speakers copy settings menu tidy"),
         // Your watching
         SettingEntry("Your year", SettingsPlace.STATS, "stats statistics wrapped top shows genres"),
         SettingEntry("Watch diary", SettingsPlace.DIARY, "letterboxd ratings notes log"),
