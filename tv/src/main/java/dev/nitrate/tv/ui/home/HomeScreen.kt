@@ -133,7 +133,7 @@ fun HomeScreen(
         PinnedPage(openPage, repository, displaySettings, changes, dataCache, fullArt, insets, tabs!!, onOpen, onPlay,
             onRedrawn = { if (System.currentTimeMillis() - chosenAt < 4_000) switched = openPage.id + "#" + System.nanoTime() })
     } else when (val s = state) {
-        RowsState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Loading…") }
+        RowsState.Loading -> dev.nitrate.tv.ui.components.RowsPlaceholder()
         is RowsState.Error -> Box(Modifier.fillMaxSize(), Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(s.message, color = MaterialTheme.colorScheme.error)
@@ -218,6 +218,6 @@ private fun PinnedPage(
             }
         }
         is RowsState.Error -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text(s.message, Modifier.padding(58.dp), color = MaterialTheme.colorScheme.error) }
-        RowsState.Loading -> Column(Modifier.padding(top = insets.top)) { placedTabs(); Text("Loading…", Modifier.padding(58.dp)) }
+        RowsState.Loading -> Column(Modifier.padding(top = insets.top)) { placedTabs(); dev.nitrate.tv.ui.components.RowsPlaceholder(top = 40.dp) }
     }
 }

@@ -575,8 +575,9 @@ private fun DevicesTab(repository: MediaServer, notify: (String) -> Unit) {
     messaging?.let { s ->
         var text by remember { mutableStateOf("") }
         val first = remember { FocusRequester() }
-        Dialog(onDismissRequest = { messaging = null }) {
-            Column(Modifier.width(520.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        dev.nitrate.tv.ui.lists.TvDialog({ messaging = null }, width = 520) {
+            Column(
+                Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Message ${s.deviceName ?: s.userName}", style = MaterialTheme.typography.headlineSmall)
                 TvTextField(text, { text = it }, placeholder = "Dinner's ready", modifier = Modifier.focusRequester(first))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -349,9 +349,9 @@ private fun ProgressBar(item: MediaItem, modifier: Modifier) {
 
 @Composable
 private fun PlaylistViewOptions(view: PlaylistLibraryView, onChange: (PlaylistLibraryView) -> Unit, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 460) {
         Column(
-            Modifier.width(460.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp),
+            Modifier.fillMaxWidth(),
         ) {
             Text("View options", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp))
             ListItem(

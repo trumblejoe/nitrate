@@ -127,7 +127,7 @@ internal fun TitlesInView(
             Row(Modifier.padding(start = PagePadding)) { bar() }
             Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = PagePadding)) {
                 when {
-                    items == null -> Text("Loading…")
+                    items == null -> dev.nitrate.tv.ui.components.GridPlaceholder()
                     items.isEmpty() -> Text(empty)
                     else -> {
                         val args = ShowArgs(items, repository, music, titleOf = { it.name }, onOpen = onOpen, onPlay = { if (it.isPlayable) onPlay(it) else onOpen(it) }, onNeedMore = {}, total = items.size)
@@ -149,7 +149,7 @@ internal fun TitlesInView(
         item(span = { GridItemSpan(maxLineSpan) }) { header() }
         item(span = { GridItemSpan(maxLineSpan) }) { bar() }
         when {
-            items == null -> item(span = { GridItemSpan(maxLineSpan) }) { Text("Loading…") }
+            items == null -> item(span = { GridItemSpan(maxLineSpan) }) { dev.nitrate.tv.ui.components.GridPlaceholder() }
             items.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Text(empty) }
             else -> items(items, key = { it.id }) { item ->
                 val artwork = view == BrowseView.ARTWORK && !music

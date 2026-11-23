@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -44,16 +46,66 @@ import dev.nitrate.tv.ui.components.TvTextField
 import dev.nitrate.tv.ui.rows.ignoreHeldSelect
 import kotlinx.coroutines.launch
 
-/** A dialog panel with the TV look. */
+/**
+ * A panel down the right edge of the screen, full height, the page still in view beside it (a light
+ * shade over it, no more): choices, confirmations and short forms. It slides in, holds focus until it
+ * closes, and Back closes it. [width] is the panel's width (never more than the screen less a margin);
+ * the contents scroll (a `LazyColumn` inside needs a set height).
+ */
 @Composable
 fun TvDialog(onDismiss: () -> Unit, width: Int = 620, content: @Composable () -> Unit) {
-    // Android caps dialogs at its own default width: wider ones (a trail, a title's details) take theirs.
-    Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = width <= 620)) {
-        Column(
-            // Some open from a long press: the held OK mustn't click the first choice.
-            Modifier.ignoreHeldSelect().width(width.dp).heightIn(max = 620.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) { content() }
+    Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        SidePanel(width) {
+            Column(
+                // Some open from a long press: the held OK mustn't click the first choice.
+                Modifier.ignoreHeldSelect().fillMaxWidth().padding(horizontal = 32.dp, vertical = 40.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) { content() }
+        }
+    }
+}
+
+/**
+ * A side panel like [TvDialog] whose [content] arranges and scrolls itself (a `LazyColumn` of choices
+ * takes the panel's height): track lists, fixes, Add to.
+ */
+@Composable
+fun TvPanel(onDismiss: () -> Unit, width: Int = 620, content: @Composable () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        SidePanel(width) {
+            androidx.compose.foundation.layout.Box(Modifier.ignoreHeldSelect().fillMaxSize().padding(horizontal = 32.dp, vertical = 40.dp)) { content() }
+        }
+    }
+}
+
+/**
+ * The frame of a side panel inside a `Dialog` window: the window's own dimming turned down to a light
+ * shade, and the panel ([width] dp, full height) sliding in from the right with [content] in it.
+ */
+@Composable
+fun SidePanel(width: Int, content: @Composable () -> Unit) {
+    // The page beside the panel stays readable: a light shade, not the platform's heavy dim.
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.SideEffect {
+        (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window?.let { w ->
+            w.setDimAmount(0.3f)
+            w.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+    }
+    val shown = remember { androidx.compose.animation.core.MutableTransitionState(false).apply { targetState = true } }
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val panel = width.dp.coerceAtMost(maxWidth - 80.dp)
+        androidx.compose.animation.AnimatedVisibility(
+            visibleState = shown,
+            enter = androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { it } +
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)),
+            modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd),
+        ) {
+            androidx.compose.foundation.layout.Box(
+                Modifier.width(panel).fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp)),
+            ) { content() }
+        }
     }
 }
 
@@ -76,9 +128,9 @@ fun AddToListDialog(server: MediaServer, item: MediaItem, canCollect: Boolean, o
 
     fun toggle(t: dev.nitrate.core.lists.ListTarget) { if (selected.any { it.key == t.key }) selected.removeAll { it.key == t.key } else selected += t }
 
-    Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+    TvPanel(onDismiss, width = if (canCollect) 820 else 560) {
         Column(
-            Modifier.ignoreHeldSelect().width(if (canCollect) 880.dp else 560.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp),
+            Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             val done = results

@@ -1919,6 +1919,29 @@ class TvScreenshotTest {
 
     @Test fun movieDetails() = shoot("tv-movie-details") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "m1", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }
 
+    /** A details page on its way: placeholders in its own shape, no bare "Loading…". */
+    @Test fun detailsLoading() = shoot("tv-details-loading") { c ->
+        val waiting = object : dev.nitrate.core.MediaServer by c.server {
+            override suspend fun getItem(id: String): dev.nitrate.core.model.MediaItem = kotlinx.coroutines.awaitCancellation()
+        }
+        dev.nitrate.tv.ui.details.DetailsScreen(waiting, "never", null, onPlay = { _, _ -> }, onOpen = {})
+    }
+
+    /** A season's page: the show it belongs to, the season, how far through it, Play for that season. */
+    @Test fun seasonDetails() {
+        shoot("tv-season-details") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "series-1", "season-2", onPlay = { _, _ -> }, onOpen = {}) }
+        compose.onAllNodesWithText("watched", substring = true).onFirst().assertExists()
+    }
+
+    /** Choices open as a panel down the right edge, the page still in view beside it. */
+    @Test fun sidePanel() {
+        shoot("tv-panel-page", act = {
+            compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasContentDescription("More")), useUnmergedTree = true)
+                .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        }) { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "s1e2", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }
+        compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/tv-panel.png")
+    }
+
     /** The details page's More panel: everything the action row leaves out. */
     @Test fun detailsMore() {
         shoot("tv-details-actions", act = {

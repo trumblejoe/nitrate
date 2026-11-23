@@ -73,9 +73,9 @@ fun LibraryScreen(
     }
     val lib = library?.getOrNull()
     if (lib == null) {
-        Box(Modifier.fillMaxSize(), Alignment.Center) {
-            Text(library?.exceptionOrNull()?.message ?: "Loading…")
-        }
+        val failed = library?.exceptionOrNull()
+        if (failed != null) Box(Modifier.fillMaxSize(), Alignment.Center) { Text(failed.message ?: "Couldn't open the library") }
+        else dev.nitrate.tv.ui.components.RowsPlaceholder()
         return
     }
 
@@ -256,7 +256,7 @@ private fun TabRows(
             }
         }
         is RowsState.Error -> Column { tabs(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
-        RowsState.Loading -> Column { tabs(); Text("Loading…", Modifier.padding(PagePadding)) }
+        RowsState.Loading -> Column { tabs(); dev.nitrate.tv.ui.components.RowsPlaceholder(top = 40.dp) }
     }
 }
 
@@ -315,7 +315,7 @@ private fun CollectionsGrid(
         Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             tabs(); bar()
             when {
-                list == null -> Text("Loading…")
+                list == null -> dev.nitrate.tv.ui.components.GridPlaceholder()
                 list.isEmpty() -> Text("No collections on this server yet.")
                 else -> {
                     val args = ShowArgs(list, repository, music = false, titleOf = { it.name }, onOpen = onOpen, onPlay = onPlay, onNeedMore = {}, total = list.size)
@@ -336,7 +336,7 @@ private fun CollectionsGrid(
         item(span = { GridItemSpan(maxLineSpan) }) { tabs() }
         item(span = { GridItemSpan(maxLineSpan) }) { bar() }
         when {
-            list == null -> item(span = { GridItemSpan(maxLineSpan) }) { Text("Loading…") }
+            list == null -> item(span = { GridItemSpan(maxLineSpan) }) { dev.nitrate.tv.ui.components.GridPlaceholder() }
             list.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Text("No collections on this server yet.") }
             else -> items(list, key = { it.id }) { c ->
                 val artwork = view == dev.nitrate.core.pages.BrowseView.ARTWORK

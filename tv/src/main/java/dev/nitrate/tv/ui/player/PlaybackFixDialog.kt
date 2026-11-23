@@ -3,6 +3,7 @@ package dev.nitrate.tv.ui.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -39,9 +40,9 @@ fun PlaybackFixDialog(
     val focus = remember { FocusRequester() }
     // Focus starts on the first fix that can be applied here, else on Close.
     val firstFix = diagnosis?.findings?.flatMap { it.fixes }?.firstOrNull(canApply)
-    Dialog(onDismissRequest = onDismiss) {
+    dev.nitrate.tv.ui.lists.TvPanel(onDismiss, width = 680) {
         Column(
-            Modifier.width(680.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp),
+            Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(diagnosis?.quality?.label ?: "How this plays", style = MaterialTheme.typography.headlineSmall)

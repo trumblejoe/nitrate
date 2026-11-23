@@ -2,6 +2,7 @@ package dev.nitrate.tv.ui.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,8 +30,8 @@ fun TrackDialog(
     onDismiss: () -> Unit,
 ) {
     val focus = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss) {
-        Column(Modifier.width(520.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(24.dp)) {
+    dev.nitrate.tv.ui.lists.TvPanel(onDismiss, width = 520) {
+        Column(Modifier.fillMaxWidth()) {
             Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 8.dp))
             if (choices.isEmpty()) Text("No tracks available", color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn {
