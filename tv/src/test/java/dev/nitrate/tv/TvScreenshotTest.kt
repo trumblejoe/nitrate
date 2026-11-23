@@ -1613,6 +1613,48 @@ class TvScreenshotTest {
         }
     }
 
+    /** OK on a group in the rail opens it in place and focus goes to its first stop, with the rail still open. */
+    @Test fun railGroupOpensOnOk() = shoot("tv-menu-group-ok", { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT, tvMenuGroups = listOf(animeGroup)))
+    }, act = {
+        press("left", "down", "down")
+        check(focusedHasText("Anime")) { "Down twice from Movies should reach the Anime group" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        val anime = compose.onAllNodes(androidx.compose.ui.test.hasText("Anime", substring = true)).fetchSemanticsNodes().first().boundsInRoot
+        val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
+        check(focused.isNotEmpty()) { "focus was lost" }
+        check(focusedHasText("Movies") && focused.first().boundsInRoot.top > anime.top) { "focus should be on the group's first stop, under it: ${focused.first().boundsInRoot} vs $anime" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("TV Shows", substring = true)).fetchSemanticsNodes().size >= 2) { "the group should still be open in the rail" }
+    }) { c ->
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(groupLibraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions(), current = "")
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, dev.nitrate.tv.ui.pages.LocalTvContainer provides c) {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library("m"), overlay = false) {
+                val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+                androidx.tv.material3.Button(onClick = {}, modifier = Modifier.padding(200.dp).focusRequester(focus)) { androidx.tv.material3.Text("Movies page") }
+                androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+            }
+        }
+    }
+
+    /** Your pages sits in the menu like any top-level page: it opens on its first tile and Left reaches the menu. */
+    @Test fun yourPagesInMenu() = shoot("tv-your-pages", { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT))
+    }, act = {
+        check(focusedHasText("New page")) { "Your pages should open on its first tile" }
+        press("left")
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); compose.waitForIdle()
+        // Your pages is kept in More by default: the menu opens on More, marked as where you are.
+        check(focusedHasText("More")) { "Left from Your pages should reach the menu at More" }
+    }) { c ->
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(groupLibraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions(onPages = {}), current = "")
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, dev.nitrate.tv.ui.pages.LocalTvContainer provides c) {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.PAGES, overlay = false) {
+                dev.nitrate.tv.ui.pages.PagesScreen(c) { _, _ -> }
+            }
+        }
+    }
+
     /** The More page: what's kept out of the menu (Collections, Your pages, Watch together, Switch user…) as large tiles. */
     @Test fun morePage() = shoot("tv-more-page", { c ->
         c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT, tvMenuGroups = listOf(animeGroup)))

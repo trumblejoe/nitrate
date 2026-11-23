@@ -345,7 +345,12 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onSignedOut = { nav.navigate(ConnectRoute) { popUpTo(0) { inclusive = true } } },
             )
         }
-        composable<PagesRoute> { PagesScreen(container) { id, editNow -> nav.navigate(CustomPageRoute(id, editNow)) } }
+        composable<PagesRoute> {
+            // A top-level stop like any other: in the menu, themed like the rest.
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.PAGES, overlay = false) {
+                PagesScreen(container) { id, editNow -> nav.navigate(CustomPageRoute(id, editNow)) }
+            }
+        }
         composable<CustomPageRoute> { entry ->
             val route = entry.toRoute<CustomPageRoute>()
             // Laid out like Home: its own layout (full art lays the menu over it).

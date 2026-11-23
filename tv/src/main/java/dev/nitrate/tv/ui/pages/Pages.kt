@@ -2,6 +2,7 @@ package dev.nitrate.tv.ui.pages
 
 import dev.nitrate.core.pages.applyToPage
 import dev.nitrate.core.pages.applyEverywhere
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -76,15 +77,23 @@ fun PagesScreen(container: AppContainer, onOpen: (String, Boolean) -> Unit) {
     var creating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
-    Column(Modifier.fillMaxSize().padding(PagePadding), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        Text("Your pages", style = MaterialTheme.typography.displaySmall)
+    // Laid out like the menu's other pages (More): same margins, same size of heading.
+    Column(Modifier.fillMaxSize().padding(horizontal = PagePadding, vertical = 36.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Your pages", style = MaterialTheme.typography.headlineMedium)
         Text("Pages of your own rows. Pinned pages are tabs on Home, beside it.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
-            item(key = "new") { PageCard("+  New page", Modifier.focusRequester(first)) { creating = true } }
-            items(pages, key = { it.id }) { page -> PageCard(page.title + if (page.pinned) "\n\nA tab on Home" else "") { onOpen(page.id, false) } }
+        // Tiles in a grid like More's (a row of cards kept Left from reaching the menu).
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            androidx.compose.foundation.lazy.grid.GridCells.Adaptive(260.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            item(key = "new") { PageTile("New page", null, androidx.compose.material.icons.Icons.Filled.Add, Modifier.focusRequester(first)) { creating = true } }
+            items(pages.size, key = { pages[it].id }) { i -> val page = pages[i]; PageTile(page.title, if (page.pinned) "A tab on Home" else null, dev.nitrate.tv.ui.home.NavIcons.pages) { onOpen(page.id, false) } }
         }
     }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    // Once the grid has placed its first tile (asking at once found nothing and left focus nowhere).
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(50); runCatching { first.requestFocus() } }
     if (creating) NameDialog("New page", "", onDismiss = { creating = false }) { name ->
         creating = false
         val user = container.server.userId ?: return@NameDialog
@@ -97,10 +106,23 @@ fun PagesScreen(container: AppContainer, onOpen: (String, Boolean) -> Unit) {
 }
 
 @Composable
-private fun PageCard(title: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = modifier.width(280.dp).height(160.dp)) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)).padding(20.dp), Alignment.BottomStart) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
+private fun PageTile(title: String, note: String?, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    androidx.tv.material3.Surface(
+        onClick = onClick,
+        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
+        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+            containerColor = Color.White.copy(alpha = 0.08f),
+            contentColor = Color.White,
+            focusedContainerColor = Color.White,
+            focusedContentColor = Color.Black,
+        ),
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+        modifier = modifier.height(140.dp),
+    ) {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.tv.material3.Icon(icon, contentDescription = null, modifier = Modifier.padding(bottom = 10.dp))
+            Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

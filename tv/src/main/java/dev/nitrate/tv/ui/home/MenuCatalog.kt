@@ -160,9 +160,15 @@ class MenuCatalog(
     fun stopIds(prefs: DisplayPrefs): List<String> =
         MenuLayout.main(MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, available(prefs), defaults)), prefs.tvMenuGroups, moreIds(prefs))
 
-    /** The rail's or bar's stops (Easy mode keeps only the essential ones). */
+    /**
+     * The rail's or bar's stops (Easy mode keeps only the essential ones). A page kept in More
+     * (Your pages, Collections…) marks More, so the menu opens there and shows where you are.
+     */
     fun stops(prefs: DisplayPrefs): List<NavEntry> =
-        stopIds(prefs).filter { !prefs.easyMode || MenuStops.essential(it) }.mapNotNull { entry(it, prefs) }
+        stopIds(prefs).filter { !prefs.easyMode || MenuStops.essential(it) }.mapNotNull { entry(it, prefs) }.let { shown ->
+            val inMore = shown.none { it.selected } && more(prefs).any { it.selected }
+            if (inMore) shown.map { if (it.id == MenuStops.MORE) it.copy(selected = true) else it } else shown
+        }
 
     /**
      * The dial's spots as the user arranged them (null = empty): a member stands for its group (once),

@@ -153,9 +153,13 @@ internal fun Rail(
                     val groupFocus = remember(entry.id) { FocusRequester() }
                     val firstChild = remember(entry.id) { FocusRequester() }
                     var focusFirst by remember(entry.id) { mutableStateOf(false) }
+                    // Folds once focus has really left: handing focus from the group to its first stop
+                    // passes through "nothing focused here" for a moment, which mustn't close it.
+                    var inGroup by remember(entry.id) { mutableStateOf(false) }
+                    LaunchedEffect(inGroup) { if (!inGroup) { kotlinx.coroutines.delay(48); if (openGroup == entry.id) openGroup = null } }
                     Column(
                         Modifier
-                            .onFocusChanged { if (!it.hasFocus && openGroup == entry.id) openGroup = null }
+                            .onFocusChanged { inGroup = it.hasFocus }
                             .onPreviewKeyEvent { e ->
                                 if (e.key != Key.Back || openGroup != entry.id || here) return@onPreviewKeyEvent false
                                 if (e.type == KeyEventType.KeyUp) { openGroup = null; runCatching { groupFocus.requestFocus() } }
@@ -231,10 +235,13 @@ internal fun MenuBar(entries: List<NavEntry>, edge: Edge, overlay: Boolean, menu
         val g = openGroup ?: return@LaunchedEffect
         if (focusedId != null && focusedId != g && focusedId?.startsWith("$g/") != true) openGroup = null
     }
+    // Folds once focus has really left the bar (not while it's handed from one stop to the next).
+    var inBar by remember { mutableStateOf(false) }
+    LaunchedEffect(inBar) { if (!inBar) { kotlinx.coroutines.delay(48); openGroup = null } }
     LaunchedEffect(focusFirst, openGroup) { if (focusFirst && openGroup != null) { kotlinx.coroutines.delay(16); runCatching { firstChild.requestFocus() }; focusFirst = false } }
     LazyRow(
         modifier.fillMaxWidth().height(BarHeight).then(background)
-            .onFocusChanged { if (!it.hasFocus) openGroup = null }
+            .onFocusChanged { inBar = it.hasFocus }
             .onPreviewKeyEvent { e ->
                 if (e.key == Key.Back && openGroup != null) {
                     if (e.type == KeyEventType.KeyUp) { openGroup = null }
