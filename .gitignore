@@ -19,3 +19,6 @@ companion/**/obj/
 iosApp/Nitrate.xcodeproj/
 iosApp/build/
 iosApp/Nitrate/Info.plist
+
+# Desktop: libmpv and its DLLs, built by tools/build-libmpv-windows.sh (never committed).
+desktop/resources/windows-x64/

@@ -23,6 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.FilterChip
@@ -41,7 +44,7 @@ import dev.nitrate.tv.ui.lists.TvDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Where the user's watch partners are in the show on screen (empty: none). */
+/** Where the user's watch partners are in the show on screen (empty: none); spoiler hiding keeps only Together groups' ([WatchPartners.spoilerProgress]). */
 val LocalPartnerProgress = staticCompositionLocalOf<List<PartnerProgress>> { emptyList() }
 
 /**
@@ -65,7 +68,8 @@ val LocalTogetherCards = staticCompositionLocalOf<TogetherCards?> { null }
 @Composable
 fun spoilerStill(item: MediaItem): Boolean {
     val prefs = LocalDisplayPrefs.current
-    val progress = LocalPartnerProgress.current
+    // Only Together groups' partners hide spoilers (a group with it off only tracks progress and pace).
+    val progress = WatchPartners.spoilerProgress(LocalPartnerProgress.current, dev.nitrate.tv.ui.components.LocalPartnersInfo.current)
     return prefs.isSpoiler(item) || (progress.isNotEmpty() && WatchPartners.isSpoiler(prefs, item, progress)) || lockedNow(item)
 }
 
@@ -73,7 +77,8 @@ fun spoilerStill(item: MediaItem): Boolean {
 @Composable
 fun descriptionHidden(item: MediaItem): Boolean {
     val prefs = LocalDisplayPrefs.current
-    val progress = LocalPartnerProgress.current
+    // Only Together groups' partners hide spoilers (a group with it off only tracks progress and pace).
+    val progress = WatchPartners.spoilerProgress(LocalPartnerProgress.current, dev.nitrate.tv.ui.components.LocalPartnersInfo.current)
     return prefs.hidesDescription(item) || (progress.isNotEmpty() && WatchPartners.hidesDescription(prefs, item, progress)) || lockedNow(item)
 }
 
@@ -102,13 +107,14 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
     fun send() {
         error = null
         scope.launch {
-            runCatching { container.server.askPartner(chosen, typed.takeIf { chosen == null }, series.id, series.name, target, schedule.takeIf { target == null }) }
+            val titles = groups.firstOrNull { it.id == target }?.titles ?: listOf(dev.nitrate.core.partners.GroupTitle(series.id, series.name))
+            runCatching { container.server.askPartner(chosen, typed.takeIf { chosen == null }, series.id, series.name, target, schedule.takeIf { target == null }, titles) }
                 .onSuccess { result = "Sent. If that's someone on this server, they'll see it next time they open Nitrate."; container.refreshPartners() }
                 .onFailure { error = it.message }
         }
     }
     TvDialog(onDismiss, width = 900) {
-        Text("Watch ${series.name} with…", style = MaterialTheme.typography.headlineSmall)
+        Text("Watch ${groups.firstOrNull { it.id == target }?.titleNames ?: series.name} with…", style = MaterialTheme.typography.headlineSmall)
         if (result != null) {
             Text(result!!)
             Button(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text("Done") }
@@ -120,7 +126,7 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
                     groups.forEach { g -> FilterChip(target == g.id, { target = g.id }) { Text("With ${g.label}") } }
                 }
             }
-            Text("They'll be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in the show.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Pick everyone to invite. They'll each be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (everyone.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 everyone.forEach { u -> FilterChip(chosen == u.id, { chosen = if (chosen == u.id) null else u.id; typed = "" }) { Text(u.name) } }
             }
@@ -139,21 +145,26 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
 }
 
 /**
- * A group's schedule: how the group watches (separately at the group's pace, or together only),
- * Binge, every 2 days, every 3 days or weekly (with its day), the time new parts open, and
- * whether a locked part can still be played after a warning.
+ * A group's schedule: the release schedule (Binge, every 2 days, every 3 days or weekly with its
+ * day, and the time new parts open), the Group Watch Session (optional days and time) and the
+ * Together switch, with what it means.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
+    PacePicker(schedule, onChange)
+    PartyTimePicker(schedule, onChange)
+    TogetherSwitch(schedule, onChange)
+    Text(schedule.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** The release schedule: Binge, every 2 days, every 3 days or weekly (with its day), and the time new parts open. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PacePicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit, first: Modifier = Modifier) {
     val g = dev.nitrate.core.partners.GroupSchedule
-    Text("How we watch", style = MaterialTheme.typography.titleSmall)
+    Text("Release schedule", style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        g.HOW.forEach { (together, label) -> FilterChip(schedule.together == together, { onChange(schedule.copy(together = together)) }) { Text(label) } }
-    }
-    Text("How it's let out", style = MaterialTheme.typography.titleSmall)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        g.CADENCES.forEach { (id, label) -> FilterChip(schedule.cadence == id, { onChange(schedule.copy(cadence = id)) }) { Text(label) } }
+        g.CADENCES.forEachIndexed { i, (id, label) -> FilterChip(schedule.cadence == id, { onChange(schedule.copy(cadence = id)) }, if (i == 0) first else Modifier) { Text(label) } }
     }
     if (schedule.limits) {
         if (schedule.cadence == g.WEEKLY) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -163,13 +174,19 @@ fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: 
             g.HOURS.forEach { h -> FilterChip(schedule.hour == h && schedule.minute == 0, { onChange(schedule.copy(hour = h, minute = 0)) }) { Text(g.clockOf(h, 0)) } }
         }
     }
-    PartyTimePicker(schedule, onChange)
-    if (!schedule.active) return
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(!schedule.softLock, { onChange(schedule.copy(softLock = false)) }) { Text(if (schedule.limits) "Locked until then" else "Locked") }
-        FilterChip(schedule.softLock, { onChange(schedule.copy(softLock = true)) }) { Text("Ask first") }
-    }
-    Text(schedule.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** The Together switch: the whole line toggles it, and says what on or off means. */
+@Composable
+fun TogetherSwitch(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit, modifier: Modifier = Modifier) {
+    androidx.tv.material3.ListItem(
+        selected = false,
+        onClick = { onChange(schedule.copy(together = !schedule.together)) },
+        headlineContent = { Text("Together: " + if (schedule.together) "On" else "Off") },
+        supportingContent = { Text(schedule.togetherNote) },
+        trailingContent = { androidx.tv.material3.Switch(checked = schedule.together, onCheckedChange = null) },
+        modifier = modifier.width(760.dp),
+    )
 }
 
 /** Asks the group to change its schedule: it takes effect once most of the group agrees (both, in a pair). */
@@ -180,7 +197,7 @@ fun ScheduleChangeDialog(container: AppContainer, group: dev.nitrate.core.partne
     var error by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
     TvDialog(onDismiss, width = 900) {
-        Text("Change the schedule for ${group.seriesName}", style = MaterialTheme.typography.headlineSmall)
+        Text("Change the schedule for ${group.titleNames}", style = MaterialTheme.typography.headlineSmall)
         Text("Now: ${group.schedule?.label ?: "Binge"}. ${if (group.others.size == 1) "${group.label} has to agree" else "Most of the group has to agree"} before it changes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         SchedulePicker(schedule) { schedule = it }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -195,8 +212,8 @@ fun ScheduleChangeDialog(container: AppContainer, group: dev.nitrate.core.partne
 /** What an invite means, including exactly who learns the user's name and progress by accepting. */
 fun inviteText(r: dev.nitrate.core.partners.IncomingRequest): String {
     val others = r.willSee.filter { it != r.fromName }
-    val into = if (others.isEmpty()) "${r.fromName} would like to watch ${r.seriesName} with you."
-    else "${r.fromName} invites you to watch ${r.seriesName} with ${WatchPartners.names(others)}."
+    val into = if (others.isEmpty()) "${r.fromName} would like to watch ${r.titleNames} with you."
+    else "${r.fromName} invites you to watch ${r.titleNames} with ${WatchPartners.names(others)}."
     return "$into If you accept, ${WatchPartners.names(r.willSee)} will see your name and your progress in it.${r.schedule?.terms.orEmpty()}"
 }
 
@@ -253,7 +270,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
                 item(key = "in-${r.id}") {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.width(560.dp)) {
-                            Text("${r.fromName}: ${r.seriesName}")
+                            Text("${r.fromName}: ${r.titleNames}")
                             Text("Would see you: ${WatchPartners.names(r.willSee)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Button(onClick = { act { container.server.acceptPartner(r.id) } }) { Text("Accept") }
@@ -270,12 +287,12 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
             item(key = "g-${g.id}") {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.width(480.dp)) {
-                        Text(g.seriesName, style = MaterialTheme.typography.titleMedium)
-                        Text("With ${g.label} · ${g.schedule?.label ?: "Binge"}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(g.titleNames, style = MaterialTheme.typography.titleMedium)
+                        Text(groupLine(g), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         g.pending?.let { p -> Text("${p.fromName} asks: ${p.proposed.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         g.party?.let { p -> Text(p.line(System.currentTimeMillis()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
-                    if (g.party != null) OutlinedButton(onClick = { container.parties.open(g) }) { Text("Watch party") }
+                    if (g.party != null) OutlinedButton(onClick = { container.parties.open(g) }) { Text("Group Watch Session") }
                     OutlinedButton(onClick = { changingSchedule = g }) { Text("Schedule") }
                     OutlinedButton(onClick = { onOpenShow(g.seriesId) }) { Text("Open") }
                     OutlinedButton(onClick = { inviting = g }) { Text("Invite someone") }
@@ -289,7 +306,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
             outgoing.forEach { r ->
                 item(key = "out-${r.id}") {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${r.seriesName} with ${r.to}", modifier = Modifier.width(560.dp))
+                        Text("${r.titleNames} with ${r.to}", modifier = Modifier.width(560.dp))
                         OutlinedButton(onClick = { act { container.server.cancelPartnerRequest(r.id) } }) { Text("Cancel") }
                     }
                 }
@@ -300,7 +317,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
     leaving?.let { g ->
         val focus = remember { FocusRequester() }
         TvDialog({ leaving = null }) {
-            Text("Leave ${g.seriesName} with ${g.label}?", style = MaterialTheme.typography.headlineSmall)
+            Text("Leave ${g.titleNames} with ${g.label}?", style = MaterialTheme.typography.headlineSmall)
             Text(if (g.others.size == 1) "The group ends. Nothing you've watched changes." else "The others carry on without you. Nothing you've watched changes.")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = { leaving = null }, modifier = Modifier.focusRequester(focus)) { Text("Stay") }
@@ -353,7 +370,7 @@ fun InviteAnswerDialog(container: AppContainer, r: dev.nitrate.core.partners.Inc
     val focus = remember { FocusRequester() }
     fun answer(choice: dev.nitrate.core.partners.TogetherChoice) = scope.launch { container.runTogether(choice); onDismiss() }
     TvDialog(onDismiss, width = 720) {
-        Text("Watch ${r.seriesName} together?", style = MaterialTheme.typography.headlineSmall)
+        Text("Watch ${r.titleNames} together?", style = MaterialTheme.typography.headlineSmall)
         Text(inviteText(r))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Accept(r)) }, modifier = Modifier.focusRequester(focus)) { Text("Accept") }
@@ -389,10 +406,17 @@ fun TogetherChoicesDialog(
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<String?>(null) }
     var changing by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
+    var adding by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
     fun run(c: dev.nitrate.core.partners.TogetherChoice) {
         when (c) {
+            is dev.nitrate.core.partners.TogetherChoice.AddTitle -> adding = c.group
+            // Everyone in the group here, then it plays from the group's card (it counts for them too).
+            is dev.nitrate.core.partners.TogetherChoice.InTheRoom -> scope.launch {
+                val e = container.runTogether(c)
+                if (e != null) error = e else { onDismiss(); onPlay(c.item.copy(watchGroupId = c.groupId)) }
+            }
             is dev.nitrate.core.partners.TogetherChoice.ChangeSchedule -> changing = c.group
             // Tonight's watch party: the same prompt as its reminder.
             is dev.nitrate.core.partners.TogetherChoice.Party -> { onDismiss(); container.parties.open(c.group) }
@@ -402,14 +426,19 @@ fun TogetherChoicesDialog(
             is dev.nitrate.core.partners.TogetherChoice.Leave -> leaving = c.group
             is dev.nitrate.core.partners.TogetherChoice.WatchNow -> scope.launch {
                 val e = container.runTogether(c)
-                if (e != null) error = e else { onDismiss(); onPlay(c.episode) }
+                // Played for the group the live session was started for (no question about watching together).
+                if (e != null) error = e else { onDismiss(); onPlay(c.episode.copy(watchGroupId = c.groupId)) }
             }
             else -> scope.launch { val e = container.runTogether(c); if (e != null) error = e else onDismiss() }
         }
     }
     changing?.let { g -> ScheduleChangeDialog(container, g) { changing = null; onDismiss() }; return }
+    adding?.let { g -> AddTitlesDialog(container, g) { adding = null; onDismiss() }; return }
     if (leaving == null && inviting == null) TvDialog(onDismiss, width = 720) {
         Text(item.seriesName ?: item.name, style = MaterialTheme.typography.headlineSmall)
+        info?.groups?.filter { it.holds(series ?: "") && (item.watchGroupId == null || it.id == item.watchGroupId) }?.forEach { g ->
+            Text("With ${g.label} · ${groupLine(g, withNames = false)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         dev.nitrate.core.partners.TogetherRow.line(item, info, standings)?.let { Text(it.long, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         choices.forEachIndexed { i, c ->
@@ -423,7 +452,7 @@ fun TogetherChoicesDialog(
     leaving?.let { g ->
         val stay = remember { FocusRequester() }
         TvDialog({ leaving = null }) {
-            Text("Leave ${g.seriesName} with ${g.label}?", style = MaterialTheme.typography.headlineSmall)
+            Text("Leave ${g.titleNames} with ${g.label}?", style = MaterialTheme.typography.headlineSmall)
             Text(if (g.others.size == 1) "The group ends. Nothing you've watched changes." else "The others carry on without you. Nothing you've watched changes.")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = { leaving = null }, modifier = Modifier.focusRequester(stay)) { Text("Stay") }
@@ -434,29 +463,180 @@ fun TogetherChoicesDialog(
     }
     inviting?.let { groupId ->
         val name = info?.groups?.firstOrNull { it.id == groupId }?.seriesName ?: item.seriesName ?: item.name
-        WatchWithDialog(container, MediaItem(series ?: item.id, name, dev.nitrate.core.model.ItemKind.SERIES), groupId) { inviting = null; onDismiss() }
+        WatchWithDialog(container, MediaItem(info?.groups?.firstOrNull { it.id == groupId }?.seriesId ?: series ?: item.id, name, dev.nitrate.core.model.ItemKind.SERIES), groupId) { inviting = null; onDismiss() }
     }
 }
 
-/** "Watch with someone": pick a show (watched last, or searched), then who to ask ([WatchWithDialog]). */
+/** "Watch something with someone": the guided setup ([GroupSetupDialog]). */
 @Composable
-fun StartTogetherDialog(container: AppContainer, onDismiss: () -> Unit) {
+fun StartTogetherDialog(container: AppContainer, onDismiss: () -> Unit) = GroupSetupDialog(container, onDismiss = onDismiss)
+
+/** A group's line in lists: "With Tommy · Thursdays 7pm · Group Watch Session Fridays 9pm · Together on". */
+fun groupLine(g: dev.nitrate.core.partners.WatchGroup, withNames: Boolean = true): String {
+    val s = g.schedule ?: dev.nitrate.core.partners.GroupSchedule()
+    val pace = s.copy(together = false, party = null).label
+    return listOfNotNull(if (withNames) "With ${g.label}" else null, pace, s.partyLabel, "Together " + if (s.together) "on" else "off").joinToString(" · ")
+}
+
+/**
+ * Picks one or more titles (shows, films, playlists, collections): watched lately, or found by
+ * name. The whole line toggles each; what's picked shows above the list.
+ */
+@Composable
+fun TitlePicker(container: AppContainer, isPicked: (String) -> Boolean, picked: List<String>, onToggle: (MediaItem) -> Unit, field: Modifier = Modifier) {
     var query by remember { mutableStateOf("") }
-    var picked by remember { mutableStateOf<MediaItem?>(null) }
     val shows by produceState(emptyList<MediaItem>(), query) {
         delay(if (query.isBlank()) 0 else 350)
         value = container.togetherShows(query)
     }
+    TvTextField(query, { query = it }, "Find a show, film, playlist or collection", modifier = field.width(620.dp))
+    if (picked.isNotEmpty()) Text("Picked: " + WatchPartners.names(picked), color = MaterialTheme.colorScheme.primary)
+    Text(if (query.isBlank()) "Watched lately" else "Found", style = MaterialTheme.typography.titleSmall)
+    if (shows.isEmpty()) Text(if (query.isBlank()) "Type a name." else "Nothing found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    shows.forEach { s ->
+        androidx.tv.material3.ListItem(
+            selected = isPicked(s.id),
+            onClick = { onToggle(s) },
+            headlineContent = { Text(listOfNotNull(s.name, s.productionYear?.toString(), dev.nitrate.core.partners.TogetherRow.kindLabel(s)).joinToString(" · ")) },
+            trailingContent = { androidx.tv.material3.Switch(checked = isPicked(s.id), onCheckedChange = null) },
+            modifier = Modifier.width(760.dp),
+        )
+    }
+}
+
+/**
+ * "Watch something with someone", step by step ([dev.nitrate.core.partners.GroupSetup]): what
+ * (one or more titles), who, the release schedule, the Group Watch Session (optional), Together on
+ * or off; then the invite is sent. A side panel: focus on each page's first choice, Back steps
+ * back a page (from the first, closes). Easy mode: the same steps, without the explanations.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.GroupSetup = dev.nitrate.core.partners.GroupSetup(), onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val easy = LocalDisplayPrefs.current.easyMode
+    val info by container.partners.collectAsState()
+    val people by produceState(emptyList<dev.nitrate.core.writing.UserRef>()) { value = runCatching { container.server.partnerPeople() }.getOrDefault(emptyList()) }
+    // Several people into one group when the server can (feature `invitebatch`), else one as before.
+    val several = container.companion.collectAsState().value?.features?.contains("invitebatch") == true
+    var setup by remember { mutableStateOf(start) }
+    if (setup.several != several) setup = setup.copy(several = several)
+    var sent by remember { mutableStateOf(false) }
+    var sending by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val first = remember(setup.step, sent) { FocusRequester() }
+    val back = { if (sent) onDismiss() else setup.back()?.let { setup = it; error = null } ?: onDismiss() }
+    fun go() {
+        if (!setup.last) { setup = setup.next(); return }
+        sending = true
+        error = null
+        scope.launch {
+            runCatching { setup.send(container.server) }
+                .onSuccess { sent = true; container.refreshPartners() }
+                .onFailure { error = it.message ?: "Couldn't send the invite" }
+            sending = false
+        }
+    }
+    TvDialog(back, width = 900) {
+        // Back as a key too (a page steps back one), so one press always does it.
+        Column(
+            Modifier.onKeyEvent { e ->
+                if (e.key != androidx.compose.ui.input.key.Key.Back && e.key != androidx.compose.ui.input.key.Key.Escape) return@onKeyEvent false
+                if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) back()
+                true
+            },
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Watch something with someone", style = MaterialTheme.typography.headlineSmall)
+            if (sent) {
+                Text(dev.nitrate.core.partners.GroupSetup.SENT)
+                Button(onClick = onDismiss, modifier = Modifier.focusRequester(first)) { Text("Done") }
+                return@Column
+            }
+            Text(setup.heading, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            when (setup.step) {
+                dev.nitrate.core.partners.GroupSetup.Step.WHAT -> {
+                    if (!easy) Text("Pick one or more: shows, films, playlists or collections. The group keeps pace on each.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TitlePicker(container, setup::picked, setup.titles.map { it.name }, { setup = setup.toggle(it) }, Modifier.focusRequester(first))
+                }
+                dev.nitrate.core.partners.GroupSetup.Step.WHO -> {
+                    if (!easy) Text("Pick everyone to invite. They'll each be asked to accept, and see who's in the group first. Everyone in a group sees each other's progress in what it watches.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // People known from other groups, then everyone listed (never private accounts).
+                    val everyone = (info?.groups.orEmpty().flatMap { it.others } + people).distinctBy { it.id }
+                    if (everyone.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        everyone.forEachIndexed { i, u -> FilterChip(setup.picked(u.id), { setup = setup.pick(u.id) }, if (i == 0) Modifier.focusRequester(first) else Modifier) { Text(u.name) } }
+                    }
+                    TvTextField(setup.typed, { setup = setup.type(it) }, if (setup.several) "And/or exact user names, separated by commas (for people not listed)" else "Or their exact user name (for someone not listed)", modifier = (if (everyone.isEmpty()) Modifier.focusRequester(first) else Modifier).width(620.dp))
+                    if (!easy) Text("Nothing here tells you whether an account exists.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                dev.nitrate.core.partners.GroupSetup.Step.PACE -> {
+                    if (!easy) Text("How new parts are let out to the group. Anything someone has watched with the group stays open; nothing is ever locked.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    PacePicker(setup.schedule, { setup = setup.copy(schedule = it) }, Modifier.focusRequester(first))
+                }
+                dev.nitrate.core.partners.GroupSetup.Step.SESSION -> {
+                    if (!easy) Text("Optional: a regular time to meet and watch the next part together, with a reminder 15 minutes before.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    PartyTimePicker(setup.schedule, { setup = setup.copy(schedule = it) }, Modifier.focusRequester(first))
+                }
+                dev.nitrate.core.partners.GroupSetup.Step.TOGETHER -> {
+                    TogetherSwitch(setup.schedule, { setup = setup.copy(schedule = it) }, Modifier.focusRequester(first))
+                    if (!easy) Text(if (setup.schedule.together) dev.nitrate.core.partners.GroupSchedule.TOGETHER_OFF else dev.nitrate.core.partners.GroupSchedule.TOGETHER_ON, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(setup.summary, style = MaterialTheme.typography.titleSmall)
+                }
+            }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = ::go, enabled = setup.canGoOn && !sending) { Text(if (setup.last) "Send the invite" else "Next") }
+                OutlinedButton(onClick = back) { Text(if (setup.back() == null) "Cancel" else "Back") }
+            }
+        }
+    }
+    LaunchedEffect(setup.step, sent) { delay(60); runCatching { first.requestFocus() } }
+}
+
+/** "Add a title to the group": pick one or more, then they're added (any member may). */
+@Composable
+fun AddTitlesDialog(container: AppContainer, group: dev.nitrate.core.partners.WatchGroup, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var picked by remember { mutableStateOf(emptyList<MediaItem>()) }
+    var error by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
-    picked?.let { s -> WatchWithDialog(container, s) { onDismiss() }; return }
     TvDialog(onDismiss, width = 900) {
-        Text("Watch something with someone", style = MaterialTheme.typography.headlineSmall)
-        Text("Pick what to watch, then who to ask. They'll see who's in the group before they accept.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        TvTextField(query, { query = it }, "Find a show, film, playlist or collection", modifier = Modifier.width(620.dp).focusRequester(focus))
-        Text(if (query.isBlank()) "Watched lately" else "Found", style = MaterialTheme.typography.titleSmall)
-        if (shows.isEmpty()) Text(if (query.isBlank()) "Type a name." else "Nothing found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        shows.forEach { s -> OutlinedButton(onClick = { picked = s }) { Text(listOfNotNull(s.name, s.productionYear?.toString(), dev.nitrate.core.partners.TogetherRow.kindLabel(s)).joinToString(" · ")) } }
-        OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+        Text("Add to ${group.titleNames} with ${group.label}", style = MaterialTheme.typography.headlineSmall)
+        TitlePicker(
+            container, { id -> picked.any { it.id == id } || group.holds(id) }, picked.map { it.name },
+            { s -> if (!group.holds(s.id)) picked = if (picked.any { it.id == s.id }) picked.filter { it.id != s.id } else picked + s },
+            Modifier.focusRequester(focus),
+        )
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { scope.launch { val e = container.addGroupTitles(group.id, picked); if (e != null) error = e else onDismiss() } }, enabled = picked.isNotEmpty()) { Text("Add") }
+            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+        }
     }
     LaunchedEffect(Unit) { delay(60); runCatching { focus.requestFocus() } }
+}
+
+/**
+ * "Also count it for Suzy, where it's next too?" after a playback from a group's card that's
+ * next in other groups too: Just this group (focused) / All groups where it's next. Shown once
+ * the player has closed; Back keeps it to this group.
+ */
+@Composable
+fun CountingPrompt(container: AppContainer) {
+    val asks by container.countAsks.collectAsState()
+    val ask = asks.firstOrNull() ?: return
+    CountingDialog(ask) { all -> container.saveScope.launch { container.answerCounting(ask, all) } }
+}
+
+/** [CountingPrompt]'s panel: the question, Just this group (focused), All groups where it's next. */
+@Composable
+fun CountingDialog(ask: dev.nitrate.core.partners.CountAsk, onAnswer: (all: Boolean) -> Unit) {
+    val focus = remember(ask) { FocusRequester() }
+    TvDialog({ onAnswer(false) }, width = 640) {
+        Text(ask.question, style = MaterialTheme.typography.headlineSmall)
+        Text("${ask.what} counted for your group with ${ask.counting.groups.joinToString { it.label }}.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Button(onClick = { onAnswer(false) }, modifier = Modifier.focusRequester(focus)) { Text(dev.nitrate.core.partners.CountAsk.JUST_THIS) }
+        OutlinedButton(onClick = { onAnswer(true) }) { Text(dev.nitrate.core.partners.CountAsk.ALL) }
+    }
+    LaunchedEffect(ask) { delay(60); runCatching { focus.requestFocus() } }
 }

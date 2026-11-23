@@ -509,7 +509,7 @@ internal fun InvitesToggle(actions: AppActions) {
     val scope = rememberCoroutineScope()
     val on by notifier.invitesEnabled.collectAsState(false)
     val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setInvitesEnabled(true) } }
-    Toggle("Watch party invites", "When someone invites you to their watch party (checked every 15 minutes in the background)", on) { want ->
+    Toggle("Watch now together invites", "When someone invites you to watch now together (checked every 15 minutes in the background)", on) { want ->
         if (want) askPermission { scope.launch { notifier.setInvitesEnabled(true) } } else scope.launch { notifier.setInvitesEnabled(false) }
     }
 }
@@ -534,7 +534,7 @@ internal fun PartyRemindersToggle(actions: AppActions) {
     val on by notifier.partyRemindersEnabled.collectAsState(false)
     fun turnOn() = scope.launch { notifier.setPartyRemindersEnabled(true); actions.container.refreshPartners() }
     val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { turnOn() }
-    Toggle("Watch party reminders", "15 minutes before your watch groups' watch parties, set by this phone itself; postponing and \"Not tonight\" from the notification", on) { want ->
+    Toggle("Group Watch Session reminders", "15 minutes before your watch groups' Group Watch Sessions, set by this phone itself; postponing and \"Not tonight\" from the notification", on) { want ->
         if (want) askPermission { turnOn() } else scope.launch { notifier.setPartyRemindersEnabled(false) }
     }
 }

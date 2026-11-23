@@ -40,10 +40,13 @@ interface PlaybackGuard : NitratePlugin {
     suspend fun beforePlay(item: MediaItem, host: PluginHost): GuardDecision
 
     /**
-     * The same, with who the user chose to watch with this time ([with]: a watch group, or just
-     * them; null: worked out as usual, see [dev.nitrate.core.partners.WatchPartners.contextFor]).
+     * The same, knowing where the playback started ([origin]: a watch group's card, elsewhere, or
+     * "for myself"; null: not said, taken as elsewhere; see [dev.nitrate.core.partners.WatchPartners.countingFor]).
      */
-    suspend fun beforePlay(item: MediaItem, host: PluginHost, with: dev.nitrate.core.partners.WatchingWith?): GuardDecision = beforePlay(item, host)
+    suspend fun beforePlay(item: MediaItem, host: PluginHost, origin: dev.nitrate.core.partners.PlayOrigin?): GuardDecision = beforePlay(item, host)
+
+    /** The user said "Not now" (or the play went no further): forget anything kept for [item]'s playback. */
+    fun cancelled(item: MediaItem, host: PluginHost) {}
 }
 
 sealed interface GuardDecision {
@@ -119,13 +122,14 @@ class PluginRegistry(val all: List<NitratePlugin>, val host: PluginHost) {
      */
     suspend fun checkBeforePlay(
         item: MediaItem,
-        /** Who the user chose to watch with this time (the player's chip); null: worked out as usual. */
-        with: dev.nitrate.core.partners.WatchingWith? = null,
+        /** Where the playback started (a watch group's card, elsewhere); null: not said. */
+        origin: dev.nitrate.core.partners.PlayOrigin? = null,
         ask: suspend (GuardDecision.Ask) -> GuardAction,
     ): GuardAction {
-        for (guard in enabledNow().filterIsInstance<PlaybackGuard>()) {
-            val decision = runCatching { guard.beforePlay(item, host, with) }.getOrDefault(GuardDecision.Allow)
-            if (decision is GuardDecision.Ask) return ask(decision)
+        val guards = enabledNow().filterIsInstance<PlaybackGuard>()
+        for (guard in guards) {
+            val decision = runCatching { guard.beforePlay(item, host, origin) }.getOrDefault(GuardDecision.Allow)
+            if (decision is GuardDecision.Ask) return ask(decision).also { if (it == GuardAction.Cancel) guards.forEach { g -> g.cancelled(item, host) } }
         }
         return GuardAction.PlayAnyway
     }
@@ -140,9 +144,9 @@ class PluginRegistry(val all: List<NitratePlugin>, val host: PluginHost) {
     suspend fun checkBeforeSending(
         item: MediaItem,
         ask: suspend (GuardDecision.Ask) -> GuardAction,
-        with: dev.nitrate.core.partners.WatchingWith? = null,
+        origin: dev.nitrate.core.partners.PlayOrigin? = null,
         markWatched: suspend (String) -> Unit,
-    ): MediaItem? = when (val action = checkBeforePlay(item, with, ask)) {
+    ): MediaItem? = when (val action = checkBeforePlay(item, origin, ask)) {
         GuardAction.PlayAnyway -> item
         GuardAction.Cancel -> null
         is GuardAction.PlayInstead -> action.item

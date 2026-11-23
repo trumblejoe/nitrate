@@ -160,7 +160,8 @@ class AppActions(
             item.kind == ItemKind.SERIES -> scope.launch {
                 val next = runCatching { server.nextUpFor(item.id) }.getOrNull()
                     ?: runCatching { server.allEpisodes(item.id).firstOrNull { !it.user.played } }.getOrNull()
-                if (next != null) play(next, false) else open(item)
+                // A watch group's card plays from that group's card.
+                if (next != null) play(next.copy(watchGroupId = item.watchGroupId), false) else open(item)
             }
             else -> open(item)
         }
@@ -263,14 +264,16 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             if (recap != null) nav.navigate(RecapRoute) else nav.navigate(playerRoute(target.id, fromStart))
         }
 
-        // A plugin's checks, then play: from the start, resuming, or from [startMs].
-        fun guarded(picked: dev.nitrate.core.model.MediaItem, fromStart: Boolean, startMs: Long?) {
+        // A plugin's checks, then play: from the start, resuming, or from [startMs]. [origin]: where it's
+        // played from (null: a watch group's card by its item's group, else elsewhere), handed on to the player.
+        fun guarded(picked: dev.nitrate.core.model.MediaItem, fromStart: Boolean, startMs: Long?, origin: dev.nitrate.core.partners.PlayOrigin? = null) {
+                val from = origin ?: dev.nitrate.core.partners.PlayOrigin.of(picked).takeIf { it is dev.nitrate.core.partners.PlayOrigin.GroupCard }
                 scope.launch {
                     // A show or season: its next episode (else its first) is what plays.
                     val item = if (dev.nitrate.core.playback.PlayTargets.needsEpisode(picked)) {
                         dev.nitrate.core.playback.PlayTargets.episodeFor(container.server, picked) ?: return@launch
                     } else picked
-                    val action = container.plugins.checkBeforePlay(item) { ask ->
+                    val action = container.plugins.checkBeforePlay(item, from) { ask ->
                         val answer = CompletableDeferred<GuardAction>()
                         pending = ask to answer
                         answer.await().also { pending = null }
@@ -297,7 +300,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 val answer = CompletableDeferred<GuardAction>()
                 pending = ask to answer
                 answer.await().also { pending = null }
-            }) { container.server.setPlayed(it, true) }
+            }, dev.nitrate.core.partners.PlayOrigin.of(item).takeIf { it is dev.nitrate.core.partners.PlayOrigin.GroupCard }) { container.server.setPlayed(it, true) }
 
         val actions = remember(nav) {
             AppActions(
@@ -426,7 +429,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     startMs = route.startMs.takeIf { it >= 0 },
                     clipEndMs = route.clipEndMs.takeIf { it >= 0 },
                     // Playlists queue their own next item; single episodes get Up Next (not a recap clip).
-                    onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { next -> nav.popBackStack(); actions.play(next, false) } else null,
+                    onPlayNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { next -> nav.popBackStack(); guarded(next, false, null, container.upNextOrigin(next)) } else null,
                     onExit = { nav.popBackStack() },
                     onEnded = {
                         val next = route.queue.split(',').filter(String::isNotBlank)
@@ -515,6 +518,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             WatchInvitePrompt(actions)
             // Watch parties: what the Companion sends as it happens; waits while the player is open.
             WatchPartyPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
+            // "Also count it for Suzy, where it's next too?": once the player has closed.
+            CountingPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
         }
         FirstRunSetupHost(container)
         LaunchedEffect(Unit) { container.updater.checkIfDue() }

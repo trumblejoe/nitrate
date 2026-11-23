@@ -124,13 +124,9 @@ public class JellyfinWatchState : IWatchState
     }).OfType<Episode>().Where(e => e.ParentIndexNumber != 0).Cast<BaseItem>().ToList();
 
     /// <inheritdoc />
-    public void MarkWatched(Guid userId, Guid itemId)
+    public IReadOnlyList<Guid> Order(Guid titleId, Guid userId)
     {
         var user = _users.GetUserById(userId);
-        var item = _library.GetItemById(itemId);
-        if (user is not null && item is not null)
-        {
-            item.MarkPlayed(user, DateTime.UtcNow, true);
-        }
+        return user is null ? Array.Empty<Guid>() : TitleItems(titleId, user).Select(i => i.Id).ToList();
     }
 }

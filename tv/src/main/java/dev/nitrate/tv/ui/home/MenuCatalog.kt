@@ -91,12 +91,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.DrawerValue
 import androidx.tv.material3.Icon
-import androidx.tv.material3.NavigationDrawer
-import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.Text
-import androidx.tv.material3.rememberDrawerState
 import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.MediaItem
 
@@ -121,6 +117,8 @@ class MenuActions(
     val onMore: () -> Unit = {},
     /** A playlist added to the menu. */
     val onPlaylist: (String) -> Unit = {},
+    /** Sign out (the profile corner's account panel; easy mode asks first). */
+    val onSignOut: (() -> Unit)? = null,
 )
 
 /**
@@ -132,17 +130,22 @@ class MenuCatalog(
     val defaults: List<String>,
     val nowPlaying: NavEntry? = null,
     val moreDefaults: List<String> = emptyList(),
+    /** Signing out, from the profile corner's account panel (null: not offered, e.g. in tests). */
+    val signOut: (() -> Unit)? = null,
 ) {
     /** The same stops with [id] underlined as the page you're on. */
-    fun current(id: String) = MenuCatalog(entries.mapValues { (k, e) -> e.copy(selected = k == id) }, defaults, nowPlaying, moreDefaults)
+    fun current(id: String) = MenuCatalog(entries.mapValues { (k, e) -> e.copy(selected = k == id) }, defaults, nowPlaying, moreDefaults, signOut)
 
     /** Stop ids that exist, groups included. */
     fun available(prefs: DisplayPrefs): Set<String> = entries.keys + prefs.tvMenuGroups.map { MenuStops.group(it.id) }
 
-    /** The stops on the More page, in order (Easy mode: only the essential ones). */
+    /**
+     * The stops on the More page, in order (Easy mode: only the essential ones; with the overlay or
+     * the rail, not Switch user, which is in the profile corner).
+     */
     fun moreIds(prefs: DisplayPrefs): List<String> =
         MenuLayout.more(prefs.tvMoreStops, moreDefaults, available(prefs), prefs.tvMenuGroups)
-            .filter { !prefs.easyMode || MenuStops.essential(it) }
+            .filter { (!prefs.easyMode || MenuStops.essential(it)) && !(prefs.tvMenu.cornerStops && it in MenuStops.IN_CORNER) }
 
     /** The More page's stops as entries (groups with their members). */
     fun more(prefs: DisplayPrefs): List<NavEntry> = moreIds(prefs).mapNotNull { entry(it, prefs) }
@@ -161,11 +164,12 @@ class MenuCatalog(
         MenuLayout.main(MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, available(prefs), defaults)), prefs.tvMenuGroups, moreIds(prefs))
 
     /**
-     * The rail's or bar's stops (Easy mode keeps only the essential ones). A page kept in More
-     * (Your pages, Collections…) marks More, so the menu opens there and shows where you are.
+     * The overlay's, rail's or bar's stops (Easy mode keeps only the essential ones; the overlay and
+     * the rail leave out Search, Settings and Switch user, which are in the profile corner). A page
+     * kept in More (Your pages, Collections…) marks More, so the menu opens there and shows where you are.
      */
     fun stops(prefs: DisplayPrefs): List<NavEntry> =
-        stopIds(prefs).filter { !prefs.easyMode || MenuStops.essential(it) }.mapNotNull { entry(it, prefs) }.let { shown ->
+        MenuStops.shownIn(stopIds(prefs), prefs.tvMenu).filter { !prefs.easyMode || MenuStops.essential(it) }.mapNotNull { entry(it, prefs) }.let { shown ->
             val inMore = shown.none { it.selected } && more(prefs).any { it.selected }
             if (inMore) shown.map { if (it.id == MenuStops.MORE) it.copy(selected = true) else it } else shown
         }
@@ -204,7 +208,7 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
         actions.onChannels?.let { add(NavEntry("Channels", NavIcons.channels, id = MenuStops.CHANNELS, onClick = it)) }
         add(NavEntry("Your pages", NavIcons.pages, id = MenuStops.PAGES, onClick = actions.onPages))
         add(NavEntry("Comics", NavIcons.comics, id = MenuStops.COMICS, onClick = actions.onComics))
-        add(NavEntry("Watch party", NavIcons.together, id = MenuStops.TOGETHER, onClick = actions.onTogether))
+        add(NavEntry("Watch now together", NavIcons.together, id = MenuStops.TOGETHER, onClick = actions.onTogether))
         add(NavEntry("More", NavIcons.more, id = MenuStops.MORE, onClick = actions.onMore))
         add(NavEntry("Settings", NavIcons.settings, id = MenuStops.SETTINGS, onClick = actions.onSettings))
         add(NavEntry("Switch user", NavIcons.profile, id = MenuStops.PROFILES, onLongClick = actions.onQuickSwitch, onClick = actions.onProfiles))
@@ -216,6 +220,7 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
         MenuStops.defaults(libraries.map { it.id }, emptyList()) + playlists.keys.map(MenuStops::playlist),
         nowPlaying = NavEntry("Now playing", NavIcons.music, id = NOW_PLAYING_STOP, onClick = actions.onNowPlaying),
         moreDefaults = MenuStops.defaultMore(list.map { it.id }) { it in listsLike },
+        signOut = actions.onSignOut,
     )
 }
 

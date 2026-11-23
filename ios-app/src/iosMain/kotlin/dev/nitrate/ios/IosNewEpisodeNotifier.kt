@@ -76,7 +76,7 @@ class IosNewEpisodeNotifier(private val server: MediaServer, private val store: 
             val with = dev.nitrate.core.partners.PartyPrompt.names(g.others.map { it.name })
             val content = UNMutableNotificationContent().apply {
                 setTitle(g.seriesName)
-                setBody(listOfNotNull("Watch party with $with", shown.clock, shown.partLabel.takeIf { at == party.reminderAtMs }).joinToString(" · "))
+                setBody(listOfNotNull("Group Watch Session with $with", shown.clock, shown.partLabel.takeIf { at == party.reminderAtMs }).joinToString(" · "))
                 setUserInfo(mapOf<Any?, Any?>(PARTY to g.id))
             }
             val date = platform.Foundation.NSDate(timeIntervalSinceReferenceDate = at / 1000.0 - 978_307_200.0)

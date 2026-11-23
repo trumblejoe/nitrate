@@ -241,7 +241,7 @@ class ScreenshotTest {
     /** In a watch party: inviting someone, and bringing a group's earlier notes. */
     @Test fun withParty() = shoot("phone-with-party") { actions ->
         val chip = withChip(actions, party = listOf("Will"))
-        check(chip.label == "Watch party with Will") { chip.label }
+        check(chip.label == "Watching now together with Will") { chip.label }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             dev.nitrate.mobile.ui.WithSheet(chip, chatOn = true, brought = "Will brought earlier notes", onGroupChat = {}, onBring = {}, onDismiss = {})
         }
@@ -310,6 +310,48 @@ class ScreenshotTest {
     }
 
     @Test fun watchPartners() = shoot("phone-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { dev.nitrate.mobile.ui.WatchPartnersScreen(it) }
+
+    /** The guided setup's first step: titles picked from what was watched lately, Next, and Cancel (Back on the first page). */
+    @Test fun groupSetupWhat() = shoot("phone-group-setup-what", setup = { c -> c.refreshCompanionForTests() }) { actions ->
+        dev.nitrate.mobile.ui.GroupSetupPages(actions, dev.nitrate.core.partners.GroupSetup(titles = listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel")))) {}
+    }
+
+    /** Who: several people ticked (and names typed), all invited into one group. */
+    @Test fun groupSetupWho() = shoot("phone-group-setup-who", setup = { c -> c.refreshCompanionForTests() }) { actions ->
+        val start = dev.nitrate.core.partners.GroupSetup(
+            dev.nitrate.core.partners.GroupSetup.Step.WHO,
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel")), people = listOf("user-2", "user-3"), typed = "suzy",
+        )
+        dev.nitrate.mobile.ui.GroupSetupPages(actions, start) {}
+    }
+
+    /** Its last step: the Together switch, what it means, what's chosen, and Send the invite. */
+    @Test fun groupSetupTogether() = shoot("phone-group-setup-together", setup = { c -> c.refreshCompanionForTests() }) { actions ->
+        val start = dev.nitrate.core.partners.GroupSetup(
+            dev.nitrate.core.partners.GroupSetup.Step.TOGETHER,
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")), people = listOf("user-2"),
+            schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, together = true, party = dev.nitrate.core.partners.PartyTime(listOf(5), 21)),
+        )
+        dev.nitrate.mobile.ui.GroupSetupPages(actions, start) {}
+    }
+
+    /** A long press on a group's card: that group's choices (mark for the group, same room, add a title, …). */
+    @Test fun togetherChoices() = shoot("phone-together-choices", setup = { c -> c.refreshCompanionForTests() }) { actions ->
+        val info = (actions.server as dev.nitrate.testing.FakeServer).partnerInfo
+        val card = dev.nitrate.core.model.MediaItem("s1e2", "Episode 2", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 1, indexNumber = 2, watchGroupId = "g1")
+        val choices = dev.nitrate.core.partners.TogetherRow.choices(card, info, emptyMap(), emptyList(), canWatchNow = true, ownSpoilers = emptySet())
+        check(choices.any { it is dev.nitrate.core.partners.TogetherChoice.InTheRoom }) { choices.map { it.label }.toString() }
+        dev.nitrate.mobile.ui.TogetherChoicesList(card, info, emptyMap(), choices) {}
+    }
+
+    /** After a playback from a group's card that's next in another group too: "Just this group / All groups where it's next". */
+    @Test fun countingPrompt() = shoot("phone-counting-prompt") { actions ->
+        val info = (actions.server as dev.nitrate.testing.FakeServer).partnerInfo
+        val counting = dev.nitrate.core.partners.Counting(dev.nitrate.core.partners.PlayOrigin.GroupCard("g1"), listOf(info.groups[0]), listOf(info.groups[1]))
+        Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+            dev.nitrate.mobile.ui.CountingChoices(dev.nitrate.core.partners.CountAsk(listOf("s1e2"), "S1:E2 · Episode 2", counting)) {}
+        }
+    }
 
     @Test fun seriesWithPartner() = shoot("phone-series-partner", setup = { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true))

@@ -46,11 +46,11 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PartyTimePicker(schedule: GroupSchedule, onChange: (GroupSchedule) -> Unit) {
+fun PartyTimePicker(schedule: GroupSchedule, onChange: (GroupSchedule) -> Unit, first: Modifier = Modifier) {
     val party = schedule.party
-    Text("Watch party", style = MaterialTheme.typography.titleSmall)
+    Text("Group Watch Session", style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(party == null, { onChange(schedule.copy(party = null)) }) { Text("None") }
+        FilterChip(party == null, { onChange(schedule.copy(party = null)) }, first) { Text("None") }
         GroupSchedule.DAYS.forEachIndexed { i, d ->
             val on = party?.days?.contains(i) == true
             FilterChip(on, {
@@ -64,7 +64,7 @@ fun PartyTimePicker(schedule: GroupSchedule, onChange: (GroupSchedule) -> Unit) 
             GroupSchedule.HOURS.forEach { h -> FilterChip(party.hour == h && party.minute == 0, { onChange(schedule.copy(party = party.copy(hour = h, minute = 0))) }) { Text(GroupSchedule.clockOf(h, 0)) } }
         }
         Text(
-            "${party.label}: you're all reminded 15 minutes before, and the first to join starts the watch party with the next part.",
+            "${party.label}: you're all reminded 15 minutes before, and the first to join starts watching the next part together.",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

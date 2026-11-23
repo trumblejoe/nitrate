@@ -125,10 +125,10 @@ private fun FindGroup(syncPlay: SyncPlayController, defaultName: String, myName:
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(name, { name = it }, label = { Text("New watch party") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(name, { name = it }, label = { Text("New session") }, singleLine = true, modifier = Modifier.weight(1f))
             Button(onClick = { act { syncPlay.create(name.ifBlank { defaultName }) } }, enabled = !busy) { Text("Start") }
         }
-        Text("Join a watch party", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Join someone watching now", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val list = groups?.getOrNull()
         when {
             groups == null -> Text("Looking for watch parties…")
@@ -163,7 +163,7 @@ private fun FindGroup(syncPlay: SyncPlayController, defaultName: String, myName:
 fun WatchTogetherDialog(actions: AppActions, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Watch party") },
+        title = { Text("Watch now together") },
         text = { Column(Modifier.fillMaxWidth()) { WatchTogetherPanel(actions, defaultName = defaultGroupName(actions)) } },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
@@ -242,8 +242,8 @@ fun WatchInvitePrompt(actions: AppActions) {
     val invite = invites.firstOrNull() ?: return
     AlertDialog(
         onDismissRequest = { scope.launch { container.dismissInvite(invite) } },
-        title = { Text("Join the watch party?") },
-        text = { Text(invite.text + ". Joining puts you in their watch party: what they play, plays for you.") },
+        title = { Text("Watch now together?") },
+        text = { Text(invite.text + ". Joining puts you in their session: what they play, plays for you.") },
         confirmButton = { TextButton(onClick = { scope.launch { runCatching { container.joinInvite(invite) } } }) { Text("Join") } },
         dismissButton = { TextButton(onClick = { scope.launch { container.dismissInvite(invite) } }) { Text("Not now") } },
     )

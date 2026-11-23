@@ -653,7 +653,7 @@ fun PlayerScreen(
                     }),
                 // Down opens More (not in easy mode, which has no More).
                 onDown = { if (!easy && ready) panel = Panel.MORE },
-                note = withChip?.label?.takeIf { easy },
+                note = withChip?.plain?.takeIf { easy },
             )
         }
 

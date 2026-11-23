@@ -85,7 +85,7 @@ shell DLL beside it). If that one fails to start, the other is tried.
 ## State handover
 
 `ExportState()` returns `key → JSON bytes`, each key versioned (`chat.v1`, `invites.v1`,
-`brought.v1`, `sso.v1`, `querytimes.v1`, `because.v1`, `sittings.v1`, `together.v1`). Only plain
+`brought.v1`, `sso.v1`, `querytimes.v1`, `because.v1`, `sittings.v1`, `together.v1`, `groupsessions.v1`). Only plain
 JSON crosses, never a type. A new logic reads the keys it knows and ignores the rest; a format
 change takes a new key (`chat.v2`), and the new logic may read the old key too. Everything else is
 in `companion.db` and the other files already, or rebuilt (formats, presence, rate limits).

@@ -1,11 +1,13 @@
 namespace Nitrate.Companion.Partners;
 
 /// <summary>
-/// How a watch group lets its title out: all at once (binge), or one new part (an episode, a
-/// film of a list) every 2 days, every 3 days or weekly, at a time of day in the time zone it was
-/// set in. Anything someone in the group has already seen always stays open, so whoever's behind
-/// can catch up; only what nobody has seen yet is rationed. With <see cref="Together"/>, what
-/// nobody has seen yet is also only for watching together (Nitrate's apps hold to it).
+/// How a watch group lets its titles out: all at once (binge), or one new part (an episode, a
+/// film of a list) of each title every 2 days, every 3 days or weekly, at a time of day in the
+/// time zone it was set in. Anything someone in the group has already watched with it always stays
+/// open, so whoever's behind can catch up; only what nobody has watched yet is paced. Nothing is
+/// ever locked: the apps say when it opens and offer to watch it for oneself. With
+/// <see cref="Together"/> on, what the group hasn't watched yet is for watching together (the apps
+/// ask first when it's played outside the group's card) and spoilers go by the group's progress.
 /// </summary>
 public class GroupSchedule
 {
@@ -33,14 +35,14 @@ public class GroupSchedule
     /// <summary>Gets or sets the minute.</summary>
     public int Minute { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether a locked part can still be played after a warning (else it can't be played in Nitrate).</summary>
+    /// <summary>Gets or sets the old "Locked/Ask first" choice: kept for older apps, ignored (nothing is locked any more).</summary>
     public bool SoftLock { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether the group watches together only: a part nobody in
-    /// the group has seen yet plays in Nitrate only in a watch-together session with another
-    /// member (false, the default and what schedules stored before it read as: separately, at the
-    /// group's pace).
+    /// Gets or sets the Together switch (stored as the older "together only"; false, the default
+    /// and what schedules stored before it read as): spoilers are hidden by the group's progress,
+    /// and playing a part the group hasn't watched yet from anywhere but the group's card asks
+    /// first. Off, the group only keeps track of its progress and pace.
     /// </summary>
     public bool Together { get; set; }
 
@@ -53,13 +55,14 @@ public class GroupSchedule
     /// <summary>Gets a value indicating whether anything is rationed.</summary>
     public bool Limits => Cadence is Days2 or Days3 or Weekly;
 
-    /// <summary>Gets a value indicating whether it holds anything back: rationed, or together only.</summary>
+    /// <summary>Gets a value indicating whether it holds anything back: paced, or Together on.</summary>
     public bool Active => Limits || Together;
 
     /// <summary>
-    /// Gets or sets the group's watch party time: one or more weekdays at a time of day, in this
-    /// schedule's time zone (null: none; groups stored before it have none). It holds nothing
-    /// back: it's when the group meets to watch its next part together (see <see cref="PartyRules"/>).
+    /// Gets or sets the group's Group Watch Session time (stored as its party time): one or more
+    /// weekdays at a time of day, in this schedule's time zone (null: none; groups stored before it
+    /// have none). It holds nothing back: it's when the group meets to watch its next part
+    /// together (see <see cref="PartyRules"/>).
     /// </summary>
     public PartyTime? Party { get; set; }
 
@@ -95,9 +98,9 @@ public class ScheduleChange
 }
 
 /// <summary>
-/// What's locked in a group's title, and when the first locked part opens (null: once someone
-/// watches the open one); <paramref name="TogetherFromId"/>: for a together-only group, the first
-/// part nobody in the group has seen (it and everything after it are for watching together).
+/// What isn't out yet in one of a group's titles, and when the first such part opens (null: once
+/// someone watches the open one); <paramref name="TogetherFromId"/>: with Together on, the first
+/// part nobody in the group has watched with it (it and everything after it are for watching together).
 /// </summary>
 public record ScheduleLock(Guid? LockedFromId, DateTimeOffset? OpensAt, Guid? TogetherFromId = null)
 {
@@ -168,12 +171,12 @@ public static class ScheduleRules
     }
 
     /// <summary>
-    /// What's locked in [order] (the title's parts in watching order) for a group whose furthest
-    /// part watched by anyone is at [frontier] (-1: none), first watched at [frontierAt]: the part
-    /// after the frontier opens at the first release after that (straight away if it was watched
-    /// before the schedule was set, or nothing has been watched), and everything after it waits
-    /// until someone has watched it. A together-only schedule also marks the part after the
-    /// frontier (open or not) as the first for watching together.
+    /// What isn't out yet in [order] (the title's parts in watching order) for a group whose
+    /// furthest part watched by anyone is at [frontier] (-1: none), first watched at [frontierAt]:
+    /// the part after the frontier opens at the first release after that (straight away if it was
+    /// watched before the schedule was set, or nothing has been watched), and everything after it
+    /// waits until someone has watched it. With Together on, the part after the frontier (out or
+    /// not) is also marked as the first the group hasn't watched.
     /// </summary>
     public static ScheduleLock Of(GroupSchedule? s, IReadOnlyList<Guid> order, int frontier, DateTimeOffset? frontierAt, DateTimeOffset now)
     {
@@ -188,7 +191,7 @@ public static class ScheduleRules
             return new ScheduleLock(null, null);
         }
 
-        // Together only: what nobody in the group has seen yet is for watching together.
+        // Together on: what nobody in the group has watched yet is for watching together.
         Guid? together = s.Together ? order[next] : null;
         if (!s.Limits)
         {

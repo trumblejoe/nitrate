@@ -616,14 +616,36 @@ interface MediaServer {
     suspend fun partners(): dev.nitrate.core.partners.PartnersInfo = unsupported()
 
     /**
-     * Invites someone to watch a show together: a listed person by id, or anyone by exact user
-     * name; into one of the user's groups ([groupId]) or a new one for the show. Always "sent".
+     * Invites someone to watch together: a listed person by id, or anyone by exact user name;
+     * into one of the user's groups ([groupId], which carries its titles) or a new one for
+     * [titles] (else the one title [seriesId]). Always "sent".
      */
     suspend fun askPartner(
         toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String? = null,
         /** A new group's schedule (accepting agrees to it); ignored when inviting into a group. */
         schedule: dev.nitrate.core.partners.GroupSchedule? = null,
+        /** A new group's titles (Companion feature `groupwatch`; older servers take [seriesId] alone). */
+        titles: List<dev.nitrate.core.partners.GroupTitle>? = null,
+        /** Invites sent together for one new group share it (Companion feature `invitebatch`): they all end up in one group. */
+        batch: String? = null,
     ): dev.nitrate.core.partners.OutgoingRequest = unsupported()
+
+    /** Adds a title to one of the user's groups (Companion feature `groupwatch`; any member may). */
+    suspend fun addGroupTitle(groupId: String, titleId: String, name: String): Unit = unsupported()
+
+    /** Removes a title from one of the user's groups (any member may; a group keeps at least one). */
+    suspend fun removeGroupTitle(groupId: String, titleId: String): Unit = unsupported()
+
+    /**
+     * Marks [itemIds] watched (or, [watched] false, not) for the user in each of [groupIds]' own
+     * records (Companion feature `groupwatch`): what a playback counted for
+     * ([dev.nitrate.core.partners.WatchPartners.countingFor]), "All groups where it's next", or a
+     * mark by hand. Never the user's own watched state nor anyone else's. Returns the groups marked.
+     */
+    suspend fun markForGroups(groupIds: List<String>, itemIds: List<String>, watched: Boolean = true): List<String> = unsupported()
+
+    /** Tells the server live (SyncPlay) session [sessionId] was started for group [groupId] ("Watch now together"), so what it plays counts for the group. */
+    suspend fun sessionForGroup(groupId: String, sessionId: String): Unit = unsupported()
 
     /** Asks the group to change its schedule; it takes effect once more than half the group agrees (both, in a pair). */
     suspend fun proposeSchedule(groupId: String, schedule: dev.nitrate.core.partners.GroupSchedule): Unit = unsupported()
@@ -680,15 +702,14 @@ interface MediaServer {
 
     suspend fun partnerProgress(seriesId: String): List<dev.nitrate.core.partners.PartnerProgress> = emptyList()
 
-    /** Marks an episode watched for the rest of the group the user watched it with; returns who it counted for. */
+    /** Counts an episode in the group's record for the user and the rest of the group (who watched it with them); returns who it counted for. */
     suspend fun watchedTogether(itemId: String, groupId: String): List<String> = unsupported()
 
     /**
      * "We're in the same room" (Companion feature `grouprecord`): the user watched [itemIds] (parts
      * of group [groupId]'s title) with [present] (members of the group; the user counts as there).
-     * A together-only group counts them in its own record for everyone there; any group marks them
-     * watched for the others there. With nobody else there it counts only as catching up on what
-     * the group already watched together. The server refuses anyone who isn't in the group.
+     * They count in the group's own record for everyone there (nobody's own watched state
+     * changes). The server refuses anyone who isn't in the group.
      * Returns who it counted for, the user included.
      */
     suspend fun watchedWithGroup(groupId: String, itemIds: List<String>, present: List<String>): List<String> = unsupported()

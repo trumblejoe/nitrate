@@ -153,7 +153,7 @@ object SettingsSearch {
         SettingEntry("Notifications", SettingsPlace.NOTIFICATIONS, "alerts", P),
         SettingEntry("New episodes", SettingsPlace.NOTIFICATIONS, "notify followed shows", P),
         SettingEntry("New seasons", SettingsPlace.NOTIFICATIONS, "notify season premiere", P),
-        SettingEntry("Watch party reminders", SettingsPlace.NOTIFICATIONS, "notify watch group party together postpone tonight", P),
+        SettingEntry("Group Watch Session reminders", SettingsPlace.NOTIFICATIONS, "notify watch group party session together postpone tonight", P),
         // Account & servers
         SettingEntry("Switch user", SettingsPlace.PROFILES, "account profile pin who's watching users"),
         SettingEntry("Servers", SettingsPlace.SERVERS, "address url vpn local remote primary connection"),
@@ -163,7 +163,7 @@ object SettingsSearch {
         // Your watching
         SettingEntry("Your year", SettingsPlace.STATS, "stats statistics wrapped top shows genres"),
         SettingEntry("Watch diary", SettingsPlace.DIARY, "letterboxd ratings notes log"),
-        SettingEntry("Watch groups", SettingsPlace.PARTNERS, "partners together schedule privacy private account watch party"),
+        SettingEntry("Watch groups", SettingsPlace.PARTNERS, "partners together schedule privacy private account watch party group watch session watch now together titles setup"),
         SettingEntry("Comic catalogs", SettingsPlace.CATALOGS, "opds komga kavita calibre clu books"),
         SettingEntry("Control a device", SettingsPlace.REMOTE, "remote tv play on cast", P),
         // Tools

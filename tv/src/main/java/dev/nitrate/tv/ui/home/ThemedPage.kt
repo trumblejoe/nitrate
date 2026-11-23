@@ -91,12 +91,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.DrawerValue
 import androidx.tv.material3.Icon
-import androidx.tv.material3.NavigationDrawer
-import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.Text
-import androidx.tv.material3.rememberDrawerState
 import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.MediaItem
 
@@ -115,6 +111,7 @@ fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), host: dev.ni
     val theme = pageKey?.let { prefs.pageThemes[it] }
     val occasion = dev.nitrate.tv.ui.effects.rememberOccasion(prefs.effects)
     val themed = !prefs.easyMode
+    val cornerRoom = LocalCornerRoom.current
     val clear = Modifier.padding(start = insets.start, top = insets.top, end = insets.end, bottom = insets.bottom)
     val behind = remember { dev.nitrate.tv.ui.effects.ThemeBehind() }
     val backdrop = pageKey?.let { prefs.pageBackdrops[it] } ?: dev.nitrate.core.effects.PageBackdrop.ARTWORK
@@ -129,10 +126,11 @@ fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), host: dev.ni
                 dev.nitrate.tv.ui.components.LocalDisplayPrefs provides prefs,
                 dev.nitrate.tv.ui.pages.LocalLayoutPage provides pageKey,
                 dev.nitrate.tv.ui.pages.LocalCustomizeHost provides customize.takeIf { pageKey != null },
-                dev.nitrate.tv.ui.components.LocalClockRoom provides if (prefs.tvClock) dev.nitrate.tv.ui.components.ClockRoom else 0.dp,
+                // The clock and the menu's profile corner (Search, the avatar) both keep the top end clear.
+                dev.nitrate.tv.ui.components.LocalClockRoom provides (if (prefs.tvClock) dev.nitrate.tv.ui.components.ClockRoom else 0.dp) + cornerRoom,
             ) { content() }
             // The clock, top end, clear of the menu; the page keeps that corner free (LocalClockRoom).
-            if (prefs.tvClock) dev.nitrate.tv.ui.components.PageClock(Modifier.align(androidx.compose.ui.Alignment.TopEnd).then(clear).padding(top = 20.dp, end = 28.dp))
+            if (prefs.tvClock) dev.nitrate.tv.ui.components.PageClock(Modifier.align(androidx.compose.ui.Alignment.TopEnd).then(clear).padding(top = 20.dp, end = 28.dp + cornerRoom))
             if (pageKey != null) dev.nitrate.tv.ui.pages.CustomizeLayer(customize, pageKey)
             if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.INFRONT)
         }

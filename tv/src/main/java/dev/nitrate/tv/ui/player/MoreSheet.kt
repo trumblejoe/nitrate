@@ -466,7 +466,7 @@ internal fun rememberPlayerChoices(
             }
         })
         add("Find subtitles" to { back -> SubtitleSearch(repository, session, onDone = { lang -> session.reloadWithNewSubtitle(lang); onDone() }, onBack = back) })
-        if (syncPlay != null) add("Watch party" to { _ -> dev.nitrate.tv.ui.together.WatchTogetherPanel(syncPlay, "Movie night") })
+        if (syncPlay != null) add("Watch now together" to { _ -> dev.nitrate.tv.ui.together.WatchTogetherPanel(syncPlay, "Movie night") })
     }
     val chatOn = groupChat?.on?.collectAsState()?.value
     val missed = groupChat?.missed?.collectAsState()?.value.orEmpty()

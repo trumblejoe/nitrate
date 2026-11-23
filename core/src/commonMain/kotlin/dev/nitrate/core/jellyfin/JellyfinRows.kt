@@ -202,43 +202,25 @@ internal fun JellyfinClient.homeJobs(fresh: Boolean = false, skip: Set<String> =
     return homeJobList(fresh, skip, combine).map { it.after(first) }
 }
 
-/** How long Continue Watching waits for what's watched together before showing without it. */
-internal const val TOGETHER_WAIT_MS = 4_000L
-
 internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combine: Boolean): List<dev.nitrate.core.rows.RowJob> {
     suspend fun nextUp() = items("Shows", "NextUp", query = NEXT_UP_QUERY)
-    // What's watched together goes into Continue Watching (Home has no row of its own for it), asked
-    // once for both rows; a slow answer never holds Continue Watching back for long.
-    val togetherLock = kotlinx.coroutines.sync.Mutex()
-    var togetherKept: dev.nitrate.core.partners.TogetherCards? = null
-    suspend fun together(): dev.nitrate.core.partners.TogetherCards = togetherLock.withLock {
-        togetherKept ?: (kotlinx.coroutines.withTimeoutOrNull(TOGETHER_WAIT_MS) { runCatching { togetherCards() }.getOrNull() } ?: dev.nitrate.core.partners.TogetherCards())
-            .also { togetherKept = it }
-    }
-    // Continue Watching and Next Up as one row, or the two rows.
+    // Continue Watching and Next Up as one row, or the two rows: the user's own (what's watched with groups has its own row).
     val watching = if (combine) listOf(
         dev.nitrate.core.rows.RowJob(dev.nitrate.core.rows.ContinueAndNext.TITLE, dev.nitrate.core.rows.ContinueAndNext.KEY) {
             coroutineScope {
                 val resume = async { resumeItems(parentId = null, types = null) }
                 val next = async { nextUp() }
-                val shared = async { together() }
-                dev.nitrate.core.rows.ContinueAndNext.withTogether(resume.await(), next.await(), shared.await()).let {
+                dev.nitrate.core.rows.ContinueAndNext.merge(resume.await(), next.await()).let {
                     if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.rows.ContinueAndNext.KEY, dev.nitrate.core.rows.ContinueAndNext.TITLE, it, WIDE_DEFAULT))
                 }
             }
         },
     ) else listOf(
         dev.nitrate.core.rows.RowJob("Continue Watching", "home/continue_watching") {
-            coroutineScope {
-                val shared = async { together() }
-                dev.nitrate.core.rows.ContinueAndNext.continueWithTogether(resumeItems(parentId = null, types = null), shared.await())
-            }.let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT, resumeMore(null, null))) }
+            resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT, resumeMore(null, null))) }
         },
         dev.nitrate.core.rows.RowJob("Next Up", "home/next_up") {
-            coroutineScope {
-                val shared = async { together() }
-                dev.nitrate.core.rows.ContinueAndNext.nextUpWithout(nextUp(), shared.await())
-            }.let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT, rowMore("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)))) }
+            nextUp().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT, rowMore("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)))) }
         },
     )
     return watching + listOf(
@@ -250,6 +232,9 @@ internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combi
         },
         dev.nitrate.core.rows.RowJob("Continue Reading", "home/continue_reading") {
             continueReading(null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
+        },
+        dev.nitrate.core.rows.RowJob(dev.nitrate.core.partners.TogetherRow.TITLE, dev.nitrate.core.partners.TogetherRow.KEY) {
+            watchingTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.partners.TogetherRow.KEY, dev.nitrate.core.partners.TogetherRow.TITLE, it, WIDE_DEFAULT)) }
         },
         dev.nitrate.core.rows.RowJob.showing(LATEST_JOB) { show ->
             coroutineScope {
@@ -470,29 +455,27 @@ internal fun JellyfinClient.queryParams(
 
 /**
  * Home's "Watching together" row ([dev.nitrate.core.partners.TogetherRow]): invites waiting, then
- * each shared show's next episode for the user by whose turn it is. Nothing without the
- * Companion plugin's partners.
+ * one card per group and title (each carrying its group, `MediaItem.watchGroupId`), then the
+ * start card. Nothing without the Companion plugin's partners.
  */
-internal suspend fun JellyfinClient.watchingTogether(): List<MediaItem> =
-    togetherCards().let { c -> if (c.isEmpty) emptyList() else c.invites + c.yours + c.waiting + dev.nitrate.core.partners.TogetherRow.start }
+internal suspend fun JellyfinClient.watchingTogether(): List<MediaItem> = togetherCards().items
 
-/**
- * What's watched together, for Continue Watching ([dev.nitrate.core.rows.ContinueAndNext.withTogether]):
- * invites, then the shared titles by whose move it is. Empty without the Companion plugin's partners.
- */
+/** The Watching together row's invites and cards, one per group and title. Empty without the Companion plugin's partners. */
 internal suspend fun JellyfinClient.togetherCards(): dev.nitrate.core.partners.TogetherCards = coroutineScope {
     if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope dev.nitrate.core.partners.TogetherCards()
     val info = partners()
-    suspend fun series(id: String, name: String) = runCatching { getItem(id) }.getOrElse { MediaItem(id, name, ItemKind.SERIES) }
-    val invites = info.incoming.distinctBy { it.seriesId }.map { r -> async { series(r.seriesId, r.seriesName) } }
-    val shows = info.groups.distinctBy { it.seriesId }.map { g ->
+    suspend fun title(id: String, name: String) = runCatching { getItem(id) }.getOrElse { MediaItem(id, name, ItemKind.SERIES) }
+    val invites = info.incoming.distinctBy { it.seriesId }.map { r -> async { title(r.seriesId, r.seriesName) } }
+    // Each title once (a title can be in several groups), its cards one per group holding it.
+    val titles = info.groups.flatMap { g -> g.titles }.distinctBy { it.id }
+    val shows = titles.map { t ->
         async {
             runCatching {
-                val items = titleItems(g.seriesId)
-                val k = dev.nitrate.core.partners.KeepUp.of(g.seriesId, items, partnerProgress(g.seriesId), info.groups)
-                // The title itself only for a card with nothing of the user's left (waiting on the others), in any of their places in it.
+                val items = titleItems(t.id)
+                val k = dev.nitrate.core.partners.KeepUp.of(t.id, items, partnerProgress(t.id), info.groups)
+                // The title itself only for a card with nothing of the user's left (waiting on the others), in any of their groups on it.
                 val needsTitle = dev.nitrate.core.partners.TogetherRow.needsTitle(items, k)
-                dev.nitrate.core.partners.SharedShow(if (needsTitle) series(g.seriesId, g.seriesName) else null, items, k)
+                dev.nitrate.core.partners.SharedShow(if (needsTitle) title(t.id, t.name) else null, items, k, info.on(t.id).map { it.id })
             }.getOrNull()
         }
     }

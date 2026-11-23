@@ -36,11 +36,12 @@ public sealed class HandOverTests : IDisposable
         s.GetRequiredService<QueryTimeStore>().Record(Sam, "run1-1", 42, "GET /Items");
         s.GetRequiredService<BecauseStore>().Put(Sam, new BecauseSet(DateTimeOffset.UtcNow, [new BecauseRow(Guid.Empty, "Seed", [Alex])]));
         s.GetRequiredService<SittingRecorder>().ImportState([new SittingState("play|item", DateTimeOffset.UtcNow.AddMinutes(-20), DateTimeOffset.UtcNow, false, 1_200_000)]);
-        s.GetRequiredService<TogetherRecorder>().ImportState([new TogetherSeenState("session", Alex, [Sam, Alex], DateTimeOffset.UtcNow)]);
+        s.GetRequiredService<TogetherRecorder>().ImportState([new TogetherSeenState("session", Alex, [Sam, Alex], DateTimeOffset.UtcNow, "syncplay-1")]);
+        s.GetRequiredService<PartnerHub>().ImportSessions([new GroupSessionState("syncplay-1", [Guid.Parse("00000000-0000-0000-0000-0000000000c2")], DateTimeOffset.UtcNow)]);
         var state = first.ExportState();
         await first.DisposeAsync();
         Assert.Equal(
-            [HandOver.Because, HandOver.Brought, HandOver.Chat, HandOver.Invites, HandOver.QueryTimes, HandOver.Sittings, HandOver.Sso, HandOver.Together],
+            [HandOver.Because, HandOver.Brought, HandOver.Chat, HandOver.GroupSessions, HandOver.Invites, HandOver.QueryTimes, HandOver.Sittings, HandOver.Sso, HandOver.Together],
             state.Keys.Order().ToArray());
 
         var next = new CompanionLogic(Context(state, stopping.Token));
@@ -57,7 +58,11 @@ public sealed class HandOverTests : IDisposable
         Assert.Equal(42, Assert.Single(n.GetRequiredService<QueryTimeStore>().For(Sam, "run1")).Ms);
         Assert.Equal("Seed", n.GetRequiredService<BecauseStore>().Get(Sam)!.Rows[0].SeedName);
         Assert.Equal(1_200_000, Assert.Single(n.GetRequiredService<SittingRecorder>().ExportState()).WatchedMs);
-        Assert.Equal([Sam, Alex], Assert.Single(n.GetRequiredService<TogetherRecorder>().ExportState()).Present);
+        var seen = Assert.Single(n.GetRequiredService<TogetherRecorder>().ExportState());
+        Assert.Equal([Sam, Alex], seen.Present);
+        Assert.Equal("syncplay-1", seen.Group);
+        var session = Assert.Single(n.GetRequiredService<PartnerHub>().ExportSessions());
+        Assert.Equal(("syncplay-1", Guid.Parse("00000000-0000-0000-0000-0000000000c2")), (session.Key, Assert.Single(session.Groups)));
         await next.DisposeAsync();
     }
 

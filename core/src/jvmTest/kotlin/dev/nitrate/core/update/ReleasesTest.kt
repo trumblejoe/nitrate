@@ -40,4 +40,18 @@ class ReleasesTest {
         assertEquals("def456", Releases.checksum(sums, "nitrate-tv-0.0.0-dev.12.apk"))
         assertNull(Releases.checksum(sums, "other.apk"))
     }
+
+    @Test
+    fun `the desktop app finds its installer, not the phone's APK`() {
+        val body = """[{"tag_name":"dev-20","name":"Nitrate dev-20","prerelease":true,"draft":false,"body":"<!-- nitrate-version-code: 1020 -->",
+            "assets":[{"name":"nitrate-mobile-0.0.0-dev.20.apk","browser_download_url":"https://example/a.apk"},
+                      {"name":"nitrate-desktop-0.0.0-dev.20.zip","browser_download_url":"https://example/d.zip"},
+                      {"name":"nitrate-desktop-0.0.0-dev.20.msi","browser_download_url":"https://example/d.msi"}]}]"""
+        val desktop = Releases.parse(body, "desktop", ".msi")
+        assertEquals("nitrate-desktop-0.0.0-dev.20.msi", desktop.single().apkName)
+        assertEquals(1020, desktop.single().versionCode)
+        assertEquals("nitrate-desktop-0.0.0-dev.20.zip", Releases.parse(body, "desktop", ".zip").single().apkName)
+        // Phone releases are untouched by the desktop's assets.
+        assertEquals("nitrate-mobile-0.0.0-dev.20.apk", Releases.parse(body, "mobile").single().apkName)
+    }
 }

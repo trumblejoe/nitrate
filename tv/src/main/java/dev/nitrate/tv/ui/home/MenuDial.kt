@@ -91,12 +91,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.DrawerValue
 import androidx.tv.material3.Icon
-import androidx.tv.material3.NavigationDrawer
-import androidx.tv.material3.NavigationDrawerItem
 import androidx.tv.material3.Text
-import androidx.tv.material3.rememberDrawerState
 import dev.nitrate.core.model.CollectionKind
 import dev.nitrate.core.model.MediaItem
 
@@ -109,7 +105,7 @@ internal val Spokes = listOf(Key.DirectionUp, Key.DirectionRight, Key.DirectionD
  * back (to the centre from the first ring), and sideways swings to that side on the same ring.
  */
 @Composable
-internal fun Dial(slots: List<NavEntry?>, onClose: () -> Unit) {
+internal fun Dial(slots: List<NavEntry?>, onClose: () -> Unit, onCorner: (() -> Unit)? = null) {
     val rings = slots.chunked(4)
     // (spoke, ring), or null at the centre.
     var at by remember { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -127,6 +123,8 @@ internal fun Dial(slots: List<NavEntry?>, onClose: () -> Unit) {
             // Sideways: that spoke on this ring, else the nearest ring in, else the nearest out.
             else -> ((pos.second downTo 0) + (pos.second + 1 until rings.size)).firstOrNull { entry(dir, it) != null }?.let { dir to it } ?: pos
         }
+        // Up past the top spoke's last stop (or with nothing up there): on to the profile corner.
+        if (dir == 0 && at == pos && (pos == null || pos.first == 0)) onCorner?.invoke()
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val selected = at?.let { (s, r) -> entry(s, r) }

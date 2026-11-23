@@ -87,7 +87,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
     /**
      * A party reminder came due: one quick look at the party as it stands (postponed: wake again
      * 15 minutes before the new time; off, or the user can't make it: nothing), then the
-     * notification "Watch party with Tommy & Suzy · 8:00 · S1:E4" and the next party's wake-up.
+     * notification "Group Watch Session with Tommy & Suzy · 8:00 · S1:E4" and the next party's wake-up.
      */
     suspend fun remindParty(groupId: String, title: String, with: String) {
         if (!partyRemindersEnabled.first()) return
@@ -119,7 +119,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
     /** The reminder: Join (opens the app on the party), +15 min, Not tonight. */
     private fun postParty(groupId: String, title: String, text: String, party: dev.nitrate.core.partners.WatchParty) {
         if (!canNotify()) return
-        channel(PARTY_CHANNEL, "Watch party reminders")
+        channel(PARTY_CHANNEL, "Group Watch Session reminders")
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             putExtra(NewEpisodeNotifier.EXTRA_OPEN_PARTY, groupId)
             addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -146,11 +146,11 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
     /** A postponement or "Not tonight" waiting for the user's yes or no (with the app closed: from the 15-minute check). */
     private fun postPartyAsk(group: dev.nitrate.core.partners.WatchGroup, ask: dev.nitrate.core.partners.PartyAsk) {
         if (!canNotify()) return
-        channel(PARTY_CHANNEL, "Watch party reminders")
+        channel(PARTY_CHANNEL, "Group Watch Session reminders")
         val text = "${ask.text}. Agree?"
         val notification = NotificationCompat.Builder(context, PARTY_CHANNEL)
             .setSmallIcon(dev.nitrate.android.R.drawable.ic_stat_new_episode)
-            .setContentTitle("Watch party with ${dev.nitrate.core.partners.PartyPrompt.names(group.others.map { it.name })}")
+            .setContentTitle("Group Watch Session with ${dev.nitrate.core.partners.PartyPrompt.names(group.others.map { it.name })}")
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true)
@@ -208,7 +208,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         val fresh = mutableSetOf<String>()
         if (invitesOn) runCatching { server.watchInvites() }.getOrDefault(emptyList()).forEach { inv ->
             fresh += "i:" + inv.id
-            if ("i:" + inv.id !in notified) postSocial("i:" + inv.id, "Watch party", inv.text, INVITES_CHANNEL, "Watch party invites")
+            if ("i:" + inv.id !in notified) postSocial("i:" + inv.id, "Watch now together", inv.text, INVITES_CHANNEL, "Watch now together invites")
         }
         // One look at the groups for both: invites into them, and watch party requests waiting for a yes or no.
         val partners = if (requestsOn || partyOn) runCatching { server.partners() }.getOrNull() else null
@@ -410,7 +410,7 @@ class PartyActionReceiver : android.content.BroadcastReceiver() {
                 if (container.server.userId == null) container.server.restoreSession()
                 when (action) {
                     LATER -> container.server.partyLater(groupId, 15)?.let { "Pushed back to ${it.clock}. Everyone's told." }
-                    SKIP -> container.server.partySkip(groupId)?.let { if (it.skipped) "Tonight's watch party is off." else "Asked the group to skip tonight." }
+                    SKIP -> container.server.partySkip(groupId)?.let { if (it.skipped) "Tonight's Group Watch Session is off." else "Asked the group to skip tonight." }
                     VOTE -> {
                         val request = intent.getStringExtra(AndroidNewEpisodeNotifier.PARTY_REQUEST) ?: return@runCatching null
                         container.server.partyVote(groupId, request, intent.getBooleanExtra(AndroidNewEpisodeNotifier.PARTY_YES, false))
@@ -428,7 +428,7 @@ class PartyActionReceiver : android.content.BroadcastReceiver() {
                     AndroidNewEpisodeNotifier.partyId(groupId),
                     NotificationCompat.Builder(context, "watch_party")
                         .setSmallIcon(dev.nitrate.android.R.drawable.ic_stat_new_episode)
-                        .setContentTitle("Watch party")
+                        .setContentTitle("Group Watch Session")
                         .setContentText(said)
                         .setAutoCancel(true)
                         .setTimeoutAfter(60_000)

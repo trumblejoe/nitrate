@@ -50,7 +50,14 @@ namespace Nitrate.Companion.Partners
     /// <param name="ItemId">What it played.</param>
     /// <param name="Present">Who was there.</param>
     /// <param name="At">When last seen.</param>
-    public record TogetherSeenState(string SessionId, Guid ItemId, IReadOnlyList<Guid> Present, DateTimeOffset At);
+    /// <param name="Group">The SyncPlay group it was seen in (null from a logic that didn't say: not taken over).</param>
+    public record TogetherSeenState(string SessionId, Guid ItemId, IReadOnlyList<Guid> Present, DateTimeOffset At, string? Group = null);
+
+    /// <summary>A live session started for groups (<c>groupsessions.v1</c>).</summary>
+    /// <param name="Key">The session key (<see cref="PartnerHub.SessionKey"/>).</param>
+    /// <param name="Groups">The groups it was started for.</param>
+    /// <param name="At">When the app last said so.</param>
+    public record GroupSessionState(string Key, IReadOnlyList<Guid> Groups, DateTimeOffset At);
 }
 
 namespace Nitrate.Companion.QueryTimes
@@ -118,5 +125,8 @@ namespace Nitrate.Companion.Logic
 
         /// <summary>Live sessions seen together (<see cref="Partners.TogetherRecorder"/>).</summary>
         public const string Together = "together.v1";
+
+        /// <summary>Live sessions started for groups (<see cref="Partners.PartnerHub.SessionFor"/>).</summary>
+        public const string GroupSessions = "groupsessions.v1";
     }
 }

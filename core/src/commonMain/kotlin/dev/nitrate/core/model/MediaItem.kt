@@ -80,6 +80,12 @@ data class MediaItem(
     val isMissing: Boolean = false,
     /** Studios or networks that made it. */
     val studios: List<String> = emptyList(),
+    /**
+     * Not from the server: on Home's Watching together row, the watch group this card is for (one
+     * card per group and title, so the same part can stand for two groups); playing it starts from
+     * that group's card (`PlayOrigin.of`). Null everywhere else.
+     */
+    val watchGroupId: String? = null,
 ) {
     val isEpisode get() = kind == ItemKind.EPISODE
     /** Something to play: not an episode the library is missing or that hasn't aired. */

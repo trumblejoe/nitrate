@@ -107,7 +107,7 @@ internal fun CountingBanner(chip: WithChip?, modifier: Modifier = Modifier) {
 
 internal const val COUNTING_MS = 5_000L
 
-/** The With… panel wired to the app: who's here, Counts for, the watch party, the same room, group chat, bringing notes. */
+/** The With… panel wired to the app: who's here, Counting for (Change), Watch now together, the same room, group chat, bringing notes. */
 @Composable
 internal fun PlayerWithPanel(
     container: AppContainer,
@@ -153,7 +153,7 @@ internal fun broughtText(chip: WithChip, by: String?, me: String?, mine: String?
     if (by == null && mine == null) return null
     if (by == null || by == me) return chip.groups.firstOrNull { it.id == mine }?.let { "You brought your notes with " + WithChip.nameOf(it) } ?: "You brought earlier notes"
     val name = chip.groups.flatMap { it.others }.firstOrNull { it.id == by }?.name
-    return (name ?: "Someone in the party") + " brought earlier notes"
+    return (name ?: "Someone watching") + " brought earlier notes"
 }
 
 private enum class WithPage { MAIN, ROOM, INVITE, ADD, BRING }
@@ -201,19 +201,19 @@ fun WithPanel(
                 var firstUsed = false
                 fun firstOne(): Modifier = if (firstUsed) Modifier else Modifier.focusRequester(first).also { firstUsed = true }
                 if (chip.groups.isNotEmpty() && !chip.partyOn) {
-                    Heading("Counts for")
+                    Heading("Counting for")
                     val chosen = chip.group?.id
                     chip.groups.forEach { g ->
                         Choice("With " + WithChip.nameOf(g), selected = chosen == g.id, firstOne()) { onCountFor(WatchingWith.Group(g.id)) }
                     }
-                    Choice("Just me", selected = chosen == null, Modifier) { onCountFor(WatchingWith.JustMe) }
+                    Choice("No group", selected = chosen == null, Modifier) { onCountFor(WatchingWith.JustMe) }
                 }
-                Heading("Watch party")
+                Heading("Watch now together")
                 if (chip.partyOn) {
-                    Action("Invite someone to the party", "They get an invite to join and watch in step", firstOne()) { page = WithPage.INVITE }
+                    Action("Invite someone to watch now", "They get an invite to join and watch in step", firstOne()) { page = WithPage.INVITE }
                 } else {
                     Action(
-                        "Start a watch party" + (chip.group?.let { " with " + WithChip.nameOf(it) } ?: ""),
+                        "Watch now together" + (chip.group?.let { " with " + WithChip.nameOf(it) } ?: ""),
                         "Play in step on each other's screens; pausing pauses for everyone", firstOne(), onStartParty,
                     )
                 }
@@ -234,7 +234,7 @@ fun WithPanel(
                     )
                 }
                 if (onBring != null && chip.groups.isNotEmpty()) {
-                    Action("Bring our earlier notes", brought ?: "Your group's notes on this pop up for everyone in the party, this time only", Modifier) { page = WithPage.BRING }
+                    Action("Bring our earlier notes", brought ?: "Your group's notes on this pop up for everyone watching, this time only", Modifier) { page = WithPage.BRING }
                 } else brought?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
@@ -256,7 +256,7 @@ fun WithPanel(
                 val list by produceState<List<UserRef>?>(null) { value = people() }
                 var chosen by remember { mutableStateOf(emptySet<String>()) }
                 val group = chip.group ?: chip.groups.firstOrNull()
-                Text("Invite someone to the party", style = MaterialTheme.typography.headlineSmall)
+                Text("Invite someone to watch now", style = MaterialTheme.typography.headlineSmall)
                 when {
                     list == null -> Text("Loading…")
                     list!!.isEmpty() -> Text("Nobody else to invite on this server.")
@@ -288,17 +288,18 @@ fun WithPanel(
             }
             WithPage.BRING -> {
                 Text("Bring our earlier notes", style = MaterialTheme.typography.headlineSmall)
-                Text("Notes from one of your groups on this pop up for everyone in the party as playback passes them, this time only. Nobody keeps them.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Notes from one of your groups on this pop up for everyone watching as playback passes them, this time only. Nobody keeps them.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 chip.groups.forEachIndexed { i, g ->
                     Action("Our notes with " + WithChip.nameOf(g), g.seriesName, if (i == 0) Modifier.focusRequester(first) else Modifier) { onBring?.invoke(g.id); page = WithPage.MAIN }
                 }
-                Action("Stop bringing them", "Only what's said in the party pops up", Modifier) { onBring?.invoke(null); page = WithPage.MAIN }
+                Action("Stop bringing them", "Only what's said while watching now pops up", Modifier) { onBring?.invoke(null); page = WithPage.MAIN }
             }
         }
         }
     }
     // Each page opens with focus on its first choice.
-    LaunchedEffect(page) { delay(50); runCatching { first.requestFocus() } }
+    // Once more a moment later: as the panel first opens its window may not take focus yet.
+    LaunchedEffect(page) { delay(50); runCatching { first.requestFocus() }; delay(300); if (page == WithPage.MAIN) runCatching { first.requestFocus() } }
 }
 
 @Composable

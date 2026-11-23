@@ -58,8 +58,6 @@ public class PartyTests
 
         public bool Belongs(Guid titleId, Guid itemId, Guid userId) => titleId == Show;
 
-        public void MarkWatched(Guid userId, Guid itemId) => Played.Add((userId, itemId));
-
         public string? Label(Guid itemId) => itemId == Ep1 ? "S1 E1" : itemId == Ep2 ? "S1 E2" : itemId == Ep3 ? "S1 E3" : null;
     }
 
@@ -265,15 +263,19 @@ public class PartyTests
         var ahead = new ShowProgress(new[] { Ep1, Ep2 }, null, null, order);
         var behind = new ShowProgress(new[] { Ep1 }, null, null, order);
 
-        // Separately: the part after the furthest everyone has seen; a together-only group's own record: after its furthest.
+        // Together off: the part after the furthest everyone has watched with the group; Together on: after the group's furthest.
         Assert.Equal(Ep2, PartnerHub.PartOf(false, new[] { ahead, behind }));
         Assert.Equal(Ep3, PartnerHub.PartOf(true, new[] { ahead, behind }));
         Assert.Null(PartnerHub.PartOf(false, new[] { new ShowProgress(order, null, null, order) }));
 
         var hub = Hub();
         var gid = Group(hub);
+        // Watched on their own, it doesn't count for the group: the group's record does.
         _watch.Played.Add((Joe, Ep1));
         _watch.Played.Add((Sam, Ep1));
+        Assert.Equal(Ep1, hub.Party(Joe, gid)!.PartId);
+        hub.Mark(Joe, new[] { gid }, new[] { Ep1 });
+        hub.Mark(Sam, new[] { gid }, new[] { Ep1 });
         var p = hub.Party(Joe, gid)!;
         Assert.Equal(Ep2, p.PartId);
         Assert.Equal("S1:E2", p.PartLabel);

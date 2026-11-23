@@ -18,6 +18,10 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
+    // The Windows (and Linux/macOS) desktop app, Compose for Desktop on the JVM (:desktop).
+    jvm("desktop") {
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+    }
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
@@ -34,6 +38,10 @@ kotlin {
             implementation(libs.atomicfu)
             // Row art drawing (paths and DrawScope only), shared by both apps' decorative rows.
             implementation(compose.ui)
+        }
+        // Dispatchers.Main on the desktop is Swing's event thread.
+        getByName("desktopMain").dependencies {
+            api(libs.kotlinx.coroutines.swing)
         }
     }
 }

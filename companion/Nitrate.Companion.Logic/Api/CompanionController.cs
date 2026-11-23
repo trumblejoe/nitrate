@@ -64,9 +64,13 @@ public class CompanionController : ControllerBase
 
         features.Add("channels");
         features.Add("partners");
-        // Together-only groups keep their own watched record; "We're in the same room" (POST /Nitrate/Partners/Groups/{id}/Watched).
+        // Groups keep their own watched record; "We're in the same room" (POST /Nitrate/Partners/Groups/{id}/Watched).
         features.Add("grouprecord");
         features.Add("party");
+        // Groups with several titles, a watched record kept by every group, marks per group
+        // (POST /Nitrate/Partners/Groups/{id}/Mark, /Nitrate/Partners/Mark), the Together switch, sessions said to be for a group.
+        features.Add("groupwatch");
+        features.Add("invitebatch");
         features.Add("updates");
         features.Add("together");
         features.Add("credits");

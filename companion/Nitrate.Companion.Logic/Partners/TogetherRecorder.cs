@@ -8,13 +8,13 @@ using Microsoft.Extensions.Hosting;
 namespace Nitrate.Companion.Partners;
 
 /// <summary>
-/// Keeps together-only groups' own watched records from the server's playback reports, in any
-/// app: a part played to the end (Jellyfin's played threshold, <see cref="PlaybackStopEventArgs.PlayedToCompletion"/>)
-/// in a live (SyncPlay) session counts for each member of a together-only group who was in that
-/// session, when at least two of the group's members were (<see cref="PartnerHub.RecordLive"/>);
-/// played to the end anywhere, it counts as catching up on what the group already watched
-/// together (<see cref="PartnerHub.RecordCatchUp"/>). The session's participants are noted while
-/// it plays too, so someone leaving the session as the part ends still counts.
+/// Keeps groups' own watched records from the server's playback reports of live (SyncPlay)
+/// sessions, in any app: a part played to the end (Jellyfin's played threshold,
+/// <see cref="PlaybackStopEventArgs.PlayedToCompletion"/>) counts for each member there, in the
+/// groups the session was started for, else where everyone there is in the group and it's the
+/// next part for each of them (<see cref="PartnerHub.RecordLive"/>). Outside a live session the
+/// apps count by where playback started; nothing is counted here. The session's participants are
+/// noted while it plays too, so someone leaving the session as the part ends still counts.
 /// </summary>
 public class TogetherRecorder : IHostedService
 {
@@ -25,7 +25,7 @@ public class TogetherRecorder : IHostedService
     private readonly ISyncPlayManager _syncPlay;
     private readonly IUserManager _users;
     private readonly PartnerHub _partners;
-    private readonly ConcurrentDictionary<string, (Guid Item, HashSet<Guid> Present, DateTimeOffset At)> _seen = new();
+    private readonly ConcurrentDictionary<string, (Guid Item, string Group, HashSet<Guid> Present, DateTimeOffset At)> _seen = new();
 
     /// <summary>Initializes a new instance of the <see cref="TogetherRecorder"/> class.</summary>
     public TogetherRecorder(ISessionManager sessions, ISyncPlayManager syncPlay, IUserManager users, PartnerHub partners)
@@ -56,14 +56,14 @@ public class TogetherRecorder : IHostedService
 
     /// <summary>Who was seen together in each live session, for the next logic.</summary>
     public IReadOnlyList<TogetherSeenState> ExportState() =>
-        _seen.Select(s => new TogetherSeenState(s.Key, s.Value.Item, s.Value.Present.ToList(), s.Value.At)).ToList();
+        _seen.Select(s => new TogetherSeenState(s.Key, s.Value.Item, s.Value.Present.ToList(), s.Value.At, s.Value.Group)).ToList();
 
     /// <summary>Takes who the previous logic saw together.</summary>
     public void ImportState(IEnumerable<TogetherSeenState> seen)
     {
-        foreach (var s in seen)
+        foreach (var s in seen.Where(s => s.Group is not null))
         {
-            _seen[s.SessionId] = (s.ItemId, s.Present.ToHashSet(), s.At);
+            _seen[s.SessionId] = (s.ItemId, s.Group!, s.Present.ToHashSet(), s.At);
         }
     }
 
@@ -71,7 +71,7 @@ public class TogetherRecorder : IHostedService
     {
         try
         {
-            if (e.Session is not { } session || e.Item is null || Present(session) is not { Count: >= 2 } present)
+            if (e.Session is not { } session || e.Item is null || Present(session) is not { } live)
             {
                 return;
             }
@@ -79,8 +79,8 @@ public class TogetherRecorder : IHostedService
             var now = DateTimeOffset.UtcNow;
             _seen.AddOrUpdate(
                 session.Id,
-                _ => (e.Item.Id, present, now),
-                (_, old) => old.Item == e.Item.Id ? (old.Item, old.Present.Union(present).ToHashSet(), now) : (e.Item.Id, present, now));
+                _ => (e.Item.Id, live.Group, live.Present, now),
+                (_, old) => old.Item == e.Item.Id && old.Group == live.Group ? (old.Item, old.Group, old.Present.Union(live.Present).ToHashSet(), now) : (e.Item.Id, live.Group, live.Present, now));
         }
         catch (Exception)
         {
@@ -98,20 +98,18 @@ public class TogetherRecorder : IHostedService
                 return;
             }
 
-            var present = (e.Session is { } session ? Present(session) : null) ?? new HashSet<Guid>();
+            var live = e.Session is { } session ? Present(session) : null;
+            var group = live?.Group;
+            var present = live?.Present ?? new HashSet<Guid>();
             if (seen.Present is not null && seen.Item == e.Item.Id && DateTimeOffset.UtcNow - seen.At < Remember)
             {
                 present.UnionWith(seen.Present);
+                group ??= seen.Group;
             }
 
-            if (present.Count >= 2)
+            if (present.Count > 0 && group is not null)
             {
-                _partners.RecordLive(e.Item.Id, present);
-            }
-
-            foreach (var user in e.Users ?? new())
-            {
-                _partners.RecordCatchUp(user.Id, e.Item.Id);
+                _partners.RecordLive(e.Item.Id, present, group);
             }
         }
         catch (Exception)
@@ -120,8 +118,8 @@ public class TogetherRecorder : IHostedService
         }
     }
 
-    /// <summary>Everyone in the SyncPlay group this session's user is in (null outside one).</summary>
-    private HashSet<Guid>? Present(SessionInfo session)
+    /// <summary>The SyncPlay group this session's user is in, and everyone in it (null outside one).</summary>
+    private (string Group, HashSet<Guid> Present)? Present(SessionInfo session)
     {
         var name = session.UserName;
         if (string.IsNullOrEmpty(name))
@@ -138,6 +136,6 @@ public class TogetherRecorder : IHostedService
 
         var ids = group.Participants.Select(n => _users.GetUserByName(n)?.Id).OfType<Guid>().ToHashSet();
         ids.Add(session.UserId);
-        return ids;
+        return (PartnerHub.SessionKey(group.GroupId.ToString()), ids);
     }
 }

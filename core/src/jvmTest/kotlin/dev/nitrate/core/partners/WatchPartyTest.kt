@@ -22,11 +22,11 @@ class WatchPartyTest {
         assertEquals("Mondays and Thursdays 8:30pm", PartyTime(listOf(4, 1), 20, 30).label)
         assertEquals("Every day 7pm", PartyTime((0..6).toList(), 19).label)
         val s = GroupSchedule(GroupSchedule.WEEKLY, day = 4, hour = 19, party = PartyTime(listOf(5), 21))
-        assertEquals("Thursdays 7pm, watch party Fridays 9pm", s.label)
-        assertEquals("Watch party Fridays 9pm", s.partyLabel)
+        assertEquals("Thursdays 7pm, Group Watch Session Fridays 9pm", s.label)
+        assertEquals("Group Watch Session Fridays 9pm", s.partyLabel)
         assertTrue(GroupSchedule(party = PartyTime(listOf(5))).kept)
         assertFalse(GroupSchedule(party = PartyTime(listOf(5))).active)
-        assertTrue(GroupSchedule(party = PartyTime(listOf(5))).terms.contains("Watch party Fridays 8pm"))
+        assertTrue(GroupSchedule(party = PartyTime(listOf(5))).terms.contains("Group Watch Session Fridays 8pm"))
         assertEquals("", GroupSchedule().terms)
     }
 
@@ -56,9 +56,9 @@ class WatchPartyTest {
         assertEquals("8:15", party.copy(startsAtMs = ms("2026-11-20T01:15:00Z"), offsetMinutes = -300).clock)
         assertTrue(party.joinable(thursday8pm))
         assertFalse(party.joinable(ms("2026-11-19T18:00:00Z")))
-        assertEquals("Tonight's watch party: 8:15 · S1:E4", party.copy(partLabel = "S1:E4").line(ms("2026-11-19T18:00:00Z")))
-        assertEquals("Next watch party: Thursday 8:15", party.line(ms("2026-11-16T18:00:00Z")))
-        assertEquals("Tonight's watch party is off", party.copy(skipped = true).line(ms("2026-11-19T18:00:00Z")))
+        assertEquals("Tonight's Group Watch Session: 8:15 · S1:E4", party.copy(partLabel = "S1:E4").line(ms("2026-11-19T18:00:00Z")))
+        assertEquals("Next Group Watch Session: Thursday 8:15", party.line(ms("2026-11-16T18:00:00Z")))
+        assertEquals("Tonight's Group Watch Session is off", party.copy(skipped = true).line(ms("2026-11-19T18:00:00Z")))
     }
 
     @Test
@@ -88,7 +88,7 @@ class WatchPartyTest {
     fun promptsSayWhatTheyShould() {
         val p = WatchParty("g", thursday8pm, thursday8pm, partLabel = "S1:E4")
         val reminder = PartyPrompt.of(news(PartyNews.REMINDER, p))!!
-        assertEquals("Watch party with Tommy & Suzy · 8:00 · S1:E4", reminder.text)
+        assertEquals("Group Watch Session with Tommy & Suzy · 8:00 · S1:E4", reminder.text)
         assertEquals(listOf("Join", "+15 min", "+30 min", "+60 min", "Not tonight", "Can't make it"), reminder.choices.map { it.label })
         assertEquals(listOf("Join", "Not tonight"), PartyPrompt.of(news(PartyNews.REMINDER, p), easy = true)!!.choices.map { it.label })
         // +15 used: not offered again.
@@ -110,7 +110,7 @@ class WatchPartyTest {
         assertEquals(listOf("Join", "+15 min", "Can't make it", "Yes", "No"), withAsk.choices.map { it.label })
 
         val without = PartyPrompt.of(news(PartyNews.WITHOUT, p.copy(cantMake = listOf("Suzy"))))!!
-        assertEquals("Suzy can't tonight. Start the watch party without them? Suzy will fall behind.", without.text)
+        assertEquals("Suzy can't tonight. Start the Group Watch Session without them? Suzy will fall behind.", without.text)
         assertEquals(listOf(PartyChoice.Join, PartyChoice.NotTonight), without.choices)
         assertNull(PartyPrompt.of(news(PartyNews.WITHOUT, p.copy(cantMake = listOf("Suzy"), iCantMake = true))))
         assertNull(PartyPrompt.of(news(PartyNews.CHANGED, p)))
@@ -125,6 +125,6 @@ class WatchPartyTest {
         val show = MediaItem("show", "Bear", ItemKind.SERIES)
         val choices = TogetherRow.choices(show, info, emptyMap(), emptyList(), canWatchNow = false, ownSpoilers = emptySet(), nowMs = ms("2026-11-19T18:00:00Z"))
         val c = choices.filterIsInstance<TogetherChoice.Party>().single()
-        assertEquals("Tonight's watch party: 8:15 · S1:E4 · Postpone… · Not tonight", c.label)
+        assertEquals("Tonight's Group Watch Session: 8:15 · S1:E4 · Postpone… · Not tonight", c.label)
     }
 }
