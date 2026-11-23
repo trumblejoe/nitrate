@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.rememberCoroutineScope
 import dev.nitrate.tv.ui.admin.ServerAdminScreen
 import dev.nitrate.tv.ui.admin.ManageItemScreen
@@ -117,6 +118,8 @@ import kotlinx.serialization.Serializable
 @Serializable object HouseholdDevicesRoute
 @Serializable object WatchTogetherRoute
 @Serializable object ChannelsRoute
+/** The menu's "More": the stops kept out of the menu itself. */
+@Serializable object MoreRoute
 @Serializable object WatchPartnersRoute
 @Serializable data class ChannelEditorRoute(val channelId: String = "")
 @Serializable object ProfilesRoute
@@ -238,9 +241,13 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     // Watch partners: the server's Companion plugin has them and the plugin is on.
     val partnersOn = companion?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) == true &&
         dev.nitrate.core.partners.WatchPartnersPlugin.ID in enabledIds
-    val menuCatalog = remember(libraries, customPages, nav, channelsOn) {
+    // Playlists added to the menu (stored with the display settings).
+    val storedPrefs by remember(userId) { userId?.let { container.displaySettings.prefs(it) } ?: kotlinx.coroutines.flow.flowOf(dev.nitrate.core.pages.DisplayPrefs()) }
+        .collectAsState(dev.nitrate.core.pages.DisplayPrefs())
+    val menuPlaylists = storedPrefs.menuPlaylists
+    val menuCatalog = remember(libraries, customPages, nav, channelsOn, menuPlaylists) {
         dev.nitrate.tv.ui.home.menuCatalog(
-            libraries, customPages,
+            libraries, customPages, playlists = menuPlaylists, actions =
             dev.nitrate.tv.ui.home.MenuActions(
                 onSearch = { nav.navigate(SearchRoute(), fromHome) },
                 onHome = {
@@ -259,8 +266,47 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onProfiles = { nav.navigate(ProfilesRoute) },
                 onQuickSwitch = { quickSwitch = true },
                 onNowPlaying = { nav.navigate(NowPlayingRoute) { launchSingleTop = true } },
+                onMore = { nav.navigate(MoreRoute, fromHome) },
+                onPlaylist = { id -> nav.navigate(PlaylistRoute(id), fromHome) },
             ),
         )
+    }
+    // A playlist's page: on its own (PlaylistRoute) or as a Home tab (pinned), with pinning in its More.
+    fun savePrefs(change: (dev.nitrate.core.pages.DisplayPrefs) -> dev.nitrate.core.pages.DisplayPrefs) {
+        val user = userId ?: return
+        scope.launch { container.displaySettings.savePrefs(user, change(container.displaySettings.prefs(user).first())) }
+    }
+    val playlistPage: @Composable (playlistId: String, header: (@Composable () -> Unit)?, onDeleted: () -> Unit) -> Unit = { playlistId, header, onDeleted ->
+            val pinning = dev.nitrate.tv.ui.playlist.PlaylistPinning(
+                onHome = playlistId in storedPrefs.homePlaylists,
+                inMenu = playlistId in storedPrefs.menuPlaylists,
+                setHome = { id, name, on -> savePrefs { p -> p.copy(homePlaylists = if (on) p.homePlaylists + (id to name) else p.homePlaylists - id) } },
+                setMenu = { id, name, on -> savePrefs { p -> p.copy(menuPlaylists = if (on) p.menuPlaylists + (id to name) else p.menuPlaylists - id) } },
+            )
+            dev.nitrate.tv.ui.playlist.PlaylistScreen(
+                repository = container.server,
+                settings = container.displaySettings,
+                playlists = container.playlists,
+                playlistId = playlistId,
+                onPlayQueue = { items -> listen(items) },
+                onOpen = nav::openItem,
+                onDeleted = onDeleted,
+                header = header,
+                pinning = pinning,
+                onContinue = { pl, next, rest ->
+                    scope.launch {
+                        if (container.recapBefore(next, pl) != null) nav.navigate(RecapRoute) else nav.playQueue(rest.map { it.id })
+                    }
+                },
+                onStoryOrder = { id, on -> scope.launch { container.setRecapPlaylist(id, on) } },
+                onPlayFrom = { pl, item ->
+                    scope.launch {
+                        container.playlists.startedFrom(pl.id, item.id)
+                        // In story order, a "Last time" recap first when one is due.
+                        if (pl.id in displayPrefs.recapPlaylists && container.recapBefore(item, pl) != null) nav.navigate(RecapRoute) else gate.play(item)
+                    }
+                },
+            )
     }
     ProvideDisplayPrefs(container, userId) {
     NitrateTheme {
@@ -309,6 +355,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 dataCache = container.dataCache,
                 customPages = customPages,
                 onOpenPage = { id -> nav.navigate(CustomPageRoute(id)) },
+                playlistPage = { id, header -> playlistPage(id, header) { savePrefs { p -> p.copy(homePlaylists = p.homePlaylists - id, menuPlaylists = p.menuPlaylists - id) } } },
                 onSignOut = {
                     scope.launch {
                         container.signOut()
@@ -611,6 +658,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             val route = entry.toRoute<CatalogBookRoute>()
             dev.nitrate.tv.ui.comics.CatalogReaderScreen(container, route.catalogId, catalogJson.decodeFromString(dev.nitrate.core.catalogs.CatalogBook.serializer(), route.book), onExit = { nav.popBackStack() })
         }
+        composable<MoreRoute> { dev.nitrate.tv.ui.home.MoreScreen() }
         composable<ChannelsRoute> {
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.CHANNELS, overlay = false) {
                 dev.nitrate.tv.ui.channels.ChannelsScreen(
@@ -658,28 +706,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             }
         }
         composable<PlaylistRoute> { entry ->
-            PlaylistScreen(
-                repository = container.server,
-                settings = container.displaySettings,
-                playlists = container.playlists,
-                playlistId = entry.toRoute<PlaylistRoute>().playlistId,
-                onPlayQueue = { items -> listen(items) },
-                onOpen = nav::openItem,
-                onDeleted = { nav.popBackStack() },
-                onContinue = { pl, next, rest ->
-                    scope.launch {
-                        if (container.recapBefore(next, pl) != null) nav.navigate(RecapRoute) else nav.playQueue(rest.map { it.id })
-                    }
-                },
-                onStoryOrder = { id, on -> scope.launch { container.setRecapPlaylist(id, on) } },
-                onPlayFrom = { pl, item ->
-                    scope.launch {
-                        container.playlists.startedFrom(pl.id, item.id)
-                        // In story order, a "Last time" recap first when one is due.
-                        if (pl.id in displayPrefs.recapPlaylists && container.recapBefore(item, pl) != null) nav.navigate(RecapRoute) else gate.play(item)
-                    }
-                },
-            )
+            val id = entry.toRoute<PlaylistRoute>().playlistId
+            playlistPage(id, null) {
+                savePrefs { p -> p.copy(homePlaylists = p.homePlaylists - id, menuPlaylists = p.menuPlaylists - id) }
+                nav.popBackStack()
+            }
         }
         composable<NowPlayingRoute> {
             val listening = container.listening

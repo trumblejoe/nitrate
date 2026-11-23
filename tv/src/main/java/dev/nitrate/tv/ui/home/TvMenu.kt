@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -76,6 +77,11 @@ import androidx.tv.material3.Surface
 import dev.nitrate.core.pages.TvMenuStyle
 import dev.nitrate.core.pages.MenuStops
 import dev.nitrate.core.pages.CustomPage
+import dev.nitrate.core.pages.DisplayPrefs
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import dev.nitrate.core.pages.MenuGroups
+import dev.nitrate.core.pages.MenuLayout
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -102,6 +108,8 @@ data class NavEntry(
     val id: String = label,
     /** A long press (held OK): a quicker version of what [onClick] opens, when there is one. */
     val onLongClick: (() -> Unit)? = null,
+    /** A group (`group:<id>`): OK opens it in place onto these stops instead of going anywhere. */
+    val children: List<NavEntry> = emptyList(),
     val onClick: () -> Unit,
 )
 
@@ -117,6 +125,8 @@ object NavIcons {
     val channels = Icons.Filled.DateRange
     val comics = Icons.Filled.Star
     val music = Icons.Filled.PlayArrow
+    val more = Icons.Filled.MoreVert
+    val playlist = Icons.AutoMirrored.Filled.List
 
     fun library(item: MediaItem): ImageVector = when (item.collection) {
         CollectionKind.TV_SHOWS -> Icons.Filled.DateRange
@@ -314,6 +324,8 @@ private fun Rail(
 ) {
     val state = rememberDrawerState(DrawerValue.Closed)
     val target = stops.firstOrNull { it.selected } ?: stops.firstOrNull()
+    // The group opened with OK (the page's own group shows open anyway).
+    var openGroup by remember { mutableStateOf<String?>(null) }
     val drawer: @Composable androidx.tv.material3.NavigationDrawerScope.(DrawerValue) -> Unit = { drawerValue ->
         Column(
             Modifier.fillMaxHeight()
@@ -328,7 +340,7 @@ private fun Rail(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             stops.forEach { entry ->
-                NavigationDrawerItem(
+                if (entry.children.isEmpty()) NavigationDrawerItem(
                     selected = entry.selected,
                     onClick = entry.onClick,
                     onLongClick = entry.onLongClick,
@@ -336,6 +348,47 @@ private fun Rail(
                     leadingContent = { Icon(entry.icon, contentDescription = if (drawerValue == DrawerValue.Closed) entry.label else null) },
                     modifier = if (entry == target) Modifier.focusRequester(menuFocus) else Modifier,
                 ) { Text(entry.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                else {
+                    // A group opens in place: OK shows its stops indented under it, focus on the first;
+                    // moving off it (or Back) folds it again. The page's own group stays open, its stop marked.
+                    val here = entry.children.any { it.selected }
+                    val open = openGroup == entry.id || here
+                    val groupFocus = remember(entry.id) { FocusRequester() }
+                    val firstChild = remember(entry.id) { FocusRequester() }
+                    var focusFirst by remember(entry.id) { mutableStateOf(false) }
+                    Column(
+                        Modifier
+                            .onFocusChanged { if (!it.hasFocus && openGroup == entry.id) openGroup = null }
+                            .onPreviewKeyEvent { e ->
+                                if (e.key != Key.Back || openGroup != entry.id || here) return@onPreviewKeyEvent false
+                                if (e.type == KeyEventType.KeyUp) { openGroup = null; runCatching { groupFocus.requestFocus() } }
+                                true
+                            },
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        NavigationDrawerItem(
+                            selected = entry.selected && !open,
+                            onClick = { if (openGroup == entry.id) openGroup = null else { openGroup = entry.id; focusFirst = true } },
+                            leadingContent = { Icon(entry.icon, contentDescription = if (drawerValue == DrawerValue.Closed) entry.label else null) },
+                            modifier = Modifier.focusRequester(groupFocus).then(if (entry == target && !here) Modifier.focusRequester(menuFocus) else Modifier),
+                        ) { Text(entry.label + if (open) "  ▾" else "  ▸", maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        if (open) entry.children.forEachIndexed { i, child ->
+                            NavigationDrawerItem(
+                                selected = child.selected,
+                                onClick = child.onClick,
+                                onLongClick = child.onLongClick,
+                                leadingContent = { Icon(child.icon, contentDescription = if (drawerValue == DrawerValue.Closed) "${entry.label}: ${child.label}" else null, modifier = Modifier.size(20.dp)) },
+                                modifier = Modifier
+                                    .padding(start = if (drawerValue == DrawerValue.Open) 20.dp else 0.dp)
+                                    .then(if (i == 0) Modifier.focusRequester(firstChild) else Modifier)
+                                    .then(if (child.selected) Modifier.focusRequester(menuFocus) else Modifier),
+                            ) { Text(child.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        }
+                    }
+                    LaunchedEffect(focusFirst, open) {
+                        if (focusFirst && open) { kotlinx.coroutines.delay(16); runCatching { firstChild.requestFocus() }; focusFirst = false }
+                    }
+                }
             }
         }
     }
@@ -369,18 +422,49 @@ private fun MenuBar(entries: List<NavEntry>, edge: Edge, overlay: Boolean, menuF
     }
     val towardsPage = if (edge == Edge.TOP) Key.DirectionDown else Key.DirectionUp
     val target = entries.firstOrNull { it.selected } ?: entries.firstOrNull()
+    // A group opens in place: its stops follow it along the bar (tinted), focus on the first; moving
+    // off the group and its stops (or Back) folds it. The page's own group stays open, its stop marked.
+    var openGroup by remember { mutableStateOf<String?>(null) }
+    var focusedId by remember { mutableStateOf<String?>(null) }
+    val firstChild = remember { FocusRequester() }
+    var focusFirst by remember { mutableStateOf(false) }
+    fun isOpen(e: NavEntry) = openGroup == e.id || e.children.any { it.selected }
+    val shown = entries.flatMap { e -> if (e.children.isNotEmpty() && isOpen(e)) listOf(e) + e.children.map { it.copy(id = "${e.id}/${it.id}") } else listOf(e) }
+    LaunchedEffect(focusedId) {
+        val g = openGroup ?: return@LaunchedEffect
+        if (focusedId != null && focusedId != g && focusedId?.startsWith("$g/") != true) openGroup = null
+    }
+    LaunchedEffect(focusFirst, openGroup) { if (focusFirst && openGroup != null) { kotlinx.coroutines.delay(16); runCatching { firstChild.requestFocus() }; focusFirst = false } }
     LazyRow(
-        modifier.fillMaxWidth().height(BarHeight).then(background).onPreviewKeyEvent { e ->
-            if (e.key != towardsPage) return@onPreviewKeyEvent false
-            if (e.type == KeyEventType.KeyDown) toContent()
-            true
-        },
+        modifier.fillMaxWidth().height(BarHeight).then(background)
+            .onFocusChanged { if (!it.hasFocus) openGroup = null }
+            .onPreviewKeyEvent { e ->
+                if (e.key == Key.Back && openGroup != null) {
+                    if (e.type == KeyEventType.KeyUp) { openGroup = null }
+                    return@onPreviewKeyEvent true
+                }
+                if (e.key != towardsPage) return@onPreviewKeyEvent false
+                if (e.type == KeyEventType.KeyDown) toContent()
+                true
+            },
         contentPadding = PaddingValues(horizontal = 50.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        itemsIndexed(entries, key = { _, e -> e.id }) { _, entry ->
-            BarItem(entry, modifier = if (entry == target) Modifier.focusRequester(menuFocus) else Modifier)
+        itemsIndexed(shown, key = { _, e -> e.id }) { _, entry ->
+            val member = entry.id.contains('/')
+            val group = entry.children.isNotEmpty()
+            val firstOfGroup = member && shown.getOrNull(shown.indexOf(entry) - 1)?.children?.isNotEmpty() == true
+            val focusTarget = if (member) entry.selected else entry == target && !(group && entry.children.any { it.selected })
+            BarItem(
+                if (group) entry.copy(label = entry.label + if (isOpen(entry)) "  ▾" else "  ▸", onClick = {
+                    if (openGroup == entry.id) openGroup = null else { openGroup = entry.id; focusFirst = true }
+                }) else entry,
+                emphasis = member,
+                modifier = Modifier.onFocusChanged { if (it.isFocused) focusedId = entry.id }
+                    .then(if (firstOfGroup) Modifier.focusRequester(firstChild) else Modifier)
+                    .then(if (focusTarget) Modifier.focusRequester(menuFocus) else Modifier),
+            )
         }
     }
 }
@@ -441,6 +525,43 @@ private fun Dial(slots: List<NavEntry?>, onClose: () -> Unit) {
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val selected = at?.let { (s, r) -> entry(s, r) }
+    // A group's spoke: OK opens a short list of its stops in the middle (▲▼ and OK; Back or ◀ folds it).
+    var group by remember { mutableStateOf<NavEntry?>(null) }
+    var groupAt by remember { mutableStateOf(0) }
+    group?.let { g ->
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.75f))
+                .focusRequester(focus)
+                .onPreviewKeyEvent { e ->
+                    val down = e.type == KeyEventType.KeyDown
+                    when (e.key) {
+                        Key.DirectionUp -> { if (down) groupAt = (groupAt - 1).coerceAtLeast(0); true }
+                        Key.DirectionDown -> { if (down) groupAt = (groupAt + 1).coerceAtMost(g.children.lastIndex); true }
+                        Key.Back, Key.DirectionLeft -> { if (!down) { group = null }; true }
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> { if (!down) g.children.getOrNull(groupAt)?.let { onClose(); it.onClick() }; true }
+                        else -> true
+                    }
+                }
+                .focusable()
+                .semantics { contentDescription = "${g.label}: ${g.children.getOrNull(groupAt)?.label.orEmpty()}" },
+            Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(g.label, style = MaterialTheme.typography.headlineSmall, color = Color.White)
+                g.children.forEachIndexed { i, c ->
+                    Row(
+                        Modifier.background(if (i == groupAt) MaterialTheme.colorScheme.primary else Color(0xFF26262B), RoundedCornerShape(50)).padding(horizontal = 22.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(c.icon, contentDescription = null, tint = if (i == groupAt) Color.Black else Color.White, modifier = Modifier.size(22.dp))
+                        Text(c.label, style = MaterialTheme.typography.titleMedium, color = if (i == groupAt) Color.Black else Color.White)
+                    }
+                }
+            }
+        }
+        LaunchedEffect(g.id) { runCatching { focus.requestFocus() } }
+        return
+    }
 
     DialFace(
         rings = rings.size,
@@ -459,6 +580,7 @@ private fun Dial(slots: List<NavEntry?>, onClose: () -> Unit) {
                         when {
                             // Held: the stop's quick version (once), and the release doesn't click it too.
                             e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 1 && long != null -> { held = true; onClose(); long() }
+                            e.type == KeyEventType.KeyUp && !held && selected?.children?.isNotEmpty() == true -> { groupAt = 0; group = selected }
                             e.type == KeyEventType.KeyUp && !held -> selected?.let { onClose(); it.onClick() }
                             e.type == KeyEventType.KeyUp -> held = false
                         }
@@ -553,41 +675,99 @@ class MenuActions(
     val onQuickSwitch: (() -> Unit)? = null,
     /** Back to the listening player; its stop shows only while music plays. */
     val onNowPlaying: () -> Unit = {},
+    /** The page of stops kept in More. */
+    val onMore: () -> Unit = {},
+    /** A playlist added to the menu. */
+    val onPlaylist: (String) -> Unit = {},
 )
 
-/** Every stop the menu can have, by [MenuStops] id, and the order it starts in. */
-class MenuCatalog(val entries: Map<String, NavEntry>, val defaults: List<String>, val nowPlaying: NavEntry? = null) {
+/**
+ * Every stop the menu can have, by [MenuStops] id, and the order it starts in. [moreDefaults] is
+ * what the More page starts with (`MenuStops.defaultMore`).
+ */
+class MenuCatalog(
+    val entries: Map<String, NavEntry>,
+    val defaults: List<String>,
+    val nowPlaying: NavEntry? = null,
+    val moreDefaults: List<String> = emptyList(),
+) {
     /** The same stops with [id] underlined as the page you're on. */
-    fun current(id: String) = MenuCatalog(entries.mapValues { (k, e) -> e.copy(selected = k == id) }, defaults, nowPlaying)
+    fun current(id: String) = MenuCatalog(entries.mapValues { (k, e) -> e.copy(selected = k == id) }, defaults, nowPlaying, moreDefaults)
 
-    /** The rail's or bar's stops as the user arranged them. */
-    fun stops(prefs: dev.nitrate.core.pages.DisplayPrefs): List<NavEntry> =
-        MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, entries.keys, defaults)).filter { !prefs.easyMode || MenuStops.essential(it) }.mapNotNull(entries::get)
+    /** Stop ids that exist, groups included. */
+    fun available(prefs: DisplayPrefs): Set<String> = entries.keys + prefs.tvMenuGroups.map { MenuStops.group(it.id) }
 
-    /** The dial's spots as the user arranged them (null = empty); Easy mode keeps only the essential ones. */
-    fun dial(prefs: dev.nitrate.core.pages.DisplayPrefs): List<NavEntry?> =
-        MenuStops.arrange(prefs.tvDialStops, entries.keys, defaults).map { id -> id?.takeIf { !prefs.easyMode || MenuStops.essential(it) }?.let(entries::get) }
+    /** The stops on the More page, in order (Easy mode: only the essential ones). */
+    fun moreIds(prefs: DisplayPrefs): List<String> =
+        MenuLayout.more(prefs.tvMoreStops, moreDefaults, available(prefs), prefs.tvMenuGroups)
+            .filter { !prefs.easyMode || MenuStops.essential(it) }
+
+    /** The More page's stops as entries (groups with their members). */
+    fun more(prefs: DisplayPrefs): List<NavEntry> = moreIds(prefs).mapNotNull { entry(it, prefs) }
+
+    /** A stop's entry; a group's is built from its members (named without the group's words), selected when one of them is. */
+    fun entry(id: String, prefs: DisplayPrefs): NavEntry? {
+        if (!id.startsWith("group:")) return entries[id]
+        val group = prefs.tvMenuGroups.firstOrNull { MenuStops.group(it.id) == id } ?: return null
+        val members = group.stops.mapNotNull { m -> entries[m]?.let { it.copy(label = MenuGroups.memberLabel(group, it.label)) } }
+        if (members.isEmpty()) return null
+        return NavEntry(group.name, members.first().icon, selected = members.any { it.selected }, id = id, children = members, onClick = {})
+    }
+
+    /** The menu's stops as the user arranged them (linear, as stop ids), groups standing for their members and More for what's in it. */
+    fun stopIds(prefs: DisplayPrefs): List<String> =
+        MenuLayout.main(MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, available(prefs), defaults)), prefs.tvMenuGroups, moreIds(prefs))
+
+    /** The rail's or bar's stops (Easy mode keeps only the essential ones). */
+    fun stops(prefs: DisplayPrefs): List<NavEntry> =
+        stopIds(prefs).filter { !prefs.easyMode || MenuStops.essential(it) }.mapNotNull { entry(it, prefs) }
+
+    /**
+     * The dial's spots as the user arranged them (null = empty): a member stands for its group (once),
+     * More's stops leave their spot empty and More, groups nobody placed, take the first free ones;
+     * Easy mode keeps only the essential ones.
+     */
+    fun dial(prefs: DisplayPrefs): List<NavEntry?> {
+        val more = moreIds(prefs).toSet()
+        val seen = mutableSetOf<String>()
+        val spots = MenuStops.arrange(prefs.tvDialStops, available(prefs), defaults).map { id ->
+            val shown = id?.let { s -> prefs.tvMenuGroups.firstOrNull { s in it.stops }?.let { MenuStops.group(it.id) } ?: s }
+            shown?.takeIf { it !in more && seen.add(it) && (!prefs.easyMode || MenuStops.essential(it)) }
+        }.toMutableList()
+        val inMenu = stopIds(prefs).toSet()
+        val missing = prefs.tvMenuGroups.map { MenuStops.group(it.id) }.filter { it !in seen && it in inMenu } +
+            listOfNotNull(MenuStops.MORE.takeIf { more.isNotEmpty() && it !in seen })
+        missing.forEach { id -> val free = spots.indexOf(null); if (free >= 0) spots[free] = id else spots += id }
+        return spots.map { it?.let { id -> entry(id, prefs) } }
+    }
 }
 
-/** The menu's stops for these libraries and custom pages; [current] is underlined. */
-fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: MenuActions, current: String = MenuStops.HOME): MenuCatalog {
+/**
+ * The menu's stops for these libraries, custom pages and the playlists added to it ([playlists]:
+ * id → name); [current] is underlined.
+ */
+fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: MenuActions, current: String = MenuStops.HOME, playlists: Map<String, String> = emptyMap()): MenuCatalog {
     val list = buildList {
         add(NavEntry("Search", NavIcons.search, id = MenuStops.SEARCH, onClick = actions.onSearch))
         add(NavEntry("Home", NavIcons.home, id = MenuStops.HOME, onClick = actions.onHome))
         libraries.forEach { lib -> add(NavEntry(lib.name, NavIcons.library(lib), id = MenuStops.library(lib.id)) { actions.onLibrary(lib) }) }
         pages.forEach { p -> add(NavEntry(p.title, NavIcons.pages, id = MenuStops.page(p.id)) { actions.onPage(p.id) }) }
+        playlists.forEach { (id, name) -> add(NavEntry(name, NavIcons.playlist, id = MenuStops.playlist(id)) { actions.onPlaylist(id) }) }
         actions.onChannels?.let { add(NavEntry("Channels", NavIcons.channels, id = MenuStops.CHANNELS, onClick = it)) }
         add(NavEntry("Your pages", NavIcons.pages, id = MenuStops.PAGES, onClick = actions.onPages))
         add(NavEntry("Comics", NavIcons.comics, id = MenuStops.COMICS, onClick = actions.onComics))
         add(NavEntry("Watch together", NavIcons.together, id = MenuStops.TOGETHER, onClick = actions.onTogether))
+        add(NavEntry("More", NavIcons.more, id = MenuStops.MORE, onClick = actions.onMore))
         add(NavEntry("Settings", NavIcons.settings, id = MenuStops.SETTINGS, onClick = actions.onSettings))
         add(NavEntry("Switch user", NavIcons.profile, id = MenuStops.PROFILES, onLongClick = actions.onQuickSwitch, onClick = actions.onProfiles))
     }.map { if (it.id == current) it.copy(selected = true) else it }
+    val listsLike = libraries.filter { it.collection == CollectionKind.BOX_SETS || it.collection == CollectionKind.PLAYLISTS }.map { it.id }.toSet()
     return MenuCatalog(
         list.associateBy { it.id },
         // Pinned pages are Home's tabs, so they aren't stops by default (they can still be added in Menu stops).
-        MenuStops.defaults(libraries.map { it.id }, emptyList()),
+        MenuStops.defaults(libraries.map { it.id }, emptyList()) + playlists.keys.map(MenuStops::playlist),
         nowPlaying = NavEntry("Now playing", NavIcons.music, id = NOW_PLAYING_STOP, onClick = actions.onNowPlaying),
+        moreDefaults = MenuStops.defaultMore(list.map { it.id }) { it in listsLike },
     )
 }
 

@@ -17,10 +17,24 @@ object MenuStops {
     const val SETTINGS = "settings"
     const val PROFILES = "profiles"
 
-    fun library(id: String) = "library:$id"
+    /** The page of stops kept out of the menu itself (shown while it holds any). */
+    const val MORE = "more"
 
-    /** The stops Easy mode keeps: Home, Search, the libraries, Settings and switching user. */
-    fun essential(id: String): Boolean = id in setOf(HOME, SEARCH, SETTINGS, PROFILES) || id.startsWith("library:")
+    fun library(id: String) = "library:$id"
+    fun group(id: String) = "group:$id"
+    fun playlist(id: String) = "playlist:$id"
+
+    /** The stops Easy mode keeps: Home, Search, the libraries (and their groups), Settings, switching user, and More. */
+    fun essential(id: String): Boolean = id in setOf(HOME, SEARCH, SETTINGS, PROFILES, MORE) || id.startsWith("library:") || id.startsWith("group:")
+
+    /**
+     * What starts on the More page: the collections and playlists libraries ([isCollectionsOrPlaylists]
+     * says which library ids those are), comic catalogs, channels, your pages, watching together and
+     * switching user.
+     */
+    fun defaultMore(stops: Collection<String>, isCollectionsOrPlaylists: (String) -> Boolean): List<String> =
+        stops.filter { it.startsWith("library:") && isCollectionsOrPlaylists(it.removePrefix("library:")) } +
+            listOf(COMICS, CHANNELS, PAGES, TOGETHER, PROFILES)
     fun page(id: String) = "page:$id"
 
     /** Spots per ring on the dial. */

@@ -98,7 +98,7 @@ fun LibraryScreen(
     val saved by remember(userId, lib.id) {
         userId?.let { displaySettings.libraryTabs(it, lib.id) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }.collectAsStateWithLifecycle(emptyList())
-    val shownTabs = dev.nitrate.core.pages.LibraryTabs.shown(dev.nitrate.core.pages.LibraryTabs.resolve(saved, hasRecommended))
+    val shownTabs = dev.nitrate.core.pages.LibraryTabs.shown(dev.nitrate.core.pages.LibraryTabs.resolve(saved, hasRecommended, music))
     var tabId by rememberSaveable { mutableStateOf<String?>(null) }
     val tab = shownTabs.firstOrNull { it.id == tabId } ?: shownTabs.first()
     var artists by rememberSaveable { mutableStateOf(false) }
@@ -194,6 +194,12 @@ fun LibraryScreen(
                 empty = "No rows here yet. Add some in Settings → Display → Pages → ${lib.name}.",
             )
             dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay) }
+            // The user's music playlists; OK opens one (its page plays it as a queue).
+            dev.nitrate.core.pages.LibraryTabKind.PLAYLISTS -> Box(padded) {
+                CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay,
+                    key = "browse/${lib.id}/playlists", empty = "No music playlists yet.",
+                    load = { repository.playlists().filter { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO } })
+            }
             dev.nitrate.core.pages.LibraryTabKind.UNWATCHED -> Box(padded) {
                 BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin, tabFocus = tabFocus(tab.id),
                     viewKey = "browse/${lib.id}/unwatched",
@@ -272,10 +278,13 @@ private fun CollectionsGrid(
     tabs: @Composable () -> Unit,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
+    /** Where the view is saved; the Playlists tab (music) uses the same grid with its own. */
+    key: String = "browse/${lib.id}/collections",
+    empty: String = "No collections on this server yet.",
+    load: suspend () -> List<MediaItem> = { repository.collections() },
 ) {
-    val collections by produceState<List<MediaItem>?>(null) { value = runCatching { repository.collections() }.getOrDefault(emptyList()) }
+    val collections by produceState<List<MediaItem>?>(null, key) { value = runCatching { load() }.getOrDefault(emptyList()) }
     val userId = repository.userId
-    val key = "browse/${lib.id}/collections"
     val options by remember(userId, key) {
         userId?.let { displaySettings.view(it, key, dev.nitrate.core.pages.BrowseOptions()) } ?: kotlinx.coroutines.flow.flowOf(dev.nitrate.core.pages.BrowseOptions())
     }.collectAsStateWithLifecycle(dev.nitrate.core.pages.BrowseOptions())
@@ -316,7 +325,7 @@ private fun CollectionsGrid(
             tabs(); bar()
             when {
                 list == null -> dev.nitrate.tv.ui.components.GridPlaceholder()
-                list.isEmpty() -> Text("No collections on this server yet.")
+                list.isEmpty() -> Text(empty)
                 else -> {
                     val args = ShowArgs(list, repository, music = false, titleOf = { it.name }, onOpen = onOpen, onPlay = onPlay, onNeedMore = {}, total = list.size)
                     if (view == dev.nitrate.core.pages.BrowseView.BOUNCE) BounceBox(args, Modifier.weight(1f).fillMaxWidth())
@@ -337,7 +346,7 @@ private fun CollectionsGrid(
         item(span = { GridItemSpan(maxLineSpan) }) { bar() }
         when {
             list == null -> item(span = { GridItemSpan(maxLineSpan) }) { dev.nitrate.tv.ui.components.GridPlaceholder() }
-            list.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Text("No collections on this server yet.") }
+            list.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Text(empty) }
             else -> items(list, key = { it.id }) { c ->
                 val artwork = view == dev.nitrate.core.pages.BrowseView.ARTWORK
                 if (view == dev.nitrate.core.pages.BrowseView.LIST) {

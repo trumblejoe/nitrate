@@ -34,4 +34,14 @@ class LibraryTabsTest {
         assertEquals("own2", made.id)
         assertEquals(listOf("b", "a"), LibraryTabs.move(listOf(LibraryTab("a", LibraryTabKind.ALL), LibraryTab("b", LibraryTabKind.GENRES)), "b", -1).map { it.id })
     }
+
+    @Test fun `music libraries get a Playlists tab, shown, also after an order saved before it`() {
+        assertTrue(LibraryTabs.resolve(emptyList(), hasRecommended = true).none { it.kind == LibraryTabKind.PLAYLISTS })
+        val fresh = LibraryTabs.resolve(emptyList(), hasRecommended = false, music = true)
+        assertTrue(fresh.single { it.kind == LibraryTabKind.PLAYLISTS }.let { !it.hidden })
+        val saved = listOf(LibraryTab("all", LibraryTabKind.ALL), LibraryTab("genres", LibraryTabKind.GENRES, hidden = true))
+        val tabs = LibraryTabs.resolve(saved, hasRecommended = false, music = true)
+        kotlin.test.assertEquals(listOf("all", "genres"), tabs.take(2).map { it.id })
+        assertTrue(LibraryTabs.shown(tabs).any { it.kind == LibraryTabKind.PLAYLISTS })
+    }
 }

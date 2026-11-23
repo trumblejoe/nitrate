@@ -62,6 +62,14 @@ import kotlinx.coroutines.launch
 
 private val PagePadding = 58.dp
 
+/** Where a playlist is pinned: [onHome] as a Home tab, [inMenu] as a menu stop; the setters save it. */
+class PlaylistPinning(
+    val onHome: Boolean,
+    val inMenu: Boolean,
+    val setHome: (id: String, name: String, on: Boolean) -> Unit,
+    val setMenu: (id: String, name: String, on: Boolean) -> Unit,
+)
+
 /**
  * A playlist's page. A video playlist plays as itself, in its own order: how much is watched, Continue
  * from where it was left (Jellyfin's play dates, any app), Play from the start, the entry you're up to
@@ -89,6 +97,10 @@ fun PlaylistScreen(
     onPlayFrom: ((playlist: MediaItem, item: MediaItem) -> Unit)? = null,
     /** Everything in a video playlist (whole shows as their episodes), for where the user is and marking watched. */
     playlists: PlaylistPlaying? = null,
+    /** Shown at the top (Home's tabs, when the playlist is pinned there); the page then leaves focus to them. */
+    header: (@Composable () -> Unit)? = null,
+    /** Pinned to Home's tabs / in the menu (`DisplayPrefs.homePlaylists`/`menuPlaylists`), and changing that. Null: not offered. */
+    pinning: PlaylistPinning? = null,
 ) {
     val id = remember(playlistId) { playlistId }
     var refresh by remember { mutableStateOf(0) }
@@ -121,7 +133,7 @@ fun PlaylistScreen(
         dev.nitrate.tv.ui.components.ListPlaceholder()
         return
     }
-    LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
+    if (header == null) LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
 
     // A video playlist plays as itself: from where it was left, carrying on in its order.
     val video = onPlayFrom != null && list.any { it.mediaKind != MediaKind.AUDIO }
@@ -139,6 +151,7 @@ fun PlaylistScreen(
         Backdrop(repository.backdropUrl(shown) ?: list.firstNotNullOfOrNull(repository::backdropUrl), Modifier.fillMaxSize())
 
         Column(Modifier.fillMaxSize()) {
+            header?.invoke()
             // Large header for whatever is focused: the playlist itself until the list takes focus.
             Column(
                 Modifier.padding(start = PagePadding, end = PagePadding, top = 40.dp).fillMaxWidth(0.55f).height(230.dp),
@@ -202,6 +215,20 @@ fun PlaylistScreen(
                         supportingContent = { Text("Carry on where you left off, with a recap after a break") },
                         trailingContent = { androidx.tv.material3.Switch(checked = inOrder, onCheckedChange = null) },
                     )
+                    pinning?.let { pin ->
+                        ListItem(
+                            selected = false, onClick = { pin.setHome(pl.id, pl.name.orEmpty(), !pin.onHome) },
+                            headlineContent = { Text(if (pin.onHome) "Unpin from Home" else "Pin to Home") },
+                            supportingContent = { Text("A tab of its own beside Home") },
+                            trailingContent = { androidx.tv.material3.Switch(checked = pin.onHome, onCheckedChange = null) },
+                        )
+                        ListItem(
+                            selected = false, onClick = { pin.setMenu(pl.id, pl.name.orEmpty(), !pin.inMenu) },
+                            headlineContent = { Text(if (pin.inMenu) "Remove from the menu" else "Add to the menu") },
+                            supportingContent = { Text("A menu stop that opens this playlist") },
+                            trailingContent = { androidx.tv.material3.Switch(checked = pin.inMenu, onCheckedChange = null) },
+                        )
+                    }
                     ListItem(selected = false, onClick = { more = false; renaming = true }, headlineContent = { Text("Rename") })
                     ListItem(selected = false, onClick = { more = false; deleting = true }, headlineContent = { Text("Delete playlist") }, supportingContent = { Text("What's in it stays") })
                 }

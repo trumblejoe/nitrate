@@ -113,6 +113,7 @@ fun HomeSetupScreen(container: AppContainer) {
     val scope = rememberCoroutineScope()
     val first = remember { FocusRequester() }
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
+    val stored = rememberStoredPrefs(container)
     val pages by remember(user) { user?.let { container.displaySettings.customPages(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList()) }.collectAsState(emptyList())
     fun save(next: List<CustomPage>) { val u = user ?: return; scope.launch { container.displaySettings.saveCustomPages(u, next) } }
     var choosingTheme by remember { mutableStateOf(false) }
@@ -134,6 +135,13 @@ fun HomeSetupScreen(container: AppContainer) {
         item { TabItem("Home", "Its rows: order, hide, rename, and add your own", shown = null) { actingHome = true } }
         items(pages, key = { it.id }) { page ->
             TabItem(page.title, if (page.pinned) "Your page, a tab beside Home" else "Your page, not on Home (in Your pages)", shown = page.pinned) { acting = page }
+        }
+        // Playlists pinned to Home from their page's More: unpinned here too.
+        items(stored.homePlaylists.entries.toList(), key = { "playlist-" + it.key }) { (id, name) ->
+            TabItem(name, "A playlist, a tab beside Home (OK to unpin)", shown = true) {
+                val u = user ?: return@TabItem
+                scope.launch { container.displaySettings.savePrefs(u, stored.copy(homePlaylists = stored.homePlaylists - id)) }
+            }
         }
         item { AddTabItem { adding = true } }
     }
@@ -301,7 +309,7 @@ fun LibraryTabsScreen(container: AppContainer, libraryId: String) {
         user?.let { container.displaySettings.libraryTabs(it, libraryId) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }.collectAsState(emptyList())
     val hasRecommended = lib?.collection == CollectionKind.MOVIES || lib?.collection == CollectionKind.TV_SHOWS
-    val tabs = LibraryTabs.resolve(saved, hasRecommended)
+    val tabs = LibraryTabs.resolve(saved, hasRecommended, music = lib?.collection == CollectionKind.MUSIC)
     fun save(next: List<LibraryTab>) { val u = user ?: return; scope.launch { container.displaySettings.saveLibraryTabs(u, libraryId, next) } }
     var acting by remember { mutableStateOf<LibraryTab?>(null) }
     var renaming by remember { mutableStateOf<LibraryTab?>(null) }

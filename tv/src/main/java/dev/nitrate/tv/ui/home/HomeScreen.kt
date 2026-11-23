@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusGroup
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -59,6 +60,8 @@ fun HomeScreen(
     changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
     /** Rows as last loaded, shown at once while fresh ones load. */
     dataCache: dev.nitrate.android.storage.DataCache? = null,
+    /** A playlist pinned to Home (`DisplayPrefs.homePlaylists`) as one of its tabs: its page, [header] (the tabs) above it. */
+    playlistPage: (@Composable (playlistId: String, header: @Composable () -> Unit) -> Unit)? = null,
 ) {
     val playlistOrders = dev.nitrate.tv.ui.pages.LocalTvContainer.current?.playlists
     val vm = viewModel(key = "home") { RowsViewModel(PageKeys.HOME, repository::homeRows, displaySettings, repository, changes, cache = dataCache, loadProgressSkipping = dev.nitrate.android.viewmodel.homeRowsLoader(repository, displaySettings, playlistOrders)) }
@@ -90,9 +93,15 @@ fun HomeScreen(
     val prefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, PageKeys.HOME)
     val fullArt = prefs.tvArrangement.fullArt
     val pinnedPages = customPages.filter { it.pinned }
+    // Playlists pinned to Home are tabs too, after the pages ("playlist:<id>").
+    val pinnedPlaylists = if (playlistPage == null) emptyMap() else dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.homePlaylists
     // Pinned pages are Home's other tabs (as a library's tabs are): "Home" first, then each page.
     var pageTab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val openPage = pinnedPages.firstOrNull { it.id == pageTab }
+    val openPlaylist = pageTab?.removePrefix(PLAYLIST_TAB)?.takeIf { pageTab!!.startsWith(PLAYLIST_TAB) && it in pinnedPlaylists }
+    val otherTabs = pinnedPages.map { dev.nitrate.tv.ui.components.PageTab(it.id, it.title) } +
+        pinnedPlaylists.map { (id, name) -> dev.nitrate.tv.ui.components.PageTab(PLAYLIST_TAB + id, name) }
+    val openTab = openPage?.id ?: openPlaylist?.let { PLAYLIST_TAB + it }
     val tabFocus = remember { mutableMapOf<String, FocusRequester>() }
     fun tabFocus(key: String) = tabFocus.getOrPut(key) { FocusRequester() }
     var switched by remember { mutableStateOf<String?>(null) }
@@ -105,15 +114,15 @@ fun HomeScreen(
         }
     }
     // Back on a pinned page goes to Home's own tab first (as on a library's other tabs).
-    androidx.activity.compose.BackHandler(enabled = openPage != null) {
+    androidx.activity.compose.BackHandler(enabled = openTab != null) {
         pageTab = null; switched = "home#" + System.nanoTime()
     }
-    val tabs: (@Composable () -> Unit)? = if (pinnedPages.isEmpty()) null else {
+    val tabs: (@Composable () -> Unit)? = if (otherTabs.isEmpty()) null else {
         {
             Row(Modifier.padding(start = 58.dp, end = 58.dp, top = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 dev.nitrate.tv.ui.components.PageTabs(
-                    listOf(dev.nitrate.tv.ui.components.PageTab("home", "Home")) + pinnedPages.map { dev.nitrate.tv.ui.components.PageTab(it.id, it.title) },
-                    selected = openPage?.id ?: "home",
+                    listOf(dev.nitrate.tv.ui.components.PageTab("home", "Home")) + otherTabs,
+                    selected = openTab ?: "home",
                     onSelect = { id -> pageTab = id.takeIf { it != "home" }; switched = id + "#" + System.nanoTime() },
                     focusFor = ::tabFocus,
                 )
@@ -122,11 +131,13 @@ fun HomeScreen(
     }
     MainMenu(dev.nitrate.core.pages.MenuStops.HOME, overlay = fullArt) { insets ->
     // Channel/Page keys step through Home and its pinned pages from anywhere on the page.
-    val tabIds = listOf("home") + pinnedPages.map { it.id }
+    val tabIds = listOf("home") + otherTabs.map { it.key }
     Box(Modifier.fillMaxSize()
-        .tabKeys(tabIds, openPage?.id ?: "home") { id -> pageTab = id.takeIf { it != "home" }; switched = id + "#" + System.nanoTime() }
+        .tabKeys(tabIds, openTab ?: "home") { id -> pageTab = id.takeIf { it != "home" }; switched = id + "#" + System.nanoTime() }
         .onFocusChanged { homeHasFocus = it.hasFocus }.focusRequester(content).focusGroup()) {
-    if (openPage != null) {
+    if (openPlaylist != null && playlistPage != null) {
+        key(openPlaylist) { playlistPage(openPlaylist) { Box(Modifier.padding(top = insets.top, end = insets.end)) { tabs!!() } } }
+    } else if (openPage != null) {
         // The page draws its tabs again as it goes from loading to its rows: keep focus on the tab
         // chosen through that (only just after choosing it, so later reloads never take focus).
         var chosenAt by remember(openPage.id) { mutableStateOf(System.currentTimeMillis()) }
@@ -175,6 +186,9 @@ fun HomeScreen(
         }
     }
 }
+
+/** Tab ids of playlists pinned to Home. */
+internal const val PLAYLIST_TAB = "playlist:"
 
 /** A pinned page as one of Home's tabs: its rows, laid out as Home is, the tabs above them. */
 @Composable

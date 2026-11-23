@@ -18,6 +18,8 @@ enum class LibraryTabKind(val label: String, val detail: String) {
     STUDIOS("Studios", "A row for each studio"),
     DECADES("Decades", "A row for each decade"),
     OWN("Your tab", "A page of rows you build"),
+    /** Music libraries only: the user's music playlists, as a grid. */
+    PLAYLISTS("Playlists", "Your music playlists, as a grid"),
 }
 
 /** One tab on a library page: a built-in kind, or the user's own (with its own rows). */
@@ -27,9 +29,11 @@ data class LibraryTab(val id: String, val kind: LibraryTabKind, val title: Strin
 }
 
 object LibraryTabs {
-    /** Built-in kinds a library offers: Recommended only for films and shows. */
-    fun builtIn(hasRecommended: Boolean): List<LibraryTabKind> =
-        LibraryTabKind.entries.filter { it != LibraryTabKind.OWN && (hasRecommended || it != LibraryTabKind.RECOMMENDED) }
+    /** Built-in kinds a library offers: Recommended only for films and shows, Playlists only for music. */
+    fun builtIn(hasRecommended: Boolean, music: Boolean = false): List<LibraryTabKind> =
+        LibraryTabKind.entries.filter {
+            it != LibraryTabKind.OWN && (hasRecommended || it != LibraryTabKind.RECOMMENDED) && (music || it != LibraryTabKind.PLAYLISTS)
+        }
 
     /** Shown at first: Recommended (where there is one) and All; the rest are there to switch on. */
     private val shownByDefault = setOf(LibraryTabKind.RECOMMENDED, LibraryTabKind.ALL)
@@ -38,11 +42,12 @@ object LibraryTabs {
      * The tabs in the user's order, hidden ones included: what was saved, then any built-in kind it
      * doesn't mention yet (new in an update, or never arranged), hidden unless it's shown by default.
      */
-    fun resolve(saved: List<LibraryTab>, hasRecommended: Boolean): List<LibraryTab> {
-        val offered = builtIn(hasRecommended)
+    fun resolve(saved: List<LibraryTab>, hasRecommended: Boolean, music: Boolean = false): List<LibraryTab> {
+        val offered = builtIn(hasRecommended, music)
         val kept = saved.filter { it.kind == LibraryTabKind.OWN || it.kind in offered }
+        // A music library's Playlists tab shows from the start (also added to orders saved before it).
         val missing = offered.filter { kind -> kept.none { it.kind == kind } }
-            .map { LibraryTab(it.name.lowercase(), it, hidden = it !in shownByDefault) }
+            .map { LibraryTab(it.name.lowercase(), it, hidden = it !in shownByDefault && it != LibraryTabKind.PLAYLISTS) }
         return kept + missing
     }
 

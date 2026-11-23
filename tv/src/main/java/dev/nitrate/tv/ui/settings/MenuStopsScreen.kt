@@ -68,11 +68,12 @@ internal fun spotName(index: Int, dial: Boolean) =
  */
 @Composable
 fun MenuStopsScreen(container: AppContainer) {
-    val prefs = LocalDisplayPrefs.current
+    // The stored settings (not a page's view of them), since they're saved back.
+    val prefs = dev.nitrate.tv.ui.pages.rememberStoredPrefs(container)
     val scope = rememberCoroutineScope()
     val libraries = dev.nitrate.tv.ui.home.rememberLibraries(container)
     val pages = rememberCustomPages(container)
-    val catalog = remember(libraries, pages) { menuCatalog(libraries, pages, MenuActions(), current = "") }
+    val catalog = remember(libraries, pages, prefs.menuPlaylists) { menuCatalog(libraries, pages, MenuActions(), current = "", playlists = prefs.menuPlaylists) }
     MenuStopsEditor(prefs, catalog) { change ->
         val user = container.server.userId ?: return@MenuStopsEditor
         scope.launch { container.displaySettings.savePrefs(user, change(prefs)) }
@@ -82,78 +83,241 @@ fun MenuStopsScreen(container: AppContainer) {
 @Composable
 internal fun MenuStopsEditor(prefs: DisplayPrefs, catalog: MenuCatalog, update: ((DisplayPrefs) -> DisplayPrefs) -> Unit) {
     val dial = prefs.tvMenu == TvMenuStyle.RADIAL
-    val slots = MenuStops.arrange(if (dial) prefs.tvDialStops else prefs.tvMenuStops, catalog.entries.keys, catalog.defaults)
-        .let { if (dial) it else MenuStops.linear(it) }
-    fun save(next: List<String?>?) = update { p ->
-        if (dial) p.copy(tvDialStops = next) else p.copy(tvMenuStops = next?.let(MenuStops::linear))
-    }
+    val available = catalog.available(prefs)
+    val lookup: (String) -> dev.nitrate.tv.ui.home.NavEntry? = { catalog.entry(it, prefs) }
+    val slots = MenuStops.arrange(prefs.tvDialStops, available, catalog.defaults)
+    fun saveDial(next: List<String?>?) = update { p -> p.copy(tvDialStops = next) }
     var picking by remember { mutableStateOf<Int?>(null) }
+    var placesOpen by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
 
     val intro: @Composable () -> Unit = {
         Text("Menu stops", style = MaterialTheme.typography.headlineMedium)
         Text(
             if (dial) "Pick a spot on the dial with the D-pad and press OK to choose what goes there. Stops sit straight up, right, down and left, ring after ring."
-            else "Pick a stop and press OK to change it or move another stop there. ${prefs.tvMenu.label} menu.",
+            else "Choose a stop to move it, put it in More (a page of its own, one press away) or hide it. Groups open in the menu onto their libraries. ${prefs.tvMenu.label} menu.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        OutlinedButton(onClick = { save(null) }) { Text("Reset to default") }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (dial) OutlinedButton(onClick = { placesOpen = true }) { Text("Groups, More and hidden") }
+            OutlinedButton(onClick = { update { p -> if (dial) p.copy(tvDialStops = null) else p.copy(tvMenuStops = null, tvMoreStops = null) } }) { Text("Reset to default") }
+        }
     }
     if (dial) {
         // Words on the left, the dial filling the right.
         Row(Modifier.fillMaxSize().padding(horizontal = 58.dp, vertical = 32.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
             Column(Modifier.width(300.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { intro() }
-            DialEditor(slots, catalog, Modifier.weight(1f).fillMaxSize(), first) { picking = it }
+            DialEditor(slots, lookup, Modifier.weight(1f).fillMaxSize(), first) { picking = it }
         }
     } else {
         Column(Modifier.fillMaxSize().padding(horizontal = 58.dp, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             intro()
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-                itemsIndexed(slots) { i, id ->
-                    val entry = id?.let(catalog.entries::get)
-                    ListItem(
-                        selected = false,
-                        onClick = { picking = i },
-                        leadingContent = { entry?.let { Icon(it.icon, contentDescription = null) } },
-                        headlineContent = { Text("${i + 1}.  ${entry?.label ?: "—"}") },
-                        trailingContent = { Text("Change  ›", color = MaterialTheme.colorScheme.primary) },
-                        modifier = Modifier.widthIn(max = 640.dp).then(if (i == 0) Modifier.focusRequester(first) else Modifier),
-                    )
-                }
-                item {
-                    ListItem(selected = false, onClick = { picking = slots.size }, headlineContent = { Text("+  Add a stop") }, modifier = Modifier.widthIn(max = 640.dp))
-                }
-            }
+            StopsList(prefs, catalog, canMove = true, first = first, update = update, modifier = Modifier.weight(1f))
         }
     }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    // The list's items are composed a frame later: ask until the first one has it.
+    LaunchedEffect(Unit) { repeat(20) { if (runCatching { first.requestFocus() }.getOrDefault(false)) return@LaunchedEffect; kotlinx.coroutines.delay(32) } }
 
+    if (placesOpen) dev.nitrate.tv.ui.lists.TvPanel({ placesOpen = false }, width = 620) {
+        val panelFirst = remember { FocusRequester() }
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Groups, More and hidden", style = MaterialTheme.typography.headlineSmall)
+            StopsList(prefs, catalog, canMove = false, first = panelFirst, update = update, modifier = Modifier.weight(1f))
+        }
+        LaunchedEffect(Unit) { repeat(20) { if (runCatching { panelFirst.requestFocus() }.getOrDefault(false)) return@LaunchedEffect; kotlinx.coroutines.delay(32) } }
+    }
     picking?.let { index ->
         StopPicker(
-            title = if (index < slots.size && slots[index] != null) spotName(index, dial) else if (dial) spotName(index, true) else "New stop",
+            title = spotName(index, true),
             current = slots.getOrNull(index),
             slots = slots,
-            dial = dial,
-            catalog = catalog,
-            onPick = { id -> save(MenuStops.place(slots, index, id)); picking = null },
-            onClear = { save(MenuStops.remove(slots, index)); picking = null },
+            dial = true,
+            entries = (catalog.entries.keys + prefs.tvMenuGroups.map { MenuStops.group(it.id) }).filter { prefs.tvMenuGroups.none { g -> it in g.stops } }.mapNotNull(lookup),
+            onPick = { id -> saveDial(MenuStops.place(slots, index, id)); picking = null },
+            onClear = { saveDial(MenuStops.remove(slots, index)); picking = null },
             onDismiss = { picking = null },
         )
     }
 }
 
+/**
+ * The menu's stops by where they are: group suggestions first ("Make “Anime”"), then In the menu (in
+ * order), In More and Hidden. A stop opens its choices: move it (rail and bar), put it in the menu,
+ * in More or hide it, and for a group rename it, change its libraries or split it up.
+ */
+@Composable
+private fun StopsList(
+    prefs: DisplayPrefs,
+    catalog: MenuCatalog,
+    canMove: Boolean,
+    first: FocusRequester,
+    update: ((DisplayPrefs) -> DisplayPrefs) -> Unit,
+    modifier: Modifier,
+) {
+    val available = catalog.available(prefs)
+    val arranged = MenuStops.linear(MenuStops.arrange(prefs.tvMenuStops, available, catalog.defaults))
+    val more = dev.nitrate.core.pages.MenuLayout.more(prefs.tvMoreStops, catalog.moreDefaults, available, prefs.tvMenuGroups)
+    val shown = dev.nitrate.core.pages.MenuLayout.main(arranged, prefs.tvMenuGroups, more).filter { it != MenuStops.MORE }
+    val members = prefs.tvMenuGroups.flatMap { it.stops }.toSet()
+    val hidden = available.filter { it !in shown && it !in more && it !in members && it != MenuStops.MORE }
+    val libraries = catalog.entries.filterKeys { it.startsWith("library:") }.mapValues { it.value.label }
+    val suggestions = dev.nitrate.core.pages.MenuGroups.suggest(libraries, prefs.tvMenuGroups, prefs.tvGroupSuggestionsDismissed)
+    var choosing by remember { mutableStateOf<String?>(null) }
+    // The first suggestion takes focus, else the menu's first stop (fixed, so items composed again keep it).
+    fun takeFirst(isFirst: Boolean): Modifier = if (isFirst) Modifier.focusRequester(first) else Modifier
+
+    LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+        suggestions.forEach { s ->
+            item(key = "suggest-${s.key}") {
+                Row(Modifier.widthIn(max = 760.dp).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Make “${s.name}”", style = MaterialTheme.typography.titleMedium)
+                        Text(s.stops.mapNotNull(libraries::get).joinToString(", ") + " as one stop that opens onto them", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    androidx.tv.material3.Button(onClick = { update { p -> dev.nitrate.core.pages.MenuGroups.make(p, s.name, s.stops, arranged) } }, modifier = takeFirst(s == suggestions.first())) { Text("Make group") }
+                    OutlinedButton(onClick = { update { p -> p.copy(tvGroupSuggestionsDismissed = p.tvGroupSuggestionsDismissed + s.key) } }) { Text("Not now") }
+                }
+            }
+        }
+        fun section(title: String, ids: List<String>, numbered: Boolean) {
+            if (ids.isEmpty()) return
+            item(key = "h-$title") { Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 14.dp, bottom = 4.dp)) }
+            itemsIndexed(ids, key = { _, id -> "$title/$id" }) { i, id ->
+                val entry = catalog.entry(id, prefs) ?: return@itemsIndexed
+                ListItem(
+                    selected = false,
+                    onClick = { choosing = id },
+                    leadingContent = { Icon(entry.icon, contentDescription = null) },
+                    headlineContent = { Text((if (numbered) "${i + 1}.  " else "") + entry.label) },
+                    supportingContent = if (entry.children.isNotEmpty()) ({ Text("Group: " + entry.children.joinToString(", ") { it.label }) }) else null,
+                    trailingContent = { Text("Change  ›", color = MaterialTheme.colorScheme.primary) },
+                    modifier = Modifier.widthIn(max = 760.dp).then(takeFirst(i == 0 && title == "In the menu" && suggestions.isEmpty())),
+                )
+            }
+        }
+        section("In the menu", shown, numbered = true)
+        section("In More", more, numbered = false)
+        section("Hidden", hidden, numbered = false)
+    }
+
+    choosing?.let { id ->
+        StopChoices(
+            id, prefs, catalog, arranged, more, shown, canMove, update,
+            onDismiss = { choosing = null },
+        )
+    }
+}
+
+/** One stop's choices: move it, where it goes, and for a group its name, libraries or splitting it up. */
+@Composable
+private fun StopChoices(
+    id: String,
+    prefs: DisplayPrefs,
+    catalog: MenuCatalog,
+    arranged: List<String>,
+    more: List<String>,
+    shown: List<String>,
+    canMove: Boolean,
+    update: ((DisplayPrefs) -> DisplayPrefs) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val entry = catalog.entry(id, prefs) ?: return
+    val group = prefs.tvMenuGroups.firstOrNull { MenuStops.group(it.id) == id }
+    val place = dev.nitrate.core.pages.MenuLayout.placeOf(id, shown, more)
+    var renaming by remember { mutableStateOf(false) }
+    var members by remember { mutableStateOf(false) }
+    val first = remember { FocusRequester() }
+    if (renaming && group != null) {
+        var name by remember { mutableStateOf(group.name) }
+        dev.nitrate.tv.ui.lists.TvDialog({ renaming = false }) {
+            Text("Rename “${group.name}”", style = MaterialTheme.typography.headlineSmall)
+            dev.nitrate.tv.ui.components.TvTextField(name, { name = it }, placeholder = "Name")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                androidx.tv.material3.Button(enabled = name.isNotBlank(), onClick = { update { p -> dev.nitrate.core.pages.MenuGroups.rename(p, group.id, name.trim()) }; renaming = false }) { Text("Save") }
+                OutlinedButton(onClick = { renaming = false }) { Text("Cancel") }
+            }
+        }
+        return
+    }
+    if (members && group != null) {
+        val libraryIds = catalog.entries.keys.filter { it.startsWith("library:") }
+        val inner = remember { FocusRequester() }
+        dev.nitrate.tv.ui.lists.TvDialog({ members = false }) {
+            Text("Libraries in “${group.name}”", style = MaterialTheme.typography.headlineSmall)
+            libraryIds.forEachIndexed { i, lib ->
+                val on = lib in group.stops
+                ListItem(
+                    selected = on,
+                    onClick = { update { p -> dev.nitrate.core.pages.MenuGroups.setStops(p, group.id, if (on) group.stops - lib else group.stops + lib) } },
+                    headlineContent = { Text(catalog.entries[lib]?.label.orEmpty()) },
+                    trailingContent = { androidx.tv.material3.Switch(checked = on, onCheckedChange = null) },
+                    modifier = if (i == 0) Modifier.focusRequester(inner) else Modifier,
+                )
+            }
+            OutlinedButton(onClick = { members = false }) { Text("Done") }
+        }
+        LaunchedEffect(Unit) { runCatching { inner.requestFocus() } }
+        return
+    }
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss) {
+        Text(entry.label, style = MaterialTheme.typography.headlineSmall)
+        val fixed = id in dev.nitrate.core.pages.MenuLayout.NEVER_MORE
+        var firstUsed = false
+        fun takeFirst(): Modifier = if (!firstUsed) { firstUsed = true; Modifier.focusRequester(first) } else Modifier
+        if (canMove && place == dev.nitrate.core.pages.StopPlace.MENU) {
+            val at = shown.indexOf(id)
+            if (at > 0) ListItem(selected = false, onClick = { update { p -> p.copy(tvMenuStops = dev.nitrate.core.pages.MenuLayout.move(arranged, p.tvMenuGroups, more, id, -1)) } }, headlineContent = { Text("Move up") }, modifier = takeFirst())
+            if (at in 0 until shown.lastIndex) ListItem(selected = false, onClick = { update { p -> p.copy(tvMenuStops = dev.nitrate.core.pages.MenuLayout.move(arranged, p.tvMenuGroups, more, id, +1)) } }, headlineContent = { Text("Move down") }, modifier = takeFirst())
+        }
+        if (fixed) Text("Always in the menu.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else dev.nitrate.core.pages.StopPlace.entries.forEach { p ->
+            ListItem(
+                selected = p == place,
+                onClick = { update { prefs2 -> dev.nitrate.core.pages.MenuLayout.setPlace(prefs2, id, p, arranged, more) }; onDismiss() },
+                headlineContent = { Text(p.label) },
+                supportingContent = {
+                    Text(
+                        when (p) {
+                            dev.nitrate.core.pages.StopPlace.MENU -> "One press from anywhere"
+                            dev.nitrate.core.pages.StopPlace.MORE -> "On the More page, out of the way"
+                            dev.nitrate.core.pages.StopPlace.HIDDEN -> "Not shown (come back here to bring it back)"
+                        },
+                    )
+                },
+                trailingContent = { if (p == place) Text("✓", color = MaterialTheme.colorScheme.primary) },
+                modifier = takeFirst(),
+            )
+        }
+        if (id.startsWith("playlist:")) {
+            val playlistId = id.removePrefix("playlist:")
+            ListItem(
+                selected = false,
+                onClick = { update { p -> p.copy(menuPlaylists = p.menuPlaylists - playlistId, tvMenuStops = p.tvMenuStops?.minus(id), tvMoreStops = p.tvMoreStops?.minus(id)) }; onDismiss() },
+                headlineContent = { Text("Remove from the menu") },
+                supportingContent = { Text("The playlist stays; add it again from its page's More") },
+            )
+        }
+        if (group != null) {
+            ListItem(selected = false, onClick = { renaming = true }, headlineContent = { Text("Rename") })
+            ListItem(selected = false, onClick = { members = true }, headlineContent = { Text("Change libraries") }, supportingContent = { Text(entry.children.joinToString(", ") { it.label }) })
+            ListItem(selected = false, onClick = { update { p -> dev.nitrate.core.pages.MenuGroups.split(p, group.id) }; onDismiss() }, headlineContent = { Text("Split up") }, supportingContent = { Text("Its libraries back in the menu on their own") })
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+}
+
 /** The dial with every spot visible (empty ones as +), one more ring than is used. */
 @Composable
-private fun DialEditor(slots: List<String?>, catalog: MenuCatalog, modifier: Modifier, focus: FocusRequester, onPick: (Int) -> Unit) {
+private fun DialEditor(slots: List<String?>, lookup: (String) -> dev.nitrate.tv.ui.home.NavEntry?, modifier: Modifier, focus: FocusRequester, onPick: (Int) -> Unit) {
     val rings = maxOf(2, (slots.size + MenuStops.SPOKES - 1) / MenuStops.SPOKES + 1)
     var at by remember { mutableStateOf(0 to 0) }
     var focused by remember { mutableStateOf(false) }
     fun idAt(spoke: Int, ring: Int) = slots.getOrNull(ring * MenuStops.SPOKES + spoke)
-    val selected = idAt(at.first, at.second)?.let(catalog.entries::get)
+    val selected = idAt(at.first, at.second)?.let(lookup)
     DialFace(
         rings = rings,
-        stop = { s, r -> idAt(s, r)?.let(catalog.entries::get) },
+        stop = { s, r -> idAt(s, r)?.let(lookup) },
         at = at.takeIf { focused },
         centre = "${spotName(at.second * MenuStops.SPOKES + at.first, true)}\n${selected?.label ?: "Empty"}",
         showEmpty = true,
@@ -193,7 +357,7 @@ private fun StopPicker(
     current: String?,
     slots: List<String?>,
     dial: Boolean,
-    catalog: MenuCatalog,
+    entries: List<dev.nitrate.tv.ui.home.NavEntry>,
     onPick: (String) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
@@ -207,7 +371,7 @@ private fun StopPicker(
             Text(title, style = MaterialTheme.typography.headlineSmall)
             Text("Choose what goes here", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.padding(top = 8.dp)) {
-                items(catalog.entries.values.toList(), key = { it.id }) { entry ->
+                items(entries, key = { it.id }) { entry ->
                     val where = slots.indexOf(entry.id)
                     ListItem(
                         selected = entry.id == current,
@@ -224,7 +388,7 @@ private fun StopPicker(
                                 },
                             )
                         },
-                        modifier = if (entry.id == (current ?: catalog.entries.keys.first())) Modifier.focusRequester(first) else Modifier,
+                        modifier = if (entry.id == (current ?: entries.firstOrNull()?.id)) Modifier.focusRequester(first) else Modifier,
                     )
                 }
                 if (current != null && current != MenuStops.SETTINGS) {

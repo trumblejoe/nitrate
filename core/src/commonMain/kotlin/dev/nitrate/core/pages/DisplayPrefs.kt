@@ -119,6 +119,16 @@ data class DisplayPrefs(
     val tvMenuStops: List<String>? = null,
     /** The dial's spots, `ring * 4 + spoke` (up, right, down, left), null for an empty spot. */
     val tvDialStops: List<String?>? = null,
+    /** Menu groups (TV): a stop `group:<id>` opening in place onto its member stops (`MenuGroups`). */
+    val tvMenuGroups: List<MenuGroup> = emptyList(),
+    /** Stops kept on the menu's "More" page, in order; null = the default list (`MenuStops.defaultMore`). */
+    val tvMoreStops: List<String>? = null,
+    /** Group suggestions answered "Not now" (`MenuGroups.suggestionKey`), never offered again. */
+    val tvGroupSuggestionsDismissed: Set<String> = emptySet(),
+    /** Playlists pinned to Home as tabs (TV), id → name, in order. */
+    val homePlaylists: Map<String, String> = emptyMap(),
+    /** Playlists added to the menu as stops `playlist:<id>` (TV), id → name. */
+    val menuPlaylists: Map<String, String> = emptyMap(),
 ) {
     /** How progress shows on cards (from the old [progressBars] switch until a style is chosen). */
     val progress: ProgressStyle get() = progressStyle ?: if (progressBars) ProgressStyle.BAR else ProgressStyle.NONE

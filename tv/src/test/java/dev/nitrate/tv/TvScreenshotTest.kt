@@ -1506,6 +1506,69 @@ class TvScreenshotTest {
     @Test fun menuStopsDial() = stopsEditor("tv-menu-stops-dial", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.RADIAL))
     @Test fun menuStopsList() = stopsEditor("tv-menu-stops-list", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT))
 
+    // Menu groups, More and pinned playlists.
+    private fun library(id: String, name: String, kind: dev.nitrate.core.model.CollectionKind) =
+        dev.nitrate.core.model.MediaItem(id, name, dev.nitrate.core.model.ItemKind.LIBRARY, collection = kind)
+    private val groupLibraries = listOf(
+        library("m", "Movies", dev.nitrate.core.model.CollectionKind.MOVIES),
+        library("t", "TV Shows", dev.nitrate.core.model.CollectionKind.TV_SHOWS),
+        library("a1", "Anime Movies", dev.nitrate.core.model.CollectionKind.MOVIES),
+        library("a2", "Anime TV Shows", dev.nitrate.core.model.CollectionKind.TV_SHOWS),
+        library("k1", "Kids Movies", dev.nitrate.core.model.CollectionKind.MOVIES),
+        library("k2", "Kids TV Shows", dev.nitrate.core.model.CollectionKind.TV_SHOWS),
+        library("c", "Collections", dev.nitrate.core.model.CollectionKind.BOX_SETS),
+    )
+    private val animeGroup = dev.nitrate.core.pages.MenuGroup("anime", "Anime", listOf("library:a1", "library:a2"))
+
+    /** On a page in a group (Anime TV Shows), the rail shows the group open with that page's stop marked; focus lands on it. */
+    @Test fun railGroupOpen() = shoot("tv-menu-group-open", { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT, tvMenuGroups = listOf(animeGroup)))
+    }, act = {
+        press("left")
+        check(focusedHasText("TV Shows")) { "the rail should open on the page's own stop inside its group" }
+    }) { c ->
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(groupLibraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions(), current = "")
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, dev.nitrate.tv.ui.pages.LocalTvContainer provides c) {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library("a2"), overlay = false) {
+                val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+                androidx.tv.material3.Button(onClick = {}, modifier = Modifier.padding(200.dp).focusRequester(focus)) { androidx.tv.material3.Text("Anime TV Shows page") }
+                androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+            }
+        }
+    }
+
+    /** The More page: what's kept out of the menu (Collections, Your pages, Watch together, Switch user…) as large tiles. */
+    @Test fun morePage() = shoot("tv-more-page", { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT, tvMenuGroups = listOf(animeGroup)))
+    }) { c ->
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(groupLibraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions(onChannels = {}), current = "")
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, dev.nitrate.tv.ui.pages.LocalTvContainer provides c) {
+            dev.nitrate.tv.ui.home.MoreScreen()
+        }
+    }
+
+    /** Menu stops: suggested groups at the top, then the stops in the menu, in More and hidden. */
+    @Test fun menuStopsSuggestion() = shoot("tv-menu-stops-suggestion", act = {
+        check(focusedHasText("Make group")) { "the first suggestion's button should have focus; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() } }
+    }) { _ ->
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(groupLibraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions(), current = "")
+        dev.nitrate.tv.ui.settings.MenuStopsEditor(dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT), catalog) {}
+    }
+
+    /** A playlist pinned to Home is one of its tabs: choosing it shows the playlist's page under the tabs. */
+    @Test fun homePinnedPlaylist() = shoot("tv-home-pinned-playlist", { c ->
+        c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(homePlaylists = mapOf("p1" to "Rainy day")))
+    }, act = {
+        press("up", "right", "ok")
+        compose.mainClock.advanceTimeBy(1_500); compose.waitForIdle()
+        check(focusedHasText("Rainy day")) { "focus should stay on the playlist's tab" }
+    }) { c ->
+        HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {},
+            playlistPage = { id, header ->
+                dev.nitrate.tv.ui.playlist.PlaylistScreen(c.server, c.displaySettings, id, onPlayQueue = {}, onOpen = {}, onPlayFrom = { _, _ -> }, playlists = c.playlists, header = header)
+            })
+    }
+
     /** The fade-in bar appears when you move up past the top (Back is left alone). */
     @Test fun fadeOnEdge() = menuShot("tv-home-full-art-fade", dev.nitrate.core.pages.TvMenuStyle.FADE) {
         press("up")
@@ -1518,9 +1581,10 @@ class TvScreenshotTest {
         compose.onNodeWithText("▲ ▶ ▼ ◀").assertExists()
         press("up")
         compose.onNodeWithText("Search").assertExists()
-        press("up", "right")
-        // Ring two by default: Your pages up, Watch together right.
-        compose.onNodeWithText("Watch together").assertExists()
+        press("up")
+        // Ring two up by default: More (Your pages, Watch together and the rest live there now).
+        compose.onNodeWithText("More").assertExists()
+        press("right")
     }
 
     @Test fun homeFullArtLeft() = fullArt(dev.nitrate.core.pages.TvMenuStyle.LEFT)
