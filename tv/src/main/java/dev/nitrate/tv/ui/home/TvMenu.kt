@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -105,10 +106,20 @@ data class NavEntry(
 )
 
 /** Standard icons for the menu; kept here so screens don't each pick their own. */
+/**
+ * What the remote's Menu key does on a page: [handler] (set by the page while something with options
+ * is focused, e.g. a card in a row) opens what holding OK would and returns true; otherwise Menu
+ * toggles the menu as always.
+ */
+class MenuKeyOptions { var handler: (() -> Boolean)? = null }
+
+val LocalMenuKey = androidx.compose.runtime.staticCompositionLocalOf<MenuKeyOptions?> { null }
+
 object NavIcons {
     val search = Icons.Filled.Search
     val home = Icons.Filled.Home
     val pages = Icons.AutoMirrored.Filled.List
+    val customize = Icons.Filled.Edit
     val together = Icons.Filled.Face
     val settings = Icons.Filled.Settings
     val profile = Icons.Filled.AccountCircle
@@ -168,6 +179,7 @@ fun TvMenu(
     // over Home's full-screen art (a column of its own left a blank strip while hidden).
     @Suppress("NAME_SHADOWING") val overlay = overlay || autoHide
     val contentFocus = remember { FocusRequester() }
+    val menuKey = remember { MenuKeyOptions() }
     val menuFocus = remember { FocusRequester() }
     var inMenu by remember { mutableStateOf(false) }
     var dialOpen by remember { mutableStateOf(false) }
@@ -234,7 +246,7 @@ fun TvMenu(
             }
             .focusRequester(contentFocus).focusGroup(),
     ) {
-        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows, dev.nitrate.tv.ui.rows.LocalFocusReturn provides focusReturn) { content(insets) }
+        CompositionLocalProvider(LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows, dev.nitrate.tv.ui.rows.LocalFocusReturn provides focusReturn, LocalMenuKey provides menuKey) { content(insets) }
     }
     val shown by animateFloatAsState(if (!autoHide || inMenu) 1f else 0f, label = "menu-fade")
     val trackMenu = Modifier.alpha(shown).onFocusChanged { inMenu = it.hasFocus; if (!it.hasFocus) forcedTop = false }
@@ -242,7 +254,14 @@ fun TvMenu(
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { e ->
             if (e.key != Key.Menu) return@onPreviewKeyEvent false
-            if (e.type == KeyEventType.KeyUp) { if (inMenu || dialOpen) toContent() else toMenu() }
+            // With a side rail (always reached with Left/Right), Menu on the page first offers what holding
+            // OK would for whatever is focused (a row's Customize, a card's choices). The bar and the dial
+            // can't be reached from a middle row any other way, so there Menu stays the way to the menu.
+            if (e.type == KeyEventType.KeyUp) {
+                val rail = style == TvMenuStyle.LEFT || style == TvMenuStyle.RIGHT
+                if (inMenu || dialOpen) toContent()
+                else if (!rail || menuKey.handler?.invoke() != true) toMenu()
+            }
             true
         },
     ) {
@@ -591,6 +610,7 @@ fun menuCatalog(libraries: List<MediaItem>, pages: List<CustomPage>, actions: Me
 
 /** The menu stop that leads back to the listening player (not one the user arranges). */
 const val NOW_PLAYING_STOP = "now-playing"
+const val CUSTOMIZE_STOP = "customize"
 
 /** The app's menu, provided once by the nav host so every top-level page shows the same one. */
 val LocalMenuCatalog = androidx.compose.runtime.staticCompositionLocalOf<MenuCatalog?> { null }
@@ -611,9 +631,16 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     // While music plays, a "Now playing" stop first: the way back to it from anywhere.
     val listening = dev.nitrate.tv.ui.pages.LocalTvContainer.current?.listening
     val music = listening?.state?.collectAsState()?.value?.active == true
-    val stops = marked.stops(prefs).let { s -> if (music && marked.nowPlaying != null) listOf(marked.nowPlaying) + s else s }
+    // The page's Customize panel, held here so the menu's Customize stop can open it.
+    val customize = remember { dev.nitrate.tv.ui.pages.CustomizeHost() }
+    // "Customize" (a pencil) just before Settings on every page with a layout of its own: the way to
+    // change the page without knowing to hold OK on a row. Not in easy mode.
+    val customizeStop = if (pageKey != null && !prefs.easyMode) NavEntry("Customize this page", NavIcons.customize, id = CUSTOMIZE_STOP, onClick = { customize.openPage() }) else null
+    val stops = marked.stops(prefs)
+        .let { s -> if (customizeStop == null) s else s.indexOfFirst { it.id == dev.nitrate.core.pages.MenuStops.SETTINGS }.let { at -> if (at < 0) s + customizeStop else s.take(at) + customizeStop + s.drop(at) } }
+        .let { s -> if (music && marked.nowPlaying != null) listOf(marked.nowPlaying) + s else s }
     TvMenu(style, stops, marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE) { insets ->
-        ThemedPage(pageKey, insets) { content(insets) }
+        ThemedPage(pageKey, insets, customize) { content(insets) }
     }
 }
 
@@ -626,7 +653,7 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
  * directly.
  */
 @Composable
-fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), content: @Composable () -> Unit) {
+fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), host: dev.nitrate.tv.ui.pages.CustomizeHost? = null, content: @Composable () -> Unit) {
     // The page's own layout (core PageLooks): everything inside reads it as the display prefs.
     val prefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, pageKey)
     val theme = pageKey?.let { prefs.pageThemes[it] }
@@ -641,7 +668,7 @@ fun ThemedPage(pageKey: String?, insets: MenuInsets = MenuInsets(), content: @Co
             if (themed) dev.nitrate.tv.ui.effects.EffectsLayer(theme, occasion, prefs.effects, clear, depths = dev.nitrate.tv.ui.effects.BEHIND)
             // The page's own layout, and the Customize panel held here so it outlives the page's
             // redraws (a row's new style, rows ↔ full-screen artwork).
-            val customize = remember { dev.nitrate.tv.ui.pages.CustomizeHost() }
+            val customize = host ?: remember { dev.nitrate.tv.ui.pages.CustomizeHost() }
             androidx.compose.runtime.CompositionLocalProvider(
                 dev.nitrate.tv.ui.components.LocalDisplayPrefs provides prefs,
                 dev.nitrate.tv.ui.pages.LocalLayoutPage provides pageKey,

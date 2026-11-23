@@ -26,6 +26,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -345,7 +348,12 @@ private fun PlaylistEntry(
         selected = false,
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.onPlayKey(onClick),
+        // The remote's Menu key does what holding OK does: the entry's choices.
+        modifier = modifier.onPlayKey(onClick).onPreviewKeyEvent { e ->
+            if (e.key != androidx.compose.ui.input.key.Key.Menu) return@onPreviewKeyEvent false
+            if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) onLongClick()
+            true
+        },
         leadingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("${index + 1}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,

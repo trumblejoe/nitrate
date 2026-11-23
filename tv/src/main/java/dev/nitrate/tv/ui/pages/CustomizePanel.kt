@@ -80,8 +80,15 @@ data class CustomizeRequest(val row: MediaRow?, val vm: RowsViewModel?, val sect
 class CustomizeHost {
     var request by mutableStateOf<CustomizeRequest?>(null)
 
+    /** The row the page last had focus in (and the rows it's in), told by the page as focus moves. */
+    var lastRow: MediaRow? = null
+    var lastRows: RowsViewModel? = null
+
     /** Holding OK on a row: the panel on that row. */
     fun openRow(row: MediaRow, vm: RowsViewModel) { request = CustomizeRequest(row, vm, CustomizeSection.ROW) }
+
+    /** The menu's Customize: the panel on the page, with the row last used for "This row". */
+    fun openPage() { request = CustomizeRequest(lastRow, lastRows, CustomizeSection.PAGE) }
 }
 
 /**

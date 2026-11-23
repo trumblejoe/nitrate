@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.window.Dialog
@@ -517,7 +518,7 @@ private fun Header(
             dev.nitrate.tv.ui.components.ActionHint(hint)
             // What Play starts with: sound, subtitles and which version, in one quiet line.
             StartsWithLine(item, playTarget, trackSetup, pickTrack)
-            if (moreOpen) MorePanel(item, repository, playTarget, canCollect, onManage, onBrowse, checkPlayback, applyPlaybackFix, onPlayFrom) { moreOpen = false }
+            if (moreOpen) MorePanel(item, repository, playTarget, canCollect, onManage, onBrowse, checkPlayback, applyPlaybackFix, onPlayFrom, onPlay = { onPlay(it, false) }, onOpenShow = { id -> onOpen(MediaItem(id, "", ItemKind.SERIES)) }) { moreOpen = false }
         }
         val partners = dev.nitrate.tv.ui.partners.LocalPartnerProgress.current
         partners.groupBy { it.groupId }.values.forEach { group ->
@@ -626,10 +627,16 @@ private fun MorePanel(
     checkPlayback: (suspend (MediaItem) -> dev.nitrate.core.playback.PlaybackDiagnosis)?,
     applyPlaybackFix: suspend (MediaItem, dev.nitrate.core.playback.PlaybackFix) -> Unit,
     onPlayFrom: (MediaItem, Long) -> Unit,
+    onPlay: (MediaItem) -> Unit = {},
+    onOpenShow: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     var open by remember { mutableStateOf<String?>(null) }
     val features = rememberCompanionFeatures(repository)
+    // In one of the user's watch groups: the same choices as holding OK on its Watching together card.
+    val container = dev.nitrate.tv.ui.pages.LocalTvContainer.current
+    val standings = container?.groupStandings?.collectAsState()?.value.orEmpty()
+    val together = container != null && dev.nitrate.core.partners.TogetherRow.titleOf(item, standings) in standings
     val video = item.isPlayable && item.mediaKind != MediaKind.AUDIO
     val studio = item.studios.firstOrNull()
     val year = item.productionYear
@@ -641,6 +648,7 @@ private fun MorePanel(
                 if (item.isPlayable) add(Triple("How it plays", "Whether it plays as it is here, and why", { open = "plays" }))
                 if (video && "moments" in features) add(Triple("Moments", "Marked places, yours and your groups'", { open = "moments" }))
                 if (video && "chathistory" in features) add(Triple("Earlier chat", "What was said watching it together", { open = "chat" }))
+                if (together) add(Triple("Watching together…", "Catch up, watched it together, watch now, invite, leave", { open = "together" }))
                 if (item.isPlayable || item.kind == ItemKind.SERIES) add(Triple("Add to a playlist or collection", null, { open = "add" }))
                 studio?.let { add(Triple("More from $it", null, { onDismiss(); onBrowse(it, it, null) })) }
                 year?.let { add(Triple("More from $it", null, { onDismiss(); onBrowse("From $it", null, it) })) }
@@ -665,6 +673,10 @@ private fun MorePanel(
         "chat" -> EarlierChatDialog(repository, item.id, onDismiss)
         "add" -> dev.nitrate.tv.ui.lists.AddToListDialog(repository, item, canCollect, onDismiss)
         "comic" -> dev.nitrate.tv.ui.comics.ComicInfoDialog(repository, item, onDismiss)
+        "together" -> if (container != null) {
+            val info by container.partners.collectAsState()
+            dev.nitrate.tv.ui.partners.TogetherChoicesDialog(container, item, info, onPlay = onPlay, onOpenShow = onOpenShow, onStart = {}, onCustomize = null, onDismiss = onDismiss)
+        }
     }
 }
 

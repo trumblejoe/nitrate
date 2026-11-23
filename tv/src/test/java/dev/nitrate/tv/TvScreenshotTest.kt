@@ -1026,6 +1026,23 @@ class TvScreenshotTest {
         }
     }
 
+    /** The remote's Menu key on a row does what holding OK does: Customize opens on that row. */
+    @Test fun menuKeyCustomizesRow() = shoot("tv-menu-key-row", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+        press("down", "right", "menu")
+        compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
+        check(focusedHasText("Style")) { "Menu on a row should open Customize on it" }
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
+    /** The menu's "Customize this page" stop (before Settings) opens the Customize panel on the page. */
+    @Test fun customizeMenuStop() = shoot("tv-customize-stop", setup = { c -> c.displaySettings.savePrefs("user-1", rowsHome) }, act = {
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Customize this page") or androidx.compose.ui.test.hasText("Customize this page"), useUnmergedTree = true)
+            .assertExists()
+        compose.onAllNodes(androidx.compose.ui.test.hasClickAction() and (androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasContentDescription("Customize this page")) or androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasText("Customize this page"))), useUnmergedTree = true)
+            .onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(1000); compose.waitForIdle()
+        compose.onAllNodesWithText("This page", substring = true).onFirst().assertExists()
+    }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
+
     /** Customize a row's style and close the panel: focus comes back to the row, never the menu. */
     @Test fun customizeStyleKeepsFocus() = shoot("tv-customize-style-focus", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)

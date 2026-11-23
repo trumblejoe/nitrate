@@ -353,7 +353,8 @@ fun TogetherChoicesDialog(
     onPlay: (MediaItem) -> Unit,
     onOpenShow: (String) -> Unit,
     onStart: () -> Unit,
-    onCustomize: () -> Unit,
+    /** Holding OK on a row's card: "Customize this row" last. Null (from a details page): left out. */
+    onCustomize: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -394,7 +395,7 @@ fun TogetherChoicesDialog(
             if (c is dev.nitrate.core.partners.TogetherChoice.Leave) OutlinedButton(onClick = { run(c) }, modifier = m) { Text(c.label) }
             else Button(onClick = { run(c) }, modifier = m) { Text(c.label) }
         }
-        OutlinedButton(onClick = { onDismiss(); onCustomize() }, modifier = if (choices.isEmpty()) Modifier.focusRequester(focus) else Modifier) { Text("Customize this row") }
+        if (onCustomize != null) OutlinedButton(onClick = { onDismiss(); onCustomize() }, modifier = if (choices.isEmpty()) Modifier.focusRequester(focus) else Modifier) { Text("Customize this row") }
     }
     LaunchedEffect(choices.size, leaving, inviting) { delay(60); runCatching { focus.requestFocus() } }
     leaving?.let { g ->
