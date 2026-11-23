@@ -125,7 +125,7 @@ class JellyfinClient(
     private val capabilities: () -> DeviceCapabilities,
     private val playbackSettings: PlaybackSettingsRepository,
     /** Keeps slow-to-make rows ("Because you watched") between app runs. */
-    private val textCache: dev.nitrate.core.cache.TextCache? = null,
+    internal val textCache: dev.nitrate.core.cache.TextCache? = null,
     /** Every request made, for the query analyzer. */
     override val queryLog: dev.nitrate.core.diagnostics.QueryLog = dev.nitrate.core.diagnostics.QueryLog(),
 ) : MediaServer {
@@ -198,7 +198,7 @@ class JellyfinClient(
     /** Answers kept a little while and shared between pages and rows ([items]). */
     /** The clock kept answers are timed by (a test can move it on). */
     internal var clock: () -> Long = { nowEpochMs() }
-    private val answers = dev.nitrate.core.cache.AnswerCache({ clock() })
+    internal val answers = dev.nitrate.core.cache.AnswerCache({ clock() })
 
     /**
      * Watch state changed (here or on another device). Lists whose titles depend on it (what's
@@ -230,7 +230,7 @@ class JellyfinClient(
     /** Outlives screens, for fire-and-forget reports such as playback stopped. */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private var baseUrl: String? = null
+    internal var baseUrl: String? = null
     internal var token: String? = null
 
     override var userId: String? = null
@@ -261,7 +261,7 @@ class JellyfinClient(
             }
         }
 
-    private suspend inline fun <reified T> HttpResponse.decode(): T = JellyfinJson.decodeFromString(bodyAsText())
+    internal suspend inline fun <reified T> HttpResponse.decode(): T = JellyfinJson.decodeFromString(bodyAsText())
 
     // ---- Session ----
 
@@ -305,7 +305,7 @@ class JellyfinClient(
         accountKey = session.key
     }
 
-    private var accountKey: String? = null
+    internal var accountKey: String? = null
     override val currentAccountKey: String? get() = accountKey
 
     override suspend fun savedAccounts(): List<SavedAccount> = sessionStorage.all().map { s ->
@@ -493,7 +493,6 @@ class JellyfinClient(
         probes.awaitAll().firstNotNullOfOrNull { it } ?: error("No Jellyfin server found at \"$input\"")
     }
 
-
     override fun discoverServers(): Flow<DiscoveredServer> = discoverJellyfinServers()
 
     override suspend fun publicUsers(serverUrl: String): List<ServerUser> = runCatching {
@@ -612,7 +611,7 @@ class JellyfinClient(
 
     // ---- Collections and playlists ----
 
-    private fun dashless(ids: List<String>) = ids.joinToString(",") { it.replace("-", "") }
+    internal fun dashless(ids: List<String>) = ids.joinToString(",") { it.replace("-", "") }
 
     override suspend fun createCollection(name: String, itemIds: List<String>): String =
         normalizeId(post<Unit>("Collections", query = mapOf("name" to name, "ids" to dashless(itemIds).ifEmpty { null })).decode<CreationResultDto>().id)
@@ -776,7 +775,7 @@ class JellyfinClient(
      * (or is asking right now), else from the server. Shared answers are put down in the query
      * log too, so the analyzer can show what sharing saved.
      */
-    private suspend fun items(vararg segments: String, query: Map<String, Any?>, kind: dev.nitrate.core.cache.AnswerKind? = null): List<MediaItem> {
+    internal suspend fun items(vararg segments: String, query: Map<String, Any?>, kind: dev.nitrate.core.cache.AnswerKind? = null): List<MediaItem> {
         // A list read here never shows a total, so the server needn't count every match (a
         // second query over the whole filter); only where Jellyfin takes the switch.
         @Suppress("NAME_SHADOWING")
@@ -812,7 +811,7 @@ class JellyfinClient(
         (accountKey ?: "$baseUrl|$userId") + "|" + url(*segments, query = listQuery(segments, query))
 
     /** Keeps [items] as the answer to that list request, as if just asked (from the Companion's bundle). */
-    private suspend fun keepList(segments: Array<out String>, query: Map<String, Any?>, items: List<MediaItem>) =
+    internal suspend fun keepList(segments: Array<out String>, query: Map<String, Any?>, items: List<MediaItem>) =
         answers.put(answerKey(segments, query), answerKind(segments), items)
 
     // ---- The Companion plugin's lighter ways (each falls back to the usual requests) ----
@@ -821,7 +820,7 @@ class JellyfinClient(
     private var companionFeaturesAt = kotlin.time.TimeSource.Monotonic.markNow()
 
     /** Whether the Companion plugin offers [feature], asked at most every few minutes per account. */
-    private suspend fun companionHas(feature: String): Boolean {
+    internal suspend fun companionHas(feature: String): Boolean {
         val account = accountKey ?: "$baseUrl|$userId"
         val known = companionFeatures?.takeIf { it.first == account && companionFeaturesAt.elapsedNow().inWholeMilliseconds < COMPANION_FEATURES_MS }
         val features = known?.second ?: (runCatching { companionApi.info()?.features }.getOrNull() ?: emptySet()).also {
@@ -831,77 +830,13 @@ class JellyfinClient(
         return feature in features
     }
 
-    /** "Because you watched" as the plugin made it overnight; null without the plugin (or if it fails). */
-    private suspend fun companionBecause(): List<MediaRow>? {
-        if (!companionHas("because")) return null
-        return runCatching {
-            get("Nitrate", "Because", query = mapOf("limit" to 16)).decode<List<BecauseBundleDto>>().toBecauseRows()
-        }.getOrNull()
-    }
-
-    private fun List<BecauseBundleDto>.toBecauseRows(): List<MediaRow> = mapIndexedNotNull { i, r ->
+    internal fun List<BecauseBundleDto>.toBecauseRows(): List<MediaRow> = mapIndexedNotNull { i, r ->
         val items = r.items.map { it.toMediaItem() }
         if (items.isEmpty() || i >= 2) null
         else MediaRow(dev.nitrate.core.rows.BecauseYouWatched.key(i + 1), "Because you watched ${r.seedName}", items, RowDisplay())
     }
 
-    /**
-     * Home's heaviest rows in one request to the plugin, kept as the answers Home's own requests
-     * would get, so its row jobs (and app rows on other pages) find them already there. Nothing
-     * happens without the plugin; a failure just leaves the jobs to ask as usual.
-     */
-    private suspend fun homeBundle(skip: Set<String>, combine: Boolean) {
-        if (!companionHas("home")) return
-        val wantsResume = combine || "home/continue_watching" !in skip
-        val wantsNextUp = combine || "home/next_up" !in skip
-        val wantsBecause = dev.nitrate.core.rows.BecauseYouWatched.slots().keys.any { it !in skip }
-        val libraries = lastViews().orEmpty().filter { "home/latest/${it.id}" !in skip }.mapNotNull { v ->
-            when (v.collection) {
-                CollectionKind.MOVIES -> v to "Movie"
-                CollectionKind.TV_SHOWS -> v to "Series"
-                else -> null
-            }
-        }
-        runCatching {
-            val bundle = withQueryOriginHere("Home in one request") {
-                get(
-                    "Nitrate", "Home",
-                    query = mapOf(
-                        "resume" to wantsResume, "nextUp" to wantsNextUp, "because" to wantsBecause, "limit" to ROW_LIMIT,
-                        "latest" to libraries.joinToString(",") { (v, kind) -> "${dashless(listOf(v.id))}:$kind" }.ifEmpty { null },
-                    ),
-                ).decode<HomeBundleDto>()
-            }
-            bundle.resume?.let { keepList(arrayOf("UserItems", "Resume"), resumeQuery(null, null), it.map { d -> d.toMediaItem() }) }
-            bundle.nextUp?.let { keepList(arrayOf("Shows", "NextUp"), NEXT_UP_QUERY, it.map { d -> d.toMediaItem() }) }
-            bundle.latest.forEach { l ->
-                val id = normalizeId(l.libraryId)
-                val (view, kind) = libraries.firstOrNull { it.first.id == id } ?: return@forEach
-                keepList(arrayOf("Items"), queryParams(view.id, kind, if (kind == "Movie") "DateCreated" else "DateLastContentAdded", "Descending", null, null), l.items.map { d -> d.toMediaItem() })
-            }
-            bundle.because?.takeIf { it.isNotEmpty() }?.let { answers.put(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR, it.toBecauseRows() to false) }
-        }
-    }
-
-    private suspend fun <T> withQueryOriginHere(part: String, block: suspend () -> T): T = dev.nitrate.core.diagnostics.withQueryOrigin(part, block)
-
-    private fun becauseKey() = "because|${accountKey ?: "$baseUrl|$userId"}"
-
-    /** What every title in [query]'s library is made of, from the plugin's index; null without it. */
-    private suspend fun companionFormats(query: ItemQuery): Map<String, StreamInfo>? {
-        if (!companionHas("formats")) return null
-        val types = query.types.mapNotNull(::itemTypeName).ifEmpty { null }?.joinToString(",")
-        return runCatching {
-            get("Nitrate", "Formats", query = mapOf("parentId" to query.libraryId?.let { dashless(listOf(it)) }, "types" to types))
-                .decode<List<TitleFormatsDto>>()
-                .associate { t ->
-                    normalizeId(t.id) to StreamInfo(
-                        t.video.map { v -> VideoStreamInfo(Codecs.normalize(v.codec), v.bitDepth, Codecs.rangeTags(v.rangeType, v.dvProfile)) }.toSet(),
-                        t.audio.mapNotNull { Codecs.normalize(it) }.toSet(),
-                    )
-                }
-        }.getOrNull()
-    }
+    internal suspend fun <T> withQueryOriginHere(part: String, block: suspend () -> T): T = dev.nitrate.core.diagnostics.withQueryOrigin(part, block)
 
     override suspend fun queryTrends(days: Int): List<dev.nitrate.core.companion.QueryTrend> =
         if (!companionHas("querytimes")) emptyList()
@@ -983,10 +918,6 @@ class JellyfinClient(
         else -> dev.nitrate.core.cache.AnswerKind.ITEMS
     }
 
-    /** What a row asked the server, so the row can be continued ([moreOfRow]). */
-    private fun rowMore(vararg segments: String, query: Map<String, Any?>): dev.nitrate.core.rows.RowMore =
-        dev.nitrate.core.rows.RowMore(segments.toList(), query.filterValues { it != null }.mapValues { it.value.toString() })
-
     override suspend fun moreOfRow(more: dev.nitrate.core.rows.RowMore, startIndex: Int, limit: Int): List<MediaItem> =
         items(*more.path.toTypedArray(), query = more.params + mapOf("startIndex" to startIndex, "limit" to limit))
 
@@ -995,150 +926,14 @@ class JellyfinClient(
         runCatching { textCache?.put(viewsKey(), JellyfinJson.encodeToString(ListSerializer(MediaItem.serializer()), v)) }
     }
 
-    private fun viewsKey() = "views/${accountKey ?: "$baseUrl|$userId"}"
-    private var knownViews: Pair<String, List<MediaItem>>? = null
-
-    /** The library list as last read (this run or a previous one), or null. */
-    private suspend fun lastViews(): List<MediaItem>? {
-        val key = viewsKey()
-        knownViews?.takeIf { it.first == key }?.let { return it.second }
-        return textCache?.get(key)?.let { runCatching { JellyfinJson.decodeFromString(ListSerializer(MediaItem.serializer()), it) }.getOrNull() }
-    }
-
-    /**
-     * Home's rows as independent jobs, all started at once: Continue Watching, Next Up, "Latest
-     * in…" each library and "Because you watched". The libraries themselves aren't a Home row:
-     * each app lists them already (the phone's Libraries tab, the TV menu).
-     */
-    private fun homeJobs(fresh: Boolean = false, skip: Set<String> = emptySet(), combine: Boolean = false): List<dev.nitrate.core.rows.RowJob> {
-        // With the Companion plugin, Home's heaviest rows come in one request first; each job then
-        // finds its answer kept (or asks as usual when the plugin isn't there or didn't answer).
-        val bundle = kotlinx.coroutines.sync.Mutex()
-        var bundled = false
-        val first: suspend () -> Unit = { bundle.withLock { if (!bundled) { bundled = true; homeBundle(skip, combine) } } }
-        return homeJobList(fresh, skip, combine).map { it.after(first) }
-    }
-
-    private fun homeJobList(fresh: Boolean, skip: Set<String>, combine: Boolean): List<dev.nitrate.core.rows.RowJob> {
-        suspend fun nextUp() = items("Shows", "NextUp", query = NEXT_UP_QUERY)
-        // Continue Watching and Next Up as one row, or the two rows.
-        val watching = if (combine) listOf(
-            dev.nitrate.core.rows.RowJob(dev.nitrate.core.rows.ContinueAndNext.TITLE, dev.nitrate.core.rows.ContinueAndNext.KEY) {
-                coroutineScope {
-                    val resume = async { resumeItems(parentId = null, types = null) }
-                    val next = async { nextUp() }
-                    dev.nitrate.core.rows.ContinueAndNext.merge(resume.await(), next.await()).let {
-                        if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.rows.ContinueAndNext.KEY, dev.nitrate.core.rows.ContinueAndNext.TITLE, it, WIDE_DEFAULT))
-                    }
-                }
-            },
-        ) else listOf(
-            dev.nitrate.core.rows.RowJob("Continue Watching", "home/continue_watching") {
-                resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT, resumeMore(null, null))) }
-            },
-            dev.nitrate.core.rows.RowJob("Next Up", "home/next_up") {
-                nextUp().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT, rowMore("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)))) }
-            },
-        )
-        return watching + listOf(
-            dev.nitrate.core.rows.RowJob("Continue Listening", "home/continue_listening") {
-                items(
-                    "UserItems", "Resume",
-                    query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook"),
-                ).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_listening", "Continue Listening", it, RowDisplay())) }
-            },
-            dev.nitrate.core.rows.RowJob("Continue Reading", "home/continue_reading") {
-                continueReading(null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
-            },
-            dev.nitrate.core.rows.RowJob("Watching together", dev.nitrate.core.partners.TogetherRow.KEY) {
-                watchingTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.partners.TogetherRow.KEY, dev.nitrate.core.partners.TogetherRow.TITLE, it, WIDE_DEFAULT)) }
-            },
-            dev.nitrate.core.rows.RowJob.showing(LATEST_JOB) { show ->
-                coroutineScope {
-                    // A library's "Latest in…" row the page hides is never asked for.
-                    fun wanted(view: MediaItem) = view.collection in setOf(CollectionKind.MOVIES, CollectionKind.TV_SHOWS, CollectionKind.HOME_VIDEOS, null) &&
-                        "home/latest/${view.id}" !in skip
-                    // Some servers take seconds to list libraries: show the rows for the list from
-                    // last time straight away, then add (or drop) whatever the fresh list changes.
-                    val started = mutableMapOf<String, kotlinx.coroutines.Deferred<List<MediaItem>>>()
-                    fun start(view: MediaItem) = started.getOrPut(view.id) { async { latestIn(view) } }
-                    suspend fun rowsFor(list: List<MediaItem>) = list.mapNotNull { view ->
-                        start(view).await().takeIf { it.isNotEmpty() }?.let { MediaRow("home/latest/${view.id}", "Latest in ${view.name}", it, RowDisplay(), latestMore(view)) }
-                    }
-                    val known = lastViews()?.filter(::wanted)
-                    known?.forEach { start(it) }
-                    val fresh = async { try { views() } catch (e: Exception) { if (e is CancellationException || known == null) throw e; known } }
-                    if (known != null && !fresh.isCompleted) runCatching { show(rowsFor(known)) }
-                    val list = fresh.await().filter(::wanted)
-                    val ids = list.map { it.id }.toSet()
-                    started.filterKeys { it !in ids }.values.forEach { it.cancel() }
-                    rowsFor(list)
-                }
-            },
-            dev.nitrate.core.rows.RowJob.making("Because you watched", dev.nitrate.core.rows.BecauseYouWatched.slots()) { becauseYouWatched(fresh) },
-        )
-    }
+    internal var knownViews: Pair<String, List<MediaItem>>? = null
 
     @kotlinx.serialization.Serializable
-    private data class SavedRows(val savedAtMs: Long, val rows: List<MediaRow>)
+    internal data class SavedRows(val savedAtMs: Long, val rows: List<MediaRow>)
 
-    private var savedBecause: SavedRows? = null
+    internal var savedBecause: SavedRows? = null
 
-    /**
-     * "Because you watched" rows. They're the slowest thing on Home for a large library (sorting
-     * everything played by date, then asking for similar titles several times) and barely change
-     * hour to hour, so they're remembered for [BECAUSE_TTL_MS], on the device, unless [fresh].
-     */
-    /**
-     * "Because you watched", worked out once however many pages show it at the same moment. Rows
-     * kept from earlier get their cards' watched marks and progress read afresh (one small request,
-     * itself shared and let go when watch state changes), so a day-old row never shows old ticks.
-     */
-    private suspend fun becauseYouWatched(fresh: Boolean): List<MediaRow> {
-        val (rows, saved) = if (fresh) becauseYouWatchedNow(true)
-        else answers.get(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR) { becauseYouWatchedNow(false) }.first
-        // None yet (the plugin is still making them after a restart): asked again next time, not kept.
-        if (rows.isEmpty()) answers.forget { key, _ -> key == becauseKey() }
-        return if (saved) runCatching { withFreshUserData(rows) }.getOrDefault(rows) else rows
-    }
-
-    /** [rows] with each card's watch state as the server has it now (nothing else asked for). */
-    private suspend fun withFreshUserData(rows: List<MediaRow>): List<MediaRow> {
-        val ids = rows.flatMap { r -> r.items.map { it.id } }.distinct()
-        if (ids.isEmpty()) return rows
-        val now = items(
-            "Items",
-            query = mapOf(
-                "ids" to dashless(ids), "userId" to userId, "enableImages" to false,
-                "enableTotalRecordCount" to false, "fields" to null,
-            ),
-        ).associateBy { it.id }
-        return rows.map { r -> r.copy(items = r.items.map { item -> now[item.id]?.let { item.copy(user = it.user) } ?: item }) }
-    }
-
-    /** The rows, and whether they were kept from earlier (true) rather than just made. */
-    @OptIn(ExperimentalTime::class)
-    private suspend fun becauseYouWatchedNow(fresh: Boolean): Pair<List<MediaRow>, Boolean> {
-        // Made overnight by the plugin, with today's watch state: nothing costly asked here.
-        companionBecause()?.let { return it to false }
-        val key = "because/${accountKey ?: "$baseUrl|$userId"}"
-        val now = Clock.System.now().toEpochMilliseconds()
-        if (!fresh) {
-            val known = savedBecause?.takeIf { savedBecauseKey == key }
-                ?: textCache?.get(key)
-                    ?.let { runCatching { JellyfinJson.decodeFromString(SavedRows.serializer(), it) }.getOrNull() }
-                    ?.also { savedBecause = it; savedBecauseKey = key }
-            if (known != null && now - known.savedAtMs in 0 until BECAUSE_TTL_MS) return known.rows to true
-        }
-        val rows = dev.nitrate.core.rows.BecauseYouWatched.rows(lastWatchedSeeds(), ::similar)
-        val saved = SavedRows(now, rows)
-        savedBecause = saved
-        savedBecauseKey = key
-        runCatching { textCache?.put(key, JellyfinJson.encodeToString(SavedRows.serializer(), saved)) }
-        return rows to false
-    }
-
-    private var savedBecauseKey: String? = null
+    internal var savedBecauseKey: String? = null
 
     /**
      * One of the app's own rows for any page ([dev.nitrate.core.rows.AppRows]), through the same
@@ -1190,25 +985,6 @@ class JellyfinClient(
         return dev.nitrate.core.rows.ProgressiveRows.run(wanted).last().rows
     }
 
-    /**
-     * What "Because you watched" grows from: the few films and episodes finished most recently, asked
-     * for as lightly as the server allows (no count of everything played, no pictures, no extra fields).
-     */
-    private suspend fun lastWatchedSeeds(): List<MediaItem> = items(
-        "Items",
-        query = mapOf(
-            "userId" to userId,
-            "includeItemTypes" to "Movie,Episode",
-            "recursive" to true,
-            "filters" to "IsPlayed",
-            "sortBy" to "DatePlayed",
-            "sortOrder" to "Descending",
-            "limit" to 8,
-            "enableTotalRecordCount" to false,
-            "enableImages" to false,
-        ),
-    )
-
     /** Movies and episodes finished most recently. */
     private suspend fun recentlyWatched(): List<MediaItem> = items(
         "Items",
@@ -1223,81 +999,9 @@ class JellyfinClient(
         ),
     )
 
-    /**
-     * What's new in a library, as a plain sorted lookup where possible: films by when they were
-     * added, shows by when they last got an episode. Jellyfin's own "latest" groups new episodes
-     * into their shows across the whole library, which is slow on large libraries.
-     */
-    private suspend fun latestIn(view: MediaItem): List<MediaItem> = when (view.collection) {
-        CollectionKind.MOVIES -> query(view.id, "Movie", "DateCreated")
-        CollectionKind.TV_SHOWS -> query(view.id, "Series", "DateLastContentAdded")
-        else -> latest(view.id)
-    }
-
-    /** How to continue a library's "Latest in…" row (Jellyfin's own grouped latest can't be). */
-    private fun latestMore(view: MediaItem): dev.nitrate.core.rows.RowMore? = when (view.collection) {
-        CollectionKind.MOVIES -> queryMore(view.id, "Movie", "DateCreated")
-        CollectionKind.TV_SHOWS -> queryMore(view.id, "Series", "DateLastContentAdded")
-        else -> null
-    }
-
-    private suspend fun latest(parentId: String): List<MediaItem> =
-        get("Items", "Latest", query = mapOf("parentId" to parentId, "fields" to ROW_FIELDS, "limit" to ROW_LIMIT))
-            .decode<List<ItemDto>>().map { it.toMediaItem() }
-
-    /** A library's overview rows as independent jobs, all started at once. */
-    @OptIn(ExperimentalTime::class)
-    private fun libraryJobs(library: MediaItem): List<dev.nitrate.core.rows.RowJob> {
-        val id = library.id
-        val prefix = "library/$id"
-        val now = Clock.System.now().toString()
-        val jobs = mutableListOf<dev.nitrate.core.rows.RowJob>()
-        fun add(key: String, title: String, display: RowDisplay = RowDisplay(), more: dev.nitrate.core.rows.RowMore? = null, load: suspend () -> List<MediaItem>) {
-            jobs += dev.nitrate.core.rows.RowJob(title, "$prefix/$key") { load().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("$prefix/$key", title, it, display, more)) } }
-        }
-
-        when (library.collection) {
-            CollectionKind.BOOKS -> {
-                add("continue_reading", "Continue Reading") { continueReading(id) }
-                // Audiobooks live in Books libraries too: carried on in the listening player.
-                add("continue_listening", "Continue Listening") {
-                    items("UserItems", "Resume", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook"))
-                }
-                add("recently_added", "Recently Added", more = queryMore(id, "Book,AudioBook", "DateCreated")) { query(id, "Book,AudioBook", "DateCreated") }
-                add("unread", "Not Read Yet") { query(id, "Book,AudioBook", "Random", filters = "IsUnplayed") }
-                add("favorites", "Favorites", more = queryMore(id, "Book,AudioBook", "SortName", "Ascending", filters = "IsFavorite")) { query(id, "Book,AudioBook", "SortName", "Ascending", filters = "IsFavorite") }
-            }
-            CollectionKind.TV_SHOWS -> {
-                add("continue_watching", "Continue Watching", WIDE_DEFAULT, more = resumeMore(id, "Episode")) { resumeItems(id, "Episode") }
-                add("next_up", "Next Up", WIDE_DEFAULT, more = rowMore("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS))) { items("Shows", "NextUp", query = mapOf("parentId" to id, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS)) }
-                add("recently_added", "Recently Added", more = queryMore(id, "Series", "DateLastContentAdded")) { query(id, "Series", "DateLastContentAdded") }
-                add("recently_released", "Recently Aired", WIDE_DEFAULT, more = queryMore(id, "Episode", "PremiereDate", maxPremiere = now)) { query(id, "Episode", "PremiereDate", maxPremiere = now) }
-                add("top_unwatched", "Top Unwatched", more = queryMore(id, "Series", "CommunityRating", filters = "IsUnplayed")) { query(id, "Series", "CommunityRating", filters = "IsUnplayed") }
-                add("favorites", "Favorites", more = queryMore(id, "Series", "SortName", "Ascending", filters = "IsFavorite")) { query(id, "Series", "SortName", "Ascending", filters = "IsFavorite") }
-            }
-            else -> {
-                val types = if (library.collection == CollectionKind.MOVIES) "Movie" else null
-                add("continue_watching", "Continue Watching", WIDE_DEFAULT, more = resumeMore(id, types)) { resumeItems(id, types) }
-                add("recently_released", "Recently Released", more = queryMore(id, types, "PremiereDate", maxPremiere = now)) { query(id, types, "PremiereDate", maxPremiere = now) }
-                add("recently_added", "Recently Added", more = queryMore(id, types, "DateCreated")) { query(id, types, "DateCreated") }
-                add("top_unwatched", "Top Unwatched", more = queryMore(id, types, "CommunityRating", filters = "IsUnplayed")) { query(id, types, "CommunityRating", filters = "IsUnplayed") }
-                add("favorites", "Favorites", more = queryMore(id, types, "SortName", "Ascending", filters = "IsFavorite")) { query(id, types, "SortName", "Ascending", filters = "IsFavorite") }
-            }
-        }
-        return jobs
-    }
-
     override fun libraryRowsProgress(library: MediaItem, skip: Set<String>): Flow<dev.nitrate.core.rows.RowsProgress> = dev.nitrate.core.rows.ProgressiveRows.run(libraryJobs(library), skip)
 
     override suspend fun libraryRows(library: MediaItem): List<MediaRow> = libraryRowsProgress(library).last().rows
-
-    private suspend fun books(parentId: String?, filters: String, limit: Int) = items(
-        "Items",
-        query = mapOf(
-            "userId" to userId, "parentId" to parentId, "includeItemTypes" to "Book", "recursive" to true,
-            "filters" to filters, "sortBy" to "DatePlayed", "sortOrder" to "Descending", "limit" to limit, "fields" to ROW_FIELDS,
-        ),
-    )
 
     override suspend fun continueReading(libraryId: String?): List<MediaItem> = coroutineScope {
         val reading = async { books(libraryId, "IsResumable", ROW_LIMIT) }
@@ -1313,52 +1017,6 @@ class JellyfinClient(
         )
         return dev.nitrate.core.comics.ComicSeries.of(book, siblings.ifEmpty { listOf(book) })
     }
-
-    private fun resumeQuery(parentId: String?, types: String?) =
-        mapOf("parentId" to parentId, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Video", "includeItemTypes" to types)
-
-    private suspend fun resumeItems(parentId: String?, types: String?) = items("UserItems", "Resume", query = resumeQuery(parentId, types))
-
-    private fun resumeMore(parentId: String?, types: String?) = rowMore("UserItems", "Resume", query = resumeQuery(parentId, types))
-
-    private suspend fun query(
-        parentId: String,
-        types: String?,
-        sortBy: String,
-        order: String = "Descending",
-        filters: String? = null,
-        maxPremiere: String? = null,
-    ) = items("Items", query = queryParams(parentId, types, sortBy, order, filters, maxPremiere))
-
-    /** A sorted lookup's request, for rows that can be continued. */
-    private fun queryMore(
-        parentId: String,
-        types: String?,
-        sortBy: String,
-        order: String = "Descending",
-        filters: String? = null,
-        maxPremiere: String? = null,
-    ) = rowMore("Items", query = queryParams(parentId, types, sortBy, order, filters, maxPremiere))
-
-    private fun queryParams(
-        parentId: String,
-        types: String?,
-        sortBy: String,
-        order: String,
-        filters: String?,
-        maxPremiere: String?,
-    ) = mapOf(
-            "parentId" to parentId,
-            "includeItemTypes" to types,
-            "recursive" to true,
-            "sortBy" to "$sortBy,SortName",
-            "sortOrder" to "$order,Ascending",
-            "filters" to filters,
-            "maxPremiereDate" to maxPremiere,
-            "limit" to ROW_LIMIT,
-            "fields" to ROW_FIELDS,
-            "enableTotalRecordCount" to false,
-        )
 
     override suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean): Pair<List<MediaItem>, Int> {
         val types = when (library.collection) {
@@ -1732,30 +1390,6 @@ class JellyfinClient(
     override suspend fun watchInvites() = partnersApi.invites()
     override suspend fun dismissWatchInvite(id: String) = partnersApi.dismissInvite(id)
 
-    /**
-     * Home's "Watching together" row ([dev.nitrate.core.partners.TogetherRow]): invites waiting, then
-     * each shared show's next episode for the user by whose turn it is. Nothing without the
-     * Companion plugin's partners.
-     */
-    private suspend fun watchingTogether(): List<MediaItem> = coroutineScope {
-        if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyList()
-        val info = partners()
-        suspend fun series(id: String, name: String) = runCatching { getItem(id) }.getOrElse { MediaItem(id, name, ItemKind.SERIES) }
-        val invites = info.incoming.distinctBy { it.seriesId }.map { r -> async { series(r.seriesId, r.seriesName) } }
-        val shows = info.groups.distinctBy { it.seriesId }.map { g ->
-            async {
-                runCatching {
-                    val items = titleItems(g.seriesId)
-                    val k = dev.nitrate.core.partners.KeepUp.of(g.seriesId, items, partnerProgress(g.seriesId))
-                    // The title itself only for a card with nothing of the user's left (waiting on the others).
-                    val needsTitle = dev.nitrate.core.partners.TogetherRow.yourNext(items) == null
-                    dev.nitrate.core.partners.SharedShow(if (needsTitle) series(g.seriesId, g.seriesName) else null, items, k)
-                }.getOrNull()
-            }
-        }
-        dev.nitrate.core.partners.TogetherRow.items(invites.map { it.await() }, shows.mapNotNull { it.await() })
-    }
-
     override suspend fun groupStandings(): Map<String, dev.nitrate.core.partners.KeepUp> = coroutineScope {
         if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope emptyMap()
         partners().groups.map { it.seriesId }.distinct().map { id ->
@@ -1876,73 +1510,10 @@ class JellyfinClient(
     // ---- Codec filters (Jellyfin has none: Nitrate reads the streams and filters) ----
 
     /** Video streams and audio codecs per item id; shows carry their episodes'. */
-    private class CodecIndex(val streams: Map<String, StreamInfo>, val builtMs: Long)
+    internal class CodecIndex(val streams: Map<String, StreamInfo>, val builtMs: Long)
 
-    private val codecIndexes = mutableMapOf<String, CodecIndex>()
-    private val codecIndexLock = kotlinx.coroutines.sync.Mutex()
-
-    /**
-     * One page of a codec-filtered query: the server's list for everything else (ids only, in its
-     * order), narrowed by the codec index, then this page's items fetched by id.
-     */
-    private suspend fun codecFilteredPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> {
-        val base = query.copy(videoCodecs = emptyList(), audioCodecs = emptyList(), bitDepths = emptyList(), videoRanges = emptyList())
-        val ids = get(
-            "Items",
-            query = itemQueryParams(base) + mapOf("userId" to userId, "limit" to null, "fields" to null, "enableImages" to false, "enableUserData" to false),
-        ).decode<QueryResultDto<ItemDto>>().items.map { normalizeId(it.id) }
-        val index = codecIndex(query)
-        val matching = ids.filter { id -> index[id]?.let { Codecs.matches(it, query) } == true }
-        val page = matching.drop(startIndex).take(limit)
-        if (page.isEmpty()) return emptyList<MediaItem>() to matching.size
-        val items = get(
-            "Items",
-            query = mapOf("ids" to page.joinToString(","), "userId" to userId, "fields" to "Overview,PrimaryImageAspectRatio,Genres,SortName", "enableTotalRecordCount" to false),
-        ).decode<QueryResultDto<ItemDto>>().items.associateBy { normalizeId(it.id) }
-        return page.mapNotNull { items[it]?.toMediaItem() } to matching.size
-    }
-
-    /** The codecs of everything [query] can list in its library, kept for a while (it's a big read). */
-    private suspend fun codecIndex(query: ItemQuery): Map<String, StreamInfo> = codecIndexLock.withLock {
-        val key = "${baseUrl}|${userId}|${query.libraryId}|${query.types.sorted()}"
-        val now = Clock.System.now().toEpochMilliseconds()
-        codecIndexes[key]?.takeIf { now - it.builtMs < CODEC_INDEX_TTL_MS }?.let { return@withLock it.streams }
-        // The plugin keeps this index itself: one small answer instead of every title's streams.
-        companionFormats(query)?.let { codecIndexes[key] = CodecIndex(it, now); return@withLock it }
-        val found = mutableMapOf<String, Pair<MutableSet<VideoStreamInfo>, MutableSet<String>>>()
-        fun add(id: String, streams: List<MediaStreamDto>?) {
-            val (video, audio) = found.getOrPut(id) { mutableSetOf<VideoStreamInfo>() to mutableSetOf() }
-            streams.orEmpty().forEach { st ->
-                when (st.type) {
-                    "Video" -> video += VideoStreamInfo(Codecs.normalize(st.codec), st.bitDepth, Codecs.rangeTags(st.videoRangeType, st.dvProfile))
-                    "Audio" -> Codecs.normalize(st.codec)?.let { audio += it }
-                }
-            }
-        }
-        // Shows have no streams of their own: their episodes speak for them.
-        val shows = ItemKind.SERIES in query.types || query.types.isEmpty()
-        val others = query.types.filter { it != ItemKind.SERIES }.ifEmpty { if (query.types.isEmpty()) listOf(ItemKind.MOVIE, ItemKind.VIDEO, ItemKind.MUSIC_VIDEO) else emptyList() }
-        suspend fun read(types: List<ItemKind>, each: (ItemDto) -> Unit) {
-            var start = 0
-            while (true) {
-                val page = get(
-                    "Items",
-                    query = itemQueryParams(ItemQuery(libraryId = query.libraryId, types = types)) + mapOf(
-                        "userId" to userId, "startIndex" to start, "limit" to CODEC_INDEX_PAGE, "fields" to "MediaStreams",
-                        "sortBy" to "SortName", "sortOrder" to "Ascending", "enableImages" to false, "enableUserData" to false,
-                    ),
-                ).decode<QueryResultDto<ItemDto>>().items
-                page.forEach(each)
-                if (page.size < CODEC_INDEX_PAGE) break
-                start += page.size
-            }
-        }
-        if (others.isNotEmpty()) read(others) { item -> add(normalizeId(item.id), item.mediaStreams) }
-        if (shows) read(listOf(ItemKind.EPISODE)) { ep -> ep.seriesId?.let { add(normalizeId(it), ep.mediaStreams) } }
-        val built = found.mapValues { (_, v) -> StreamInfo(v.first.toSet(), v.second.toSet()) }
-        codecIndexes[key] = CodecIndex(built, now)
-        built
-    }
+    internal val codecIndexes = mutableMapOf<String, CodecIndex>()
+    internal val codecIndexLock = kotlinx.coroutines.sync.Mutex()
 
     override suspend fun watchHistory(max: Int): List<MediaItem> {
         val page = 1_000
@@ -2488,7 +2059,7 @@ class JellyfinClient(
         const val BECAUSE_TTL_MS = 24 * 60 * 60 * 1000L
 
         /** The job that makes every library's "Latest in…" row on Home. */
-        private const val LATEST_JOB = "Latest in each library"
+        internal const val LATEST_JOB = "Latest in each library"
         /** A home server answers in well under a second; away from home this is what startup waits for it. */
         const val LOCAL_PROBE_TIMEOUT_MS = 1_200L
 
