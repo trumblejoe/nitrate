@@ -359,6 +359,8 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                                 )
                                 if (item.user.played && LocalDisplayPrefs.current.watchedMarks) Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.primary)
                                 item.runtimeMs?.takeIf { LocalDisplayPrefs.current.runtime }?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium) }
+                                // The visible way to what a long press offers (play from here, mark watched up to here…).
+                                if (!audio && video) IconButton(onClick = { menuFor = item }) { Icon(Icons.Default.MoreVert, "More for ${item.spokenTitle}") }
                             }
                         }
                     },

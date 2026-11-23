@@ -67,6 +67,7 @@ fun ChannelsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var chosen by remember { mutableStateOf<Pair<ChannelGuide, ChannelProgram>?>(null) }
+    var pickingEdit by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
     val guides = state.guides
     val windowMs = ChannelsViewModel.WINDOW_MS
@@ -84,7 +85,7 @@ fun ChannelsScreen(
                 Text("Channels", style = MaterialTheme.typography.headlineMedium)
                 Text(
                     "Tune in and what's on starts from its beginning, then the channel carries on in order. Nothing plays until you do." +
-                        if (admin) " Hold OK on a channel to change it." else "",
+                        if (admin) " Edit a channel (or hold OK on one) to change it." else "",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -94,6 +95,8 @@ fun ChannelsScreen(
                 OutlinedButton(onClick = { vm.shift(-slots / 2) }, enabled = state.windowStartMs > Guide.windowStart(state.nowMs)) { Text("‹ Earlier") }
                 OutlinedButton(onClick = { vm.shift(slots / 2) }) { Text("Later ›") }
                 if (admin) OutlinedButton(onClick = { onEdit(null) }) { Text("New channel") }
+                // The visible way to what holding OK on a channel does.
+                if (admin && !guides.isNullOrEmpty()) OutlinedButton(onClick = { pickingEdit = true }) { Text("Edit a channel") }
                 Text("${time(state.windowStartMs)} – ${time(state.windowStartMs + windowMs)}", style = MaterialTheme.typography.titleMedium)
                 state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             }
@@ -147,10 +150,26 @@ fun ChannelsScreen(
                 OutlinedButton(onClick = { chosen = null; tuneIn(g) }, modifier = if (p.available) Modifier else Modifier.focusRequester(focus)) {
                     Text(now?.let { "Tune in (${it.title})" } ?: "Tune in")
                 }
+                if (admin) OutlinedButton(onClick = { chosen = null; onEdit(g.channel.id) }) { Text("Edit this channel") }
                 OutlinedButton(onClick = { chosen = null }) { Text("Close") }
             }
             LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
         }
+    }
+    if (pickingEdit) {
+        val focus = remember { FocusRequester() }
+        TvDialog({ pickingEdit = false }) {
+            Text("Edit which channel?", style = MaterialTheme.typography.headlineSmall)
+            guides.orEmpty().forEachIndexed { i, g ->
+                androidx.tv.material3.ListItem(
+                    selected = false,
+                    onClick = { pickingEdit = false; onEdit(g.channel.id) },
+                    headlineContent = { Text(g.channel.name) },
+                    modifier = if (i == 0) Modifier.focusRequester(focus) else Modifier,
+                )
+            }
+        }
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     }
 }
 

@@ -57,6 +57,33 @@ class DetailsCacheTest {
         }
     }
 
+    /**
+     * Coming back to a film page (from the player): only the title and the marks of what the page shows
+     * are asked for, never its collection or similar titles again.
+     */
+    @Test
+    fun comingBackAsksOnlyForTheTitleAndMarks() = runBlocking {
+        val fake = FakeServer()
+        val asked = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val server = object : MediaServer by fake {
+            override suspend fun getItem(id: String): MediaItem { asked += "item"; return fake.getItem(id) }
+            override suspend fun collectionsOf(itemId: String): List<MediaItem> { asked += "collections"; return fake.collectionsOf(itemId) }
+            override suspend fun collectionItems(collectionId: String): List<MediaItem> { asked += "collection-items"; return fake.collectionItems(collectionId) }
+            override suspend fun similar(itemId: String): List<MediaItem> { asked += "similar"; return fake.similar(itemId) }
+            override suspend fun userStates(ids: List<String>): Map<String, dev.nitrate.core.model.UserState> { asked += "marks"; return emptyMap() }
+        }
+        val vm = DetailsViewModel(server, "m1", null, cache = null)
+        withTimeout(5_000) { vm.state.first { it.similar.isNotEmpty() } }
+        assertEquals(listOf("item", "collections", "collection-items", "similar"), asked.toList())
+        asked.clear()
+        repeat(2) {
+            vm.refresh()
+            withTimeout(5_000) { while (asked.count { it == "marks" } < it + 1) kotlinx.coroutines.delay(20) }
+        }
+        assertEquals(listOf("item", "marks", "item", "marks"), asked.toList())
+        assertEquals(3, vm.state.value.collection.size)
+    }
+
     /** "More like this" off: the server's costly similar-titles search is never asked for. */
     @Test
     fun noSimilarSearchWhenMoreLikeThisIsOff() = runBlocking {

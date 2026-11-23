@@ -251,13 +251,13 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
         Modifier.then(if (opened == null) Modifier.focusRestorer(first) else Modifier).verticalScroll(scroll),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Line("Speed") {
+        Line("Speed", if (choices.speed == 1f) "Normal" else "${choices.speed}×") {
             SPEEDS.forEach { s ->
                 DefaultChip(if (s == 1f) "Normal" else "$s×", selected = choices.speed == s, isDefault = s == 1f,
                     modifier = if (s == choices.speed || (s == 1f && choices.speed !in SPEEDS)) Modifier.focusRequester(first) else Modifier) { choices.onSpeed(s) }
             }
         }
-        Line("Sound") {
+        Line("Sound", choices.sound.label) {
             SoundMode.entries.forEach { m ->
                 DefaultChip(m.label, selected = choices.sound == m, isDefault = m == choices.defaultSound) { choices.onSound(m) }
             }
@@ -271,7 +271,7 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
                 }
             }
         }
-        Line("Sleep timer") {
+        Line("Sleep timer", when { choices.sleepAtEnd -> "End of this"; choices.sleepAt != null -> "On"; else -> "Off" }) {
             DefaultChip("Off", selected = choices.sleepAt == null && !choices.sleepAtEnd, isDefault = true) { choices.onSleep(null, false) }
             SLEEP_MINUTES.forEach { m -> DefaultChip("$m min", selected = false, isDefault = false) { choices.onSleep(System.currentTimeMillis() + m * 60_000L, false) } }
             DefaultChip("End of this", selected = choices.sleepAtEnd, isDefault = false) { choices.onSleep(null, true) }
@@ -280,14 +280,14 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
                     style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.CenterVertically))
             }
         }
-        Line("Subtitle timing") {
+        Line("Subtitle timing", if (choices.subtitleOffsetMs == 0L) "In sync" else "${if (choices.subtitleOffsetMs > 0) "+" else "−"}${kotlin.math.abs(choices.subtitleOffsetMs) / 1000.0}s") {
             listOf(-1000L, -250L, 250L, 1000L).forEach { d ->
                 DefaultChip((if (d > 0) "+" else "−") + "${kotlin.math.abs(d) / 1000.0}s", selected = false, isDefault = false) { choices.onSubtitleOffset(choices.subtitleOffsetMs + d) }
             }
             DefaultChip(if (choices.subtitleOffsetMs == 0L) "In sync" else "${if (choices.subtitleOffsetMs > 0) "+" else "−"}${kotlin.math.abs(choices.subtitleOffsetMs) / 1000.0}s · reset",
                 selected = choices.subtitleOffsetMs == 0L, isDefault = true) { choices.onSubtitleOffset(0) }
         }
-        Line("Audio sync") {
+        Line("Audio sync", dev.nitrate.core.playback.AudioSync.label(choices.audioDelayMs)) {
             dev.nitrate.core.playback.AudioSync.STEPS.forEach { d ->
                 DefaultChip((if (d > 0) "+" else "−") + "${kotlin.math.abs(d)} ms", selected = false, isDefault = false) { choices.onAudioDelay(choices.audioDelayMs + d) }
             }
@@ -302,7 +302,8 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
         }
         val frameRate = choices.frameRate
         if (frameRate != null) {
-            Line("Refresh rate") {
+            // Named as in Settings → Picture & sound.
+            Line("Match frame rate", frameRate.shortLabel) {
                 dev.nitrate.core.playback.FrameRateMatch.entries.forEach { m ->
                     DefaultChip(m.shortLabel, selected = frameRate == m, isDefault = m == choices.defaultFrameRate) { choices.onFrameRate(m) }
                 }
@@ -314,18 +315,24 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
         }
         if (choices.pages.isNotEmpty()) {
             Line("More") {
-                choices.pages.forEach { (label, _) -> DefaultChip("$label…", selected = false, isDefault = false, modifier = Modifier.focusRequester(chip(label))) { opened = label; page = label } }
+                choices.pages.forEach { (label, _) -> DefaultChip("$label  ›", selected = false, isDefault = false, modifier = Modifier.focusRequester(chip(label))) { opened = label; page = label } }
             }
         }
     }
 }
 
-/** A setting's line: its name, then its choices. */
+/**
+ * A setting's line, read like a Settings row: its name with what's on now under it (as Settings
+ * shows a value beside each setting), then its choices.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Line(title: String, content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
+private fun Line(title: String, value: String? = null, content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.width(150.dp))
+        androidx.compose.foundation.layout.Column(Modifier.width(170.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.85f))
+            if (value != null) Text(value, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }
 }

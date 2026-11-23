@@ -196,7 +196,9 @@ class JellyfinClient(
     private fun nowEpochMs() = Clock.System.now().toEpochMilliseconds()
 
     /** Answers kept a little while and shared between pages and rows ([items]). */
-    private val answers = dev.nitrate.core.cache.AnswerCache({ nowEpochMs() })
+    /** The clock kept answers are timed by (a test can move it on). */
+    internal var clock: () -> Long = { nowEpochMs() }
+    private val answers = dev.nitrate.core.cache.AnswerCache({ clock() })
 
     /**
      * Watch state changed (here or on another device). Lists whose titles depend on it (what's
@@ -774,14 +776,14 @@ class JellyfinClient(
      * (or is asking right now), else from the server. Shared answers are put down in the query
      * log too, so the analyzer can show what sharing saved.
      */
-    private suspend fun items(vararg segments: String, query: Map<String, Any?>): List<MediaItem> {
+    private suspend fun items(vararg segments: String, query: Map<String, Any?>, kind: dev.nitrate.core.cache.AnswerKind? = null): List<MediaItem> {
         // A list read here never shows a total, so the server needn't count every match (a
         // second query over the whole filter); only where Jellyfin takes the switch.
         @Suppress("NAME_SHADOWING")
         val query = listQuery(segments, query)
         val key = answerKey(segments, query)
         val started = kotlin.time.TimeSource.Monotonic.markNow()
-        val (value, source) = answers.get(key, answerKind(segments)) {
+        val (value, source) = answers.get(key, kind ?: answerKind(segments)) {
             get(*segments, query = query).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }
         }
         if (source != dev.nitrate.core.cache.AnswerSource.FETCHED) {
@@ -976,6 +978,8 @@ class JellyfinClient(
         "UserViews" -> dev.nitrate.core.cache.AnswerKind.VIEWS
         "Latest" -> dev.nitrate.core.cache.AnswerKind.LATEST
         "NextUp", "Resume" -> dev.nitrate.core.cache.AnswerKind.WATCHING
+        // A show's seasons and a season's episodes, the collections a title is in.
+        "Seasons", "Episodes", "Collections" -> dev.nitrate.core.cache.AnswerKind.STRUCTURE
         else -> dev.nitrate.core.cache.AnswerKind.ITEMS
     }
 
@@ -1977,7 +1981,20 @@ class JellyfinClient(
     override suspend fun collectionItems(collectionId: String): List<MediaItem> = items(
         "Items",
         query = mapOf("parentId" to collectionId, "sortBy" to "ProductionYear,SortName", "sortOrder" to "Ascending,Ascending", "fields" to ROW_FIELDS, "limit" to 100),
+        kind = dev.nitrate.core.cache.AnswerKind.STRUCTURE,
     )
+
+    override suspend fun userStates(ids: List<String>): Map<String, dev.nitrate.core.model.UserState> {
+        if (ids.isEmpty()) return emptyMap()
+        // Asked straight (never a kept answer): this is for marks that may have just changed.
+        return get(
+            "Items",
+            query = mapOf(
+                "ids" to dashless(ids.distinct()), "userId" to userId, "enableImages" to false,
+                "enableTotalRecordCount" to false,
+            ),
+        ).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }.associate { it.id to it.user }
+    }
 
     override suspend fun genres(libraryId: String?): List<String> =
         get("Genres", query = mapOf("parentId" to libraryId, "sortBy" to "SortName", "sortOrder" to "Ascending", "enableTotalRecordCount" to false))

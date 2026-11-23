@@ -89,7 +89,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
     // Saved with the screen, so coming back (from the player) counts as coming back.
     var first by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     LifecycleResumeEffect(Unit) {
-        if (!first) vm.load()
+        if (!first) vm.refresh()
         first = false
         onPauseOrDispose { }
     }

@@ -392,6 +392,10 @@ class ScreenshotTest {
         compose.onAllNodesWithText("Rainy day", substring = true).onFirst().assertExists()
         compose.onAllNodesWithText("of 6 watched", substring = true).onFirst().assertExists()
         compose.onAllNodesWithText("NEXT").onFirst().assertExists()
+        // Each video entry's ⋮ opens what a long press does (mark watched up to here…).
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("More for", substring = true)).onFirst().performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Mark watched up to here").onFirst().assertExists()
     }
 
     /** Search finds what people say too. */

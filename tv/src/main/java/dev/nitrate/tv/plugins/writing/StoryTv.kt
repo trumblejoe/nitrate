@@ -333,17 +333,23 @@ private fun CommentsTv(ctx: StoryContext, on: String) {
     var replyTo by remember(on) { mutableStateOf<String?>(null) }
     Text("Comments", style = MaterialTheme.typography.labelLarge)
     all.filter { it.parentId == null }.forEach { c ->
-        ListItem(
-            selected = replyTo == c.id,
-            onClick = { replyTo = if (replyTo == c.id) null else c.id },
-            onLongClick = { ctx.changeStory(listOf(Story.resolve(c.id, !c.resolved))) },
-            overlineContent = { Text("${c.authorName ?: "someone"} · ${whenText(c.createdAt)}" + if (c.resolved) " · resolved" else "") },
-            headlineContent = { Text(c.text) },
-            supportingContent = {
-                val replies = all.filter { it.parentId == c.id }
-                Text((listOfNotNull(c.quote?.let { "“$it”" }) + replies.map { "${it.authorName}: ${it.text}" }).joinToString("\n").ifEmpty { "Select to reply · hold to resolve" })
-            },
-        )
+        val resolve = { ctx.changeStory(listOf(Story.resolve(c.id, !c.resolved))) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            ListItem(
+                selected = replyTo == c.id,
+                onClick = { replyTo = if (replyTo == c.id) null else c.id },
+                onLongClick = resolve,
+                overlineContent = { Text("${c.authorName ?: "someone"} · ${whenText(c.createdAt)}" + if (c.resolved) " · resolved" else "") },
+                headlineContent = { Text(c.text) },
+                supportingContent = {
+                    val replies = all.filter { it.parentId == c.id }
+                    Text((listOfNotNull(c.quote?.let { "“$it”" }) + replies.map { "${it.authorName}: ${it.text}" }).joinToString("\n").ifEmpty { "Select to reply" })
+                },
+                modifier = Modifier.weight(1f),
+            )
+            // The visible way to what holding OK on a comment does.
+            androidx.tv.material3.OutlinedButton(onClick = resolve) { Text(if (c.resolved) "Reopen" else "Resolve") }
+        }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         TvTextField(draft, { draft = it }, if (replyTo != null) "Reply" else "Add a comment", modifier = Modifier.weight(1f))

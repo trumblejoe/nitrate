@@ -297,6 +297,8 @@ fun PlaylistScreen(
                 onMove = { delta -> entryActions = null; change { repository.movePlaylistItem(id, entry, index + delta) } },
                 onRemove = { entryActions = null; change { repository.removeFromPlaylist(id, listOf(entry)) } },
                 onOpen = { entryActions = null; onOpen(item) },
+                // The visible way to what holding OK offers: marking watched up to here, or unwatched from here on.
+                onMark = playlists?.takeIf { item.mediaKind != MediaKind.AUDIO }?.let { p -> { watched: Boolean -> entryActions = null; change { p.markUpTo(id, item.id, watched) } } },
                 onDismiss = { entryActions = null },
             )
         }

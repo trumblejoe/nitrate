@@ -246,6 +246,8 @@ fun PlaylistEntryDialog(
     onRemove: () -> Unit,
     onOpen: () -> Unit,
     onDismiss: () -> Unit,
+    /** A video playlist's entry: marks everything up to it watched (true), or it and after unwatched (false). */
+    onMark: ((Boolean) -> Unit)? = null,
 ) {
     val first = remember { FocusRequester() }
     TvDialog(onDismiss, width = 520) {
@@ -255,6 +257,10 @@ fun PlaylistEntryDialog(
         ListItem(selected = false, enabled = canMoveDown, onClick = { onMove(1) }, headlineContent = { Text("Move down") })
         ListItem(selected = false, onClick = onRemove, headlineContent = { Text("Remove from playlist") })
         ListItem(selected = false, onClick = onOpen, headlineContent = { Text("Open details") })
+        if (onMark != null) {
+            ListItem(selected = false, onClick = { onMark(true) }, headlineContent = { Text("Mark watched up to here") })
+            ListItem(selected = false, onClick = { onMark(false) }, headlineContent = { Text("Mark unwatched from here on") })
+        }
         LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     }
 }

@@ -676,6 +676,12 @@ interface MediaServer {
     /** The collections (box sets) [itemId] is in. */
     suspend fun collectionsOf(itemId: String): List<MediaItem> = emptyList()
 
+    /**
+     * The watch state of [ids] as the server has it now, in one light request (no pictures or other
+     * fields, never a kept answer): for refreshing marks on a page coming back into view.
+     */
+    suspend fun userStates(ids: List<String>): Map<String, dev.nitrate.core.model.UserState> = emptyMap()
+
     /** The film after [current] in its saga ("Next in collection"), if any. */
     suspend fun nextInCollection(current: MediaItem): MediaItem? {
         if (current.kind != dev.nitrate.core.model.ItemKind.MOVIE) return null

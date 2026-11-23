@@ -1206,6 +1206,14 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.login.SsoPanel(c.server, "http://192.168.1.20:8096", dev.nitrate.core.model.SsoProvider("Home ID"), {}, {})
     }
 
+    /** Admins reach a channel's editor from a visible button too, not only by holding OK. */
+    @Test fun channelsPickToEdit() {
+        shoot("tv-channels-edit-which", act = { compose.onNodeWithText("Edit a channel").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) }) { c ->
+            dev.nitrate.tv.ui.channels.ChannelsScreen(c.server, admin = true, onPlayQueue = {}, onEdit = {})
+        }
+        compose.onNodeWithText("Edit which channel?").assertExists()
+    }
+
     @Test fun channels() = shoot("tv-channels") { c ->
         dev.nitrate.tv.ui.channels.ChannelsScreen(c.server, admin = true, onPlayQueue = {}, onEdit = {})
     }
@@ -1234,6 +1242,17 @@ class TvScreenshotTest {
         selfId = "user-1", selfName = "joe", people = listOf(dev.nitrate.core.writing.UserRef("user-1", "joe"), dev.nitrate.core.writing.UserRef("user-2", "sam")),
         changeStory = {}, applyText = {}, openInScript = {}, history = null,
     )
+
+    /** A scene's comments each have a visible Resolve (holding OK on one does the same). */
+    @Test fun storySceneComments() {
+        shoot("tv-story-scene-comments", act = {
+            compose.onAllNodesWithText("1. INT. DINER - NIGHT", substring = true).onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        }) {
+            dev.nitrate.tv.plugins.writing.StoryTvPanel(storyContext(), dev.nitrate.tv.plugins.writing.StoryTvTab.SCENES, onBack = {}, modifier = Modifier.fillMaxSize().padding(40.dp))
+        }
+        compose.onNodeWithText("Can Jo's line land harder?").assertExists()
+        compose.onNodeWithText("Resolve").assertExists()
+    }
 
     @Test fun storyScenes() = shoot("tv-story-scenes") {
         dev.nitrate.tv.plugins.writing.StoryTvPanel(storyContext(), dev.nitrate.tv.plugins.writing.StoryTvTab.SCENES, onBack = {}, modifier = Modifier.fillMaxSize().padding(40.dp))
@@ -1390,13 +1409,13 @@ class TvScreenshotTest {
     /** Settings → More → a page: focus goes into the page, and Back (one press) returns to its chip. */
     @Test fun moreSettingsPageFocus() = moreSheet("tv-more-settings-page", "settings", "down") {
         repeat(12) { if (!focusedHasText("Speakers")) press("down") }
-        check(focusedHasText("Speakers")) { "should reach the Speakers… chip" }
+        check(focusedHasText("Speakers")) { "should reach the Speakers chip" }
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(focusedHasText("Speakers page")) { "focus should be inside the page" }
         press("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(focusedHasText("Speakers…")) { "one Back should return to the Speakers… chip; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() } + " / page shown: " + compose.onAllNodes(androidx.compose.ui.test.hasText("Speakers page")).fetchSemanticsNodes().size }
+        check(focusedHasText("Speakers")) { "one Back should return to the Speakers chip; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() } + " / page shown: " + compose.onAllNodes(androidx.compose.ui.test.hasText("Speakers page")).fetchSemanticsNodes().size }
     }
 
     /** One Back press from inside More reaches the player's handler (it used to take two). */

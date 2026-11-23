@@ -61,7 +61,7 @@ class DetailsViewModel(
         load()
     }
 
-    /** Reloads user data (watched, resume point) e.g. after returning from the player. */
+    /** Loads everything the page shows (once on opening; coming back uses [refresh]). */
     fun load() {
         viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
             val item = runCatching { repository.getItem(itemId) }
@@ -72,8 +72,9 @@ class DetailsViewModel(
             // An episode's page shows the rest of its season (and the show's other seasons) too.
             if (item.kind == ItemKind.EPISODE) item.seriesId?.let { loadSeries(it, item.seasonId) }
             if (item.kind == ItemKind.MOVIE) {
+                // The same requests as the player's Next in collection, so the kept answers serve both.
                 val sagas = runCatching { repository.collectionsOf(item.id).take(5).map { repository.collectionItems(it.id) } }.getOrDefault(emptyList())
-                val saga = dev.nitrate.core.playback.NextInCollection.saga(item, sagas)
+                val saga = if (sagas.isEmpty()) emptyList() else dev.nitrate.core.playback.NextInCollection.saga(item, sagas)
                 _state.update { it.copy(collection = saga.takeIf { l -> l.size > 1 }.orEmpty()) }
             }
             if (item.kind == ItemKind.MUSIC_ALBUM) _state.update { it.copy(tracks = runCatching { repository.albumTracks(itemId) }.getOrDefault(emptyList())) }
@@ -89,6 +90,32 @@ class DetailsViewModel(
             }
             val similar = if (runCatching { wantsSimilar() }.getOrDefault(true)) runCatching { repository.similar(itemId) }.getOrDefault(emptyList()) else emptyList()
             _state.update { it.copy(similar = similar) }
+            cache?.write(account, key, _state.value.copy(error = null), DetailsState.serializer())
+        }
+    }
+
+    /**
+     * Coming back to the page (from the player, after marking something watched): the title itself
+     * and the watch marks of what the page shows, in two light requests; what the page holds (seasons,
+     * episodes, collections, similar titles) stays as it was. Before the first load, a full [load].
+     */
+    fun refresh() {
+        if (_state.value.item == null) { load(); return }
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
+            val item = runCatching { repository.getItem(itemId) }.getOrNull() ?: return@launch
+            val shown = _state.value
+            val ids = (shown.episodes + shown.collection + shown.contents + shown.issues + shown.similar).map { it.id }.distinct()
+            val states = if (ids.isEmpty()) emptyMap() else runCatching { repository.userStates(ids) }.getOrDefault(emptyMap())
+            fun List<MediaItem>.fresh() = map { e -> states[e.id]?.let { e.copy(user = it) } ?: e }
+            // A show's next episode may have moved on.
+            val nextUp = if (item.kind == ItemKind.SERIES) runCatching { repository.nextUpFor(item.id) }.getOrNull() ?: shown.nextUp else shown.nextUp
+            _state.update {
+                it.copy(
+                    item = item, error = null, nextUp = nextUp,
+                    episodes = it.episodes.fresh(), collection = it.collection.fresh(), contents = it.contents.fresh(),
+                    issues = it.issues.fresh(), similar = it.similar.fresh(),
+                )
+            }
             cache?.write(account, key, _state.value.copy(error = null), DetailsState.serializer())
         }
     }
@@ -159,7 +186,7 @@ class DetailsViewModel(
         val item = _state.value.item ?: return
         viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
             runCatching { action(item) }
-            load()
+            refresh()
         }
     }
 }

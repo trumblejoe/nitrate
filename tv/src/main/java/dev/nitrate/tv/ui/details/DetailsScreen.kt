@@ -119,7 +119,7 @@ fun DetailsScreen(
     // Saved with the screen, so coming back (from the player) counts as coming back.
     var firstResume by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     LifecycleResumeEffect(Unit) {
-        if (!firstResume) vm.load()
+        if (!firstResume) vm.refresh()
         firstResume = false
         onPauseOrDispose { }
     }

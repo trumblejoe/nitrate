@@ -28,6 +28,13 @@ enum class AnswerKind(val keepMs: Long, val userData: Boolean) {
 
     /** Similar titles: costly for the server and stable for hours. */
     SIMILAR(60 * 60_000L, false),
+
+    /**
+     * What a show or collection holds (its seasons, a season's episodes, which collections a film is
+     * in and what they hold): it only changes when the library does (which lets everything go), and
+     * the watch marks in it are patched as they change, so it's kept for hours.
+     */
+    STRUCTURE(6 * 60 * 60_000L, true),
 }
 
 /** How an answer was had: asked for, joined while another asker waited for it, or kept from before. */

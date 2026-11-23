@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -415,6 +418,7 @@ private fun Documents(
     sharedWithYou: (@Composable () -> Unit)? = null,
 ) {
     var confirmDelete by remember { mutableStateOf<String?>(null) }
+    var reallyDelete by remember { mutableStateOf(false) }
     val format = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -439,20 +443,33 @@ private fun Documents(
             },
             trailingContent = { Switch(checked = transfer.running, onCheckedChange = null) },
         )
-        Text("Long-press a document to move or delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Options (or hold OK on a document) to move or delete it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val targets by produceState(emptyList<dev.nitrate.android.writing.SharedWriting.SyncOption>(), confirmDelete) { this.value = moveTargets() }
         LazyColumn(Modifier.fillMaxSize()) {
             sharedWithYou?.let { content -> item(key = "shared-with-you") { Column { content() } } }
             items(docs, key = { it.id }) { doc ->
                 val confirming = confirmDelete == doc.id
-                ListItem(
-                    selected = doc.id == current,
-                    onClick = { if (confirming) { onDelete(doc.id); confirmDelete = null } else onOpen(doc.id) },
-                    onLongClick = { confirmDelete = doc.id },
-                    headlineContent = { Text(if (confirming) "Select again to delete “${doc.title}”" else doc.title) },
-                    supportingContent = { Text(doc.placeLabel + " · " + format.format(Date(doc.modifiedMs))) },
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ListItem(
+                        selected = doc.id == current,
+                        onClick = { onOpen(doc.id) },
+                        onLongClick = { confirmDelete = doc.id },
+                        headlineContent = { Text(doc.title) },
+                        supportingContent = { Text(doc.placeLabel + " · " + format.format(Date(doc.modifiedMs))) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    // The visible way to what holding OK on a document does.
+                    OutlinedButton(onClick = { confirmDelete = if (confirming) null else doc.id; reallyDelete = false }) {
+                        Text("Options", Modifier.semantics { contentDescription = "Options for ${doc.title}" })
+                    }
+                }
+                if (confirming) ListItem(
+                    selected = false,
+                    onClick = { if (reallyDelete) { onDelete(doc.id); confirmDelete = null; reallyDelete = false } else reallyDelete = true },
+                    headlineContent = { Text(if (reallyDelete) "Select again to delete “${doc.title}”" else "Delete") },
+                    modifier = Modifier.padding(start = 24.dp),
                 )
-                // Long-pressed: where else it can go (someone else's script stays theirs).
+                // Options open: where else it can go (someone else's script stays theirs).
                 if (confirming && doc.ownerName == null) {
                     targets.forEach { o ->
                         ListItem(
