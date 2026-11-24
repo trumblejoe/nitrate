@@ -249,6 +249,13 @@ public interface IWatchState
     /// </summary>
     bool HiddenFrom(Guid titleId, Guid userId) => false;
 
+    /// <summary>
+    /// How much of the title <paramref name="userId"/> can open on this server: null when all of
+    /// it, else how many of its parts (0: none, the title itself hidden by library access or
+    /// parental rating). <paramref name="parts"/> is how many it holds for whoever asks.
+    /// </summary>
+    int? Reach(Guid titleId, Guid userId, int parts) => null;
+
     /// <summary>Shares the title (a playlist) with <paramref name="userId"/>, to watch, not change.</summary>
     void ShareWith(Guid titleId, Guid userId)
     {

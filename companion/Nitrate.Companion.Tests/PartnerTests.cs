@@ -90,6 +90,11 @@ public class PartnerTests
 
         public void ShareWith(Guid titleId, Guid userId) => Shared.Add((titleId, userId));
 
+        /// <summary>How many parts of a title someone can open, where that's fewer than all (library access, parental rating).</summary>
+        public Dictionary<(Guid Title, Guid User), int> Short { get; } = new();
+
+        public int? Reach(Guid titleId, Guid userId, int parts) => Short.TryGetValue((titleId, userId), out var n) ? n : null;
+
         public void Unshare(Guid titleId, Guid userId) => Shared.Remove((titleId, userId));
     }
 
@@ -204,7 +209,7 @@ public class PartnerTests
         hub.Request(Joe, Sam, null, list, "Road trip");
         // Not before accepting: an invite shares nothing.
         hub.Groups(Joe);
-        Assert.Empty(_watch.Shared.Where(s => s.User == Sam));
+        Assert.DoesNotContain(_watch.Shared, s => s.User == Sam);
         var group = hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
         hub.Groups(Sam);
         Assert.Contains((list, Sam), _watch.Shared);
@@ -221,6 +226,24 @@ public class PartnerTests
         hub.Groups(Joe);
         Assert.DoesNotContain((list, Sam), _watch.Shared);
         Assert.Empty(_storage.State.PlaylistShares);
+    }
+
+    [Fact]
+    public void MembersLearnWhoCantOpenATitleOnThisServer()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear", titles: new[] { new GroupTitle { Id = Bear, Name = "The Bear" }, new GroupTitle { Id = Sev, Name = "Severance" } });
+        // Sam's account is rated below The Bear and sees one of Severance's two parts.
+        _watch.Short[(Bear, Sam)] = 0;
+        _watch.Short[(Sev, Sam)] = 1;
+        // Nothing reaches the inviter before Sam accepts (they mustn't learn about the account).
+        Assert.Empty(hub.Groups(Joe));
+        hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        var titles = hub.Groups(Joe).Single().Titles!;
+        Assert.Equal(new MemberReach("sam", 0, 3), titles.Single(t => t.Id == Bear).Reach.Single());
+        Assert.Equal(new MemberReach("sam", 1, 2), titles.Single(t => t.Id == Sev).Reach.Single());
+        // Sam isn't told about themselves (their own app finds out), and Joe can open it all.
+        Assert.All(hub.Groups(Sam).Single().Titles!, t => Assert.Empty(t.Reach));
     }
 
     [Fact]

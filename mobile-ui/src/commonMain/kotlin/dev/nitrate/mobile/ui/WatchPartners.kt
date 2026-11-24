@@ -327,6 +327,8 @@ fun WatchPartnersScreen(actions: AppActions) {
                     Column(Modifier.weight(1f)) {
                         Text("${r.fromName}: ${r.titleNames}")
                         Text("Would see you: ${WatchPartners.names(r.willSee)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val note by androidx.compose.runtime.produceState<String?>(null, r.id) { value = WatchPartners.unopenableNote(WatchPartners.unopenable(container.server, r.titles)) }
+                        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
                     }
                     TextButton(onClick = { act { container.server.acceptPartner(r.id) } }) { Text("Accept") }
                     TextButton(onClick = { act { container.server.declinePartner(r.id) } }) { Text("Decline") }
@@ -341,7 +343,11 @@ fun WatchPartnersScreen(actions: AppActions) {
         groups.forEach { g ->
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // Each title opens its page.
-                g.titles.forEach { t -> Text(t.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(t.id)) })) }
+                g.titles.forEach { t ->
+                    Text(t.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(t.id)) }))
+                    // Someone in the group can't open it here (library access, parental rating).
+                    t.reachNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
+                }
                 Text(groupLine(g), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 g.pending?.let { p -> Text("${p.fromName} asks: ${p.proposed.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 g.party?.let { p -> Text(p.line(dev.nitrate.android.nowMs()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -429,7 +435,13 @@ fun InviteAnswerDialog(actions: AppActions, r: dev.nitrate.core.partners.Incomin
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Watch ${r.titleNames} together?") },
-        text = { Text(inviteText(r)) },
+        text = {
+            val note by androidx.compose.runtime.produceState<String?>(null, r.id) { value = WatchPartners.unopenableNote(WatchPartners.unopenable(actions.container.server, r.titles)) }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(inviteText(r))
+                note?.let { Text(it, color = MaterialTheme.colorScheme.tertiary) }
+            }
+        },
         confirmButton = { TextButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Accept(r)) }) { Text("Accept") } },
         dismissButton = {
             Row {

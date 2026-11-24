@@ -1183,7 +1183,7 @@ class JellyfinClient(
             // Jellyfin answers 404 for a playlist someone shared with the user (it checks only the
             // owner there), though lists and the playlist's own items show it: found by id instead.
             if (e.response.status != HttpStatusCode.NotFound) throw e
-            itemById(id) ?: throw e
+            itemById(id) ?: throw dev.nitrate.core.ItemUnavailable(id)
         }
 
     /** One item through the list lookup (which goes by what the user can see, shares included), or null. */

@@ -25,7 +25,22 @@ data class GroupTitle(
     val opensAtMs: Long? = null,
     val opensDay: Int? = null,
     val togetherFromId: String? = null,
-)
+    /** The other members who can't open all of it on this server (empty: everyone can). */
+    val reach: List<MemberReach> = emptyList(),
+) {
+    /**
+     * "Sam can't open The Bear on this server…" for each member short of it, or null: what the
+     * group sees so a title nobody told them was off-limits doesn't just sit unwatched.
+     */
+    val reachNote: String? get() = reach.takeIf { it.isNotEmpty() }?.joinToString(" ") { it.note(name) }
+}
+
+/** A member who can open only [parts] of a title's [of] parts on this server (0: none of it). */
+data class MemberReach(val name: String, val parts: Int, val of: Int) {
+    fun note(title: String): String =
+        if (parts <= 0) "$name can't open $title on this server: it's outside their account's libraries or parental rating. Your server's admin can change that."
+        else "$name can open $parts of $of parts of $title on this server; the rest are outside their account's libraries or parental rating."
+}
 
 /**
  * People and the titles they watch together ([titles]: e.g. Severance and The Bear with Tommy),
@@ -374,6 +389,16 @@ data class Privacy(val isPrivate: Boolean, val byAdmin: Boolean)
 object WatchPartners {
     /** The Companion feature. */
     const val FEATURE = "partners"
+
+    /** An invite's titles the user's account can't open on this server (each looked up once; only "unavailable" counts, not a dropped connection). */
+    suspend fun unopenable(server: dev.nitrate.core.MediaServer, titles: List<GroupTitle>): List<GroupTitle> =
+        titles.filter { t -> runCatching { server.getItem(t.id) }.exceptionOrNull() is dev.nitrate.core.ItemUnavailable }
+
+    /** What the invite says when some of its titles won't open for the user, or null. */
+    fun unopenableNote(titles: List<GroupTitle>): String? = titles.takeIf { it.isNotEmpty() }?.let { t ->
+        "You can't open ${names(t.map { it.name })} on this server: it's outside your account's libraries or parental rating. " +
+            "You can still accept, but you won't be able to watch it until your server's admin changes that."
+    }
 
     /** Partners who haven't seen [episode]. */
     fun behind(episode: MediaItem, progress: List<PartnerProgress>): List<PartnerProgress> = progress.filter { episode.id !in it.watched }

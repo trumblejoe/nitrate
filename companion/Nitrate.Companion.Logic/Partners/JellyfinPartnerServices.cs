@@ -63,6 +63,36 @@ public class JellyfinWatchState : IWatchState
         && !p.OpenAccess && p.OwnerUserId != userId && !p.Shares.Any(s => s.UserId == userId);
 
     /// <inheritdoc />
+    public int? Reach(Guid titleId, Guid userId, int parts)
+    {
+        var user = _users.GetUserById(userId);
+        var title = _library.GetItemById(titleId);
+        if (user is null || title is null)
+        {
+            return null;
+        }
+
+        // A playlist goes by its owner and shares (its single lookup is stricter than its lists);
+        // anything else by the account's libraries and parental rating.
+        var visible = title is MediaBrowser.Controller.Playlists.Playlist p
+            ? p.OpenAccess || p.OwnerUserId == userId || p.Shares.Any(s => s.UserId == userId)
+            : title.IsVisibleStandalone(user);
+        if (!visible)
+        {
+            return 0;
+        }
+
+        // A show's episodes go with the show; a playlist's or collection's parts each by their own rating and library.
+        if (title is Series)
+        {
+            return null;
+        }
+
+        var theirs = TitleItems(titleId, user).Count;
+        return theirs >= parts ? null : theirs;
+    }
+
+    /// <inheritdoc />
     public void ShareWith(Guid titleId, Guid userId) =>
         _playlists?.AddUserToShares(new MediaBrowser.Model.Playlists.PlaylistUserUpdateRequest { Id = titleId, UserId = userId, CanEdit = false })
             .GetAwaiter().GetResult();

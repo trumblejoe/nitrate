@@ -997,3 +997,14 @@ interface MediaServer {
 }
 
 private fun unsupported(): Nothing = throw UnsupportedOperationException("Not supported by this server")
+
+/**
+ * The user's account can't open the item on this server: the server doesn't show it to them
+ * (a library the account doesn't have, or above its parental rating), or it's gone. Its message
+ * is what screens show in place of the server's 404.
+ */
+class ItemUnavailable(val itemId: String) : Exception(MESSAGE) {
+    companion object {
+        const val MESSAGE = "You can't open this on this server. It's in a library your account doesn't have, or above your account's parental rating (or it was removed). Your server's admin can change that."
+    }
+}

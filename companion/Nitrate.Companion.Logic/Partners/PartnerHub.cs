@@ -34,7 +34,14 @@ public record ScheduleChangeView(Guid Id, string FromName, GroupSchedule Propose
 /// group has watched with it (<paramref name="TogetherFromId"/>). Nothing is ever refused: the
 /// apps say when it opens and ask first.
 /// </summary>
-public record TitleView(Guid Id, string Name, Guid? LockedFromId = null, DateTimeOffset? OpensAt = null, int? OpensDay = null, Guid? TogetherFromId = null);
+public record TitleView(Guid Id, string Name, Guid? LockedFromId = null, DateTimeOffset? OpensAt = null, int? OpensDay = null, Guid? TogetherFromId = null)
+{
+    /// <summary>Gets the other members who can't open all of it on this server (library access or parental rating); empty when everyone can.</summary>
+    public IReadOnlyList<MemberReach> Reach { get; init; } = Array.Empty<MemberReach>();
+}
+
+/// <summary>A member who can open only <paramref name="Parts"/> of a title's <paramref name="Of"/> parts on this server (0: none of it).</summary>
+public record MemberReach(string Name, int Parts, int Of);
 
 /// <summary>
 /// A watch group, as one member sees it: the others in it, its titles (<paramref name="Titles"/>,
@@ -1136,7 +1143,8 @@ public partial class PartnerHub
         var pending = g.Pending is { } p
             ? new ScheduleChangeView(p.Id, Name(p.From), p.Proposed, p.Yes.Select(Name).ToList(), p.No.Select(Name).ToList(), p.Yes.Contains(user) || p.No.Contains(user), p.At)
             : null;
-        var titles = g.Titles.Select(t =>
+        var titles = g.Titles.Select(t => WithReach(g, user, t.Id, TitleOf(t))).ToList();
+        TitleView TitleOf(GroupTitle t)
         {
             if (g.Schedule is not { Active: true } || orders is null || !orders.TryGetValue(t.Id, out var order) || order.Count == 0)
             {
@@ -1156,13 +1164,67 @@ public partial class PartnerHub
 
             var l = ScheduleRules.Of(g.Schedule, order, frontier, at, _time.GetUtcNow());
             return new TitleView(t.Id, t.Name, l.LockedFromId, l.OpensAt, l.OpensDay(g.Schedule), l.TogetherFromId);
-        }).ToList();
+        }
+
         var first = titles.FirstOrDefault();
         return new GroupView(
             g.Id, first?.Id ?? g.SeriesId, first?.Name ?? g.SeriesName,
             g.Members.Where(m => m != user).Select(m => new MemberView(m, Name(m))).ToList(),
             g.Since, g.Schedule, pending, first?.LockedFromId, first?.OpensAt, first?.OpensDay, first?.TogetherFromId,
             true, record.Where(w => w.Member == user).Select(w => w.ItemId).Distinct().ToList(), null, titles);
+    }
+
+    /// <summary>
+    /// The title with who else in the group can't open all of it (a library their account lacks,
+    /// or parental rating): told only to members, so nothing reaches anyone outside the group.
+    /// Read from the library at most every few minutes per title and member.
+    /// </summary>
+    private TitleView WithReach(WatchGroup g, Guid user, Guid titleId, TitleView view)
+    {
+        var others = g.Members.Where(m => m != user && _directory.NameOf(m) is not null).ToList();
+        if (others.Count == 0)
+        {
+            return view;
+        }
+
+        var parts = Cached((titleId, user, false), () => _watch.Order(titleId, user).Count);
+        var short_ = others
+            .Select(m => (Member: m, Parts: Cached((titleId, m, true), () => _watch.Reach(titleId, m, parts) ?? -1)))
+            .Where(x => x.Parts >= 0)
+            .Select(x => new MemberReach(_directory.NameOf(x.Member)!, x.Parts, parts))
+            .ToList();
+        return short_.Count == 0 ? view : view with { Reach = short_ };
+    }
+
+    private readonly Dictionary<(Guid Title, Guid User, bool Reach), (int Value, DateTimeOffset At)> _reach = new();
+
+    private int Cached((Guid Title, Guid User, bool Reach) key, Func<int> read)
+    {
+        var now = _time.GetUtcNow();
+        lock (_reach)
+        {
+            if (_reach.TryGetValue(key, out var hit) && now - hit.At < TimeSpan.FromMinutes(5))
+            {
+                return hit.Value;
+            }
+        }
+
+        int value;
+        try
+        {
+            value = read();
+        }
+        catch (Exception)
+        {
+            value = -1;
+        }
+
+        lock (_reach)
+        {
+            _reach[key] = (value, now);
+        }
+
+        return value;
     }
 
     private static OutgoingView Outgoing(PartnerRequest r) =>

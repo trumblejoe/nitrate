@@ -136,6 +136,9 @@ class JellyfinContractTest {
         val item = c.getItem(DASHED)
         assertEquals("Road trip", item.name)
         assertEquals(ItemKind.PLAYLIST, item.kind)
+        // Not found either way (a library the account lacks, a parental rating): said in words, not as a 404.
+        val e = runCatching { c.getItem("00000000-0000-0000-0000-000000000001") }.exceptionOrNull()
+        assertTrue("$e", e is dev.nitrate.core.ItemUnavailable && e.message!!.startsWith("You can't open this on this server"))
     }
 
     @Test

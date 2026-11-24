@@ -33,7 +33,9 @@ import kotlin.time.Instant
     val party: PartyDto? = null,
     val titles: List<TitleDto>? = null,
 )
-@Serializable internal data class TitleDto(val id: String, val name: String = "", val lockedFromId: String? = null, val opensAt: String? = null, val opensDay: Int? = null, val togetherFromId: String? = null)
+@Serializable internal data class TitleDto(val id: String, val name: String = "", val lockedFromId: String? = null, val opensAt: String? = null, val opensDay: Int? = null, val togetherFromId: String? = null, val reach: List<ReachDto> = emptyList())
+
+@Serializable internal data class ReachDto(val name: String = "", val parts: Int = 0, val of: Int = 0)
 @Serializable internal data class TitleRefDto(val id: String, val name: String = "")
 @Serializable internal data class GroupMarkDto(val itemIds: List<String>, val watched: Boolean, val groupIds: List<String>? = null)
 @Serializable internal data class GroupMarkOutDto(val groupIds: List<String> = emptyList())
@@ -191,7 +193,7 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
         ownRecord = if (record) mine.orEmpty().map(::normalizeId).toSet() else null,
         party = party?.toModel(),
         titleList = titles.orEmpty().map {
-            dev.nitrate.core.partners.GroupTitle(normalizeId(it.id), it.name, it.lockedFromId?.let(::normalizeId), it.opensAt?.let(::ms), it.opensDay, it.togetherFromId?.let(::normalizeId))
+            dev.nitrate.core.partners.GroupTitle(normalizeId(it.id), it.name, it.lockedFromId?.let(::normalizeId), it.opensAt?.let(::ms), it.opensDay, it.togetherFromId?.let(::normalizeId), it.reach.map { r -> dev.nitrate.core.partners.MemberReach(r.name, r.parts, r.of) })
         },
     )
 
