@@ -302,139 +302,24 @@ jobs:
             if [ "$logic_added" = "added" ]; then gh release upload "$repo_tag" repo/logic.json --clobber; fi
           fi
 
-  # Whether the iPhone/iPad app needs building at all (on Ubuntu, so no Mac is waited for): only
-  # when something it's built from changed since the last release that has an .ipa. Otherwise
-  # ios-publish reuses that .ipa under this release's name.
-  ios-check:
+  # The iPhone/iPad app is its own workflow (ios-release.yml): its Mac build takes 30+ minutes, and
+  # here it held up every later release (releases queue one at a time). Started once the release
+  # exists; it adds the .ipa when ready, and a newer release cancels an older iOS build.
+  ios-start:
+    needs: release
     runs-on: ubuntu-latest
-    outputs:
-      build: ${{ steps.check.outputs.build }}
-      from: ${{ steps.check.outputs.from }}
-      asset: ${{ steps.check.outputs.asset }}
+    permissions:
+      actions: write
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Changed since the last iOS build?
-        id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # The newest earlier release with an .ipa (this run's own release may not exist yet).
-          from=""; asset=""
-          for tag in $(gh release list --limit 40 --json tagName --jq '.[].tagName'); do
-            [ "$tag" = "companion-repo" ] && continue
-            name=$(gh release view "$tag" --json assets --jq '[.assets[].name | select(endswith(".ipa"))][0] // ""')
-            if [ -n "$name" ] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then from="$tag"; asset="$name"; break; fi
-          done
-          build=true
-          if [ -n "$from" ]; then
-            # What the iOS app is built from: shared Kotlin (not Android- or desktop-only code), the
-            # iOS module and Swift host, the build setup and this workflow.
-            changed=$(git diff --name-only "$from" HEAD -- core app-core mobile-ui ios-app iosApp gradle \
-              build.gradle.kts settings.gradle.kts gradle.properties .github/workflows/release.yml \
-              | grep -Ev '/src/(androidMain|desktopMain|jvmTest|androidUnitTest|desktopTest|test)/|^core/src/jvmMain/' || true)
-            if [ -z "$changed" ]; then build=false; echo "iOS unchanged since $from: reusing $asset"; else echo "iOS changed since $from:"; echo "$changed" | head -20; fi
-          fi
-          { echo "build=$build"; echo "from=$from"; echo "asset=$asset"; } >> "$GITHUB_OUTPUT"
-
-  # The iPhone/iPad app: built on macOS at the same time as the Android apps (it only needs the
-  # release's name, worked out the same way), then added to the release by ios-publish as an
-  # unsigned .ipa (each person signs it when sideloading). Only when ios-check says it changed.
-  ios:
-    needs: ios-check
-    if: needs.ios-check.outputs.build == 'true'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
-      # Kotlin/Native's compiler, LLVM and per-library caches: downloaded and built once, kept
-      # between runs until the Kotlin or library versions change.
-      - name: Kotlin/Native cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
-          restore-keys: konan-${{ runner.os }}-
-      - name: Version
-        id: version
-        env:
-          # The same rule as the release job: a tag makes a release only with the release key.
-          HAS_KEY: ${{ secrets.NITRATE_KEYSTORE_BASE64 != '' && secrets.NITRATE_KEYSTORE_PASSWORD != '' && secrets.NITRATE_KEY_ALIAS != '' }}
-        run: |
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$HAS_KEY" = "true" ]; then
-            name="${GITHUB_REF_NAME#v}"
-          else
-            name="0.0.0-dev.$GITHUB_RUN_NUMBER"
-          fi
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-      - name: Xcode
-        run: |
-          xcodebuild -version
-          brew install xcodegen
-      - name: Kotlin framework
-        run: ./gradlew :ios-app:linkReleaseFrameworkIosArm64 --console=plain
-      - name: App
-        working-directory: iosApp
-        env:
-          NAME: ${{ steps.version.outputs.name }}
-        run: |
-          xcodegen generate
-          xcodebuild -project Nitrate.xcodeproj -scheme Nitrate -configuration Release \
-            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
-            MARKETING_VERSION="$NAME" CURRENT_PROJECT_VERSION="$((1000 + GITHUB_RUN_NUMBER))" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-      - name: Package
-        env:
-          NAME: ${{ steps.version.outputs.name }}
-        run: |
-          mkdir -p dist/Payload
-          cp -R iosApp/build/Build/Products/Release-iphoneos/Nitrate.app dist/Payload/
-          (cd dist && zip -qr "nitrate-ios-$NAME.ipa" Payload && rm -rf Payload)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ios-ipa
-          path: dist/*.ipa
-          retention-days: 3
-
-  # Adds the iPhone/iPad app to the release as soon as it's there: the new build, or (iOS
-  # unchanged) the last one under this release's name. Checksums: the checksums job.
-  ios-publish:
-    needs: [release, ios-check, ios]
-    if: always() && needs.release.result == 'success' && needs.ios-check.result == 'success' && (needs.ios.result == 'success' || needs.ios-check.outputs.build != 'true')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        if: needs.ios-check.outputs.build == 'true'
-        with:
-          name: ios-ipa
-          path: dist
-      - name: Publish
+      - name: Start the iOS build
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.release.outputs.tag }}
           NAME: ${{ needs.release.outputs.name }}
-          BUILT: ${{ needs.ios-check.outputs.build }}
-          FROM: ${{ needs.ios-check.outputs.from }}
-          ASSET: ${{ needs.ios-check.outputs.asset }}
         run: |
-          if [ "$BUILT" != "true" ]; then
-            mkdir -p dist
-            gh release download "$FROM" --pattern "$ASSET" --dir prev
-            cp "prev/$ASSET" "dist/nitrate-ios-$NAME.ipa"
-            # Say so in the notes: the app inside is the same as in the earlier release.
-            notes=$(gh release view "$TAG" --json body --jq .body)
-            gh release edit "$TAG" --notes "$notes
-
-          iPhone/iPad: nothing it's built from changed since $FROM, so this is that build ($ASSET) under this release's name."
-          fi
-          test -f "dist/nitrate-ios-$NAME.ipa"
-          gh release upload "$TAG" "dist/nitrate-ios-$NAME.ipa" --clobber
+          gh workflow run ios-release.yml --ref "$GITHUB_REF_NAME" \
+            -f tag="$TAG" -f name="$NAME" -f number="$GITHUB_RUN_NUMBER" -f sha="$GITHUB_SHA" -f release_run="$GITHUB_RUN_ID"
 
   # The Windows app: libmpv built LGPL-only in MSYS2 (cached until the script changes), then the
   # MSI installer and a portable ZIP with their own Java runtime, built at the same time as the
@@ -528,9 +413,10 @@ jobs:
           gh release upload "$TAG" "dist/nitrate-desktop-$NAME.msi" "dist/nitrate-desktop-$NAME.zip" --clobber
 
   # SHA256SUMS for everything the release ended up with, written once at the end (the apps' updaters
-  # check downloads against it), so the publish jobs never rewrite it at the same time.
+  # check downloads against it), so the publish jobs never rewrite it at the same time. The iOS
+  # workflow writes it again after adding the .ipa, once this run has finished.
   checksums:
-    needs: [release, ios-publish, windows-publish]
+    needs: [release, windows-publish]
     if: always() && needs.release.result == 'success'
     runs-on: ubuntu-latest
     steps:

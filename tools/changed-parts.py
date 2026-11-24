@@ -12,7 +12,7 @@ import sys
 
 BOTH = {".github/workflows/build.yml", ".github/workflows/release.yml", "tools/changed-parts.py"}
 COMPANION_FILES = {"tools/companion-manifest.py"}
-NOT_ANDROID_PREFIXES = ("companion/", "iosApp/", ".github/workflows/ios.yml", ".github/workflows/effect-clips.yml")
+NOT_ANDROID_PREFIXES = ("companion/", "iosApp/", ".github/workflows/ios.yml", ".github/workflows/ios-release.yml", ".github/workflows/effect-clips.yml")
 
 
 def parts(files):
