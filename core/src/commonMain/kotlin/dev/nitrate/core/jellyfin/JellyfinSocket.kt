@@ -35,12 +35,15 @@ import kotlin.time.Instant
 internal fun JellyfinClient.socketEvents(active: () -> Boolean): Flow<ServerEvent> = flow {
     var backoff = 2_000L
     while (active()) {
+        // Back-off starts over only once a connection has held a while: a server that accepts and
+        // drops at once (it once did after a plugin broke its sessions) gets ever longer waits, not a retry every 2 s.
+        var connectedAt: kotlin.time.TimeMark? = null
         val base = serverUrl ?: break
         val wsUrl = base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://").trimEnd('/') + "/socket"
         try {
             http.webSocket(wsUrl, request = { auth() }) {
                 emit(ServerEvent.Connected)
-                backoff = 2_000L
+                connectedAt = kotlin.time.TimeSource.Monotonic.markNow()
                 var keepAlive: kotlinx.coroutines.Job? = null
                 try {
                     for (frame in incoming) {
@@ -73,10 +76,14 @@ internal fun JellyfinClient.socketEvents(active: () -> Boolean): Flow<ServerEven
         }
         emit(ServerEvent.Disconnected)
         if (!active()) break
+        if (connectedAt?.let { it.elapsedNow() >= HELD_FOR } == true) backoff = 2_000L
         delay(backoff)
         backoff = (backoff * 2).coerceAtMost(60_000L)
     }
 }
+
+/** How long a connection must hold before reconnecting starts quickly again. */
+private val HELD_FOR = kotlin.time.Duration.parse("30s")
 
 @OptIn(ExperimentalTime::class)
 internal fun parseEvent(type: String?, data: kotlinx.serialization.json.JsonElement?): ServerEvent? {

@@ -148,6 +148,10 @@ public static class LogicServices
     /// <summary>
     /// Passes through every server service the logic's classes take that the logic doesn't make
     /// itself (Jellyfin's managers, paths, the encoder...), looked up in the server's container.
+    /// Each goes in as the server's own instance, never through a factory: a container disposes
+    /// what its factories made when it's disposed, so the logic's container (disposed on every
+    /// swap) used to dispose Jellyfin's SessionManager, SyncPlay and the rest, breaking sign-in,
+    /// live connections and every request needing a session until the server restarted.
     /// </summary>
     public static void ForwardServerServices(IServiceCollection services, IServiceProvider host, IEnumerable<Type> alsoBuilt)
     {
@@ -175,7 +179,12 @@ public static class LogicServices
                 continue;
             }
 
-            services.AddSingleton(type, _ => host.GetService(type) ?? throw new InvalidOperationException($"The server has no {type}."));
+            // The server's instance as it is (not owned here, so never disposed with the logic);
+            // one the server doesn't have stays unregistered and fails only where it's asked for.
+            if (host.GetService(type) is { } instance)
+            {
+                services.AddSingleton(type, instance);
+            }
         }
     }
 

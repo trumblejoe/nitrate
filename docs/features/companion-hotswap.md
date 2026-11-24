@@ -26,7 +26,11 @@ the plugin is two assemblies:
   configuration class, `Plugin`), and raise `Oldest` when an old logic would break on the new shell.
 - `ICompanionLogicFactory.Create(LogicContext)` → `ICompanionLogic`. `LogicContext` carries the
   server's service provider (the logic builds its own `ServiceCollection` and forwards the
-  Jellyfin services it needs, so no logic type ever enters the server's container or caches), the
+  Jellyfin services it needs, so no logic type ever enters the server's container or caches;
+  `LogicServices.ForwardServerServices` registers each as the server's instance, never through a
+  factory: a container disposes what its factories made, so disposing the old logic on a swap
+  once disposed Jellyfin's SessionManager, SyncPlay and the rest (sign-in, live connections and
+  every session request failed until a restart; `ForwardedServicesTests`), the
   logger factory, the package version, the handed-over state and a `Stopping` token.
 - `ICompanionLogic`: `StartAsync`/`StopAsync`/`DisposeAsync`; `ExportState()`; `Match(method, path)`
   → `RouteMatch` (found, its auth: anonymous or the `[Authorize]` policies; not found; wrong method)
