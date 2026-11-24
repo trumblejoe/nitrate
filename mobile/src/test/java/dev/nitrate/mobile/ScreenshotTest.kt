@@ -507,6 +507,14 @@ class ScreenshotTest {
         compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction()).onFirst().performScrollToNode(androidx.compose.ui.test.hasContentDescription("Watched with Will"))
     }
 
+    /** The server refuses Watched: the page says why, and the tick stays as the server has it (never a mark that didn't happen). */
+    @Test fun watchedRefusedSaysWhy() {
+        shoot("phone-watched-refused", setup = { c -> (c.server as dev.nitrate.testing.FakeServer).setPlayedRefusal = "the server said 403 Forbidden" }) { DetailsScreen(it, "m2", null) }
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Watched")).onFirst().performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Couldn't mark it watched: the server said 403 Forbidden").onFirst().assertExists()
+    }
+
     @Test fun episode() {
         shoot("phone-episode") { DetailsScreen(it, "s1e2", null) }
         compose.onAllNodesWithText("In this season").onFirst().assertExists()

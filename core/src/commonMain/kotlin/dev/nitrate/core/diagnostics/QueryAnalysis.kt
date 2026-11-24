@@ -44,11 +44,13 @@ data class QueryGroup(
     val serverMedianMs: Long?,
     val origins: List<String>,
     val hints: List<String>,
+    /** Why the failed ones failed: "403 ×18", "no answer (timed out) ×1". */
+    val failures: List<String> = emptyList(),
 ) {
     /** "12× · 3 fetched, 9 shared · 840 ms in all, median 210 ms, max 400 ms · server 180 ms". */
     val counts: String get() = listOfNotNull(
         "$count×",
-        "$fetched fetched, $shared shared" + if (failed > 0) ", $failed failed" else "",
+        "$fetched fetched, $shared shared" + if (failed > 0) ", $failed failed" + (if (failures.isEmpty()) "" else " (${failures.joinToString(", ")})") else "",
         if (fetched > 0) "$totalMs ms in all, median $medianMs ms, max $maxMs ms" else "no time waited",
         serverMedianMs?.let { "server $it ms" },
         if (bytes > 0) QuerySummary.size(bytes) else null,
@@ -97,6 +99,7 @@ data class QuerySummary(
                     origins = list.groupingBy { it.origin }.eachCount().entries.sortedByDescending { it.value }.map { it.key },
                     hints = (list.flatMap { it.hints }.distinct() +
                         listOfNotNull(if (repeats >= 2) "Fetched again $repeats times within a minute: these could share one answer" else null)),
+                    failures = failures(list.filter { it.outcome == QueryOutcome.FAILED }),
                 )
             }.sortedWith(compareByDescending<QueryGroup> { it.totalMs }.thenByDescending { it.count })
             val origins = records.groupBy { it.origin }.map { (origin, list) ->
@@ -122,6 +125,11 @@ data class QuerySummary(
             )
         }
 
+        /** "403 ×18", "no answer (timed out) ×1": what the server said (its status), else why nothing came back. */
+        private fun failures(failed: List<QueryRecord>): List<String> =
+            failed.groupingBy { r -> r.status?.toString() ?: "no answer" + (r.error?.let { " ($it)" } ?: "") }.eachCount()
+                .entries.sortedByDescending { it.value }.map { (why, n) -> "$why ×$n" }
+
         /** How many fetches came within [REPEAT_WINDOW_MS] of the one before (same shape). */
         private fun repeats(fetched: List<QueryRecord>): Int =
             fetched.sortedBy { it.atMs }.zipWithNext().count { (a, b) -> b.atMs - a.atMs in 0 until REPEAT_WINDOW_MS }
@@ -146,6 +154,7 @@ data class QuerySummary(
             appendLine("- ${g.shape}")
             append("    ${g.count}× (${g.fetched} fetched, ${g.shared} shared")
             if (g.failed > 0) append(", ${g.failed} failed")
+            if (g.failures.isNotEmpty()) append(": ${g.failures.joinToString(", ")}")
             append("), ${g.totalMs} ms total, median ${g.medianMs} ms, max ${g.maxMs} ms")
             g.serverMedianMs?.let { append(", server median $it ms") }
             if (g.bytes > 0) append(", ${size(g.bytes)}")

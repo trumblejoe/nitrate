@@ -163,7 +163,7 @@ class JellyfinClient(
             val params = request.url.parameters.build().entries().associate { it.key to it.value.joinToString(",") }
             // Long polls wait on purpose: not costs.
             val counted = params.keys.none { it.equals("waitMs", ignoreCase = true) }
-            fun record(outcome: dev.nitrate.core.diagnostics.QueryOutcome, status: Int?, bytes: Long?) {
+            fun record(outcome: dev.nitrate.core.diagnostics.QueryOutcome, status: Int?, bytes: Long?, error: String? = null) {
                 if (!counted) return
                 val ms = started.elapsedNow().inWholeMilliseconds
                 val endpoint = dev.nitrate.core.diagnostics.QueryLog.endpointOf(path)
@@ -173,6 +173,7 @@ class JellyfinClient(
                         shape = (if (method == "GET") "" else "$method ") + dev.nitrate.core.diagnostics.QueryLog.shapeOf(endpoint, params),
                         origin = origin, ms = ms, outcome = outcome, status = status, bytes = bytes,
                         hints = dev.nitrate.core.diagnostics.QueryHints.of(endpoint, params, ms, bytes),
+                        error = error,
                     ),
                 )
             }
@@ -181,7 +182,9 @@ class JellyfinClient(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                record(dev.nitrate.core.diagnostics.QueryOutcome.FAILED, null, null)
+                // Refused: the server's status (the response check throws before it's returned here); else why nothing came back.
+                val refused = (e as? io.ktor.client.plugins.ResponseException)?.response?.status?.value
+                record(dev.nitrate.core.diagnostics.QueryOutcome.FAILED, refused, null, if (refused == null) (e::class.simpleName ?: "error") + (e.message?.let { ": " + it.take(80) } ?: "") else null)
                 throw e
             }
             val status = call.response.status.value
@@ -1231,12 +1234,22 @@ class JellyfinClient(
         ),
     ).filter { it.user.lastPlayedMs != null }
 
-    override suspend fun setPlayed(itemId: String, played: Boolean) {
+    override suspend fun setPlayed(itemId: String, played: Boolean) = saying {
         if (played) post<Unit>("UserPlayedItems", itemId) else http.delete(url("UserPlayedItems", itemId)) { auth() }
     }
 
-    override suspend fun setFavorite(itemId: String, favorite: Boolean) {
+    override suspend fun setFavorite(itemId: String, favorite: Boolean) = saying {
         if (favorite) post<Unit>("UserFavoriteItems", itemId) else http.delete(url("UserFavoriteItems", itemId)) { auth() }
+    }
+
+    /** [block], a refusal said in words: "the server said 403 Forbidden: <its reason>" (for a page to show). */
+    private suspend fun saying(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: io.ktor.client.plugins.ResponseException) {
+            val why = runCatching { e.response.bodyAsText().trim().trim('"') }.getOrNull()?.takeIf { it.isNotBlank() && it.length < 300 }
+            throw IllegalStateException("the server said ${e.response.status.value} ${e.response.status.description}" + (why?.let { ": $it" } ?: ""), e)
+        }
     }
 
     // ---- Images (public on Jellyfin; tags make them cache-safe) ----

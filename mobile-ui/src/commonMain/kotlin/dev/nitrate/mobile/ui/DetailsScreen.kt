@@ -219,6 +219,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         RoundAction(Icons.Default.MoreVert, "More", onClick = { more = true })
                         if (more) DetailsMoreSheet(actions, item, isAdmin = account?.isAdmin == true, music = music) { more = false }
                     }
+                    // A change the server refused, and why (the marks stay as the server has them).
+                    state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                     item.tagline?.takeIf { prefs.tagline }?.let { Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White) }
                     // A season's own description when it has one, else the show's.
                     (season?.overview ?: item.overview)?.takeIf { prefs.overview }?.let { overview ->

@@ -38,6 +38,8 @@ data class QueryRecord(
     val bytes: Long? = null,
     val serverMs: Long? = null,
     val hints: List<String> = emptyList(),
+    /** Why it failed when no answer came at all (the error, briefly); a refused request has its [status] instead. */
+    val error: String? = null,
 )
 
 /**

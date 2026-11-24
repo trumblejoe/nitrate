@@ -225,6 +225,9 @@ internal fun Header(
             }
             // The focused round button's name, in room kept for it so nothing moves.
             dev.nitrate.tv.ui.components.ActionHint(hint)
+            // A change the server refused, and why (the marks stay as the server has them).
+            val actionError = vm.state.collectAsState().value.actionError
+            actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             // What Play starts with: sound, subtitles and which version, in one quiet line.
             StartsWithLine(item, playTarget, trackSetup, pickTrack)
             if (moreOpen) MorePanel(item, repository, playTarget, canCollect, onManage, onBrowse, checkPlayback, applyPlaybackFix, onPlayFrom, onPlay = { onPlay(it, false) }, onOpenShow = { id -> onOpen(MediaItem(id, "", ItemKind.SERIES)) }) { moreOpen = false }

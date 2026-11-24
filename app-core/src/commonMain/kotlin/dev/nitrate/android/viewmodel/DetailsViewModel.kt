@@ -32,6 +32,8 @@ data class DetailsState(
     val issues: List<MediaItem> = emptyList(),
     /** A film's collection (a saga: films only, in release order, this one included); empty when it's in none. */
     val collection: List<MediaItem> = emptyList(),
+    /** Why the last change didn't happen ("Couldn't mark it watched: …"); the marks stay as the server has them. Not kept. */
+    @kotlinx.serialization.Transient val actionError: String? = null,
 )
 
 class DetailsViewModel(
@@ -173,19 +175,27 @@ class DetailsViewModel(
         cache?.write(account, seasonKey(season.id), episodes, kotlinx.serialization.builtins.ListSerializer(MediaItem.serializer()))
     }
 
-    fun togglePlayed() = mutate { item ->
+    fun togglePlayed() = mutate(if (_state.value.item?.user?.played == true) "Couldn't mark it unwatched" else "Couldn't mark it watched") { item ->
         val played = !item.user.played
         repository.setPlayed(item.id, played)
     }
 
-    fun toggleFavorite() = mutate { item ->
+    fun toggleFavorite() = mutate(if (_state.value.item?.user?.isFavorite == true) "Couldn't take it out of favourites" else "Couldn't add it to favourites") { item ->
         repository.setFavorite(item.id, item.user.isFavorite.not())
     }
 
-    private fun mutate(action: suspend (MediaItem) -> Unit) {
+    /**
+     * Asks the server for a change, then shows what the server has: nothing on screen changes
+     * until it has (never a mark that didn't happen). A refusal or no answer says why ([failed]: …).
+     */
+    private fun mutate(failed: String, action: suspend (MediaItem) -> Unit) {
         val item = _state.value.item ?: return
+        _state.update { it.copy(actionError = null) }
         viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
-            runCatching { action(item) }
+            runCatching { action(item) }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _state.update { it.copy(actionError = "$failed: " + (e.message ?: "no answer from the server")) }
+            }
             refresh()
         }
     }

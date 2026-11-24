@@ -165,7 +165,9 @@ class FakeServer : MediaServer {
     /** "Rainy day" is a video playlist in watch order: a film, a few episodes, another film, then the rest of the show. */
     override suspend fun playlistItems(playlistId: String) =
         if (playlistId == "p1") listOf(films[0], episode(1, 1, true), episode(1, 2, true), films[1], episode(1, 3, false), episode(2, 1, false)) else films
-    override suspend fun setPlayed(itemId: String, played: Boolean) = Unit
+    /** What marking watched answers with (null: done); a test can make the server refuse. */
+    var setPlayedRefusal: String? = null
+    override suspend fun setPlayed(itemId: String, played: Boolean) { setPlayedRefusal?.let { error(it) } }
     override suspend fun setFavorite(itemId: String, favorite: Boolean) = Unit
     /** Generated abstract artwork (tools/generate-sample-art.py) as local files. */
     private fun art(name: String): String? = javaClass.getResource("/art/$name.jpg")?.let { java.io.File(it.toURI()).path }
