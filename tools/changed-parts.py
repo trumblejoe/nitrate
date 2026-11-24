@@ -6,13 +6,18 @@
 companion: the server plugin (companion/, its packaging script).
 android:   anything else that the Gradle build reads; documentation, the Swift iOS host (built
            only on macOS by ios.yml) and the plugin are left out.
-A change to the build or release workflows (or this script) counts for both, so they're tried.
+A change to the Build workflow (or this script) counts for both, since they decide what's tested.
+The release workflows (release.yml, ios-release.yml) count for neither: Build never runs them, so
+editing them can't break a test (Release reuses Build's earlier passing result for each part).
 """
 import sys
 
-BOTH = {".github/workflows/build.yml", ".github/workflows/release.yml", "tools/changed-parts.py"}
+BOTH = {".github/workflows/build.yml", "tools/changed-parts.py"}
 COMPANION_FILES = {"tools/companion-manifest.py"}
-NOT_ANDROID_PREFIXES = ("companion/", "iosApp/", ".github/workflows/ios.yml", ".github/workflows/ios-release.yml", ".github/workflows/effect-clips.yml")
+NOT_ANDROID_PREFIXES = (
+    "companion/", "iosApp/", ".github/workflows/ios.yml", ".github/workflows/release.yml", ".github/workflows/ios-release.yml",
+    ".github/workflows/effect-clips.yml",
+)
 
 
 def parts(files):
