@@ -1,231 +1,177 @@
 package dev.nitrate.mobile.ui
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import dev.nitrate.core.syncplay.GroupState
-import dev.nitrate.core.syncplay.SyncPlayController
-import dev.nitrate.core.syncplay.SyncPlayGroup
+import androidx.compose.ui.unit.sp
+import dev.nitrate.android.AppContainer
+import dev.nitrate.android.partners.SessionPlayback
+import dev.nitrate.core.partners.SessionChoice
+import dev.nitrate.core.partners.SessionNotice
+import dev.nitrate.core.partners.SessionPrompt
 import kotlinx.coroutines.launch
 
-fun GroupState.label() = when (this) {
-    GroupState.IDLE -> "Nothing playing"
-    GroupState.WAITING -> "Waiting for everyone"
-    GroupState.PAUSED -> "Paused"
-    GroupState.PLAYING -> "Playing"
-}
-
 /**
- * Watch party (SyncPlay): start a group or join one, see who's in it, leave. Whatever anyone
- * in the group plays, pauses or seeks happens for everyone.
+ * "Tommy started the session · S1:E4 of The Bear": someone in a group started a Group Watch
+ * Session. Join (late: "Join at 12:30", "Start from the beginning") opens the player, which waits
+ * for the countdown; Not now. Waits while the player is open ([inPlayer]).
  */
 @Composable
-fun WatchTogetherPanel(actions: AppActions, defaultName: String) {
-    val syncPlay = actions.container.syncPlay
-    val group by syncPlay.group.collectAsState()
-    val companion by actions.container.companion.collectAsState()
-    val account by actions.container.account.collectAsState()
-    val current = group
-    // Chat needs the Nitrate Companion plugin on the server.
-    var chatting by remember { mutableStateOf<SyncPlayGroup?>(null) }
-    val canChat = companion?.chat == true
-    var inviting by remember { mutableStateOf(false) }
-    if (current != null) InGroup(syncPlay, current, onChat = { chatting = current }.takeIf { canChat },
-        onInvite = { inviting = true }.takeIf { actions.container.invitesAvailable() })
-    else {
-        // A phone beside the TV: chats for this account's devices in the group, without playing.
-        val alongside: (SyncPlayGroup) -> Unit = { g ->
-            actions.container.chatAlongside(g.id)
-            chatting = g
-        }
-        FindGroup(syncPlay, defaultName, myName = account?.name, onChatAlongside = alongside.takeIf { canChat })
-    }
-    if (inviting && current != null) InvitePeopleDialog(actions, current) { inviting = false }
-    chatting?.let { g ->
-        ChatSheet(actions.container.chat, "Chat · ${g.name}", positionMs = { null }) {
-            if (current == null) actions.container.chatAlongside(null)
-            chatting = null
-        }
-    }
-}
-
-@Composable
-private fun InGroup(syncPlay: SyncPlayController, group: SyncPlayGroup, onChat: (() -> Unit)?, onInvite: (() -> Unit)? = null) {
-    val scope = rememberCoroutineScope()
-    val queue by syncPlay.queue.collectAsState()
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(group.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(
-            group.state.label() + if (queue?.itemIds?.size?.let { it > 1 } == true) " · ${queue!!.index + 1} of ${queue!!.itemIds.size}" else "",
-            color = accentColor(),
-        )
-        Text("In the party", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        group.participants.groupingBy { it }.eachCount().forEach { (name, count) ->
-            Text(if (count > 1) "$name ($count devices)" else name, style = MaterialTheme.typography.bodyLarge)
-        }
-        Text(
-            "Play anything and it plays for everyone. Pausing or seeking on any device does it for all; if someone's buffering, the others wait.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            onChat?.let { Button(onClick = it) { Text("Chat") } }
-            onInvite?.let { OutlinedButton(onClick = it) { Text("Invite people") } }
-            OutlinedButton(onClick = { scope.launch { syncPlay.leave() } }) { Text("Leave the party") }
-        }
-    }
-}
-
-@Composable
-private fun FindGroup(syncPlay: SyncPlayController, defaultName: String, myName: String?, onChatAlongside: ((SyncPlayGroup) -> Unit)?) {
-    val scope = rememberCoroutineScope()
-    var refresh by remember { mutableIntStateOf(0) }
-    var name by remember { mutableStateOf(defaultName) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    val groups by produceState<Result<List<SyncPlayGroup>>?>(null, refresh) { value = runCatching { syncPlay.groups() } }
-    fun act(block: suspend () -> Unit) {
-        busy = true
-        error = null
-        scope.launch {
-            runCatching { block() }.onFailure { error = it.message ?: "Couldn't reach the server" }
-            busy = false
-        }
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            "Watch in step with friends and family on other devices, wherever they are.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(name, { name = it }, label = { Text("New session") }, singleLine = true, modifier = Modifier.weight(1f))
-            Button(onClick = { act { syncPlay.create(name.ifBlank { defaultName }) } }, enabled = !busy) { Text("Start") }
-        }
-        Text("Join someone watching now", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        val list = groups?.getOrNull()
-        when {
-            groups == null -> Text("Looking for watch parties…")
-            groups!!.isFailure -> Text(
-                "Couldn't list watch parties. Your account may not be allowed to join them (ask your server admin).",
-                color = MaterialTheme.colorScheme.error,
-            )
-            list.isNullOrEmpty() -> Text("No watch parties right now. Start one, then join it from the other devices.")
-            else -> list.forEach { g ->
-                // Already watching in it on another device (the TV): chat from here without playing.
-                val mine = myName != null && g.participants.any { it.equals(myName, ignoreCase = true) }
-                ListItem(
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { act { syncPlay.join(g.id) } },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    headlineContent = { Text(g.name) },
-                    supportingContent = { Text("${g.participants.distinct().joinToString()} · ${g.state.label()}") },
-                    trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (mine && onChatAlongside != null) TextButton(onClick = { onChatAlongside(g) }) { Text("Chat") }
-                            Text("Join", color = accentColor())
-                        }
-                    },
-                )
-            }
-        }
-        TextButton(onClick = { refresh++ }) { Text("Refresh") }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    }
-}
-
-@Composable
-fun WatchTogetherDialog(actions: AppActions, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Watch now together") },
-        text = { Column(Modifier.fillMaxWidth()) { WatchTogetherPanel(actions, defaultName = defaultGroupName(actions)) } },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-    )
-}
-
-@Composable
-fun defaultGroupName(actions: AppActions): String {
-    val account by actions.container.account.collectAsState()
-    return account?.name?.let { "$it's group" } ?: "Movie night"
-}
-
-/**
- * Invites people (the server's people list: private accounts are never in it) to this group. They
- * get a notification, or a prompt in the app, and joining puts them in the group.
- */
-@Composable
-fun InvitePeopleDialog(actions: AppActions, group: SyncPlayGroup, onDismiss: () -> Unit) {
+fun SessionJoinPrompt(actions: AppActions, inPlayer: Boolean) {
     val container = actions.container
+    val asking by container.groupSessions.asking.collectAsState()
     val scope = rememberCoroutineScope()
-    val me = container.server.userId
-    val people by produceState<List<dev.nitrate.core.writing.UserRef>?>(null) {
-        value = runCatching { container.server.partnerPeople() }.getOrDefault(emptyList()).filter { it.id != me }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val s = asking ?: return
+    if (inPlayer) return
+    val prompt = SessionPrompt.of(s, container.groupSessions.serverNow(), LocalDisplayPrefs.current.easyMode) ?: return
+    SessionJoinDialog(prompt, problem, onDismiss = { container.groupSessions.dismiss() }) { c ->
+        scope.launch { problem = container.groupSessions.choose(s, c) }
     }
-    var chosen by remember { mutableStateOf(emptySet<String>()) }
-    var sent by remember { mutableStateOf(false) }
-    val queue by container.syncPlay.queue.collectAsState()
+}
+
+/** The join prompt: who started it and what, then Join, the beginning for a late joiner, Not now. */
+@Composable
+fun SessionJoinDialog(prompt: SessionPrompt, problem: String? = null, onDismiss: () -> Unit, onChoose: (SessionChoice) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (sent) "Invites sent" else "Invite to ${group.name}") },
+        title = { Text(prompt.title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                when {
-                    sent -> Text("They'll see it on their phone or when they open Nitrate.")
-                    people == null -> Text("Loading…")
-                    people!!.isEmpty() -> Text("Nobody else to invite on this server.")
-                    else -> people!!.forEach { p ->
-                        Row(Modifier.fillMaxWidth().clickable { chosen = if (p.id in chosen) chosen - p.id else chosen + p.id }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            androidx.compose.material3.Checkbox(checked = p.id in chosen, onCheckedChange = null)
-                            Text(p.name, Modifier.padding(start = 8.dp))
-                        }
-                    }
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(prompt.text)
+                problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
-            if (sent) TextButton(onClick = onDismiss) { Text("Done") }
-            else TextButton(enabled = chosen.isNotEmpty(), onClick = {
-                scope.launch {
-                    val itemId = queue?.let { q -> q.itemIds.getOrNull(q.index) }
-                    val itemName = itemId?.let { runCatching { container.server.getItem(it).displayTitle }.getOrNull() }
-                    runCatching { container.server.inviteToWatch(group.id, chosen.toList(), itemId, itemName) }
-                    sent = true
-                }
-            }) { Text("Invite") }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                prompt.choices.reversed().forEach { c -> TextButton(onClick = { onChoose(c) }) { Text(c.label) } }
+            }
         },
-        dismissButton = { if (!sent) TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 
 /**
- * A watch-together invite waiting (checked every 30 s while the app is open): Join puts this
- * device in the group, Not now turns it down.
+ * This player's part in the device's Group Watch Session, while it plays the session's part:
+ * held at the start until the countdown ends, reporting where it is, the others' pauses and jumps
+ * offered as notices. Null outside a session. Leaving the player (or moving on) leaves the session.
+ */
+@Composable
+fun rememberSessionPlayback(
+    container: AppContainer,
+    itemId: String?,
+    enabled: Boolean,
+    position: () -> Long,
+    paused: () -> Boolean,
+    play: () -> Unit,
+    pause: () -> Unit,
+    seekTo: (Long) -> Unit,
+): SessionPlayback? {
+    if (!enabled || itemId == null) return null
+    val current by container.groupSessions.current.collectAsState()
+    val inIt = current?.itemId == itemId
+    val scope = rememberCoroutineScope()
+    val playback = remember(itemId, inIt) {
+        if (!inIt) null else SessionPlayback(container.groupSessions, scope, itemId, { dev.nitrate.android.nowMs() }, position, paused, play, pause, seekTo)
+    }
+    DisposableEffect(playback) {
+        playback?.begin()
+        onDispose { playback?.close() }
+    }
+    return playback
+}
+
+/**
+ * The session over the video: the countdown in the middle ("Starting together in 3", or while it
+ * gathers "Waiting for Suzy to join" with the starter's Start now), and the others' news at the
+ * top ("Sam paused · Pause too", "12 s behind Sam · Catch up") with its action as a button.
+ */
+@Composable
+fun SessionOverlay(playback: SessionPlayback?, container: AppContainer, modifier: Modifier = Modifier) {
+    val p = playback ?: return
+    val notice by p.notice.collectAsState()
+    val countdown by p.countdown.collectAsState()
+    val waiting by p.waiting.collectAsState()
+    val session by p.session.collectAsState()
+    val groups by container.partners.collectAsState()
+    androidx.compose.foundation.layout.Box(modifier) {
+        SessionCountdown(
+            countdown,
+            if (waiting) session?.let { s -> SessionPrompt.waiting(s, groups?.groups?.firstOrNull { it.id == s.groupId }) } else null,
+            onStartNow = if (waiting && session?.startedByMe == true) p::startNow else null,
+            modifier = Modifier.align(Alignment.Center),
+        )
+        SessionNoticeCard(notice, onAct = { p.act() }, onDismiss = { p.dismiss() }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp, start = 16.dp, end = 16.dp))
+    }
+}
+
+/** "Starting together in 3", or "Waiting for Suzy to join" (with Start now for whoever started it). */
+@Composable
+fun SessionCountdown(seconds: Int?, waiting: String?, onStartNow: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+    if (seconds == null && waiting == null) return
+    Column(
+        modifier.widthIn(max = 420.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xE6101216)).padding(horizontal = 28.dp, vertical = 20.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("Group Watch Session", style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.8f))
+        if (seconds != null) {
+            Text("Starting together in", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text("$seconds", fontSize = 64.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        } else {
+            Text(waiting!!, style = MaterialTheme.typography.titleMedium, color = Color.White, textAlign = TextAlign.Center)
+            Text("Everyone who joins in the first minute starts together.", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center)
+            onStartNow?.let { TextButton(onClick = it) { Text("Start now") } }
+        }
+    }
+}
+
+/** What the others did, with its one action ("Pause too", "Jump too", "Catch up"); never done by itself. */
+@Composable
+fun SessionNoticeCard(notice: SessionNotice?, onAct: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val n = notice ?: return
+    Row(
+        modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xE6101216)).padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(n.text, style = MaterialTheme.typography.bodyMedium, color = Color.White, modifier = Modifier.padding(vertical = 10.dp))
+        n.action?.let { a -> TextButton(onClick = onAct) { Text(a) } }
+        TextButton(onClick = onDismiss) { Text(if (n.action == null) "OK" else "Not now", color = Color.White.copy(alpha = 0.8f)) }
+    }
+}
+
+/**
+ * A watch-together invite from an older Nitrate app (checked every 30 s while the app is open),
+ * kept for compatibility: Join puts this device in that session (a Group Watch Session's, else the
+ * older app's SyncPlay group), Not now turns it down. Nitrate's own "Watch now together" sends no
+ * invites: the group's apps are told at once ([SessionJoinPrompt]).
  */
 @Composable
 fun WatchInvitePrompt(actions: AppActions) {

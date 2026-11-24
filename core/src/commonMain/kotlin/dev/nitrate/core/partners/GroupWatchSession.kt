@@ -248,12 +248,13 @@ object SessionSync {
     }
 
     /**
-     * "12 s behind Sam · Catch up": this player at [myPositionMs] (playing, not [myPaused]) is more
-     * than [DRIFT_MS] from whom it keeps pace with ([reference], also playing). Null when close
-     * enough, before the start, or when either is paused (a pause has its own notice).
+     * "12 s behind Sam · Catch up": this player at [myPositionMs] is more than [DRIFT_MS] from whom
+     * it keeps pace with ([reference], playing; this player paused or not: [myPaused], so Catch up
+     * also plays on). Null when close enough, before the start, or when they're paused (a pause has
+     * its own notice).
      */
-    fun drift(s: GroupWatchSession, myPositionMs: Long, myPaused: Boolean, serverNowMs: Long): SessionNotice.Drift? {
-        if (myPaused || !s.live || !started(s, serverNowMs)) return null
+    fun drift(s: GroupWatchSession, myPositionMs: Long, @Suppress("UNUSED_PARAMETER") myPaused: Boolean, serverNowMs: Long): SessionNotice.Drift? {
+        if (!s.live || !started(s, serverNowMs)) return null
         val ref = reference(s, serverNowMs) ?: return null
         if (ref.paused) return null
         val theirs = positionOf(s, ref, serverNowMs)

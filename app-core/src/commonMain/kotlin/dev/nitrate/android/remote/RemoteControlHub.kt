@@ -61,8 +61,9 @@ class RemoteControlHub(
                     // Watch party news from the Companion: never shown as a message.
                     is ServerEvent.General if e.name == "DisplayMessage" && e.arguments["Header"] == dev.nitrate.core.partners.PartyNews.HEADER -> {
                         val text = e.arguments["Text"].orEmpty()
-                        // Schedule changes come the same way, told apart by their kind.
-                        dev.nitrate.core.partners.ScheduleNews.decode(text)?.let { _scheduleNews.tryEmit(it) }
+                        // Schedule changes and Group Watch Sessions come the same way, told apart by their kind.
+                        dev.nitrate.core.partners.SessionNews.decode(text)?.let { _sessionNews.tryEmit(it) }
+                            ?: dev.nitrate.core.partners.ScheduleNews.decode(text)?.let { _scheduleNews.tryEmit(it) }
                             ?: dev.nitrate.core.partners.PartyNews.decode(text)?.let { _partyNews.tryEmit(it) }
                         return@collect
                     }
@@ -87,6 +88,11 @@ class RemoteControlHub(
 
     /** What the Companion tells this app about the user's groups' watch parties (reminders, postponements, requests), as it happens. */
     val partyNews: SharedFlow<dev.nitrate.core.partners.PartyNews> = _partyNews
+
+    private val _sessionNews = MutableSharedFlow<dev.nitrate.core.partners.SessionNews>(extraBufferCapacity = 32)
+
+    /** What the Companion tells this app about Group Watch Sessions in the user's groups (started, countdown, pauses, jumps…), as it happens. */
+    val sessionNews: SharedFlow<dev.nitrate.core.partners.SessionNews> = _sessionNews
 
     private val _scheduleNews = MutableSharedFlow<dev.nitrate.core.partners.ScheduleNews>(extraBufferCapacity = 16)
 

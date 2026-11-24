@@ -31,7 +31,7 @@ data class TimelineNote(
     val atMs: Long = 0,
     /** An older moment (kept before notes; may have no words). */
     val moment: Boolean = false,
-    /** Came live from this device's SyncPlay group's chat. */
+    /** Came live from this device's Group Watch Session's chat. */
     val live: Boolean = false,
     /** Brought into this live session by someone in it ("Bring our earlier notes"): for this session only. */
     val brought: Boolean = false,
@@ -125,7 +125,7 @@ class NoteClock(private val selfId: () -> String?) {
         shown += note.id
     }
 
-    /** A message from the live group (SyncPlay): shown at once when on, unless already shown pinned. */
+    /** A message from the live session (a Group Watch Session): shown at once when on, unless already shown pinned. */
     fun live(note: TimelineNote): TimelineNote? {
         if (notes.any { Notes.same(it, note) && it.id in shown }) return null
         // The live copy of a note already loaded (not reached yet) takes its place: one entry each.
@@ -183,7 +183,7 @@ class NoteClock(private val selfId: () -> String?) {
 /**
  * Group chat for one playback: the title's pinned notes (loaded once as it starts, again only
  * every [REFRESH_MS] or when the chat is opened after [REOPEN_MS]), pop-ups as the viewer reaches
- * them, live messages from this device's SyncPlay group at once, and sending. Every message is
+ * them, live messages from this device's Group Watch Session at once, and sending. Every message is
  * written once, as a note (Companion `livenotes`): in a live session with the session, whose
  * participants get it at once through its chat and keep it; otherwise for the viewer's watch
  * groups on the title. In a live session, notes someone brought in ("Bring our earlier notes",
@@ -193,7 +193,7 @@ class TimelineChat(
     private val server: MediaServer,
     private val scope: CoroutineScope,
     private val selfId: () -> String?,
-    /** The SyncPlay group chat this device follows, if any (its messages pop up at once). */
+    /** The live chat of the Group Watch Session this device is in, if any (its messages pop up at once). */
     private val live: GroupChat? = null,
     /** Whether the server writes live messages as notes (`livenotes`); older ones get them twice, live and pinned. */
     private val liveNotes: () -> Boolean = { true },

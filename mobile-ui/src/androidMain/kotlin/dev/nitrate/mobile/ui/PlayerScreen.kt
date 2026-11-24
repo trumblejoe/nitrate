@@ -171,9 +171,10 @@ actual fun PlayerScreen(
         testPlay(result)
         if (result.error != null) onExit()
     }
-    // Watch-together chat, while this device watches in a group (Companion plugin on the server).
+    // Live chat, while this device is in a Group Watch Session (or, kept for older apps, a SyncPlay group) with the Companion plugin on the server.
     val syncGroup = actions.container.syncPlay.group.collectAsState().value
-    val chatGroup = actions.container.chat.groupId.collectAsState().value?.takeIf { !local && syncGroup != null && it == syncGroup.id }
+    val groupSession = actions.container.groupSessions.current.collectAsState().value
+    val chatGroup = actions.container.chat.groupId.collectAsState().value?.takeIf { !local && ((groupSession != null && it == groupSession.id) || (syncGroup != null && it == syncGroup.id)) }
     if (local) {
         LaunchedEffect(session) {
             // Downloads saved before they kept the server's track picks learn them now (if it answers).
@@ -244,7 +245,7 @@ actual fun PlayerScreen(
 
     val item by session.item.collectAsState()
     val plan by session.plan.collectAsState()
-    // Group chat: the watch group's notes along this title pop up as they're reached (live in a SyncPlay group too).
+    // Group chat: the watch group's notes along this title pop up as they're reached (live in a Group Watch Session too).
     val groupChat = rememberGroupChat(actions, item?.id, enabled = !local && clipEndMs == null && testPlay == null) { session.player.currentPosition }
     val chatAvailable = groupChatAvailable(groupChat, chatGroup != null)
     val chatOn = groupChat?.on?.collectAsState()?.value ?: false
@@ -255,6 +256,12 @@ actual fun PlayerScreen(
     )
     val withChip = company?.chip?.collectAsState()?.value
     var withOpen by remember { mutableStateOf(false) }
+    // A Group Watch Session on this part: the countdown, reports, and the others' pauses and jumps offered.
+    val sessionPlayback = rememberSessionPlayback(
+        actions.container, item?.id, enabled = !local && clipEndMs == null && testPlay == null,
+        position = { session.player.currentPosition }, paused = { !session.player.playWhenReady },
+        play = { session.player.play() }, pause = { session.player.pause() }, seekTo = { session.seekTo(it) },
+    )
     val error by session.error.collectAsState()
     val notice by session.notice.collectAsState()
     val videoDecoder by session.videoDecoder.collectAsState()
@@ -453,7 +460,7 @@ actual fun PlayerScreen(
         }
         // Scenes in the credits: skipped to when the credits start (not in a watch-together group,
         // where a seek moves everyone), else offered; a heads-up when only the tags know of one.
-        val autoSkip = LocalDisplayPrefs.current.creditScenes && syncGroup == null
+        val autoSkip = LocalDisplayPrefs.current.creditScenes && syncGroup == null && groupSession == null
         val skipper = remember(creditScenes, autoSkip) { creditScenes?.let { dev.nitrate.core.playback.CreditSkipper(it, autoSkip) } }
         var creditAction by remember(item?.id) { mutableStateOf<dev.nitrate.core.playback.CreditSkipper.Action?>(null) }
         LaunchedEffect(skipper, progress.positionMs / 500) {
@@ -535,6 +542,7 @@ actual fun PlayerScreen(
         if (groupChat != null && chatAvailable && dialog != PlayerDialog.CHAT) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
         // More than one group would count this: which one, plainly, as it starts.
         if (!inPip) CountingBanner(withChip, easy, onOpen = { withOpen = true }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
+        if (!inPip) SessionOverlay(sessionPlayback, actions.container, Modifier.matchParentSize())
     }
     if (withOpen && !easy && company != null && withChip != null) {
         PlayerWithSheet(actions, company, withChip, item, groupChat, chatAvailable, positionMs = { session.player.currentPosition }) { withOpen = false }
@@ -560,7 +568,7 @@ actual fun PlayerScreen(
             } } else null,
         )
         dialog == PlayerDialog.CHAT && groupChat != null -> GroupChatSheet(
-            groupChat, syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title, positionMs = { session.player.currentPosition },
+            groupChat, groupSession?.title ?: syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title, positionMs = { session.player.currentPosition },
             onTurn = { turnGroupChat(actions, groupChat, it, session.player.currentPosition) },
         ) { dialog = PlayerDialog.NONE }
         dialog == PlayerDialog.FIX -> {

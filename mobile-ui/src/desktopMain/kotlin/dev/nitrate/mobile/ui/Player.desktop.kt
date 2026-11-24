@@ -259,8 +259,10 @@ fun DesktopPlayer(
     }
 
     // Group chat (Companion) and who this is watched with, as on the other players.
+    // Live chat in a Group Watch Session (or, kept for older apps, a SyncPlay group).
     val syncGroup = container.syncPlay.group.collectAsState().value
-    val chatGroup = container.chat.groupId.collectAsState().value?.takeIf { !local && syncGroup != null && it == syncGroup.id }
+    val groupSession = container.groupSessions.current.collectAsState().value
+    val chatGroup = container.chat.groupId.collectAsState().value?.takeIf { !local && ((groupSession != null && it == groupSession.id) || (syncGroup != null && it == syncGroup.id)) }
     val groupChat = if (easy) null else rememberGroupChat(actions, item?.id, enabled = !local && clipEndMs == null) { session.currentMs() }
     val chatAvailable = groupChatAvailable(groupChat, chatGroup != null)
     val chatOn = groupChat?.on?.collectAsState()?.value ?: false
@@ -269,6 +271,12 @@ fun DesktopPlayer(
         positionMs = { session.currentMs() }, durationMs = { session.durationMs.value },
     )
     val withChip = company?.chip?.collectAsState()?.value
+    // A Group Watch Session on this part: the countdown, reports, and the others' pauses and jumps offered.
+    val sessionPlayback = rememberSessionPlayback(
+        container, item?.id, enabled = !local && clipEndMs == null && !testPlay,
+        position = { session.currentMs() }, paused = { session.isPaused },
+        play = { if (session.isPaused) session.togglePlay() }, pause = { session.pause() }, seekTo = { session.seekTo(it) },
+    )
 
     fun back() {
         when {
@@ -346,7 +354,7 @@ fun DesktopPlayer(
                     UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { pressed(); onPlayNext?.invoke(next) }, onHide = { pressed(); upNextHidden = true }, onCountdownEnd = { rollOn(next) })
                 }
 
-                val autoSkip = LocalDisplayPrefs.current.creditScenes && syncGroup == null
+                val autoSkip = LocalDisplayPrefs.current.creditScenes && syncGroup == null && groupSession == null
                 val skipper = remember(creditScenes, autoSkip) { creditScenes?.let { CreditSkipper(it, autoSkip) } }
                 var creditAction by remember(item?.id) { mutableStateOf<CreditSkipper.Action?>(null) }
                 LaunchedEffect(skipper, positionMs / 500) {
@@ -365,6 +373,7 @@ fun DesktopPlayer(
 
                 if (groupChat != null && chatAvailable && panel != Panel.CHAT) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
                 CountingBanner(withChip, easy, onOpen = { panel = Panel.WITH }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp))
+                SessionOverlay(sessionPlayback, container, Modifier.matchParentSize())
 
                 when {
                     error != null -> Column(
@@ -417,7 +426,7 @@ fun DesktopPlayer(
                         onDismiss = close,
                     )
                     Panel.CHAT -> if (groupChat != null) GroupChatSheet(
-                        groupChat, syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title, positionMs = { session.currentMs() },
+                        groupChat, groupSession?.title ?: syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title, positionMs = { session.currentMs() },
                         onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) }, onDismiss = close,
                     )
                     Panel.WITH -> if (!easy && company != null && withChip != null) {

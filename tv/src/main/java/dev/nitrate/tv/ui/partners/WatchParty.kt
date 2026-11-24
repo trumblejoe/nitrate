@@ -204,3 +204,45 @@ private fun QuietNote(text: String, asks: Boolean, onGone: () -> Unit) {
         }
     }
 }
+
+/**
+ * "Tommy started the session · S1:E4 of The Bear": someone in a group started a Group Watch Session.
+ * Off the player a dialog with Join focused (late: "Join at 12:30", "Start from the beginning");
+ * Join opens the player, which waits for the countdown. In a player only a quiet note at the top
+ * that never takes focus; the question waits until the player closes.
+ */
+@Composable
+fun SessionJoinPrompt(container: AppContainer, inPlayer: Boolean, easy: Boolean) {
+    val asking by container.groupSessions.asking.collectAsState()
+    val scope = rememberCoroutineScope()
+    var problem by remember { mutableStateOf<String?>(null) }
+    val s = asking ?: return
+    val prompt = dev.nitrate.core.partners.SessionPrompt.of(s, container.groupSessions.serverNow(), easy) ?: return
+    if (inPlayer) {
+        QuietNote(prompt.text, asks = true) {}
+        return
+    }
+    SessionJoinDialog(prompt, problem, onDismiss = { container.groupSessions.dismiss() }) { c ->
+        scope.launch { problem = container.groupSessions.choose(s, c) }
+    }
+}
+
+/** The join prompt's dialog: who started it and what, then Join (focused), the beginning for a late joiner, Not now. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SessionJoinDialog(prompt: dev.nitrate.core.partners.SessionPrompt, problem: String? = null, onDismiss: () -> Unit, onChoose: (dev.nitrate.core.partners.SessionChoice) -> Unit) {
+    val first = remember(prompt) { FocusRequester() }
+    TvDialog(onDismiss, width = 760) {
+        Text(prompt.title, style = MaterialTheme.typography.headlineSmall)
+        Text(prompt.text)
+        problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            prompt.choices.forEachIndexed { i, c ->
+                val m = if (i == 0) Modifier.focusRequester(first) else Modifier
+                if (i == 0) Button(onClick = { onChoose(c) }, modifier = m) { Text(c.label) }
+                else OutlinedButton(onClick = { onChoose(c) }, modifier = m) { Text(c.label) }
+            }
+        }
+    }
+    LaunchedEffect(prompt.sessionId) { delay(60); runCatching { first.requestFocus() } }
+}

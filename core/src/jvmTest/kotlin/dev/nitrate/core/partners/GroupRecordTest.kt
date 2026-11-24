@@ -139,9 +139,11 @@ class GroupRecordTest {
         assertEquals(PartLock.WATCH_TOGETHER, PartLock.of(eps[3], info, standings)!!.word)
         // On Suzy's card it's simply her group's next.
         assertNull(PartLock.of(eps[3].copy(watchGroupId = "suzy"), info, standings))
-        // Episode 9 on Suzy's card isn't out yet; Suzy's group has Together off, so elsewhere only Tommy's question shows.
+        // Episode 9 isn't out yet in Suzy's group (Together off): on her card, and elsewhere too (not out yet comes before Tommy's question).
         assertEquals("Opens Thursday 7pm", PartLock.of(eps[8].copy(watchGroupId = "suzy"), info, standings)!!.word)
-        assertTrue(PartLock.of(eps[8], info, standings)!!.together)
+        assertEquals("Opens Thursday 7pm", PartLock.of(eps[8], info, standings)!!.word)
+        // On Tommy's card only his group's schedule counts: nothing of Suzy's.
+        assertNull(PartLock.of(eps[8].copy(watchGroupId = "tommy"), info, standings))
         // Spoilers go by the Together groups' progress only.
         assertEquals(listOf("tommy"), WatchPartners.spoilerProgress(progress, info).map { it.groupId })
         assertEquals(progress, WatchPartners.spoilerProgress(progress, null))

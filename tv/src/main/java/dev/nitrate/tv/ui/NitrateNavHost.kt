@@ -166,7 +166,6 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onLibrary = { lib -> nav.navigate(LibraryRoute(lib.id), fromHome) },
                 onPage = { id -> nav.navigate(CustomPageRoute(id), fromHome) },
                 onPages = { nav.navigate(PagesRoute, fromHome) },
-                onTogether = { nav.navigate(WatchTogetherRoute, fromHome) },
                 onChannels = if (channelsOn) ({ nav.navigate(ChannelsRoute, fromHome) }) else null,
                 onComics = { nav.navigate(CatalogsRoute, fromHome) },
                 onSettings = { nav.navigate(SettingsHubRoute, fromHome) },
@@ -257,7 +256,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             )
         }
         composable<HomeRoute> {
-            dev.nitrate.tv.ui.partners.TogetherHost(container, partnersOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id -> nav.navigate(DetailsRoute(id)) }) {
+            dev.nitrate.tv.ui.partners.TogetherHost(container, partnersOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
             HomeScreen(
                 repository = container.server,
                 displaySettings = container.displaySettings,
@@ -471,9 +470,6 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             val id = entry.toRoute<ChannelEditorRoute>().channelId.ifEmpty { null }
             dev.nitrate.tv.ui.channels.ChannelEditorScreen(container.server, id) { nav.popBackStack() }
         }
-        composable<WatchTogetherRoute> {
-            dev.nitrate.tv.ui.together.WatchTogetherScreen(container.syncPlay, account?.name?.let { "$it's group" } ?: "Movie night", chat = container.chat)
-        }
         composable<PluginsRoute> { PluginsScreen(container.plugins, TV_PLUGIN_UI, pluginContext) }
         composable<PluginScreenRoute> { entry ->
             val id = entry.toRoute<PluginScreenRoute>().pluginId
@@ -601,6 +597,11 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
         dev.nitrate.tv.ui.partners.WatchPartyPrompt(container, inPlayer, displayPrefs.easyMode) { item -> gate.play(item) }
     }
+    // Group Watch Sessions someone in a group started ("Tommy started the session · Join"); in the player only a quiet note.
+    if (companion?.features?.contains(dev.nitrate.core.partners.GroupWatchSession.FEATURE) == true) {
+        val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
+        dev.nitrate.tv.ui.partners.SessionJoinPrompt(container, inPlayer, displayPrefs.easyMode)
+    }
     // Schedule changes someone in a group asked for (Yes/No), and how they went; never over the player.
     if (companion?.features?.contains("partners") == true) {
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
@@ -671,7 +672,15 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     }
     val leftPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == false
     LaunchedEffect(leftPlayer) { if (leftPlayer) homeChannels.refreshSoon() }
-    // Watch together: the group started something while no player was open.
+    // A Group Watch Session joined: its part plays (through the guards) from where this player starts, waiting for the countdown.
+    LaunchedEffect(Unit) {
+        container.groupSessions.openRequests.collect { open ->
+            val item = runCatching { container.server.getItem(open.itemId) }.getOrNull() ?: return@collect
+            val groupId = container.groupSessions.current.value?.groupId
+            gate.play(item.copy(watchGroupId = groupId ?: item.watchGroupId), startMs = open.startMs, origin = groupId?.let { dev.nitrate.core.partners.PlayOrigin.GroupCard(it) })
+        }
+    }
+    // SyncPlay, kept for compatibility (an older app's group this TV joined): it started something while no player was open.
     LaunchedEffect(Unit) {
         container.syncPlay.openRequests.collect { q ->
             // In place of a player already open, so Back doesn't return to the old one.

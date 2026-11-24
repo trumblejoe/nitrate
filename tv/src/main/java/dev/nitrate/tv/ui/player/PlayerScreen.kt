@@ -124,7 +124,7 @@ fun PlayerScreen(
     /** Tracks another device asked for when it sent this here (null: the usual picks). */
     audioIndex: Int? = null,
     subtitleIndex: Int? = null,
-    /** Watch together: follows this device's group when it's in one. */
+    /** SyncPlay, kept for compatibility (older apps' groups): follows this device's group when it's in one. */
     syncPlay: dev.nitrate.core.syncplay.SyncPlayController? = null,
     /** Sends a playback report for this session to the server; returns the saved file's name. */
     sendLog: (suspend (PlaybackSession) -> Result<String>)? = null,
@@ -242,9 +242,11 @@ fun PlayerScreen(
     var logMessage by remember { mutableStateOf<String?>(null) }
     val logScope = rememberCoroutineScope()
     LaunchedEffect(logMessage) { if (logMessage != null) { kotlinx.coroutines.delay(12_000); logMessage = null } }
-    // Chat is there while this TV watches in a group and the server has the Companion plugin.
+    // Live chat is there while this TV is in a Group Watch Session and the server has the Companion plugin
+    // (or, kept for older apps, a SyncPlay group).
     val syncGroup = syncPlay?.group?.collectAsState()?.value
-    val chatGroup = chat?.groupId?.collectAsState()?.value?.takeIf { syncGroup != null && it == syncGroup.id }
+    val groupSession = watchGroups?.groupSessions?.current?.collectAsState()?.value
+    val chatGroup = chat?.groupId?.collectAsState()?.value?.takeIf { (groupSession != null && it == groupSession.id) || (syncGroup != null && it == syncGroup.id) }
     val videoDecoder by session.videoDecoder.collectAsState()
     val audioDecoder by session.audioDecoder.collectAsState()
     val segments by session.segments.collectAsState()
@@ -271,6 +273,11 @@ fun PlayerScreen(
         positionMs = { player.currentPosition }, durationMs = { player.duration.coerceAtLeast(0L) },
     )
     val withChip = company?.chip?.collectAsState()?.value
+    // A Group Watch Session on this part: the countdown, reports, and the others' pauses and jumps offered.
+    val sessionPlayback = rememberSessionPlayback(watchGroups, item?.id, player, enabled = clipEndMs == null && testPlay == null)
+    val sessionNotice = sessionPlayback?.notice?.collectAsState()?.value
+    val sessionCountdown = sessionPlayback?.countdown?.collectAsState()?.value
+    val sessionWaiting = sessionPlayback?.waiting?.collectAsState()?.value == true
     // What follows: the next episode in viewing order, or the next film in its collection.
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
@@ -419,7 +426,7 @@ fun PlayerScreen(
     val titleStrips = run {
         val current = item
         listOfNotNull(
-            extras.takeIf { it.isNotEmpty() && syncGroup == null }?.let { list ->
+            extras.takeIf { it.isNotEmpty() && syncGroup == null && groupSession == null }?.let { list ->
                 TitleStrip(EXTRAS, list.map { e -> TitleCard(e, e.name, listOfNotNull(e.extraType, e.runtimeMs?.let { "${(it / 60_000).coerceAtLeast(1)} min" }).joinToString(" · ").ifEmpty { null }, repository.imageUrl(e, dev.nitrate.core.model.ImageKind.PRIMARY, 320)) }) { e ->
                     onPlayExtra?.invoke(e, player.currentPosition)
                 }
@@ -453,7 +460,7 @@ fun PlayerScreen(
 
     // Scenes in the credits: skipped to when the credits start (not in a watch-together group,
     // where a seek moves everyone), else offered; a heads-up when only the tags know of one.
-    val autoSkip = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.creditScenes && syncGroup == null
+    val autoSkip = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.creditScenes && syncGroup == null && groupSession == null
     val skipper = remember(creditScenes, autoSkip) { creditScenes?.let { dev.nitrate.core.playback.CreditSkipper(it, autoSkip) } }
     LaunchedEffect(skipper, position / 500) {
         val a = skipper?.at(position) ?: return@LaunchedEffect
@@ -629,6 +636,9 @@ fun PlayerScreen(
                 },
                 // Easy mode: play/pause, the seek bar, audio and subtitles (and lyrics) only.
                 buttons = listOfNotNull(
+                    // The Group Watch Session: the starter's Start now while it gathers; the others' pause or jump offered ("Pause too", "Catch up").
+                    PlayerAction("Start now", key = "session-start") { sessionPlayback?.startNow(); controlFocus.last = null; refocus() }.takeIf { sessionWaiting && groupSession?.startedByMe == true },
+                    sessionNotice?.action?.let { a -> PlayerAction(a, key = SESSION_KEY) { sessionPlayback?.act(); controlFocus.last = null; refocus() } },
                     PlayerAction("Audio", ready) { panel = Panel.AUDIO },
                     PlayerAction("Subtitles", ready) { panel = Panel.SUBTITLES },
                     // Who it's watched with; in easy mode only said, beside the buttons.
@@ -662,7 +672,7 @@ fun PlayerScreen(
             if (panel != Panel.CHAT) dev.nitrate.tv.ui.together.NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 32.dp))
             if (panel == Panel.CHAT) {
                 dev.nitrate.tv.ui.together.GroupChatPanel(
-                    groupChat, syncGroup?.name ?: noteGroups.firstOrNull()?.title, positionMs = { player.currentPosition },
+                    groupChat, groupSession?.title ?: syncGroup?.name ?: noteGroups.firstOrNull()?.title, positionMs = { player.currentPosition },
                     onTurn = ::turnGroupChat, modifier = Modifier.align(Alignment.TopEnd),
                 )
             }
@@ -690,6 +700,15 @@ fun PlayerScreen(
 
         // More than one group would count this: which one, plainly, as it starts (the With… button changes it).
         CountingBanner(withChip, Modifier.align(Alignment.TopCenter).padding(top = 32.dp))
+
+        // The Group Watch Session: the countdown in the middle, the others' news top right; neither ever takes focus.
+        SessionCountdown(
+            sessionCountdown,
+            if (sessionWaiting) groupSession?.let { s -> dev.nitrate.core.partners.SessionPrompt.waiting(s, watchGroups?.partners?.value?.groups?.firstOrNull { it.id == s.groupId }) } else null,
+            starter = groupSession?.startedByMe == true,
+            modifier = Modifier.align(Alignment.Center),
+        )
+        SessionNoticeBanner(sessionNotice, controlsUp = controlsVisible, modifier = Modifier.align(Alignment.TopEnd).padding(top = 32.dp, end = 48.dp))
 
         SecondSubtitleLine(session, settingsNow.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp))
 
@@ -816,7 +835,7 @@ fun PlayerScreen(
                     position = position,
                     onChapter = { player.seekTo(it) },
                     onPerson = { person = it },
-                    choices = rememberPlayerChoices(session, playbackSettings, repository, sleepAt, sleepAtEndState.value, syncPlay,
+                    choices = rememberPlayerChoices(session, playbackSettings, repository, sleepAt, sleepAtEndState.value,
                         onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDone = { panel = Panel.NONE },
                         frameRate = frameRateOverride, onFrameRate = { frameRateOverride = it }, displayHz = rememberDisplayHz(),
                         groupChat = groupChat, groupChatAvailable = chatAvailable, onGroupChat = ::turnGroupChat,
@@ -884,7 +903,7 @@ fun PlayerScreen(
     }
     if (panel == Panel.WITH && company != null && withChip != null && watchGroups != null && !easy) {
         // Back goes back a page, then closes it; focus returns to the With… button.
-        PlayerWithPanel(watchGroups, company, withChip, item, groupChat, chatAvailable, onGroupChat = ::turnGroupChat) { panel = Panel.NONE }
+        PlayerWithPanel(watchGroups, company, withChip, item, groupChat, chatAvailable, onGroupChat = ::turnGroupChat, positionMs = { player.currentPosition }) { panel = Panel.NONE }
     }
     // The button went (the title stopped being shared, or the party ended) while its panel was open.
     LaunchedEffect(withChip == null) { if (withChip == null && panel == Panel.WITH) panel = Panel.NONE }

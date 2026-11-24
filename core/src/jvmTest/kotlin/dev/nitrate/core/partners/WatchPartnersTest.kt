@@ -233,14 +233,20 @@ class WatchPartnersTest {
         assertTrue(group.locks("e1-3", k.order))
         assertTrue(group.locks("e1-4", k.order))
         assertFalse(group.locks("e1-2", k.order))
-        // On the group's card it says when it opens; elsewhere (Together off) nothing holds it.
+        // On the group's card it says when it opens; elsewhere too (in every group, Together on or off).
         val line = TogetherRow.line(eps[2].copy(watchGroupId = "g1"), info, standings)!!
         assertEquals("Opens Thursday 7pm", line.word)
         assertEquals("Sam level", line.partners)
-        assertEquals("Level", TogetherRow.line(eps[2], info, standings)!!.word)
+        assertEquals("Opens Thursday 7pm", TogetherRow.line(eps[2], info, standings)!!.word)
+        assertEquals("Opens Thursday 7pm", PartLock.of(eps[2], info, standings)!!.word)
         // Nothing is locked: watching it together now is offered; the schedule can be changed.
         val c = TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = true, ownSpoilers = emptySet())
         assertTrue(c.any { it is TogetherChoice.WatchNow })
+        // Without Group Watch Sessions on the server, no Watch now together.
+        assertFalse(TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = false, ownSpoilers = emptySet()).any { it is TogetherChoice.WatchNow })
+        // "Open the show" from a group's card carries the group into its details page.
+        assertEquals("g1", TogetherRow.choices(eps[2].copy(watchGroupId = "g1"), info, standings, eps, true, emptySet()).filterIsInstance<TogetherChoice.OpenShow>().single().groupId)
+        assertNull(c.filterIsInstance<TogetherChoice.OpenShow>().single().groupId)
         assertTrue(c.any { it is TogetherChoice.ChangeSchedule && it.label == "Change the schedule or Group Watch Session (Thursdays 7pm)" })
     }
 

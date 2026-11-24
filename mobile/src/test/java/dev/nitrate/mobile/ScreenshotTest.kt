@@ -79,6 +79,7 @@ import dev.nitrate.mobile.ui.NitrateTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -205,11 +206,12 @@ class ScreenshotTest {
         actions: AppActions,
         with: dev.nitrate.core.partners.WatchingWith? = null,
         room: dev.nitrate.core.partners.SameRoom? = null,
-        party: List<String>? = null,
+        inSession: Boolean = false,
     ): dev.nitrate.core.partners.WithChip {
         val episode = dev.nitrate.core.model.MediaItem("s1e2", "Episode 2", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel")
-        val group = party?.let { dev.nitrate.core.syncplay.SyncPlayGroup("p1", "Movie night", dev.nitrate.core.syncplay.GroupState.PLAYING, listOf("Me") + it) }
-        return dev.nitrate.core.partners.WithChip.of(episode, (actions.server as dev.nitrate.testing.FakeServer).partnerInfo, emptyMap(), group, "Me", with, room = room)!!
+        val fake = actions.server as dev.nitrate.testing.FakeServer
+        val session = if (inSession) fake.sampleSession(joined = true, startedByMe = true) else null
+        return dev.nitrate.core.partners.WithChip.of(episode, fake.partnerInfo, emptyMap(), session, "Me", with, room = room)!!
     }
 
     /** The player's With… chip, and "Counting for" as it starts when more than one group fits. */
@@ -238,10 +240,10 @@ class ScreenshotTest {
         }
     }
 
-    /** In a watch party: inviting someone, and bringing a group's earlier notes. */
-    @Test fun withParty() = shoot("phone-with-party") { actions ->
-        val chip = withChip(actions, party = listOf("Will"))
-        check(chip.label == "Watching now together with Will") { chip.label }
+    /** In a Group Watch Session the user started: leaving it, ending it for everyone, and bringing a group's earlier notes. */
+    @Test fun withSession() = shoot("phone-with-session") { actions ->
+        val chip = withChip(actions, inSession = true)
+        check(chip.label == "In a session with Will") { chip.label }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             dev.nitrate.mobile.ui.WithSheet(chip, chatOn = true, brought = "Will brought earlier notes", onGroupChat = {}, onBring = {}, onDismiss = {})
         }
@@ -685,14 +687,34 @@ class ScreenshotTest {
         dev.nitrate.mobile.ui.PlayerMoreSheet(actions, session, sleepAt = null, sleepAtEnd = true, onSleep = { _, _ -> }, onPictureInPicture = {}, onPlayedElsewhere = {}, onDismiss = {})
     }
 
-    /** The panel without its dialog: a dialog focuses the name field, whose blinking cursor never lets the test settle. */
-    @Test fun watchTogether() = shoot("phone-watch-together") {
-        androidx.compose.foundation.layout.Box(Modifier.padding(24.dp)) { dev.nitrate.mobile.ui.WatchTogetherPanel(it, "Joe's group") }
+    /** "Will started the session", joined late: Join at where the group is, or from the beginning. */
+    @Test fun sessionJoinPrompt() = shoot("phone-session-join") { actions ->
+        val s = (actions.server as dev.nitrate.testing.FakeServer).sampleSession(positionMs = 120_000)
+        val prompt = dev.nitrate.core.partners.SessionPrompt.of(s, s.serverTimeMs)!!
+        check(prompt.choices.map { it.label } == listOf("Join at 2:00", "Start from the beginning", "Not now")) { prompt.choices.toString() }
+        dev.nitrate.mobile.ui.SessionJoinDialog(prompt, onDismiss = {}, onChoose = {})
     }
 
-    @Test fun watchTogetherInGroup() = shoot("phone-watch-together-group", setup = { c ->
-        c.syncPlay.handle(dev.nitrate.core.events.ServerEvent.SyncPlayGroupUpdate("g1", dev.nitrate.core.syncplay.SyncPlayUpdate.Joined(dev.nitrate.core.syncplay.SyncPlayGroup("g1", "Friday movie night", dev.nitrate.core.syncplay.GroupState.PLAYING, listOf("Joe", "Sam", "Alex", "Alex")))))
-    }) { dev.nitrate.mobile.ui.WatchTogetherDialog(it) {} }
+    /** The countdown over the video, and the starter's wait (with Start now) while the group gathers. */
+    @Test @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun sessionCountdown() = shoot("phone-session-countdown") {
+        Box(Modifier.fillMaxSize().background(Color(0xFF203040))) {
+            dev.nitrate.mobile.ui.SessionCountdown(3, null, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterStart).padding(24.dp).widthIn(max = 300.dp))
+            dev.nitrate.mobile.ui.SessionCountdown(null, "Waiting for Will to join", onStartNow = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd).padding(24.dp).widthIn(max = 360.dp))
+        }
+    }
+
+    /** The others' pause and jump offered (Pause too, Jump too), and drifting behind: Catch up. */
+    @Test @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
+    fun sessionNotices() = shoot("phone-session-notices") {
+        Box(Modifier.fillMaxSize().background(Color(0xFF203040))) {
+            androidx.compose.foundation.layout.Column(Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                dev.nitrate.mobile.ui.SessionNoticeCard(dev.nitrate.core.partners.SessionNotice.Paused("Will", 61_000), onAct = {}, onDismiss = {})
+                dev.nitrate.mobile.ui.SessionNoticeCard(dev.nitrate.core.partners.SessionNotice.Jumped("Will", 1_450_000), onAct = {}, onDismiss = {})
+                dev.nitrate.mobile.ui.SessionNoticeCard(dev.nitrate.core.partners.SessionNotice.Drift("Will", 12_000, 130_000), onAct = {}, onDismiss = {})
+            }
+        }
+    }
 
     @Test fun profiles() = shoot("phone-profiles", setup = { c -> c.profiles.setPin("home|kids", null); c.profiles.setPin("home|sam", "1234") }) {
         dev.nitrate.mobile.ui.ProfilesScreen(it, onOpened = {}, onSignInAgain = {}, onAdd = {})

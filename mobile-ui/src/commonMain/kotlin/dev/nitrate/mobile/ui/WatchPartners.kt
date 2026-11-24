@@ -454,7 +454,7 @@ fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Un
         value = if (series == null || dev.nitrate.core.partners.TogetherRow.isStart(item)) emptyList()
         else runCatching { container.server.titleItems(series) }.getOrDefault(emptyList())
     }
-    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.invitesAvailable(), prefs.ownSpoilerShows, dev.nitrate.android.nowMs())
+    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.sessionsAvailable(), prefs.ownSpoilerShows, dev.nitrate.android.nowMs())
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<String?>(null) }
     var changing by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
@@ -472,7 +472,7 @@ fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Un
             // Tonight's watch party: the same sheet as its reminder.
             is dev.nitrate.core.partners.TogetherChoice.Party -> { onDismiss(); container.parties.open(c.group) }
             is dev.nitrate.core.partners.TogetherChoice.Start -> { onDismiss(); onStart() }
-            is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); actions.nav.navigate(DetailsRoute(c.seriesId)) }
+            is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); actions.nav.navigate(DetailsRoute(c.seriesId, group = c.groupId)) }
             is dev.nitrate.core.partners.TogetherChoice.Invite -> inviting = c.groupId
             is dev.nitrate.core.partners.TogetherChoice.Leave -> leaving = c.group
             is dev.nitrate.core.partners.TogetherChoice.WatchNow -> scope.launch {

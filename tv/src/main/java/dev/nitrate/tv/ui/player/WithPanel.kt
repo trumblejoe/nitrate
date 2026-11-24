@@ -11,7 +11,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -34,10 +33,8 @@ import dev.nitrate.android.AppContainer
 import dev.nitrate.core.companion.TimelineChat
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.partners.WatchCompany
-import dev.nitrate.core.partners.WatchGroup
 import dev.nitrate.core.partners.WatchingWith
 import dev.nitrate.core.partners.WithChip
-import dev.nitrate.core.writing.UserRef
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -72,7 +69,7 @@ internal fun rememberWatchCompany(
     }
     DisposableEffect(company) { onDispose { last.value?.let { (id, at, of) -> company.left(id, at, of) } } }
     LaunchedEffect(company, groupChat) {
-        company.chip.collect { c -> groupChat?.focus(if (c == null || c.partyOn) null else c.context.groups.map { it.id }) }
+        company.chip.collect { c -> groupChat?.focus(if (c == null || c.inSession) null else c.context.groups.map { it.id }) }
     }
     return company
 }
@@ -107,7 +104,7 @@ internal fun CountingBanner(chip: WithChip?, modifier: Modifier = Modifier) {
 
 internal const val COUNTING_MS = 5_000L
 
-/** The With… panel wired to the app: who's here, Counting for (Change), Watch now together, the same room, group chat, bringing notes. */
+/** The With… panel wired to the app: who's here, Counting for (Change), Watch now together (a Group Watch Session), the same room, group chat, bringing notes. */
 @Composable
 internal fun PlayerWithPanel(
     container: AppContainer,
@@ -117,6 +114,8 @@ internal fun PlayerWithPanel(
     groupChat: TimelineChat?,
     chatAvailable: Boolean,
     onGroupChat: (Boolean) -> Unit,
+    /** Where this player is now (a session started here starts from there). */
+    positionMs: () -> Long = { 0L },
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -130,14 +129,16 @@ internal fun PlayerWithPanel(
         problem = problem,
         chatOn = chatOn?.takeIf { chatAvailable },
         brought = broughtText(chip, broughtBy, me, broughtMine),
-        people = { runCatching { container.server.partnerPeople() }.getOrDefault(emptyList()).filter { it.id != me } },
         onCountFor = { company.countFor(it) },
-        onStartParty = { scope.launch { problem = item?.let { container.startWatchParty(it, chip.group) } } },
-        onInvite = { ids -> scope.launch { problem = container.inviteToParty(ids, item) } },
-        onAddToGroup = { group, ids -> scope.launch { problem = container.inviteToGroup(group, ids) } },
+        // A Group Watch Session of the group it counts for, from where this player is now.
+        onStartSession = if (container.sessionsAvailable() && chip.group != null) ({
+            scope.launch { problem = item?.let { container.startWatchingNow(it, chip.group, positionMs()) } }
+        }) else null,
+        onLeaveSession = { container.groupSessions.leave(); onDismiss() },
+        onEndSession = { container.groupSessions.end(); onDismiss() },
         onSameRoom = { group, ids -> company.sameRoom(group, ids) },
         onGroupChat = if (groupChat != null && chatAvailable) onGroupChat else null,
-        onBring = if (groupChat != null && chip.partyOn) { groupId ->
+        onBring = if (groupChat != null && chip.inSession) { groupId ->
             scope.launch {
                 groupChat.bring(groupId)
                     .onSuccess { broughtMine = groupId; problem = null }
@@ -156,13 +157,14 @@ internal fun broughtText(chip: WithChip, by: String?, me: String?, mine: String?
     return (name ?: "Someone watching") + " brought earlier notes"
 }
 
-private enum class WithPage { MAIN, ROOM, INVITE, ADD, BRING }
+private enum class WithPage { MAIN, ROOM, BRING }
 
 /**
  * The With… panel, beside the video: who's here, Counts for (each group on the title, or just
- * you), the watch party (start one, or invite someone, then offer to add them to the group too),
- * "We're in the same room" (pick who's here), Group chat on or off, and in a party "Bring our
- * earlier notes". Focus starts on the first choice of each page; Back goes back a page, then closes.
+ * you), Watch now together (a Group Watch Session of the group it counts for; in one, leave it,
+ * or end it for everyone when the user started it), "We're in the same room" (pick who's here),
+ * Group chat on or off, and in a session "Bring our earlier notes". Focus starts on the first
+ * choice of each page; Back goes back a page, then closes.
  */
 @Composable
 fun WithPanel(
@@ -170,18 +172,17 @@ fun WithPanel(
     problem: String? = null,
     chatOn: Boolean? = null,
     brought: String? = null,
-    people: suspend () -> List<UserRef> = { emptyList() },
     onCountFor: (WatchingWith) -> Unit = {},
-    onStartParty: () -> Unit = {},
-    onInvite: (List<String>) -> Unit = {},
-    onAddToGroup: (WatchGroup, List<String>) -> Unit = { _, _ -> },
+    /** Starts a Group Watch Session (null: the server has none, or no group to start it for). */
+    onStartSession: (() -> Unit)? = {},
+    onLeaveSession: () -> Unit = {},
+    onEndSession: () -> Unit = {},
     onSameRoom: (groupId: String, present: List<String>) -> Unit = { _, _ -> },
     onGroupChat: ((Boolean) -> Unit)? = null,
     onBring: ((String?) -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     var page by remember { mutableStateOf(WithPage.MAIN) }
-    var outsiders by remember { mutableStateOf<List<UserRef>>(emptyList()) }
     val first = remember(page) { FocusRequester() }
     val back = { if (page == WithPage.MAIN) onDismiss() else page = WithPage.MAIN }
     dev.nitrate.tv.ui.lists.TvDialog(onDismiss = back, width = 600) {
@@ -200,7 +201,7 @@ fun WithPanel(
                 Text(chip.who, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 var firstUsed = false
                 fun firstOne(): Modifier = if (firstUsed) Modifier else Modifier.focusRequester(first).also { firstUsed = true }
-                if (chip.groups.isNotEmpty() && !chip.partyOn) {
+                if (chip.groups.isNotEmpty() && !chip.inSession) {
                     Heading("Counting for")
                     val chosen = chip.group?.id
                     chip.groups.forEach { g ->
@@ -208,16 +209,18 @@ fun WithPanel(
                     }
                     Choice("No group", selected = chosen == null, Modifier) { onCountFor(WatchingWith.JustMe) }
                 }
-                Heading("Watch now together")
-                if (chip.partyOn) {
-                    Action("Invite someone to watch now", "They get an invite to join and watch in step", firstOne()) { page = WithPage.INVITE }
-                } else {
+                if (chip.inSession) {
+                    Heading("Group Watch Session")
+                    Action("Leave the Group Watch Session", "Carry on by yourself from here", firstOne(), onLeaveSession)
+                    if (chip.startedByMe) Action("End it for everyone", "Everyone carries on by themselves", Modifier, onEndSession)
+                } else if (onStartSession != null && chip.group != null) {
+                    Heading("Watch now together")
                     Action(
-                        "Watch now together" + (chip.group?.let { " with " + WithChip.nameOf(it) } ?: ""),
-                        "Play in step on each other's screens; pausing pauses for everyone", firstOne(), onStartParty,
+                        "Watch now together with " + WithChip.nameOf(chip.group!!),
+                        "Starts a Group Watch Session: the group is asked to join, and everyone starts together on their own screen", firstOne(), onStartSession,
                     )
                 }
-                if (chip.group != null && !chip.partyOn) {
+                if (chip.group != null && !chip.inSession) {
                     Action(
                         "We're in the same room",
                         if (chip.roomNames.isEmpty()) "Pick who's watching here with you: it counts for them too" else "Here: " + WithChip.and(chip.roomNames) + " · change",
@@ -250,40 +253,6 @@ fun WithPanel(
                         Text(if (here.isEmpty()) "Nobody else here" else "Done")
                     }
                     androidx.tv.material3.OutlinedButton(onClick = { page = WithPage.MAIN }) { Text("Back") }
-                }
-            }
-            WithPage.INVITE -> {
-                val list by produceState<List<UserRef>?>(null) { value = people() }
-                var chosen by remember { mutableStateOf(emptySet<String>()) }
-                val group = chip.group ?: chip.groups.firstOrNull()
-                Text("Invite someone to watch now", style = MaterialTheme.typography.headlineSmall)
-                when {
-                    list == null -> Text("Loading…")
-                    list!!.isEmpty() -> Text("Nobody else to invite on this server.")
-                    else -> list!!.forEachIndexed { i, p ->
-                        Toggle(p.name, p.id in chosen, if (i == 0) Modifier.focusRequester(first) else Modifier) { chosen = if (p.id in chosen) chosen - p.id else chosen + p.id }
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    androidx.tv.material3.Button(enabled = chosen.isNotEmpty(), onClick = {
-                        onInvite(chosen.toList())
-                        // Someone outside the title's group: ask about adding them to it, the usual group invite.
-                        val members = group?.others.orEmpty().map { it.id }.toSet()
-                        outsiders = list.orEmpty().filter { it.id in chosen && it.id !in members }
-                        page = if (group != null && outsiders.isNotEmpty()) WithPage.ADD else WithPage.MAIN
-                    }) { Text("Invite") }
-                    androidx.tv.material3.OutlinedButton(onClick = { page = WithPage.MAIN }) { Text("Back") }
-                }
-            }
-            WithPage.ADD -> (chip.group ?: chip.groups.firstOrNull())?.let { group ->
-                Text("Add them to the group too?", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    "Invites sent. ${dev.nitrate.core.partners.WatchPartners.names(outsiders.map { it.name })} ${if (outsiders.size == 1) "isn't" else "aren't"} in your group with " +
-                        "${WithChip.nameOf(group)}. Ask them to join it, to keep pace on ${group.seriesName} after tonight too? They'll see an invite to the group.",
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    androidx.tv.material3.Button(onClick = { onAddToGroup(group, outsiders.map { it.id }); page = WithPage.MAIN }, modifier = Modifier.focusRequester(first)) { Text("Ask them") }
-                    androidx.tv.material3.OutlinedButton(onClick = { page = WithPage.MAIN }) { Text("Not now") }
                 }
             }
             WithPage.BRING -> {

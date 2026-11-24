@@ -66,7 +66,7 @@ sealed interface TogetherChoice {
     /** Remove title [titleId] from group [group] (any member may; a group keeps at least one; what was watched stays in the record). */
     data class RemoveTitle(val group: WatchGroup, val titleId: String, val name: String, override val label: String = "Remove $name from the group") : TogetherChoice
 
-    /** "Watch now together": a live (SyncPlay) session, the group's members invited, then [episode] plays (counting for the group). */
+    /** "Watch now together": a Group Watch Session for the group on [episode] (its members told at once, "Join"), then it plays (counting for the group). */
     data class WatchNow(val episode: MediaItem, val groupId: String, val userIds: List<String>, val names: String) : TogetherChoice {
         override val label = "Watch now together with $names"
     }
@@ -81,7 +81,8 @@ sealed interface TogetherChoice {
         override val label = if (on) "Hide spoilers by my progress only" else "Hide spoilers by the group's progress again"
     }
 
-    data class OpenShow(val seriesId: String, override val label: String = "Open the show") : TogetherChoice
+    /** Opens the title's details; from a group's card, carrying that group ([groupId]) so plays there count for it. */
+    data class OpenShow(val seriesId: String, override val label: String = "Open the show", val groupId: String? = null) : TogetherChoice
 
     /** Leave group [group] (asked to confirm first). */
     data class Leave(val group: WatchGroup) : TogetherChoice { override val label = "Leave the group with ${group.label}" }
@@ -204,7 +205,7 @@ object TogetherRow {
      * Watch Session first, then for its part (the item itself, else the user's next part with that
      * group): mark it watched or unwatched for this group (with "Mark everything up to here
      * watched" when earlier parts aren't in the record yet), catching up to whoever's ahead, Watch
-     * now together ([canWatchNow]: the server carries invites), We're in the same room, invite
+     * now together ([canWatchNow]: the server has Group Watch Sessions), We're in the same room, invite
      * someone, change the schedule or Group Watch Session, add a title or remove this one,
      * spoilers by the user's own progress (shows in a Together group; [ownSpoilers]: the shows
      * that already do), open it, start something new, leave. A group's card
@@ -285,7 +286,7 @@ object TogetherRow {
             if (g.titles.size > 1) g.titles.firstOrNull { it.id == series }?.let { t -> out += TogetherChoice.RemoveTitle(g, t.id, t.name, "Remove ${t.name} from the group${tag(g)}") }
         }
         if (isShow && groups.any { it.together }) out += TogetherChoice.OwnSpoilers(series, on = series !in ownSpoilers)
-        out += TogetherChoice.OpenShow(series, if (isShow) "Open the show" else "Open it")
+        out += TogetherChoice.OpenShow(series, if (isShow) "Open the show" else "Open it", item.watchGroupId)
         out += TogetherChoice.Start
         groups.forEach { g -> out += TogetherChoice.Leave(g) }
         return out

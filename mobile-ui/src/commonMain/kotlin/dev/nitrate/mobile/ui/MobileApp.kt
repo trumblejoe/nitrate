@@ -509,7 +509,15 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 if (item?.kind == ItemKind.SEASON && series != null) nav.navigate(DetailsRoute(series, seasonId = item.id)) else nav.navigate(DetailsRoute(id))
             }
         }
-        // Watch together: the group started something while no player was open.
+        // A Group Watch Session joined: its part plays (through the guards) from where this player starts, waiting for the countdown.
+        LaunchedEffect(Unit) {
+            container.groupSessions.openRequests.collect { open ->
+                val item = runCatching { container.server.getItem(open.itemId) }.getOrNull() ?: return@collect
+                val groupId = container.groupSessions.current.value?.groupId
+                guarded(item.copy(watchGroupId = groupId ?: item.watchGroupId), false, open.startMs, groupId?.let { dev.nitrate.core.partners.PlayOrigin.GroupCard(it) })
+            }
+        }
+        // SyncPlay, kept for compatibility (an older app's group this device joined): it started something while no player was open.
         LaunchedEffect(Unit) {
             container.syncPlay.openRequests.collect { q ->
                 q.currentItemId?.let { nav.navigate(PlayerRoute(it, startMs = q.startMs)) { popUpTo<PlayerRoute> { inclusive = true } } }
@@ -548,6 +556,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             WatchInvitePrompt(actions)
             // Watch parties: what the Companion sends as it happens; waits while the player is open.
             WatchPartyPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
+            // Group Watch Sessions someone in a group started ("Tommy started the session · Join"); waits while the player is open.
+            SessionJoinPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
             // Schedule changes someone in a group asked for (Yes/No), and how they went; waits while the player is open.
             ScheduleChangePrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
             // "Also count it for Suzy, where it's next too?": once the player has closed.

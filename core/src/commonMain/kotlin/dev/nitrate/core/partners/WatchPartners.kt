@@ -647,15 +647,15 @@ data class PartLock(val group: WatchGroup, val together: Boolean, val opens: Str
 
         /**
          * What asks first about [item], as its card and spoiler hiding see it: on a group's card
-         * ([MediaItem.watchGroupId]) that group's schedule only; anywhere else, the groups on its
-         * title with Together on.
+         * ([MediaItem.watchGroupId]) that group's schedule only; anywhere else, every group on its
+         * title (a part its schedule hasn't let out, in any group; one a Together group hasn't watched).
          */
         fun of(item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): PartLock? {
             if (info == null || info.groups.none { it.schedule?.active == true }) return null
             val title = TogetherRow.titleOf(item, standings) ?: return null
             val order = standings[title]?.order ?: return null
             item.watchGroupId?.let { id -> return of(item.id, order, info.groups.filter { it.id == id }, together = false) }
-            return of(item.id, order, info.on(title).filter { it.together })
+            return of(item.id, order, info.on(title))
         }
     }
 }
@@ -877,14 +877,14 @@ class WatchPartnersPlugin : PlaybackGuard {
     }
 
     /**
-     * "Tommy & Suzy haven't watched this yet": Watch now together (a live session for the group),
+     * "Tommy & Suzy haven't watched this yet": Watch now together (a Group Watch Session for the group),
      * We're in the same room (everyone in the group here; it counts for them too, changeable in
      * the player), Watch for myself (no group; not when the group's schedule doesn't allow it,
      * [alone] false), Not now.
      */
     private fun unwatched(item: MediaItem, g: WatchGroup, titleId: String, host: PluginHost, alone: Boolean): GuardDecision.Ask {
         val what = item.episodeLabel ?: item.name
-        val together = host.together?.let { t ->
+        val together = host.together?.takeIf { it.available() }?.let { t ->
             GuardChoice("Watch now together", GuardAction.RunThenPlay(playIfFailed = false) {
                 t.start(item, g.id, g.others.map { it.id }, g.label)
                 answer(host, item, PlayOrigin.GroupCard(g.id))

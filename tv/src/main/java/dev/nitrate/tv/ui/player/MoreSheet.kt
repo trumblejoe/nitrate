@@ -421,8 +421,8 @@ internal const val EXTRAS = "Extras"
 
 /**
  * The Settings tab's state for this playback: what's on in [session], the defaults from the device's
- * own settings, and the pages of their own (speakers, second subtitles, finding subtitles, watching
- * together). Changes are for this playback; "Make default" writes them to the device's settings.
+ * own settings, and the pages of their own (speakers, second subtitles, finding subtitles).
+ * Changes are for this playback; "Make default" writes them to the device's settings.
  */
 @Composable
 internal fun rememberPlayerChoices(
@@ -431,7 +431,6 @@ internal fun rememberPlayerChoices(
     repository: dev.nitrate.core.MediaServer,
     sleepAt: Long?,
     sleepAtEnd: Boolean,
-    syncPlay: dev.nitrate.core.syncplay.SyncPlayController?,
     onSleep: (Long?, Boolean) -> Unit,
     onDone: () -> Unit,
     /** This playback's refresh-rate choice (null: the device's own) and how to change it. */
@@ -466,7 +465,6 @@ internal fun rememberPlayerChoices(
             }
         })
         add("Find subtitles" to { back -> SubtitleSearch(repository, session, onDone = { lang -> session.reloadWithNewSubtitle(lang); onDone() }, onBack = back) })
-        if (syncPlay != null) add("Watch now together" to { _ -> dev.nitrate.tv.ui.together.WatchTogetherPanel(syncPlay, "Movie night") })
     }
     val chatOn = groupChat?.on?.collectAsState()?.value
     val missed = groupChat?.missed?.collectAsState()?.value.orEmpty()

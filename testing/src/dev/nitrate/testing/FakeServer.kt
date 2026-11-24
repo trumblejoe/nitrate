@@ -393,6 +393,46 @@ class FakeServer : MediaServer {
     )
     override suspend fun partners() = partnerInfo
 
+    /** The Group Watch Session the session calls answer with (null: none going). */
+    var watchSessionState: dev.nitrate.core.partners.GroupWatchSession? = null
+    override suspend fun watchSessions() = listOfNotNull(watchSessionState)
+    override suspend fun startWatchSession(groupId: String, itemId: String, startMs: Long) =
+        dev.nitrate.core.partners.SessionJoin(watchSessionState ?: sampleSession(groupId = groupId, itemId = itemId, startMs = startMs).also { watchSessionState = it }, startMs, true)
+    override suspend fun watchSession(sessionId: String) = watchSessionState ?: error("No such Group Watch Session")
+    override suspend fun joinWatchSession(sessionId: String, fromStart: Boolean): dev.nitrate.core.partners.SessionJoin {
+        val s = watchSessionState ?: error("No such Group Watch Session")
+        return dev.nitrate.core.partners.SessionJoin(s.copy(joined = true), if (s.startsTogether) s.startMs else if (fromStart) 0 else s.positionMs, s.startsTogether)
+    }
+    override suspend fun startWatchSessionNow(sessionId: String) = watchSessionState ?: error("No such Group Watch Session")
+    override suspend fun reportWatchSession(sessionId: String, positionMs: Long, paused: Boolean, event: String?) = watchSessionState ?: error("No such Group Watch Session")
+    override suspend fun leaveWatchSession(sessionId: String) {}
+    override suspend fun endWatchSession(sessionId: String) { watchSessionState = null }
+
+    /**
+     * A sample Group Watch Session of Will's group on S1:E2 of The Night Reel, started by Will:
+     * [state] playing (Will at [positionMs], the server's clock now) or gathering.
+     */
+    fun sampleSession(
+        state: String = dev.nitrate.core.partners.GroupWatchSession.PLAYING,
+        positionMs: Long = 0,
+        groupId: String = "g1",
+        itemId: String = "s1e2",
+        startMs: Long = 0,
+        joined: Boolean = false,
+        startedByMe: Boolean = false,
+    ): dev.nitrate.core.partners.GroupWatchSession {
+        val now = System.currentTimeMillis()
+        val members = listOfNotNull(
+            dev.nitrate.core.partners.SessionMember("user-2", "Will", false, positionMs, leader = !startedByMe),
+            dev.nitrate.core.partners.SessionMember("user-1", "Me", true, positionMs, leader = startedByMe).takeIf { joined || startedByMe },
+        )
+        return dev.nitrate.core.partners.GroupWatchSession(
+            "ws1", groupId, itemId, "S1:E2", "The Night Reel", if (startedByMe) "Me" else "Will", startedByMe, state,
+            if (state == dev.nitrate.core.partners.GroupWatchSession.WAITING) null else now - positionMs, startMs, positionMs, false, now + 60_000,
+            members, joined || startedByMe, now,
+        )
+    }
+
     /** What [watchParty] answers (one quick look, as a phone's reminder takes). */
     var watchPartyState: dev.nitrate.core.partners.WatchParty? = null
     override suspend fun watchParty(groupId: String) = watchPartyState?.takeIf { it.groupId == groupId }

@@ -139,7 +139,7 @@ internal fun MorePanel(
         "comic" -> dev.nitrate.tv.ui.comics.ComicInfoDialog(repository, item, onDismiss)
         "together" -> if (container != null) {
             val info by container.partners.collectAsState()
-            dev.nitrate.tv.ui.partners.TogetherChoicesDialog(container, item, info, onPlay = onPlay, onOpenShow = onOpenShow, onStart = {}, onCustomize = null, onDismiss = onDismiss)
+            dev.nitrate.tv.ui.partners.TogetherChoicesDialog(container, item, info, onPlay = onPlay, onOpenShow = { id, _ -> onOpenShow(id) }, onStart = {}, onCustomize = null, onDismiss = onDismiss)
         }
     }
 }

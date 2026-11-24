@@ -56,7 +56,6 @@ import kotlinx.serialization.Serializable
 
 /** Settings → Tools → Household devices (admins). */
 @Serializable object HouseholdDevicesRoute
-@Serializable object WatchTogetherRoute
 @Serializable object ChannelsRoute
 /** The menu's "More": the stops kept out of the menu itself. */
 @Serializable object MoreRoute

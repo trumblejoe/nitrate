@@ -80,8 +80,9 @@ class GroupWatchSessionTest {
         val ahead = assertNotNull(SessionSync.drift(s, 115_500, false, t0 + 100_000))
         assertEquals("15 s ahead of Tommy", ahead.text)
         assertEquals("Go back to Tommy", ahead.action)
-        // Paused (either side), or the leader being the user: nothing.
-        assertNull(SessionSync.drift(s, 50_000, true, t0 + 100_000))
+        // Paused here while the leader plays on: still behind (Catch up plays on too).
+        assertEquals("50 s behind Tommy", SessionSync.drift(s, 50_000, true, t0 + 100_000)!!.text)
+        // The leader paused, or the leader being the user: nothing.
         val pausedLeader = s.copy(members = s.members.map { if (it.leader) it.copy(paused = true) else it })
         assertNull(SessionSync.drift(pausedLeader, 50_000, false, t0 + 100_000))
         val meLeading = s.copy(members = s.members.map { it.copy(leader = it.me) })

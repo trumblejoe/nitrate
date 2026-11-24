@@ -25,15 +25,18 @@ class PluginHost(val server: MediaServer, val store: PluginStorage, val together
 
 /** This device's watch-together (SyncPlay) session, as plugins see it. */
 interface TogetherSession {
-    /** The names of the people in this device's watch-together group (the user among them); empty outside one. */
+    /** The names of the people in this device's Group Watch Session (the user among them); empty outside one. */
     fun participants(): List<String>
 
-    /** The id of this device's watch-together (SyncPlay) group, null outside one. */
+    /** The id of this device's Group Watch Session, null outside one. */
     fun sessionId(): String? = null
 
+    /** Whether "Watch now together" can start one (the server has Group Watch Sessions). */
+    fun available(): Boolean = true
+
     /**
-     * Starts watching [item] together: a watch-together group for this device named for it and
-     * [names] (unless it's in one already), with [userIds] invited. The item is then played as usual.
+     * Starts watching [item] together: a Group Watch Session of group [groupId] on it (or the
+     * group's live one), the members ([userIds], [names]) told at once. The item is then played as usual.
      */
     suspend fun start(item: MediaItem, groupId: String, userIds: List<String>, names: String)
 }

@@ -1,7 +1,6 @@
 package dev.nitrate.core.partners
 
 import dev.nitrate.core.model.MediaItem
-import dev.nitrate.core.syncplay.SyncPlayGroup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -16,18 +15,19 @@ data class SameRoom(val groupId: String, val present: List<String>)
 /**
  * What the player's "With…" chip says about a playback: who it counts with ([context], from
  * [WatchPartners.contextFor]), the user's [groups] on the title (what "Counts for" offers), the
- * others in this device's watch party ([party], names; [partyOn] even before anyone joins) and
- * who's in the room ([room]).
+ * others in this device's Group Watch Session ([session], names; [inSession] even before anyone
+ * joins; [startedByMe] when the user started it) and who's in the room ([room]).
  */
 data class WithChip(
     val context: PlayContext,
     val groups: List<WatchGroup>,
-    val partyOn: Boolean = false,
-    val party: List<String> = emptyList(),
+    val inSession: Boolean = false,
+    val session: List<String> = emptyList(),
     val room: SameRoom? = null,
+    val startedByMe: Boolean = false,
 ) {
-    /** Shown only for a title shared with a group, or while a watch party is on. */
-    val shown: Boolean get() = groups.isNotEmpty() || partyOn
+    /** Shown only for a title shared with a group, or while in a Group Watch Session. */
+    val shown: Boolean get() = groups.isNotEmpty() || inSession
 
     /** The group "Counts for" has chosen now (null: just the user). */
     val group: WatchGroup? get() = context.groups.firstOrNull()
@@ -40,11 +40,11 @@ data class WithChip(
     }
 
     /**
-     * "Watching now together with Tommy & Suzy", "In the room with Tommy", "Counting for Tommy &
-     * Suzy · Change", "No group · Change".
+     * "In a session with Tommy, Suzy", "In the room with Tommy", "Counting for Tommy & Suzy ·
+     * Change", "No group · Change".
      */
     val label: String get() = when {
-        partyOn -> if (party.isEmpty()) "Watching now together · waiting for others" else "Watching now together with " + and(party)
+        inSession -> if (session.isEmpty()) "In a session · waiting for others" else "In a session with " + session.joinToString(", ")
         roomNames.isNotEmpty() -> "In the room with " + and(roomNames)
         context.justMe -> "No group · Change"
         else -> "Counting for " + and(context.groups.flatMap { g -> g.others.map { it.name } }.distinct()) + " · Change"
@@ -57,15 +57,15 @@ data class WithChip(
      * More than one group would do and none was chosen: the chip says which it counts for at the
      * start ("Counting for: Tommy"), so the user can switch.
      */
-    val ambiguous: Boolean get() = !partyOn && groups.size > 1 && context.reason in AUTO
+    val ambiguous: Boolean get() = !inSession && groups.size > 1 && context.reason in AUTO
 
     /** "Counting for: Tommy" (or "Counting for: just me"). */
     val counting: String get() = "Counting for: " + (group?.let { g -> and(g.others.map { it.name }) } ?: "just me")
 
-    /** Who's here, for the panel: "You, Tommy and Suzy, watching now together", "You and Tommy, in the room", "Just you". */
+    /** Who's here, for the panel: "You, Tommy and Suzy, in a Group Watch Session", "You and Tommy, in the room", "Just you". */
     val who: String get() = when {
-        partyOn && party.isNotEmpty() -> "You, " + WatchPartners.names(party) + ", watching now together"
-        partyOn -> "Just you so far: invite someone to watch with you"
+        inSession && session.isNotEmpty() -> "You and " + WatchPartners.names(session) + ", in a Group Watch Session"
+        inSession -> "Just you so far: the group was asked to join"
         roomNames.isNotEmpty() -> "You and " + WatchPartners.names(roomNames) + ", in the room"
         else -> "Just you, on this screen"
     }
@@ -85,15 +85,15 @@ data class WithChip(
         }
 
         /**
-         * The chip for [item]: its context ([WatchPartners.contextFor] with [with] and the party's
-         * names), and this device's watch party [party] (its participants by name,
-         * the user's own [selfName] left out). Null for a title the user shares with no group, outside a party.
+         * The chip for [item]: its context ([WatchPartners.contextFor] with [with] and the
+         * session's names), and this device's Group Watch Session [session] (who's in it by name,
+         * the user left out). Null for a title the user shares with no group, outside a session.
          */
         fun of(
             item: MediaItem?,
             info: PartnersInfo?,
             standings: Map<String, KeepUp>,
-            party: SyncPlayGroup?,
+            session: GroupWatchSession?,
             selfName: String?,
             with: WatchingWith? = null,
             room: SameRoom? = null,
@@ -101,10 +101,14 @@ data class WithChip(
             origin: PlayOrigin = PlayOrigin.Elsewhere,
         ): WithChip? {
             if (item == null) return null
-            val others = party?.participants.orEmpty().filter { !it.equals(selfName, ignoreCase = true) }.distinct()
+            val inIt = session?.takeIf { it.live && it.itemId == item.id }
+            val others = inIt?.others.orEmpty().map { it.name }.filter { !it.equals(selfName, ignoreCase = true) }.distinct()
             val context = WatchPartners.contextFor(item, info, standings, others, with, origin)
             val groups = context.titleId?.let { info?.on(it) }.orEmpty()
-            val chip = WithChip(context, groups, partyOn = party != null, party = others, room = room?.takeIf { r -> groups.any { it.id == r.groupId } && r.present.isNotEmpty() })
+            val chip = WithChip(
+                context, groups, inSession = inIt != null, session = others,
+                room = room?.takeIf { r -> groups.any { it.id == r.groupId } && r.present.isNotEmpty() }, startedByMe = inIt?.startedByMe == true,
+            )
             return chip.takeIf { it.shown }
         }
     }
@@ -137,19 +141,19 @@ data class CountAsk(val itemIds: List<String>, val what: String, val counting: C
  * Who one playback is watched with, for the player's "With…" chip ("Counting for Tommy · Change"):
  * where it started ([start]'s origin: a group's card, "for myself", elsewhere), the user's change
  * ("Change": a group or no group), who's in the room, all from data the app has already loaded
- * (the groups, where the user stands, this device's live session); nothing is polled. [start] as
+ * (the groups, where the user stands, this device's Group Watch Session); nothing is polled. [start] as
  * each item starts (the same title rolling on keeps where it started and the choices; another
  * title starts afresh), [left] as it ends or the player leaves: a part played to the end (90 %)
  * counts once, for those in the room ([record], `watchedWithGroup`), else for the groups it
  * counts for ([mark], `markForGroups`; [WatchPartners.countingFor]), asking "Just this group / All
- * groups where it's next" through [ask] when it's next in others too. A live session is counted by
- * the server, not here.
+ * groups where it's next" through [ask] when it's next in others too. A Group Watch Session is
+ * counted by the server, not here.
  */
 class WatchCompany(
     private val scope: CoroutineScope,
     private val partners: StateFlow<PartnersInfo?>,
     private val standings: StateFlow<Map<String, KeepUp>>,
-    private val party: StateFlow<SyncPlayGroup?>,
+    private val session: StateFlow<GroupWatchSession?>,
     private val selfName: () -> String?,
     /** "Counts for" as chosen earlier on a title in this run of the app (the next episode keeps it). */
     private val chosen: (titleId: String) -> WatchingWith? = { null },
@@ -181,7 +185,7 @@ class WatchCompany(
     private data class Inputs(val item: MediaItem?, val with: WatchingWith?, val room: SameRoom?, val origin: PlayOrigin)
 
     /** The chip now (null: none to show). */
-    val chip: StateFlow<WithChip?> = combine(inputs, partners, standings, party) { x, info, st, p ->
+    val chip: StateFlow<WithChip?> = combine(inputs, partners, standings, session) { x, info, st, p ->
         WithChip.of(x.item ?: return@combine null, info, st, p, selfName(), x.with, x.room, x.origin)
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
@@ -230,13 +234,13 @@ class WatchCompany(
     val choice: WatchingWith? get() = with.value
 
     /**
-     * What playing [playing] counts for now: nothing in a live session (the server counts those)
+     * What playing [playing] counts for now: nothing in a Group Watch Session (the server counts those)
      * or in the same room (counted for those there); the user's change ("Change": a group, or none);
      * else by where it started ([WatchPartners.countingFor]).
      */
     fun counting(playing: MediaItem? = item.value): Counting? {
         val i = playing ?: return null
-        if (party.value != null || inRoom.value != null) return null
+        if (session.value?.let { it.live && it.itemId == i.id } == true || inRoom.value != null) return null
         val info = partners.value
         return when (val w = with.value) {
             WatchingWith.JustMe -> Counting(PlayOrigin.ForMyself, emptyList())

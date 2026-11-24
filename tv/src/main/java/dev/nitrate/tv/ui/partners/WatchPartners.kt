@@ -363,7 +363,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
  * choices for a shared show, picking a show to start with, inviting, leaving.
  */
 @Composable
-fun TogetherHost(container: AppContainer, enabled: Boolean, onPlay: (MediaItem) -> Unit, onOpenShow: (String) -> Unit, content: @Composable () -> Unit) {
+fun TogetherHost(container: AppContainer, enabled: Boolean, onPlay: (MediaItem) -> Unit, onOpenShow: (String, String?) -> Unit, content: @Composable () -> Unit) {
     var answering by remember { mutableStateOf<dev.nitrate.core.partners.IncomingRequest?>(null) }
     var holding by remember { mutableStateOf<Pair<MediaItem, () -> Unit>?>(null) }
     var starting by remember { mutableStateOf(false) }
@@ -413,7 +413,8 @@ fun TogetherChoicesDialog(
     item: MediaItem,
     info: dev.nitrate.core.partners.PartnersInfo?,
     onPlay: (MediaItem) -> Unit,
-    onOpenShow: (String) -> Unit,
+    /** "Open the show": its id, and the group whose card it was held on (its details page then plays for that group). */
+    onOpenShow: (String, String?) -> Unit,
     onStart: () -> Unit,
     /** Holding OK on a row's card: "Customize this row" last. Null (from a details page): left out. */
     onCustomize: (() -> Unit)?,
@@ -427,7 +428,7 @@ fun TogetherChoicesDialog(
         value = if (series == null || dev.nitrate.core.partners.TogetherRow.isStart(item)) emptyList()
         else runCatching { container.server.titleItems(series) }.getOrDefault(emptyList())
     }
-    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.invitesAvailable(), prefs.ownSpoilerShows, System.currentTimeMillis())
+    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.sessionsAvailable(), prefs.ownSpoilerShows, System.currentTimeMillis())
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<String?>(null) }
     var changing by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
@@ -446,7 +447,7 @@ fun TogetherChoicesDialog(
             // Tonight's watch party: the same prompt as its reminder.
             is dev.nitrate.core.partners.TogetherChoice.Party -> { onDismiss(); container.parties.open(c.group) }
             is dev.nitrate.core.partners.TogetherChoice.Start -> { onDismiss(); onStart() }
-            is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); onOpenShow(c.seriesId) }
+            is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); onOpenShow(c.seriesId, c.groupId) }
             is dev.nitrate.core.partners.TogetherChoice.Invite -> inviting = c.groupId
             is dev.nitrate.core.partners.TogetherChoice.Leave -> leaving = c.group
             is dev.nitrate.core.partners.TogetherChoice.WatchNow -> scope.launch {

@@ -166,7 +166,10 @@ class AppContainer(
     /** Pages reload as for a server push: after something done here changes what they show (an invite answered...). */
     fun pagesChanged() { localChanges.tryEmit(Unit) }
 
-    /** Watch together: this device's SyncPlay group, if any. */
+    /**
+     * SyncPlay, kept only for compatibility: the server's own live groups (other clients, older
+     * Nitrate apps); Nitrate's own "Watch now together" is a Group Watch Session ([groupSessions]).
+     */
     val syncPlay by lazy {
         dev.nitrate.core.syncplay.SyncPlayController(server, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate))
     }
@@ -176,25 +179,31 @@ class AppContainer(
     /** The Nitrate Companion server plugin, when the server has it (null until known or without it). */
     val companion: StateFlow<dev.nitrate.core.companion.CompanionInfo?> = companionState
 
+    /** Group Watch Sessions (Companion feature `sessions`): this device's, the join prompt, the players' notices. */
+    val groupSessions by lazy { dev.nitrate.android.partners.GroupSessions(server, networkScope, ::nowMs) }
+
+    /** Whether the server has Group Watch Sessions ("Watch now together"; older plugins: hidden). */
+    fun sessionsAvailable(): Boolean = companion.value?.features?.contains(dev.nitrate.core.partners.GroupWatchSession.FEATURE) == true
+
     /** A group whose chat this device follows without watching in it (a phone beside the TV). */
     private val chatOnlyGroup = MutableStateFlow<String?>(null)
 
     /**
-     * Watch-together chat (needs the Companion plugin): follows this device's group, or the group
-     * picked with [chatAlongside] when this device isn't watching itself.
+     * Watch-together chat (needs the Companion plugin): follows this device's Group Watch Session,
+     * or the session picked with [chatAlongside] when this device isn't watching itself.
      */
     val chat by lazy {
         dev.nitrate.core.companion.GroupChat(server, networkScope) { server.userId }.also { chat ->
             networkScope.launch {
-                kotlinx.coroutines.flow.combine(syncPlay.group, companionState, chatOnlyGroup) { group, companion, alongside ->
-                    if (companion?.chat == true) group?.id ?: alongside else null
+                kotlinx.coroutines.flow.combine(groupSessions.current, companionState, chatOnlyGroup) { session, companion, alongside ->
+                    if (companion?.chat == true) session?.id ?: alongside else null
                 }.collect { chat.follow(it) }
             }
         }
     }
 
     /**
-     * Group chat for one playback (Companion `notes`, or live in this device's SyncPlay group): the
+     * Group chat for one playback (Companion `notes`, or live in this device's Group Watch Session): the
      * title's notes pinned along it, popping up as they're reached. The player calls `start` and
      * `at`, and `close` when it goes. When the title turns out to be shared with a watch group (its
      * notes, loaded anyway, list the groups), the groups are reloaded once for this playback, so new
@@ -323,7 +332,7 @@ class AppContainer(
                 }
                 partiesChanged()
             },
-            joinSession = { syncPlay.join(it) },
+            joinSession = { id -> groupSessions.join(id)?.let { error(it) } },
         )
     }
 
@@ -343,6 +352,7 @@ class AppContainer(
         followingParties = true
         networkScope.launch { remote.partyNews.collect { parties.heard(it) } }
         networkScope.launch { remote.scheduleNews.collect { scheduleAsks.heard(it) } }
+        networkScope.launch { remote.sessionNews.collect { groupSessions.heard(it) } }
     }
 
     /** The groups' parties changed: a phone moves its own reminders (TVs show the prompts only while open). */
@@ -373,7 +383,7 @@ class AppContainer(
      */
     suspend fun startParty(start: dev.nitrate.android.partners.PartyOutcome.Start): String? {
         runTogether(start.choice)?.let { return it }
-        syncPlay.group.value?.id?.let { session -> runCatching { server.partySession(start.groupId, session) } }
+        groupSessions.current.value?.id?.let { session -> runCatching { server.partySession(start.groupId, session) } }
         return null
     }
 
@@ -390,9 +400,12 @@ class AppContainer(
         runCatching { server.watchInvites() }.onSuccess { invitesState.value = it }
     }
 
-    /** Joins the invite's group (its player opens when the group plays) and clears the invite. */
+    /**
+     * Joins an older watch-together invite: a Group Watch Session's when it is one (its player
+     * opens), else (sent by an older app) the SyncPlay group, kept for them; clears the invite.
+     */
     suspend fun joinInvite(invite: dev.nitrate.core.partners.WatchInvite) {
-        syncPlay.join(invite.groupId)
+        if (sessionsAvailable() && groupSessions.join(invite.groupId) == null) Unit else syncPlay.join(invite.groupId)
         dismissInvite(invite)
     }
 
@@ -529,26 +542,24 @@ class AppContainer(
     }.getOrDefault(emptyList())
 
     /**
-     * "Watch now together": a live session (SyncPlay group) named for the show, the group's members
-     * invited into it (when the server carries invites), and the server told it's for the group
-     * (what it plays to the end counts there). The app then plays the episode, which becomes the group's.
+     * "Watch now together": a Group Watch Session of the group on the part (or the group's live
+     * one), the members told at once ("Tommy started the session · Join"; the server pushes it), and
+     * what it plays to the end counts for the group. The app then plays the part, which waits for
+     * the countdown (everyone joining within the first minute starts together).
      */
-    private suspend fun startWatchingNow(choice: dev.nitrate.core.partners.TogetherChoice.WatchNow) {
-        if (!syncPlay.inGroup) {
-            syncPlay.create("${choice.episode.seriesName ?: choice.episode.name} with ${choice.names}")
-            kotlinx.coroutines.withTimeoutOrNull(5_000) { syncPlay.group.first { it != null } }
-        }
-        val group = syncPlay.group.value ?: error("Couldn't start watching together")
-        if (invitesAvailable() && choice.userIds.isNotEmpty()) server.inviteToWatch(group.id, choice.userIds, choice.episode.id, choice.episode.seriesName ?: choice.episode.name)
-        if (choice.groupId.isNotEmpty() && companion.value?.features?.contains("groupwatch") == true) runCatching { server.sessionForGroup(choice.groupId, group.id) }
+    private suspend fun startWatchingNow(choice: dev.nitrate.core.partners.TogetherChoice.WatchNow, startMs: Long = 0) {
+        if (!sessionsAvailable()) error("Watching now together needs a newer Nitrate Companion on the server")
+        if (choice.groupId.isEmpty()) error("Pick a watch group to watch with")
+        val joined = groupSessions.start(choice.groupId, choice.episode.id, startMs)
         // While this device stays in it, what the group hasn't watched plays as watching together (a schedule that doesn't allow playing ahead).
-        if (choice.groupId.isNotEmpty()) watchPartners.watchingNow(plugins.host, choice.groupId, group.id)
+        watchPartners.watchingNow(plugins.host, choice.groupId, joined.session.id)
     }
 
-    /** This device's watch-together session as the playback guards see it (a group that watches together only asks for it). */
+    /** This device's Group Watch Session as the playback guards see it (a group that watches together only asks for it). */
     private val togetherSession = object : dev.nitrate.core.plugins.TogetherSession {
-        override fun participants(): List<String> = syncPlay.group.value?.participants.orEmpty()
-        override fun sessionId(): String? = syncPlay.group.value?.id
+        override fun participants(): List<String> = groupSessions.current.value?.members.orEmpty().map { it.name }
+        override fun sessionId(): String? = groupSessions.current.value?.id
+        override fun available(): Boolean = sessionsAvailable()
         override suspend fun start(item: dev.nitrate.core.model.MediaItem, groupId: String, userIds: List<String>, names: String) {
             startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, groupId, userIds, names))
         }
@@ -556,13 +567,13 @@ class AppContainer(
 
     /**
      * Who one playback is watched with, for the player's "With…" chip ([dev.nitrate.core.partners.WatchCompany]):
-     * from the groups, standings and this device's watch party already loaded, nothing polled. What's
+     * from the groups, standings and this device's Group Watch Session already loaded, nothing polled. What's
      * played to the end in the same room is counted for those there (`watchedWithGroup`), and the
      * standings reload after.
      */
     fun watchCompany(scope: kotlinx.coroutines.CoroutineScope): dev.nitrate.core.partners.WatchCompany =
         dev.nitrate.core.partners.WatchCompany(
-            scope, partners, groupStandings, syncPlay.group,
+            scope, partners, groupStandings, groupSessions.current,
             selfName = { accountState.value?.name },
             chosen = { title -> watchPartners.chosenOn(plugins.host, title) },
             onChosen = { title, with -> watchPartners.choose(plugins.host, title, with) },
@@ -588,25 +599,14 @@ class AppContainer(
         )
 
     /**
-     * "Start a watch party" from the player's chip: a watch party for this device (unless it's in
-     * one) for [item], with [group]'s members invited (or nobody yet, to invite from the panel).
-     * The player already showing [item] joins it. Returns an error message, if any.
+     * "Watch now together" from the player's chip: a Group Watch Session of [group] on [item] from
+     * [startMs] (where the player is), or the group's live one; the player already showing [item]
+     * keeps pace with it (held there for the countdown). Returns an error message, if any.
      */
-    suspend fun startWatchParty(item: dev.nitrate.core.model.MediaItem, group: dev.nitrate.core.partners.WatchGroup?): String? = runCatching {
-        val names = group?.let { dev.nitrate.core.partners.WithChip.nameOf(it) } ?: "friends"
-        startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, group?.id.orEmpty(), group?.others.orEmpty().map { it.id }, names))
-    }.exceptionOrNull()?.let { it.message ?: "Couldn't start watching together" }
-
-    /**
-     * Invites [userIds] to this device's watch party (what it plays, by [item]). Asking someone
-     * outside the title's group to join that too is the group invite ([dev.nitrate.core.MediaServer.askPartner]),
-     * offered by the panel. Returns an error message, if any.
-     */
-    suspend fun inviteToParty(userIds: List<String>, item: dev.nitrate.core.model.MediaItem?): String? = runCatching {
-        val party = syncPlay.group.value ?: error("Not watching together now")
-        server.inviteToWatch(party.id, userIds, item?.id, item?.let { it.seriesName ?: it.name })
-        Unit
-    }.exceptionOrNull()?.let { it.message ?: "Couldn't send the invites" }
+    suspend fun startWatchingNow(item: dev.nitrate.core.model.MediaItem, group: dev.nitrate.core.partners.WatchGroup?, startMs: Long = 0): String? = runCatching {
+        val g = group ?: error("Pick a watch group to watch with")
+        startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, g.id, g.others.map { it.id }, dev.nitrate.core.partners.WithChip.nameOf(g)), startMs)
+    }.exceptionOrNull()?.let { it.message ?: "Couldn't start the Group Watch Session" }
 
     /** "Add them to the group too?": the usual watch-group invite of [userIds] into [group] (each reads "sent"). */
     suspend fun inviteToGroup(group: dev.nitrate.core.partners.WatchGroup, userIds: List<String>): String? {
@@ -1049,6 +1049,7 @@ class AppContainer(
 
     private suspend fun leaveSession() {
         if (syncPlay.inGroup) syncPlay.leave()
+        groupSessions.clear()
         remote.stop()
         // The music belongs to the account that's leaving (its reports, its library).
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { listening?.stop() }

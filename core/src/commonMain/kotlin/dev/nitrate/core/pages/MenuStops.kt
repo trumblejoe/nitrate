@@ -9,6 +9,12 @@ object MenuStops {
     const val SEARCH = "search"
     const val HOME = "home"
     const val PAGES = "pages"
+
+    /**
+     * The old "Watch now together" stop (SyncPlay groups), no longer shown: the id stays readable
+     * so a saved arrangement holding it simply skips it. Watching now together is a Group Watch
+     * Session, started from a group's card or the player.
+     */
     const val TOGETHER = "together"
     const val CHANNELS = "channels"
 
@@ -39,12 +45,11 @@ object MenuStops {
 
     /**
      * What starts on the More page: the collections and playlists libraries ([isCollectionsOrPlaylists]
-     * says which library ids those are), comic catalogs, channels, your pages, watching together and
-     * switching user.
+     * says which library ids those are), comic catalogs, channels, your pages and switching user.
      */
     fun defaultMore(stops: Collection<String>, isCollectionsOrPlaylists: (String) -> Boolean): List<String> =
         stops.filter { it.startsWith("library:") && isCollectionsOrPlaylists(it.removePrefix("library:")) } +
-            listOf(COMICS, CHANNELS, PAGES, TOGETHER, PROFILES)
+            listOf(COMICS, CHANNELS, PAGES, PROFILES)
     fun page(id: String) = "page:$id"
 
     /** Spots per ring on the dial. */
@@ -52,7 +57,7 @@ object MenuStops {
 
     /** The menu before the user changes it: Search, Home, each library, pinned pages, then the rest. */
     fun defaults(libraryIds: List<String>, pinnedPageIds: List<String>): List<String> =
-        listOf(SEARCH, HOME) + libraryIds.map(::library) + pinnedPageIds.map(::page) + listOf(CHANNELS, PAGES, TOGETHER, SETTINGS, PROFILES)
+        listOf(SEARCH, HOME) + libraryIds.map(::library) + pinnedPageIds.map(::page) + listOf(CHANNELS, PAGES, SETTINGS, PROFILES)
 
     /**
      * What to show: the saved slots (or [defaults]) without stops that no longer exist (a removed

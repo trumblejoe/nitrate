@@ -168,7 +168,6 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) item {
             Link("Watch diary", "Every film and episode you finish, with your ratings and notes; export for Letterboxd") { actions.nav.navigate(DiaryRoute) }
         }
-        item { WatchTogetherRow(actions) }
         item { if (partnersAvailable(actions)) Link("Watch groups", "What you watch with others, invites, and keeping your account private") { actions.nav.navigate(WatchPartnersRoute) } }
         item { Link("Control a device", "Play, pause, seek and change volume on your TV or another app") { open(SettingsPage.REMOTE) } }
 

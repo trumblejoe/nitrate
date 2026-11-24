@@ -323,9 +323,14 @@ class ApplePlayerSession(private val container: AppContainer, private val report
         else if (player.rate == 0f) player.play() else player.pause()
     }
 
-    /** Pauses (the sleep timer). */
+    /** Pauses (the sleep timer, "Pause too" in a Group Watch Session). */
     fun pause() {
         if (usingMpv) mpv?.pause() else player.pause()
+    }
+
+    /** Plays (a Group Watch Session's start, "Play too"). */
+    fun play() {
+        if (usingMpv) mpv?.play() else player.play()
     }
 
     val isPaused: Boolean get() = paused()

@@ -3,8 +3,6 @@ package dev.nitrate.core.partners
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.model.UserState
-import dev.nitrate.core.syncplay.GroupState
-import dev.nitrate.core.syncplay.SyncPlayGroup
 import dev.nitrate.core.writing.UserRef
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +34,12 @@ class WithChipTest {
     private fun info(vararg groups: WatchGroup) = PartnersInfo(groups.toList(), emptyList(), emptyList())
     private val film = MediaItem("f", "Alone", ItemKind.MOVIE)
 
+    /** A Group Watch Session on [itemId] with [names] (the user, "Me", among them). */
+    private fun session(itemId: String, vararg names: String, mine: Boolean = false) = GroupWatchSession(
+        "s1", "ts", itemId, "S1:E4", "The Bear", "Tommy", mine, GroupWatchSession.PLAYING, 0L, 0, 0, false, 0L,
+        names.map { SessionMember(it.lowercase(), it, it == "Me", 0) }, true, 0L,
+    )
+
     @Test fun saysWhichSituationThePlaybackIsIn() {
         val st = standings(tommySuzy)
         val on = WithChip.of(eps[3], info(tommySuzy), st, null, "Me")!!
@@ -43,15 +47,16 @@ class WithChipTest {
         assertFalse(on.ambiguous)
         // No group, chosen.
         assertEquals("No group · Change", WithChip.of(eps[3], info(tommySuzy), st, null, "Me", with = WatchingWith.JustMe)!!.label)
-        // A watch party: the user's own name (any device) left out.
-        val party = SyncPlayGroup("p", "Party", GroupState.PLAYING, listOf("Me", "Tommy", "me", "Suzy"))
-        assertEquals("Watching now together with Tommy & Suzy", WithChip.of(eps[3], info(tommySuzy), st, party, "Me")!!.label)
-        assertEquals("Watching now together · waiting for others", WithChip.of(eps[3], info(tommySuzy), st, party.copy(participants = listOf("Me")), "Me")!!.label)
+        // A Group Watch Session: the user left out.
+        assertEquals("In a session with Tommy, Suzy", WithChip.of(eps[3], info(tommySuzy), st, session("e4", "Me", "Tommy", "Suzy"), "Me")!!.label)
+        assertEquals("In a session · waiting for others", WithChip.of(eps[3], info(tommySuzy), st, session("e4", "Me"), "Me")!!.label)
+        // A session on another part (this player isn't in it): counted as usual.
+        assertEquals("Counting for Tommy & Suzy · Change", WithChip.of(eps[3], info(tommySuzy), st, session("e9", "Me", "Tommy"), "Me")!!.label)
         // In the same room with some of the group.
         assertEquals("In the room with Tommy", WithChip.of(eps[3], info(tommySuzy), st, null, "Me", room = SameRoom("ts", listOf("t")))!!.label)
-        // Unshared and no party: no chip; a party on an unshared title still shows one.
+        // Unshared and no session: no chip; a session on an unshared title still shows one.
         assertNull(WithChip.of(film, info(tommySuzy), st, null, "Me"))
-        assertEquals("Watching now together with Kim", WithChip.of(film, info(tommySuzy), st, party.copy(participants = listOf("Me", "Kim")), "Me")!!.label)
+        assertEquals("In a session with Kim", WithChip.of(film, info(tommySuzy), st, session("f", "Me", "Kim"), "Me")!!.label)
         assertEquals("Tommy, Suzy, Kim & 2 more", WithChip.and(listOf("Tommy", "Suzy", "Kim", "Lee", "Sam")))
     }
 
@@ -154,10 +159,10 @@ class WithChipTest {
         company.countFor(WatchingWith.JustMe)
         company.left("e5", 60_000, 60_000, ended = true)
         assertEquals(1, marked.size)
-        // In a live session the server counts it, not the app.
+        // In a Group Watch Session the server counts it, not the app.
         val live = WatchCompany(
             backgroundScope, MutableStateFlow(info(tommySuzy, kim)), MutableStateFlow(st),
-            MutableStateFlow(SyncPlayGroup("p", "Party", GroupState.PLAYING, listOf("Me", "Tommy"))), { "Me" },
+            MutableStateFlow(session("e4", "Me", "Tommy")), { "Me" },
             mark = { groups, items -> marked += "$groups $items" },
         )
         live.start(eps[3], st, PlayOrigin.GroupCard("ts"))

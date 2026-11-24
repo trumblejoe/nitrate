@@ -2222,14 +2222,64 @@ class TvScreenshotTest {
             dev.nitrate.android.playback.PlaybackSession(context, c.server, c.playbackSettings, deviceNoun = "This TV", onEnded = {}, trackMemory = c.trackMemory)
         }
         // The Settings tab over a real session: its defaults come from this device's settings.
-        val choices = dev.nitrate.tv.ui.player.rememberPlayerChoices(session, c.playbackSettings, c.server, null, false, null, onSleep = { _, _ -> }, onDone = {})
+        val choices = dev.nitrate.tv.ui.player.rememberPlayerChoices(session, c.playbackSettings, c.server, null, false, onSleep = { _, _ -> }, onDone = {})
         Box(Modifier.fillMaxSize()) {
             dev.nitrate.tv.ui.player.MoreSheet(listOf(dev.nitrate.tv.ui.player.MoreTab("settings", "Settings") { dev.nitrate.tv.ui.player.PlayerChoicesTab(choices) }), null, {},
                 Modifier.align(androidx.compose.ui.Alignment.BottomStart))
         }
     }
 
-    @Test fun watchTogether() = shoot("tv-watch-together") { c -> dev.nitrate.tv.ui.together.WatchTogetherScreen(c.syncPlay, "Joe's group") }
+    /** "Will started the session": the join prompt off the player, Join focused (late: Join at …, Start from the beginning). */
+    @Test fun sessionJoinPrompt() = shoot("tv-session-join", act = {
+        compose.mainClock.advanceTimeBy(400); compose.waitForIdle()
+        check(focusedHasText("Join at 2:00")) { "Join is focused; focused: ${focusedNodes()}" }
+    }) { c ->
+        val s = (c.server as FakeServer).sampleSession(positionMs = 120_000)
+        val prompt = dev.nitrate.core.partners.SessionPrompt.of(s, s.serverTimeMs)!!
+        check(prompt.choices.map { it.label } == listOf("Join at 2:00", "Start from the beginning", "Not now")) { prompt.choices.toString() }
+        dev.nitrate.tv.ui.partners.SessionJoinDialog(prompt, onDismiss = {}, onChoose = {})
+    }
+
+    /** The countdown over the video, and (for whoever started it) the wait before it while the group gathers. */
+    @Test fun sessionCountdown() = shoot("tv-session-countdown") {
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF203040))) {
+            dev.nitrate.tv.ui.player.SessionCountdown(3, null, starter = false, modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(32.dp))
+            dev.nitrate.tv.ui.player.SessionCountdown(null, "Waiting for Frank, Tommy and Jane to join", starter = true, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(32.dp))
+        }
+    }
+
+    /** The others' news over the video: words only, never focusable; the action is in the controls. */
+    @Test fun sessionNotices() = shoot("tv-session-notices", act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocusable()).fetchSemanticsNodes().isEmpty()) { "the notices never take focus" }
+    }) {
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF203040))) {
+            androidx.compose.foundation.layout.Column(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(32.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+                dev.nitrate.tv.ui.player.SessionNoticeBanner(dev.nitrate.core.partners.SessionNotice.Paused("Will", 61_000), controlsUp = false)
+                dev.nitrate.tv.ui.player.SessionNoticeBanner(dev.nitrate.core.partners.SessionNotice.Jumped("Will", 1_450_000), controlsUp = true)
+                dev.nitrate.tv.ui.player.SessionNoticeBanner(dev.nitrate.core.partners.SessionNotice.Drift("Will", 12_000, 130_000), controlsUp = true)
+            }
+        }
+    }
+
+    /**
+     * In a Group Watch Session, 2 minutes behind Will: the notice shows over the video without taking
+     * focus, and Catch up is a button in the controls, reached with the D-pad.
+     */
+    @Test fun playerSessionCatchUp() = shoot("tv-player-session-catch-up", setup = { c ->
+        val fake = c.server as FakeServer
+        fake.watchSessionState = fake.sampleSession(positionMs = 120_000)
+        c.groupSessions.choose(fake.watchSessionState!!, dev.nitrate.core.partners.SessionChoice.FromStart)
+    }, act = {
+        compose.mainClock.advanceTimeBy(dev.nitrate.core.partners.SessionSync.REPORT_MS + 1_000); compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("behind Will", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the drift notice shows: " + compose.onAllNodes(androidx.compose.ui.test.hasText("", substring = true)).fetchSemanticsNodes().joinToString { it.config.toString() }.take(3000) }
+        check(!focusedHasText("behind Will")) { "the notice never takes focus; focused: ${focusedNodes()}" }
+        repeat(10) { if (!focusedHasText("Catch up")) press("right") }
+        if (!focusedHasText("Catch up")) repeat(12) { if (!focusedHasText("Catch up")) press("left") }
+        check(focusedHasText("Catch up")) { "Catch up is reachable in the controls; focused: ${focusedNodes()}" }
+    }) { c ->
+        dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {}, watchGroups = c)
+    }
 
     @Test fun profiles() = shoot("tv-profiles", { c -> c.profiles.setPin("home|sam", "1234") }) { c ->
         dev.nitrate.tv.ui.profiles.ProfilesScreen(c, onOpened = {}, onSignInAgain = {}, onAdd = {})
@@ -2391,7 +2441,7 @@ class TvScreenshotTest {
     }) { c ->
         val info by c.partners.collectAsState()
         val episode = dev.nitrate.core.model.MediaItem("ep-together", "The Long Night", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 1, indexNumber = 4)
-        dev.nitrate.tv.ui.partners.TogetherChoicesDialog(c, episode, info, onPlay = {}, onOpenShow = {}, onStart = {}, onCustomize = {}) {}
+        dev.nitrate.tv.ui.partners.TogetherChoicesDialog(c, episode, info, onPlay = {}, onOpenShow = { _, _ -> }, onStart = {}, onCustomize = {}) {}
     }
 
     @Test fun recap() = shoot("tv-recap", setup = { c -> c.pendingRecap = (c.server as dev.nitrate.testing.FakeServer).sampleRecap() }) { c ->

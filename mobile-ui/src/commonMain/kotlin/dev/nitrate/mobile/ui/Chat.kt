@@ -57,7 +57,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * One playback's group chat (Companion `notes`, live in a SyncPlay group too): started once the
+ * One playback's group chat (Companion `notes`, live in a Group Watch Session too): started once the
  * title is known (its notes loaded once), told where playback is about once a second, closed with
  * the player. Null for downloads played offline, recap clips and test plays.
  */

@@ -16,7 +16,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -31,7 +30,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -50,7 +48,6 @@ import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.partners.WatchCompany
 import dev.nitrate.core.partners.WatchingWith
 import dev.nitrate.core.partners.WithChip
-import dev.nitrate.core.writing.UserRef
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -90,9 +87,9 @@ fun rememberWatchCompany(
     return company
 }
 
-/** What the group chat follows for this chip: the group(s) it counts for, none for just the user; everything in a watch party. */
+/** What the group chat follows for this chip: the group(s) it counts for, none for just the user; everything in a Group Watch Session. */
 fun chatFocus(chip: WithChip?): List<String>? = when {
-    chip == null || chip.partyOn -> null
+    chip == null || chip.inSession -> null
     else -> chip.context.groups.map { it.id }
 }
 
@@ -153,7 +150,7 @@ fun CountingBanner(chip: WithChip?, easy: Boolean, onOpen: () -> Unit, modifier:
 /** How long "Counting for: …" stays up as playback starts. */
 const val COUNTING_MS = 5_000L
 
-/** The panel behind the chip, wired to the app: who's here, Counts for, the watch party, the same room, group chat, bringing notes. */
+/** The panel behind the chip, wired to the app: who's here, Counts for, Watch now together (a Group Watch Session), the same room, group chat, bringing notes. */
 @Composable
 fun PlayerWithSheet(
     actions: AppActions,
@@ -177,14 +174,16 @@ fun PlayerWithSheet(
         problem = problem,
         chatOn = chatOn?.takeIf { chatAvailable },
         brought = broughtText(chip, broughtBy, me, broughtMine),
-        people = { runCatching { container.server.partnerPeople() }.getOrDefault(emptyList()).filter { it.id != me } },
         onCountFor = { company.countFor(it) },
-        onStartParty = { scope.launch { problem = item?.let { container.startWatchParty(it, chip.group) } } },
-        onInvite = { ids -> scope.launch { problem = container.inviteToParty(ids, item) } },
-        onAddToGroup = { group, ids -> scope.launch { problem = container.inviteToGroup(group, ids) } },
+        // A Group Watch Session of the group it counts for, from where this player is now.
+        onStartSession = if (container.sessionsAvailable() && chip.group != null) ({
+            scope.launch { problem = item?.let { container.startWatchingNow(it, chip.group, positionMs()) } }
+        }) else null,
+        onLeaveSession = { container.groupSessions.leave(); onDismiss() },
+        onEndSession = { container.groupSessions.end(); onDismiss() },
         onSameRoom = { group, ids -> company.sameRoom(group, ids) },
         onGroupChat = if (groupChat != null && chatAvailable) { on -> turnGroupChat(actions, groupChat, on, positionMs()) } else null,
-        onBring = if (groupChat != null && chip.partyOn) { groupId ->
+        onBring = if (groupChat != null && chip.inSession) { groupId ->
             scope.launch {
                 groupChat.bring(groupId)
                     .onSuccess { broughtMine = groupId; problem = null }
@@ -203,13 +202,13 @@ fun broughtText(chip: WithChip, by: String?, me: String?, mine: String?): String
     return (name ?: "Someone watching") + " brought earlier notes"
 }
 
-private enum class WithPage { MAIN, ROOM, INVITE, BRING }
+private enum class WithPage { MAIN, ROOM, BRING }
 
 /**
  * The "With…" panel as a sheet: who's here, then Counts for (each group on the title, or just
- * you), the watch party (start one, or invite someone, offering to add them to the group too),
- * "We're in the same room" (pick who's here), Group chat on or off, and in a party "Bring our
- * earlier notes".
+ * you), Watch now together (a Group Watch Session of the group it counts for; in one, leave it,
+ * or end it for everyone when the user started it), "We're in the same room" (pick who's here),
+ * Group chat on or off, and in a session "Bring our earlier notes".
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -219,11 +218,11 @@ fun WithSheet(
     /** Group chat on or off (null: no chat for this playback). */
     chatOn: Boolean? = null,
     brought: String? = null,
-    people: suspend () -> List<UserRef> = { emptyList() },
     onCountFor: (WatchingWith) -> Unit = {},
-    onStartParty: () -> Unit = {},
-    onInvite: (List<String>) -> Unit = {},
-    onAddToGroup: (dev.nitrate.core.partners.WatchGroup, List<String>) -> Unit = { _, _ -> },
+    /** Starts a Group Watch Session (null: the server has none, or no group to start it for). */
+    onStartSession: (() -> Unit)? = {},
+    onLeaveSession: () -> Unit = {},
+    onEndSession: () -> Unit = {},
     onSameRoom: (groupId: String, present: List<String>) -> Unit = { _, _ -> },
     onGroupChat: ((Boolean) -> Unit)? = null,
     onBring: ((String?) -> Unit)? = null,
@@ -237,9 +236,8 @@ fun WithSheet(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             when (page) {
-                WithPage.MAIN -> WithMain(chip, problem, chatOn, brought, onCountFor, onStartParty, onGroupChat, onBring, go = { page = it })
+                WithPage.MAIN -> WithMain(chip, problem, chatOn, brought, onCountFor, onStartSession, onLeaveSession, onEndSession, onGroupChat, onBring, go = { page = it })
                 WithPage.ROOM -> chip.group?.let { g -> RoomPicker(chip, g, onDone = { ids -> onSameRoom(g.id, ids); page = WithPage.MAIN }, onBack = { page = WithPage.MAIN }) }
-                WithPage.INVITE -> InvitePicker(chip, people, onInvite, onAddToGroup, onBack = { page = WithPage.MAIN })
                 WithPage.BRING -> BringPicker(chip, onBring = { onBring?.invoke(it); page = WithPage.MAIN }, onBack = { page = WithPage.MAIN })
             }
         }
@@ -253,14 +251,16 @@ private fun WithMain(
     chatOn: Boolean?,
     brought: String?,
     onCountFor: (WatchingWith) -> Unit,
-    onStartParty: () -> Unit,
+    onStartSession: (() -> Unit)?,
+    onLeaveSession: () -> Unit,
+    onEndSession: () -> Unit,
     onGroupChat: ((Boolean) -> Unit)?,
     onBring: ((String?) -> Unit)?,
     go: (WithPage) -> Unit,
 ) {
     Text(chip.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     Text(chip.who, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    if (chip.groups.isNotEmpty() && !chip.partyOn) {
+    if (chip.groups.isNotEmpty() && !chip.inSession) {
         Heading("Counting for")
         val chosen = chip.group?.id
         chip.groups.forEach { g ->
@@ -268,17 +268,19 @@ private fun WithMain(
         }
         Choice("No group", selected = chosen == null) { onCountFor(WatchingWith.JustMe) }
     }
-    Heading("Watch now together")
-    if (chip.partyOn) {
-        Action("Invite someone to watch now", "They get an invite to join and watch in step") { go(WithPage.INVITE) }
-    } else {
+    if (chip.inSession) {
+        Heading("Group Watch Session")
+        Action("Leave the Group Watch Session", "Carry on by yourself from here", onLeaveSession)
+        if (chip.startedByMe) Action("End it for everyone", "Everyone carries on by themselves", onEndSession)
+    } else if (onStartSession != null && chip.group != null) {
+        Heading("Watch now together")
         Action(
-            "Watch now together" + (chip.group?.let { " with " + WithChip.nameOf(it) } ?: ""),
-            "Play in step on each other's screens; pausing pauses for everyone",
-            onStartParty,
+            "Watch now together with " + WithChip.nameOf(chip.group!!),
+            "Starts a Group Watch Session: the group is asked to join, and everyone starts together on their own screen",
+            onStartSession,
         )
     }
-    if (chip.group != null && !chip.partyOn) {
+    if (chip.group != null && !chip.inSession) {
         Action(
             "We're in the same room",
             if (chip.roomNames.isEmpty()) "Pick who's watching here with you: it counts for them too" else "Here: " + WithChip.and(chip.roomNames) + " · change",
@@ -310,60 +312,6 @@ private fun RoomPicker(chip: WithChip, group: dev.nitrate.core.partners.WatchGro
         TextButton(onClick = onBack) { Text("Back") }
     }
 }
-
-@Composable
-private fun InvitePicker(
-    chip: WithChip,
-    people: suspend () -> List<UserRef>,
-    onInvite: (List<String>) -> Unit,
-    onAddToGroup: (dev.nitrate.core.partners.WatchGroup, List<String>) -> Unit,
-    onBack: () -> Unit,
-) {
-    val list by produceState<List<UserRef>?>(null) { value = people() }
-    var chosen by remember { mutableStateOf(emptySet<String>()) }
-    var outsiders by remember { mutableStateOf<List<UserRef>?>(null) }
-    var sent by remember { mutableStateOf(false) }
-    val group = chip.group ?: chip.groups.firstOrNull()
-    Text(if (sent) "Invites sent" else "Invite someone to watch now", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-    when {
-        sent -> Text("They'll see it on their phone or when they open Nitrate.")
-        list == null -> Text("Loading…")
-        list!!.isEmpty() -> Text("Nobody else to invite on this server.")
-        else -> list!!.forEach { p ->
-            Row(
-                Modifier.fillMaxWidth().toggleable(value = p.id in chosen, role = Role.Checkbox) { on -> chosen = if (on) chosen + p.id else chosen - p.id }.padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(checked = p.id in chosen, onCheckedChange = null)
-                Text(p.name, Modifier.padding(start = 8.dp))
-            }
-        }
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (sent) TextButton(onClick = onBack) { Text("Done") }
-        else {
-            TextButton(enabled = chosen.isNotEmpty(), onClick = {
-                onInvite(chosen.toList())
-                sent = true
-                // Someone outside the title's group: ask about adding them to it, the usual group invite.
-                val members = group?.others.orEmpty().map { it.id }.toSet()
-                outsiders = list.orEmpty().filter { it.id in chosen && it.id !in members }.takeIf { group != null && it.isNotEmpty() }
-            }) { Text("Invite") }
-            TextButton(onClick = onBack) { Text("Back") }
-        }
-    }
-    val out = outsiders
-    if (out != null && group != null) {
-        AlertDialog(
-            onDismissRequest = { outsiders = null },
-            title = { Text("Add them to the group too?") },
-            text = { Text("${dev.nitrate.core.partners.WatchPartners.names(out.map { it.name })} ${if (out.size == 1) "isn't" else "aren't"} in your group with ${WithChip.nameOf(group)}. Ask them to join it, to keep pace on ${group.seriesName} after tonight too? They'll see an invite to the group.") },
-            confirmButton = { TextButton(onClick = { onAddToGroup(group, out.map { it.id }); outsiders = null }) { Text("Ask them") } },
-            dismissButton = { TextButton(onClick = { outsiders = null }) { Text("Not now") } },
-        )
-    }
-}
-
 
 @Composable
 private fun BringPicker(chip: WithChip, onBring: (String?) -> Unit, onBack: () -> Unit) {

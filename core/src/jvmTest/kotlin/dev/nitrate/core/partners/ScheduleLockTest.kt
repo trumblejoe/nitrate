@@ -106,7 +106,7 @@ class ScheduleLockTest {
             assertEquals(listOf("Watch now together", "We're in the same room", "Not now"), only.choices.map { it.label })
             assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[1], host, origin))
         }
-        // Without SyncPlay: the same room, or not now.
+        // Without Group Watch Sessions: the same room, or not now.
         assertEquals(listOf("We're in the same room", "Not now"), ask(plugin.beforePlay(eps[2], PluginHost(server(g), noStore))).choices.map { it.label })
         // In a live session with Sam: plays as today.
         session.names = listOf("me", "sam")

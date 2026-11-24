@@ -168,19 +168,6 @@ fun QuickConnectDialog(actions: AppActions, onDismiss: () -> Unit) {
     )
 }
 
-@Composable
-internal fun WatchTogetherRow(actions: AppActions) {
-    var open by remember { mutableStateOf(false) }
-    val group by actions.container.syncPlay.group.collectAsState()
-    ListItem(
-        modifier = Modifier.clickable { open = true },
-        headlineContent = { Text(group?.name ?: "Start or join a group") },
-        supportingContent = { Text(group?.let { "${it.participants.size} watching · ${it.state.label()}" } ?: "Then play anything and it plays for everyone") },
-        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
-    )
-    if (open) WatchTogetherDialog(actions) { open = false }
-}
-
 /** Sends what this device can play (and what Nitrate allows) to the server's logs, for diagnosing playback. */
 @Composable
 internal fun DeviceReportRow(actions: AppActions) {
