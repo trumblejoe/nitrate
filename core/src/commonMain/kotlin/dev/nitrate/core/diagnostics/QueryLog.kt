@@ -40,6 +40,11 @@ data class QueryRecord(
     val hints: List<String> = emptyList(),
     /** Why it failed when no answer came at all (the error, briefly); a refused request has its [status] instead. */
     val error: String? = null,
+    /**
+     * The whole request (path and parameters, ids as they are), so only the very same question asked
+     * again counts as a repeat — not another title's lookup of the same [shape].
+     */
+    val request: String? = null,
 )
 
 /**

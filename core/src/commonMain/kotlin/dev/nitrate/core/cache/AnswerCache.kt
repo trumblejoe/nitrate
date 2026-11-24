@@ -35,6 +35,15 @@ enum class AnswerKind(val keepMs: Long, val userData: Boolean) {
      * the watch marks in it are patched as they change, so it's kept for hours.
      */
     STRUCTURE(6 * 60 * 60_000L, true),
+
+    /** A search's answers: going back to Search, or typing the same again, asks nothing. */
+    SEARCH(60_000, true),
+
+    /**
+     * The Companion's small answers (a show's group progress, invites, its update status): anything
+     * the app sends lets them go at once, as does a change in watch state.
+     */
+    COMPANION(3 * 60_000L, true),
 }
 
 /** How an answer was had: asked for, joined while another asker waited for it, or kept from before. */

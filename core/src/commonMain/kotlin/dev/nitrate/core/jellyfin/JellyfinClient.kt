@@ -174,6 +174,7 @@ class JellyfinClient(
                         origin = origin, ms = ms, outcome = outcome, status = status, bytes = bytes,
                         hints = dev.nitrate.core.diagnostics.QueryHints.of(endpoint, params, ms, bytes),
                         error = error,
+                        request = requestOf(path, params),
                     ),
                 )
             }
@@ -193,7 +194,7 @@ class JellyfinClient(
             // Something sent: lists whose titles depend on watch state go now; the server's
             // UserDataChanged then fixes the marks in the rest.
             if (method != "GET" && status < 400) {
-                answers.forget { key, kind -> dependsOnWatchState(key, kind) }
+                answers.forget { key, kind -> dependsOnWatchState(key, kind) || kind == dev.nitrate.core.cache.AnswerKind.COMPANION }
                 // Anything sent may change the groups (marks, resume points, invites): the rows read them afresh.
                 forgetPartners()
                 // A playlist made, added to or removed: whoever keeps the list of them hears it.
@@ -804,14 +805,23 @@ class JellyfinClient(
         // second query over the whole filter); only where Jellyfin takes the switch.
         @Suppress("NAME_SHADOWING")
         val query = listQuery(segments, query)
-        val key = answerKey(segments, query)
-        val started = kotlin.time.TimeSource.Monotonic.markNow()
-        val (value, source) = answers.get(key, kind ?: answerKind(segments)) {
+        return shared(kind ?: answerKind(segments), segments, query) {
             get(*segments, query = query).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }
         }
+    }
+
+    /**
+     * Any GET answer through the shared answers ([dev.nitrate.core.cache.AnswerCache]): asked once,
+     * joined by whoever asks meanwhile and kept for [kind]'s time, put down in the query log as
+     * shared when it didn't go to the server. [load] makes the request itself.
+     */
+    internal suspend fun <T : Any> shared(kind: dev.nitrate.core.cache.AnswerKind, segments: Array<out String>, query: Map<String, Any?> = emptyMap(), load: suspend () -> T): T {
+        val started = kotlin.time.TimeSource.Monotonic.markNow()
+        val (value, source) = answers.get(answerKey(segments, query), kind, load)
         if (source != dev.nitrate.core.cache.AnswerSource.FETCHED) {
             val (id, tag) = queryLog.nextTag()
-            val endpoint = dev.nitrate.core.diagnostics.QueryLog.endpointOf(segments.joinToString("/"))
+            val path = segments.joinToString("/")
+            val endpoint = dev.nitrate.core.diagnostics.QueryLog.endpointOf(path)
             val params = query.filterValues { it != null }.mapValues { it.value.toString() }
             queryLog.add(
                 dev.nitrate.core.diagnostics.QueryRecord(
@@ -820,11 +830,16 @@ class JellyfinClient(
                     origin = dev.nitrate.core.diagnostics.QueryLog.originHere(),
                     ms = started.elapsedNow().inWholeMilliseconds,
                     outcome = if (source == dev.nitrate.core.cache.AnswerSource.JOINED) dev.nitrate.core.diagnostics.QueryOutcome.JOINED else dev.nitrate.core.diagnostics.QueryOutcome.KEPT,
+                    request = requestOf(path, params),
                 ),
             )
         }
         return value
     }
+
+    /** A request as the query log tells repeats apart: path and sorted parameters, paging included. */
+    private fun requestOf(path: String, params: Map<String, String>) =
+        path + params.entries.sortedBy { it.key.lowercase() }.joinToString("&", prefix = "?") { "${it.key.lowercase()}=${it.value}" }
 
     private fun listQuery(segments: Array<out String>, query: Map<String, Any?>): Map<String, Any?> =
         if (segments.joinToString("/") in COUNTING_LISTS && query.keys.none { it.equals("enableTotalRecordCount", true) })
@@ -1193,10 +1208,11 @@ class JellyfinClient(
                 "startIndex" to startIndex,
                 "limit" to limit,
                 "fields" to if (includeTags) "$ROW_FIELDS,Tags" else ROW_FIELDS,
-                "enableTotalRecordCount" to true,
+                // Only the first page counts every match; later pages know the total already.
+                "enableTotalRecordCount" to (startIndex == 0),
             ),
         ).decode<QueryResultDto<ItemDto>>()
-        return result.items.map { it.toMediaItem() } to result.totalRecordCount
+        return result.items.map { it.toMediaItem() } to pageTotal(startIndex, limit, result.items.size, result.totalRecordCount)
     }
 
     override suspend fun getItem(id: String): MediaItem {
@@ -1256,10 +1272,23 @@ class JellyfinClient(
 
     override suspend fun similar(itemId: String) = items("Items", itemId, "Similar", query = mapOf("limit" to 16, "fields" to "PrimaryImageAspectRatio"))
 
-    override suspend fun playlistItems(playlistId: String): List<MediaItem> {
+    override suspend fun playlistItems(playlistId: String): List<MediaItem> = playlistEntries(playlistId, "Overview,PrimaryImageAspectRatio,Genres,Tags")
+
+    /**
+     * A title's episodes or entries for working out where people are in it (group standings,
+     * Watching together): a playlist's entries without their descriptions, genres and tags, which
+     * a big one makes most of the answer.
+     */
+    override suspend fun titleItems(titleId: String): List<MediaItem> {
+        val title = getItem(titleId)
+        if (title.kind != ItemKind.PLAYLIST) return super.titleItems(titleId)
+        return playlistEntries(titleId, "PrimaryImageAspectRatio").flatMap { if (it.kind == ItemKind.SERIES) allEpisodes(it.id) else listOf(it) }
+    }
+
+    private suspend fun playlistEntries(playlistId: String, fields: String): List<MediaItem> {
         if (refused("playlist", playlistId)) throw dev.nitrate.core.ItemUnavailable(playlistId)
         return try {
-            items("Playlists", playlistId, "Items", query = mapOf("fields" to "Overview,PrimaryImageAspectRatio,Genres,Tags"))
+            items("Playlists", playlistId, "Items", query = mapOf("fields" to fields))
         } catch (e: ClientRequestException) {
             if (e.response.status == HttpStatusCode.NotFound) { refuse("playlist", playlistId); throw dev.nitrate.core.ItemUnavailable(playlistId) }
             throw e
@@ -1572,16 +1601,26 @@ class JellyfinClient(
     override suspend fun logWatch(itemId: String, watchedAtMs: Long?, rating: Int?, note: String?) = diaryApi.log(itemId, watchedAtMs, rating, note)
     override suspend fun editDiary(id: String, rating: Int?, note: String?, watchedAtMs: Long?) = diaryApi.edit(id, rating, note, watchedAtMs)
     override suspend fun deleteDiary(id: String) = diaryApi.delete(id)
-    override suspend fun searchLines(query: String, limit: Int) = diaryApi.searchLines(query, limit)
+    override suspend fun searchLines(query: String, limit: Int): List<dev.nitrate.core.lines.SpokenLine> {
+        val term = query.trim()
+        return shared(dev.nitrate.core.cache.AnswerKind.SEARCH, arrayOf("Nitrate", "Lines"), mapOf("query" to term, "limit" to limit)) { diaryApi.searchLines(term, limit) }
+    }
 
     override suspend fun privacy() = partnersApi.privacy()
     override suspend fun setPrivacy(private: Boolean) = partnersApi.setPrivacy(private)
     override suspend fun partnerPeople() = partnersApi.people()
     override suspend fun partners() = partnersApi.list().also { info ->
+        // The groups changed (someone joined, left, or moved on): each show's group progress is asked afresh.
+        if (lastPartners?.let { it.first == accountKey && it.second == info } != true) {
+            if (lastPartners != null) answers.forget { key, kind -> kind == dev.nitrate.core.cache.AnswerKind.COMPANION && "Partners/Progress" in key }
+            lastPartners = accountKey to info
+        }
         partnersListener?.invoke(info)
         // The rows read it too (featuresAndPartners): a fresh read serves them.
         togetherLock.withLock { togetherKept = Triple(kotlin.time.TimeSource.Monotonic.markNow(), accountKey, cachedFeatures() to info) }
     }
+
+    private var lastPartners: Pair<String?, dev.nitrate.core.partners.PartnersInfo>? = null
 
     /** The Companion's features as [companionHas] keeps them (asked at most every few minutes). */
     private suspend fun cachedFeatures(): Set<String> {
@@ -1645,10 +1684,12 @@ class JellyfinClient(
     override suspend fun declinePartner(requestId: String) = partnersApi.decline(requestId)
     override suspend fun cancelPartnerRequest(requestId: String) = partnersApi.cancel(requestId)
     override suspend fun leaveGroup(groupId: String) = partnersApi.leave(groupId)
-    override suspend fun partnerProgress(seriesId: String) = partnersApi.progress(seriesId)
+    override suspend fun partnerProgress(seriesId: String) =
+        shared(dev.nitrate.core.cache.AnswerKind.COMPANION, arrayOf("Nitrate", "Partners", "Progress"), mapOf("seriesId" to seriesId)) { partnersApi.progress(seriesId) }
     override suspend fun watchedTogether(itemId: String, groupId: String) = partnersApi.together(itemId, groupId)
     override suspend fun watchedWithGroup(groupId: String, itemIds: List<String>, present: List<String>) = partnersApi.watchedWith(groupId, itemIds, present)
     override suspend fun inviteToWatch(groupId: String, userIds: List<String>, itemId: String?, itemName: String?) = partnersApi.invite(groupId, userIds, itemId, itemName)
+    // Not kept: looking every couple of minutes is how a new one is found.
     override suspend fun watchInvites() = partnersApi.invites()
     override suspend fun dismissWatchInvite(id: String) = partnersApi.dismissInvite(id)
 
@@ -1667,7 +1708,8 @@ class JellyfinClient(
     override suspend fun saveChannel(channel: dev.nitrate.core.channels.HouseChannel, startOver: Boolean) = channelsApi.save(channel, startOver)
     override suspend fun deleteChannel(channelId: String) = channelsApi.delete(channelId)
     override suspend fun companion() = companionApi.info()
-    override suspend fun companionUpdates() = companionApi.updates()
+    override suspend fun companionUpdates() =
+        shared(dev.nitrate.core.cache.AnswerKind.COMPANION, arrayOf("Nitrate", "Updates")) { companionApi.updates() }
     override suspend fun checkCompanionUpdates() = companionApi.checkUpdates()
     override suspend fun restartForCompanionUpdate() = companionApi.restartForUpdate()
 
@@ -1769,9 +1811,20 @@ class JellyfinClient(
 
     override suspend fun queryPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> {
         if (query.filtersCodecs) return codecFilteredPage(query, startIndex, limit)
-        val params = itemQueryParams(query) + mapOf("startIndex" to startIndex, "limit" to limit, "enableTotalRecordCount" to true, "userId" to userId)
+        val params = itemQueryParams(query) + mapOf("startIndex" to startIndex, "limit" to limit, "enableTotalRecordCount" to (startIndex == 0), "userId" to userId)
         val result = get("Items", query = params).decode<QueryResultDto<ItemDto>>()
-        return result.items.map { it.toMediaItem() } to result.totalRecordCount
+        return result.items.map { it.toMediaItem() } to pageTotal(startIndex, limit, result.items.size, result.totalRecordCount)
+    }
+
+    /**
+     * The total a page reports: the server's count on the first page; on later pages (not counted:
+     * the server would go over every match again) where the list ends when this page is short, else
+     * -1, "as before" ([dev.nitrate.core.MediaServer.queryPage]).
+     */
+    private fun pageTotal(startIndex: Int, limit: Int, got: Int, counted: Int) = when {
+        startIndex == 0 -> counted
+        got < limit -> startIndex + got
+        else -> -1
     }
 
     // ---- Codec filters (Jellyfin has none: Nitrate reads the streams and filters) ----
@@ -2080,14 +2133,14 @@ class JellyfinClient(
     override suspend fun searchHints(query: String): SearchResults {
         val term = query.trim()
         if (term.isEmpty()) return SearchResults()
-        val hints = get(
-            "Search", "Hints",
-            query = mapOf(
-                "searchTerm" to term, "userId" to userId, "limit" to 40,
-                "includeItemTypes" to "Movie,Series,Episode,BoxSet,Person",
-                "includePeople" to true, "includeMedia" to true,
-            ),
-        ).decode<SearchHintResultDto>().searchHints
+        val hintQuery = mapOf(
+            "searchTerm" to term, "userId" to userId, "limit" to 40,
+            "includeItemTypes" to "Movie,Series,Episode,BoxSet,Person",
+            "includePeople" to true, "includeMedia" to true,
+        )
+        val hints = shared(dev.nitrate.core.cache.AnswerKind.SEARCH, arrayOf("Search", "Hints"), hintQuery) {
+            get("Search", "Hints", query = hintQuery).decode<SearchHintResultDto>().searchHints
+        }
         val items = hints.filter { it.type != "Person" }.mapNotNull { h ->
             val id = h.id ?: h.itemId ?: return@mapNotNull null
             MediaItem(
@@ -2150,6 +2203,7 @@ class JellyfinClient(
         val items = async {
             items(
                 "Items",
+                kind = dev.nitrate.core.cache.AnswerKind.SEARCH,
                 query = mapOf(
                     "searchTerm" to term,
                     "recursive" to true,
@@ -2160,12 +2214,8 @@ class JellyfinClient(
                 ),
             )
         }
-        val people = async {
-            runCatching {
-                get("Persons", query = mapOf("searchTerm" to term, "limit" to 16)).decode<QueryResultDto<ItemDto>>().items
-                    .map { Person(normalizeId(it.id), it.name.orEmpty(), null, it.imageTags?.get("Primary")) }
-            }.getOrDefault(emptyList())
-        }
+        // People come with the quick matches (asked first, and kept): no search of its own.
+        val people = async { runCatching { searchHints(term).people }.getOrDefault(emptyList()) }
         val found = items.await()
         SearchResults(
             movies = found.filter { it.kind == ItemKind.MOVIE },

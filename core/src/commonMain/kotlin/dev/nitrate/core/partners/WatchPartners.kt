@@ -292,6 +292,14 @@ data class WatchInvite(
 ) {
     /** "Will invites you to watch with them: Nitrate" (or just "… to watch with them" when nothing's playing yet). */
     val text: String get() = "$fromName invites you to watch with them" + (itemName?.let { ": $it" } ?: "")
+
+    companion object {
+        /**
+         * How often the apps look for invites while open (older apps' only; Nitrate's own sessions
+         * tell the group's apps at once), besides each time the app comes back into view.
+         */
+        const val CHECK_MS = 2 * 60_000L
+    }
 }
 
 /**

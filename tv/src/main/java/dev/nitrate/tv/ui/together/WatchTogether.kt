@@ -17,7 +17,7 @@ import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
 
 /**
- * A watch-together invite from an older Nitrate app (checked every 30 s while the app is open; TVs
+ * A watch-together invite from an older Nitrate app (checked every two minutes while the app is open and as it comes back into view; TVs
  * show no notifications), kept for compatibility: Join puts this TV in that session (a Group Watch
  * Session's, else the older app's SyncPlay group), Not now turns it down. Nitrate's own "Watch now
  * together" sends no invites: the group's apps are told at once (the join prompt).
@@ -25,10 +25,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun WatchInvitePrompt(container: dev.nitrate.android.AppContainer) {
     val companion by container.companion.collectAsState()
-    LaunchedEffect(companion) {
+    val shown by container.appShown.collectAsState()
+    LaunchedEffect(companion, shown) {
         while (true) {
             container.refreshInvites()
-            kotlinx.coroutines.delay(30_000)
+            kotlinx.coroutines.delay(dev.nitrate.core.partners.WatchInvite.CHECK_MS)
         }
     }
     val invites by container.watchInvites.collectAsState()

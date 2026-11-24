@@ -293,7 +293,10 @@ interface MediaServer {
     /** How to continue a row made by [queryItems] with [query]; null when it can't be. */
     fun moreOfQuery(query: dev.nitrate.core.pages.ItemQuery): dev.nitrate.core.rows.RowMore? = null
 
-    /** One page of a library for grids. Returns the items and the total count. */
+    /**
+     * One page of a library for grids. Returns the items and the total count: counted on the first
+     * page only; a later page gives where the list ends when it's short, else -1 (keep the total had).
+     */
     suspend fun libraryPage(library: MediaItem, sort: LibrarySort, startIndex: Int, limit: Int, includeTags: Boolean = false): Pair<List<MediaItem>, Int>
     suspend fun getItem(id: String): MediaItem
     suspend fun seasons(seriesId: String): List<MediaItem>
@@ -828,7 +831,7 @@ interface MediaServer {
     /** Items matching a saved search, for custom rows. */
     suspend fun queryItems(query: ItemQuery): List<MediaItem> = unsupported()
 
-    /** One page of a query ([ItemQuery.limit] is ignored), with how many match in all. */
+    /** One page of a query ([ItemQuery.limit] is ignored), with how many match in all (as [libraryPage]: -1 on a later full page). */
     suspend fun queryPage(query: ItemQuery, startIndex: Int, limit: Int): Pair<List<MediaItem>, Int> = unsupported()
 
     /** A collection's (box set's) items. */

@@ -153,10 +153,12 @@ fun PlayingElsewhereBar(actions: AppActions, modifier: Modifier = Modifier, onSh
     var tick by remember { mutableIntStateOf(0) }
     // Keyed on the account: switching clears it at once (and asks again as the new one).
     val account = actions.server.currentAccountKey ?: actions.server.userId
-    val playing by produceState<ServerSession?>(null, tick, account) {
+    // Looked at again whenever the app comes back into view, so a minute between looks is enough while nothing plays.
+    val shown by actions.container.appShown.collectAsState()
+    val playing by produceState<ServerSession?>(null, tick, account, shown) {
         while (true) {
             value = runCatching { RemoteDevices.playing(actions.server.controllableSessions(), actions.server.deviceId, actions.server.userId).firstOrNull() }.getOrNull()
-            delay(if (value != null) 5_000 else 20_000)
+            delay(if (value != null) 5_000 else 60_000)
         }
     }
     androidx.compose.runtime.LaunchedEffect(playing?.nowPlaying != null) { onShown(playing?.nowPlaying != null) }

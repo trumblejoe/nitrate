@@ -89,7 +89,7 @@ class BrowseViewModel(
         val current = _state.value
         loading = viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library all")) {
             runCatching { server.queryPage(current.options.query(library.id, library.collection), current.items.size, PAGE_SIZE) }
-                .onSuccess { (items, total) -> _state.update { if (it.options == current.options) it.copy(items = it.items + items, total = total, error = null) else it } }
+                .onSuccess { (items, total) -> _state.update { if (it.options == current.options) it.copy(items = it.items + items, total = if (total >= 0) total else it.total, error = null) else it } }
                 .onFailure { e -> _state.update { it.copy(error = e.message ?: "Failed to load") } }
         }
     }

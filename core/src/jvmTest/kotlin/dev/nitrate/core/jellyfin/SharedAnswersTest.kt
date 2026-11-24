@@ -27,10 +27,12 @@ class SharedAnswersTest {
     private val asked = AtomicInteger()
     private val tags = mutableListOf<String>()
     private val counting = mutableListOf<String?>()
+    private val paths = mutableListOf<String>()
 
     private val engine = MockEngine { request ->
         if (request.url.encodedPath.endsWith("/Similar") || request.url.encodedPath.endsWith("/NextUp")) asked.incrementAndGet()
         request.headers[JellyfinClient.QUERY_TAG_HEADER]?.let { synchronized(tags) { tags += it } }
+        synchronized(paths) { paths += request.url.encodedPath }
         if (request.url.encodedPath == "/Items") synchronized(counting) { counting += request.url.parameters["enableTotalRecordCount"] }
         delay(200)
         when {
@@ -137,5 +139,28 @@ class SharedAnswersTest {
         assertTrue(s.played && s.isFavorite)
         assertEquals(60_000L, s.positionMs)
         assertEquals(2, s.playCount)
+    }
+
+    @Test fun aSearchAgainAsksNothingAndPeopleComeWithTheQuickMatches() = runBlocking {
+        val c = client()
+        withQueryOrigin("Search") { c.searchHints("hunger"); c.search("hunger") }
+        // Back to Search, with a stray space: the same search.
+        withQueryOrigin("Search") { c.searchHints("hunger "); c.search("hunger ") }
+        assertEquals(1, paths.count { it == "/Search/Hints" })
+        assertEquals(1, paths.count { it == "/Items" })
+        assertEquals(0, paths.count { it == "/Persons" })
+    }
+
+    @Test fun onlyTheFirstPageIsCounted() = runBlocking {
+        val c = client()
+        val query = dev.nitrate.core.pages.ItemQuery(types = listOf(dev.nitrate.core.model.ItemKind.MOVIE))
+        val (_, total) = c.queryPage(query, 0, 1)
+        val (_, later) = c.queryPage(query, 1, 1)
+        assertEquals(listOf("true", "false"), counting)
+        // The later page is full: "keep the total you had".
+        assertEquals(-1, later)
+        // A short page (one title of five asked, from the third) says where the list ends.
+        assertEquals(3, c.queryPage(query, 2, 5).second)
+        assertTrue(total >= 0)
     }
 }

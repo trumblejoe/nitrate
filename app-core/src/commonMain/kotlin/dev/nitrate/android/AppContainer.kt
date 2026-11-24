@@ -306,11 +306,17 @@ class AppContainer(
         }
     }
 
+    private val appShownState = MutableStateFlow(0L)
+
+    /** When the app last came back into view: slow checks (another device playing, invites) look again then. */
+    val appShown: StateFlow<Long> = appShownState
+
     /**
      * The app came back into view: the Companion is asked again when it hasn't been for 10
      * minutes (a plugin updated meanwhile may offer more), one light request.
      */
     fun onAppShown() {
+        appShownState.value = nowMs()
         if (server.currentAccountKey == null || nowMs() - companionCheckedAt < 10 * 60_000L) return
         networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Companion")) { refreshCompanion() }
     }

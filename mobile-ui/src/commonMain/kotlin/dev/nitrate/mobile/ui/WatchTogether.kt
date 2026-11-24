@@ -168,7 +168,7 @@ fun SessionNoticeCard(notice: SessionNotice?, onAct: () -> Unit, onDismiss: () -
 }
 
 /**
- * A watch-together invite from an older Nitrate app (checked every 30 s while the app is open),
+ * A watch-together invite from an older Nitrate app (checked every two minutes while the app is open, and as it comes back into view),
  * kept for compatibility: Join puts this device in that session (a Group Watch Session's, else the
  * older app's SyncPlay group), Not now turns it down. Nitrate's own Group Watch Session sends no
  * invites: the group's apps are told at once ([SessionJoinPrompt]).
@@ -177,10 +177,11 @@ fun SessionNoticeCard(notice: SessionNotice?, onAct: () -> Unit, onDismiss: () -
 fun WatchInvitePrompt(actions: AppActions) {
     val container = actions.container
     val companion by container.companion.collectAsState()
-    androidx.compose.runtime.LaunchedEffect(companion) {
+    val shown by container.appShown.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(companion, shown) {
         while (true) {
             container.refreshInvites()
-            kotlinx.coroutines.delay(30_000)
+            kotlinx.coroutines.delay(dev.nitrate.core.partners.WatchInvite.CHECK_MS)
         }
     }
     val invites by container.watchInvites.collectAsState()

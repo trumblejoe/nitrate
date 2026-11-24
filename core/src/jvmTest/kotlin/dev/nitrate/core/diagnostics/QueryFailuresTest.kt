@@ -17,4 +17,17 @@ class QueryFailuresTest {
         assertTrue(g.counts, g.counts.contains("3 failed (403 ×2, no answer (SocketTimeoutException: timeout) ×1)"))
         assertTrue(summary.render("test").contains("3 failed: 403 ×2, no answer (SocketTimeoutException: timeout) ×1"))
     }
+
+    private fun lookup(id: Long, atMs: Long, item: String) = QueryRecord(
+        id, "t$id", atMs, "GET", "/Items/{id}", "/Items/{id}", "Details", 50, QueryOutcome.FETCHED, 200, request = "Items/$item?",
+    )
+
+    @Test fun onlyTheSameRequestAskedAgainIsARepeat() {
+        // Ten different titles looked up within a minute: the same shape, but nothing could have been shared.
+        val different = QuerySummary.of((1L..10L).map { lookup(it, it * 1_000, "item$it") }).groups.single()
+        assertTrue(different.hints.none { it.startsWith("Fetched again") })
+        // The same title three times: two repeats.
+        val same = QuerySummary.of((1L..3L).map { lookup(it, it * 1_000, "item1") }).groups.single()
+        assertTrue(same.hints.toString(), "Fetched again 2 times within a minute: these could share one answer" in same.hints)
+    }
 }

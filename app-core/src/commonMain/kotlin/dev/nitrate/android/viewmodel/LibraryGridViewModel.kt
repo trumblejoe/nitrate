@@ -46,7 +46,7 @@ class LibraryGridViewModel(
         val start = _state.value.items.size
         loading = viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library grid")) {
             runCatching { repository.libraryPage(library, _state.value.sort, start, PAGE_SIZE, includeTags) }
-                .onSuccess { (items, total) -> _state.update { it.copy(items = it.items + items, total = total, error = null) } }
+                .onSuccess { (items, total) -> _state.update { it.copy(items = it.items + items, total = if (total >= 0) total else it.total, error = null) } }
                 .onFailure { e -> _state.update { it.copy(error = e.message ?: "Failed to load") } }
         }
     }

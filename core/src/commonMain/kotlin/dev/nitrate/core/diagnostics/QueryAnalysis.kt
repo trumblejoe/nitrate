@@ -131,8 +131,11 @@ data class QuerySummary(
                 .entries.sortedByDescending { it.value }.map { (why, n) -> "$why ×$n" }
 
         /** How many fetches came within [REPEAT_WINDOW_MS] of the one before (same shape). */
+        /** The same request fetched again within [REPEAT_WINDOW_MS] of the last time it was. */
         private fun repeats(fetched: List<QueryRecord>): Int =
-            fetched.sortedBy { it.atMs }.zipWithNext().count { (a, b) -> b.atMs - a.atMs in 0 until REPEAT_WINDOW_MS }
+            fetched.groupBy { it.request ?: it.shape }.values.sumOf { same ->
+                same.sortedBy { it.atMs }.zipWithNext().count { (a, b) -> b.atMs - a.atMs in 0 until REPEAT_WINDOW_MS }
+            }
 
         fun size(bytes: Long) = when {
             bytes >= 1_000_000 -> "${bytes / 100_000 / 10.0} MB"
