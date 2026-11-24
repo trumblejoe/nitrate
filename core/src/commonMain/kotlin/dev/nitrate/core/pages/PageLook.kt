@@ -25,6 +25,8 @@ data class PageLook(
     /** Cards' corners and the gap between them. */
     val cardCorners: CardCorners? = null,
     val cardSpacing: CardSpacing? = null,
+    /** A library's full list: details fixed at the top, or a grid that scrolls with the page. */
+    val gridLayout: GridLayout? = null,
 ) {
     val isEmpty: Boolean get() = this == PageLook()
 }
@@ -49,6 +51,7 @@ object PageLooks {
         focusStyle = prefs.tvFocusStyle,
         cardCorners = prefs.tvCardCorners,
         cardSpacing = prefs.tvCardSpacing,
+        gridLayout = prefs.tvGridLayout,
     )
 
     /** The page's layout in full: its own choices over every page's. */
@@ -66,6 +69,7 @@ object PageLooks {
             focusStyle = own.focusStyle ?: base.focusStyle,
             cardCorners = own.cardCorners ?: base.cardCorners,
             cardSpacing = own.cardSpacing ?: base.cardSpacing,
+            gridLayout = own.gridLayout ?: base.gridLayout,
         )
     }
 
@@ -90,6 +94,7 @@ object PageLooks {
             tvFocusStyle = look.focusStyle ?: prefs.tvFocusStyle,
             tvCardCorners = look.cardCorners ?: prefs.tvCardCorners,
             tvCardSpacing = look.cardSpacing ?: prefs.tvCardSpacing,
+            tvGridLayout = look.gridLayout ?: prefs.tvGridLayout,
         )
     }
 
@@ -110,6 +115,7 @@ object PageLooks {
             focusStyle = next.focusStyle.takeIf { it != base.focusStyle },
             cardCorners = next.cardCorners.takeIf { it != base.cardCorners },
             cardSpacing = next.cardSpacing.takeIf { it != base.cardSpacing },
+            gridLayout = next.gridLayout.takeIf { it != base.gridLayout },
         )
         return prefs.copy(pageLooks = if (own.isEmpty) prefs.pageLooks - owner else prefs.pageLooks + (owner to own))
     }
@@ -135,6 +141,7 @@ object PageLooks {
             tvFocusStyle = look.focusStyle ?: prefs.tvFocusStyle,
             tvCardCorners = look.cardCorners ?: prefs.tvCardCorners,
             tvCardSpacing = look.cardSpacing ?: prefs.tvCardSpacing,
+            tvGridLayout = look.gridLayout ?: prefs.tvGridLayout,
             pageLooks = emptyMap(),
         )
     }
@@ -170,7 +177,7 @@ enum class LayoutPreset(val label: String, val detail: String, val look: PageLoo
 
     companion object {
         /** The preset a page's full layout is, if it's exactly one of them (else it's been fine-tuned). */
-        fun matching(look: PageLook): LayoutPreset? = entries.firstOrNull { it.look == look }
+        fun matching(look: PageLook): LayoutPreset? = entries.firstOrNull { it.look == look.copy(gridLayout = null) }
     }
 }
 
@@ -195,4 +202,5 @@ fun PageLooks.applyEverywhere(prefs: DisplayPrefs, preset: LayoutPreset): Displa
 
 /** Just [pageKey]'s page takes [preset] (kept as what differs from every page's layout). */
 fun PageLooks.applyToPage(prefs: DisplayPrefs, pageKey: String, preset: LayoutPreset): DisplayPrefs =
-    change(prefs, pageKey) { preset.look }
+    // A preset sets the rows' look; the page keeps its own choice of grid for its full list.
+    change(prefs, pageKey) { preset.look.copy(gridLayout = it.gridLayout) }
