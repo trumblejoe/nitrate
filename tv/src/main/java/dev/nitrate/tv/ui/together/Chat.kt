@@ -37,17 +37,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Button
-import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
-import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import dev.nitrate.core.companion.ChatKind
 import dev.nitrate.core.companion.ChatMessage
 import dev.nitrate.core.companion.GroupChat
 import dev.nitrate.core.companion.Notes
 import dev.nitrate.core.companion.QUICK_REACTIONS
-import dev.nitrate.core.companion.TimelineChat
 import dev.nitrate.core.companion.TimelineNote
 import dev.nitrate.core.model.formatClock
 import dev.nitrate.tv.ui.components.TvTextField
@@ -94,7 +91,7 @@ fun NoteToasts(popups: Flow<TimelineNote>, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun NoteLine(n: TimelineNote) {
+internal fun NoteLine(n: TimelineNote) {
     Column {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(n.userName, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -111,7 +108,7 @@ private fun NoteLine(n: TimelineNote) {
  * below, so focus never falls out to whatever lies further down the screen).
  */
 @Composable
-private fun ChatComposer(
+internal fun ChatComposer(
     firstReaction: FocusRequester,
     send: (String, ChatKind) -> Unit,
     draft: String,
@@ -132,81 +129,15 @@ private fun ChatComposer(
             }
         }
     }
-    TvTextField(
-        draft, onDraft, "Type a message",
-        modifier = Modifier.focusRequester(field).focusProperties { up = firstReaction },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { if (draft.isNotBlank()) send(draft, ChatKind.TEXT) }),
-    )
-    Button(onClick = { send(draft, ChatKind.TEXT) }, enabled = draft.isNotBlank()) { Text("Send") }
-}
-
-/**
- * The player's group chat beside the video: the Group chat switch first, then (when on) the notes
- * so far — only up to where you've got — with "Show what I missed" after turning it on mid-play,
- * and reactions and a text field to pin your own at this point. Focus stays inside until Back
- * closes it ([trapFocus]).
- */
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-@Composable
-fun GroupChatPanel(
-    chat: TimelineChat,
-    title: String?,
-    positionMs: () -> Long,
-    onTurn: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    trapFocus: Boolean = true,
-) {
-    val on by chat.on.collectAsState()
-    val history by chat.history.collectAsState()
-    val missed by chat.missed.collectAsState()
-    val scope = rememberCoroutineScope()
-    var draft by remember { mutableStateOf("") }
-    var problem by remember { mutableStateOf<String?>(null) }
-    val toggle = remember { FocusRequester() }
-    val firstReaction = remember { FocusRequester() }
-    val list = rememberLazyListState()
-    LaunchedEffect(Unit) { chat.opened() }
-    LaunchedEffect(history.size) { if (history.isNotEmpty()) list.scrollToItem(history.size - 1) }
-    // Opens on the first reaction when chat is on, else on the switch.
-    LaunchedEffect(Unit) { runCatching { if (on) firstReaction.requestFocus() else toggle.requestFocus() } }
-    fun send(text: String, kind: ChatKind) {
-        scope.launch {
-            chat.send(text, kind, positionMs()).onSuccess { if (kind == ChatKind.TEXT) draft = ""; problem = null }
-                .onFailure { problem = it.message ?: "Couldn't send" }
-        }
-    }
-    Column(
-        modifier.width(440.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)).padding(24.dp)
-            .focusProperties { if (trapFocus) exit = { FocusRequester.Cancel } }
-            .focusGroup(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("Group chat" + (title?.let { " · $it" } ?: ""), style = MaterialTheme.typography.titleLarge)
-        ListItem(
-            selected = false,
-            onClick = { onTurn(!on) },
-            headlineContent = { Text("Group chat: " + if (on) "On" else "Off") },
-            supportingContent = { Text(if (on) "Your group's notes pop up as you reach them" else "No pop-ups, nothing sent") },
-            trailingContent = { Switch(checked = on, onCheckedChange = null) },
-            modifier = Modifier.focusRequester(toggle),
+    // The text field with Send beside it (one line, so the panel keeps room for what was said).
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        TvTextField(
+            draft, onDraft, "Type a message",
+            modifier = Modifier.weight(1f).focusRequester(field).focusProperties { up = firstReaction },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (draft.isNotBlank()) send(draft, ChatKind.TEXT) }),
         )
-        if (!on) {
-            Text(
-                "Turn it on to see what your group said at each point as you reach it, and to leave your own reactions and notes here.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            return@Column
-        }
-        if (missed.isNotEmpty()) OutlinedButton(onClick = { chat.showMissed() }) { Text("Show what I missed (${missed.size})") }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (history.isEmpty()) item {
-                Text("Nothing yet up to here. A reaction or a note stays at this point for your group.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            items(history, key = { it.id }) { NoteLine(it) }
-        }
-        ChatComposer(firstReaction, ::send, draft) { draft = it.take(500) }
-        problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        Button(onClick = { send(draft, ChatKind.TEXT) }, enabled = draft.isNotBlank(), modifier = Modifier.focusProperties { up = firstReaction }) { Text("Send") }
     }
 }
 

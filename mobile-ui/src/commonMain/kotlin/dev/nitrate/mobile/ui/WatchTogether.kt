@@ -38,7 +38,7 @@ import dev.nitrate.core.partners.SessionPrompt
 import kotlinx.coroutines.launch
 
 /**
- * "Tommy started the session · S1:E4 of The Bear": someone in a group started a Group Watch
+ * "Tommy started a Group Watch Session · S1:E4 of The Bear": someone in a group started a Group Watch
  * Session. Join (late: "Join at 12:30", "Start from the beginning") opens the player, which waits
  * for the countdown; Not now. Waits while the player is open ([inPlayer]).
  */
@@ -170,7 +170,7 @@ fun SessionNoticeCard(notice: SessionNotice?, onAct: () -> Unit, onDismiss: () -
 /**
  * A watch-together invite from an older Nitrate app (checked every 30 s while the app is open),
  * kept for compatibility: Join puts this device in that session (a Group Watch Session's, else the
- * older app's SyncPlay group), Not now turns it down. Nitrate's own "Watch now together" sends no
+ * older app's SyncPlay group), Not now turns it down. Nitrate's own Group Watch Session sends no
  * invites: the group's apps are told at once ([SessionJoinPrompt]).
  */
 @Composable
@@ -188,7 +188,7 @@ fun WatchInvitePrompt(actions: AppActions) {
     val invite = invites.firstOrNull() ?: return
     AlertDialog(
         onDismissRequest = { scope.launch { container.dismissInvite(invite) } },
-        title = { Text("Watch now together?") },
+        title = { Text("Watch with them?") },
         text = { Text(invite.text + ". Joining puts you in their session: what they play, plays for you.") },
         confirmButton = { TextButton(onClick = { scope.launch { runCatching { container.joinInvite(invite) } } }) { Text("Join") } },
         dismissButton = { TextButton(onClick = { scope.launch { container.dismissInvite(invite) } }) { Text("Not now") } },

@@ -556,7 +556,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             WatchInvitePrompt(actions)
             // Watch parties: what the Companion sends as it happens; waits while the player is open.
             WatchPartyPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
-            // Group Watch Sessions someone in a group started ("Tommy started the session · Join"); waits while the player is open.
+            // Group Watch Sessions someone in a group started ("Tommy started a Group Watch Session · Join"); waits while the player is open.
             SessionJoinPrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)
             // Schedule changes someone in a group asked for (Yes/No), and how they went; waits while the player is open.
             ScheduleChangePrompt(actions, inPlayer = currentEntry?.destination?.hasRoute(PlayerRoute::class) == true)

@@ -66,9 +66,9 @@ sealed interface TogetherChoice {
     /** Remove title [titleId] from group [group] (any member may; a group keeps at least one; what was watched stays in the record). */
     data class RemoveTitle(val group: WatchGroup, val titleId: String, val name: String, override val label: String = "Remove $name from the group") : TogetherChoice
 
-    /** "Watch now together": a Group Watch Session for the group on [episode] (its members told at once, "Join"), then it plays (counting for the group). */
+    /** "Start a Group Watch Session": one for the group on [episode] (its members told at once, "Join"), then it plays (counting for the group). */
     data class WatchNow(val episode: MediaItem, val groupId: String, val userIds: List<String>, val names: String) : TogetherChoice {
-        override val label = "Watch now together with $names"
+        override val label = "Start a Group Watch Session with $names"
     }
 
     /** Invite someone else into group [groupId]. */

@@ -79,7 +79,7 @@ class GroupRecordTest {
         assertEquals("Level · Suzy level", TogetherRow.line(cards.cards[1].item, info, standings)!!.short)
         val choices = TogetherRow.choices(cards.cards[1].item, info, standings, eps, canWatchNow = true, ownSpoilers = emptySet())
         assertTrue(choices.filterIsInstance<TogetherChoice.Leave>().all { it.group.id == "suzy" })
-        assertEquals(listOf("Watch now together with Suzy"), choices.filterIsInstance<TogetherChoice.WatchNow>().map { it.label })
+        assertEquals(listOf("Start a Group Watch Session with Suzy"), choices.filterIsInstance<TogetherChoice.WatchNow>().map { it.label })
         // Continue Watching is the user's own again: only this row's cards answer for watching together.
         assertEquals(setOf(TogetherRow.KEY), TogetherRow.ROW_KEYS)
     }
@@ -180,9 +180,9 @@ class GroupRecordTest {
         // Episode 8 from the library: Tommy's group (Together on) hasn't watched it, so it asks first.
         val ask = plugin.beforePlay(eps[7], host, PlayOrigin.Elsewhere) as GuardDecision.Ask
         assertEquals("Tommy hasn't watched this yet", ask.title)
-        assertEquals(listOf("Watch now together", "We're in the same room", "Watch for myself", "Not now"), ask.choices.map { it.label })
+        assertEquals(listOf("Start a Group Watch Session", "We're in the same room", "Watch for myself", "Not now"), ask.choices.map { it.label })
         assertTrue(ask.message, ask.message.contains("Tommy"))
-        // "Watch now together" starts the live session for Tommy's group, and the playback counts there.
+        // "Start a Group Watch Session" starts the live session for Tommy's group, and the playback counts there.
         (ask.choices[0].action as GuardAction.RunThenPlay).run()
         assertEquals(listOf("e8 tommy"), session.started)
         assertEquals(PlayOrigin.GroupCard("tommy"), plugin.originOf(host, eps[7]))

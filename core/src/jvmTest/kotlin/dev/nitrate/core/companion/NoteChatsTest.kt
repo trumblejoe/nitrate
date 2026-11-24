@@ -40,6 +40,9 @@ class NoteChatsTest {
         assertEquals("Tonight · builds on Nov 17 · 3 new", NoteChats.label(tonight, all, now, 0))
         assertEquals("Earlier notes · You · 2 messages", NoteChats.label(earlier, all, now, 0))
         assertEquals("1 message", NoteChats.count(1))
+        assertEquals("New chat", NoteChats.playingLabel(null, all, now, 0))
+        assertEquals("Playing along: Nov 17 · Tommy, Suzy", NoteChats.playingLabel("tue", all, now, 0))
+        assertEquals("Playing along: Earlier notes", NoteChats.playingLabel("old", all, now, 0))
         // Building on one the viewer can't see: listed on its own.
         assertEquals("Tonight · Tommy · 3 messages", NoteChats.label(tonight, listOf(tonight), now, 0))
     }

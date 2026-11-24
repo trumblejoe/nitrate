@@ -125,7 +125,7 @@ class WatchPartnersTest {
         val labels = TogetherRow.choices(eps[2], info, mapOf("bear" to k), episodes, canWatchNow = true, ownSpoilers = emptySet()).map { it.label }
         assertEquals(
             listOf(
-                "Mark S1:E3 watched for this group", "Watch now together with Kim", "We're in the same room", "Invite someone to watch with Kim",
+                "Mark S1:E3 watched for this group", "Start a Group Watch Session with Kim", "We're in the same room", "Invite someone to watch with Kim",
                 "Change the schedule or Group Watch Session (Binge)", "Add a title to the group", "Open the show", "Watch something with someone", "Leave the group with Kim",
             ),
             labels,
@@ -242,7 +242,7 @@ class WatchPartnersTest {
         // Nothing is locked: watching it together now is offered; the schedule can be changed.
         val c = TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = true, ownSpoilers = emptySet())
         assertTrue(c.any { it is TogetherChoice.WatchNow })
-        // Without Group Watch Sessions on the server, no Watch now together.
+        // Without Group Watch Sessions on the server, no Start a Group Watch Session.
         assertFalse(TogetherRow.choices(eps[2], info, standings, eps, canWatchNow = false, ownSpoilers = emptySet()).any { it is TogetherChoice.WatchNow })
         // "Open the show" from a group's card carries the group into its details page.
         assertEquals("g1", TogetherRow.choices(eps[2].copy(watchGroupId = "g1"), info, standings, eps, true, emptySet()).filterIsInstance<TogetherChoice.OpenShow>().single().groupId)
@@ -365,7 +365,7 @@ class WatchPartnersTest {
         // From the library, alone: asked first, never refused.
         val ask = plugin.beforePlay(eps[2], host(togetherGroup())) as dev.nitrate.core.plugins.GuardDecision.Ask
         assertEquals("Sam hasn't watched this yet", ask.title)
-        assertEquals(listOf("Watch now together", "We're in the same room", "Watch for myself", "Not now"), ask.choices.map { it.label })
+        assertEquals(listOf("Start a Group Watch Session", "We're in the same room", "Watch for myself", "Not now"), ask.choices.map { it.label })
         assertTrue(ask.message, ask.message.contains("Sam"))
         // Watching now together starts the session with the group's members invited, then plays.
         (ask.choices.first().action as dev.nitrate.core.plugins.GuardAction.RunThenPlay).run()

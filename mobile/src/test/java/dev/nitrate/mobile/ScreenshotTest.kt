@@ -189,7 +189,7 @@ class ScreenshotTest {
         }
     }
 
-    /** The player's group chat sheet at 16:40: the switch, the group's notes up to there (not the one at 25:00), reactions. */
+    /** The group panel where only the chat is involved (an older server without chat histories): the group's notes up to 16:40 (not the one at 25:00), reactions. */
     @Test fun groupChat() = shoot("phone-group-chat", setup = { c ->
         (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
     }) { actions ->
@@ -197,9 +197,31 @@ class ScreenshotTest {
         val chat = androidx.compose.runtime.remember { actions.container.timelineChat(scope, live = false) }
         androidx.compose.runtime.LaunchedEffect(Unit) { chat.start("s1e2", 1_000_000) { true } }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.GroupChatSheet(chat, "The Night Reel", positionMs = { 1_000_000 }, onTurn = { chat.turn(it, 1_000_000) }, onDismiss = {})
+            dev.nitrate.mobile.ui.GroupSheet(null, chat, "The Night Reel", positionMs = { 1_000_000 }, onTurnChat = { chat.turn(it, 1_000_000) }, onDismiss = {})
         }
     }
+
+    /** A playback's chat with chat histories, started from a group's card: the panel on a new chat (nothing earlier loaded). */
+    private fun chatsPanel(name: String, page: String? = null) = shoot(name, setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions")
+        c.refreshCompanionForTests()
+    }) { actions ->
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val chat = androidx.compose.runtime.remember { actions.container.timelineChat(scope, live = false) }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            chat.start("s1e2", 1_000_000) { true }
+            chat.focus(listOf("g1"))
+        }
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            dev.nitrate.mobile.ui.GroupSheet(withChip(actions, with = dev.nitrate.core.partners.WatchingWith.Group("g1")), chat, positionMs = { 1_000_000 }, onDismiss = {}, initialPage = page)
+        }
+    }
+
+    /** The group panel: who it counts for (Change), the chat (a new one), Start a Group Watch Session. */
+    @Test fun groupPanel() = chatsPanel("phone-group-panel")
+
+    /** Chats: Group chat on or off, New chat, and this group's earlier chats newest first, one building on another. */
+    @Test fun groupChats() = chatsPanel("phone-group-chats", page = "CHATS")
 
     /** An episode of The Night Reel, shared with two watch groups (Will; Frank, Tommy and Jane). */
     private fun withChip(
@@ -214,20 +236,20 @@ class ScreenshotTest {
         return dev.nitrate.core.partners.WithChip.of(episode, fake.partnerInfo, emptyMap(), session, "Me", with, room = room)!!
     }
 
-    /** The player's With… chip, and "Counting for" as it starts when more than one group fits. */
+    /** The player's group button (avatars and the group's name), and "Counting for" as it starts when more than one group fits. */
     @Test @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
-    fun withChipShown() = shoot("phone-with-chip") { actions ->
+    fun withChipShown() = shoot("phone-group-button") { actions ->
         val chip = withChip(actions)
         Box(Modifier.fillMaxSize().background(Color(0xFF203040))) {
-            dev.nitrate.mobile.ui.WithChipButton(chip, easy = false, onOpen = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(12.dp))
+            dev.nitrate.mobile.ui.GroupButton(withChip(actions, with = dev.nitrate.core.partners.WatchingWith.Group("g2")), chatAvailable = true, easy = false, onOpen = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(12.dp))
             dev.nitrate.mobile.ui.CountingBanner(chip, easy = false, onOpen = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 72.dp))
         }
     }
 
-    /** The panel behind the chip: who's here, Counts for, the watch party, the same room, group chat. */
-    @Test fun withSheet() = shoot("phone-with-sheet") { actions ->
+    /** Change, from the panel's top line: each group on the title, No group, and the same room. */
+    @Test fun withSheet() = shoot("phone-group-change") { actions ->
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.WithSheet(withChip(actions), chatOn = true, onGroupChat = {}, onDismiss = {})
+            dev.nitrate.mobile.ui.GroupSheet(withChip(actions), null, onDismiss = {}, initialPage = "COUNT")
         }
     }
 
@@ -236,16 +258,16 @@ class ScreenshotTest {
         val chip = withChip(actions, room = dev.nitrate.core.partners.SameRoom("g2", listOf("user-5")))
         check(chip.label == "In the room with Tommy") { chip.label }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.WithSheet(chip, initialPage = "ROOM", onDismiss = {})
+            dev.nitrate.mobile.ui.GroupSheet(chip, null, initialPage = "ROOM", onDismiss = {})
         }
     }
 
-    /** In a Group Watch Session the user started: leaving it, ending it for everyone, and bringing a group's earlier notes. */
+    /** In a Group Watch Session the user started: the panel's top line says so; leaving it, ending it for everyone. */
     @Test fun withSession() = shoot("phone-with-session") { actions ->
         val chip = withChip(actions, inSession = true)
-        check(chip.label == "In a session with Will") { chip.label }
+        check(chip.label == "In a Group Watch Session with Will") { chip.label }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.WithSheet(chip, chatOn = true, brought = "Will brought earlier notes", onGroupChat = {}, onBring = {}, onDismiss = {})
+            dev.nitrate.mobile.ui.GroupSheet(chip, null, onDismiss = {})
         }
     }
 
@@ -687,7 +709,7 @@ class ScreenshotTest {
         dev.nitrate.mobile.ui.PlayerMoreSheet(actions, session, sleepAt = null, sleepAtEnd = true, onSleep = { _, _ -> }, onPictureInPicture = {}, onPlayedElsewhere = {}, onDismiss = {})
     }
 
-    /** "Will started the session", joined late: Join at where the group is, or from the beginning. */
+    /** "Will started a Group Watch Session", joined late: Join at where the group is, or from the beginning. */
     @Test fun sessionJoinPrompt() = shoot("phone-session-join") { actions ->
         val s = (actions.server as dev.nitrate.testing.FakeServer).sampleSession(positionMs = 120_000)
         val prompt = dev.nitrate.core.partners.SessionPrompt.of(s, s.serverTimeMs)!!

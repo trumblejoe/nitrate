@@ -103,7 +103,7 @@ class ScheduleLockTest {
         for (origin in origins) {
             val only = ask(plugin.beforePlay(eps[2], host, origin))
             assertEquals("Sam hasn't watched this yet", only.title)
-            assertEquals(listOf("Watch now together", "We're in the same room", "Not now"), only.choices.map { it.label })
+            assertEquals(listOf("Start a Group Watch Session", "We're in the same room", "Not now"), only.choices.map { it.label })
             assertEquals(GuardDecision.Allow, plugin.beforePlay(eps[1], host, origin))
         }
         // Without Group Watch Sessions: the same room, or not now.

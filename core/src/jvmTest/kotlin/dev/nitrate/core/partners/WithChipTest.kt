@@ -48,15 +48,15 @@ class WithChipTest {
         // No group, chosen.
         assertEquals("No group · Change", WithChip.of(eps[3], info(tommySuzy), st, null, "Me", with = WatchingWith.JustMe)!!.label)
         // A Group Watch Session: the user left out.
-        assertEquals("In a session with Tommy, Suzy", WithChip.of(eps[3], info(tommySuzy), st, session("e4", "Me", "Tommy", "Suzy"), "Me")!!.label)
-        assertEquals("In a session · waiting for others", WithChip.of(eps[3], info(tommySuzy), st, session("e4", "Me"), "Me")!!.label)
+        assertEquals("In a Group Watch Session with Tommy, Suzy", WithChip.of(eps[3], info(tommySuzy), st, session("e4", "Me", "Tommy", "Suzy"), "Me")!!.label)
+        assertEquals("In a Group Watch Session · waiting for others", WithChip.of(eps[3], info(tommySuzy), st, session("e4", "Me"), "Me")!!.label)
         // A session on another part (this player isn't in it): counted as usual.
         assertEquals("Counting for Tommy & Suzy · Change", WithChip.of(eps[3], info(tommySuzy), st, session("e9", "Me", "Tommy"), "Me")!!.label)
         // In the same room with some of the group.
         assertEquals("In the room with Tommy", WithChip.of(eps[3], info(tommySuzy), st, null, "Me", room = SameRoom("ts", listOf("t")))!!.label)
         // Unshared and no session: no chip; a session on an unshared title still shows one.
         assertNull(WithChip.of(film, info(tommySuzy), st, null, "Me"))
-        assertEquals("In a session with Kim", WithChip.of(film, info(tommySuzy), st, session("f", "Me", "Kim"), "Me")!!.label)
+        assertEquals("In a Group Watch Session with Kim", WithChip.of(film, info(tommySuzy), st, session("f", "Me", "Kim"), "Me")!!.label)
         assertEquals("Tommy, Suzy, Kim & 2 more", WithChip.and(listOf("Tommy", "Suzy", "Kim", "Lee", "Sam")))
     }
 

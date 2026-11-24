@@ -206,7 +206,7 @@ private fun QuietNote(text: String, asks: Boolean, onGone: () -> Unit) {
 }
 
 /**
- * "Tommy started the session · S1:E4 of The Bear": someone in a group started a Group Watch Session.
+ * "Tommy started a Group Watch Session · S1:E4 of The Bear": someone in a group started a Group Watch Session.
  * Off the player a dialog with Join focused (late: "Join at 12:30", "Start from the beginning");
  * Join opens the player, which waits for the countdown. In a player only a quiet note at the top
  * that never takes focus; the question waits until the player closes.

@@ -1412,15 +1412,18 @@ class TvScreenshotTest {
     private fun focusedNodes() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
 
     /**
-     * The player's group chat: ▼ from the reactions goes to the text field (it used to fall out to
-     * the player), focus stays in the panel, and Back closes it with focus back on its button.
+     * The player's group button where only the chat is involved: it opens the group panel on the
+     * chat line, ▼ reaches the reactions and then the text field (it used to fall out to the
+     * player), focus stays in the panel, and Back closes it with focus back on the button.
      */
     @Test fun playerGroupChatFocus() = groupChatPlayer("tv-player-group-chat") {
         repeat(8) { if (!focusedHasText("Group chat")) press("right") }
-        check(focusedHasText("Group chat: On")) { "should reach Group chat: On; focused: ${focusedNodes()}" }
+        check(focusedHasText("Group chat")) { "should reach the group button; focused: ${focusedNodes()}" }
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(focusedHasText(dev.nitrate.core.companion.QUICK_REACTIONS.first())) { "the panel opens on the first reaction; focused: ${focusedNodes()}" }
+        check(focusedHasText("Group chat: On")) { "the panel opens on the chat line; focused: ${focusedNodes()}" }
+        press("down")
+        check(dev.nitrate.core.companion.QUICK_REACTIONS.take(4).any { focusedHasText(it) }) { "▼ reaches the reactions; focused: ${focusedNodes()}" }
         press("down", "down")
         check(focusedHasText("Type a message")) { "▼ from the reactions should reach the text field; focused: ${focusedNodes()}" }
         // Further down and sideways: still inside the panel.
@@ -1435,17 +1438,23 @@ class TvScreenshotTest {
         check(focusedHasText("Group chat")) { "focus returns to the button that opened it; focused: ${focusedNodes()}" }
     }
 
-    /** The real player on an episode of a show shared with two watch groups (Will; Frank, Tommy and Jane), with its With… button. */
-    private fun withPlayer(name: String, easy: Boolean = false, act: () -> Unit) = shoot(name, setup = { c ->
+    /**
+     * The real player on an episode of a show shared with two watch groups (Will; Frank, Tommy and
+     * Jane), played from Will's card, with its group button; with [chats] the server keeps chat histories.
+     */
+    private fun withPlayer(name: String, easy: Boolean = false, chats: Boolean = false, act: () -> Unit) = shoot(name, setup = { c ->
+        if (chats) (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions")
         c.refreshCompanionForTests()
         // Played from Will's card on Home's Watching together row: the guards hand that on to the player.
         c.plugins.checkBeforePlay(c.server.getItem("s1e2"), dev.nitrate.core.partners.PlayOrigin.GroupCard("g1")) { dev.nitrate.core.plugins.GuardAction.PlayAnyway }
         if (easy) c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(easyMode = true))
     }, act = act) { c ->
-        dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {}, watchGroups = c)
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val chat = androidx.compose.runtime.remember { c.timelineChat(scope, live = false) }
+        dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {}, watchGroups = c, groupChat = chat)
     }
 
-    /** A key to the open dialog's window (a side panel), whichever root it is. */
+    /** A key to the open dialog's window, whichever root it is. */
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     private fun pressInDialog(name: String) {
         val k = when (name) { "ok" -> androidx.compose.ui.input.key.Key.DirectionCenter; "back" -> androidx.compose.ui.input.key.Key.Back; "up" -> androidx.compose.ui.input.key.Key.DirectionUp; else -> androidx.compose.ui.input.key.Key.DirectionDown }
@@ -1454,53 +1463,95 @@ class TvScreenshotTest {
         compose.waitForIdle()
     }
 
-    private fun reachWith() {
-        repeat(8) { if (!focusedHasText("Counting for Will")) press("right") }
-        check(focusedHasText("Counting for Will · Change")) { "the With… button says which group it counts for; focused: ${focusedNodes()}" }
+    private fun reachGroupButton(name: String = "Will") {
+        repeat(8) { if (!focusedIs(name)) press("right") }
+        check(focusedIs(name)) { "the group button says the group it counts for; focused: ${focusedNodes()}" }
     }
 
-    /** The With… button in the controls: which situation this playback is in, a button like the others. */
-    @Test fun playerWithChip() = withPlayer("tv-player-with-chip") { reachWith() }
+    private fun focusedIs(text: String) =
+        compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText(text, substring = false)).fetchSemanticsNodes().isNotEmpty()
 
-    /** OK on it opens the panel beside the video, focus on the first choice of Counts for. */
-    @Test fun playerWithPanel() = withPlayer("tv-player-with-panel") {
-        reachWith()
+    private fun choose(text: String) {
+        compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText(text, substring = true)).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+    }
+
+    /** The group button in the controls (in place of the old With… chip and chat button): the group's name, a button like the others. */
+    @Test fun playerGroupButton() = withPlayer("tv-player-group-button") {
+        reachGroupButton()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat: ", substring = true)).fetchSemanticsNodes().isEmpty()) { "no separate chat button" }
+    }
+
+    /** OK on it opens the group panel beside the video: who it counts for, the chat (a new one), Start a Group Watch Session. */
+    @Test fun playerGroupPanel() = withPlayer("tv-player-group-panel", chats = true) {
+        reachGroupButton()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for")).fetchSemanticsNodes().isNotEmpty()) { "the panel shows Counting for" }
-        // The group it counts for is ticked. (Robolectric keeps window focus with the player's button as the panel
-        // opens, so where focus lands is checked on a page change instead: playerWithBack.)
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("With Will") and androidx.compose.ui.test.hasText("✓")).fetchSemanticsNodes().isNotEmpty()) { "Will's group is the one counted" }
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("We're in the same room")).fetchSemanticsNodes().isNotEmpty()) { "the same room is offered" }
+        check(focusedHasText("Counting for Will · Change")) { "the panel opens on its top line; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Chat: New chat")).fetchSemanticsNodes().isNotEmpty()) { "a new chat by default" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The opening shot!")).fetchSemanticsNodes().isEmpty()) { "nothing earlier unasked" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Start a Group Watch Session")).fetchSemanticsNodes().isNotEmpty()) { "Start a Group Watch Session is offered" }
     }
 
-    /** Choosing the other group changes the button; a sub-page's Back goes back a page, the next closes the panel, focus back on the button. */
-    @Test fun playerWithBack() = withPlayer("tv-player-with-back") {
-        reachWith()
+    /**
+     * Chats, reached with the D-pad from the panel: New chat, then this group's earlier chats
+     * (newest first, one building on another); picking one plays it along, and Back on the panel
+     * returns focus to the group button.
+     */
+    @Test fun playerGroupChats() = withPlayer("tv-player-group-chats", chats = true) {
+        reachGroupButton()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        fun choose(text: String) {
-            compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText(text, substring = true)).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
-            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        }
+        press("down")
+        check(focusedHasText("Chat: New chat")) { "▼ reaches the chat line; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedHasText("Group chat: On")) { "Chats opens on its first line; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("builds on", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "a chat building on another says so" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Frank, Tommy", substring = true)).fetchSemanticsNodes().isEmpty()) { "another group's chats aren't offered" }
+        repeat(6) { if (!focusedHasText("Will · 14 messages")) press("down") }
+        check(focusedHasText("Will · 14 messages")) { "the earlier chats are reachable; focused: ${focusedNodes()}" }
+    }
+
+    @Test fun playerGroupChatsPicked() = withPlayer("tv-player-group-chat-picked", chats = true) {
+        reachGroupButton()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        choose("Chat: New chat")
+        choose("Will · 14 messages")
+        check(focusedHasText("Chat: Playing along")) { "back on the panel, focus on the chat line, which says what plays along; focused: ${focusedNodes()}" }
+        press("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Chat: Playing along", substring = true)).fetchSemanticsNodes().isEmpty()) { "Back closes the panel" }
+        check(focusedIs("Will")) { "focus returns to the group button; focused: ${focusedNodes()}" }
+    }
+
+    /** Change: choosing the other group changes the button; a page's Back goes back a page, the last closes the panel, focus back on the button. */
+    @Test fun playerGroupChange() = withPlayer("tv-player-group-change") {
+        reachGroupButton()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        choose("Counting for Will · Change")
         choose("With Frank, Tommy & Jane")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for Frank, Tommy & Jane · Change")).fetchSemanticsNodes().isNotEmpty()) { "the top line says the new choice" }
+        choose("Counting for Frank, Tommy & Jane · Change")
         choose("We're in the same room")
         check(focusedHasText("Frank")) { "the room page opens on the first member; focused: ${focusedNodes()}" }
-        pressInDialog("back")
+        press("back")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("No group")).fetchSemanticsNodes().isNotEmpty()) { "Back on the room page goes back to Change" }
+        press("back")
+        check(focusedHasText("Counting for Frank, Tommy & Jane · Change")) { "then to the panel, on the line that opened Change; focused: ${focusedNodes()}" }
+        press("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for")).fetchSemanticsNodes().isNotEmpty()) { "Back on a page goes back to the panel" }
-        pressInDialog("back")
-        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for")).fetchSemanticsNodes().isEmpty()) { "the next Back closes it" }
-        check(focusedHasText("Counting for Frank, Tommy & Jane · Change")) { "focus returns to the button, which says the new choice; focused: ${focusedNodes()}" }
+        check(focusedIs("Frank, Tommy & Jane")) { "the next Back closes it, focus back on the button with its new name; focused: ${focusedNodes()}" }
     }
 
     /** Easy mode: who it's watched with is said beside the buttons, never a button. */
     @Test fun playerWithEasy() = withPlayer("tv-player-with-easy", easy = true) {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Counting for Will")).fetchSemanticsNodes().isNotEmpty()) { "the chip's words show in easy mode, without Change" }
         repeat(6) { press("right") }
-        check(!focusedHasText("Counting for Will")) { "but it never takes focus" }
+        check(!focusedHasText("Counting for Will") && !focusedIs("Will")) { "but it never takes focus" }
     }
 
     /** The group's notes pop up over the video as playback reaches them: the first two, a few seconds in, not the later one. */
@@ -1519,19 +1570,6 @@ class TvScreenshotTest {
         }
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.DarkGray)) {
             dev.nitrate.tv.ui.together.NoteToasts(chat.popups, Modifier.align(androidx.compose.ui.Alignment.CenterStart).padding(start = 32.dp))
-        }
-    }
-
-    /** The group chat panel with the switch, the notes so far and the reactions. */
-    @Test fun groupChatPanel() = shoot("tv-group-chat-panel", setup = { c ->
-        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
-    }) { c ->
-        val scope = androidx.compose.runtime.rememberCoroutineScope()
-        val chat = androidx.compose.runtime.remember { c.timelineChat(scope, live = false) }
-        androidx.compose.runtime.LaunchedEffect(Unit) { chat.start("s1e2", 1_000_000) { true } }
-        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f).fillMaxSize().background(androidx.compose.ui.graphics.Color.Black))
-            dev.nitrate.tv.ui.together.GroupChatPanel(chat, "The Night Reel", positionMs = { 1_000_000 }, onTurn = { chat.turn(it, 1_000_000) })
         }
     }
 
@@ -1573,7 +1611,7 @@ class TvScreenshotTest {
         audioDelayMs = audioDelay, defaultAudioDelayMs = 0, onAudioDelay = {}, onAudioDelayAsDefault = {},
         frameRate = dev.nitrate.core.playback.FrameRateMatch.ALWAYS, defaultFrameRate = dev.nitrate.core.playback.FrameRateMatch.SEAMLESS,
         refreshNote = dev.nitrate.tv.ui.player.refreshNote(23.976f, 59.94f),
-        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Watch now together").map { it to { _: () -> Unit -> androidx.tv.material3.OutlinedButton(onClick = {}) { androidx.tv.material3.Text("$it page") } } },
+        pages = listOf("Speakers", "Second subtitles", "Find subtitles", "Start a Group Watch Session").map { it to { _: () -> Unit -> androidx.tv.material3.OutlinedButton(onClick = {}) { androidx.tv.material3.Text("$it page") } } },
     )
 
     /** The More panel over the video, opened on [tab]. */
@@ -2250,7 +2288,7 @@ class TvScreenshotTest {
         }
     }
 
-    /** "Will started the session": the join prompt off the player, Join focused (late: Join at …, Start from the beginning). */
+    /** "Will started a Group Watch Session": the join prompt off the player, Join focused (late: Join at …, Start from the beginning). */
     @Test fun sessionJoinPrompt() = shoot("tv-session-join", act = {
         compose.mainClock.advanceTimeBy(400); compose.waitForIdle()
         check(focusedHasText("Join at 2:00")) { "Join is focused; focused: ${focusedNodes()}" }

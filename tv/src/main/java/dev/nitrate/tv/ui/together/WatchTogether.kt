@@ -36,7 +36,7 @@ fun WatchInvitePrompt(container: dev.nitrate.android.AppContainer) {
     val invite = invites.firstOrNull() ?: return
     val focus = remember(invite.id) { FocusRequester() }
     dev.nitrate.tv.ui.lists.TvDialog({ scope.launch { container.dismissInvite(invite) } }, width = 640) {
-        Text("Watch now together?", style = MaterialTheme.typography.headlineSmall)
+        Text("Watch with them?", style = MaterialTheme.typography.headlineSmall)
         Text(invite.text + ". Joining puts this TV in their session: what they play, plays here.")
         androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             androidx.tv.material3.Button(onClick = { scope.launch { runCatching { container.joinInvite(invite) } } }, modifier = Modifier.focusRequester(focus)) { Text("Join") }

@@ -126,7 +126,7 @@ fun NoteToasts(popups: Flow<TimelineNote>, modifier: Modifier = Modifier) {
     }
 }
 
-/** "Group chat" with its switch (the whole line toggles), for the chat sheet and the player's More. */
+/** "Group chat" with its switch (the whole line toggles), for the group panel's Chats and the player's More. */
 @Composable
 fun GroupChatSwitch(on: Boolean, onTurn: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     Row(
@@ -135,75 +135,9 @@ fun GroupChatSwitch(on: Boolean, onTurn: (Boolean) -> Unit, modifier: Modifier =
     ) {
         Column(Modifier.weight(1f)) {
             Text("Group chat: " + if (on) "On" else "Off", style = MaterialTheme.typography.titleSmall)
-            Text(if (on) "Your group's notes pop up as you reach them" else "No pop-ups, nothing sent", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (on) "What's said pops up as you reach it" else "No pop-ups, nothing sent", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = on, onCheckedChange = null)
-    }
-}
-
-/**
- * The player's group chat as a sheet: the Group chat switch, then (when on) the notes so far — only
- * up to where you've got, with "Show what I missed" after turning it on mid-play — and reactions
- * and a text box to leave your own at this point.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GroupChatSheet(chat: TimelineChat, title: String?, positionMs: () -> Long, onTurn: (Boolean) -> Unit, onDismiss: () -> Unit) {
-    val on by chat.on.collectAsState()
-    val history by chat.history.collectAsState()
-    val missed by chat.missed.collectAsState()
-    val scope = rememberCoroutineScope()
-    var draft by remember { mutableStateOf("") }
-    var problem by remember { mutableStateOf<String?>(null) }
-    val list = rememberLazyListState()
-    LaunchedEffect(Unit) { chat.opened() }
-    LaunchedEffect(history.size) { if (history.isNotEmpty()) list.animateScrollToItem(history.size - 1) }
-    fun send(text: String, kind: ChatKind) {
-        scope.launch {
-            chat.send(text, kind, positionMs())
-                .onSuccess { if (kind == ChatKind.TEXT) draft = ""; problem = null }
-                .onFailure { problem = it.message ?: "Couldn't send" }
-        }
-    }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Group chat" + (title?.let { " · $it" } ?: ""), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            GroupChatSwitch(on, onTurn)
-            if (!on) {
-                Text("Turn it on to see what your group said at each point as you reach it, and to leave your own reactions and notes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                return@Column
-            }
-            if (missed.isNotEmpty()) TextButton(onClick = { chat.showMissed() }) { Text("Show what I missed (${missed.size})") }
-            LazyColumn(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 420.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (history.isEmpty()) item { Text("Nothing yet up to here. A reaction or a note stays at this point for your group.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                items(history, key = { it.id }) { n ->
-                    Column {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(n.userName, style = MaterialTheme.typography.labelMedium, color = accentColor(), fontWeight = FontWeight.Bold)
-                            Text(formatClock(n.positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (n.kind == ChatKind.REACTION) Text(n.text, fontSize = 28.sp) else Text(Notes.text(n), style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(QUICK_REACTIONS) { emoji -> TextButton(onClick = { send(emoji, ChatKind.REACTION) }) { Text(emoji, fontSize = 22.sp) } }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    draft, { draft = it.take(500) },
-                    placeholder = { Text("Message") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { if (draft.isNotBlank()) send(draft, ChatKind.TEXT) }),
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = { send(draft, ChatKind.TEXT) }, enabled = draft.isNotBlank()) {
-                    Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = accentColor())
-                }
-            }
-            problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-        }
     }
 }
 

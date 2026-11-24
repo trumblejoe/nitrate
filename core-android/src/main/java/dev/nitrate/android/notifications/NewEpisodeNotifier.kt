@@ -240,7 +240,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         val fresh = mutableSetOf<String>()
         if (invitesOn) runCatching { server.watchInvites() }.getOrDefault(emptyList()).forEach { inv ->
             fresh += "i:" + inv.id
-            if ("i:" + inv.id !in notified) postSocial("i:" + inv.id, "Watch now together", inv.text, INVITES_CHANNEL, "Watch now together invites")
+            if ("i:" + inv.id !in notified) postSocial("i:" + inv.id, "Watch with them?", inv.text, INVITES_CHANNEL, "Invites to watch")
         }
         // One look at the groups for both: invites into them, and watch party requests waiting for a yes or no.
         val partners = if (requestsOn || partyOn) runCatching { server.partners() }.getOrNull() else null

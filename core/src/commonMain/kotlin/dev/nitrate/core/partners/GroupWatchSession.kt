@@ -317,7 +317,7 @@ sealed interface SessionChoice {
 }
 
 /**
- * "Tommy started the session · S1:E4 of The Bear": the join prompt (both apps; outside the
+ * "Tommy started a Group Watch Session · S1:E4 of The Bear": the join prompt (both apps; outside the
  * player a dialog/sheet, in another player a note that never takes focus). Late: "Join at 12:30"
  * and "Start from the beginning".
  */
@@ -330,11 +330,11 @@ data class SessionPrompt(val sessionId: String, val title: String, val text: Str
             if (!s.live || s.joined) return null
             val who = if (s.startedByMe) "You" else s.startedBy
             return if (s.startsTogether) SessionPrompt(
-                s.id, TITLE, "$who started the session · ${s.what}" + with(s), listOf(SessionChoice.Join(), SessionChoice.NotNow),
+                s.id, TITLE, "$who started a Group Watch Session · ${s.what}" + with(s), listOf(SessionChoice.Join(), SessionChoice.NotNow),
             ) else {
                 val at = SessionSync.groupPosition(s, serverNowMs)
                 SessionPrompt(
-                    s.id, TITLE, "$who started the session · ${s.what}. They're at ${SessionSync.clock(at)}.",
+                    s.id, TITLE, "$who started a Group Watch Session · ${s.what}. They're at ${SessionSync.clock(at)}.",
                     if (easy) listOf(SessionChoice.Join("Join at ${SessionSync.clock(at)}"), SessionChoice.NotNow)
                     else listOf(SessionChoice.Join("Join at ${SessionSync.clock(at)}"), SessionChoice.FromStart, SessionChoice.NotNow),
                 )

@@ -31,7 +31,7 @@ interface TogetherSession {
     /** The id of this device's Group Watch Session, null outside one. */
     fun sessionId(): String? = null
 
-    /** Whether "Watch now together" can start one (the server has Group Watch Sessions). */
+    /** Whether "Start a Group Watch Session" can start one (the server has Group Watch Sessions). */
     fun available(): Boolean = true
 
     /**

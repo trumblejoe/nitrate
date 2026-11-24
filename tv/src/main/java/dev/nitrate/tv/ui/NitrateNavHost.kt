@@ -597,7 +597,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
         dev.nitrate.tv.ui.partners.WatchPartyPrompt(container, inPlayer, displayPrefs.easyMode) { item -> gate.play(item) }
     }
-    // Group Watch Sessions someone in a group started ("Tommy started the session · Join"); in the player only a quiet note.
+    // Group Watch Sessions someone in a group started ("Tommy started a Group Watch Session · Join"); in the player only a quiet note.
     if (companion?.features?.contains(dev.nitrate.core.partners.GroupWatchSession.FEATURE) == true) {
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
         dev.nitrate.tv.ui.partners.SessionJoinPrompt(container, inPlayer, displayPrefs.easyMode)

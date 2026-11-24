@@ -40,15 +40,32 @@ data class WithChip(
     }
 
     /**
-     * "In a session with Tommy, Suzy", "In the room with Tommy", "Counting for Tommy & Suzy ·
-     * Change", "No group · Change".
+     * The group panel's top line: "In a Group Watch Session with Tommy, Suzy", "In the room with
+     * Tommy", "Counting for Tommy & Suzy · Change", "No group · Change".
      */
     val label: String get() = when {
-        inSession -> if (session.isEmpty()) "In a session · waiting for others" else "In a session with " + session.joinToString(", ")
+        inSession -> if (session.isEmpty()) "In a Group Watch Session · waiting for others" else "In a Group Watch Session with " + session.joinToString(", ")
         roomNames.isNotEmpty() -> "In the room with " + and(roomNames)
         context.justMe -> "No group · Change"
         else -> "Counting for " + and(context.groups.flatMap { g -> g.others.map { it.name } }.distinct()) + " · Change"
     }
+
+    /**
+     * The player's group button (it opens the group panel): the group's name ("Tommy & Suzy"), "No
+     * group", "Tommy · in the room", or "Group Watch Session · Tommy, Suzy".
+     */
+    val button: String get() = when {
+        inSession -> if (session.isEmpty()) "Group Watch Session" else "Group Watch Session · " + and(session)
+        roomNames.isNotEmpty() -> and(roomNames) + " · in the room"
+        else -> group?.let { nameOf(it) } ?: "No group"
+    }
+
+    /** Initials for the button's avatars: the people of the group it counts for, or in the session (at most three). */
+    val initials: List<String> get() = when {
+        inSession -> session
+        roomNames.isNotEmpty() -> roomNames
+        else -> group?.others?.map { it.name }.orEmpty()
+    }.take(3).map { it.trim().take(1).uppercase() }.filter { it.isNotEmpty() }
 
     /** [label] without "· Change", where nothing can be changed (easy mode's note). */
     val plain: String get() = label.removeSuffix(" · Change")

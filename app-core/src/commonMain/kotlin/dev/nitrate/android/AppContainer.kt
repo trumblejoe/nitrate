@@ -168,7 +168,7 @@ class AppContainer(
 
     /**
      * SyncPlay, kept only for compatibility: the server's own live groups (other clients, older
-     * Nitrate apps); Nitrate's own "Watch now together" is a Group Watch Session ([groupSessions]).
+     * Nitrate apps); Nitrate's own is a Group Watch Session ([groupSessions]).
      */
     val syncPlay by lazy {
         dev.nitrate.core.syncplay.SyncPlayController(server, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate))
@@ -182,7 +182,7 @@ class AppContainer(
     /** Group Watch Sessions (Companion feature `sessions`): this device's, the join prompt, the players' notices. */
     val groupSessions by lazy { dev.nitrate.android.partners.GroupSessions(server, networkScope, ::nowMs) }
 
-    /** Whether the server has Group Watch Sessions ("Watch now together"; older plugins: hidden). */
+    /** Whether the server has Group Watch Sessions ("Start a Group Watch Session"; older plugins: hidden). */
     fun sessionsAvailable(): Boolean = companion.value?.features?.contains(dev.nitrate.core.partners.GroupWatchSession.FEATURE) == true
 
     /** A group whose chat this device follows without watching in it (a phone beside the TV). */
@@ -544,13 +544,13 @@ class AppContainer(
     }.getOrDefault(emptyList())
 
     /**
-     * "Watch now together": a Group Watch Session of the group on the part (or the group's live
-     * one), the members told at once ("Tommy started the session · Join"; the server pushes it), and
+     * "Start a Group Watch Session": a Group Watch Session of the group on the part (or the group's live
+     * one), the members told at once ("Tommy started a Group Watch Session · Join"; the server pushes it), and
      * what it plays to the end counts for the group. The app then plays the part, which waits for
      * the countdown (everyone joining within the first minute starts together).
      */
     private suspend fun startWatchingNow(choice: dev.nitrate.core.partners.TogetherChoice.WatchNow, startMs: Long = 0) {
-        if (!sessionsAvailable()) error("Watching now together needs a newer Nitrate Companion on the server")
+        if (!sessionsAvailable()) error("Group Watch Sessions need a newer Nitrate Companion on the server")
         if (choice.groupId.isEmpty()) error("Pick a watch group to watch with")
         val joined = groupSessions.start(choice.groupId, choice.episode.id, startMs)
         // While this device stays in it, what the group hasn't watched plays as watching together (a schedule that doesn't allow playing ahead).
@@ -601,7 +601,7 @@ class AppContainer(
         )
 
     /**
-     * "Watch now together" from the player's chip: a Group Watch Session of [group] on [item] from
+     * "Start a Group Watch Session" from the player's group panel: a Group Watch Session of [group] on [item] from
      * [startMs] (where the player is), or the group's live one; the player already showing [item]
      * keeps pace with it (held there for the countdown). Returns an error message, if any.
      */

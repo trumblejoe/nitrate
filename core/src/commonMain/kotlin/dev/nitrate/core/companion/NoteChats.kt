@@ -110,6 +110,15 @@ object NoteChats {
     }
 
     /**
+     * The panel's Chat line: "New chat" (nothing earlier plays), or what's playing along: "Playing
+     * along: Tuesday · Tommy, Suzy", "Playing along: Earlier notes".
+     */
+    fun playingLabel(playing: String?, all: List<NoteChat>, nowMs: Long, offsetMinutes: Int): String {
+        val chat = playing?.let { p -> all.firstOrNull { it.id == p } } ?: return if (playing == null) NEW_CHAT else "Playing along: an earlier chat"
+        return "Playing along: " + name(chat, nowMs, offsetMinutes) + if (chat.earlier) "" else " · " + people(chat)
+    }
+
+    /**
      * The chat, then each it builds on in turn, among [all] (a loop, or a link to one not listed,
      * stops there).
      */

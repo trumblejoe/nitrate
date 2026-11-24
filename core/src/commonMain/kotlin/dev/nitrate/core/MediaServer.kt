@@ -674,7 +674,7 @@ interface MediaServer {
      */
     suspend fun markForGroups(groupIds: List<String>, itemIds: List<String>, watched: Boolean = true): List<String> = unsupported()
 
-    /** Tells the server live (SyncPlay) session [sessionId] was started for group [groupId] ("Watch now together"), so what it plays counts for the group. */
+    /** Tells the server live (SyncPlay) session [sessionId] was started for group [groupId] ("Start a Group Watch Session"), so what it plays counts for the group. */
     suspend fun sessionForGroup(groupId: String, sessionId: String): Unit = unsupported()
 
     // ---- Group Watch Sessions (Companion feature `sessions`): every answer carries the server's clock ----

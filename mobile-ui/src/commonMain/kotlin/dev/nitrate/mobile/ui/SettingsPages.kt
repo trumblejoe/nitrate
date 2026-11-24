@@ -509,7 +509,7 @@ internal fun InvitesToggle(actions: AppActions) {
     val scope = rememberCoroutineScope()
     val on by notifier.invitesEnabled.collectAsState(false)
     val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setInvitesEnabled(true) } }
-    Toggle("Watch now together invites", "When someone invites you to watch now together (checked every 15 minutes in the background)", on) { want ->
+    Toggle("Invites to watch", "When someone using an older Nitrate invites you to watch with them (checked every 15 minutes in the background)", on) { want ->
         if (want) askPermission { scope.launch { notifier.setInvitesEnabled(true) } } else scope.launch { notifier.setInvitesEnabled(false) }
     }
 }

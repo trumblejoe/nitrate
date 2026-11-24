@@ -26,7 +26,7 @@ data class SessionOpen(val itemId: String, val startMs: Long)
  * ([current]), the join prompt for one someone started ([asking], from the Companion's news on
  * the server's own connection; nothing polled), and what the players hear about the others
  * ([news]). Every call's answer carries the server's clock, which [clock] keeps the offset of.
- * Starting one ("Watch now together") or joining one asks the app to open its player
+ * Starting one ("Start a Group Watch Session") or joining one asks the app to open its player
  * ([openRequests]); the player then keeps pace through [SessionPlayback].
  */
 class GroupSessions(
@@ -91,7 +91,7 @@ class GroupSessions(
 
     fun dismiss() { askingState.value = null }
 
-    /** "Watch now together": starts a Group Watch Session of [groupId] on [itemId] (or joins the group's live one). */
+    /** "Start a Group Watch Session": starts a Group Watch Session of [groupId] on [itemId] (or joins the group's live one). */
     suspend fun start(groupId: String, itemId: String, startMs: Long = 0): SessionJoin {
         val j = timed { server.startWatchSession(groupId, itemId, startMs) }
         took(j)

@@ -127,7 +127,7 @@ class GroupWatchSessionTest {
         val gathering = session(state = GroupWatchSession.WAITING, startAt = null, joined = false, members = listOf(SessionMember("tommy", "Tommy", false, 0, leader = true)))
         val p = assertNotNull(SessionPrompt.of(gathering, t0))
         assertEquals("Group Watch Session", p.title)
-        assertEquals("Tommy started the session · S1:E4 of The Bear", p.text)
+        assertEquals("Tommy started a Group Watch Session · S1:E4 of The Bear", p.text)
         assertEquals(listOf("Join", "Not now"), p.choices.map { it.label })
 
         val late = session(position = 750_000, serverTime = t0 + 750_000, joined = false)
