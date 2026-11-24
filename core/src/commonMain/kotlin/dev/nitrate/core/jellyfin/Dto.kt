@@ -37,7 +37,7 @@ internal data class UserDataDto(
 )
 
 @Serializable
-internal data class PersonDto(val id: String, val name: String? = null, val role: String? = null, val primaryImageTag: String? = null)
+internal data class PersonDto(val id: String, val name: String? = null, val role: String? = null, val primaryImageTag: String? = null, val type: String? = null)
 
 @Serializable
 internal data class ThemeMediaDto(val items: List<ItemDto> = emptyList(), val ownerId: String? = null)
@@ -435,8 +435,11 @@ internal data class NotePostDto(
 @Serializable
 internal data class ChatViewDto(
     val id: String, val groupId: String? = null, val created: Long = 0, val buildsOn: String? = null, val sessionId: String? = null,
-    val people: List<String> = emptyList(), val count: Int = 0, val earlier: Boolean = false,
+    val people: List<String> = emptyList(), val count: Int = 0, val earlier: Boolean = false, val favourite: Boolean = false,
 )
+
+@Serializable
+internal data class FavouritePostDto(val itemId: String, val favourite: Boolean)
 
 @Serializable
 internal data class ChatsPageDto(val groups: List<NoteGroupDto> = emptyList(), val chats: List<ChatViewDto> = emptyList())

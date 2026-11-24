@@ -44,6 +44,8 @@ actual fun formatPattern(ms: Long, pattern: String): String = java.text.SimpleDa
 
 actual fun timeZoneOffsetMs(): Long = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong()
 
+actual fun timeZoneOffsetMsAt(ms: Long): Long = java.util.TimeZone.getDefault().getOffset(ms).toLong()
+
 actual fun formatDecimal(value: Double, decimals: Int): String = "%.${decimals}f".format(value)
 
 @Composable

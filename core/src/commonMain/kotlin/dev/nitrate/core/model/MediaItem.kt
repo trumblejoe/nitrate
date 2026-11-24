@@ -176,7 +176,14 @@ data class ItemImages(
 )
 
 @Serializable
-data class Person(val id: String, val name: String, val role: String? = null, val imageTag: String? = null)
+data class Person(
+    val id: String,
+    val name: String,
+    val role: String? = null,
+    val imageTag: String? = null,
+    /** Jellyfin's kind of credit: "Actor", "GuestStar", "Director", "Writer"… (null where the server didn't say). */
+    val type: String? = null,
+)
 
 enum class ImageKind { PRIMARY, THUMB, BACKDROP, LOGO }
 

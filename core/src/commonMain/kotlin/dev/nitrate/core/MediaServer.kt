@@ -184,6 +184,12 @@ interface MediaServer {
      */
     suspend fun playAlong(sessionId: String, itemId: String, chatId: String?): Unit = unsupported()
 
+    /**
+     * Makes a chat the caller may see one of their favourites, or not (Companion `chatfavourites`):
+     * the server's time rules never delete a favourite. Throws [dev.nitrate.core.companion.ChatForbidden] for a chat they can't see.
+     */
+    suspend fun favouriteChat(itemId: String, chatId: String, favourite: Boolean): Unit = unsupported()
+
     /** The live session's chat on [itemId] (`chats`): the chat written there and the earlier one playing along with its notes; null when not in it. */
     suspend fun sessionChat(sessionId: String, itemId: String): dev.nitrate.core.companion.SessionChat? = null
 

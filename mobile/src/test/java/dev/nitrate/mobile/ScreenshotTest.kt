@@ -201,26 +201,39 @@ class ScreenshotTest {
         }
     }
 
-    /** A playback's chat with chat histories, started from a group's card: the panel on a new chat (nothing earlier loaded). */
+    /**
+     * A playback's chat with chat histories (and favourites), started from a group's card: the panel
+     * on a new chat (nothing earlier loaded), with the title's quick replies.
+     */
     private fun chatsPanel(name: String, page: String? = null) = shoot(name, setup = { c ->
-        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions")
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions", "chatfavourites")
         c.refreshCompanionForTests()
     }) { actions ->
         val scope = androidx.compose.runtime.rememberCoroutineScope()
         val chat = androidx.compose.runtime.remember { actions.container.timelineChat(scope, live = false) }
+        val picks = androidx.compose.runtime.produceState(dev.nitrate.core.companion.QuickPicks.PLAIN) {
+            value = actions.container.quickPicks(actions.server.getItem("s1e2"))
+        }
         androidx.compose.runtime.LaunchedEffect(Unit) {
             chat.start("s1e2", 1_000_000) { true }
             chat.focus(listOf("g1"))
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.GroupSheet(withChip(actions, with = dev.nitrate.core.partners.WatchingWith.Group("g1")), chat, positionMs = { 1_000_000 }, onDismiss = {}, initialPage = page)
+            dev.nitrate.mobile.ui.GroupSheet(
+                withChip(actions, with = dev.nitrate.core.partners.WatchingWith.Group("g1")), chat, positionMs = { 1_000_000 }, onDismiss = {}, initialPage = page,
+                picks = picks.value,
+            )
         }
     }
 
-    /** The group panel: who it counts for (Change), the chat (a new one), Start a Group Watch Session. */
+    /**
+     * The group panel: who it counts for ("Counting for you and Will · Change", "Watching on your
+     * own"), the chat (a new one) with the title's own emojis first and its characters' names and
+     * short lines under them, Start a Group Watch Session.
+     */
     @Test fun groupPanel() = chatsPanel("phone-group-panel")
 
-    /** Chats: Group chat on or off, New chat, and this group's earlier chats newest first, one building on another. */
+    /** Chats: Group chat on or off, New chat, and this group's earlier chats newest first (dated 2026/11/22), one building on another, each with a heart (Tuesday's a favourite). */
     @Test fun groupChats() = chatsPanel("phone-group-chats", page = "CHATS")
 
     /** An episode of The Night Reel, shared with two watch groups (Will; Frank, Tommy and Jane). */

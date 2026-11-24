@@ -18,15 +18,18 @@ class NoteChatsTest {
     private val hour = 3_600_000L
     private val day = 24 * hour
 
-    @Test fun daysReadAsPeopleSayThem() {
-        assertEquals("Tonight", NoteChats.day(now - hour, now, 0))
-        assertEquals("Today", NoteChats.day(now - 10 * hour, now, 0))
-        assertEquals("Yesterday", NoteChats.day(now - day, now, 0))
-        assertEquals("Saturday", NoteChats.day(now - 3 * day, now, 0))
-        assertEquals("Nov 12", NoteChats.day(now - 12 * day, now, 0))
-        assertEquals("Dec 30, 2025", NoteChats.day(now - 329 * day, now, 0))
-        // In the viewer's own time zone (an hour behind UTC).
-        assertEquals("Tonight", NoteChats.day(now - hour, now, -60))
+    private val utc: (Long) -> Int = { 0 }
+
+    @Test fun daysAreTheDevicesOwnDates() {
+        assertEquals("2026/11/24", NoteChats.date(now - hour, 0))
+        assertEquals("2026/11/23", NoteChats.date(now - day, 0))
+        assertEquals("2025/12/30", NoteChats.date(now - 329 * day, 0))
+        // In the device's own time zone: 21:00 UTC is already the next day three hours ahead, still today an hour behind.
+        assertEquals("2026/11/25", NoteChats.date(now, 180))
+        assertEquals("2026/11/24", NoteChats.date(now, -60))
+        // The zone's offset at the chat's own time (summer time then, not now).
+        val summer = NoteChat("s", createdMs = 1_782_000_000_000L - 30 * 60_000L)
+        assertEquals("2026/06/21", NoteChats.name(summer) { ms -> if (ms < now - 60 * day) 60 else 0 })
     }
 
     private val tuesday = NoteChat("tue", "g1", now - 7 * day + hour, people = listOf("Tommy", "Suzy"), count = 14)
@@ -36,15 +39,18 @@ class NoteChatsTest {
     private val all = listOf(tonight, tuesday, nov, earlier)
 
     @Test fun chatsAreListedWithTheirDayPeopleAndCount() {
-        assertEquals("Nov 17 · Tommy, Suzy · 14 messages", NoteChats.label(tuesday, all, now, 0))
-        assertEquals("Tonight · builds on Nov 17 · 3 new", NoteChats.label(tonight, all, now, 0))
-        assertEquals("Earlier notes · You · 2 messages", NoteChats.label(earlier, all, now, 0))
+        assertEquals("2026/11/17 · Tommy, Suzy · 14 messages", NoteChats.label(tuesday, all, utc))
+        assertEquals("2026/11/24 · builds on 2026/11/17 · 3 new", NoteChats.label(tonight, all, utc))
+        assertEquals("Earlier notes · You · 2 messages", NoteChats.label(earlier, all, utc))
         assertEquals("1 message", NoteChats.count(1))
-        assertEquals("New chat", NoteChats.playingLabel(null, all, now, 0))
-        assertEquals("Playing along: Nov 17 · Tommy, Suzy", NoteChats.playingLabel("tue", all, now, 0))
-        assertEquals("Playing along: Earlier notes", NoteChats.playingLabel("old", all, now, 0))
+        assertEquals("New chat", NoteChats.playingLabel(null, all, utc))
+        assertEquals("Playing along: 2026/11/17 · Tommy, Suzy", NoteChats.playingLabel("tue", all, utc))
+        assertEquals("Playing along: Earlier notes", NoteChats.playingLabel("old", all, utc))
         // Building on one the viewer can't see: listed on its own.
-        assertEquals("Tonight · Tommy · 3 messages", NoteChats.label(tonight, listOf(tonight), now, 0))
+        assertEquals("2026/11/24 · Tommy · 3 messages", NoteChats.label(tonight, listOf(tonight), utc))
+        // The heart beside each says which it is.
+        assertEquals("Not a favourite", NoteChats.heart(tuesday))
+        assertEquals("Favourite", NoteChats.heart(tuesday.copy(favourite = true)))
     }
 
     @Test fun chainsFollowBuildsOnAndStopAtLoops() {
@@ -97,6 +103,12 @@ class TimelineChatHistoriesTest {
             shared = SessionChat(shared.chatId, chatId, "me", if (chatId == "tue") tuesdayNotes else emptyList())
         }
         override suspend fun sessionChat(sessionId: String, itemId: String) = shared
+        val favourites = mutableListOf<Pair<String, Boolean>>()
+        var refuse = false
+        override suspend fun favouriteChat(itemId: String, chatId: String, favourite: Boolean) {
+            if (refuse) throw ChatForbidden()
+            favourites += chatId to favourite
+        }
         override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int): ChatPage = kotlinx.coroutines.awaitCancellation()
     }
 
@@ -169,5 +181,22 @@ class TimelineChatHistoriesTest {
         assertEquals(1, server.noteLoads)
         assertFalse(chat.hasChats.value)
         assertTrue(chat.play("tue").isFailure)
+    }
+
+    @Test fun aHeartMakesAChatAFavouriteAtOnceAndIsPutBackIfTheServerSaysNo() = runTest(UnconfinedTestDispatcher()) {
+        val server = Server()
+        val chat = TimelineChat(server, backgroundScope, { "me" }, null, chatsOn = { true }, favouritesOn = { true }) { 0 }
+        assertTrue(chat.canFavourite)
+        chat.start("ep1", 0) { true }
+        advanceUntilIdle()
+        assertTrue(chat.favourite("tue", true).isSuccess)
+        assertEquals(listOf("tue" to true), server.favourites)
+        assertTrue(chat.chats.value.single().favourite)
+        assertTrue(chat.allChats.value.single().favourite)
+        server.refuse = true
+        assertTrue(chat.favourite("tue", false).isFailure)
+        assertTrue(chat.chats.value.single().favourite)
+        assertTrue(chat.favourite("nope", true).isFailure)
+        assertFalse(TimelineChat(server, backgroundScope, { "me" }, null) { 0 }.canFavourite)
     }
 }

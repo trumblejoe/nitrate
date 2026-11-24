@@ -206,6 +206,8 @@ class TimelineChat(
     private val onShared: () -> Unit = {},
     /** Whether the server keeps chat histories (`chats`). */
     private val chatsOn: () -> Boolean = { false },
+    /** Whether chats can be made favourites (`chatfavourites`): the Chats list shows a heart beside each. */
+    private val favouritesOn: () -> Boolean = { false },
     private val nowMs: () -> Long,
 ) {
     private val clock = NoteClock(selfId)
@@ -519,6 +521,27 @@ class TimelineChat(
         clock.at(positionMs).forEach { _popups.tryEmit(it) }
         publish()
         if (nowMs() - loadedAt >= REFRESH_MS) load()
+    }
+
+    /** Whether the Chats list shows a heart beside each earlier chat (the server keeps favourites). */
+    val canFavourite: Boolean get() = favouritesOn()
+
+    /**
+     * Makes an earlier chat one of the viewer's favourites, or not (the server never deletes a
+     * favourite by its time rules): shown at once, put back if the server says no.
+     */
+    suspend fun favourite(chatId: String, favourite: Boolean): Result<Unit> {
+        val id = itemId ?: return Result.failure(IllegalStateException("Nothing is playing"))
+        fun mark(on: Boolean) {
+            _allChats.value = _allChats.value.map { if (it.id == chatId) it.copy(favourite = on) else it }
+            offer()
+        }
+        val before = _allChats.value.firstOrNull { it.id == chatId }?.favourite ?: return Result.failure(NoSuchElementException("No such chat"))
+        mark(favourite)
+        return runCatching { server.favouriteChat(id, chatId, favourite) }.onFailure { e ->
+            if (e is CancellationException) throw e
+            if (itemId == id) mark(before)
+        }
     }
 
     /** The chat was opened: notes written since they were loaded, if it's been a while. */

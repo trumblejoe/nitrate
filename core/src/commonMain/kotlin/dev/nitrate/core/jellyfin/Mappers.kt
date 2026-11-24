@@ -95,7 +95,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
             seriesPrimary = seriesPrimaryImageTag,
             albumPrimary = albumPrimaryImageTag,
         ),
-        people = people.orEmpty().map { Person(normalizeId(it.id), it.name.orEmpty(), it.role, it.primaryImageTag) },
+        people = people.orEmpty().map { Person(normalizeId(it.id), it.name.orEmpty(), it.role, it.primaryImageTag, it.type) },
         badges = badges(),
         premiereDateMs = premiereDate?.let(::parseDateMs),
         versions = mediaSources.orEmpty().takeIf { it.size > 1 }?.mapIndexedNotNull { i, s -> s.id?.let { MediaVersion(it, s.name?.takeIf { n -> n.isNotBlank() } ?: "Version ${i + 1}") } }.orEmpty(),

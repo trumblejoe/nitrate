@@ -41,13 +41,14 @@ data class WithChip(
 
     /**
      * The group panel's top line: "In a Group Watch Session with Tommy, Suzy", "In the room with
-     * Tommy", "Counting for Tommy & Suzy · Change", "No group · Change".
+     * Tommy", "Counting for you and Tommy · Change" (it counts for the group while you watch on your
+     * own; "Counting for you, Tommy & Suzy · Change"), "No group · Change".
      */
     val label: String get() = when {
         inSession -> if (session.isEmpty()) "In a Group Watch Session · waiting for others" else "In a Group Watch Session with " + session.joinToString(", ")
         roomNames.isNotEmpty() -> "In the room with " + and(roomNames)
         context.justMe -> "No group · Change"
-        else -> "Counting for " + and(context.groups.flatMap { g -> g.others.map { it.name } }.distinct()) + " · Change"
+        else -> "Counting for " + youAnd(context.groups.flatMap { g -> g.others.map { it.name } }.distinct()) + " · Change"
     }
 
     /**
@@ -76,15 +77,15 @@ data class WithChip(
      */
     val ambiguous: Boolean get() = !inSession && groups.size > 1 && context.reason in AUTO
 
-    /** "Counting for: Tommy" (or "Counting for: just me"). */
-    val counting: String get() = "Counting for: " + (group?.let { g -> and(g.others.map { it.name }) } ?: "just me")
+    /** "Counting for you and Tommy" (or "Counting for just you"). */
+    val counting: String get() = "Counting for " + (group?.let { g -> youAnd(g.others.map { it.name }) } ?: "just you")
 
-    /** Who's here, for the panel: "You, Tommy and Suzy, in a Group Watch Session", "You and Tommy, in the room", "Just you". */
+    /** Who's here, for the panel: "You, Tommy and Suzy, in a Group Watch Session", "You and Tommy, in the room", "Watching on your own". */
     val who: String get() = when {
         inSession && session.isNotEmpty() -> "You and " + WatchPartners.names(session) + ", in a Group Watch Session"
         inSession -> "Just you so far: the group was asked to join"
         roomNames.isNotEmpty() -> "You and " + WatchPartners.names(roomNames) + ", in the room"
-        else -> "Just you, on this screen"
+        else -> "Watching on your own"
     }
 
     companion object {
@@ -92,6 +93,13 @@ data class WithChip(
 
         /** A group's line in "Counts for": "Tommy & Suzy". */
         fun nameOf(g: WatchGroup): String = and(g.others.map { it.name }).ifEmpty { g.seriesName }
+
+        /** "you and Tommy", "you, Tommy & Suzy", "you, Tommy, Suzy, Kim & 2 more" (who a playback counts for). */
+        fun youAnd(names: List<String>): String = when {
+            names.isEmpty() -> "you"
+            names.size == 1 -> "you and " + names[0]
+            else -> "you, " + and(names)
+        }
 
         /** "Tommy", "Tommy & Suzy", "Tommy, Suzy & Kim", "Tommy, Suzy, Kim & 2 more". */
         fun and(names: List<String>): String = when {
@@ -155,7 +163,7 @@ data class CountAsk(val itemIds: List<String>, val what: String, val counting: C
 }
 
 /**
- * Who one playback is watched with, for the player's "With…" chip ("Counting for Tommy · Change"):
+ * Who one playback is watched with, for the player's group button ("Counting for you and Tommy · Change"):
  * where it started ([start]'s origin: a group's card, "for myself", elsewhere), the user's change
  * ("Change": a group or no group), who's in the room, all from data the app has already loaded
  * (the groups, where the user stands, this device's Group Watch Session); nothing is polled. [start] as

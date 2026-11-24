@@ -58,6 +58,8 @@ actual fun formatPattern(ms: Long, pattern: String): String = NSDateFormatter().
 
 actual fun timeZoneOffsetMs(): Long = NSTimeZone.localTimeZone.secondsFromGMTForDate(NSDate()) * 1000L
 
+actual fun timeZoneOffsetMsAt(ms: Long): Long = NSTimeZone.localTimeZone.secondsFromGMTForDate(NSDate.dateWithTimeIntervalSince1970(ms / 1000.0)) * 1000L
+
 actual fun formatDecimal(value: Double, decimals: Int): String = NSNumberFormatter().apply {
     numberStyle = NSNumberFormatterDecimalStyle
     minimumFractionDigits = decimals.toULong()

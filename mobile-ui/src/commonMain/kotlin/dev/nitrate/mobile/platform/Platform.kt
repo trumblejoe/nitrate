@@ -27,6 +27,9 @@ expect fun formatPattern(ms: Long, pattern: String): String
 /** The device's time zone's offset from UTC now, in milliseconds. */
 expect fun timeZoneOffsetMs(): Long
 
+/** The device's time zone's offset from UTC at the moment [ms] (summer time then, or not), in milliseconds. */
+expect fun timeZoneOffsetMsAt(ms: Long): Long
+
 /** [value] with [decimals] digits after the point, in the device's number format. */
 expect fun formatDecimal(value: Double, decimals: Int): String
 

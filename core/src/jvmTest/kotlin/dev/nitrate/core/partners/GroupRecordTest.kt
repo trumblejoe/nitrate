@@ -91,7 +91,7 @@ class GroupRecordTest {
         // Started elsewhere: the one group it's next in, shown so it can be changed.
         val elsewhere = WatchPartners.countingFor(PlayOrigin.Elsewhere, eps[3], info, standings)
         assertEquals(listOf("tommy"), elsewhere.groups.map { it.id })
-        assertEquals("Counting for Tommy · Change", elsewhere.label)
+        assertEquals("Counting for you and Tommy · Change", elsewhere.label)
         assertFalse(elsewhere.asksAll)
         // Next in no group: it counts for none.
         assertTrue(WatchPartners.countingFor(PlayOrigin.Elsewhere, eps[5], info, standings).groups.isEmpty())

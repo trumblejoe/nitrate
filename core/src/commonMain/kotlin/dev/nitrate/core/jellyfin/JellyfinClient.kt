@@ -937,7 +937,7 @@ class JellyfinClient(
                 page.chats.map {
                     dev.nitrate.core.companion.NoteChat(
                         normalizeId(it.id), it.groupId?.let(::normalizeId), it.created, it.buildsOn?.let(::normalizeId), it.sessionId?.let(::normalizeId),
-                        it.people, it.count, it.earlier,
+                        it.people, it.count, it.earlier, it.favourite,
                     )
                 },
             )
@@ -971,6 +971,20 @@ class JellyfinClient(
                 auth()
                 contentType(ContentType.Application.Json)
                 setBody(AlongPostDto(dashless(listOf(itemId)), chatId?.let { dashless(listOf(it)) }))
+            }
+        } catch (e: io.ktor.client.plugins.ClientRequestException) {
+            if (e.response.status == HttpStatusCode.Forbidden || e.response.status == HttpStatusCode.NotFound) throw dev.nitrate.core.companion.ChatForbidden()
+            throw e
+        }
+    }
+
+    override suspend fun favouriteChat(itemId: String, chatId: String, favourite: Boolean) {
+        if (!companionHas("chatfavourites")) throw UnsupportedOperationException("Not supported by this server")
+        try {
+            http.put(url("Nitrate", "Chats", "Favourites", dashless(listOf(chatId)))) {
+                auth()
+                contentType(ContentType.Application.Json)
+                setBody(FavouritePostDto(dashless(listOf(itemId)), favourite))
             }
         } catch (e: io.ktor.client.plugins.ClientRequestException) {
             if (e.response.status == HttpStatusCode.Forbidden || e.response.status == HttpStatusCode.NotFound) throw dev.nitrate.core.companion.ChatForbidden()

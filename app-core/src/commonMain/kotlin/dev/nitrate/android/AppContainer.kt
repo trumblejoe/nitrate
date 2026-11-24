@@ -215,8 +215,25 @@ class AppContainer(
             server, scope, { server.userId }, chat.takeIf { live },
             liveNotes = { companionState.value?.features?.contains("livenotes") != false },
             chatsOn = { companionState.value?.features?.contains("chats") == true },
+            favouritesOn = { companionState.value?.features?.contains("chatfavourites") == true },
             onShared = { networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch partners")) { refreshPartners() } },
         ) { nowMs() }
+
+    /** Shows whose cast, genres and tags an episode's quick replies were made from, this run (one request per show). */
+    private val chatShows = mutableMapOf<String, dev.nitrate.core.model.MediaItem>()
+
+    /**
+     * The chat's one-press chips for [item]: its own emojis, its main characters' names and the
+     * usual phrases (core `QuickReplies`, worked out here; nothing is sent anywhere). A film has all
+     * it needs already; an episode's show is fetched once per show for its cast, genres and tags.
+     */
+    suspend fun quickPicks(item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.companion.QuickPicks {
+        val showId = item.seriesId?.takeIf { item.kind == dev.nitrate.core.model.ItemKind.EPISODE }
+        val show = showId?.let { id ->
+            chatShows[id] ?: runCatching { server.getItem(id) }.getOrNull()?.also { chatShows[id] = it }
+        }
+        return dev.nitrate.core.companion.QuickReplies.forTitle(item, show)
+    }
 
     /** Group chat on or off for a title's watch groups: remembered per group, a display preference (per user). */
     suspend fun setGroupChat(groupIds: List<String>, on: Boolean) {

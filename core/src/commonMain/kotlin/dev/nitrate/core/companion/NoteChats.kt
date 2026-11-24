@@ -1,6 +1,5 @@
 package dev.nitrate.core.companion
 
-import dev.nitrate.core.partners.GroupSchedule
 import dev.nitrate.core.partners.PartyTime
 
 /**
@@ -26,6 +25,8 @@ data class NoteChat(
     val count: Int = 0,
     /** Notes kept before chat histories, gathered per group ("Earlier notes"). */
     val earlier: Boolean = false,
+    /** The viewer made it a favourite (Companion `chatfavourites`): the server's time rules never delete it. */
+    val favourite: Boolean = false,
 )
 
 /** A title's chat histories for the viewer, newest first, and their watch groups on it. */
@@ -47,24 +48,13 @@ object NoteChats {
     const val NEW_CHAT = "New chat"
 
     /**
-     * When a chat was begun, as people say it: "Tonight" (today from 5pm), "Today", "Yesterday",
-     * the weekday within the week, else "Nov 12" (with the year when it isn't this one).
+     * The day a chat was begun, on the device's own calendar: "2026/11/22" ([offsetMinutes]: the
+     * device's time zone's offset from UTC at that moment).
      */
-    fun day(ms: Long, nowMs: Long, offsetMinutes: Int): String {
-        val offset = offsetMinutes * 60_000L
-        val day = (ms + offset).floorDiv(PartyTime.DAY_MS)
-        val today = (nowMs + offset).floorDiv(PartyTime.DAY_MS)
-        val hour = (ms + offset).mod(PartyTime.DAY_MS) / 3_600_000L
-        return when {
-            day == today && hour >= 17 -> "Tonight"
-            day == today -> "Today"
-            day == today - 1 -> "Yesterday"
-            day in today - 6 until today -> GroupSchedule.DAYS[PartyTime.weekday(day)]
-            else -> date(day, today)
-        }
+    fun date(ms: Long, offsetMinutes: Int): String {
+        val (y, m, d) = civil((ms + offsetMinutes * 60_000L).floorDiv(PartyTime.DAY_MS))
+        return "$y/" + m.toString().padStart(2, '0') + "/" + d.toString().padStart(2, '0')
     }
-
-    private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
     private fun civil(day: Long): Triple<Long, Int, Int> {
         // Days since 1970-01-01 to year, month, day (Howard Hinnant's algorithm).
@@ -80,42 +70,45 @@ object NoteChats {
         return Triple(y, m, d)
     }
 
-    private fun date(day: Long, today: Long): String {
-        val (y, m, d) = civil(day)
-        val thisYear = civil(today).first
-        return "${MONTHS[m - 1]} $d" + if (y != thisYear) ", $y" else ""
-    }
-
     /** "Tommy, Suzy" (who wrote besides the viewer), "You" when only the viewer did. */
     fun people(chat: NoteChat): String = chat.people.joinToString(", ").ifEmpty { "You" }
 
     /** "14 messages", "1 message". */
     fun count(n: Int): String = if (n == 1) "1 message" else "$n messages"
 
-    /** The chat's name in the list: "Earlier notes" for older notes, else the day it was begun. */
-    fun name(chat: NoteChat, nowMs: Long, offsetMinutes: Int): String =
-        if (chat.earlier) "Earlier notes" else day(chat.createdMs, nowMs, offsetMinutes)
+    /**
+     * The chat's name in the list: "Earlier notes" for older notes, else the day it was begun
+     * ("2026/11/22"; [offsetAt] gives the device's offset from UTC in minutes at a moment).
+     */
+    fun name(chat: NoteChat, offsetAt: (Long) -> Int): String =
+        if (chat.earlier) "Earlier notes" else date(chat.createdMs, offsetAt(chat.createdMs))
 
     /**
-     * The chat as listed: "Tuesday · Tommy, Suzy · 14 messages", "Earlier notes · Tommy · 3
-     * messages", or for one building on another "Tonight · builds on Tuesday · 3 new".
+     * The chat as listed: "2026/11/22 · Tommy, Suzy · 14 messages", "Earlier notes · Tommy · 3
+     * messages", or for one building on another "2026/11/24 · builds on 2026/11/22 · 3 new".
      */
-    fun label(chat: NoteChat, all: List<NoteChat>, nowMs: Long, offsetMinutes: Int): String {
+    fun label(chat: NoteChat, all: List<NoteChat>, offsetAt: (Long) -> Int): String {
         val base = chat.buildsOn?.let { b -> all.firstOrNull { it.id == b } }
         return if (base != null) {
-            "${name(chat, nowMs, offsetMinutes)} · builds on ${name(base, nowMs, offsetMinutes)} · ${chat.count} new"
+            "${name(chat, offsetAt)} · builds on ${name(base, offsetAt)} · ${chat.count} new"
         } else {
-            "${name(chat, nowMs, offsetMinutes)} · ${people(chat)} · ${count(chat.count)}"
+            "${name(chat, offsetAt)} · ${people(chat)} · ${count(chat.count)}"
         }
     }
 
+    /** What the heart beside a chat says: "Favourite" or "Not a favourite". */
+    fun heart(chat: NoteChat): String = if (chat.favourite) FAVOURITE else NOT_FAVOURITE
+
+    const val FAVOURITE = "Favourite"
+    const val NOT_FAVOURITE = "Not a favourite"
+
     /**
      * The panel's Chat line: "New chat" (nothing earlier plays), or what's playing along: "Playing
-     * along: Tuesday · Tommy, Suzy", "Playing along: Earlier notes".
+     * along: 2026/11/22 · Tommy, Suzy", "Playing along: Earlier notes".
      */
-    fun playingLabel(playing: String?, all: List<NoteChat>, nowMs: Long, offsetMinutes: Int): String {
+    fun playingLabel(playing: String?, all: List<NoteChat>, offsetAt: (Long) -> Int): String {
         val chat = playing?.let { p -> all.firstOrNull { it.id == p } } ?: return if (playing == null) NEW_CHAT else "Playing along: an earlier chat"
-        return "Playing along: " + name(chat, nowMs, offsetMinutes) + if (chat.earlier) "" else " · " + people(chat)
+        return "Playing along: " + name(chat, offsetAt) + if (chat.earlier) "" else " · " + people(chat)
     }
 
     /**

@@ -17,9 +17,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -30,7 +32,13 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.tv.material3.Icon
+import androidx.tv.material3.IconButton
 import androidx.tv.material3.ListItem
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Switch
@@ -39,6 +47,8 @@ import dev.nitrate.android.AppContainer
 import dev.nitrate.core.companion.ChatKind
 import dev.nitrate.core.companion.NoteChat
 import dev.nitrate.core.companion.NoteChats
+import dev.nitrate.core.companion.QuickPicks
+import dev.nitrate.core.companion.QuickReplies
 import dev.nitrate.core.companion.TimelineChat
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.partners.WatchCompany
@@ -77,11 +87,16 @@ internal fun PlayerGroupPanel(
     var problem by remember { mutableStateOf<String?>(null) }
     val me = container?.server?.userId
     val pickedBy = groupChat?.broughtBy?.collectAsState()?.value
+    // The title's quick replies (the usual ones until its own are worked out: an episode's show is asked for once).
+    val picks by produceState(QuickReplies.forTitle(item), item?.id) {
+        if (item != null && container != null) value = container.quickPicks(item)
+    }
     GroupPanel(
         chip = chip,
         chat = groupChat?.takeIf { chatAvailable },
         chatTitle = chatTitle,
         positionMs = positionMs,
+        picks = picks,
         problem = problem,
         pickedBy = pickedBy?.takeIf { it != me }?.let { id -> chip?.groups?.flatMap { it.others }?.firstOrNull { it.id == id }?.name ?: "Someone watching" },
         onCountFor = { company?.countFor(it) },
@@ -106,10 +121,11 @@ private enum class GroupPage { MAIN, COUNT, ROOM, CHATS }
 
 /**
  * The group panel, beside the video (the player's one group button opens it): the top line says who
- * it counts for ("Counting for Tommy & Suzy · Change", which opens the Change choices and "We're in
+ * it counts for ("Counting for you, Tommy & Suzy · Change", which opens the Change choices and "We're in
  * the same room") or "In a Group Watch Session with Tommy"; then the chat: which chat this is ("New
  * chat", or the earlier one playing along; OK opens **Chats**: Group chat on or off, New chat and
- * the earlier chats, newest first), what was said up to here, reactions and a text field; then
+ * the earlier chats, newest first, each with a heart to keep it), what was said up to here, the
+ * title's quick reactions and lines (one press each) and a text field; then
  * "Start a Group Watch Session" (in one: leave it, or end it for everyone when the user started
  * it). Focus stays inside; Back goes back a page, then (left to the player) closes it, focus back on
  * the group button.
@@ -133,8 +149,10 @@ fun GroupPanel(
     onTurnChat: (Boolean) -> Unit = {},
     onPlayChat: (String?) -> Unit = {},
     modifier: Modifier = Modifier,
-    nowMs: Long = System.currentTimeMillis(),
-    offsetMinutes: Int = java.util.TimeZone.getDefault().getOffset(nowMs) / 60_000,
+    /** The chat's one-press reactions and lines for this title. */
+    picks: QuickPicks = QuickPicks.PLAIN,
+    /** The device's offset from UTC (minutes) at a moment, for the chats' dates. */
+    offsetAt: (Long) -> Int = { java.util.TimeZone.getDefault().getOffset(it) / 60_000 },
 ) {
     var page by remember { mutableStateOf(GroupPage.MAIN) }
     // Where focus goes on each page: the first choice, or back on the line that opened a page.
@@ -158,7 +176,7 @@ fun GroupPanel(
     ) {
         when (page) {
             GroupPage.MAIN -> MainPage(
-                chip, chat, chatTitle, positionMs, problem, topLine, chatLine, first, nowMs, offsetMinutes, pickedBy,
+                chip, chat, chatTitle, positionMs, problem, topLine, chatLine, first, offsetAt, pickedBy, picks,
                 onChange = { open(GroupPage.COUNT, topLine) },
                 onChats = { open(GroupPage.CHATS, chatLine) },
                 onStartSession, onLeaveSession, onEndSession,
@@ -193,7 +211,7 @@ fun GroupPanel(
                     OutlinedButton(onClick = { page = GroupPage.COUNT }) { Text("Back") }
                 }
             }
-            GroupPage.CHATS -> chat?.let { ChatsPage(it, chip?.inSession == true, pickedBy, first, nowMs, offsetMinutes, onTurnChat) { id -> onPlayChat(id); back() } }
+            GroupPage.CHATS -> chat?.let { ChatsPage(it, chip?.inSession == true, pickedBy, first, offsetAt, onTurnChat) { id -> onPlayChat(id); back() } }
         }
     }
     // Each page opens with focus on its first choice; back on the first page, on the line that opened the page.
@@ -217,9 +235,9 @@ private fun androidx.compose.foundation.layout.ColumnScope.MainPage(
     topLine: FocusRequester,
     chatLine: FocusRequester,
     first: FocusRequester,
-    nowMs: Long,
-    offsetMinutes: Int,
+    offsetAt: (Long) -> Int,
     pickedBy: String?,
+    picks: QuickPicks,
     onChange: () -> Unit,
     onChats: () -> Unit,
     onStartSession: (() -> Unit)?,
@@ -243,7 +261,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.MainPage(
     } else {
         Text("Group chat" + (chatTitle?.let { " · $it" } ?: ""), style = MaterialTheme.typography.titleLarge)
     }
-    if (chat != null) ChatSection(chat, positionMs, chatLine, ::firstOne, nowMs, offsetMinutes, pickedBy, onChats, Modifier.weight(1f))
+    if (chat != null) ChatSection(chat, positionMs, chatLine, ::firstOne, offsetAt, pickedBy, picks, onChats, Modifier.weight(1f))
     if (chip?.inSession == true) {
         Action("Leave the Group Watch Session", "Carry on by yourself from here", firstOne(remember { FocusRequester() }), onLeaveSession)
         if (chip.startedByMe) Action("End it for everyone", "Everyone carries on by themselves", Modifier, onEndSession)
@@ -263,9 +281,9 @@ private fun ChatSection(
     positionMs: () -> Long,
     chatLine: FocusRequester,
     firstOne: (FocusRequester) -> Modifier,
-    nowMs: Long,
-    offsetMinutes: Int,
+    offsetAt: (Long) -> Int,
     pickedBy: String?,
+    picks: QuickPicks,
     onChats: () -> Unit,
     modifier: Modifier,
 ) {
@@ -296,7 +314,7 @@ private fun ChatSection(
             Text(
                 when {
                     !on -> "Group chat: Off"
-                    hasChats -> "Chat: " + NoteChats.playingLabel(playing, all, nowMs, offsetMinutes)
+                    hasChats -> "Chat: " + NoteChats.playingLabel(playing, all, offsetAt)
                     else -> "Group chat: On"
                 },
             )
@@ -331,7 +349,7 @@ private fun ChatSection(
             }
             items(history, key = { it.id }) { NoteLine(it) }
         }
-        ChatComposer(firstReaction, ::send, draft) { draft = it.take(500) }
+        ChatComposer(firstReaction, ::send, draft, { draft = it.take(500) }, picks)
         problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 }
@@ -343,11 +361,11 @@ private fun ChatsPage(
     inSession: Boolean,
     pickedBy: String?,
     first: FocusRequester,
-    nowMs: Long,
-    offsetMinutes: Int,
+    offsetAt: (Long) -> Int,
     onTurn: (Boolean) -> Unit,
     onPick: (String?) -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     val on by chat.on.collectAsState()
     val hasChats by chat.hasChats.collectAsState()
     val offered by chat.chats.collectAsState()
@@ -376,7 +394,11 @@ private fun ChatsPage(
             }
             item { Choice(NoteChats.NEW_CHAT, playing == null, Modifier, "Nothing earlier pops up") { onPick(null) } }
             items(offered, key = { it.id }) { c: NoteChat ->
-                Choice(NoteChats.label(c, all, nowMs, offsetMinutes), playing == c.id, Modifier) { onPick(c.id) }
+                // ▶ from the chat's line reaches its heart: a favourite is never deleted by the server's time rules.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Choice(NoteChats.label(c, all, offsetAt), playing == c.id, Modifier.weight(1f)) { onPick(c.id) }
+                    if (chat.canFavourite) Heart(c.favourite) { scope.launch { chat.favourite(c.id, !c.favourite) } }
+                }
             }
             if (offered.isEmpty()) item {
                 Text("No earlier chats on this yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -395,6 +417,18 @@ private fun Choice(text: String, selected: Boolean, modifier: Modifier, detail: 
         trailingContent = if (selected) ({ Text("✓", color = MaterialTheme.colorScheme.primary) }) else null,
         modifier = modifier,
     )
+}
+
+/** A chat's heart: filled for a favourite; says "Favourite" or "Not a favourite". */
+@Composable
+private fun Heart(favourite: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            if (favourite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = if (favourite) NoteChats.FAVOURITE else NoteChats.NOT_FAVOURITE,
+            tint = if (favourite) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+        )
+    }
 }
 
 @Composable

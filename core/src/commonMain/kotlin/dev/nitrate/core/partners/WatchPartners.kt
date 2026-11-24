@@ -488,7 +488,7 @@ object WatchPartners {
     /**
      * Which groups a playback of [item] counts for, by where it started ([origin]): from a group's
      * card, that group (with the others it's next in as [Counting.alsoNext]); started anywhere
-     * else, no group, unless it's the immediate next part in exactly one group ("Counting for X ·
+     * else, no group, unless it's the immediate next part in exactly one group ("Counting for you and X ·
      * Change"); "Watch for myself", none. Live sessions are counted by the server for whoever's
      * there (the Companion's `TogetherRecorder`), not by this.
      */
@@ -576,8 +576,8 @@ sealed interface PlayOrigin {
  * playback finishes (Jellyfin's played threshold) with `MediaServer.markForGroups`.
  */
 data class Counting(val origin: PlayOrigin, val groups: List<WatchGroup>, val alsoNext: List<WatchGroup> = emptyList()) {
-    /** "Counting for Tommy · Change": started elsewhere and next in exactly one group (the user can change or drop it). */
-    val label: String? get() = if (origin == PlayOrigin.Elsewhere) groups.singleOrNull()?.let { "Counting for ${WithChip.nameOf(it)} · Change" } else null
+    /** "Counting for you and Tommy · Change": started elsewhere and next in exactly one group (the user can change or drop it). */
+    val label: String? get() = if (origin == PlayOrigin.Elsewhere) groups.singleOrNull()?.let { "Counting for " + WithChip.youAnd(it.others.map { p -> p.name }.ifEmpty { listOf(it.seriesName) }) + " · Change" } else null
 
     /** From a group's card and next in other groups too: ask "Just this group / All groups where it's next" when it finishes. */
     val asksAll: Boolean get() = origin is PlayOrigin.GroupCard && groups.isNotEmpty() && alsoNext.isNotEmpty()

@@ -2,6 +2,8 @@ package dev.nitrate.tv.ui.together
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,7 +46,7 @@ import dev.nitrate.core.companion.ChatKind
 import dev.nitrate.core.companion.ChatMessage
 import dev.nitrate.core.companion.GroupChat
 import dev.nitrate.core.companion.Notes
-import dev.nitrate.core.companion.QUICK_REACTIONS
+import dev.nitrate.core.companion.QuickPicks
 import dev.nitrate.core.companion.TimelineNote
 import dev.nitrate.core.model.formatClock
 import dev.nitrate.tv.ui.components.TvTextField
@@ -103,9 +105,11 @@ internal fun NoteLine(n: TimelineNote) {
 }
 
 /**
- * Quick reactions (two rows of four, one press each) and the text field under them. ▼ from the
- * reactions goes straight to the text field, ▲ from it back to them (the field is the only thing
- * below, so focus never falls out to whatever lies further down the screen).
+ * Quick reactions (rows of five, one press each: the title's own emojis first, [QuickPicks.emojis]),
+ * a row of quick lines under them (its characters' names and short phrases, sent as messages with
+ * one press; ◀▶ along the row), and the text field. ▼ goes from the reactions to the lines and on to
+ * the text field, ▲ back up the same way (nothing else lies between, so focus never falls out to
+ * whatever is further down the screen).
  */
 @Composable
 internal fun ChatComposer(
@@ -113,19 +117,37 @@ internal fun ChatComposer(
     send: (String, ChatKind) -> Unit,
     draft: String,
     onDraft: (String) -> Unit,
+    picks: QuickPicks = QuickPicks.PLAIN,
 ) {
     val field = remember { FocusRequester() }
+    val lines = remember { FocusRequester() }
     val reactions = remember { FocusRequester() }
-    val rows = QUICK_REACTIONS.chunked(4)
+    val rows = picks.emojis.chunked(5)
+    val hasLines = picks.lines.isNotEmpty()
     Column(Modifier.focusRequester(reactions).focusGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         rows.forEachIndexed { row, emojis ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 emojis.forEachIndexed { i, emoji ->
                     var m: Modifier = Modifier
                     if (row == 0 && i == 0) m = m.focusRequester(firstReaction)
-                    if (row == rows.lastIndex) m = m.focusProperties { down = field }
+                    if (row == rows.lastIndex) m = m.focusProperties { down = if (hasLines) lines else field }
                     OutlinedButton(onClick = { send(emoji, ChatKind.REACTION) }, modifier = m) { Text(emoji, fontSize = 22.sp) }
                 }
+            }
+        }
+    }
+    if (hasLines) {
+        // One press sends the line as a message.
+        // A plain scrolling row (a dozen chips at most): every chip stays composed, so ▼ always finds the first.
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).focusGroup(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            picks.lines.forEachIndexed { i, line ->
+                OutlinedButton(
+                    onClick = { send(line, ChatKind.TEXT) },
+                    modifier = (if (i == 0) Modifier.focusRequester(lines) else Modifier).focusProperties { up = firstReaction; down = field },
+                ) { Text(line, maxLines = 1) }
             }
         }
     }
@@ -133,11 +155,11 @@ internal fun ChatComposer(
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         TvTextField(
             draft, onDraft, "Type a message",
-            modifier = Modifier.weight(1f).focusRequester(field).focusProperties { up = firstReaction },
+            modifier = Modifier.weight(1f).focusRequester(field).focusProperties { up = if (hasLines) lines else firstReaction },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { if (draft.isNotBlank()) send(draft, ChatKind.TEXT) }),
         )
-        Button(onClick = { send(draft, ChatKind.TEXT) }, enabled = draft.isNotBlank(), modifier = Modifier.focusProperties { up = firstReaction }) { Text("Send") }
+        Button(onClick = { send(draft, ChatKind.TEXT) }, enabled = draft.isNotBlank(), modifier = Modifier.focusProperties { up = if (hasLines) lines else firstReaction }) { Text("Send") }
     }
 }
 
@@ -179,7 +201,7 @@ fun ChatPanel(chat: GroupChat, groupName: String?, positionMs: () -> Long?, modi
             }
             items(messages, key = { it.seq }) { Bubble(it) }
         }
-        ChatComposer(firstReaction, ::send, draft) { draft = it.take(500) }
+        ChatComposer(firstReaction, ::send, draft, { draft = it.take(500) })
         problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 }

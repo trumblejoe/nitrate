@@ -37,8 +37,8 @@ class FakeServer : MediaServer {
 
     val series = MediaItem(
         "series-1", "The Night Reel", ItemKind.SERIES, productionYear = 2021, endYear = 2024, officialRating = "TV-14",
-        communityRating = 8.4f, genres = listOf("Thriller"), overview = "Three seasons inside a cinema that never closes.",
-        people = listOf(Person("p1", "Maya Ortiz", "Lead"), Person("p2", "Sam Reel", "Projectionist"), Person("p3", "Ana Bell", "Director")),
+        communityRating = 8.4f, genres = listOf("Thriller"), overview = "Three seasons inside a cinema that never closes.", tags = listOf("haunted", "mystery"),
+        people = listOf(Person("p1", "Maya Ortiz", "Iris Vale", type = "Actor"), Person("p2", "Sam Reel", "The Projectionist", type = "Actor"), Person("p3", "Ana Bell", "Director", type = "Director")),
     )
 
     private fun episode(season: Int, n: Int, played: Boolean) = MediaItem(
@@ -568,7 +568,7 @@ class FakeServer : MediaServer {
         if ("chats" !in companionFeatures) null
         else dev.nitrate.core.companion.TitleChats(
             if (itemId.startsWith("s1e")) listOf(dev.nitrate.core.companion.NoteGroup("g1", "The Night Reel"), dev.nitrate.core.companion.NoteGroup("g2", "The Night Reel")) else emptyList(),
-            if (itemId == "s1e2") noteChats else emptyList(),
+            if (itemId == "s1e2") noteChats.map { it.copy(favourite = it.id in favouriteChats) } else emptyList(),
         )
 
     override suspend fun chatNotes(itemId: String, chatId: String): List<dev.nitrate.core.companion.TimelineNote> {
@@ -586,6 +586,13 @@ class FakeServer : MediaServer {
     }
 
     override suspend fun playAlong(sessionId: String, itemId: String, chatId: String?) { playedAlong += chatId }
+
+    /** Chats made favourites (by id): Tuesday's with Will is one. */
+    val favouriteChats = mutableSetOf("c-tue")
+
+    override suspend fun favouriteChat(itemId: String, chatId: String, favourite: Boolean) {
+        if (favourite) favouriteChats += chatId else favouriteChats -= chatId
+    }
 
     override suspend fun sessionChat(sessionId: String, itemId: String): dev.nitrate.core.companion.SessionChat? =
         if ("chats" !in companionFeatures) null
