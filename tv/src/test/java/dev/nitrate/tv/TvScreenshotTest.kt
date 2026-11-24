@@ -2447,7 +2447,7 @@ class TvScreenshotTest {
     @Test fun serverSettings() = shoot("tv-server-settings") { c -> dev.nitrate.tv.ui.settings.ServerSettingsScreen(c) }
 
     @Test fun watchPartners() = shoot("tv-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { c ->
-        dev.nitrate.tv.ui.partners.WatchPartnersScreen(c) {}
+        dev.nitrate.tv.ui.partners.WatchPartnersScreen(c) { _, _ -> }
     }
 
     @Test fun partnerRequest() = shoot("tv-partner-request", setup = { c -> c.refreshCompanionForTests() }) { c ->
@@ -2575,6 +2575,20 @@ class TvScreenshotTest {
     }
 
     /** An episode's page. */
+    /** An episode entered from Will's group: the group's own mark beside Watched, and "✓ with Will" on the episodes the group has. */
+    @Test fun episodeDetailsFromAGroup() = shoot("tv-episode-details-group", setup = { c ->
+        val server = c.server as dev.nitrate.testing.FakeServer
+        server.partnerInfo = server.partnerInfo.copy(groups = server.partnerInfo.groups.map { if (it.id == "g1") it.copy(ownRecord = setOf("s1e1")) else it })
+        c.refreshCompanionForTests()
+    }, act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Not watched with Will")).fetchSemanticsNodes().isNotEmpty()) { "the group's mark is beside Watched" }
+        check(shows("✓ with Will")) { "the episodes the group has say so" }
+    }) { c ->
+        dev.nitrate.tv.ui.partners.ProvideGroupMarks(c, "g1") {
+            dev.nitrate.tv.ui.details.DetailsScreen(c.server, "s1e2", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {})
+        }
+    }
+
     @Test fun episodeDetails() = shoot("tv-episode-details") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "s1e2", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }
 
     @Test fun movieDetails() = shoot("tv-movie-details") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "m1", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }

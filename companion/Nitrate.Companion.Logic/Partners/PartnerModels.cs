@@ -63,6 +63,12 @@ public class WatchGroup
     /// </summary>
     public bool RecordKept { get; set; }
 
+    /// <summary>
+    /// Gets or sets where members stopped a part part-way while watching it for this group: the
+    /// group's own resume points, apart from Jellyfin's (which a later solo play moves).
+    /// </summary>
+    public List<GroupResume> Resume { get; set; } = new();
+
     /// <summary>Whether <paramref name="titleId"/> is one of its titles.</summary>
     public bool HasTitle(Guid titleId) => Titles.Any(t => t.Id == titleId);
 
@@ -81,6 +87,22 @@ public class GroupWatch
 
     /// <summary>Gets or sets when it was first counted; null when the record was started from what had already been watched (before the schedule).</summary>
     public DateTimeOffset? At { get; set; }
+}
+
+/// <summary>Where a member stopped a part part-way, watching it for a group.</summary>
+public class GroupResume
+{
+    /// <summary>Gets or sets who.</summary>
+    public Guid Member { get; set; }
+
+    /// <summary>Gets or sets the part.</summary>
+    public Guid ItemId { get; set; }
+
+    /// <summary>Gets or sets where they stopped.</summary>
+    public long PositionMs { get; set; }
+
+    /// <summary>Gets or sets when.</summary>
+    public DateTimeOffset At { get; set; }
 }
 
 /// <summary>A request to watch a show together, waiting for the other person.</summary>

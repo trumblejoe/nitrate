@@ -39,6 +39,8 @@ class PlaybackGate(
     private val registry: PluginRegistry,
     private val scope: CoroutineScope,
     private val start: (item: MediaItem, fromStart: Boolean, startMs: Long?) -> Unit,
+    /** Where a play from a group's card starts: that group's own resume point, or 0 for the start; null otherwise (`AppContainer.groupStartMs`). */
+    private val groupStart: (dev.nitrate.core.partners.PlayOrigin?, MediaItem) -> Long? = { _, _ -> null },
 ) {
     internal var pending by mutableStateOf<Pair<GuardDecision.Ask, CompletableDeferred<GuardAction>>?>(null)
         private set
@@ -68,6 +70,10 @@ class PlaybackGate(
             } finally {
                 checking = false
             }
+            // From a group's card: the group's own resume point (or the start), never the solo one.
+            val fromGroup = if (fromStart || startMs != null) null else groupStart(from, item)
+            @Suppress("NAME_SHADOWING") val fromStart = fromStart || fromGroup == 0L
+            @Suppress("NAME_SHADOWING") val startMs = startMs ?: fromGroup?.takeIf { it > 0 }
             when (action) {
                 GuardAction.PlayAnyway -> start(item, fromStart, startMs)
                 GuardAction.Cancel -> Unit
@@ -89,9 +95,13 @@ class PlaybackGate(
 }
 
 @Composable
-fun rememberPlaybackGate(registry: PluginRegistry, start: (MediaItem, Boolean, Long?) -> Unit): PlaybackGate {
+fun rememberPlaybackGate(
+    registry: PluginRegistry,
+    groupStart: (dev.nitrate.core.partners.PlayOrigin?, MediaItem) -> Long? = { _, _ -> null },
+    start: (MediaItem, Boolean, Long?) -> Unit,
+): PlaybackGate {
     val scope = rememberCoroutineScope()
-    return remember(registry) { PlaybackGate(registry, scope, start) }
+    return remember(registry) { PlaybackGate(registry, scope, start, groupStart) }
 }
 
 /** Shows a guard's question when there is one. Place once, near the root. */

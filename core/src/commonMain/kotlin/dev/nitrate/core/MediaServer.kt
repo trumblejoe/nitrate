@@ -686,6 +686,12 @@ interface MediaServer {
      */
     suspend fun markForGroups(groupIds: List<String>, itemIds: List<String>, watched: Boolean = true): List<String> = unsupported()
 
+    /**
+     * Where the user stopped [itemId] watching it for group [groupId] (from the group's card; 0
+     * clears it): the group's own resume point, apart from Jellyfin's (Companion feature `groupresume`).
+     */
+    suspend fun setGroupResume(groupId: String, itemId: String, positionMs: Long): Unit = unsupported()
+
     /** Tells the server live (SyncPlay) session [sessionId] was started for group [groupId] ("Start a Group Watch Session"), so what it plays counts for the group. */
     suspend fun sessionForGroup(groupId: String, sessionId: String): Unit = unsupported()
 

@@ -35,6 +35,9 @@ data class GroupTitle(
     val reachNote: String? get() = reach.takeIf { it.isNotEmpty() }?.joinToString(" ") { it.note(name) }
 }
 
+/** Where the user stopped a part watching it for a group, and when ([atMs]). */
+data class GroupResume(val positionMs: Long, val atMs: Long)
+
 /** A member who can open only [parts] of a title's [of] parts on this server (0: none of it). */
 data class MemberReach(val name: String, val parts: Int, val of: Int) {
     fun note(title: String): String =
@@ -75,6 +78,12 @@ data class WatchGroup(
     val party: WatchParty? = null,
     /** The group's titles as the server sent them (Companion feature `groupwatch`); empty from older servers: [titles] is then the one title. */
     val titleList: List<GroupTitle> = emptyList(),
+    /**
+     * The user's resume points in this group (Companion feature `groupresume`): parts stopped
+     * part-way while watching them for it, by part id. Apart from Jellyfin's resume point, which a
+     * later solo play moves: the group's card resumes from here.
+     */
+    val resume: Map<String, GroupResume> = emptyMap(),
 ) {
     /** The group's titles, each with what the schedule holds back in it (older servers: the one title, from the fields above). */
     val titles: List<GroupTitle> get() = titleList.ifEmpty { listOf(GroupTitle(seriesId, seriesName, lockedFromId, opensAtMs, opensDay, togetherFromId)) }
@@ -390,6 +399,35 @@ object WatchPartners {
     /** The Companion feature. */
     const val FEATURE = "partners"
 
+    /** Groups' own resume points (`setGroupResume`, `WatchGroup.resume`). */
+    const val RESUME_FEATURE = "groupresume"
+
+    /**
+     * Whether [item]'s place in Continue Watching was left by a playback for a group: one of
+     * [groups] has a resume point on it at least as recent as Jellyfin's last play (a minute's
+     * slack for the reports' timing). A later solo play makes it the user's own again.
+     */
+    fun resumedForGroup(item: MediaItem, groups: List<WatchGroup>): WatchGroup? {
+        val last = item.user.lastPlayedMs ?: return null
+        return groups.filter { g -> g.resume[item.id]?.let { it.atMs >= last - 60_000 } == true }.maxByOrNull { it.resume.getValue(item.id).atMs }
+    }
+
+    /**
+     * Continue Watching without what's half-watched with a group, when Home's Watching together
+     * row shows it ([togetherShown]: one home for each). With that row hidden the part stays here
+     * as the group's card (carrying [MediaItem.watchGroupId], so it resumes and counts for the group).
+     */
+    fun continueWatching(items: List<MediaItem>, groups: List<WatchGroup>, togetherShown: Boolean): List<MediaItem> = items.mapNotNull { item ->
+        val g = resumedForGroup(item, groups) ?: return@mapNotNull item
+        if (togetherShown) null else item.copy(watchGroupId = g.id, user = item.user.copy(positionMs = g.resume.getValue(item.id).positionMs))
+    }
+
+    /** [card] (a group's) resuming where the user left it with that group, or from the start: never Jellyfin's solo resume point. */
+    fun withGroupResume(card: MediaItem, group: WatchGroup?): MediaItem {
+        if (group == null || card.kind == ItemKind.SERIES || card.kind == ItemKind.PLAYLIST || card.kind == ItemKind.BOX_SET) return card
+        return card.copy(user = card.user.copy(positionMs = group.resume[card.id]?.positionMs ?: 0))
+    }
+
     /** An invite's titles the user's account can't open on this server (each looked up once; only "unavailable" counts, not a dropped connection). */
     suspend fun unopenable(server: dev.nitrate.core.MediaServer, titles: List<GroupTitle>): List<GroupTitle> =
         titles.filter { t -> runCatching { server.getItem(t.id) }.exceptionOrNull() is dev.nitrate.core.ItemUnavailable }
@@ -513,8 +551,8 @@ object WatchPartners {
     /**
      * Which groups a playback of [item] counts for, by where it started ([origin]): from a group's
      * card, that group (with the others it's next in as [Counting.alsoNext]); started anywhere
-     * else, no group, unless it's the immediate next part in exactly one group ("Counting for you and X ·
-     * Change"); "Watch for myself", none. Live sessions are counted by the server for whoever's
+     * else (Continue Watching, the library, search, downloads) or "Watch for myself", no group:
+     * the group you came in through decides, nothing guesses. Live sessions are counted by the server for whoever's
      * there (the Companion's `TogetherRecorder`), not by this.
      */
     fun countingFor(origin: PlayOrigin, item: MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): Counting = when (origin) {
@@ -522,15 +560,13 @@ object WatchPartners {
             val g = info?.groups?.firstOrNull { it.id == origin.groupId }
             Counting(origin, listOfNotNull(g), g?.let { alsoNextIn(item, it.id, info, standings) }.orEmpty())
         }
-        PlayOrigin.Elsewhere -> Counting(origin, nextIn(item, info, standings).takeIf { it.size == 1 }.orEmpty())
-        PlayOrigin.ForMyself -> Counting(origin, emptyList())
+        PlayOrigin.Elsewhere, PlayOrigin.ForMyself -> Counting(origin, emptyList())
     }
 
     /**
      * Who playing [item] counts with, for the player's chip and the cards: the user's own choice
      * ([with]: a group on the title, or just them); in a live session ([liveParticipants], names),
-     * every group on the title with a member there; else as [countingFor] an item started
-     * elsewhere: the one group it's next in, if exactly one, else just the user. Empty for a title
+     * every group on the title with a member there; else, started anywhere but a group's card, just the user. Empty for a title
      * the user shares with nobody. [origin]: where the playback started (a group's card counts for
      * that group, "Watch for myself" for none), after the user's own choice and a live session.
      */
@@ -560,8 +596,7 @@ object WatchPartners {
             PlayOrigin.ForMyself -> return PlayContext(title, emptyList(), PlayContext.Reason.CHOSEN)
             PlayOrigin.Elsewhere -> Unit
         }
-        val next = countingFor(PlayOrigin.Elsewhere, item, info, standings).groups
-        return if (next.isNotEmpty()) PlayContext(title, next, PlayContext.Reason.NEXT) else PlayContext(title, emptyList(), PlayContext.Reason.NONE)
+        return PlayContext(title, emptyList(), PlayContext.Reason.NONE)
     }
 }
 
@@ -601,9 +636,6 @@ sealed interface PlayOrigin {
  * playback finishes (Jellyfin's played threshold) with `MediaServer.markForGroups`.
  */
 data class Counting(val origin: PlayOrigin, val groups: List<WatchGroup>, val alsoNext: List<WatchGroup> = emptyList()) {
-    /** "Counting for you and Tommy · Change": started elsewhere and next in exactly one group (the user can change or drop it). */
-    val label: String? get() = if (origin == PlayOrigin.Elsewhere) groups.singleOrNull()?.let { "Counting for " + WithChip.youAnd(it.others.map { p -> p.name }.ifEmpty { listOf(it.seriesName) }) + " · Change" } else null
-
     /** From a group's card and next in other groups too: ask "Just this group / All groups where it's next" when it finishes. */
     val asksAll: Boolean get() = origin is PlayOrigin.GroupCard && groups.isNotEmpty() && alsoNext.isNotEmpty()
 
@@ -635,10 +667,7 @@ data class PlayContext(val titleId: String?, val groups: List<WatchGroup>, val r
         /** Played from this group's card ([PlayOrigin.GroupCard]). */
         CARD,
 
-        /** The part is next for exactly this group (by its own record). */
-        NEXT,
-
-        /** No group: none on the title, or it's next in none or in several. */
+        /** No group: none on the title, or started anywhere but a group's card. */
         NONE,
     }
 

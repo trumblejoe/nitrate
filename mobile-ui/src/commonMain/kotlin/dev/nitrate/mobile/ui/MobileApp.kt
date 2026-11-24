@@ -65,7 +65,7 @@ import kotlinx.serialization.Serializable
 /** [artKey] names the card it was opened from, so its artwork can morph into the page. */
 /** [group]: opened from that watch group's card on Home's Watching together row (plays from the page count as from the card). */
 @Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null, val group: String? = null)
-@Serializable data class PlaylistRoute(val playlistId: String)
+@Serializable data class PlaylistRoute(val playlistId: String, val group: String? = null)
 @Serializable data class PersonRoute(val personId: String, val name: String, val studio: String? = null, val year: Int? = null)
 
 /** Admin: an item's metadata, identity, images and refresh. */
@@ -170,7 +170,7 @@ class AppActions(
         when {
             item.kind == ItemKind.SEASON && series != null -> nav.navigate(DetailsRoute(series, seasonId = item.id, group = group))
             item.kind == ItemKind.LIBRARY -> nav.navigate(LibraryRoute(item.id))
-            item.kind == ItemKind.PLAYLIST -> nav.navigate(PlaylistRoute(item.id))
+            item.kind == ItemKind.PLAYLIST -> nav.navigate(PlaylistRoute(item.id, group = group))
             else -> nav.navigate(DetailsRoute(item.id, artKey = artKey, group = group))
         }
     }
@@ -307,6 +307,10 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                         pending = ask to answer
                         answer.await().also { pending = null }
                     }
+                    // From a group's card: the group's own resume point (or the start), never the solo one.
+                    val groupStart = if (fromStart || startMs != null) null else container.groupStartMs(from, item)
+                    @Suppress("NAME_SHADOWING") val fromStart = fromStart || groupStart == 0L
+                    @Suppress("NAME_SHADOWING") val startMs = startMs ?: groupStart?.takeIf { it > 0 }
                     when (action) {
                         GuardAction.PlayAnyway -> if (startMs != null) nav.navigate(playerRoute(item.id, false).copy(startMs = startMs)) else go(item, fromStart)
                         GuardAction.Cancel -> Unit
@@ -401,7 +405,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 }
                 DetailsScreen(actions.fromGroup(route.group), route.itemId, route.seasonId, route.artKey)
             }
-            screen<PlaylistRoute> { entry -> PlaylistScreen(actions, entry.toRoute<PlaylistRoute>().playlistId) }
+            screen<PlaylistRoute> { entry -> entry.toRoute<PlaylistRoute>().let { r -> PlaylistScreen(actions.fromGroup(r.group), r.playlistId) } }
             screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }

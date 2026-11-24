@@ -98,8 +98,10 @@ class WatchPartnersTest {
         val items = TogetherRow.items(listOf(invite), listOf(waiting, catchUp, yours, done))
         // Each show's card is the user's next episode; the finished show has none.
         assertEquals(listOf("dune", "y1-3", "c1-2", "w1-3", TogetherRow.START_ID), items.map { it.id })
-        // Nothing shared and nothing asked: no row at all.
-        assertTrue(TogetherRow.items(emptyList(), listOf(done)).isEmpty())
+        // Nothing shared and nothing asked: the row stays (on by default), with only the start card.
+        assertEquals(listOf(TogetherRow.START_ID), TogetherRow.items(emptyList(), listOf(done)).map { it.id })
+        // Without the Companion's watch groups: no row.
+        assertTrue(TogetherCards(available = false).items.isEmpty())
     }
 
     @Test fun onlySharedCardsAnswerForWatchingTogether() {
@@ -173,7 +175,7 @@ class WatchPartnersTest {
         assertEquals("Seen · Sam not yet", WatchPartners.standing(seen, KeepUp.of("dune", listOf(seen), listOf(notYet)))!!.short)
         // Everyone's seen it: no card, the group's done.
         val both = PartnerProgress("g", "sam", "Sam", setOf("dune"), "Dune", null)
-        assertTrue(TogetherRow.items(emptyList(), listOf(SharedShow(seen, listOf(seen), KeepUp.of("dune", listOf(seen), listOf(both))))).isEmpty())
+        assertEquals(listOf(TogetherRow.START_ID), TogetherRow.items(emptyList(), listOf(SharedShow(seen, listOf(seen), KeepUp.of("dune", listOf(seen), listOf(both))))).map { it.id })
     }
 
     @Test fun aPlaylistKeepsPaceInItsOrder() {
@@ -392,5 +394,28 @@ class WatchPartnersTest {
         // Nobody in the room after all: asked again.
         plugin.setRoom(bareHost, "bear", null)
         assertTrue(plugin.beforePlay(eps[2], bareHost) is dev.nitrate.core.plugins.GuardDecision.Ask)
+    }
+
+    /**
+     * What's half-watched with a group has one home: its group's card (the group's own resume
+     * point) while Watching together shows; a later solo play makes it the user's own again; with
+     * the row hidden it stays in Continue Watching as the group's card.
+     */
+    @Test fun halfWatchedWithAGroupResumesOnlyFromTheGroup() {
+        val g = WatchGroup("g", "show", "Show", listOf(dev.nitrate.core.writing.UserRef("t", "Tommy")), 0, resume = mapOf("e4" to GroupResume(1_200_000, 10_000_000)))
+        fun ep(id: String, lastPlayed: Long?, at: Long = 1_800_000) = MediaItem(id, id, ItemKind.EPISODE, user = UserState(positionMs = at, lastPlayedMs = lastPlayed))
+        val withGroup = ep("e4", lastPlayed = 10_000_000)
+        val solo = ep("e7", lastPlayed = 9_000_000)
+        assertEquals(listOf("e7"), WatchPartners.continueWatching(listOf(withGroup, solo), listOf(g), togetherShown = true).map { it.id })
+        // Played on their own since (a minute's slack aside): their own again, in Continue Watching.
+        val laterAlone = ep("e4", lastPlayed = 10_000_000 + 5 * 60_000)
+        assertEquals(listOf("e4"), WatchPartners.continueWatching(listOf(laterAlone), listOf(g), togetherShown = true).map { it.id })
+        // Watching together hidden: kept here as the group's card, resuming where the group left it.
+        val kept = WatchPartners.continueWatching(listOf(withGroup), listOf(g), togetherShown = false).single()
+        assertEquals("g", kept.watchGroupId)
+        assertEquals(1_200_000, kept.user.positionMs)
+        // A group's card resumes at the group's point, or from the start: never the solo one.
+        assertEquals(1_200_000, WatchPartners.withGroupResume(withGroup.copy(watchGroupId = "g"), g).user.positionMs)
+        assertEquals(0, WatchPartners.withGroupResume(solo.copy(watchGroupId = "g"), g).user.positionMs)
     }
 }

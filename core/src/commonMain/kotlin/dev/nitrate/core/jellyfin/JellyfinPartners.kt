@@ -32,7 +32,10 @@ import kotlin.time.Instant
     val record: Boolean = false, val mine: List<String>? = null,
     val party: PartyDto? = null,
     val titles: List<TitleDto>? = null,
+    val resume: List<ResumeDto> = emptyList(),
 )
+@Serializable internal data class ResumeDto(val itemId: String, val positionMs: Long = 0, val at: String? = null)
+@Serializable internal data class ResumePutDto(val itemId: String, val positionMs: Long)
 @Serializable internal data class TitleDto(val id: String, val name: String = "", val lockedFromId: String? = null, val opensAt: String? = null, val opensDay: Int? = null, val togetherFromId: String? = null, val reach: List<ReachDto> = emptyList())
 
 @Serializable internal data class ReachDto(val name: String = "", val parts: Int = 0, val of: Int = 0)
@@ -104,6 +107,11 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
     suspend fun mark(groupIds: List<String>, itemIds: List<String>, watched: Boolean): List<String> =
         call { client.http.post(client.url("Nitrate", "Partners", "Mark")) { json(GroupMarkDto(itemIds, watched, groupIds)) } }
             .decode<GroupMarkOutDto>().groupIds.map(::normalizeId)
+
+    /** Where the user stopped [itemId] watching it for group [groupId] (0: clear). */
+    suspend fun resume(groupId: String, itemId: String, positionMs: Long) {
+        call { client.http.put(client.url("Nitrate", "Partners", "Groups", groupId, "Resume")) { json(ResumePutDto(itemId, positionMs)) } }
+    }
 
     /** Says live (SyncPlay) session [sessionId] was started for group [groupId]: what it plays to the end counts for the group. */
     suspend fun sessionFor(groupId: String, sessionId: String) {
@@ -192,6 +200,7 @@ internal class JellyfinPartners(private val client: JellyfinClient) {
         lockedFromId?.let(::normalizeId), opensAt?.let(::ms), opensDay, togetherFromId?.let(::normalizeId),
         ownRecord = if (record) mine.orEmpty().map(::normalizeId).toSet() else null,
         party = party?.toModel(),
+        resume = resume.associate { normalizeId(it.itemId) to dev.nitrate.core.partners.GroupResume(it.positionMs, ms(it.at)) },
         titleList = titles.orEmpty().map {
             dev.nitrate.core.partners.GroupTitle(normalizeId(it.id), it.name, it.lockedFromId?.let(::normalizeId), it.opensAt?.let(::ms), it.opensDay, it.togetherFromId?.let(::normalizeId), it.reach.map { r -> dev.nitrate.core.partners.MemberReach(r.name, r.parts, r.of) })
         },

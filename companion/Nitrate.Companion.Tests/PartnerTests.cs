@@ -247,6 +247,31 @@ public class PartnerTests
     }
 
     [Fact]
+    public void AGroupKeepsItsOwnResumePointUntilTheyFinishWithIt()
+    {
+        var hub = Hub();
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        var group = hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        hub.SetResume(Joe, group.Id, Ep2, 1_200_000);
+        _time.Advance(TimeSpan.FromMinutes(1));
+        hub.SetResume(Joe, group.Id, Ep2, 1_500_000);
+        // One point per part, the caller's only.
+        Assert.Equal(new[] { (Ep2, 1_500_000L) }, hub.Groups(Joe).Single().Resume.Select(r => (r.ItemId, r.PositionMs)));
+        Assert.Empty(hub.Groups(Sam).Single().Resume);
+        // Only what's in the group's titles.
+        Assert.Throws<PartnerException>(() => hub.SetResume(Joe, group.Id, Sv1, 10_000));
+        // Watched with the group (marked, or counted): nothing left to resume.
+        hub.Mark(Joe, new[] { group.Id }, new[] { Ep2 });
+        Assert.Empty(hub.Groups(Joe).Single().Resume);
+        // 0 clears it; leaving takes it along.
+        hub.SetResume(Joe, group.Id, Ep3, 60_000);
+        hub.SetResume(Joe, group.Id, Ep3, 0);
+        Assert.Empty(hub.Groups(Joe).Single().Resume);
+        hub.SetResume(Sam, group.Id, Ep3, 60_000);
+        Assert.Single(_storage.State.Groups.Single().Resume);
+    }
+
+    [Fact]
     public void InvitesSentApartStillMakeSeparateGroups()
     {
         var hub = Hub();

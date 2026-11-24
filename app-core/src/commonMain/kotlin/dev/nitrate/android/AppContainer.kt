@@ -623,6 +623,31 @@ class AppContainer(
     }
 
     /**
+     * A page's group mark ([dev.nitrate.core.partners.GroupMarks]): [itemIds] marked watched (or
+     * not) in [groupIds]' own records only, never the user's own watched state; then the groups,
+     * standings and Home are read again.
+     */
+    suspend fun markForGroups(groupIds: List<String>, itemIds: List<String>, watched: Boolean): Result<Unit> {
+        val done = runCatching { server.markForGroups(groupIds, itemIds, watched); Unit }
+        refreshPartners()
+        refreshGroupStandings()
+        pagesChanged()
+        return done
+    }
+
+    /**
+     * Where a play from group [origin]'s card starts: the group's own resume point on [item], or
+     * the start (0), never the user's solo resume point. Null for any other origin, or without the
+     * Companion's `groupresume` (Jellyfin's resume point then, as before).
+     */
+    fun groupStartMs(origin: dev.nitrate.core.partners.PlayOrigin?, item: dev.nitrate.core.model.MediaItem): Long? {
+        val card = origin as? dev.nitrate.core.partners.PlayOrigin.GroupCard ?: return null
+        if (companion.value?.features?.contains(dev.nitrate.core.partners.WatchPartners.RESUME_FEATURE) != true) return null
+        val group = partnersState.value?.groups?.firstOrNull { it.id == card.groupId } ?: return null
+        return group.resume[item.id]?.positionMs ?: 0L
+    }
+
+    /**
      * Who one playback is watched with, for the player's "With…" chip ([dev.nitrate.core.partners.WatchCompany]):
      * from the groups, standings and this device's Group Watch Session already loaded, nothing polled. What's
      * played to the end in the same room is counted for those there (`watchedWithGroup`), and the
@@ -653,6 +678,14 @@ class AppContainer(
                 }
             },
             ask = { if (companion.value?.features?.contains("groupwatch") == true) asked(it) },
+            // Left part-way for a group: the group's own resume point; Home then shows it on the group's card, not in Continue Watching.
+            resume = { group, item, at ->
+                if (companion.value?.features?.contains(dev.nitrate.core.partners.WatchPartners.RESUME_FEATURE) == true) networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch groups")) {
+                    runCatching { server.setGroupResume(group, item, at) }
+                    refreshPartners()
+                    pagesChanged()
+                }
+            },
         )
 
     /**

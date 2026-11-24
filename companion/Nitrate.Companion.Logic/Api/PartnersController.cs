@@ -27,6 +27,9 @@ public record PartnerRequestPost(Guid? ToUserId, string? ToName, Guid SeriesId, 
 public record GroupTitlePost(Guid Id, string? Name);
 
 /// <summary>Parts marked watched (or, <paramref name="Watched"/> false, not) for the caller in one or more of their groups.</summary>
+/// <summary>Where the caller stopped a part watching it for a group (0: clear).</summary>
+public record GroupResumePut(Guid ItemId, long PositionMs);
+
 public record GroupMarkPost(IReadOnlyList<Guid>? ItemIds, bool Watched = true, IReadOnlyList<Guid>? GroupIds = null);
 
 /// <summary>The groups it was marked in.</summary>
@@ -115,6 +118,10 @@ public class PartnersController : ControllerBase
     /// <summary>Removes a title from the caller's group (any member may; a group keeps at least one).</summary>
     [HttpDelete("Partners/Groups/{id}/Titles/{titleId}")]
     public ActionResult RemoveTitle([FromRoute] Guid id, [FromRoute] Guid titleId) => Done(me => _partners.RemoveTitle(me, id, titleId));
+
+    /// <summary>The caller's resume point in a group (a part stopped part-way while watching it for the group).</summary>
+    [HttpPut("Partners/Groups/{id}/Resume")]
+    public ActionResult GroupResume([FromRoute] Guid id, [FromBody] GroupResumePut body) => Done(me => _partners.SetResume(me, id, body.ItemId, body.PositionMs));
 
     /// <summary>Marks parts watched or not for the caller in one group's own record only.</summary>
     [HttpPost("Partners/Groups/{id}/Mark")]

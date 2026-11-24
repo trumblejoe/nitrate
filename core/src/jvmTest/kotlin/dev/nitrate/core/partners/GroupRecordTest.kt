@@ -88,14 +88,11 @@ class GroupRecordTest {
         assertEquals(listOf("tommy"), WatchPartners.nextIn(eps[3], info, standings).map { it.id })
         assertEquals(listOf("suzy"), WatchPartners.nextIn(eps[7], info, standings).map { it.id })
         assertTrue(WatchPartners.nextIn(eps[5], info, standings).isEmpty())
-        // Started elsewhere: the one group it's next in, shown so it can be changed.
+        // Started elsewhere (Continue Watching, the library, downloads): no group, even the one it's next in.
         val elsewhere = WatchPartners.countingFor(PlayOrigin.Elsewhere, eps[3], info, standings)
-        assertEquals(listOf("tommy"), elsewhere.groups.map { it.id })
-        assertEquals("Counting for you and Tommy · Change", elsewhere.label)
+        assertTrue(elsewhere.groups.isEmpty())
         assertFalse(elsewhere.asksAll)
-        // Next in no group: it counts for none.
         assertTrue(WatchPartners.countingFor(PlayOrigin.Elsewhere, eps[5], info, standings).groups.isEmpty())
-        assertNull(WatchPartners.countingFor(PlayOrigin.Elsewhere, eps[5], info, standings).label)
         // From Suzy's card, episode 4 counts for Suzy's group, and it's also Tommy's next: the app asks "Just this group / All groups where it's next".
         val fromCard = WatchPartners.countingFor(PlayOrigin.GroupCard("suzy"), eps[3], info, standings)
         assertEquals(listOf("suzy"), fromCard.groups.map { it.id })
@@ -103,7 +100,6 @@ class GroupRecordTest {
         assertTrue(fromCard.asksAll)
         assertEquals(listOf("suzy"), fromCard.recordFor())
         assertEquals(listOf("suzy", "tommy"), fromCard.recordFor(all = true))
-        assertNull(fromCard.label)
         assertEquals(listOf("tommy"), WatchPartners.alsoNextIn(eps[3], "suzy", info, standings).map { it.id })
         // From Tommy's card nothing else has it next.
         assertFalse(WatchPartners.countingFor(PlayOrigin.GroupCard("tommy"), eps[3], info, standings).asksAll)
@@ -117,12 +113,16 @@ class GroupRecordTest {
         assertTrue(WatchPartners.countingFor(PlayOrigin.Elsewhere, eps[3], two, st2).groups.isEmpty())
     }
 
-    @Test fun theContextIsTheGroupThePartIsNextFor() {
-        fun ctx(n: Int, live: List<String> = emptyList(), with: WatchingWith? = null) = WatchPartners.contextFor(eps[n - 1], info, standings, live, with)
-        assertEquals(listOf("tommy"), ctx(4).groups.map { it.id })
-        assertEquals(PlayContext.Reason.NEXT, ctx(4).reason)
-        assertEquals("With Tommy", ctx(4).label)
-        assertEquals(listOf("suzy"), ctx(8).groups.map { it.id })
+    @Test fun theContextIsTheGroupYouCameInThrough() {
+        fun ctx(n: Int, live: List<String> = emptyList(), with: WatchingWith? = null, origin: PlayOrigin = PlayOrigin.Elsewhere) =
+            WatchPartners.contextFor(eps[n - 1], info, standings, live, with, origin)
+        // Started elsewhere: just the user, even where it's one group's next.
+        assertTrue(ctx(4).justMe)
+        assertEquals(PlayContext.Reason.NONE, ctx(4).reason)
+        // From a group's card: that group.
+        assertEquals(listOf("tommy"), ctx(4, origin = PlayOrigin.GroupCard("tommy")).groups.map { it.id })
+        assertEquals(PlayContext.Reason.CARD, ctx(4, origin = PlayOrigin.GroupCard("tommy")).reason)
+        assertEquals("With Tommy", ctx(4, origin = PlayOrigin.GroupCard("tommy")).label)
         // Next in no group: just the user.
         assertTrue(ctx(6).justMe)
         assertEquals(PlayContext.Reason.NONE, ctx(10).reason)

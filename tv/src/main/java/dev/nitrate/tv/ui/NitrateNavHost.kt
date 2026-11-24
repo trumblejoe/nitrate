@@ -104,7 +104,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             nav.navigate(NowPlayingRoute) { launchSingleTop = true }
         } else nav.playQueue((if (shuffle) items.drop(start).shuffled() else items.drop(start)).map { it.id })
     }
-    val gate = rememberPlaybackGate(container.plugins) { item, fromStart, startMs ->
+    val gate = rememberPlaybackGate(container.plugins, container::groupStartMs) { item, fromStart, startMs ->
         scope.launch {
             // A book opens in the reader, from wherever Play was pressed.
             if (item.kind == dev.nitrate.core.model.ItemKind.BOOK) nav.navigate(ComicRoute(item.id))
@@ -190,6 +190,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         scope.launch { container.displaySettings.savePrefs(user, change(container.displaySettings.prefs(user).first())) }
     }
     val playlistPage: @Composable (playlistId: String, header: (@Composable () -> Unit)?, onDeleted: () -> Unit) -> Unit = { playlistId, header, onDeleted ->
+            // Entered from a watch group (PlaylistRoute.group): its parts open in the group.
+            val openGroup = LocalOpenGroup.current
             val pinning = dev.nitrate.tv.ui.playlist.PlaylistPinning(
                 onHome = playlistId in storedPrefs.homePlaylists,
                 inMenu = playlistId in storedPrefs.menuPlaylists,
@@ -202,7 +204,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 playlists = container.playlists,
                 playlistId = playlistId,
                 onPlayQueue = { items -> listen(items) },
-                onOpen = nav::openItem,
+                onOpen = { item -> nav.openItem(item, openGroup ?: item.watchGroupId) },
                 onDeleted = onDeleted,
                 header = header,
                 pinning = pinning,
@@ -288,6 +290,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onDispose { container.themeMusic.hide(themeId) }
             }
             val route = entry.toRoute<DetailsRoute>()
+            // Entered from a watch group: the page has the group's own marks (GroupMarks).
+            dev.nitrate.tv.ui.partners.ProvideGroupMarks(container, route.group) {
             DetailsScreen(
                 repository = container.server,
                 itemId = route.itemId,
@@ -306,6 +310,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 applyPlaybackFix = { item, fix -> container.applyPlaybackFix(item.id, fix) },
                 watchPartners = partnersOn,
             )
+            }
         }
         composable<ComicRoute> { entry ->
             dev.nitrate.tv.ui.comics.ComicReaderScreen(
@@ -329,7 +334,13 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<PrerollSettingsRoute> { dev.nitrate.tv.ui.preroll.PrerollSettingsScreen(container) }
         composable<WatchPartnersRoute> {
-            dev.nitrate.tv.ui.partners.WatchPartnersScreen(container) { id -> nav.navigate(DetailsRoute(id)) }
+            // A group's title opens in that group: its marks, and plays counting for it.
+            dev.nitrate.tv.ui.partners.WatchPartnersScreen(container) { id, group ->
+                scope.launch {
+                    val title = runCatching { container.server.getItem(id) }.getOrNull()
+                    if (title == null) nav.navigate(DetailsRoute(id, group = group)) else nav.openItem(title, group)
+                }
+            }
         }
         composable<SettingsHubRoute> { TvSettingsHub(container, nav, scope) }
         composable<SettingsRoute> {
@@ -500,10 +511,16 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             }
         }
         composable<PlaylistRoute> { entry ->
-            val id = entry.toRoute<PlaylistRoute>().playlistId
-            playlistPage(id, null) {
-                savePrefs { p -> p.copy(homePlaylists = p.homePlaylists - id, menuPlaylists = p.menuPlaylists - id) }
-                nav.popBackStack()
+            val route = entry.toRoute<PlaylistRoute>()
+            val id = route.playlistId
+            // Entered from a watch group: its marks on the parts, and each part opens in the group.
+            dev.nitrate.tv.ui.partners.ProvideGroupMarks(container, route.group) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOpenGroup provides route.group) {
+                    playlistPage(id, null) {
+                        savePrefs { p -> p.copy(homePlaylists = p.homePlaylists - id, menuPlaylists = p.menuPlaylists - id) }
+                        nav.popBackStack()
+                    }
+                }
             }
         }
         composable<NowPlayingRoute> {
@@ -761,7 +778,7 @@ fun NavController.openItem(item: MediaItem, group: String? = item.watchGroupId) 
             navigate(DetailsRoute(seriesId, seasonId = item.id, group = group))
         item.kind == ItemKind.LIBRARY ->
             navigate(LibraryRoute(item.id))
-        item.kind == ItemKind.PLAYLIST -> navigate(PlaylistRoute(item.id))
+        item.kind == ItemKind.PLAYLIST -> navigate(PlaylistRoute(item.id, group = group))
         else -> navigate(DetailsRoute(item.id, group = group))
     }
 }
@@ -779,3 +796,6 @@ private tailrec fun android.content.Context.findActivityOrNull(): android.app.Ac
     is android.content.ContextWrapper -> baseContext.findActivityOrNull()
     else -> null
 }
+
+/** The watch group a playlist page was entered from (its parts open in it), or null. */
+internal val LocalOpenGroup = androidx.compose.runtime.staticCompositionLocalOf<String?> { null }

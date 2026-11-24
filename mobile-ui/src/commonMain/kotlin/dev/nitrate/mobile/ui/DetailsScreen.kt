@@ -86,6 +86,9 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
     val similarOn = LocalDisplayPrefs.current.similar
     val vm = viewModel(key = "details-$itemId") { DetailsViewModel(actions.server, itemId, seasonId, actions.container.dataCache, wantsSimilar = { similarOn }) }
     val state by vm.state.collectAsStateWithLifecycle()
+    // Entered from a watch group: its own marks beside the user's (GroupMarks), one question at most.
+    val marker = rememberGroupMarker(actions)
+    GroupMarkQuestion(marker)
     // Saved with the screen, so coming back (from the player) counts as coming back.
     var first by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     LifecycleResumeEffect(Unit) {
@@ -181,9 +184,12 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                             modifier = if (artistId != null) Modifier.pressable({ actions.nav.navigate(DetailsRoute(artistId)) }) else Modifier,
                         )
                     }
-                    partnerProgress.groupBy { it.groupId }.values.forEach { group ->
+                    // Entered from a watch group: only that group's line, saying what the page does for it.
+                    val enteredGroup = actions.groupOf(item)
+                    partnerProgress.filter { enteredGroup == null || it.groupId == enteredGroup }.groupBy { it.groupId }.values.forEach { group ->
                         Text(
-                            "Watching with " + group.joinToString(", ") { "${it.userName} (${it.last ?: "not started"})" },
+                            "Watching with " + group.joinToString(", ") { "${it.userName} (${it.last ?: "not started"})" } +
+                                if (enteredGroup != null) ". Plays here count for the group; the people button marks it for them." else "",
                             style = MaterialTheme.typography.labelLarge, color = accentColor(),
                         )
                     }
@@ -194,6 +200,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     // One short row: watched, favourite, the trailer, downloading, playing elsewhere; the rest under More.
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
+                        // The group's own mark (entered from a group): separate from Watched, which is the user's alone.
+                        if (!music) GroupMarkAction(actions, item, marker)
                         RoundAction(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", onClick = vm::toggleFavorite, active = item.user.isFavorite)
                         val trailer = state.extras.firstOrNull { it.extraType == "Trailer" }
                         val uri = androidx.compose.ui.platform.LocalUriHandler.current
@@ -266,7 +274,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         DownloadDialog(actions, missing, "${item.name} · $season") { picking = false }
                     }
                 }
-                items(state.episodes, key = { "ep-${it.id}" }) { episode -> EpisodeCard(actions, episode, episode.id in downloaded, thisOne = episode.id == item.id) }
+                items(state.episodes, key = { "ep-${it.id}" }) { episode -> EpisodeCard(actions, episode, episode.id in downloaded, thisOne = episode.id == item.id, marker = marker) }
             }
             // A film's collection (its saga), in release order, this one marked.
             if (state.collection.isNotEmpty()) {
@@ -502,7 +510,7 @@ private fun ExpandableText(text: String) {
 }
 
 @Composable
-private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boolean, thisOne: Boolean = false) {
+private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boolean, thisOne: Boolean = false, marker: GroupMarker? = null) {
     // The episode whose page this is: marked, and tapping it plays it rather than opening it again.
     Column(
         Modifier.fillMaxWidth()
@@ -541,6 +549,8 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 if (status != null) Text(status, style = MaterialTheme.typography.labelMedium, color = accentColor(), modifier = Modifier.padding(top = 2.dp))
                 else episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }
             }
+            // The group's own mark for this episode (entered from a group), beside its title.
+            if (marker != null && episode.isPlayable) GroupMarkToggle(actions, episode, marker, Modifier.padding(start = 8.dp))
         }
         episode.overview?.takeIf { LocalDisplayPrefs.current.overview && !descriptionHidden(episode) }?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,

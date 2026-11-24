@@ -486,6 +486,27 @@ class ScreenshotTest {
     @Test fun playlistLoading() = shoot("phone-playlist-loading") { dev.nitrate.mobile.ui.ListPlaceholder() }
 
     /** An episode's page: where it belongs (show › season), its own name, and the rest of its season. */
+    /**
+     * An episode entered from Will's group: its own Watched and, beside it, the group's mark
+     * ("Not watched with Will"), which marks it in the group's record only; the episode list
+     * shows the group's marks too.
+     */
+    @Test fun episodeFromAGroup() {
+        lateinit var server: dev.nitrate.testing.FakeServer
+        shoot("phone-episode-group", setup = { c ->
+            server = c.server as dev.nitrate.testing.FakeServer
+            server.partnerInfo = server.partnerInfo.copy(groups = server.partnerInfo.groups.map { if (it.id == "g1") it.copy(ownRecord = setOf("s1e1")) else it })
+            c.refreshCompanionForTests()
+        }) { DetailsScreen(it.fromGroup("g1"), "s1e2", null) }
+        compose.onAllNodesWithText("Plays here count for the group", substring = true).onFirst().assertExists()
+        org.junit.Assert.assertTrue("only the group it was entered from", compose.onAllNodesWithText("Frank", substring = true).fetchSemanticsNodes().isEmpty())
+        compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Not watched with Will")).onFirst().performClick()
+        compose.waitForIdle()
+        org.junit.Assert.assertTrue(server.groupMarks.toString(), "[g1] [s1e2]" in server.groupMarks)
+        // Down the page, the episodes the group has carry its mark.
+        compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction()).onFirst().performScrollToNode(androidx.compose.ui.test.hasContentDescription("Watched with Will"))
+    }
+
     @Test fun episode() {
         shoot("phone-episode") { DetailsScreen(it, "s1e2", null) }
         compose.onAllNodesWithText("In this season").onFirst().assertExists()

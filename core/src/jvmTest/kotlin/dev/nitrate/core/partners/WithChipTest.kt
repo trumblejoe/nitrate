@@ -42,12 +42,14 @@ class WithChipTest {
 
     @Test fun saysWhichSituationThePlaybackIsIn() {
         val st = standings(tommySuzy)
-        val on = WithChip.of(eps[3], info(tommySuzy), st, null, "Me")!!
+        // Started anywhere but a group's card: no group, even where it's the next part.
+        assertEquals("No group · Change", WithChip.of(eps[3], info(tommySuzy), st, null, "Me")!!.label)
+        val on = WithChip.of(eps[3], info(tommySuzy), st, null, "Me", origin = PlayOrigin.GroupCard("ts"))!!
         assertEquals("Counting for you, Tommy & Suzy · Change", on.label)
         assertFalse(on.ambiguous)
         // It counts for the group while the user watches on their own.
         assertEquals("Watching on your own", on.who)
-        assertEquals("Counting for you and Kim · Change", WithChip.of(eps[3], info(kim), standings(kim), null, "Me")!!.label)
+        assertEquals("Counting for you and Kim · Change", WithChip.of(eps[3], info(kim), standings(kim), null, "Me", origin = PlayOrigin.GroupCard("k"))!!.label)
         assertEquals("You and Tommy, in the room", WithChip.of(eps[3], info(tommySuzy), st, null, "Me", room = SameRoom("ts", listOf("t")))!!.who)
         // No group, chosen.
         assertEquals("No group · Change", WithChip.of(eps[3], info(tommySuzy), st, null, "Me", with = WatchingWith.JustMe)!!.label)
@@ -55,7 +57,7 @@ class WithChipTest {
         assertEquals("In a Group Watch Session with Tommy, Suzy", WithChip.of(eps[3], info(tommySuzy), st, session("e4", "Me", "Tommy", "Suzy"), "Me")!!.label)
         assertEquals("In a Group Watch Session · waiting for others", WithChip.of(eps[3], info(tommySuzy), st, session("e4", "Me"), "Me")!!.label)
         // A session on another part (this player isn't in it): counted as usual.
-        assertEquals("Counting for you, Tommy & Suzy · Change", WithChip.of(eps[3], info(tommySuzy), st, session("e9", "Me", "Tommy"), "Me")!!.label)
+        assertEquals("Counting for you, Tommy & Suzy · Change", WithChip.of(eps[3], info(tommySuzy), st, session("e9", "Me", "Tommy"), "Me", origin = PlayOrigin.GroupCard("ts"))!!.label)
         // In the same room with some of the group.
         assertEquals("In the room with Tommy", WithChip.of(eps[3], info(tommySuzy), st, null, "Me", room = SameRoom("ts", listOf("t")))!!.label)
         // Unshared and no session: no chip; a session on an unshared title still shows one.
@@ -64,12 +66,12 @@ class WithChipTest {
         assertEquals("Tommy, Suzy, Kim & 2 more", WithChip.and(listOf("Tommy", "Suzy", "Kim", "Lee", "Sam")))
     }
 
-    @Test fun moreThanOneGroupFittingIsShownUntilChosen() {
-        // Kim's group has already watched episode 4: it's next only with Tommy & Suzy, so the chip says it counts there.
+    @Test fun startedElsewhereItCountsForNoGroupUntilChosen() {
+        // Next only with Tommy & Suzy (Kim's group has watched it), started elsewhere: still no group, nothing guessed.
         val kimAhead = kim.copy(ownRecord = (1..4).map { "e$it" }.toSet())
         val chip = WithChip.of(eps[3], info(tommySuzy, kimAhead), standings(tommySuzy, kimAhead), null, "Me")!!
-        assertTrue(chip.ambiguous)
-        assertEquals("Counting for you, Tommy & Suzy", chip.counting)
+        assertFalse(chip.ambiguous)
+        assertEquals("Counting for just you", chip.counting)
         // Next in both groups and started elsewhere: it counts for neither until chosen.
         val st = standings(tommySuzy, kim)
         val neither = WithChip.of(eps[3], info(tommySuzy, kim), st, null, "Me")!!
@@ -174,22 +176,23 @@ class WithChipTest {
         assertEquals(1, marked.size)
     }
 
-    @Test fun startedElsewhereItCountsOnlyWhereItsTheOneNextPart() = runTest(UnconfinedTestDispatcher()) {
+    @Test fun startedElsewhereNothingCountsForAGroup() = runTest(UnconfinedTestDispatcher()) {
+        // Continue Watching, the library, downloads: even the one group it's next in isn't moved.
         val kimAhead = kim.copy(ownRecord = (1..4).map { "e$it" }.toSet())
         val st = standings(tommySuzy, kimAhead)
         val marked = mutableListOf<String>()
         val company = WatchCompany(backgroundScope, MutableStateFlow(info(tommySuzy, kimAhead)), MutableStateFlow(st), MutableStateFlow(null), { "Me" }, mark = { g, i -> marked += "$g $i" })
         company.start(eps[3], st)
         advanceUntilIdle()
-        assertEquals("Counting for you, Tommy & Suzy · Change", company.chip.value!!.label)
+        assertEquals("No group · Change", company.chip.value!!.label)
         company.left("e4", 60_000, 60_000, ended = true)
-        assertEquals(listOf("[ts] [e4]"), marked)
+        assertEquals(emptyList<String>(), marked)
         // "Watch for myself": no group.
         val mine = WatchCompany(backgroundScope, MutableStateFlow(info(tommySuzy, kimAhead)), MutableStateFlow(st), MutableStateFlow(null), { "Me" }, mark = { g, i -> marked += "$g $i" })
         mine.start(eps[3], st, PlayOrigin.ForMyself)
         advanceUntilIdle()
         assertEquals("No group · Change", mine.chip.value!!.label)
         mine.left("e4", 60_000, 60_000, ended = true)
-        assertEquals(1, marked.size)
+        assertEquals(emptyList<String>(), marked)
     }
 }

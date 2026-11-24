@@ -344,7 +344,8 @@ fun WatchPartnersScreen(actions: AppActions) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // Each title opens its page.
                 g.titles.forEach { t ->
-                    Text(t.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(t.id)) }))
+                    // Opens in the group: its marks and plays are the group's there.
+                    Text(t.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.pressable({ openInGroup(actions, g.id, t.id) }))
                     // Someone in the group can't open it here (library access, parental rating).
                     t.reachNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
                 }
@@ -731,3 +732,16 @@ fun CountingChoices(ask: dev.nitrate.core.partners.CountAsk, onAnswer: (all: Boo
 
 @Composable
 private fun SectionTitleSmall(text: String) = Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+
+/**
+ * Opens one of group [groupId]'s titles as from its card (Watch groups' list): its page is in the
+ * group (its own marks, plays counting for it), whatever kind of title it is (a show, a film, a
+ * playlist, a collection).
+ */
+fun openInGroup(actions: AppActions, groupId: String, titleId: String) {
+    actions.scope.launch {
+        val title = runCatching { actions.server.getItem(titleId) }.getOrNull()
+        if (title == null) actions.nav.navigate(DetailsRoute(titleId, group = groupId))
+        else actions.fromGroup(groupId).open(title.copy(watchGroupId = groupId))
+    }
+}

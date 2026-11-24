@@ -55,7 +55,14 @@ public record GroupView(
     Guid Id, Guid SeriesId, string SeriesName, IReadOnlyList<MemberView> Others, DateTimeOffset Since,
     GroupSchedule? Schedule = null, ScheduleChangeView? Pending = null, Guid? LockedFromId = null, DateTimeOffset? OpensAt = null, int? OpensDay = null,
     Guid? TogetherFromId = null, bool Record = false, IReadOnlyList<Guid>? Mine = null, PartyView? Party = null,
-    IReadOnlyList<TitleView>? Titles = null);
+    IReadOnlyList<TitleView>? Titles = null)
+{
+    /// <summary>Gets the caller's resume points in this group (parts stopped part-way while watching for it), newest first.</summary>
+    public IReadOnlyList<ResumeView> Resume { get; init; } = Array.Empty<ResumeView>();
+}
+
+/// <summary>Where the caller stopped <paramref name="ItemId"/> watching it for a group.</summary>
+public record ResumeView(Guid ItemId, long PositionMs, DateTimeOffset At);
 
 /// <summary>
 /// An invite someone sent the caller. <paramref name="WillSee"/> is everyone who learns the
@@ -768,6 +775,7 @@ public partial class PartnerHub
                 ?? throw new PartnerException(PartnerError.NotFound, "No such group.");
             g.Members.Remove(user);
             g.Watched.RemoveAll(w => w.Member == user);
+            g.Resume.RemoveAll(r => r.Member == user);
             ForgetInParties(groupId, user);
             if (g.Members.Count < 2)
             {
@@ -809,6 +817,57 @@ public partial class PartnerHub
             var p = FromRecord(order, x.Record, x.Member);
             return new PartnerProgressView(x.Group, x.Member, _directory.NameOf(x.Member)!, p.Watched, p.Last, p.NextId);
         }).ToList();
+    }
+
+    /// <summary>How many resume points a member keeps per group (the oldest go first).</summary>
+    public const int ResumeKept = 20;
+
+    /// <summary>
+    /// Where the caller stopped <paramref name="itemId"/> watching it for group
+    /// <paramref name="groupId"/> (from the group's card): the group's own resume point, apart
+    /// from Jellyfin's. 0 or less clears it (finished, or started over).
+    /// </summary>
+    public void SetResume(Guid user, Guid groupId, Guid itemId, long positionMs)
+    {
+        List<Guid> titles;
+        lock (_lock)
+        {
+            var g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user))
+                ?? throw new PartnerException(PartnerError.NotFound, "No such group.");
+            titles = g.Titles.Select(t => t.Id).ToList();
+        }
+
+        // Outside the lock: it reads the library.
+        if (positionMs > 0 && !Holds(titles, itemId, user))
+        {
+            throw new PartnerException(PartnerError.Invalid, "Only what's in the group's titles can be resumed for it.");
+        }
+
+        lock (_lock)
+        {
+            var g = _state.Groups.FirstOrDefault(x => x.Id == groupId && x.Members.Contains(user));
+            if (g is null)
+            {
+                return;
+            }
+
+            var changed = g.Resume.RemoveAll(r => r.Member == user && r.ItemId == itemId) > 0;
+            if (positionMs > 0)
+            {
+                g.Resume.Add(new GroupResume { Member = user, ItemId = itemId, PositionMs = positionMs, At = _time.GetUtcNow() });
+                foreach (var old in g.Resume.Where(r => r.Member == user).OrderByDescending(r => r.At).Skip(ResumeKept).ToList())
+                {
+                    g.Resume.Remove(old);
+                }
+
+                changed = true;
+            }
+
+            if (changed)
+            {
+                _storage.Save(_state);
+            }
+        }
     }
 
     /// <summary>
@@ -1087,6 +1146,9 @@ public partial class PartnerHub
                     g.Watched.Add(new GroupWatch { Member = m, ItemId = i, At = now });
                     changed = true;
                 }
+
+                // Watched with the group: nothing left to resume there.
+                changed |= g.Resume.RemoveAll(r => r.Member == m && r.ItemId == i) > 0;
             }
         }
 
@@ -1171,7 +1233,10 @@ public partial class PartnerHub
             g.Id, first?.Id ?? g.SeriesId, first?.Name ?? g.SeriesName,
             g.Members.Where(m => m != user).Select(m => new MemberView(m, Name(m))).ToList(),
             g.Since, g.Schedule, pending, first?.LockedFromId, first?.OpensAt, first?.OpensDay, first?.TogetherFromId,
-            true, record.Where(w => w.Member == user).Select(w => w.ItemId).Distinct().ToList(), null, titles);
+            true, record.Where(w => w.Member == user).Select(w => w.ItemId).Distinct().ToList(), null, titles)
+        {
+            Resume = g.Resume.Where(r => r.Member == user).OrderByDescending(r => r.At).Select(r => new ResumeView(r.ItemId, r.PositionMs, r.At)).ToList(),
+        };
     }
 
     /// <summary>

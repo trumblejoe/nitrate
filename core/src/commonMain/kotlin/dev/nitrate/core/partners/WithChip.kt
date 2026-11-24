@@ -89,7 +89,8 @@ data class WithChip(
     }
 
     companion object {
-        private val AUTO = setOf(PlayContext.Reason.NEXT)
+        /** Reasons a playback counts for a group nobody chose: none now (only a group's card, a choice or a live session count). */
+        private val AUTO = emptySet<PlayContext.Reason>()
 
         /** A group's line in "Counts for": "Tommy & Suzy". */
         fun nameOf(g: WatchGroup): String = and(g.others.map { it.name }).ifEmpty { g.seriesName }
@@ -197,6 +198,8 @@ class WatchCompany(
     private val mark: suspend (groupIds: List<String>, itemIds: List<String>) -> Unit = { _, _ -> },
     /** "Just this group / All groups where it's next", asked once the player has closed. */
     private val ask: (CountAsk) -> Unit = {},
+    /** Where a part was left part-way while watching it for a group: the group's own resume point (`setGroupResume`). */
+    private val resume: suspend (groupId: String, itemId: String, positionMs: Long) -> Unit = { _, _, _ -> },
 ) {
     private val item = MutableStateFlow<MediaItem?>(null)
     private val with = MutableStateFlow<WatchingWith?>(null)
@@ -280,7 +283,16 @@ class WatchCompany(
      */
     fun left(itemId: String, positionMs: Long, durationMs: Long, ended: Boolean = false) {
         val done = ended || (durationMs > 0 && positionMs >= durationMs * PLAYED_AT)
-        if (!done || itemId in counted) return
+        if (!done) {
+            // Left part-way while watching for a group (its card, or the room): the group's own
+            // resume point, so its card carries on from here whatever the user plays on their own.
+            val playing = item.value?.takeIf { it.id == itemId } ?: return
+            if (positionMs < RESUME_FROM) return
+            val group = inRoom.value?.groupId ?: counting(playing)?.groups?.singleOrNull()?.id ?: return
+            scope.launch { runCatching { resume(group, itemId, positionMs) } }
+            return
+        }
+        if (itemId in counted) return
         val r = inRoom.value
         if (r != null) {
             counted += itemId
@@ -298,5 +310,8 @@ class WatchCompany(
     companion object {
         /** Jellyfin's default "played" threshold. */
         const val PLAYED_AT = 0.9
+
+        /** Less than this in, a part isn't worth resuming (Jellyfin's own minimum is 5 % or so). */
+        const val RESUME_FROM = 30_000L
     }
 }

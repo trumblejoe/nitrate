@@ -245,7 +245,7 @@ fun inviteText(r: dev.nitrate.core.partners.IncomingRequest): String {
 /** Settings → Watch partners: privacy, requests, partners and their shows. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
+fun WatchPartnersScreen(container: AppContainer, onOpenShow: (id: String, groupId: String?) -> Unit) {
     val scope = rememberCoroutineScope()
     val info by container.partners.collectAsState()
     var privacy by remember { mutableStateOf<dev.nitrate.core.partners.Privacy?>(null) }
@@ -323,7 +323,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (String) -> Unit) {
                     }
                     if (g.party != null) OutlinedButton(onClick = { container.parties.open(g) }) { Text("Group Watch Session") }
                     OutlinedButton(onClick = { changingSchedule = g }) { Text("Schedule") }
-                    OutlinedButton(onClick = { onOpenShow(g.seriesId) }) { Text("Open") }
+                    OutlinedButton(onClick = { onOpenShow(g.seriesId, g.id) }) { Text("Open") }
                     OutlinedButton(onClick = { inviting = g }) { Text("Invite someone") }
                     OutlinedButton(onClick = { leaving = g }) { Text("Leave") }
                 }

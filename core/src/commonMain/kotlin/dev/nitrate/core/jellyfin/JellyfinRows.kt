@@ -204,11 +204,19 @@ internal fun JellyfinClient.homeJobs(fresh: Boolean = false, skip: Set<String> =
 
 internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combine: Boolean): List<dev.nitrate.core.rows.RowJob> {
     suspend fun nextUp() = items("Shows", "NextUp", query = NEXT_UP_QUERY)
+    // What's half-watched with a group lives on the group's card when Watching together is shown, never twice.
+    suspend fun ownResume(): List<MediaItem> {
+        val items = resumeItems(parentId = null, types = null)
+        if (items.isEmpty()) return items
+        val (features, info) = runCatching { featuresAndPartners() }.getOrNull() ?: return items
+        if (dev.nitrate.core.partners.WatchPartners.RESUME_FEATURE !in features || info == null) return items
+        return dev.nitrate.core.partners.WatchPartners.continueWatching(items, info.groups, togetherShown = dev.nitrate.core.partners.TogetherRow.KEY !in skip)
+    }
     // Continue Watching and Next Up as one row, or the two rows: the user's own (what's watched with groups has its own row).
     val watching = if (combine) listOf(
         dev.nitrate.core.rows.RowJob(dev.nitrate.core.rows.ContinueAndNext.TITLE, dev.nitrate.core.rows.ContinueAndNext.KEY) {
             coroutineScope {
-                val resume = async { resumeItems(parentId = null, types = null) }
+                val resume = async { ownResume() }
                 val next = async { nextUp() }
                 dev.nitrate.core.rows.ContinueAndNext.merge(resume.await(), next.await()).let {
                     if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.rows.ContinueAndNext.KEY, dev.nitrate.core.rows.ContinueAndNext.TITLE, it, WIDE_DEFAULT))
@@ -217,7 +225,7 @@ internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combi
         },
     ) else listOf(
         dev.nitrate.core.rows.RowJob("Continue Watching", "home/continue_watching") {
-            resumeItems(parentId = null, types = null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT, resumeMore(null, null))) }
+            ownResume().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_watching", "Continue Watching", it, WIDE_DEFAULT, resumeMore(null, null))) }
         },
         dev.nitrate.core.rows.RowJob("Next Up", "home/next_up") {
             nextUp().let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/next_up", "Next Up", it, WIDE_DEFAULT, rowMore("Shows", "NextUp", query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)))) }
@@ -462,8 +470,8 @@ internal suspend fun JellyfinClient.watchingTogether(): List<MediaItem> = togeth
 
 /** The Watching together row's invites and cards, one per group and title. Empty without the Companion plugin's partners. */
 internal suspend fun JellyfinClient.togetherCards(): dev.nitrate.core.partners.TogetherCards = coroutineScope {
-    if (companion()?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) != true) return@coroutineScope dev.nitrate.core.partners.TogetherCards()
-    val info = partners()
+    val (features, known) = featuresAndPartners()
+    val info = known ?: return@coroutineScope dev.nitrate.core.partners.TogetherCards(available = false)
     suspend fun title(id: String, name: String) = runCatching { getItem(id) }.getOrElse { MediaItem(id, name, ItemKind.SERIES) }
     val invites = info.incoming.distinctBy { it.seriesId }.map { r -> async { title(r.seriesId, r.seriesName) } }
     // Each title once (a title can be in several groups), its cards one per group holding it.
@@ -479,5 +487,9 @@ internal suspend fun JellyfinClient.togetherCards(): dev.nitrate.core.partners.T
             }.getOrNull()
         }
     }
-    dev.nitrate.core.partners.TogetherRow.cards(invites.map { it.await() }, shows.mapNotNull { it.await() })
+    val cards = dev.nitrate.core.partners.TogetherRow.cards(invites.map { it.await() }, shows.mapNotNull { it.await() })
+    // Each card's progress is the group's own (where the user left it with that group), never their solo resume point.
+    if (dev.nitrate.core.partners.WatchPartners.RESUME_FEATURE !in features) return@coroutineScope cards
+    val byId = info.groups.associateBy { it.id }
+    cards.copy(cards = cards.cards.map { c -> c.copy(item = dev.nitrate.core.partners.WatchPartners.withGroupResume(c.item, byId[c.groupId])) })
 }

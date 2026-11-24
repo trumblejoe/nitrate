@@ -75,6 +75,8 @@ public class CompanionController : ControllerBase
         features.Add("schedulelock");
         // Group Watch Sessions (/Nitrate/Sessions): start together at a countdown, each player its own, pause/jump/drift told to the others.
         features.Add("sessions");
+        // Groups' own resume points (PUT /Nitrate/Partners/Groups/{id}/Resume, GroupView.Resume).
+        features.Add("groupresume");
         features.Add("updates");
         features.Add("together");
         features.Add("credits");

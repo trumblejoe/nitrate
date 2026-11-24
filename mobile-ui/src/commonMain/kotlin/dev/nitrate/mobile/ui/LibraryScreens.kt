@@ -214,6 +214,9 @@ private fun LibraryGrid(actions: AppActions, library: MediaItem) {
 fun PlaylistScreen(actions: AppActions, playlistId: String) {
     val server = actions.server
     val scope = rememberCoroutineScope()
+    // Entered from a watch group (its card, or Watch groups): each part has the group's own mark too.
+    val marker = rememberGroupMarker(actions)
+    GroupMarkQuestion(marker)
     var refresh by remember { mutableIntStateOf(0) }
     // Kept while the page is in the back stack: coming back shows it at once, then refreshes quietly.
     var playlist by retained<MediaItem?>("playlist/$playlistId") { null }
@@ -358,6 +361,7 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                                     modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(androidx.compose.ui.graphics.Color.White).padding(horizontal = 6.dp, vertical = 2.dp),
                                 )
                                 if (item.user.played && LocalDisplayPrefs.current.watchedMarks) Icon(Icons.Default.Check, "Watched", tint = MaterialTheme.colorScheme.primary)
+                                GroupMarkToggle(actions, item, marker)
                                 item.runtimeMs?.takeIf { LocalDisplayPrefs.current.runtime }?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium) }
                                 // The visible way to what a long press offers (play from here, mark watched up to here…).
                                 if (!audio && video) IconButton(onClick = { menuFor = item }) { Icon(Icons.Default.MoreVert, "More for ${item.spokenTitle}") }

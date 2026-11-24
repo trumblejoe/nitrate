@@ -1519,6 +1519,21 @@ class JellyfinClient(
 
     private var partnersListener: ((dev.nitrate.core.partners.PartnersInfo) -> Unit)? = null
 
+    private val togetherLock = kotlinx.coroutines.sync.Mutex()
+    private var togetherKept: Triple<kotlin.time.TimeMark, String?, Pair<Set<String>, dev.nitrate.core.partners.PartnersInfo?>>? = null
+
+    /**
+     * The Companion's features and the user's groups, read once for rows loading together (the
+     * Watching together row and Continue Watching ask at the same moment): kept 3 s, so a reload
+     * after a change asks again.
+     */
+    internal suspend fun featuresAndPartners(): Pair<Set<String>, dev.nitrate.core.partners.PartnersInfo?> = togetherLock.withLock {
+        togetherKept?.takeIf { it.second == accountKey && it.first.elapsedNow() < kotlin.time.Duration.parse("3s") }?.let { return@withLock it.third }
+        val features = runCatching { companion()?.features }.getOrNull().orEmpty()
+        val info = if (dev.nitrate.core.partners.WatchPartners.FEATURE in features) partners() else null
+        (features to info).also { togetherKept = Triple(kotlin.time.TimeSource.Monotonic.markNow(), accountKey, it) }
+    }
+
     override fun onPartnersLoaded(listener: (dev.nitrate.core.partners.PartnersInfo) -> Unit) { partnersListener = listener }
     override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule?, titles: List<dev.nitrate.core.partners.GroupTitle>?, batch: String?) =
         partnersApi.ask(toUserId, toName, seriesId, seriesName, groupId, schedule, titles, batch)
@@ -1526,6 +1541,7 @@ class JellyfinClient(
     override suspend fun removeGroupTitle(groupId: String, titleId: String) = partnersApi.removeTitle(groupId, titleId)
     override suspend fun markForGroups(groupIds: List<String>, itemIds: List<String>, watched: Boolean) = partnersApi.mark(groupIds, itemIds, watched)
     override suspend fun sessionForGroup(groupId: String, sessionId: String) = partnersApi.sessionFor(groupId, sessionId)
+    override suspend fun setGroupResume(groupId: String, itemId: String, positionMs: Long) = partnersApi.resume(groupId, itemId, positionMs)
     private val sessionsApi = JellyfinSessions(this)
     override suspend fun watchSessions() = sessionsApi.mine()
     override suspend fun startWatchSession(groupId: String, itemId: String, startMs: Long) = sessionsApi.start(groupId, itemId, startMs)

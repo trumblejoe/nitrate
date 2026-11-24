@@ -25,7 +25,7 @@ import kotlinx.serialization.Serializable
 @Serializable object PluginsRoute
 @Serializable data class PluginScreenRoute(val pluginId: String)
 @Serializable data class LibraryRoute(val libraryId: String)
-@Serializable data class PlaylistRoute(val playlistId: String)
+@Serializable data class PlaylistRoute(val playlistId: String, val group: String? = null)
 @Serializable object PagesRoute
 @Serializable data class CustomPageRoute(val pageId: String, val editNow: Boolean = false)
 @Serializable object DisplaySettingsRoute

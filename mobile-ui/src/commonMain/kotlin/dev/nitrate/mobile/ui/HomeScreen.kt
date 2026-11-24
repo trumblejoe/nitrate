@@ -207,7 +207,8 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onD
     val actions = if (cards != null) rowActions.withCards(cards) else rowActions
     val partnersInfo by rowActions.container.partners.collectAsState()
     val standings by rowActions.container.groupStandings.collectAsState()
-    fun line(item: dev.nitrate.core.model.MediaItem) = if (cards == null || !cards.shares(item)) null else dev.nitrate.core.partners.TogetherRow.line(item, partnersInfo, standings)?.short
+    // A group's card in another row (half-watched with the group, Watching together hidden) says so too.
+    fun line(item: dev.nitrate.core.model.MediaItem) = if ((cards == null || !cards.shares(item)) && item.watchGroupId == null) null else dev.nitrate.core.partners.TogetherRow.line(item, partnersInfo, standings)?.short
     // Retired styles show as what replaced them (Showcase as Artwork, Full Showcase with the cards hidden).
     val display = shownAs.normalized()
     // Poster and Artwork rows: the next cards' pictures load before they scroll in (the other styles do their own).

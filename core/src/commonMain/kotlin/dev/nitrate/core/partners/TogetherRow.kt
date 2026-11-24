@@ -171,7 +171,7 @@ object TogetherRow {
     fun cards(invites: List<MediaItem>, shows: List<SharedShow>): TogetherCards =
         TogetherCards(invites.distinctBy { it.id }, shows.flatMap { cardsOf(it) }.sortedBy { it.turn.ordinal })
 
-    /** The row's items ([cards]), then [start]. Empty when there's neither an invite nor a shared title to show. */
+    /** The row's items ([cards]), then [start] (alone when there's neither an invite nor a shared title). */
     fun items(invites: List<MediaItem>, shows: List<SharedShow>): List<MediaItem> = cards(invites, shows).items
 
     /** Rows whose cards answer for watching together: this one (Continue Watching and Next Up are the user's own). */
@@ -343,9 +343,15 @@ object TogetherRow {
 data class TogetherCards(
     val invites: List<MediaItem> = emptyList(),
     val cards: List<TogetherCard> = emptyList(),
+    /** Whether the server has watch groups at all: then the row always shows, with at least the start card. */
+    val available: Boolean = true,
 ) {
     val isEmpty get() = invites.isEmpty() && cards.isEmpty()
 
-    /** The row's items: the invites, the cards, then the start card (none when there's nothing to show). */
-    val items: List<MediaItem> get() = if (isEmpty) emptyList() else invites + cards.map { it.item } + TogetherRow.start
+    /**
+     * The row's items: the invites, the cards, then the start card. On by default: with nothing
+     * shared yet it's the start card alone, so watching with someone is always a card away (the
+     * row is hidden like any other). Nothing without the Companion's watch groups.
+     */
+    val items: List<MediaItem> get() = if (!available) emptyList() else invites + cards.map { it.item } + TogetherRow.start
 }

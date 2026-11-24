@@ -403,6 +403,10 @@ private fun PlaylistEntry(
                     )
                 }
                 if (item.user.played) Text("✓", color = MaterialTheme.colorScheme.primary)
+                // Entered from a watch group: the group's own mark (toggled on the part's page).
+                dev.nitrate.tv.ui.partners.groupMarkFor(item)?.takeIf { dev.nitrate.core.partners.GroupMarks.watched(it, item) }?.let {
+                    Text("✓ with " + dev.nitrate.core.partners.GroupMarks.caption(it), color = MaterialTheme.colorScheme.primary)
+                }
                 item.runtimeMs?.let { Text(formatRuntime(it)) }
             }
         },

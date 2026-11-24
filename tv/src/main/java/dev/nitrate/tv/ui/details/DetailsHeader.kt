@@ -208,6 +208,14 @@ internal fun Header(
                     if (item.user.played) "Watched" else "Mark watched",
                     active = item.user.played, onHint = { hint = it }, onClick = vm::togglePlayed,
                 )
+                // Entered from a watch group: the group's own mark, apart from Watched (the user's alone).
+                val marks = dev.nitrate.tv.ui.partners.LocalGroupMarks.current
+                dev.nitrate.tv.ui.partners.groupMarkFor(item)?.let { g ->
+                    RoundAction(
+                        dev.nitrate.tv.ui.partners.GroupIcon, dev.nitrate.core.partners.GroupMarks.label(g, item),
+                        active = dev.nitrate.core.partners.GroupMarks.watched(g, item), onHint = { hint = it }, onClick = { marks?.toggle(g, item) },
+                    )
+                }
                 RoundAction(
                     if (item.user.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     if (item.user.isFavorite) "Favorite" else "Add to favorites",
