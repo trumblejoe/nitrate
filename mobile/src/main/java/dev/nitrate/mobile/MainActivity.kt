@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         (application as NitrateApp).container.themeMusic.onAppShown()
+        (application as NitrateApp).container.onAppShown()
     }
 
     override fun onStop() {

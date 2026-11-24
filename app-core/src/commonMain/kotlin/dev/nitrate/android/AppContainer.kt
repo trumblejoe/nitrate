@@ -271,8 +271,21 @@ class AppContainer(
         }
     }
 
+    /** When the Companion was last asked about (0: not since signing in). */
+    private var companionCheckedAt = 0L
+    private var companionRetry: kotlinx.coroutines.Job? = null
+
+    /**
+     * Asks the server's Companion what it offers. A failed ask (no network yet, the server
+     * restarting, the plugin mid-update) keeps what was known and tries again after 30 s, 2 min
+     * and 10 min: settled once at sign-in, one failure used to hide every Companion feature (Watch
+     * groups in Settings, invites answering from their card) until the app was closed.
+     */
     private suspend fun refreshCompanion() {
-        companionState.value = runCatching { server.companion() }.getOrNull()
+        val answer = runCatching { server.companion() }
+        if (answer.isFailure) { retryCompanion(); return }
+        companionCheckedAt = nowMs()
+        companionState.value = answer.getOrNull()
         if (companionState.value?.features?.contains("scripts") == true) syncScripts()
         if (companionState.value?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) == true) {
             refreshPartners()
@@ -280,6 +293,26 @@ class AppContainer(
             followParties()
         }
         chat
+    }
+
+    private fun retryCompanion() {
+        if (companionRetry?.isActive == true) return
+        companionRetry = networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Companion")) {
+            for (wait in listOf(30_000L, 120_000L, 600_000L)) {
+                kotlinx.coroutines.delay(wait)
+                if (server.currentAccountKey == null) return@launch
+                if (runCatching { server.companion() }.isSuccess) { refreshCompanion(); return@launch }
+            }
+        }
+    }
+
+    /**
+     * The app came back into view: the Companion is asked again when it hasn't been for 10
+     * minutes (a plugin updated meanwhile may offer more), one light request.
+     */
+    fun onAppShown() {
+        if (server.currentAccountKey == null || nowMs() - companionCheckedAt < 10 * 60_000L) return
+        networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Companion")) { refreshCompanion() }
     }
 
     /** The recap the "Last time" page shows (set just before it opens). */
@@ -1079,7 +1112,7 @@ class AppContainer(
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { listening?.stop() }
         accountState.value = null
         chatOnlyGroup.value = null
-        companionState.value = null
+        companionState.value = null; companionCheckedAt = 0L; companionRetry?.cancel()
         companionUpdatesState.value = null
         // Group standings belong to the account that's leaving.
         standingsState.value = emptyMap()

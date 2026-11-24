@@ -948,6 +948,13 @@ class ScreenshotTest {
 
     @Test fun settingsFolded() = shoot("phone-settings") { SettingsScreen(it, {}) }
 
+    /** Your watching lists Watch groups when the server's Companion has them (not only through search). */
+    @Test fun settingsListWatchGroups() {
+        shoot("phone-settings-your-watching", setup = { c -> c.refreshCompanionForTests() }) { SettingsScreen(it, {}) }
+        compose.onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(androidx.compose.ui.test.hasText("Watch diary"))
+        compose.onAllNodesWithText("Watch groups").onFirst().assertExists()
+    }
+
     /** Settings search: settings found by the words around them, with where each lives. */
     @Test fun settingsSearch() {
         shoot("phone-settings-search") { SettingsScreen(it, {}, initialQuery = "night") }

@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         dev.nitrate.tv.ui.ambient.TvIdle.shown()
         (application as NitrateApp).container.themeMusic.onAppShown()
+        (application as NitrateApp).container.onAppShown()
     }
 
     override fun onStop() {
