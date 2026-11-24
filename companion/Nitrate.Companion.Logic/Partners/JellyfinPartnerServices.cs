@@ -45,13 +45,38 @@ public class JellyfinWatchState : IWatchState
     private readonly ILibraryManager _library;
     private readonly IUserManager _users;
     private readonly IUserDataManager _userData;
+    private readonly MediaBrowser.Controller.Playlists.IPlaylistManager? _playlists;
 
     /// <summary>Initializes a new instance of the <see cref="JellyfinWatchState"/> class.</summary>
-    public JellyfinWatchState(ILibraryManager library, IUserManager users, IUserDataManager userData)
+    public JellyfinWatchState(ILibraryManager library, IUserManager users, IUserDataManager userData, MediaBrowser.Controller.Playlists.IPlaylistManager? playlists = null)
     {
         _library = library;
         _users = users;
         _userData = userData;
+        _playlists = playlists;
+    }
+
+    /// <inheritdoc />
+    public bool HiddenFrom(Guid titleId, Guid userId) =>
+        _library.GetItemById(titleId) is MediaBrowser.Controller.Playlists.Playlist p
+        && _users.GetUserById(userId) is not null
+        && !p.OpenAccess && p.OwnerUserId != userId && !p.Shares.Any(s => s.UserId == userId);
+
+    /// <inheritdoc />
+    public void ShareWith(Guid titleId, Guid userId) =>
+        _playlists?.AddUserToShares(new MediaBrowser.Model.Playlists.PlaylistUserUpdateRequest { Id = titleId, UserId = userId, CanEdit = false })
+            .GetAwaiter().GetResult();
+
+    /// <inheritdoc />
+    public void Unshare(Guid titleId, Guid userId)
+    {
+        if (_playlists is null || _library.GetItemById(titleId) is not MediaBrowser.Controller.Playlists.Playlist p
+            || p.Shares.FirstOrDefault(s => s.UserId == userId) is not { } share)
+        {
+            return;
+        }
+
+        _playlists.RemoveUserFromShares(titleId, userId, share).GetAwaiter().GetResult();
     }
 
     /// <inheritdoc />

@@ -217,6 +217,9 @@ const val PARTY_PREFIX = "party:"
 /** A tapped schedule change request: `schedule:<group id>` opens that group's Yes/No. */
 const val SCHEDULE_PREFIX = "schedule:"
 
+/** A tapped invite: opens Watch groups, where invites wait with Accept and Decline. */
+const val OPEN_INVITES = "invites:"
+
 @Composable
 fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.MutableStateFlow<String?> = kotlinx.coroutines.flow.MutableStateFlow(null)) {
     var start by remember { mutableStateOf<Any?>(null) }
@@ -493,6 +496,10 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 // A home-screen widget's title: into the player, resuming, through the usual checks.
                 if (id.startsWith(PARTY_PREFIX)) {
                     container.openParty(id.removePrefix(PARTY_PREFIX))
+                    return@LaunchedEffect
+                }
+                if (id == OPEN_INVITES) {
+                    nav.navigate(WatchPartnersRoute)
                     return@LaunchedEffect
                 }
                 if (id.startsWith(SCHEDULE_PREFIX)) {

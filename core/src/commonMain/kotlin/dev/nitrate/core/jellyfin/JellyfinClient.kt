@@ -1502,7 +1502,11 @@ class JellyfinClient(
     override suspend fun privacy() = partnersApi.privacy()
     override suspend fun setPrivacy(private: Boolean) = partnersApi.setPrivacy(private)
     override suspend fun partnerPeople() = partnersApi.people()
-    override suspend fun partners() = partnersApi.list()
+    override suspend fun partners() = partnersApi.list().also { info -> partnersListener?.invoke(info) }
+
+    private var partnersListener: ((dev.nitrate.core.partners.PartnersInfo) -> Unit)? = null
+
+    override fun onPartnersLoaded(listener: (dev.nitrate.core.partners.PartnersInfo) -> Unit) { partnersListener = listener }
     override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule?, titles: List<dev.nitrate.core.partners.GroupTitle>?, batch: String?) =
         partnersApi.ask(toUserId, toName, seriesId, seriesName, groupId, schedule, titles, batch)
     override suspend fun addGroupTitle(groupId: String, titleId: String, name: String) = partnersApi.addTitle(groupId, titleId, name)

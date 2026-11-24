@@ -68,7 +68,7 @@ public static class LogicServices
                 sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
                 Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "partners.json")),
             new JellyfinPartnerDirectory(sp.GetRequiredService<IUserManager>()),
-            new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>()),
+            new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>(), sp.GetService<MediaBrowser.Controller.Playlists.IPlaylistManager>()),
             sp.GetRequiredService<TimeProvider>()));
         // Group Watch Sessions: a group watching one part at the same moment, each on their own player.
         serviceCollection.AddSingleton(sp => new WatchSessions(sp.GetRequiredService<PartnerHub>(), sp.GetRequiredService<TimeProvider>()));

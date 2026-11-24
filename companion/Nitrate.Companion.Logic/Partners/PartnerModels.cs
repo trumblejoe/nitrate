@@ -140,6 +140,12 @@ public class PartnerState
 
     /// <summary>Gets or sets the groups' watch party nights that something happened to (postponed, skipped, started…); kept for a couple of days.</summary>
     public List<PartyNight> Parties { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the playlist shares the Companion added so members could see a group's playlist
+    /// ("playlistId:userId"): only these are taken back when the playlist leaves the group or the member leaves.
+    /// </summary>
+    public List<string> PlaylistShares { get; set; } = new();
 }
 
 /// <summary>Where the partner state is kept.</summary>
@@ -236,4 +242,20 @@ public interface IWatchState
 
     /// <summary>"S2 E4" for an episode, else its name (null when unknown).</summary>
     string? Label(Guid itemId) => null;
+
+    /// <summary>
+    /// Whether <paramref name="userId"/> can't see the title only because its owner keeps it to
+    /// themselves (someone else's playlist, not shared with them): sharing it would let them.
+    /// </summary>
+    bool HiddenFrom(Guid titleId, Guid userId) => false;
+
+    /// <summary>Shares the title (a playlist) with <paramref name="userId"/>, to watch, not change.</summary>
+    void ShareWith(Guid titleId, Guid userId)
+    {
+    }
+
+    /// <summary>Takes back a share <see cref="ShareWith"/> added.</summary>
+    void Unshare(Guid titleId, Guid userId)
+    {
+    }
 }

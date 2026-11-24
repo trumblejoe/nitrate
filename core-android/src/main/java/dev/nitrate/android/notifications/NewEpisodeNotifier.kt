@@ -246,7 +246,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         val partners = if (requestsOn || partyOn) runCatching { server.partners() }.getOrNull() else null
         if (requestsOn) partners?.incoming.orEmpty().forEach { r ->
             fresh += "r:" + r.id
-            if ("r:" + r.id !in notified) postSocial("r:" + r.id, "Watch ${r.seriesName} together?", "${r.fromName} would like to watch ${r.seriesName} with you.", REQUESTS_CHANNEL, REQUESTS_NAME)
+            if ("r:" + r.id !in notified) postSocial("r:" + r.id, "Watch ${r.titleNames} together?", "${r.fromName} would like to watch ${r.titleNames} with you. Tap to accept or decline.", REQUESTS_CHANNEL, REQUESTS_NAME, openInvites = true)
         }
         // Schedule changes waiting for the user's yes or no (never their own: the asker counts as a yes).
         if (requestsOn) partners?.groups.orEmpty().forEach { g ->
@@ -263,7 +263,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         context.notificationPrefs.edit { it[notifiedKey(account)] = fresh }
     }
 
-    private fun postSocial(key: String, title: String, text: String, channel: String, channelName: String) {
+    private fun postSocial(key: String, title: String, text: String, channel: String, channelName: String, openInvites: Boolean = false) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -272,7 +272,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
             manager.createNotificationChannel(NotificationChannel(channel, channelName, NotificationManager.IMPORTANCE_HIGH))
         }
         val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-            putExtra(NewEpisodeNotifier.EXTRA_OPEN_INVITES, true)
+            if (openInvites) putExtra(NewEpisodeNotifier.EXTRA_OPEN_INVITES, true)
             addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val notification = NotificationCompat.Builder(context, channel)

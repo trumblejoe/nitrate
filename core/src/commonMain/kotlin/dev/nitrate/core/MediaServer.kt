@@ -652,6 +652,12 @@ interface MediaServer {
     suspend fun partners(): dev.nitrate.core.partners.PartnersInfo = unsupported()
 
     /**
+     * Tells [listener] each time [partners] is read, by anyone (Home's Watching together row reads
+     * it as it loads), so what a card tap checks against (an invite?) is never older than the row.
+     */
+    fun onPartnersLoaded(listener: (dev.nitrate.core.partners.PartnersInfo) -> Unit) {}
+
+    /**
      * Invites someone to watch together: a listed person by id, or anyone by exact user name;
      * into one of the user's groups ([groupId], which carries its titles) or a new one for
      * [titles] (else the one title [seriesId]). Always "sent".

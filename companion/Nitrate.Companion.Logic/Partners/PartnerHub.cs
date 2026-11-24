@@ -89,6 +89,9 @@ public partial class PartnerHub
     private readonly object _lock = new();
     private readonly PartnerState _state;
 
+    /// <summary>Whether the groups' playlists may need sharing (or a share taking back): at start, and after a group's members or titles change.</summary>
+    private bool _sharesDue = true;
+
     /// <summary>Live (SyncPlay) sessions started for groups ("Watch now together"), by session key: in memory only.</summary>
     private readonly Dictionary<string, (HashSet<Guid> Groups, DateTimeOffset At)> _sessions = new();
 
@@ -141,6 +144,79 @@ public partial class PartnerHub
     /// titles (the furthest timed by when it was played, so the schedule carries on as it was).
     /// A title the library doesn't hold (yet) leaves the group for a later try.
     /// </summary>
+    /// <summary>
+    /// Lets every member see the group's playlists: Jellyfin keeps a playlist to its owner, so one
+    /// in a group is shared (to watch, not change) with each member who couldn't see it, and those
+    /// shares (only those the Companion added) are taken back once no group of theirs holds it.
+    /// Jellyfin is asked outside the lock.
+    /// </summary>
+    private void SharePlaylists()
+    {
+        HashSet<string> want;
+        List<string> had;
+        lock (_lock)
+        {
+            if (!_sharesDue)
+            {
+                return;
+            }
+
+            _sharesDue = false;
+            want = _state.Groups.SelectMany(g => g.Titles.SelectMany(t => g.Members.Select(m => Share(t.Id, m)))).ToHashSet();
+            had = _state.PlaylistShares.ToList();
+        }
+
+        var added = new List<string>();
+        var taken = new List<string>();
+        foreach (var key in want.Except(had))
+        {
+            var (title, member) = Unpack(key);
+            try
+            {
+                if (_watch.HiddenFrom(title, member))
+                {
+                    _watch.ShareWith(title, member);
+                    added.Add(key);
+                }
+            }
+            catch (Exception)
+            {
+                // Tried again after the next change.
+            }
+        }
+
+        foreach (var key in had.Except(want))
+        {
+            var (title, member) = Unpack(key);
+            try
+            {
+                _watch.Unshare(title, member);
+            }
+            catch (Exception)
+            {
+                // Gone already (the playlist deleted, or its owner took the share back).
+            }
+
+            taken.Add(key);
+        }
+
+        if (added.Count == 0 && taken.Count == 0)
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            _state.PlaylistShares.RemoveAll(taken.Contains);
+            _state.PlaylistShares.AddRange(added.Where(k => !_state.PlaylistShares.Contains(k)));
+            _storage.Save(_state);
+        }
+    }
+
+    private static string Share(Guid title, Guid member) => title.ToString("N") + ":" + member.ToString("N");
+
+    private static (Guid Title, Guid Member) Unpack(string key) => (Guid.Parse(key[..32]), Guid.Parse(key[33..]));
+
     private void SeedRecords()
     {
         List<(Guid Id, List<Guid> Members, List<Guid> Titles)> todo;
@@ -429,6 +505,7 @@ public partial class PartnerHub
             }
 
             _storage.Save(_state);
+            _sharesDue = true;
             return View(group, user, group.Watched.ToList(), null);
         }
     }
@@ -466,6 +543,7 @@ public partial class PartnerHub
     /// <summary>The caller's groups, each with what its schedule holds back now in each title.</summary>
     public IReadOnlyList<GroupView> Groups(Guid user)
     {
+        SharePlaylists();
         SeedRecords();
         List<(WatchGroup Group, List<GroupWatch> Record, PartyView? Party)> mine;
         var said = new List<PartyAnnouncement>();
@@ -522,6 +600,7 @@ public partial class PartnerHub
             g.Titles.Add(new GroupTitle { Id = titleId, Name = (name ?? string.Empty).Trim() });
             FirstTitle(g);
             _storage.Save(_state);
+            _sharesDue = true;
         }
     }
 
@@ -548,6 +627,7 @@ public partial class PartnerHub
             g.Titles.RemoveAll(t => t.Id == titleId);
             FirstTitle(g);
             _storage.Save(_state);
+            _sharesDue = true;
         }
     }
 
@@ -690,6 +770,7 @@ public partial class PartnerHub
             // Invites the leaver sent into it no longer stand.
             _state.Requests.RemoveAll(r => r.From == user && r.GroupId == groupId);
             _storage.Save(_state);
+            _sharesDue = true;
         }
     }
 

@@ -79,6 +79,18 @@ public class PartnerTests
             Played.Add((userId, itemId));
             At[(userId, itemId)] = at;
         }
+
+        /// <summary>Playlists and their owners: kept to the owner and whoever they're shared with.</summary>
+        public Dictionary<Guid, Guid> PlaylistOwners { get; } = new();
+
+        public HashSet<(Guid Title, Guid User)> Shared { get; } = new();
+
+        public bool HiddenFrom(Guid titleId, Guid userId) =>
+            PlaylistOwners.TryGetValue(titleId, out var owner) && owner != userId && !Shared.Contains((titleId, userId));
+
+        public void ShareWith(Guid titleId, Guid userId) => Shared.Add((titleId, userId));
+
+        public void Unshare(Guid titleId, Guid userId) => Shared.Remove((titleId, userId));
     }
 
     private PartnerHub Hub() => new(_storage, _directory, _watch, _time);
@@ -179,6 +191,36 @@ public class PartnerTests
         Assert.Equal(made.Id, joined.Id);
         Assert.Single(hub.Groups(Joe));
         Assert.Equal(2, hub.Groups(Joe).Single().Others.Count);
+    }
+
+    [Fact]
+    public void AGroupsPlaylistIsSharedWithItsMembersAndTakenBackWhenTheyGo()
+    {
+        var hub = Hub();
+        var list = Guid.NewGuid();
+        _watch.PlaylistOwners[list] = Joe;
+        // Someone else already shared with by the owner keeps their share whatever the group does.
+        _watch.Shared.Add((list, Kid));
+        hub.Request(Joe, Sam, null, list, "Road trip");
+        // Not before accepting: an invite shares nothing.
+        hub.Groups(Joe);
+        Assert.Empty(_watch.Shared.Where(s => s.User == Sam));
+        var group = hub.Accept(Sam, hub.Incoming(Sam).Single().Id);
+        hub.Groups(Sam);
+        Assert.Contains((list, Sam), _watch.Shared);
+        Assert.DoesNotContain((list, Joe), _watch.Shared);
+        // Kid joins: their share was the owner's, so leaving later doesn't take it back.
+        hub.Request(Joe, Kid, null, list, "Road trip", groupId: group.Id);
+        hub.Accept(Kid, hub.Incoming(Kid).Single().Id);
+        hub.Groups(Kid);
+        hub.Leave(Kid, group.Id);
+        hub.Groups(Joe);
+        Assert.Contains((list, Kid), _watch.Shared);
+        // Sam leaves (the group ends with one person): the Companion's own share goes.
+        hub.Leave(Sam, group.Id);
+        hub.Groups(Joe);
+        Assert.DoesNotContain((list, Sam), _watch.Shared);
+        Assert.Empty(_storage.State.PlaylistShares);
     }
 
     [Fact]
