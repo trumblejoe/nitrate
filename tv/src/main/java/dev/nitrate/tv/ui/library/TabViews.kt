@@ -25,7 +25,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
 import dev.nitrate.android.storage.DisplaySettingsStore
 import dev.nitrate.core.MediaServer
@@ -84,9 +83,10 @@ fun RowsOrTitles(
     }
     val columns = look.columnsFor(music)
     val button: @Composable () -> Unit = {
-        OutlinedButton(onClick = { choosing = true }, modifier = Modifier.focusRequester(viewButton).onFocusChanged { buttonFocused = it.isFocused }) {
-            Text(if (look.rows) "View: Rows" else "View: ${look.view.label}" + if (look.view.columnChoices.isEmpty()) "" else " · $columns")
-        }
+        BarButton(
+            if (look.rows) "View: Rows" else "View: ${look.view.label}" + if (look.view.columnChoices.isEmpty()) "" else " · $columns",
+            Modifier.focusRequester(viewButton).onFocusChanged { buttonFocused = it.isFocused },
+        ) { choosing = true }
     }
     if (choosing) ViewDialog(
         look.view, columns,

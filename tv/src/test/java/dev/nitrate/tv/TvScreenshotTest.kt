@@ -486,7 +486,8 @@ class TvScreenshotTest {
     @Test fun libraryLeftToMenu() = libraryShot("tv-library-left-to-menu", rowsLibrary) {
         press("right", "ok")
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
-        press("down", "down")
+        // Down from the tabs bar (Sort, Filters and View at its end) goes straight into the grid.
+        press("down")
         // Left along the first row to its first title.
         repeat(6) { if (!focusedHasText("Arclight")) press("left") }
         check(focusedHasText("Arclight")) { "Left within the grid should move to the first title" }
@@ -507,11 +508,52 @@ class TvScreenshotTest {
         check(!focusedHasText("Arclight")) { "should be deep in the grid" }
         press("back")
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
-        check(focusedHasText("Arclight")) { "Back deep in the grid should go to the first title" }
+        check(focusedHasText("Arclight")) { "Back deep in the grid should go to the first title; focused: ${focusedNodes()} ${compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().map { it.boundsInRoot }}" }
         press("up", "up")
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
         check(focusedHasText("All")) { "▲ from the options bar should go to the chosen tab" }
     }
+
+    /**
+     * The All tab laid out as [layout] (Fixed: details held at the top; Scrolling: posters fill the
+     * page): Up from the first row reaches Sort at the end of the tabs bar, then the All tab; then a
+     * title with a picture is focused for the shot.
+     */
+    private fun browseLayoutShot(name: String, layout: dev.nitrate.core.pages.GridLayout) = shoot(name, setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary.copy(tvGridLayout = layout))
+    }, act = {
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        repeat(4) { if (!focusedHasText("All")) press("right") }
+        check(focusedHasText("All")) { "should reach the All tab" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(1500); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("16 items")).fetchSemanticsNodes().isNotEmpty()) { "the count should sit in the bar" }
+        press("down")
+        val afterDown = focusedNodes() + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.boundsInRoot.toString() }
+        repeat(8) { if (!focusedHasText("Arclight")) press("left") }
+        check(focusedHasText("Arclight")) { "Down from the tabs should reach the grid; after Down: $afterDown; now: ${focusedNodes()}" }
+        press("up")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(focusedHasText("Sort")) { "Up from the first row should reach Sort; focused: ${focusedNodes()}" }
+        press("up")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(focusedHasText("All")) { "Up from the bar should reach the chosen tab" }
+        press("down")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        repeat(8) { if (!focusedHasText("Arclight")) press("left") }
+        press("down", "right", "right", "right")
+        compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
+        val card = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        check(card.bottom <= 1080f && card.top >= 0f) { "the focused title should be scrolled into sight, at $card" }
+    }) { c ->
+        WithMenu(c) {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library("lib-movies"), overlay = false) { insets ->
+                dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}, insets = insets)
+            }
+        }
+    }
+    @Test fun browseFixed() = browseLayoutShot("tv-browse-fixed", dev.nitrate.core.pages.GridLayout.FIXED)
+    @Test fun browseScrolling() = browseLayoutShot("tv-browse-scrolling", dev.nitrate.core.pages.GridLayout.SCROLLING)
 
     /** Library pages can be full art like Home, with their tabs top right. */
     @Test fun libraryFullArt() = libraryShot("tv-library-full-art", dev.nitrate.core.pages.DisplayPrefs()) { press("up") }
@@ -596,7 +638,8 @@ class TvScreenshotTest {
         repeat(rights) { press("right") }
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
         val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
-        check(focused.isNotEmpty() && focused.first().boundsInRoot.top > 200f) { "focus should be in the ${view.label} view, got ${focused.map { it.boundsInRoot }}" }
+        // The view starts just under the tabs bar (Sort, Filters and View sit at its end).
+        check(focused.isNotEmpty() && focused.first().boundsInRoot.top > 110f) { "focus should be in the ${view.label} view, got ${focused.map { it.boundsInRoot }}" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
     @Test fun libraryCoverFlow() = showViewShot(dev.nitrate.core.pages.BrowseView.COVERFLOW)
@@ -615,9 +658,11 @@ class TvScreenshotTest {
             dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
         ))
     }, act = {
+        // Into the grid, then Up to the bar's buttons (at the end of the tabs bar) and along to View.
         press("down")
+        repeat(2) { if (!focusedHasText("Sort") && !focusedHasText("View")) press("up") }
         repeat(4) { if (!focusedHasText("View")) press("right") }
-        check(focusedHasText("View")) { "should reach the View button" }
+        check(focusedHasText("View")) { "should reach the View button; focused: ${focusedNodes()}" }
         press("ok")
         compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
         repeat(3) { press("right") }
@@ -1016,6 +1061,31 @@ class TvScreenshotTest {
             WithMenu(c) {
                 HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {})
                 dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.HOME, dev.nitrate.tv.ui.pages.CustomizeRequest(null, null, dev.nitrate.tv.ui.pages.CustomizeSection.PAGE)) {}
+            }
+        }
+    }
+
+    /** Customize on a library: Library list switches its full list to the scrolling grid, for that library only. */
+    @Test fun customizeLibraryList() {
+        lateinit var container: AppContainer
+        shoot("tv-customize-library-list", setup = { c -> container = c; c.displaySettings.savePrefs("user-1", rowsLibrary) }, act = {
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+            repeat(16) { if (!focusedHasText("Library list")) { press("down"); compose.mainClock.advanceTimeBy(200); compose.waitForIdle() } }
+            check(focusedHasText("Library list")) { "a library's layout choices should include Library list" }
+            check(focusedHasText("Fixed grid")) { "Library list should say the grid in use" }
+            press("ok")
+            var stored = runBlocking { container.displaySettings.prefs("user-1").first() }
+            repeat(50) {
+                if (stored.pageLooks["library/lib-movies"]?.gridLayout == dev.nitrate.core.pages.GridLayout.SCROLLING) return@repeat
+                compose.mainClock.advanceTimeBy(200); compose.waitForIdle(); Thread.sleep(50)
+                stored = runBlocking { container.displaySettings.prefs("user-1").first() }
+            }
+            check(stored.pageLooks["library/lib-movies"]?.gridLayout == dev.nitrate.core.pages.GridLayout.SCROLLING) { "the library should have the scrolling grid of its own: ${stored.pageLooks}" }
+            check(stored.tvGridLayout == dev.nitrate.core.pages.GridLayout.FIXED) { "every page's grid should be unchanged" }
+            check(compose.onAllNodes(androidx.compose.ui.test.hasText("Scrolling grid", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the choice should show" }
+        }) { c ->
+            WithMenu(c) {
+                dev.nitrate.tv.ui.pages.CustomizePanel(c, PageKeys.library("lib-movies"), dev.nitrate.tv.ui.pages.CustomizeRequest(null, null, dev.nitrate.tv.ui.pages.CustomizeSection.PAGE)) {}
             }
         }
     }

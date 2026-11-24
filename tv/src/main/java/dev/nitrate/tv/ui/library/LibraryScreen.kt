@@ -311,9 +311,7 @@ private fun CollectionsGrid(
     val view = options.view
     val columns = options.columnsFor(view, music = false)
     val bar: @Composable () -> Unit = {
-        androidx.tv.material3.OutlinedButton(onClick = { choosing = true }, modifier = Modifier.focusRequester(viewButton).onFocusChanged { buttonFocused = it.isFocused }) {
-            Text("View: ${view.label}" + if (view.columnChoices.isEmpty()) "" else " · $columns")
-        }
+        BarButton("View: ${view.label}" + if (view.columnChoices.isEmpty()) "" else " · $columns", Modifier.focusRequester(viewButton).onFocusChanged { buttonFocused = it.isFocused }) { choosing = true }
     }
     if (choosing) ViewDialog(view, columns,
         onPick = { v -> save { it.copy(view = v) }; choosing = false; changed++ },

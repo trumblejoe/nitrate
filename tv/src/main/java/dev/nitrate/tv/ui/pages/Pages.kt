@@ -440,6 +440,16 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 trailingContent = { Text("${prefs.tvLetterBar.label}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
+        item {
+            val layouts = dev.nitrate.core.pages.GridLayout.entries
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvGridLayout = layouts[(it.tvGridLayout.ordinal + 1) % layouts.size]) } },
+                headlineContent = { Text("Library list") },
+                supportingContent = { Text("A library's All tab and other lists: ${prefs.tvGridLayout.tvDetail.replaceFirstChar { it.lowercase() }}") },
+                trailingContent = { Text("${prefs.tvGridLayout.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
         // Four kinds of menu: the overlay (default), the side rail, the top bar and the dial.
         // "Fade in" is a switch below (the old FADE style reads as the top bar with it on).
         val now = if (prefs.tvMenu == TvMenuStyle.FADE) TvMenuStyle.TOP else prefs.tvMenu

@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -82,6 +86,7 @@ private val BROWSE_SORTS = listOf(QuerySort.NAME, QuerySort.DATE_ADDED, QuerySor
  * A library's full list on TV: sort, filters, grid or list, and an A–Z row to jump through
  * when sorted by name. Options are saved per library.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun BrowseLibrary(
     repository: MediaServer,
@@ -158,10 +163,15 @@ fun BrowseLibrary(
         }
     }
     // The A–Z bar: above the titles, down one side (the user's choice, away from the menu by
-    // default) or off. Above, it's one of the grid's first items with the header and options bar.
+    // default) or off. Above, it's one of the grid's first items.
     val prefs = LocalDisplayPrefs.current
+    // Fixed: the focused title's details held at the top (as on Home), the posters scrolling beneath.
+    // Scrolling: the posters fill the page, the tabs bar scrolling away with them.
+    val fixed = prefs.tvGridLayout == dev.nitrate.core.pages.GridLayout.FIXED
     val letterPlace = if (options.alphabetical) prefs.tvLetterBar.resolve(prefs.tvMenu) else null
-    val leading = if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.TOP) 3 else 2
+    val lettersOnTop = letterPlace == dev.nitrate.core.pages.LetterBarPlace.TOP
+    // The grid's items before the titles: the bar (scrolling only) and the A–Z row (above).
+    val leading = (if (fixed) 0 else 1) + (if (lettersOnTop) 1 else 0)
     val jumpTo: (String) -> Unit = { letter ->
         scope.launch {
             val index = vm.positionOf(letter) ?: return@launch
@@ -170,35 +180,58 @@ fun BrowseLibrary(
             jumps++
         }
     }
-    // Sort, filters, view, the count and selecting: above the titles in every view.
-    val bar: @Composable () -> Unit = {
-            Row(
-                Modifier.focusProperties { if (tabFocus != null) up = tabFocus },
-                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedButton(onClick = { dialog = "sort" }) { Text("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}") }
-                OutlinedButton(onClick = { dialog = "filters" }) { Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") }
-                OutlinedButton(onClick = { dialog = "view" }, modifier = Modifier.focusRequester(viewButton)) {
-                    Text("View: ${options.view.label}" + if (options.view.columnChoices.isEmpty()) "" else " · $columns")
-                }
-                if (options.filterCount > 0) OutlinedButton(onClick = { update { it.clearFilters() } }) { Text("Clear filters") }
-                if (state.total >= 0) Text("${state.total} items", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (canBulkEdit) {
-                    if (!selecting) OutlinedButton(onClick = { selecting = true }) { Text("Select to edit") }
-                    else {
-                        Text("${selected.size} selected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        OutlinedButton(onClick = { selected = selected + state.items.map { it.id } }) { Text("All shown") }
-                        Button(onClick = { dialog = "bulk" }, enabled = selected.isNotEmpty()) { Text("Edit…") }
-                        OutlinedButton(onClick = { selecting = false; selected = emptySet() }) { Text("Done selecting") }
-                    }
+    // ▲ from the first titles: to Sort, at the end of the tabs bar (scrolled back into sight first).
+    val sortButton = remember { FocusRequester() }
+    fun toBar() {
+        scope.launch {
+            if (!fixed) runCatching { grid.scrollToItem(0) }
+            repeat(10) { if (runCatching { sortButton.requestFocus() }.getOrDefault(false)) return@launch; kotlinx.coroutines.delay(32) }
+        }
+    }
+    // Sort, filters, view, the count and selecting: small, at the end of the tabs bar; ▲ from them to the chosen tab.
+    val buttons: @Composable () -> Unit = {
+        Row(
+            Modifier.focusProperties { if (tabFocus != null) up = tabFocus },
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (state.total >= 0) Text("${state.total} items", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
+            BarButton("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}", Modifier.focusRequester(sortButton)) { dialog = "sort" }
+            BarButton(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") { dialog = "filters" }
+            BarButton("View: ${options.view.label}" + if (options.view.columnChoices.isEmpty()) "" else " · $columns", Modifier.focusRequester(viewButton)) { dialog = "view" }
+            if (options.filterCount > 0) BarButton("Clear filters") { update { it.clearFilters() } }
+            if (canBulkEdit) {
+                if (!selecting) BarButton("Select to edit") { selecting = true }
+                else {
+                    Text("${selected.size} selected", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    BarButton("All shown") { selected = selected + state.items.map { it.id } }
+                    BarButton("Edit…", enabled = selected.isNotEmpty()) { dialog = "bulk" }
+                    BarButton("Done selecting") { selecting = false; selected = emptySet() }
                 }
             }
+        }
+    }
+    // ▼ from the tabs bar: into the grid at the title last used (else the first in sight), not the
+    // A–Z bar beside it, which starts higher up the screen and so was "nearer".
+    val gridEntry = remember { FocusRequester() }
+    val entryIndex by remember(leading) {
+        androidx.compose.runtime.derivedStateOf {
+            val inSight = grid.layoutInfo.visibleItemsInfo.map { it.index - leading }.filter { it >= 0 && it < state.items.size }
+            if (lastFocused in inSight) lastFocused else inSight.firstOrNull() ?: 0
+        }
+    }
+    val downToGrid = !options.view.tvOnly && !lettersOnTop && state.items.isNotEmpty()
+    // The tabs bar as on Home and the other tabs: the library's name and tabs, then the buttons at its end.
+    val bar: @Composable () -> Unit = {
+        Row(Modifier.fillMaxWidth().focusProperties { if (downToGrid) down = gridEntry }, verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { header() }
+            Box(Modifier.padding(end = PagePadding + dev.nitrate.tv.ui.components.LocalClockRoom.current)) { buttons() }
+        }
     }
     if (options.view.tvOnly) {
-        // A show view fills the page under the header and bar; no A–Z (nothing to scroll through).
-        Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            header()
+        // A show view fills the page under the tabs bar; no A–Z (nothing to scroll through).
+        Column(Modifier.fillMaxSize().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             bar()
+            Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = PagePadding)) {
             when {
                 state.error != null && state.items.isEmpty() -> Column { Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error); Button(onClick = vm::retry) { Text("Try again") } }
                 state.loading -> dev.nitrate.tv.ui.components.GridPlaceholder()
@@ -216,10 +249,18 @@ fun BrowseLibrary(
                     else ShowView(options.view, args, Modifier.weight(1f).fillMaxWidth())
                 }
             }
+            }
         }
-    } else {
-    // The focused title's picture behind the page, whole (no wash), as on Home.
-    dev.nitrate.tv.ui.effects.PageBackdropSlot(state.items.getOrNull(lastFocused)?.let { repository.backdropUrl(it) }, clean = true)
+    } else Box(Modifier.fillMaxSize()) {
+    // The title in focus (else the one last focused, else the first): its picture behind the page and,
+    // fixed, its details at the top, as on Home.
+    val shownIndex = when { focusedIndex >= 0 -> focusedIndex; lastFocused >= 0 -> lastFocused; else -> 0 }
+    val shown = state.items.getOrNull(shownIndex)
+    val backdropUrl = shown?.let { repository.backdropUrl(it) }
+    dev.nitrate.tv.ui.effects.PageBackdropSlot(backdropUrl, clean = true)
+    // The picture whole behind the details; darker under the posters so their words read.
+    val backdropChoice = dev.nitrate.tv.ui.pages.LocalLayoutPage.current?.let { prefs.pageBackdrops[it] } ?: dev.nitrate.core.effects.PageBackdrop.ARTWORK
+    if (backdropChoice.kind == dev.nitrate.core.effects.PageBackdrop.Kind.ARTWORK && backdropUrl != null) GridShade(fixed)
     Row(Modifier.fillMaxSize().onPreviewKeyEvent { e ->
         val deep = focusedIndex >= columns
         when {
@@ -230,23 +271,47 @@ fun BrowseLibrary(
                 if (e.nativeKeyEvent.repeatCount == 1) toFirstTitle()
                 true
             }
+            // ▲ from the first row: to the bar's buttons (the tabs are one more ▲ away), not whichever tab is above.
+            e.key == Key.DirectionUp && e.type == KeyEventType.KeyDown && !lettersOnTop && focusedIndex in 0 until columns -> {
+                if (e.nativeKeyEvent.repeatCount == 0) toBar()
+                true
+            }
+            // ▼ on the last line (everything loaded): stay put, not off sideways to the A–Z bar's last letters.
+            e.key == Key.DirectionDown && e.type == KeyEventType.KeyDown && focusedIndex >= 0 && state.items.size >= state.total &&
+                focusedIndex / columns == (state.items.size - 1) / columns -> true
             else -> false
         }
     }) {
-    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) LetterColumn(jumpTo, Modifier.padding(start = 12.dp))
+    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) LetterColumn(jumpTo, Modifier.padding(start = 10.dp))
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+    if (fixed) {
+        bar()
+        val tall = prefs.tvCaptionSize == dev.nitrate.core.pages.CaptionSize.NORMAL
+        Box(Modifier.fillMaxWidth().height(if (tall) 156.dp else 112.dp).padding(start = PagePadding, end = PagePadding, bottom = 10.dp), contentAlignment = Alignment.BottomStart) {
+            if (shown != null) dev.nitrate.tv.ui.components.ArtCaption(
+                shown, label = "${library.name} · ${shownIndex + 1} / ${state.total.coerceAtLeast(state.items.size)}", end = false,
+                logoUrl = dev.nitrate.tv.ui.components.captionLogo(repository, shown),
+            )
+        }
+    }
+    // A focused title comes whole into sight with a little room round it (not hard against the screen's edge).
+    val gap = with(androidx.compose.ui.platform.LocalDensity.current) { 28.dp.toPx() }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides remember(gap) { WholeInSight(gap) }) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         state = grid,
-        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
+        // Room round the edge, so a focused (grown) card isn't cut off.
+        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, top = if (fixed) 10.dp else 0.dp, bottom = 48.dp),
         horizontalArrangement = Arrangement.spacedBy(prefs.tvCardSpacing.dp.dp),
         verticalArrangement = Arrangement.spacedBy((prefs.tvCardSpacing.dp + 4).dp),
-        modifier = Modifier.weight(1f).fillMaxSize(),
+        modifier = Modifier.weight(1f).fillMaxWidth().then(if (fixed) Modifier.fadeTop(18.dp) else Modifier),
     ) {
-        item(key = "header", span = { GridItemSpan(maxLineSpan) }) { header() }
-        item(key = "bar", span = { GridItemSpan(maxLineSpan) }) { bar() }
-        if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.TOP) {
+        // Scrolling: the tabs bar is the grid's first line, scrolling away with the posters (the
+        // page's own edge, not the grid's padding).
+        if (!fixed) item(key = "bar", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleed(PagePadding)) { bar() } }
+        if (lettersOnTop) {
             item(key = "letters", span = { GridItemSpan(maxLineSpan) }) {
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(Modifier.focusProperties { up = sortButton }, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     Browse.LETTERS.forEach { letter -> LetterKey(letter, Modifier.size(width = 28.dp, height = 34.dp)) { jumpTo(letter) } }
                 }
             }
@@ -262,24 +327,30 @@ fun BrowseLibrary(
             else -> items(state.items.size, key = { state.items[it].id }) { i ->
                 val item = state.items[i]
                 val focus = (if (i == jumpedTo) Modifier.focusRequester(jumpFocus) else Modifier)
+                    .then(if (i == entryIndex) Modifier.focusRequester(gridEntry) else Modifier)
                     .then(if (i == 0) Modifier.focusRequester(firstTitle) else Modifier)
                     .onFocusChanged { if (it.hasFocus) { focusedIndex = i; lastFocused = i } else if (focusedIndex == i) focusedIndex = -1 }
+                // Selected titles carry a tick in their name while picking.
+                val ticked = if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else null
                 if (options.view != BrowseView.LIST) {
                     val artwork = options.view == BrowseView.ARTWORK && !music
+                    // As Home's rows: posters bare (the details above name the focused one; scrolling,
+                    // its name shows under it), artwork and album covers with their words.
+                    val words = ticked != null || artwork || music
                     MediaCard(
                         item = item,
-                        // Selected titles carry a tick in their name while picking.
-                        title = if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else item.name,
+                        title = ticked ?: item.displayTitle.takeIf { words || !fixed },
                         imageUrl = if (artwork) repository.imageUrl(item, ImageKind.THUMB, 360) ?: repository.backdropUrl(item, 640) else repository.imageUrl(item, ImageKind.PRIMARY, 360),
                         width = null,
                         aspectRatio = if (music) 1f else if (artwork) 16f / 9f else 2f / 3f,
-                        subtitle = if (music) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
+                        subtitle = (if (music) item.albumArtist else item.productionYear?.takeIf { prefs.year }?.toString()).takeIf { ticked == null && (words || !fixed) },
+                        titleOnFocus = !words,
                         onClick = { tap(item) },
                         onPlay = { if (item.isPlayable) onPlay(item) else onOpen(item) },
                         modifier = focus,
                     )
                 } else {
-                    ListCard(repository, if (selecting) item.copy(name = (if (item.id in selected) "✓ " else "○ ") + item.name) else item, focus) { tap(item) }
+                    ListCard(repository, if (ticked != null) item.copy(name = ticked) else item, focus) { tap(item) }
                 }
             }
         }
@@ -291,8 +362,10 @@ fun BrowseLibrary(
             }
         }
     }
+    }
+    }
 
-    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.RIGHT) LetterColumn(jumpTo, Modifier.padding(end = 12.dp))
+    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.RIGHT) LetterColumn(jumpTo, Modifier.padding(end = 10.dp))
     }
     }
 
@@ -312,28 +385,106 @@ fun BrowseLibrary(
     }
 }
 
-/** The A–Z bar down one side: every letter in the screen's height, ▲▼ through them, OK jumps. */
+/**
+ * The A–Z bar down one side: slim, and dimmed until it has focus; every letter in the screen's
+ * height, ▲▼ through them, OK jumps.
+ */
 @Composable
 private fun LetterColumn(onLetter: (String) -> Unit, modifier: Modifier) {
-    Column(modifier.fillMaxHeight().padding(vertical = 12.dp).width(30.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+    var inUse by remember { mutableStateOf(false) }
+    val alpha by androidx.compose.animation.core.animateFloatAsState(if (inUse) 1f else 0.45f, label = "letters")
+    Column(
+        modifier.fillMaxHeight().padding(vertical = 12.dp).width(22.dp)
+            .onFocusChanged { inUse = it.hasFocus }.graphicsLayer { this.alpha = alpha },
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
         Browse.LETTERS.forEach { letter -> LetterKey(letter, Modifier.weight(1f).fillMaxWidth(), small = true) { onLetter(letter) } }
     }
 }
 
 @Composable
 private fun LetterKey(letter: String, modifier: Modifier, small: Boolean = false, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)), modifier = modifier) {
-        Box(Modifier.fillMaxSize(), Alignment.Center) { Text(letter, style = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge) }
+    Surface(
+        onClick = onClick, shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
+        // No box round each letter until it's focused: a quiet strip of letters.
+        colors = if (small) ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, contentColor = Color.White) else ClickableSurfaceDefaults.colors(),
+        modifier = modifier,
+    ) {
+        Box(Modifier.fillMaxSize(), Alignment.Center) { Text(letter, style = MaterialTheme.typography.labelSmall.let { if (small) it.copy(fontSize = it.fontSize * 0.9f) else MaterialTheme.typography.labelLarge }) }
     }
+}
+
+/** A small button at the end of the tabs bar (Sort, Filters, View and the like). */
+@Composable
+internal fun BarButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick, enabled = enabled,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+        modifier = modifier.height(32.dp),
+    ) { Text(text, style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+}
+
+/**
+ * The shade over the focused title's picture: light behind the details at the top (fixed), darker
+ * under the posters, so their words and focus read over any picture.
+ */
+@Composable
+private fun GridShade(fixed: Boolean) {
+    val dark = Color.Black
+    val brush = if (fixed) androidx.compose.ui.graphics.Brush.verticalGradient(
+        0f to dark.copy(alpha = 0.55f), 0.3f to dark.copy(alpha = 0.25f), 0.45f to dark.copy(alpha = 0.55f), 1f to dark.copy(alpha = 0.88f),
+    ) else androidx.compose.ui.graphics.Brush.verticalGradient(0f to dark.copy(alpha = 0.6f), 1f to dark.copy(alpha = 0.85f))
+    Box(Modifier.fillMaxSize().background(brush))
+    if (fixed && !LocalDisplayPrefs.current.tvCaptionBox) Box(
+        Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(0f to dark.copy(alpha = 0.45f), 0.55f to Color.Transparent)),
+    )
+}
+
+/** Scrolls just enough to show what took focus whole, with [gap] px to spare above and below (when it fits). */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private class WholeInSight(private val gap: Float) : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val room = if (size + 2 * gap <= containerSize) gap else 0f
+        return when {
+            offset - room < 0f -> offset - room
+            offset + size + room > containerSize -> offset + size + room - containerSize
+            else -> 0f
+        }
+    }
+}
+
+/** Fades out what scrolls up under the details over its top [by] (rather than a hard edge). */
+private fun Modifier.fadeTop(by: androidx.compose.ui.unit.Dp) = graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val fade = (by.toPx() / size.height).coerceIn(0f, 1f)
+        drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(0f to Color.Transparent, fade to Color.Black), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+    }
+
+/** Lays [this] out [by] wider on each side than its slot: the tabs bar inside the padded grid, at the page's own edge. */
+private fun Modifier.bleed(by: androidx.compose.ui.unit.Dp) = layout { measurable, constraints ->
+    val px = by.roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + 2 * px, maxWidth = constraints.maxWidth + 2 * px))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-px, 0) }
 }
 
 /** A wide row for the list view: poster, title, facts and overview (as display settings allow). */
 @Composable
 private fun ListCard(repository: MediaServer, item: MediaItem, modifier: Modifier, onClick: () -> Unit) {
     val prefs = LocalDisplayPrefs.current
-    Surface(onClick = onClick, shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)), modifier = modifier.fillMaxWidth()) {
+    // The page's card corners, see-through over the picture behind, framed when focused.
+    val square = prefs.tvCardCorners == dev.nitrate.core.pages.CardCorners.SQUARE
+    val shape = if (square) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(12.dp)
+    Surface(
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(shape),
+        colors = ClickableSurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f), contentColor = Color.White, focusedContainerColor = Color(0x33FFFFFF), focusedContentColor = Color.White),
+        border = ClickableSurfaceDefaults.border(focusedBorder = androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(2.dp, Color.White), shape = shape)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = if (prefs.tvFocusStyle == dev.nitrate.core.pages.FocusStyle.GROW) 1.02f else 1f),
+        modifier = modifier.fillMaxWidth(),
+    ) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(Modifier.width(90.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.08f))) {
+            Box(Modifier.width(90.dp).aspectRatio(2f / 3f).clip(if (square) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.08f))) {
                 repository.imageUrl(item, ImageKind.PRIMARY, 270)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {

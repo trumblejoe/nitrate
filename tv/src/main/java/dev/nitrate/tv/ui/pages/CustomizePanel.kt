@@ -363,6 +363,17 @@ internal fun LazyListScope.layoutItems(container: AppContainer, owner: String, f
                     set { it.copy(cardSpacing = (it.cardSpacing ?: dev.nitrate.core.pages.CardSpacing.NORMAL).cycleNext()) }
                 }
             }
+            // A library's full list (All and the other list tabs): details fixed at the top, or a grid that scrolls.
+            if (owner.startsWith("library/")) {
+                val grid = look.gridLayout ?: dev.nitrate.core.pages.GridLayout.FIXED
+                ListItem(
+                    selected = false,
+                    onClick = { set { it.copy(gridLayout = (it.gridLayout ?: dev.nitrate.core.pages.GridLayout.FIXED).cycleNext()) } },
+                    headlineContent = { Text("Library list") },
+                    supportingContent = { Text(grid.tvDetail) },
+                    trailingContent = { Text("${grid.label}  ›", color = MaterialTheme.colorScheme.primary) },
+                )
+            }
             if (arrangement == PageArrangement.FULL_ART) {
                 ChoiceItem("Up/Down", if (look.upDownAlong == true) "Along the row, then rows" else "Between rows") {
                     set { it.copy(upDownAlong = it.upDownAlong != true) }

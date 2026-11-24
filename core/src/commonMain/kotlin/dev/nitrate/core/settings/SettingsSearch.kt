@@ -122,6 +122,7 @@ object SettingsSearch {
         SettingEntry("Caption box", SettingsPlace.DISPLAY_LAYOUT, "contrast readable dark box", T),
         SettingEntry("Which row this is", SettingsPlace.DISPLAY_LAYOUT, "row marker 3 / 9", T),
         SettingEntry("A–Z bar", SettingsPlace.DISPLAY_LAYOUT, "letters alphabet jump", T),
+        SettingEntry("Library list", SettingsPlace.DISPLAY_LAYOUT, "all tab grid fixed scrolling posters details layout", T),
         SettingEntry("Up/Down along the row", SettingsPlace.DISPLAY_LAYOUT, "d-pad navigation full art", T),
         SettingEntry("Effects", SettingsPlace.DISPLAY_EFFECTS, "animations themes reduce motion amount card effects", T),
         SettingEntry("Holiday effects and their dates", SettingsPlace.DISPLAY_EFFECTS, "occasions seasonal christmas halloween easter thanksgiving new year festivus dates", T),
