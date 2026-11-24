@@ -170,7 +170,27 @@ jobs:
               "completed success") echo "$part=yes" >> "$GITHUB_OUTPUT" ;;
               "completed failure"|"completed cancelled"|"completed timed_out")
                 echo "::error::Build's $part tests failed for this commit: not releasing."; exit 1 ;;
-              *) echo "$part=no" >> "$GITHUB_OUTPUT" ;;
+              *)
+                # Build skipped this part (nothing of it changed) or never ran: an earlier commit's Build that
+                # passed it counts, if nothing of that part changed since then (tools/changed-parts.py).
+                tested=no
+                for sha in $(gh api "repos/$GITHUB_REPOSITORY/commits?sha=$GITHUB_SHA&per_page=30" -q '.[1:][].sha' || true); do
+                  was=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100" \
+                    -q ".check_runs[] | select(.name == \"$part\") | \"\(.status) \(.conclusion)\"" 2>/dev/null | head -1 || true)
+                  case "$was" in
+                    "completed success")
+                      files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...$GITHUB_SHA" -q '.files[].filename' || true)
+                      count=$(printf '%s\n' "$files" | grep -c . || true)
+                      if [ "$count" -lt 300 ] && python3 tools/changed-parts.py $files | grep -qx "$part=false"; then
+                        echo "Build passed $part at ${sha:0:7}, and nothing of it changed since."
+                        tested=yes
+                      fi
+                      break ;;
+                    "completed skipped"|"") continue ;;
+                    *) break ;;
+                  esac
+                done
+                echo "$part=$tested" >> "$GITHUB_OUTPUT" ;;
             esac
           done
 

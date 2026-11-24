@@ -827,7 +827,7 @@ class TvScreenshotTest {
         check(hasWords("Row 4 of")) { "the marker should say the fourth row" }
         holdKey(android.view.KeyEvent.KEYCODE_DPAD_UP)
         check(hasWords("Row 1 of")) { "holding ▲ should go to the first row" }
-        check(!focusedHasText("Home") && compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot.left >= 140f) { "focus should be on the first row's cards" }
+        check(!focusedHasText("Home") && !menuOpen() && compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "focus should be on the first row's cards" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
     /** Full art: the marker too, and holding ▲ to the first row. */
@@ -1116,8 +1116,9 @@ class TvScreenshotTest {
             compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()
         }
         compose.mainClock.advanceTimeBy(2000); compose.waitForIdle()
-        val at = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
-        check(at.left >= 140f) { "Closing the panel should leave focus in the row, not the menu: $at" }
+        // The menu is hidden until called, so the row's first card can sit near the edge: check the menu isn't open.
+        check(!menuOpen()) { "Closing the panel should leave focus in the row, not the menu; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "focus stays on the page" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
     /** To a details page and Back: Home comes back with focus on the card left, not its start. */

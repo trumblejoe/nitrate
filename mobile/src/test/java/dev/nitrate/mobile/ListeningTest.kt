@@ -110,7 +110,8 @@ class ListeningTest {
         lateinit var d: Downloads
         run({ Server(it, broken = setOf("x")) }, { dir -> Downloads(mapOf("x" to wav(File(dir, "downloaded-x.wav")).absolutePath)).also { d = it } }) { l, server ->
             l.play(listOf(song("x"), song("y")))
-            until { l.player.playbackState == Player.STATE_READY }
+            // Ready, and the state says what's playing (it can trail the player by a moment on a slow machine).
+            until { l.player.playbackState == Player.STATE_READY && l.state.value.current != null }
             // The server's copy would fail: the device's file plays, nothing converted.
             assertEquals("x", l.state.value.current?.id)
             assertTrue(server.reports.toString(), "start x" in server.reports && "start x converted" !in server.reports)
