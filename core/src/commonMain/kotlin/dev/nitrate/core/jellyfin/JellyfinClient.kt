@@ -1176,7 +1176,20 @@ class JellyfinClient(
         return result.items.map { it.toMediaItem() } to result.totalRecordCount
     }
 
-    override suspend fun getItem(id: String): MediaItem = get("Items", id).decode<ItemDto>().toMediaItem()
+    override suspend fun getItem(id: String): MediaItem =
+        try {
+            get("Items", id).decode<ItemDto>().toMediaItem()
+        } catch (e: ClientRequestException) {
+            // Jellyfin answers 404 for a playlist someone shared with the user (it checks only the
+            // owner there), though lists and the playlist's own items show it: found by id instead.
+            if (e.response.status != HttpStatusCode.NotFound) throw e
+            itemById(id) ?: throw e
+        }
+
+    /** One item through the list lookup (which goes by what the user can see, shares included), or null. */
+    internal suspend fun itemById(id: String): MediaItem? =
+        get("Items", query = mapOf("ids" to dashless(listOf(id)), "fields" to BY_ID_FIELDS, "enableTotalRecordCount" to false))
+            .decode<QueryResultDto<ItemDto>>().items.firstOrNull()?.toMediaItem()
 
     override suspend fun seasons(seriesId: String) = items("Shows", seriesId, "Seasons", query = mapOf("fields" to "Overview"))
 
@@ -2300,3 +2313,6 @@ internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
         "enableTotalRecordCount" to false,
     )
 }
+
+/** What [JellyfinClient.itemById] asks for: what a details page shows (the single lookup gives everything). */
+private const val BY_ID_FIELDS = "Overview,Genres,Tags,ChildCount,PrimaryImageAspectRatio,People,Studios,ProviderIds"

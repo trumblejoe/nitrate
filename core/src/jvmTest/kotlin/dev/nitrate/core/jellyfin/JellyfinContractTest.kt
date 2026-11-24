@@ -119,6 +119,26 @@ class JellyfinContractTest {
     private val client = JellyfinClient(engine, ClientIdentity("Nitrate", "1.0", "dev1", "Test TV"), storage, { caps() }, settings)
 
     @Test
+    fun `a playlist shared with the user opens though its single lookup says 404`() = runBlocking {
+        val shared = MockEngine { request ->
+            val path = request.url.encodedPath
+            when {
+                path.contains("/Users/AuthenticateBy") -> respond("""{"User":{"Id":"$HEX","Name":"sam"},"AccessToken":"tok"}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                path.endsWith("/Users/Me") -> respond("""{"Id":"$HEX","Name":"sam"}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                Regex("/Items/[0-9a-f-]+$").containsMatchIn(path) -> respond("""{"title":"Not Found","status":404}""", HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "application/json"))
+                path.endsWith("/Items") && request.url.parameters["ids"] == HEX ->
+                    respond("""{"Items":[{"Id":"$HEX","Name":"Road trip","Type":"Playlist"}],"TotalRecordCount":1}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                else -> respond("""{"Items":[],"TotalRecordCount":0}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }
+        val c = JellyfinClient(shared, ClientIdentity("Nitrate", "1.0", "dev1", "Test TV"), storage, { caps() }, settings)
+        c.login("http://jf.local:8096", "sam", "pw")
+        val item = c.getItem(DASHED)
+        assertEquals("Road trip", item.name)
+        assertEquals(ItemKind.PLAYLIST, item.kind)
+    }
+
+    @Test
     fun `every request matches the spec`() = runBlocking {
         val server = "http://jf.local:8096"
         assertEquals(server, client.findServer("http://jf.local:8096/").address)
@@ -142,6 +162,8 @@ class JellyfinContractTest {
             for (sort in LibrarySort.entries) client.libraryPage(library, sort, 0, 50, includeTags = true)
         }
         val item = client.getItem(DASHED)
+        // A playlist shared with the user: the single lookup's 404 falls back to this.
+        assertEquals("Pilot", client.itemById(DASHED)?.name)
         client.seasons(DASHED)
         client.episodes(DASHED, DASHED)
         client.allEpisodes(DASHED)
