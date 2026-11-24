@@ -474,13 +474,31 @@ public sealed class ApiRouter
             }
         }
 
-        if (result is ObjectResult { Value: { } value } objectResult && IsLogicType(value.GetType()))
+        if (result is ObjectResult objectResult)
         {
-            objectResult.Value = JsonSerializer.SerializeToElement(value, value.GetType(), json);
-            objectResult.DeclaredType = typeof(JsonElement);
+            Shield(objectResult, json);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Hands the server only plain JSON for anything of the logic's: the server's JSON writer
+    /// keeps what it learns about each type it writes for as long as the server runs, so one of
+    /// the logic's types there keeps an old logic from ever unloading after a swap. An empty reply
+    /// declared as one (a "none tonight" <c>PartyView?</c>) counted too: it's written as plain null.
+    /// </summary>
+    public void Shield(ObjectResult result, JsonSerializerOptions json)
+    {
+        if (result.Value is { } value && IsLogicType(value.GetType()))
+        {
+            result.Value = JsonSerializer.SerializeToElement(value, value.GetType(), json);
+            result.DeclaredType = typeof(JsonElement);
+        }
+        else if (result.Value is null && result.DeclaredType is { } declared && IsLogicType(declared))
+        {
+            result.DeclaredType = typeof(object);
+        }
     }
 
     private static async Task<IActionResult> ResultOf(object? returned, Type returnType)

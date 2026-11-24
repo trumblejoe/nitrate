@@ -70,6 +70,31 @@ public sealed class RealLogicTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// The server's JSON writer only ever sees plain JSON for the logic's types, empty replies
+    /// included (it keeps what it learns about a type for good, which kept old logic in memory).
+    /// </summary>
+    [Fact]
+    public void TheServerNeverWritesALogicType()
+    {
+        var router = new ApiRouter(LogicServices.Controllers, typeof(CompanionLogic).Assembly);
+        var json = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var none = new ObjectResult(null) { DeclaredType = typeof(Nitrate.Companion.Partners.PartyView) };
+        router.Shield(none, json);
+        Assert.Equal(typeof(object), none.DeclaredType);
+        var list = new ObjectResult(new List<Nitrate.Companion.Partners.ResumeView> { new(Guid.Empty, 1, DateTimeOffset.UnixEpoch) })
+        {
+            DeclaredType = typeof(IReadOnlyList<Nitrate.Companion.Partners.ResumeView>),
+        };
+        router.Shield(list, json);
+        Assert.IsType<System.Text.Json.JsonElement>(list.Value);
+        Assert.Equal(typeof(System.Text.Json.JsonElement), list.DeclaredType);
+        // The server's own types are left to it.
+        var plain = new ObjectResult("ok") { DeclaredType = typeof(string) };
+        router.Shield(plain, json);
+        Assert.Equal("ok", plain.Value);
+    }
+
     [Fact]
     public void UnknownPathsAndMethodsAreTold()
     {

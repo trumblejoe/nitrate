@@ -141,8 +141,16 @@ An old logic unloads only when nothing outside its context still points into it.
 must keep to:
 
 - Its own container and its own JSON options (`ApiRouter` copies the server's MVC JSON settings
-  with a fresh resolver; logic types are turned into a `JsonElement` before MVC sees them). Never
-  hand a logic type to the server's serializers, caches or containers.
+  with a fresh resolver; logic types are turned into a `JsonElement` before MVC sees them,
+  `ApiRouter.Shield`, which also writes an empty reply declared as a logic type (a "none tonight"
+  `PartyView?`) as plain null: MVC writing `null` as the declared type kept that type in the server's
+  JSON options for good, and with it the old logic, which then stayed in memory after every swap).
+  Never hand a logic type to the server's serializers, caches or containers.
+- Borrow the server's services as its instances, never through factories (a container disposes
+  what its factories made: disposing the old logic once disposed Jellyfin's SessionManager;
+  `ForwardedServicesTests`).
+- Ask the server for a task by its key (`SmartCollectionWatcher.RunNow`), never by a logic type:
+  the server only knows the shell's wrapper types.
 - `StopAsync` removes every event handler on the server's managers and ends every loop and timer;
   `DisposeAsync` closes the databases.
 - No static events, `AppDomain` handlers or SQLite functions pointing at logic code.

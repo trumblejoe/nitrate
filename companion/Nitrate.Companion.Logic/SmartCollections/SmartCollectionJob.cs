@@ -121,7 +121,10 @@ public class SmartCollectionJob : IScheduledTask
     public string Name => "Update smart collections";
 
     /// <inheritdoc />
-    public string Key => "NitrateUpdateSmartCollections";
+    public string Key => TaskKey;
+
+    /// <summary>The task's key, the same in the shell's task (which the server runs).</summary>
+    public const string TaskKey = "NitrateUpdateSmartCollections";
 
     /// <inheritdoc />
     public string Description => "Keeps the Nitrate Companion's rule-based collections up to date.";
@@ -292,6 +295,20 @@ public sealed class SmartCollectionWatcher : IHostedService, IDisposable
     /// <inheritdoc />
     public void Dispose() => _timer?.Dispose();
 
+    /// <summary>
+    /// Runs the "Update smart collections" task now (unless it's running), found by its key: the
+    /// server knows it as the shell's task, so asking by the logic's own type found nothing and
+    /// the run after library changes never happened.
+    /// </summary>
+    public static void RunNow(ITaskManager tasks)
+    {
+        var worker = tasks.ScheduledTasks.FirstOrDefault(t => t.ScheduledTask.Key == SmartCollectionJob.TaskKey);
+        if (worker is not null && worker.State == MediaBrowser.Model.Tasks.TaskState.Idle)
+        {
+            tasks.Execute(worker, new MediaBrowser.Model.Tasks.TaskOptions());
+        }
+    }
+
     private void Changed(object? sender, ItemChangeEventArgs e)
     {
         if (e.Item is not (MediaBrowser.Controller.Entities.Movies.Movie or MediaBrowser.Controller.Entities.TV.Series or MediaBrowser.Controller.Entities.TV.Episode))
@@ -305,7 +322,7 @@ public sealed class SmartCollectionWatcher : IHostedService, IDisposable
         }
 
         // Each change pushes the run back: it happens once things are quiet.
-        _timer ??= new Timer(_ => _tasks.QueueScheduledTask<SmartCollectionJob>());
+        _timer ??= new Timer(_ => RunNow(_tasks));
         _timer.Change(Quiet, Timeout.InfiniteTimeSpan);
     }
 }
