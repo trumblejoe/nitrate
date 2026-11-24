@@ -36,6 +36,11 @@ public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Compa
 /// <param name="ChatId">The chat.</param>
 public record AlongPost(Guid ItemId, Guid? ChatId);
 
+/// <summary>A chat made one of the caller's favourites, or not.</summary>
+/// <param name="ItemId">The title it's on.</param>
+/// <param name="Favourite">True: a favourite (never deleted by the time rules); false: not.</param>
+public record FavouritePost(Guid ItemId, bool Favourite);
+
 /// <summary>Which watch group's earlier notes to bring into a live session (null: stop).</summary>
 public record BringPost(Guid? GroupId);
 
@@ -340,6 +345,31 @@ public class InsightsController : ControllerBase
         }
 
         return _groupNotes.Chat(user.Id, itemId, chatId) is { } chat ? chat : NotFound();
+    }
+
+    /// <summary>
+    /// Makes a chat the caller may see one of their favourites, or not (feature <c>chatfavourites</c>):
+    /// a chat stays, with the chats it builds on, while anyone in its audience has it as one.
+    /// </summary>
+    [HttpPut("Chats/Favourites/{chatId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult Favourite([FromRoute] Guid chatId, [FromBody] FavouritePost post)
+    {
+        if (!ChatEnabled || Me() is not { } user)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            _groupNotes.Favourite(user.Id, post.ItemId, chatId, post.Favourite);
+            return NoContent();
+        }
+        catch (NoteForbiddenException)
+        {
+            return Forbid();
+        }
     }
 
     /// <summary>

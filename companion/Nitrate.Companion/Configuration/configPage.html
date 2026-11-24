@@ -91,6 +91,9 @@
                     <div class="fieldDescription">Off: people invite others by typing an exact user name.</div>
                 </div>
 
+                <!-- Settings the logic keeps itself (GET/POST Nitrate/Settings), drawn from what it says: new ones need no plugin update. -->
+                <div id="LogicSettings"></div>
+
                 <h3>Smart collections</h3>
                 <div class="fieldDescription" style="margin-bottom:1em">
                     Ordinary Jellyfin collections that keep themselves up to date from rules: every condition you fill in must
@@ -258,6 +261,113 @@
                 });
             });
             page.querySelector('#SsoPublicUrl').addEventListener('input', redirect);
+
+            // The logic's own settings: each section a heading, each field drawn by its type (number, check, users).
+            function sameId(a, b) { return a.replace(/-/g, '').toLowerCase() === b.replace(/-/g, '').toLowerCase(); }
+            function showLogicSettings(settings, users) {
+                var box = page.querySelector('#LogicSettings');
+                box.innerHTML = '';
+                (settings.Sections || []).forEach(function (section) {
+                    var h = document.createElement('h3');
+                    h.textContent = section.Title;
+                    box.appendChild(h);
+                    if (section.Description) {
+                        var d = document.createElement('div');
+                        d.className = 'fieldDescription';
+                        d.style.marginBottom = '1em';
+                        d.textContent = section.Description;
+                        box.appendChild(d);
+                    }
+                    (section.Fields || []).forEach(function (f) {
+                        var wrap = document.createElement('div');
+                        wrap.className = f.Type === 'check' ? 'checkboxContainer checkboxContainer-withDescription' : 'inputContainer';
+                        wrap.style.marginBottom = '1.5em';
+                        var input;
+                        if (f.Type === 'users') {
+                            var title = document.createElement('div');
+                            title.className = 'inputLabel';
+                            title.textContent = f.Label;
+                            wrap.appendChild(title);
+                            var list = document.createElement('div');
+                            list.className = 'logicSetting';
+                            list.dataset.key = f.Key;
+                            list.dataset.type = 'users';
+                            (users || []).forEach(function (u) {
+                                var label = document.createElement('label');
+                                label.className = 'emby-checkbox-label';
+                                label.style.display = 'block';
+                                var check = document.createElement('input');
+                                check.type = 'checkbox';
+                                check.setAttribute('is', 'emby-checkbox');
+                                check.dataset.id = u.Id;
+                                check.checked = (f.Value || []).some(function (c) { return sameId(c, u.Id); });
+                                var span = document.createElement('span');
+                                span.textContent = u.Name;
+                                label.appendChild(check);
+                                label.appendChild(span);
+                                list.appendChild(label);
+                            });
+                            wrap.appendChild(list);
+                        } else if (f.Type === 'check') {
+                            var l = document.createElement('label');
+                            l.className = 'emby-checkbox-label';
+                            input = document.createElement('input');
+                            input.type = 'checkbox';
+                            input.setAttribute('is', 'emby-checkbox');
+                            input.checked = !!f.Value;
+                            var s = document.createElement('span');
+                            s.textContent = f.Label;
+                            l.appendChild(input);
+                            l.appendChild(s);
+                            wrap.appendChild(l);
+                        } else {
+                            var label2 = document.createElement('label');
+                            label2.className = 'inputLabel inputLabelUnfocused';
+                            label2.textContent = f.Label;
+                            input = document.createElement('input');
+                            input.type = 'number';
+                            input.min = '0';
+                            input.setAttribute('is', 'emby-input');
+                            input.value = f.Value == null ? '' : f.Value;
+                            input.setAttribute('aria-label', f.Label);
+                            wrap.appendChild(label2);
+                            wrap.appendChild(input);
+                        }
+                        if (input) {
+                            input.className = 'logicSetting';
+                            input.dataset.key = f.Key;
+                            input.dataset.type = f.Type;
+                        }
+                        if (f.Description) {
+                            var fd = document.createElement('div');
+                            fd.className = 'fieldDescription';
+                            fd.textContent = f.Description;
+                            wrap.appendChild(fd);
+                        }
+                        box.appendChild(wrap);
+                    });
+                });
+            }
+            function loadLogicSettings() {
+                // A logic without its own settings (or a non-admin) answers with an error: nothing is shown.
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('Nitrate/Settings'), dataType: 'json' }).then(function (settings) {
+                    ApiClient.getUsers().then(function (users) { showLogicSettings(settings, users); });
+                }, function () { page.querySelector('#LogicSettings').innerHTML = ''; });
+            }
+            function readLogicSettings() {
+                var values = {};
+                Array.prototype.forEach.call(page.querySelectorAll('.logicSetting'), function (el) {
+                    if (el.dataset.type === 'users') {
+                        values[el.dataset.key] = Array.prototype.filter.call(el.querySelectorAll('input'), function (i) { return i.checked; }).map(function (i) { return i.dataset.id; });
+                    } else if (el.dataset.type === 'check') {
+                        values[el.dataset.key] = el.checked;
+                    } else {
+                        values[el.dataset.key] = Math.max(0, parseInt(el.value, 10) || 0);
+                    }
+                });
+                return values;
+            }
+            page.addEventListener('pageshow', loadLogicSettings);
 
             // Smart collections: one card per rule.
             var libraries = [];
@@ -434,7 +544,14 @@
                     config.ComicCatalogs = readCatalogs();
                     config.PrivateUserIds = Array.prototype.filter.call(page.querySelectorAll('.privateUser'), function (i) { return i.checked; })
                         .map(function (i) { return i.dataset.id; });
-                    ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                    var logicValues = readLogicSettings();
+                    var saveLogic = Object.keys(logicValues).length === 0 ? Promise.resolve() : ApiClient.ajax({
+                        type: 'POST', url: ApiClient.getUrl('Nitrate/Settings'), contentType: 'application/json',
+                        data: JSON.stringify({ Values: logicValues }),
+                    }).then(function () {}, function () { Dashboard.alert({ message: "The chat settings weren't saved." }); });
+                    saveLogic.then(function () {
+                        return ApiClient.updatePluginConfiguration(pluginId, config);
+                    }).then(function (result) {
                         Dashboard.processPluginConfigurationUpdateResult(result);
                     });
                 });

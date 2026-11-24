@@ -29,7 +29,14 @@ public record NoteChat(Guid Id, Guid ItemId, Guid? GroupId, long Created, Guid B
 /// <param name="People">Who wrote in it besides the caller, in order of their first message.</param>
 /// <param name="Count">How many of its own messages the caller may read (not counting what it builds on).</param>
 /// <param name="Earlier">Notes kept before chat histories, gathered as one "Earlier notes" chat per group.</param>
-public record ChatView(Guid Id, Guid? GroupId, long Created, Guid? BuildsOn, Guid? SessionId, IReadOnlyList<string> People, int Count, bool Earlier = false);
+/// <param name="Favourite">The caller made it a favourite (feature <c>chatfavourites</c>): never deleted by the time rules.</param>
+public record ChatView(Guid Id, Guid? GroupId, long Created, Guid? BuildsOn, Guid? SessionId, IReadOnlyList<string> People, int Count, bool Earlier = false, bool Favourite = false);
+
+/// <summary>One person's favourite chat on a title (kind <c>chatfav</c> under the item, one row per person and chat).</summary>
+/// <param name="UserId">Whose favourite.</param>
+/// <param name="ChatId">The chat.</param>
+/// <param name="At">When it was made a favourite (ms).</param>
+public record ChatFavourite(Guid UserId, Guid ChatId, long At);
 
 /// <summary>A title's chat histories for the caller, newest first, and their watch groups on it.</summary>
 /// <param name="Groups">The caller's watch groups whose title holds the item.</param>
@@ -52,6 +59,9 @@ public class NoteChatBook
 {
     /// <summary>The database kind.</summary>
     public const string Kind = "notechat";
+
+    /// <summary>The database kind of people's favourite chats.</summary>
+    public const string FavouriteKind = "chatfav";
 
     /// <summary>How deep a chain of chats building on each other is followed.</summary>
     public const int MaxChain = 50;
@@ -104,6 +114,7 @@ public class NoteChatBook
     {
         var stored = Stored(itemId).ToDictionary(c => c.Id);
         var mineGroups = callerGroups.Select(g => g.Id).ToHashSet();
+        var favourites = Favourites(itemId).Where(f => f.UserId == caller).Select(f => f.ChatId).ToHashSet();
         var views = new List<ChatView>();
         foreach (var chat in _notes.All(itemId).GroupBy(ChatOf))
         {
@@ -117,12 +128,12 @@ public class NoteChatBook
             var people = readable.Where(x => x.Note.UserId != caller).Select(x => x.Note.UserName).Distinct().ToList();
             if (stored.TryGetValue(chat.Key, out var kept))
             {
-                views.Add(new ChatView(chat.Key, kept.GroupId is { } g && (mineGroups.Contains(g) || readable.Any(x => x.View!.GroupIds.Contains(g))) ? g : null, first.At, kept.BuildsOn, kept.SessionId, people, readable.Count));
+                views.Add(new ChatView(chat.Key, kept.GroupId is { } g && (mineGroups.Contains(g) || readable.Any(x => x.View!.GroupIds.Contains(g))) ? g : null, first.At, kept.BuildsOn, kept.SessionId, people, readable.Count, Favourite: favourites.Contains(chat.Key)));
             }
             else
             {
                 var group = readable.SelectMany(x => x.View!.GroupIds).Cast<Guid?>().FirstOrDefault();
-                views.Add(new ChatView(chat.Key, group, first.At, null, first.SessionId, people, readable.Count, Earlier: first.SessionId is null));
+                views.Add(new ChatView(chat.Key, group, first.At, null, first.SessionId, people, readable.Count, Earlier: first.SessionId is null, Favourite: favourites.Contains(chat.Key)));
             }
         }
 
@@ -237,6 +248,31 @@ public class NoteChatBook
     public NoteChat? OfSession(Guid itemId, Guid sessionId) =>
         Stored(itemId).Where(c => c.SessionId == sessionId).OrderByDescending(c => c.Created).FirstOrDefault();
 
-    /// <summary>Forgets chats begun before <paramref name="beforeAt"/> (ms).</summary>
-    public void DeleteOlder(long beforeAt) => _db.DeleteOlder(Kind, beforeAt);
+    /// <summary>Every favourite on a title, anyone's (for the time rules; a caller sees only their own).</summary>
+    public IReadOnlyList<ChatFavourite> Favourites(Guid itemId) =>
+        _db.Records(FavouriteKind, itemId.ToString("N")).Select(r => DbDiaryStorage.Read<ChatFavourite>(r.Value)).OfType<ChatFavourite>().ToList();
+
+    /// <summary>
+    /// Makes a chat one of <paramref name="user"/>'s favourites, or not. Only a chat they may see
+    /// (<see cref="Listed"/>) can be made one; taking one away always works.
+    /// </summary>
+    /// <returns>False when the chat isn't one they may see.</returns>
+    public bool SetFavourite(Guid user, Guid itemId, Guid chatId, bool favourite, IReadOnlyList<GroupMembers> userGroups)
+    {
+        var key = user.ToString("N") + "|" + chatId.ToString("N");
+        if (!favourite)
+        {
+            _db.DeleteRecord(FavouriteKind, itemId.ToString("N"), key);
+            return true;
+        }
+
+        if (!Listed(user, itemId, chatId, userGroups))
+        {
+            return false;
+        }
+
+        var at = _time.GetUtcNow().ToUnixTimeMilliseconds();
+        _db.PutRecord(FavouriteKind, itemId.ToString("N"), key, JsonSerializer.Serialize(new ChatFavourite(user, chatId, at)), at);
+        return true;
+    }
 }

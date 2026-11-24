@@ -116,7 +116,7 @@ public class PeopleRecords
     /// <summary>How long problem reports are kept.</summary>
     public const int ProblemDays = 90;
 
-    /// <summary>How long viewing chat is kept.</summary>
+    /// <summary>How long viewing chat is kept at most (timeline notes too, unless a chat is kept: <see cref="ChatKeeping"/>).</summary>
     public const int ChatDays = 3 * 365;
 
     /// <summary>The most moments one person keeps.</summary>
@@ -206,7 +206,6 @@ public class PeopleRecords
         var now = DateTimeOffset.UtcNow;
         _db.DeleteOlder("problem", now.AddDays(-ProblemDays).ToUnixTimeMilliseconds());
         _db.DeleteOlder("chat", now.AddDays(-ChatDays).ToUnixTimeMilliseconds());
-        _db.DeleteOlder(TimelineNoteBook.Kind, now.AddDays(-ChatDays).ToUnixTimeMilliseconds());
-        _db.DeleteOlder(NoteChatBook.Kind, now.AddDays(-ChatDays).ToUnixTimeMilliseconds());
+        // Timeline notes and chat histories go by ChatKeeping's rules (favourites and kept people stay).
     }
 }

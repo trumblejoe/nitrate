@@ -202,6 +202,22 @@ public class GroupNotes
     public ChatNotes? Chat(Guid caller, Guid itemId, Guid chatId) => _chats.Read(caller, itemId, chatId, _groupsHolding(caller, itemId));
 
     /// <summary>
+    /// Makes a chat the caller may see one of their favourites, or not (kept from the time rules
+    /// while anyone in its audience has it as one, <see cref="ChatKeeping"/>).
+    /// </summary>
+    /// <exception cref="NoteForbiddenException">The caller may see none of it.</exception>
+    public void Favourite(Guid caller, Guid itemId, Guid chatId, bool favourite)
+    {
+        if (!_chats.SetFavourite(caller, itemId, chatId, favourite, _groupsHolding(caller, itemId)))
+        {
+            throw new NoteForbiddenException();
+        }
+    }
+
+    /// <summary>The chat histories beside the notes.</summary>
+    public NoteChatBook ChatBook => _chats;
+
+    /// <summary>
     /// Someone in a live session picks an earlier chat to play along for everyone there (one they
     /// may see; null stops it); the others are told through the session's chat room.
     /// </summary>

@@ -242,4 +242,107 @@ public sealed class NoteChatsTests : IDisposable
         _notes.PlayAlong(Jessica, Session, Episode, null);
         Assert.Null(_notes.SessionChat(Sam, Session, Episode).Along);
     }
+
+    [Fact]
+    public void AFavouriteIsEachPersonsOwnAndOnlyForAChatTheyMaySee()
+    {
+        Group(Sam, Kim);
+        var chat = Write(Sam, 60_000, "remember this").ChatId!.Value;
+        _notes.Favourite(Kim, Episode, chat, true);
+        Assert.True(Assert.Single(_notes.Chats(Kim, Episode).Chats).Favourite);
+        // Sam's list says nothing of Kim's favourite.
+        Assert.False(Assert.Single(_notes.Chats(Sam, Episode).Chats).Favourite);
+        // Someone who wasn't there can't make it one (nor learn it exists).
+        Assert.Throws<NoteForbiddenException>(() => _notes.Favourite(Jessica, Episode, chat, true));
+        Assert.DoesNotContain(_chats.Favourites(Episode), f => f.UserId == Jessica);
+
+        _notes.Favourite(Kim, Episode, chat, false);
+        Assert.False(Assert.Single(_notes.Chats(Kim, Episode).Chats).Favourite);
+        Assert.Empty(_chats.Favourites(Episode));
+    }
+
+    [Fact]
+    public void TheTimeRuleDeletesOldChatsButKeepsFavouritesAndWhatTheyBuildOn()
+    {
+        var keeping = new ChatKeeping(_db, _book, _chats);
+        keeping.Save(new ChatKeepingSettings(DeleteAfterDays: 30));
+        Group(Sam, Kim);
+        var tuesday = Write(Sam, 60_000, "tuesday").ChatId!.Value;
+        var other = Write(Kim, 10_000, "another night").ChatId!.Value;
+        var tonight = Write(Kim, 70_000, "tonight", null, tuesday).ChatId!.Value;
+        Assert.NotEqual(other, tonight);
+        Assert.Equal(tuesday, _chats.Get(Episode, tonight)!.BuildsOn);
+        // Sam makes Kim's tonight a favourite: it stays, and so does Tuesday's it builds on.
+        _notes.Favourite(Sam, Episode, tonight, true);
+        _notes.Favourite(Kim, Episode, other, true);
+        _notes.Favourite(Kim, Episode, other, false);
+
+        _time.Advance(TimeSpan.FromDays(29));
+        Assert.Equal(0, keeping.Prune(_time.GetUtcNow()));
+        _time.Advance(TimeSpan.FromDays(2));
+        Assert.Equal(1, keeping.Prune(_time.GetUtcNow()));
+
+        Assert.Equal(new[] { tonight, tuesday }, _notes.Chats(Sam, Episode).Chats.Select(c => c.Id));
+        Assert.Null(_chats.Get(Episode, other));
+        Assert.NotNull(_chats.Get(Episode, tuesday));
+        Assert.Equal(new[] { "tuesday", "tonight" }, _notes.Chat(Kim, Episode, tonight)!.Notes.Select(n => n.Text));
+
+        // Unfavourited, it goes at the next run, with the favourite forgotten.
+        _notes.Favourite(Sam, Episode, tonight, false);
+        Assert.Equal(2, keeping.Prune(_time.GetUtcNow()));
+        Assert.Empty(_notes.Chats(Sam, Episode).Chats);
+        Assert.Empty(_chats.Stored(Episode));
+    }
+
+    [Fact]
+    public void ChatsWithAMessageFromAKeptPersonStayAndFavouritesOfGoneChatsAreForgotten()
+    {
+        var keeping = new ChatKeeping(_db, _book, _chats);
+        keeping.Save(new ChatKeepingSettings(7, new[] { Kim, Kim }));
+        Assert.Equal(new[] { Kim }, keeping.Settings.Kept);
+        Group(Sam, Kim);
+        // Watching together: one chat, with a message from each.
+        _live.In[Session] = new List<Guid> { Sam, Kim };
+        var withKim = Write(Sam, 60_000, "sam first", null, null, Session).ChatId!.Value;
+        Assert.Equal(withKim, Write(Kim, 61_000, "kim too", null, null, Session).ChatId);
+        _live.In.Clear();
+        var samsOwn = Write(Sam, 90_000, "just sam", Guid.NewGuid()).ChatId!.Value;
+        Assert.NotEqual(withKim, samsOwn);
+
+        _time.Advance(TimeSpan.FromDays(8));
+        keeping.Prune(_time.GetUtcNow());
+        var left = _notes.Chats(Sam, Episode).Chats.Select(c => c.Id).ToList();
+        Assert.Contains(withKim, left);
+        Assert.DoesNotContain(samsOwn, left);
+    }
+
+    [Fact]
+    public void WithNothingSetChatsAreKeptForThreeYearsAsAlways()
+    {
+        var keeping = new ChatKeeping(_db, _book, _chats);
+        Assert.Equal(0, keeping.Settings.DeleteAfterDays);
+        Assert.Empty(keeping.Settings.Kept);
+        Group(Sam, Kim);
+        Write(Sam, 60_000, "kept a long while");
+        _time.Advance(TimeSpan.FromDays(365 * 2));
+        Assert.Equal(0, keeping.Prune(_time.GetUtcNow()));
+        _time.Advance(TimeSpan.FromDays(366));
+        Assert.Equal(1, keeping.Prune(_time.GetUtcNow()));
+        // A longer setting never keeps them past the three years either.
+        keeping.Save(new ChatKeepingSettings(10_000));
+        Assert.Equal(PeopleRecords.ChatDays, keeping.Days(keeping.Settings));
+    }
+
+    [Fact]
+    public void TheDashboardsSettingsSayWhatIsSetAndSaveOnlyWhatChanged()
+    {
+        var keeping = new ChatKeeping(_db, _book, _chats);
+        keeping.Save(new ChatKeepingSettings(14, new[] { Hidden }));
+        var page = Nitrate.Companion.Api.SettingsController.Page(keeping.Settings);
+        var fields = Assert.Single(page.Sections).Fields;
+        Assert.Equal(14, fields.Single(f => f.Key == Nitrate.Companion.Api.SettingsController.ChatDays).Value.GetInt32());
+        var users = fields.Single(f => f.Key == Nitrate.Companion.Api.SettingsController.ChatKeepFrom);
+        Assert.Equal("users", users.Type);
+        Assert.Equal(new[] { Hidden.ToString("D") }, users.Value.EnumerateArray().Select(v => v.GetString()));
+    }
 }

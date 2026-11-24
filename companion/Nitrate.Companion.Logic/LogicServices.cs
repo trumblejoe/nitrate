@@ -80,6 +80,12 @@ public static class LogicServices
         // Group chat pinned to the timeline: one note per message, live sessions getting each at once.
         serviceCollection.AddSingleton<Nitrate.Companion.Insights.ILiveSessions>(sp => new JellyfinLiveSessions(
             sp.GetRequiredService<MediaBrowser.Controller.SyncPlay.ISyncPlayManager>(), sp.GetRequiredService<ISessionManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<WatchSessions>()));
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.NoteChatBook(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), sp.GetRequiredService<Nitrate.Companion.Insights.TimelineNoteBook>(), sp.GetRequiredService<TimeProvider>()));
+        // Chats' time rules: the admin's "Delete chats after", favourites and kept people (daily).
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.ChatKeeping(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), sp.GetRequiredService<Nitrate.Companion.Insights.TimelineNoteBook>(), sp.GetRequiredService<Nitrate.Companion.Insights.NoteChatBook>()));
+        serviceCollection.AddHostedService<Nitrate.Companion.Insights.ChatPruner>();
         serviceCollection.AddSingleton(sp =>
         {
             var partners = sp.GetRequiredService<PartnerHub>();
@@ -90,7 +96,8 @@ public static class LogicServices
                 partners.GroupsHolding,
                 partners.IsPrivate,
                 () => Plugin.Instance?.Configuration.KeepChatHistory ?? true,
-                sp.GetRequiredService<TimeProvider>());
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<Nitrate.Companion.Insights.NoteChatBook>());
         });
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Devices.DeviceHub(
             new Nitrate.Companion.Storage.DbDeviceReportStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "devices.json")),

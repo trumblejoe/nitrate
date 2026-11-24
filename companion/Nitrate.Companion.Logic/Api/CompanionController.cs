@@ -96,6 +96,8 @@ public class CompanionController : ControllerBase
             // Chat histories: one per playback or session, made with its first message, building on an
             // earlier one picked to play along (GET /Nitrate/Chats, NotePost.Chats, /Nitrate/Chats/Session).
             features.Add("chats");
+            // A chat made a favourite (PUT /Nitrate/Chats/Favourites/{id}) is never deleted by the time rules.
+            features.Add("chatfavourites");
         }
 
         if (ChatEnabled && (Plugin.Instance?.Configuration.KeepChatHistory ?? true))
