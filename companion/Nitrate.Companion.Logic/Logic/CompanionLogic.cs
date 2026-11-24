@@ -155,6 +155,7 @@ public sealed class CompanionLogic : ICompanionLogic
         Put(HandOver.Sittings, () => _services.GetRequiredService<Insights.SittingRecorder>().ExportState());
         Put(HandOver.Together, () => _services.GetRequiredService<Partners.TogetherRecorder>().ExportState());
         Put(HandOver.GroupSessions, () => _services.GetRequiredService<Partners.PartnerHub>().ExportSessions());
+        Put(HandOver.WatchSessions, () => _services.GetRequiredService<Partners.WatchSessions>().ExportState());
         return state;
     }
 
@@ -189,5 +190,6 @@ public sealed class CompanionLogic : ICompanionLogic
         Take<List<Insights.SittingState>>(HandOver.Sittings, s => _services.GetRequiredService<Insights.SittingRecorder>().ImportState(s));
         Take<List<Partners.TogetherSeenState>>(HandOver.Together, s => _services.GetRequiredService<Partners.TogetherRecorder>().ImportState(s));
         Take<List<Partners.GroupSessionState>>(HandOver.GroupSessions, s => _services.GetRequiredService<Partners.PartnerHub>().ImportSessions(s));
+        Take<List<Partners.WatchSessionState>>(HandOver.WatchSessions, s => _services.GetRequiredService<Partners.WatchSessions>().ImportState(s));
     }
 }

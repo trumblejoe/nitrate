@@ -73,6 +73,8 @@ public class CompanionController : ControllerBase
         features.Add("invitebatch");
         // A schedule's "If someone plays ahead: Ask first / Don't allow" (GroupSchedule.Locked), kept and voted with the rest.
         features.Add("schedulelock");
+        // Group Watch Sessions (/Nitrate/Sessions): start together at a countdown, each player its own, pause/jump/drift told to the others.
+        features.Add("sessions");
         features.Add("updates");
         features.Add("together");
         features.Add("credits");

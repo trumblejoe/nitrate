@@ -128,5 +128,8 @@ namespace Nitrate.Companion.Logic
 
         /// <summary>Live sessions started for groups (<see cref="Partners.PartnerHub.SessionFor"/>).</summary>
         public const string GroupSessions = "groupsessions.v1";
+
+        /// <summary>Group Watch Sessions (<see cref="Partners.WatchSessions"/>).</summary>
+        public const string WatchSessions = "watchsessions.v1";
     }
 }

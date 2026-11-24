@@ -9,7 +9,8 @@ namespace Nitrate.Companion.Partners;
 
 /// <summary>
 /// Keeps groups' own watched records from the server's playback reports of live (SyncPlay)
-/// sessions, in any app: a part played to the end (Jellyfin's played threshold,
+/// sessions, in any app: Group Watch Sessions (<see cref="WatchSessions"/>: a part played to the
+/// end counts for that member in the session's group) and, for older apps, SyncPlay groups. A part played to the end (Jellyfin's played threshold,
 /// <see cref="PlaybackStopEventArgs.PlayedToCompletion"/>) counts for each member there, in the
 /// groups the session was started for, else where everyone there is in the group and it's the
 /// next part for each of them (<see cref="PartnerHub.RecordLive"/>). Outside a live session the
@@ -25,11 +26,13 @@ public class TogetherRecorder : IHostedService
     private readonly ISyncPlayManager _syncPlay;
     private readonly IUserManager _users;
     private readonly PartnerHub _partners;
+    private readonly WatchSessions _watchSessions;
     private readonly ConcurrentDictionary<string, (Guid Item, string Group, HashSet<Guid> Present, DateTimeOffset At)> _seen = new();
 
     /// <summary>Initializes a new instance of the <see cref="TogetherRecorder"/> class.</summary>
-    public TogetherRecorder(ISessionManager sessions, ISyncPlayManager syncPlay, IUserManager users, PartnerHub partners)
+    public TogetherRecorder(ISessionManager sessions, ISyncPlayManager syncPlay, IUserManager users, PartnerHub partners, WatchSessions watchSessions)
     {
+        _watchSessions = watchSessions;
         _sessions = sessions;
         _syncPlay = syncPlay;
         _users = users;
@@ -95,6 +98,13 @@ public class TogetherRecorder : IHostedService
             var seen = e.Session is { } s && _seen.TryRemove(s.Id, out var x) ? x : default;
             if (!e.PlayedToCompletion || e.Item is null)
             {
+                return;
+            }
+
+            // A Group Watch Session: it counts for whoever played it to the end, in the session's group.
+            if (e.Session is { } own && _watchSessions.SessionOn(own.UserId, e.Item.Id) is { } watching)
+            {
+                _partners.RecordLive(e.Item.Id, new[] { own.UserId }, watching.Id.ToString());
                 return;
             }
 

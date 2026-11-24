@@ -70,6 +70,8 @@ public static class LogicServices
             new JellyfinPartnerDirectory(sp.GetRequiredService<IUserManager>()),
             new JellyfinWatchState(sp.GetRequiredService<ILibraryManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<IUserDataManager>()),
             sp.GetRequiredService<TimeProvider>()));
+        // Group Watch Sessions: a group watching one part at the same moment, each on their own player.
+        serviceCollection.AddSingleton(sp => new WatchSessions(sp.GetRequiredService<PartnerHub>(), sp.GetRequiredService<TimeProvider>()));
         // Groups' own watched records, from the server's playback reports of live sessions.
         serviceCollection.AddSingleton<TogetherRecorder>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<TogetherRecorder>());
@@ -77,7 +79,7 @@ public static class LogicServices
         serviceCollection.AddHostedService<PartyPush>();
         // Group chat pinned to the timeline: one note per message, live sessions getting each at once.
         serviceCollection.AddSingleton<Nitrate.Companion.Insights.ILiveSessions>(sp => new JellyfinLiveSessions(
-            sp.GetRequiredService<MediaBrowser.Controller.SyncPlay.ISyncPlayManager>(), sp.GetRequiredService<ISessionManager>(), sp.GetRequiredService<IUserManager>()));
+            sp.GetRequiredService<MediaBrowser.Controller.SyncPlay.ISyncPlayManager>(), sp.GetRequiredService<ISessionManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<WatchSessions>()));
         serviceCollection.AddSingleton(sp =>
         {
             var partners = sp.GetRequiredService<PartnerHub>();

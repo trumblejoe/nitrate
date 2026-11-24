@@ -647,6 +647,32 @@ interface MediaServer {
     /** Tells the server live (SyncPlay) session [sessionId] was started for group [groupId] ("Watch now together"), so what it plays counts for the group. */
     suspend fun sessionForGroup(groupId: String, sessionId: String): Unit = unsupported()
 
+    // ---- Group Watch Sessions (Companion feature `sessions`): every answer carries the server's clock ----
+
+    /** The live Group Watch Sessions of the user's groups. */
+    suspend fun watchSessions(): List<dev.nitrate.core.partners.GroupWatchSession> = emptyList()
+
+    /** Starts a Group Watch Session of [groupId] on [itemId] (or joins the group's live one); the group's open apps are told at once. */
+    suspend fun startWatchSession(groupId: String, itemId: String, startMs: Long = 0): dev.nitrate.core.partners.SessionJoin = unsupported()
+
+    /** One Group Watch Session as the user sees it. */
+    suspend fun watchSession(sessionId: String): dev.nitrate.core.partners.GroupWatchSession = unsupported()
+
+    /** Joins a Group Watch Session (together while it gathers; later at where the group is, or from the beginning: [fromStart]). */
+    suspend fun joinWatchSession(sessionId: String, fromStart: Boolean = false): dev.nitrate.core.partners.SessionJoin = unsupported()
+
+    /** The starter's "Start now": the countdown starts without waiting for the rest. */
+    suspend fun startWatchSessionNow(sessionId: String): dev.nitrate.core.partners.GroupWatchSession = unsupported()
+
+    /** Where this player is (every 10 s, and at once with [event] "pause"/"play"/"seek"). */
+    suspend fun reportWatchSession(sessionId: String, positionMs: Long, paused: Boolean, event: String? = null): dev.nitrate.core.partners.GroupWatchSession = unsupported()
+
+    /** Leaves a Group Watch Session (the last one out ends it). */
+    suspend fun leaveWatchSession(sessionId: String): Unit = unsupported()
+
+    /** The starter ends the Group Watch Session for everyone. */
+    suspend fun endWatchSession(sessionId: String): Unit = unsupported()
+
     /** Asks the group to change its schedule; it takes effect once more than half the group agrees (both, in a pair). */
     suspend fun proposeSchedule(groupId: String, schedule: dev.nitrate.core.partners.GroupSchedule): Unit = unsupported()
 

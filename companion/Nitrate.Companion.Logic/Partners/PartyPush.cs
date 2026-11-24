@@ -23,6 +23,18 @@ public record ScheduleMessage(
     Guid ChangeId, IReadOnlyList<string> Titles, string? FromName, bool FromMe, GroupSchedule Proposed, GroupSchedule? Current, string? Outcome);
 
 /// <summary>
+/// What one member's apps are sent about a Group Watch Session (<see cref="WatchSessions"/>), also
+/// under <see cref="PartyPush.Header"/> with the kind <see cref="PartyPush.SessionKind"/>: the first
+/// fields are a <see cref="PartyMessage"/>'s, so older apps read it as party news that changes
+/// nothing. <paramref name="Event"/> says what happened (started, countdown, joined, left, pause,
+/// play, seek, ended), <paramref name="PositionMs"/> where, and <paramref name="Session"/> is the
+/// session as that member sees it (with the server's clock).
+/// </summary>
+public record SessionMessage(
+    string Kind, Guid GroupId, string SeriesName, IReadOnlyList<string> Others, string? ByName, bool ByMe, int Minutes, PartyView? Party,
+    string Event, long PositionMs, SessionView Session);
+
+/// <summary>
 /// Tells the members' open Nitrate apps about their groups' watch parties at once, over Jellyfin's
 /// own session connection (a DisplayMessage with the header <see cref="Header"/>, which the apps
 /// never show as a message): the reminder 15 minutes before, postponements, requests to agree to,
@@ -36,16 +48,22 @@ public class PartyPush : IHostedService, IDisposable
     /// <summary>The message header the apps listen for.</summary>
     public const string Header = "Nitrate.Party";
 
+    /// <summary>The kind of a Group Watch Session's news.</summary>
+    public const string SessionKind = "session";
+
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = null };
     private readonly ISessionManager _sessions;
     private readonly PartnerHub _partners;
     private readonly Func<Guid, string?> _names;
+    private readonly WatchSessions? _watchSessions;
     private Timer? _timer;
+    private Timer? _sessionTimer;
 
     /// <summary>Initializes a new instance of the <see cref="PartyPush"/> class.</summary>
-    public PartyPush(ISessionManager sessions, PartnerHub partners, MediaBrowser.Controller.Library.IUserManager users)
+    public PartyPush(ISessionManager sessions, PartnerHub partners, MediaBrowser.Controller.Library.IUserManager users, WatchSessions? watchSessions = null)
     {
         _sessions = sessions;
+        _watchSessions = watchSessions;
         _partners = partners;
         _names = id => users.GetUserById(id)?.Username;
     }
@@ -112,12 +130,64 @@ public class PartyPush : IHostedService, IDisposable
             a.ChangeId, titles, names(a.From), a.From == member, a.Proposed, current, a.Outcome);
     }
 
+    /// <summary>
+    /// Who a session's news goes to: the whole group's Nitrate apps for a start or an end, else
+    /// only those in the session ([inSession]); never the one who did it, except their other devices for a start.
+    /// </summary>
+    public static IReadOnlyList<LiveApp> Targets(SessionAnnouncement a, IReadOnlyCollection<Guid> members, IReadOnlyCollection<Guid> inSession, IEnumerable<LiveApp> sessions) =>
+        Targets(
+            (a.ToGroup ? members : inSession.Where(members.Contains).ToList())
+                .Where(m => a.ToGroup || a.Event == WatchSessions.EventCountdown || m != a.By).ToList(),
+            sessions);
+
+    /// <summary>The message for [member] about session news [a] (null when they can't see the session any more).</summary>
+    public static SessionMessage? MessageFor(SessionAnnouncement a, Guid member, PartnerHub partners, WatchSessions sessions, Func<Guid, string?> names)
+    {
+        SessionView view;
+        (string Title, IReadOnlyList<string> Others)? group;
+        PartyView? party = null;
+        try
+        {
+            view = sessions.Get(member, a.SessionId);
+            group = partners.Names(member, a.GroupId);
+            if (group is not null)
+            {
+                try
+                {
+                    party = partners.Party(member, a.GroupId);
+                }
+                catch (PartnerException)
+                {
+                    // No party to pass along.
+                }
+            }
+        }
+        catch (PartnerException)
+        {
+            return null;
+        }
+
+        if (group is not { } g)
+        {
+            return null;
+        }
+
+        return new SessionMessage(SessionKind, a.GroupId, g.Title, g.Others, a.By is { } by ? names(by) : null, a.By == member, 0, party, a.Event, a.PositionMs, view);
+    }
+
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _partners.PartyAnnounced += OnAnnounced;
         _partners.ScheduleAnnounced += OnScheduleAnnounced;
         _timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30));
+        if (_watchSessions is not null)
+        {
+            _watchSessions.Announced += OnSessionAnnounced;
+            // Gatherings that are up start within a couple of seconds; nothing to do while no session is live.
+            _sessionTimer = new Timer(_ => SessionTick(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        }
+
         return Task.CompletedTask;
     }
 
@@ -127,6 +197,12 @@ public class PartyPush : IHostedService, IDisposable
         _partners.PartyAnnounced -= OnAnnounced;
         _partners.ScheduleAnnounced -= OnScheduleAnnounced;
         _timer?.Change(Timeout.Infinite, Timeout.Infinite);
+        if (_watchSessions is not null)
+        {
+            _watchSessions.Announced -= OnSessionAnnounced;
+        }
+
+        _sessionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
         return Task.CompletedTask;
     }
 
@@ -134,7 +210,31 @@ public class PartyPush : IHostedService, IDisposable
     public void Dispose()
     {
         _timer?.Dispose();
+        _sessionTimer?.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    private void SessionTick()
+    {
+        try
+        {
+            if (_watchSessions is { AnyLive: true } s)
+            {
+                s.Due();
+            }
+        }
+        catch (Exception)
+        {
+            // Try again next time.
+        }
+    }
+
+    private void OnSessionAnnounced(SessionAnnouncement a)
+    {
+        var sessions = _watchSessions!;
+        _ = Task.Run(() => SendAsync(
+            Targets(a, _partners.MembersOf(a.GroupId), sessions.PeopleIn(a.SessionId), Live()),
+            member => MessageFor(a, member, _partners, sessions, _names)));
     }
 
     private void Tick()
