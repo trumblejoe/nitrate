@@ -38,7 +38,7 @@ public record LogicSettingsPost(IReadOnlyDictionary<string, JsonElement> Values)
 [Produces(MediaTypeNames.Application.Json)]
 public class SettingsController : ControllerBase
 {
-    /// <summary>"Delete chats after" (days; 0 never, beyond the 3 years there always were).</summary>
+    /// <summary>"Delete chats after" (days; 0: never deleted).</summary>
     public const string ChatDays = "Chats.DeleteAfterDays";
 
     /// <summary>"Never delete chats from these users".</summary>
@@ -103,7 +103,7 @@ public class SettingsController : ControllerBase
             "Chats written while watching are kept for the people who were there. A chat someone there made a favourite (the heart in the apps' Chats list) is never deleted by these rules, nor are the chats it builds on.",
             new[]
             {
-                new LogicSetting(ChatDays, "Delete chats after (days)", "0 or empty: kept for 3 years, as always.", "number", JsonSerializer.SerializeToElement(chats.DeleteAfterDays)),
+                new LogicSetting(ChatDays, "Delete chats after (days)", "0 or empty: never deleted.", "number", JsonSerializer.SerializeToElement(chats.DeleteAfterDays)),
                 new LogicSetting(ChatKeepFrom, "Never delete chats from these users", "A chat with a message from anyone ticked here is kept.", "users", JsonSerializer.SerializeToElement(chats.Kept.Select(g => g.ToString("D")).ToList())),
             }),
     });

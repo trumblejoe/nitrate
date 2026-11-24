@@ -205,7 +205,6 @@ public class PeopleRecords
 
         var now = DateTimeOffset.UtcNow;
         _db.DeleteOlder("problem", now.AddDays(-ProblemDays).ToUnixTimeMilliseconds());
-        _db.DeleteOlder("chat", now.AddDays(-ChatDays).ToUnixTimeMilliseconds());
-        // Timeline notes and chat histories go by ChatKeeping's rules (favourites and kept people stay).
+        // Chats (the older live chat log, timeline notes and chat histories) go by ChatKeeping's rules: never deleted unless the admin sets a number of days.
     }
 }

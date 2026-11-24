@@ -317,20 +317,19 @@ public sealed class NoteChatsTests : IDisposable
     }
 
     [Fact]
-    public void WithNothingSetChatsAreKeptForThreeYearsAsAlways()
+    public void WithNothingSetChatsAreNeverDeleted()
     {
         var keeping = new ChatKeeping(_db, _book, _chats);
         Assert.Equal(0, keeping.Settings.DeleteAfterDays);
         Assert.Empty(keeping.Settings.Kept);
+        Assert.Null(keeping.Days(keeping.Settings));
         Group(Sam, Kim);
-        Write(Sam, 60_000, "kept a long while");
-        _time.Advance(TimeSpan.FromDays(365 * 2));
+        Write(Sam, 60_000, "kept for good");
+        _time.Advance(TimeSpan.FromDays(365 * 10));
         Assert.Equal(0, keeping.Prune(_time.GetUtcNow()));
-        _time.Advance(TimeSpan.FromDays(366));
-        Assert.Equal(1, keeping.Prune(_time.GetUtcNow()));
-        // A longer setting never keeps them past the three years either.
+        // A long setting is taken as it is, with no cap.
         keeping.Save(new ChatKeepingSettings(10_000));
-        Assert.Equal(PeopleRecords.ChatDays, keeping.Days(keeping.Settings));
+        Assert.Equal(10_000, keeping.Days(keeping.Settings));
     }
 
     [Fact]

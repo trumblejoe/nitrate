@@ -84,16 +84,38 @@ object NoteChats {
         if (chat.earlier) "Earlier notes" else date(chat.createdMs, offsetAt(chat.createdMs))
 
     /**
-     * The chat as listed: "2026/11/22 · Tommy, Suzy · 14 messages", "Earlier notes · Tommy · 3
-     * messages", or for one building on another "2026/11/24 · builds on 2026/11/22 · 3 new".
+     * The chat's first line in the list: its day and everyone in it, counting the chats it builds on
+     * ("2026/11/24 · Tommy, Suzy"; "Earlier notes · Tommy"; "You" when only the viewer wrote).
      */
-    fun label(chat: NoteChat, all: List<NoteChat>, offsetAt: (Long) -> Int): String {
-        val base = chat.buildsOn?.let { b -> all.firstOrNull { it.id == b } }
-        return if (base != null) {
-            "${name(chat, offsetAt)} · builds on ${name(base, offsetAt)} · ${chat.count} new"
-        } else {
-            "${name(chat, offsetAt)} · ${people(chat)} · ${count(chat.count)}"
+    fun title(chat: NoteChat, all: List<NoteChat>, offsetAt: (Long) -> Int): String {
+        val everyone = chain(chat, all).flatMap { it.people }.distinct()
+        return "${name(chat, offsetAt)} · " + everyone.joinToString(", ").ifEmpty { "You" }
+    }
+
+    /**
+     * The chat's second line: "14 messages", or for one building on another "3 new · builds on
+     * 2026/11/17 (Tommy, Suzy · 14 messages)".
+     */
+    fun detail(chat: NoteChat, all: List<NoteChat>, offsetAt: (Long) -> Int): String {
+        val base = chat.buildsOn?.let { b -> all.firstOrNull { it.id == b } } ?: return count(chat.count)
+        return "${chat.count} new · builds on ${name(base, offsetAt)} (${people(base)} · ${count(base.count)})"
+    }
+
+    /** Both lines as one, for what's read out: "2026/11/24 · Tommy, Suzy. 3 new · builds on …". */
+    fun label(chat: NoteChat, all: List<NoteChat>, offsetAt: (Long) -> Int): String =
+        "${title(chat, all, offsetAt)}. ${detail(chat, all, offsetAt)}"
+
+    /** The chat and those it builds on that the viewer can see, stopping at a loop. */
+    private fun chain(chat: NoteChat, all: List<NoteChat>): List<NoteChat> {
+        val seen = mutableListOf(chat)
+        var next = chat.buildsOn
+        while (next != null) {
+            val c = all.firstOrNull { it.id == next } ?: break
+            if (seen.any { it.id == c.id }) break
+            seen += c
+            next = c.buildsOn
         }
+        return seen
     }
 
     /** What the heart beside a chat says: "Favourite" or "Not a favourite". */

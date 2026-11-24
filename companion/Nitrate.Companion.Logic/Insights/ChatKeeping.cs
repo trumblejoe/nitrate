@@ -9,7 +9,7 @@ namespace Nitrate.Companion.Insights;
 /// How long chats are kept, as the admin set it on the dashboard page (through the logic's own
 /// settings, <c>/Nitrate/Settings</c>, so the shell's configuration stays as it is).
 /// </summary>
-/// <param name="DeleteAfterDays">Chats are deleted this many days after they were written (0: only after <see cref="PeopleRecords.ChatDays"/>, as always).</param>
+/// <param name="DeleteAfterDays">Chats are deleted this many days after they were written (0: never).</param>
 /// <param name="KeepFrom">Chats with a message from any of these people are never deleted by the time rules.</param>
 public record ChatKeepingSettings(int DeleteAfterDays = 0, IReadOnlyList<Guid>? KeepFrom = null)
 {
@@ -19,8 +19,7 @@ public record ChatKeepingSettings(int DeleteAfterDays = 0, IReadOnlyList<Guid>? 
 
 /// <summary>
 /// The time rules for chats (timeline notes and the chat histories over them): a message is deleted
-/// once it is older than the admin's "Delete chats after" (never longer than
-/// <see cref="PeopleRecords.ChatDays"/>, the limit there always was), unless its chat is kept: a
+/// once it is older than the admin's "Delete chats after" (0, the default: never), unless its chat is kept: a
 /// chat someone in its audience made a favourite, or one with a message from someone the admin
 /// keeps chats from; a kept chat keeps the chats it builds on too. Favourites of chats that are
 /// gone are forgotten. Run once a day by <see cref="ChatPruner"/>.
@@ -49,15 +48,20 @@ public class ChatKeeping
     public void Save(ChatKeepingSettings settings) =>
         _db.PutPair(PairKind, PairKey, JsonSerializer.Serialize(settings with { DeleteAfterDays = Math.Max(0, settings.DeleteAfterDays), KeepFrom = settings.Kept.Distinct().ToList() }));
 
-    /// <summary>How many days a message is kept now.</summary>
-    public int Days(ChatKeepingSettings settings) =>
-        settings.DeleteAfterDays > 0 ? Math.Min(settings.DeleteAfterDays, PeopleRecords.ChatDays) : PeopleRecords.ChatDays;
+    /// <summary>How many days a message is kept now; null when chats are never deleted (0, the default).</summary>
+    public int? Days(ChatKeepingSettings settings) =>
+        settings.DeleteAfterDays > 0 ? settings.DeleteAfterDays : null;
 
     /// <summary>Deletes what the time rules say is due at <paramref name="now"/>; the number of messages deleted.</summary>
     public int Prune(DateTimeOffset now)
     {
         var settings = Settings;
-        var before = now.AddDays(-Days(settings)).ToUnixTimeMilliseconds();
+        if (Days(settings) is not { } days)
+        {
+            return 0;
+        }
+
+        var before = now.AddDays(-days).ToUnixTimeMilliseconds();
         var kept = settings.Kept.ToHashSet();
         var titles = _db.Rows("SELECT DISTINCT owner, kind FROM records WHERE (kind = $n OR kind = $c) AND at < $at", ("$n", TimelineNoteBook.Kind), ("$c", NoteChatBook.Kind), ("$at", before))
             .Select(r => r.Key).Distinct().ToList();

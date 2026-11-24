@@ -1474,6 +1474,11 @@ class TvScreenshotTest {
     private fun focusedIs(text: String) =
         compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText(text, substring = false)).fetchSemanticsNodes().isNotEmpty()
 
+    private fun chooseExact(text: String) {
+        compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText(text, substring = false)).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+    }
+
     private fun choose(text: String) {
         compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText(text, substring = true)).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
@@ -1514,10 +1519,10 @@ class TvScreenshotTest {
         check(focusedHasText("Group chat: On")) { "Chats opens on its first line; focused: ${focusedNodes()}" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("builds on", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "a chat building on another says so" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Frank, Tommy", substring = true)).fetchSemanticsNodes().isEmpty()) { "another group's chats aren't offered" }
-        repeat(6) { if (!focusedHasText("Will · 14 messages")) press("down") }
-        check(focusedHasText("Will · 14 messages")) { "the earlier chats are reachable; focused: ${focusedNodes()}" }
-        check(textMatches(Regex("\\d{4}/\\d{2}/\\d{2} · Will · 14 messages"))) { "earlier chats are dated by the device's calendar" }
-        check(textMatches(Regex("\\d{4}/\\d{2}/\\d{2} · builds on \\d{4}/\\d{2}/\\d{2} · 3 new"))) { "and what they build on too" }
+        repeat(6) { if (!focusedExact("14 messages")) press("down") }
+        check(focusedExact("14 messages")) { "the earlier chats are reachable; focused: ${focusedNodes()}" }
+        check(textMatches(Regex("\\d{4}/\\d{2}/\\d{2} · Will")) && textMatches(Regex("14 messages"))) { "earlier chats are dated by the device's calendar" }
+        check(textMatches(Regex("3 new · builds on \\d{4}/\\d{2}/\\d{2} \\(Will · 14 messages\\)"))) { "and what they build on too" }
     }
 
     /**
@@ -1529,8 +1534,8 @@ class TvScreenshotTest {
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         choose("Chat: New chat")
-        repeat(6) { if (!focusedHasText("Will · 14 messages")) press("down") }
-        check(focusedHasText("Will · 14 messages")) { "on Tuesday's chat; focused: ${focusedNodes()}" }
+        repeat(6) { if (!focusedExact("14 messages")) press("down") }
+        check(focusedExact("14 messages")) { "on Tuesday's chat; focused: ${focusedNodes()}" }
         press("right")
         check(focusedHasDescription("Favourite")) { "▶ reaches its heart, a favourite; focused: ${focusedNodes()}" }
         press("ok")
@@ -1538,7 +1543,7 @@ class TvScreenshotTest {
         press("ok")
         check(focusedHasDescription("Favourite")) { "and puts it back; focused: ${focusedNodes()}" }
         press("left")
-        check(focusedHasText("Will · 14 messages")) { "◀ back on the chat's line; focused: ${focusedNodes()}" }
+        check(focusedExact("14 messages")) { "◀ back on the chat's line; focused: ${focusedNodes()}" }
         press("up", "right")
         check(focusedHasDescription("Not a favourite")) { "the chat building on it has its own heart; focused: ${focusedNodes()}" }
     }
@@ -1568,7 +1573,7 @@ class TvScreenshotTest {
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         choose("Chat: New chat")
-        choose("Will · 14 messages")
+        chooseExact("14 messages")
         check(focusedHasText("Chat: Playing along")) { "back on the panel, focus on the chat line, which says what plays along; focused: ${focusedNodes()}" }
         press("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
@@ -1783,6 +1788,11 @@ class TvScreenshotTest {
     private fun textMatches(r: Regex) =
         compose.onAllNodes(androidx.compose.ui.test.hasText("", substring = true), useUnmergedTree = true).fetchSemanticsNodes()
             .any { n -> n.config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.any { r.matches(it.text) } == true }
+
+    /** The focused thing has a line that reads exactly [text]. */
+    private fun focusedExact(text: String) =
+        compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText(text, substring = false), useUnmergedTree = false)
+            .fetchSemanticsNodes().isNotEmpty()
 
     private fun focusedHasText(text: String) =
         compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText(text, substring = true, ignoreCase = false), useUnmergedTree = false)

@@ -39,15 +39,23 @@ class NoteChatsTest {
     private val all = listOf(tonight, tuesday, nov, earlier)
 
     @Test fun chatsAreListedWithTheirDayPeopleAndCount() {
-        assertEquals("2026/11/17 · Tommy, Suzy · 14 messages", NoteChats.label(tuesday, all, utc))
-        assertEquals("2026/11/24 · builds on 2026/11/17 · 3 new", NoteChats.label(tonight, all, utc))
-        assertEquals("Earlier notes · You · 2 messages", NoteChats.label(earlier, all, utc))
+        assertEquals("2026/11/17 · Tommy, Suzy", NoteChats.title(tuesday, all, utc))
+        assertEquals("14 messages", NoteChats.detail(tuesday, all, utc))
+        // One building on another names everyone in both, and what it builds on underneath.
+        assertEquals("2026/11/24 · Tommy, Suzy", NoteChats.title(tonight, all, utc))
+        assertEquals("3 new · builds on 2026/11/17 (Tommy, Suzy · 14 messages)", NoteChats.detail(tonight, all, utc))
+        assertEquals("2026/11/24 · Tommy, Suzy. 3 new · builds on 2026/11/17 (Tommy, Suzy · 14 messages)", NoteChats.label(tonight, all, utc))
+        assertEquals("Earlier notes · You", NoteChats.title(earlier, all, utc))
+        // A loop stops.
+        val a = NoteChat("a", buildsOn = "b", people = listOf("Ann")); val b = NoteChat("b", buildsOn = "a", people = listOf("Bo"))
+        assertEquals("1970/01/01 · Ann, Bo", NoteChats.title(a, listOf(a, b), utc))
         assertEquals("1 message", NoteChats.count(1))
         assertEquals("New chat", NoteChats.playingLabel(null, all, utc))
         assertEquals("Playing along: 2026/11/17 · Tommy, Suzy", NoteChats.playingLabel("tue", all, utc))
         assertEquals("Playing along: Earlier notes", NoteChats.playingLabel("old", all, utc))
         // Building on one the viewer can't see: listed on its own.
-        assertEquals("2026/11/24 · Tommy · 3 messages", NoteChats.label(tonight, listOf(tonight), utc))
+        assertEquals("2026/11/24 · Tommy", NoteChats.title(tonight, listOf(tonight), utc))
+        assertEquals("3 messages", NoteChats.detail(tonight, listOf(tonight), utc))
         // The heart beside each says which it is.
         assertEquals("Not a favourite", NoteChats.heart(tuesday))
         assertEquals("Favourite", NoteChats.heart(tuesday.copy(favourite = true)))

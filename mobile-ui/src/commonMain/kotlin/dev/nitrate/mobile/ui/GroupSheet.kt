@@ -325,7 +325,7 @@ private fun ChatsList(
             items(offered, key = { it.id }) { c ->
                 // The heart keeps a chat: a favourite is never deleted by the server's time rules.
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { Choice(NoteChats.label(c, all, offsetAt), selected = playing == c.id) { onPick(c.id) } }
+                    Box(Modifier.weight(1f)) { Choice(NoteChats.title(c, all, offsetAt), selected = playing == c.id, detail = NoteChats.detail(c, all, offsetAt)) { onPick(c.id) } }
                     if (chat.canFavourite) {
                         IconButton(onClick = { scope.launch { chat.favourite(c.id, !c.favourite) } }) {
                             Icon(
