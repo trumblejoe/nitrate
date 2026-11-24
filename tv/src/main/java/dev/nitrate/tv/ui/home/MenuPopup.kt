@@ -122,11 +122,11 @@ internal fun MenuPopup(
     }
 
     BoxWithConstraints(
-        Modifier.fillMaxSize()
-            .graphicsLayer { alpha = appear.value }
-            .background(Color.Black.copy(alpha = if (black) 0.8f else 0.6f)),
+        Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
+        // Only the dimming fades; the card itself is solid from the first frame, so the page never shows through it.
+        Box(Modifier.matchParentSize().graphicsLayer { alpha = appear.value }.background(Color.Black.copy(alpha = if (black) 0.8f else 0.6f)))
         val cardWidth = min(maxWidth - 96.dp, 900.dp)
         val inner = cardWidth - CardPadding * 2
         val columns = ((inner + TileGap) / (TileMinWidth + TileGap)).toInt().coerceIn(2, 6)
@@ -140,7 +140,7 @@ internal fun MenuPopup(
                     val s = 0.9f + 0.1f * appear.value
                     scaleX = s; scaleY = s
                 }
-                .background(if (black) Color.Black else Color(0xFA121218), shape)
+                .background(if (black) Color.Black else Color(0xFF121218), shape)
                 .border(1.dp, Color.White.copy(alpha = if (black) 0.18f else 0.1f), shape)
                 // Back inside a group steps out to the main grid (the page's Back handling never sees it).
                 .onPreviewKeyEvent { e ->
@@ -215,6 +215,13 @@ private fun TileGrid(entries: List<NavEntry>, columns: Int, tileWidth: Dp, tile:
         var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
         Row(
             Modifier
+                .fillMaxWidth()
+                // Left/Right stay in the row: centred rows sit inset, so the search could jump diagonally to the top row.
+                .focusProperties {
+                    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+                    exit = { d -> if (d == FocusDirection.Left || d == FocusDirection.Right) FocusRequester.Cancel else FocusRequester.Default }
+                }
+                .focusGroup()
                 .bringIntoViewRequester(inView)
                 .onSizeChanged { size = it }
                 .onFocusChanged { f ->
@@ -223,7 +230,8 @@ private fun TileGrid(entries: List<NavEntry>, columns: Int, tileWidth: Dp, tile:
                         inView.bringIntoView(androidx.compose.ui.geometry.Rect(0f, -margin, size.width.toFloat(), size.height + margin))
                     }
                 },
-            horizontalArrangement = Arrangement.spacedBy(TileGap),
+            // Rows are centred, so a short last row sits in the middle rather than leaving a gap on the right.
+            horizontalArrangement = Arrangement.spacedBy(TileGap, Alignment.CenterHorizontally),
         ) {
             row.forEachIndexed { c, entry -> Box(Modifier.width(tileWidth)) { tile(r * columns + c, entry) } }
         }
