@@ -417,7 +417,7 @@ internal data class MomentDto(val id: String, val userId: String, val userName: 
 internal data class NoteDto(
     val id: String, val userId: String, val userName: String = "", val itemId: String, val positionMs: Long = 0,
     val kind: String = "Text", val text: String = "", val groupIds: List<String> = emptyList(), val at: Long = 0, val moment: Boolean = false,
-    val brought: Boolean = false,
+    val brought: Boolean = false, val chatId: String? = null,
 )
 
 @Serializable
@@ -427,7 +427,28 @@ internal data class NoteGroupDto(val id: String, val title: String = "")
 internal data class NotesPageDto(val groups: List<NoteGroupDto> = emptyList(), val notes: List<NoteDto> = emptyList())
 
 @Serializable
-internal data class NotePostDto(val itemId: String, val positionMs: Long, val text: String, val kind: String = "Text", val sessionId: String? = null, val groupIds: List<String>? = null)
+internal data class NotePostDto(
+    val itemId: String, val positionMs: Long, val text: String, val kind: String = "Text", val sessionId: String? = null, val groupIds: List<String>? = null,
+    val chats: Boolean = false, val chatId: String? = null, val buildsOn: String? = null,
+)
+
+@Serializable
+internal data class ChatViewDto(
+    val id: String, val groupId: String? = null, val created: Long = 0, val buildsOn: String? = null, val sessionId: String? = null,
+    val people: List<String> = emptyList(), val count: Int = 0, val earlier: Boolean = false,
+)
+
+@Serializable
+internal data class ChatsPageDto(val groups: List<NoteGroupDto> = emptyList(), val chats: List<ChatViewDto> = emptyList())
+
+@Serializable
+internal data class ChatNotesDto(val id: String, val chain: List<String> = emptyList(), val notes: List<NoteDto> = emptyList())
+
+@Serializable
+internal data class AlongPostDto(val itemId: String, val chatId: String?)
+
+@Serializable
+internal data class SessionChatDto(val chatId: String? = null, val along: String? = null, val by: String? = null, val notes: List<NoteDto> = emptyList())
 
 @Serializable
 internal data class BringPostDto(val groupId: String?)

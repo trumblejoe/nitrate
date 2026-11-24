@@ -26,7 +26,15 @@ public record ProblemPost(Guid ItemId, string DeviceId, string DeviceName, strin
 /// <param name="Kind">Text or a reaction.</param>
 /// <param name="SessionId">The live (SyncPlay) session it's sent in, if any: its participants get it at once and may read it later.</param>
 /// <param name="GroupIds">Only these of the caller's watch groups on the title (the group the playback counts for); null: all of them (feature <c>notegroups</c>).</param>
-public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Companion.Chat.ChatKind Kind = Nitrate.Companion.Chat.ChatKind.Text, Guid? SessionId = null, IReadOnlyList<Guid>? GroupIds = null);
+/// <param name="Chats">Written by an app with chat histories (feature <c>chats</c>): it goes into <see cref="ChatId"/>, or a new chat made now.</param>
+/// <param name="ChatId">The chat this playback has written in so far (from the first message's answer), if any.</param>
+/// <param name="BuildsOn">The earlier chat playing along (outside a live session), if any: a new chat links to it.</param>
+public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Companion.Chat.ChatKind Kind = Nitrate.Companion.Chat.ChatKind.Text, Guid? SessionId = null, IReadOnlyList<Guid>? GroupIds = null, bool Chats = false, Guid? ChatId = null, Guid? BuildsOn = null);
+
+/// <summary>An earlier chat to play along for everyone in a live session (null: stop).</summary>
+/// <param name="ItemId">The title it plays on.</param>
+/// <param name="ChatId">The chat.</param>
+public record AlongPost(Guid ItemId, Guid? ChatId);
 
 /// <summary>Which watch group's earlier notes to bring into a live session (null: stop).</summary>
 public record BringPost(Guid? GroupId);
@@ -234,7 +242,7 @@ public class InsightsController : ControllerBase
         // Only members of a watch group on this title, or someone in the live session, can write here.
         try
         {
-            return _groupNotes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, post.SessionId, post.GroupIds);
+            return _groupNotes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, post.SessionId, post.GroupIds, post.Chats ? new ChatWrite(post.ChatId, post.BuildsOn) : null);
         }
         catch (NoteForbiddenException)
         {
@@ -303,6 +311,76 @@ public class InsightsController : ControllerBase
         try
         {
             return _groupNotes.Brought(user.Id, sessionId, itemId);
+        }
+        catch (NoteForbiddenException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>
+    /// A title's chat histories the caller may see (at least one message they were in the audience
+    /// of; each counting only those), newest first, and their watch groups on it. Nothing of what
+    /// was said: that comes only when a chat is picked.
+    /// </summary>
+    [HttpGet("Chats")]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<ChatsPage> Chats([FromQuery] Guid itemId) =>
+        !ChatEnabled || Me() is not { } user ? Forbid() : _groupNotes.Chats(user.Id, itemId);
+
+    /// <summary>A chat picked to play along: its notes and those of the chats it builds on that the caller may read (404 when none of it).</summary>
+    [HttpGet("Chats/{chatId}")]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult<ChatNotes> Chat([FromRoute] Guid chatId, [FromQuery] Guid itemId)
+    {
+        if (!ChatEnabled || Me() is not { } user)
+        {
+            return Forbid();
+        }
+
+        return _groupNotes.Chat(user.Id, itemId, chatId) is { } chat ? chat : NotFound();
+    }
+
+    /// <summary>
+    /// Someone in a live session picks an earlier chat (one they may see) to play along for
+    /// everyone there; <see cref="AlongPost.ChatId"/> null stops it. The others hear of it through
+    /// the session's chat (its <c>Brought</c> moves on).
+    /// </summary>
+    [HttpPut("Chats/Session/{sessionId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult PlayAlong([FromRoute] Guid sessionId, [FromBody] AlongPost post)
+    {
+        if (!ChatEnabled || Me() is not { } user)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            _groupNotes.PlayAlong(user.Id, sessionId, post.ItemId, post.ChatId);
+            return NoContent();
+        }
+        catch (NoteForbiddenException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>A live session's chat on a title: the chat written there and the earlier one playing along, with its notes (403 once the caller is no longer in it).</summary>
+    [HttpGet("Chats/Session/{sessionId}")]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<SessionChatView> SessionChat([FromRoute] Guid sessionId, [FromQuery] Guid itemId)
+    {
+        if (!ChatEnabled || Me() is not { } user)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            return _groupNotes.SessionChat(user.Id, sessionId, itemId);
         }
         catch (NoteForbiddenException)
         {

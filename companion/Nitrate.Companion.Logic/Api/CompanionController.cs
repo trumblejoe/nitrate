@@ -93,6 +93,9 @@ public class CompanionController : ControllerBase
             features.Add("livenotes");
             // A note can go to just the watch group a playback counts for (NotePost.GroupIds).
             features.Add("notegroups");
+            // Chat histories: one per playback or session, made with its first message, building on an
+            // earlier one picked to play along (GET /Nitrate/Chats, NotePost.Chats, /Nitrate/Chats/Session).
+            features.Add("chats");
         }
 
         if (ChatEnabled && (Plugin.Instance?.Configuration.KeepChatHistory ?? true))

@@ -47,6 +47,8 @@ public sealed class RealLogicTests : IDisposable
     [InlineData("GET", "/Nitrate/Chat/6f9619ff-8b86-d011-b42d-00cf4fc964ff/Messages", false)]
     [InlineData("PUT", "/Nitrate/Notes/Brought/6f9619ff-8b86-d011-b42d-00cf4fc964ff", false)]
     [InlineData("DELETE", "/Nitrate/Notes/abc", false)]
+    [InlineData("GET", "/Nitrate/Chats/6f9619ff-8b86-d011-b42d-00cf4fc964ff", false)]
+    [InlineData("PUT", "/Nitrate/Chats/Session/6f9619ff-8b86-d011-b42d-00cf4fc964ff", false)]
     [InlineData("GET", "/Nitrate/Sso", true)]
     [InlineData("POST", "/Nitrate/Sso/Poll", true)]
     [InlineData("GET", "/Nitrate/Sso/Callback", true)]

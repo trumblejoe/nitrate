@@ -207,5 +207,6 @@ public class PeopleRecords
         _db.DeleteOlder("problem", now.AddDays(-ProblemDays).ToUnixTimeMilliseconds());
         _db.DeleteOlder("chat", now.AddDays(-ChatDays).ToUnixTimeMilliseconds());
         _db.DeleteOlder(TimelineNoteBook.Kind, now.AddDays(-ChatDays).ToUnixTimeMilliseconds());
+        _db.DeleteOlder(NoteChatBook.Kind, now.AddDays(-ChatDays).ToUnixTimeMilliseconds());
     }
 }

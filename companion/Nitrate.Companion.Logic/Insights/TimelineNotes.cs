@@ -34,7 +34,8 @@ public record NoteShare(Guid GroupId, IReadOnlyList<Guid> Members);
 /// people may read it. Null on notes kept before audiences (read by the older rule).
 /// </param>
 /// <param name="SessionId">The live (SyncPlay) session it was sent in, if any.</param>
-public record TimelineNote(Guid Id, Guid UserId, string UserName, Guid ItemId, long PositionMs, string Kind, string Text, IReadOnlyList<NoteShare> Shares, long At, IReadOnlyList<Guid>? Audience = null, Guid? SessionId = null);
+/// <param name="ChatId">The chat history it was written in (<see cref="NoteChat"/>); null on notes kept before them (read by <see cref="NoteChatBook.LegacyId"/>).</param>
+public record TimelineNote(Guid Id, Guid UserId, string UserName, Guid ItemId, long PositionMs, string Kind, string Text, IReadOnlyList<NoteShare> Shares, long At, IReadOnlyList<Guid>? Audience = null, Guid? SessionId = null, Guid? ChatId = null);
 
 /// <summary>A live (SyncPlay) session a message is sent in.</summary>
 /// <param name="Id">The SyncPlay group.</param>
@@ -60,7 +61,8 @@ public record LiveSession(Guid Id, IReadOnlyList<Guid> Participants, bool Keep =
 /// Brought into a live session by someone who may read it ("Bring our earlier notes"): shown in
 /// that session only, never kept for the caller.
 /// </param>
-public record NoteView(Guid Id, Guid UserId, string UserName, Guid ItemId, long PositionMs, string Kind, string Text, IReadOnlyList<Guid> GroupIds, long At, bool Moment = false, bool Brought = false);
+/// <param name="ChatId">The chat history it belongs to (older notes: the one they're read as).</param>
+public record NoteView(Guid Id, Guid UserId, string UserName, Guid ItemId, long PositionMs, string Kind, string Text, IReadOnlyList<Guid> GroupIds, long At, bool Moment = false, bool Brought = false, Guid? ChatId = null);
 
 /// <summary>One of the caller's groups on a title.</summary>
 /// <param name="Id">The group.</param>
@@ -106,6 +108,9 @@ public class TimelineNoteBook
         _time = time;
     }
 
+    /// <summary>The database the notes are kept in (chat histories sit beside them).</summary>
+    internal CompanionDb Db => _db;
+
     /// <summary>How long a pin without a session that repeats one just sent in a live session is taken as that one (older apps sent both).</summary>
     public static readonly TimeSpan SameMessage = TimeSpan.FromSeconds(10);
 
@@ -116,7 +121,11 @@ public class TimelineNoteBook
     /// groups the session is for (someone else from the group is there).
     /// </summary>
     /// <exception cref="ChatRejectedException">Empty, too long, not one emoji, too fast, or nobody to write to.</exception>
-    public TimelineNote Pin(Guid user, string userName, Guid itemId, long positionMs, ChatKind kind, string? text, IReadOnlyList<GroupMembers> groups, LiveSession? session = null)
+    public TimelineNote Pin(Guid user, string userName, Guid itemId, long positionMs, ChatKind kind, string? text, IReadOnlyList<GroupMembers> groups, LiveSession? session = null) =>
+        Pin(user, userName, itemId, positionMs, kind, text, groups, session, null);
+
+    /// <summary>The same, written into a chat history: <paramref name="chat"/> is given the groups it goes to and returns the chat (null: none, as older apps write).</summary>
+    public TimelineNote Pin(Guid user, string userName, Guid itemId, long positionMs, ChatKind kind, string? text, IReadOnlyList<GroupMembers> groups, LiveSession? session, Func<IReadOnlyList<NoteShare>, Guid?>? chat)
     {
         var body = ChatHub.Check(kind, text);
         var mineGroups = groups.Where(g => g.Members.Contains(user));
@@ -154,7 +163,7 @@ public class TimelineNoteBook
 
         var keepFor = session is { Keep: true } ? session.Participants : Array.Empty<Guid>();
         var audience = new[] { user }.Concat(shares.SelectMany(s => s.Members)).Concat(keepFor).Distinct().ToList();
-        var note = new TimelineNote(Guid.NewGuid(), user, userName, itemId, Math.Max(0, positionMs), kind.ToString(), body, shares, now.ToUnixTimeMilliseconds(), audience, session?.Id);
+        var note = new TimelineNote(Guid.NewGuid(), user, userName, itemId, Math.Max(0, positionMs), kind.ToString(), body, shares, now.ToUnixTimeMilliseconds(), audience, session?.Id, chat?.Invoke(shares));
         if (session is not null)
         {
             lock (_lock)
@@ -216,7 +225,7 @@ public class TimelineNoteBook
             }
         }
 
-        return new NoteView(note.Id, note.UserId, note.UserName, note.ItemId, note.PositionMs, note.Kind, note.Text, groups, note.At);
+        return new NoteView(note.Id, note.UserId, note.UserName, note.ItemId, note.PositionMs, note.Kind, note.Text, groups, note.At, ChatId: NoteChatBook.ChatOf(note));
     }
 
     /// <summary>Whether <paramref name="caller"/> may read the note (see the class summary).</summary>

@@ -149,6 +149,7 @@ public sealed class CompanionLogic : ICompanionLogic
         Put(HandOver.Chat, () => _services.GetRequiredService<Chat.ChatHub>().ExportState());
         Put(HandOver.Invites, () => _services.GetRequiredService<Together.InviteHub>().ExportState());
         Put(HandOver.Brought, () => _services.GetRequiredService<Insights.GroupNotes>().ExportState());
+        Put(HandOver.SessionChats, () => _services.GetRequiredService<Insights.GroupNotes>().ExportAlong());
         Put(HandOver.Sso, () => _services.GetRequiredService<Sso.SsoService>().ExportState());
         Put(HandOver.QueryTimes, () => _services.GetRequiredService<QueryTimes.QueryTimeStore>().ExportState());
         Put(HandOver.Because, () => _services.GetRequiredService<Recommendations.BecauseStore>().ExportState());
@@ -184,6 +185,7 @@ public sealed class CompanionLogic : ICompanionLogic
         Take<Chat.ChatState>(HandOver.Chat, s => _services.GetRequiredService<Chat.ChatHub>().ImportState(s));
         Take<List<Together.WatchInvite>>(HandOver.Invites, s => _services.GetRequiredService<Together.InviteHub>().ImportState(s));
         Take<List<Insights.BroughtState>>(HandOver.Brought, s => _services.GetRequiredService<Insights.GroupNotes>().ImportState(s));
+        Take<List<Insights.AlongState>>(HandOver.SessionChats, s => _services.GetRequiredService<Insights.GroupNotes>().ImportAlong(s));
         Take<List<Sso.PendingSignInState>>(HandOver.Sso, s => _services.GetRequiredService<Sso.SsoService>().ImportState(s));
         Take<QueryTimes.QueryTimesState>(HandOver.QueryTimes, s => _services.GetRequiredService<QueryTimes.QueryTimeStore>().ImportState(s));
         Take<Dictionary<Guid, Recommendations.BecauseSet>>(HandOver.Because, s => _services.GetRequiredService<Recommendations.BecauseStore>().ImportState(s));

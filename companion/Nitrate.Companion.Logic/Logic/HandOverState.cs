@@ -34,6 +34,14 @@ namespace Nitrate.Companion.Insights
     /// <param name="At">When.</param>
     public record BroughtState(Guid SessionId, Guid GroupId, Guid By, DateTimeOffset At);
 
+    /// <summary>An earlier chat playing along in a live session (<c>sessionchats.v1</c>).</summary>
+    /// <param name="SessionId">The session.</param>
+    /// <param name="ItemId">The title it plays on.</param>
+    /// <param name="ChatId">The chat.</param>
+    /// <param name="By">Who picked it.</param>
+    /// <param name="At">When.</param>
+    public record AlongState(Guid SessionId, Guid ItemId, Guid ChatId, Guid By, DateTimeOffset At);
+
     /// <summary>An open sitting (<c>sittings.v1</c>).</summary>
     /// <param name="Key">The play session and item.</param>
     /// <param name="Started">When it started.</param>
@@ -110,6 +118,9 @@ namespace Nitrate.Companion.Logic
 
         /// <summary>Brought notes (<see cref="Insights.GroupNotes"/>).</summary>
         public const string Brought = "brought.v1";
+
+        /// <summary>Earlier chats playing along in live sessions (<see cref="Insights.GroupNotes"/>).</summary>
+        public const string SessionChats = "sessionchats.v1";
 
         /// <summary>Sign-ins under way (<see cref="SsoService"/>).</summary>
         public const string Sso = "sso.v1";

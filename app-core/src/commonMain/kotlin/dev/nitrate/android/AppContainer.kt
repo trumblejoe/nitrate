@@ -207,12 +207,14 @@ class AppContainer(
      * title's notes pinned along it, popping up as they're reached. The player calls `start` and
      * `at`, and `close` when it goes. When the title turns out to be shared with a watch group (its
      * notes, loaded anyway, list the groups), the groups are reloaded once for this playback, so new
-     * members and renamed accounts are known; unshared titles cost nothing more.
+     * members and renamed accounts are known; unshared titles cost nothing more. With chat histories
+     * (Companion `chats`) it starts on a new chat and plays an earlier one only when picked.
      */
     fun timelineChat(scope: kotlinx.coroutines.CoroutineScope, live: Boolean): dev.nitrate.core.companion.TimelineChat =
         dev.nitrate.core.companion.TimelineChat(
             server, scope, { server.userId }, chat.takeIf { live },
             liveNotes = { companionState.value?.features?.contains("livenotes") != false },
+            chatsOn = { companionState.value?.features?.contains("chats") == true },
             onShared = { networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch partners")) { refreshPartners() } },
         ) { nowMs() }
 

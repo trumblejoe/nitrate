@@ -157,6 +157,36 @@ interface MediaServer {
      */
     suspend fun bringNotes(sessionId: String, groupId: String?): Unit = unsupported()
 
+    /**
+     * A title's chat histories the caller may see, newest first, and their watch groups on it
+     * (Companion `chats`; nothing of what was said); null on servers without chat histories.
+     */
+    suspend fun titleChats(itemId: String): dev.nitrate.core.companion.TitleChats? = null
+
+    /**
+     * A chat picked to play along (`chats`): its notes and those of the chats it builds on that the
+     * caller may read, earliest in the title first. Empty when none of it is theirs to read.
+     */
+    suspend fun chatNotes(itemId: String, chatId: String): List<dev.nitrate.core.companion.TimelineNote> = emptyList()
+
+    /**
+     * Pins a message into a chat history (`chats`): [chat]'s chat (this playback's, from the first
+     * message's answer), else a new one made now, building on the chat playing along. In a live
+     * session ([sessionId]) the server keeps one chat for everyone there. The answer's
+     * [dev.nitrate.core.companion.TimelineNote.chatId] says which. Servers without `chats` pin it as [pinNote] does.
+     */
+    suspend fun pinChatNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?, groupIds: List<String>?, chat: dev.nitrate.core.companion.ChatWrite): dev.nitrate.core.companion.TimelineNote =
+        pinNote(itemId, positionMs, kind, text, sessionId, groupIds)
+
+    /**
+     * Plays an earlier chat along for everyone in the live session [sessionId] on [itemId]
+     * (`chats`; null stops it). Throws [dev.nitrate.core.companion.ChatForbidden] outside the session or for a chat the caller can't see.
+     */
+    suspend fun playAlong(sessionId: String, itemId: String, chatId: String?): Unit = unsupported()
+
+    /** The live session's chat on [itemId] (`chats`): the chat written there and the earlier one playing along with its notes; null when not in it. */
+    suspend fun sessionChat(sessionId: String, itemId: String): dev.nitrate.core.companion.SessionChat? = null
+
     /** The notes brought into the live session [sessionId] on [itemId] (`livenotes`); empty when none or not in it. */
     suspend fun broughtNotes(sessionId: String, itemId: String): List<dev.nitrate.core.companion.TimelineNote> = emptyList()
 

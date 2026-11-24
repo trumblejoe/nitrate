@@ -32,6 +32,7 @@ public sealed class HandOverTests : IDisposable
         s.GetRequiredService<ChatHub>().Post("room", Alex, "Alex", ChatKind.Text, "hi", 2000);
         s.GetRequiredService<InviteHub>().Send(Sam, "Sam", [Alex], "group-1", "item", "A film", _ => true);
         s.GetRequiredService<GroupNotes>().ImportState([new BroughtState(Guid.Parse("00000000-0000-0000-0000-0000000000c1"), Guid.Parse("00000000-0000-0000-0000-0000000000c2"), Sam, DateTimeOffset.UtcNow)]);
+        s.GetRequiredService<GroupNotes>().ImportAlong([new AlongState(Guid.Parse("00000000-0000-0000-0000-0000000000c1"), Guid.Parse("00000000-0000-0000-0000-0000000000c3"), Guid.Parse("00000000-0000-0000-0000-0000000000c4"), Sam, DateTimeOffset.UtcNow)]);
         s.GetRequiredService<SsoService>().ImportState([new PendingSignInState("ABCD2345", "secret", new SsoDevice("d", "TV", "Nitrate", "1"), DateTimeOffset.UtcNow.AddMinutes(5), "state", "nonce", "verifier", "https://x/cb", Sam, "sam", null)]);
         s.GetRequiredService<QueryTimeStore>().Record(Sam, "run1-1", 42, "GET /Items");
         s.GetRequiredService<BecauseStore>().Put(Sam, new BecauseSet(DateTimeOffset.UtcNow, [new BecauseRow(Guid.Empty, "Seed", [Alex])]));
@@ -41,7 +42,7 @@ public sealed class HandOverTests : IDisposable
         var state = first.ExportState();
         await first.DisposeAsync();
         Assert.Equal(
-            [HandOver.Because, HandOver.Brought, HandOver.Chat, HandOver.GroupSessions, HandOver.Invites, HandOver.QueryTimes, HandOver.Sittings, HandOver.Sso, HandOver.Together, HandOver.WatchSessions],
+            [HandOver.Because, HandOver.Brought, HandOver.Chat, HandOver.GroupSessions, HandOver.Invites, HandOver.QueryTimes, HandOver.SessionChats, HandOver.Sittings, HandOver.Sso, HandOver.Together, HandOver.WatchSessions],
             state.Keys.Order().ToArray());
 
         var next = new CompanionLogic(Context(state, stopping.Token));
@@ -54,6 +55,7 @@ public sealed class HandOverTests : IDisposable
         Assert.DoesNotContain((await chat.WaitAsync("room", -1, TimeSpan.Zero, CancellationToken.None, viewer: Guid.NewGuid())).Messages, m => m.Text == "hello");
         Assert.Equal("A film", Assert.Single(n.GetRequiredService<InviteHub>().For(Alex)).ItemName);
         Assert.Single(n.GetRequiredService<GroupNotes>().ExportState());
+        Assert.Equal(Sam, Assert.Single(n.GetRequiredService<GroupNotes>().ExportAlong()).By);
         Assert.Equal((Sam, "sam"), n.GetRequiredService<SsoService>().Find("abcd-2345")!.User);
         Assert.Equal(42, Assert.Single(n.GetRequiredService<QueryTimeStore>().For(Sam, "run1")).Ms);
         Assert.Equal("Seed", n.GetRequiredService<BecauseStore>().Get(Sam)!.Rows[0].SeedName);

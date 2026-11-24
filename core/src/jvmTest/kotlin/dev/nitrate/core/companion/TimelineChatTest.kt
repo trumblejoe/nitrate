@@ -159,7 +159,6 @@ class TimelineChatTest {
         val pins = mutableListOf<String?>()
         var liveSends = 0
         var loads = 0
-        val brings = mutableListOf<String?>()
         override suspend fun titleNotes(itemId: String): TitleNotes { loads++; return TitleNotes(groups, stored) }
         override suspend fun pinNote(itemId: String, positionMs: Long, kind: ChatKind, text: String, sessionId: String?): TimelineNote {
             pins += sessionId
@@ -169,7 +168,6 @@ class TimelineChatTest {
         override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int): ChatPage =
             if (after < 0) ChatPage(emptyList(), 0) else pages.receive()
         override suspend fun broughtNotes(sessionId: String, itemId: String) = if (sessionId == "sess") brought else emptyList()
-        override suspend fun bringNotes(sessionId: String, groupId: String?) { brings += groupId }
     }
 
     @Test fun inALiveSessionAMessageIsWrittenOnceAsANoteAndArrivesLiveAsThatNote() = runTest(UnconfinedTestDispatcher()) {
@@ -233,17 +231,14 @@ class TimelineChatTest {
         advanceUntilIdle()
         (26..45L).forEach { chat.at(it * 1_000) }
         assertEquals(listOf("b1", "b2"), popped.map { it.id })
-        assertTrue(chat.bring("g1").isSuccess)
-        assertEquals(listOf<String?>("g1"), server.brings)
 
-        // Outside a live session there's nothing brought (and nothing to bring into).
+        // Outside a live session there's nothing brought.
         val alone = TimelineChat(server, backgroundScope, { "me" }, null) { 0 }
         alone.start("ep1", 0) { true }
         advanceUntilIdle()
         assertEquals(emptyList<TimelineNote>(), alone.history.value)
         (0..45L).forEach { alone.at(it * 1_000) }
         assertEquals(emptyList<TimelineNote>(), alone.history.value.filter { it.brought })
-        assertTrue(alone.bring("g1").isFailure)
     }
 }
 

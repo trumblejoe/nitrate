@@ -37,6 +37,8 @@ data class TimelineNote(
     val brought: Boolean = false,
     /** Who brought it in (their user id), for a brought note. */
     val broughtBy: String? = null,
+    /** The chat history it was written in (Companion `chats`; older notes: the one they're read as). */
+    val chatId: String? = null,
 )
 
 /** One of the viewer's watch groups on a title. */
@@ -181,13 +183,16 @@ class NoteClock(private val selfId: () -> String?) {
 }
 
 /**
- * Group chat for one playback: the title's pinned notes (loaded once as it starts, again only
- * every [REFRESH_MS] or when the chat is opened after [REOPEN_MS]), pop-ups as the viewer reaches
- * them, live messages from this device's Group Watch Session at once, and sending. Every message is
- * written once, as a note (Companion `livenotes`): in a live session with the session, whose
- * participants get it at once through its chat and keep it; otherwise for the viewer's watch
- * groups on the title. In a live session, notes someone brought in ("Bring our earlier notes",
- * [bring]) pop up as they're reached too, for this session only.
+ * Group chat for one playback. With chat histories (Companion `chats`) a playback starts on a
+ * **New chat**: nothing earlier loads or pops up unasked (one request lists the title's chats and
+ * the viewer's groups on it, nothing of what was said), the chat is made on the server only with
+ * the first message written here, and [play] picks an earlier chat to play along (its notes, and
+ * those of the chats it builds on, pop up as playback passes them; a chat written meanwhile links to
+ * it, nothing is copied). In a Group Watch Session everyone shares one chat, and a chat picked by
+ * anyone there plays for everyone. Without `chats` it is as before: the title's pinned notes
+ * (loaded once as it starts, again only every [REFRESH_MS] or when the chat is opened after
+ * [REOPEN_MS]) pop up as they're reached, and notes someone in the session brought in (older apps'
+ * "Bring our earlier notes") too. Live messages from this device's Group Watch Session show at once.
  */
 class TimelineChat(
     private val server: MediaServer,
@@ -199,6 +204,8 @@ class TimelineChat(
     private val liveNotes: () -> Boolean = { true },
     /** The title turned out to be shared with a watch group (once per playback): the app reloads its groups. */
     private val onShared: () -> Unit = {},
+    /** Whether the server keeps chat histories (`chats`). */
+    private val chatsOn: () -> Boolean = { false },
     private val nowMs: () -> Long,
 ) {
     private val clock = NoteClock(selfId)
@@ -210,6 +217,10 @@ class TimelineChat(
     private var pageNotes: List<TimelineNote> = emptyList()
     private var brought: List<TimelineNote> = emptyList()
     private var sharedTold = false
+    private var chatsMode = false
+    private var writing: String? = null
+    private var along: List<TimelineNote> = emptyList()
+    private var here: List<TimelineNote> = emptyList()
 
     /** The live session this device is in, if any. */
     private val sessionId: String? get() = live?.groupId?.value
@@ -237,6 +248,22 @@ class TimelineChat(
     /** Who brought earlier notes into this watch party (user id; null: nobody), for the player's panel. */
     val broughtBy: StateFlow<String?> = _broughtBy
 
+    private val _allChats = MutableStateFlow<List<NoteChat>>(emptyList())
+    /** Every chat on the title the viewer may see (for labels: what a chat builds on). */
+    val allChats: StateFlow<List<NoteChat>> = _allChats
+
+    private val _chats = MutableStateFlow<List<NoteChat>>(emptyList())
+    /** The earlier chats to offer under "Chats" (for the groups this counts for), newest first. */
+    val chats: StateFlow<List<NoteChat>> = _chats
+
+    private val _hasChats = MutableStateFlow(false)
+    /** The server keeps chat histories: "Chats" can be offered. */
+    val hasChats: StateFlow<Boolean> = _hasChats
+
+    private val _playing = MutableStateFlow<String?>(null)
+    /** The earlier chat playing along (null: New chat). In a Group Watch Session, the one picked for everyone. */
+    val playing: StateFlow<String?> = _playing
+
     private val _popups = MutableSharedFlow<TimelineNote>(extraBufferCapacity = 32)
     /** Notes to pop up over the video, as they're reached (or arrive live). */
     val popups: SharedFlow<TimelineNote> = _popups
@@ -261,7 +288,12 @@ class TimelineChat(
     fun focus(groupIds: List<String>?) {
         if (focus == groupIds) return
         focus = groupIds
+        offer()
         showNotes()
+    }
+
+    private fun offer() {
+        _chats.value = NoteChats.offered(_allChats.value, focus, writing)
     }
 
     private fun inFocus(n: TimelineNote): Boolean {
@@ -284,6 +316,14 @@ class TimelineChat(
         pageNotes = emptyList()
         brought = emptyList()
         sharedTold = false
+        chatsMode = chatsOn()
+        _hasChats.value = false
+        writing = null
+        along = emptyList()
+        here = emptyList()
+        _playing.value = null
+        _allChats.value = emptyList()
+        _chats.value = emptyList()
         clock.setNotes(emptyList())
         _groups.value = emptyList()
         publish()
@@ -299,12 +339,12 @@ class TimelineChat(
                 }
             }
         }
-        // Someone brought (or stopped bringing) earlier notes into the session: ask for them again.
+        // Someone brought (or stopped bringing) earlier notes into the session, or picked a chat to play along: ask again.
         broughtJob = live?.let { chat ->
             scope.launch {
                 var seen: Long? = null
                 chat.brought.collect { n ->
-                    if (seen != null && n != seen) loadBrought()
+                    if (seen != null && n != seen) if (chatsMode) loadSessionChat() else loadBrought()
                     seen = n
                 }
             }
@@ -312,9 +352,68 @@ class TimelineChat(
     }
 
     private fun showNotes() {
+        if (chatsMode) {
+            // Only what was asked for: the chat playing along, and what's written here.
+            clock.setNotes(NoteChats.showing(along, here))
+            publish()
+            return
+        }
         _broughtBy.value = brought.firstNotNullOfOrNull { it.broughtBy }
         clock.setNotes(pageNotes.filter(::inFocus) + brought.filter { b -> pageNotes.none { it.id == b.id } })
         publish()
+    }
+
+    /** This device's Group Watch Session's chat on the title: what plays along for everyone, and the chat written there. */
+    private fun loadSessionChat() {
+        val id = itemId ?: return
+        val session = sessionId ?: return
+        scope.launch {
+            val shared = try {
+                server.sessionChat(session, id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } ?: return@launch
+            if (itemId != id) return@launch
+            applySession(shared)
+        }
+    }
+
+    private fun applySession(shared: SessionChat) {
+        writing = shared.chatId ?: writing
+        _playing.value = shared.along
+        _broughtBy.value = shared.by
+        along = shared.notes
+        offer()
+        showNotes()
+    }
+
+    /**
+     * Plays an earlier chat along ([chatId]; null: New chat, nothing earlier): its notes, and those
+     * of the chats it builds on, pop up as continuous playback passes them and list up to the
+     * furthest point reached. In a Group Watch Session it plays for everyone there. A chat written
+     * here from now on links to it. Fails without chat histories, or outside the session.
+     */
+    suspend fun play(chatId: String?): Result<Unit> {
+        val id = itemId ?: return Result.failure(IllegalStateException("Nothing is playing"))
+        if (!chatsMode) return Result.failure(UnsupportedOperationException("This server keeps no chat histories"))
+        val session = sessionId
+        if (session != null) {
+            return runCatching { server.playAlong(session, id, chatId) }.onSuccess { loadSessionChat() }
+        }
+        _playing.value = chatId
+        if (chatId == null) {
+            along = emptyList()
+            showNotes()
+            return Result.success(Unit)
+        }
+        return runCatching { server.chatNotes(id, chatId) }.onSuccess { notes ->
+            if (itemId == id && _playing.value == chatId) {
+                along = notes
+                showNotes()
+            }
+        }.map { }
     }
 
     /** The notes brought into this device's live session on this title (none outside one). */
@@ -339,20 +438,14 @@ class TimelineChat(
         }
     }
 
-    /**
-     * "Bring our earlier notes" from watch group [groupId] (one the viewer is or was in; null
-     * stops) into this device's live session: everyone there gets them as playback passes them,
-     * for this session only. Fails outside a live session or on servers without `livenotes`.
-     */
-    suspend fun bring(groupId: String?): Result<Unit> {
-        val session = sessionId ?: return Result.failure(IllegalStateException("Not watching now together"))
-        return runCatching { server.bringNotes(session, groupId) }.onSuccess { loadBrought() }
-    }
-
     private fun load() {
         val id = itemId ?: return
         loadedAt = nowMs()
         loadJob?.cancel()
+        if (chatsMode) {
+            loadJob = scope.launch { loadChats(id) }
+            return
+        }
         loadJob = scope.launch {
             val page = try {
                 server.titleNotes(id)
@@ -377,6 +470,48 @@ class TimelineChat(
             brought = broughtNow
             showNotes()
         }
+    }
+
+    /** The title's chats (one request, nothing of what was said) and, in a session, its shared chat. */
+    private suspend fun loadChats(id: String) {
+        val page = try {
+            server.titleChats(id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        val session = sessionId
+        val shared = if (session == null) null else try {
+            server.sessionChat(session, id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        if (itemId != id) return
+        if (page == null) {
+            // A server that turned chat histories off (or couldn't answer): as before.
+            if (!_hasChats.value && !chatsOn()) {
+                chatsMode = false
+                load()
+            }
+            return
+        }
+        _hasChats.value = true
+        _groups.value = page.groups
+        _allChats.value = page.chats
+        if (page.groups.isNotEmpty() && !sharedTold) {
+            sharedTold = true
+            onShared()
+        }
+        if (!turned) {
+            val on = onFor(keys)
+            clock.initially(on)
+            _on.value = on
+        }
+        if (shared != null) applySession(shared) else offer()
+        showNotes()
     }
 
     /** Playback is at [positionMs] (call about once a second): pops up what's been reached; reloads rarely. */
@@ -421,6 +556,7 @@ class TimelineChat(
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Result.failure(ChatRejected("The message is empty.", tooFast = false))
         val session = sessionId
+        if (chatsMode) return sendToChat(id, trimmed, kind, positionMs, session)
         if (session != null && liveNotes()) {
             return runCatching { server.pinNote(id, positionMs, kind, trimmed, sessionId = session) }.onSuccess {
                 clock.own(it)
@@ -443,6 +579,27 @@ class TimelineChat(
         clock.own(note)
         publish()
         return Result.success(note)
+    }
+
+    /** Written into this playback's chat (made on the server with its first message), linking to the chat playing along. */
+    private suspend fun sendToChat(id: String, text: String, kind: ChatKind, positionMs: Long, session: String?): Result<TimelineNote> {
+        val to = focus
+        if (session == null && (_groups.value.isEmpty() || to != null && _groups.value.none { it.id in to })) {
+            return Result.failure(
+                ChatRejected(
+                    if (_groups.value.isEmpty()) "No watch group for this title." else "You're watching just for you, so nothing is sent. Count it for a watch group to write a note.",
+                    tooFast = false,
+                ),
+            )
+        }
+        return runCatching {
+            server.pinChatNote(id, positionMs, kind, text, session, to.takeIf { session == null }, ChatWrite(writing, _playing.value.takeIf { session == null }))
+        }.onSuccess { note ->
+            note.chatId?.let { if (writing != it) { writing = it; offer() } }
+            here = here + note
+            clock.own(note)
+            showNotes()
+        }
     }
 
     /** Stops listening to the live group (the player closed). */
