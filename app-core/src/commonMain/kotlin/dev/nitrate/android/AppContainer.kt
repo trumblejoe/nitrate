@@ -349,6 +349,7 @@ class AppContainer(
     init {
         // Kept as fresh as Home's row: an invite that arrived since the app opened answers a tap on its card.
         server.onPartnersLoaded { partnersState.value = it }
+        server.onPlaylistsChanged { playlists.playlistsChanged() }
     }
 
     /** Requests to answer, shown when the app opens until answered or put off ("Later" hides them until next time). */

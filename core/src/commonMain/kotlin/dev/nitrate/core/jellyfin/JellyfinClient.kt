@@ -192,7 +192,13 @@ class JellyfinClient(
             record(if (status < 400) dev.nitrate.core.diagnostics.QueryOutcome.FETCHED else dev.nitrate.core.diagnostics.QueryOutcome.FAILED, status, bytes)
             // Something sent: lists whose titles depend on watch state go now; the server's
             // UserDataChanged then fixes the marks in the rest.
-            if (method != "GET" && status < 400) answers.forget { key, kind -> dependsOnWatchState(key, kind) }
+            if (method != "GET" && status < 400) {
+                answers.forget { key, kind -> dependsOnWatchState(key, kind) }
+                // Anything sent may change the groups (marks, resume points, invites): the rows read them afresh.
+                forgetPartners()
+                // A playlist made, added to or removed: whoever keeps the list of them hears it.
+                if ("/Playlists" in call.request.url.encodedPath) listsListener?.invoke()
+            }
             call
         }
     }
@@ -760,17 +766,30 @@ class JellyfinClient(
 
     // ---- Per-user storage ----
 
+    // Stored preferences read lately (account|id → when, what): sign-in, backups and setup each read
+    // the device index within the same minute; one read serves them. A save here replaces it at once.
+    private val prefsKept = mutableMapOf<String, Pair<kotlin.time.TimeMark, Map<String, String>>>()
+    private val prefsLock = kotlinx.coroutines.sync.Mutex()
+
     override suspend fun loadCustomPrefs(prefsId: String): Map<String, String> {
+        val key = "${accountKey ?: baseUrl}|$prefsId"
+        prefsLock.withLock { prefsKept[key]?.takeIf { it.first.elapsedNow().inWholeMilliseconds < PREFS_KEPT_MS }?.let { return it.second } }
         val prefs = get("DisplayPreferences", prefsId, query = mapOf("client" to PREFS_CLIENT)).decode<JsonObject>()
-        val custom = prefs["CustomPrefs"] as? JsonObject ?: return emptyMap()
-        return custom.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.let { k to it.content } }.toMap()
+        val custom = prefs["CustomPrefs"] as? JsonObject ?: return emptyMap<String, String>().also { keepPrefs(key, it) }
+        return custom.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.let { k to it.content } }.toMap().also { keepPrefs(key, it) }
+    }
+
+    private suspend fun keepPrefs(key: String, prefs: Map<String, String>) = prefsLock.withLock {
+        prefsKept[key] = kotlin.time.TimeSource.Monotonic.markNow() to prefs
     }
 
     override suspend fun saveCustomPrefs(prefs: Map<String, String>, prefsId: String) {
-        // Round-trip the whole object so fields Nitrate doesn't know about are preserved.
+        // Round-trip the whole object so fields Nitrate doesn't know about are preserved (read fresh:
+        // another device may have just written it).
         val current = get("DisplayPreferences", prefsId, query = mapOf("client" to PREFS_CLIENT)).decode<JsonObject>()
         val updated = JsonObject(current + ("CustomPrefs" to JsonObject(prefs.mapValues { JsonPrimitive(it.value) })))
         post<JsonObject>("DisplayPreferences", prefsId, body = updated, query = mapOf("client" to PREFS_CLIENT))
+        keepPrefs("${accountKey ?: baseUrl}|$prefsId", prefs)
     }
 
     // ---- Browsing ----
@@ -828,10 +847,11 @@ class JellyfinClient(
     internal suspend fun companionHas(feature: String): Boolean {
         val account = accountKey ?: "$baseUrl|$userId"
         val known = companionFeatures?.takeIf { it.first == account && companionFeaturesAt.elapsedNow().inWholeMilliseconds < COMPANION_FEATURES_MS }
-        val features = known?.second ?: (runCatching { companionApi.info()?.features }.getOrNull() ?: emptySet()).also {
+        // A failed ask isn't kept: the next one tries again (a server without the Companion is kept).
+        val features = known?.second ?: runCatching { companionApi.info()?.features.orEmpty() }.onSuccess {
             companionFeatures = account to it
             companionFeaturesAt = kotlin.time.TimeSource.Monotonic.markNow()
-        }
+        }.getOrDefault(emptySet())
         return feature in features
     }
 
@@ -1179,15 +1199,37 @@ class JellyfinClient(
         return result.items.map { it.toMediaItem() } to result.totalRecordCount
     }
 
-    override suspend fun getItem(id: String): MediaItem =
-        try {
+    override suspend fun getItem(id: String): MediaItem {
+        if (refused("item", id)) return itemById(id) ?: throw dev.nitrate.core.ItemUnavailable(id)
+        return try {
             get("Items", id).decode<ItemDto>().toMediaItem()
         } catch (e: ClientRequestException) {
             // Jellyfin answers 404 for a playlist someone shared with the user (it checks only the
             // owner there), though lists and the playlist's own items show it: found by id instead.
             if (e.response.status != HttpStatusCode.NotFound) throw e
+            refuse("item", id)
             itemById(id) ?: throw dev.nitrate.core.ItemUnavailable(id)
         }
+    }
+
+    // Lookups the server answered 404 to, for this account (kind:id → when), so each page load
+    // doesn't ask again: a shared playlist's single lookup and its items (Jellyfin checks only the
+    // owner there), or a title that's gone. Forgotten after [REFUSED_MS].
+    private val refusals = mutableMapOf<String, Long>()
+    private val refusalLock = kotlinx.coroutines.sync.Mutex()
+
+    private fun refusalKey(kind: String, id: String) = "${accountKey ?: baseUrl}|$kind|$id"
+
+    private suspend fun refused(kind: String, id: String): Boolean = refusalLock.withLock {
+        val key = refusalKey(kind, id)
+        val at = refusals[key] ?: return@withLock false
+        if (nowEpochMs() - at < REFUSED_MS) true else { refusals.remove(key); false }
+    }
+
+    private suspend fun refuse(kind: String, id: String) = refusalLock.withLock {
+        if (refusals.size > 500) refusals.clear()
+        refusals[refusalKey(kind, id)] = nowEpochMs()
+    }
 
     /** One item through the list lookup (which goes by what the user can see, shares included), or null. */
     internal suspend fun itemById(id: String): MediaItem? =
@@ -1214,8 +1256,15 @@ class JellyfinClient(
 
     override suspend fun similar(itemId: String) = items("Items", itemId, "Similar", query = mapOf("limit" to 16, "fields" to "PrimaryImageAspectRatio"))
 
-    override suspend fun playlistItems(playlistId: String) =
-        items("Playlists", playlistId, "Items", query = mapOf("fields" to "Overview,PrimaryImageAspectRatio,Genres,Tags"))
+    override suspend fun playlistItems(playlistId: String): List<MediaItem> {
+        if (refused("playlist", playlistId)) throw dev.nitrate.core.ItemUnavailable(playlistId)
+        return try {
+            items("Playlists", playlistId, "Items", query = mapOf("fields" to "Overview,PrimaryImageAspectRatio,Genres,Tags"))
+        } catch (e: ClientRequestException) {
+            if (e.response.status == HttpStatusCode.NotFound) { refuse("playlist", playlistId); throw dev.nitrate.core.ItemUnavailable(playlistId) }
+            throw e
+        }
+    }
 
     override suspend fun playlistMembers(playlistId: String) =
         items("Playlists", playlistId, "Items", query = mapOf("enableImages" to false, "enableUserData" to false))
@@ -1528,7 +1577,17 @@ class JellyfinClient(
     override suspend fun privacy() = partnersApi.privacy()
     override suspend fun setPrivacy(private: Boolean) = partnersApi.setPrivacy(private)
     override suspend fun partnerPeople() = partnersApi.people()
-    override suspend fun partners() = partnersApi.list().also { info -> partnersListener?.invoke(info) }
+    override suspend fun partners() = partnersApi.list().also { info ->
+        partnersListener?.invoke(info)
+        // The rows read it too (featuresAndPartners): a fresh read serves them.
+        togetherLock.withLock { togetherKept = Triple(kotlin.time.TimeSource.Monotonic.markNow(), accountKey, cachedFeatures() to info) }
+    }
+
+    /** The Companion's features as [companionHas] keeps them (asked at most every few minutes). */
+    private suspend fun cachedFeatures(): Set<String> {
+        companionHas("")
+        return companionFeatures?.second.orEmpty()
+    }
 
     private var partnersListener: ((dev.nitrate.core.partners.PartnersInfo) -> Unit)? = null
 
@@ -1536,18 +1595,27 @@ class JellyfinClient(
     private var togetherKept: Triple<kotlin.time.TimeMark, String?, Pair<Set<String>, dev.nitrate.core.partners.PartnersInfo?>>? = null
 
     /**
-     * The Companion's features and the user's groups, read once for rows loading together (the
-     * Watching together row and Continue Watching ask at the same moment): kept 3 s, so a reload
-     * after a change asks again.
+     * The Companion's features (kept a few minutes, [companionHas]) and the user's groups, for the
+     * rows: the latest read serves for [TOGETHER_KEPT_MS] (Home and Watch groups asked again within
+     * the minute). Any change the app sends lets it go, and every read of the groups (after a
+     * change or the Companion's news, `refreshPartners`) replaces it, so it's never older than that.
      */
-    internal suspend fun featuresAndPartners(): Pair<Set<String>, dev.nitrate.core.partners.PartnersInfo?> = togetherLock.withLock {
-        togetherKept?.takeIf { it.second == accountKey && it.first.elapsedNow() < kotlin.time.Duration.parse("3s") }?.let { return@withLock it.third }
-        val features = runCatching { companion()?.features }.getOrNull().orEmpty()
+    internal suspend fun featuresAndPartners(): Pair<Set<String>, dev.nitrate.core.partners.PartnersInfo?> {
+        togetherLock.withLock {
+            togetherKept?.takeIf { it.second == accountKey && it.first.elapsedNow().inWholeMilliseconds < TOGETHER_KEPT_MS }?.let { return it.third }
+        }
+        val features = cachedFeatures()
         val info = if (dev.nitrate.core.partners.WatchPartners.FEATURE in features) partners() else null
-        (features to info).also { togetherKept = Triple(kotlin.time.TimeSource.Monotonic.markNow(), accountKey, it) }
+        return features to info
     }
 
+    /** Lets go of the rows' groups (a change was sent). */
+    internal fun forgetPartners() { togetherKept = null }
+
     override fun onPartnersLoaded(listener: (dev.nitrate.core.partners.PartnersInfo) -> Unit) { partnersListener = listener }
+
+    private var listsListener: (() -> Unit)? = null
+    override fun onPlaylistsChanged(listener: () -> Unit) { listsListener = listener }
     override suspend fun askPartner(toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?, schedule: dev.nitrate.core.partners.GroupSchedule?, titles: List<dev.nitrate.core.partners.GroupTitle>?, batch: String?) =
         partnersApi.ask(toUserId, toName, seriesId, seriesName, groupId, schedule, titles, batch)
     override suspend fun addGroupTitle(groupId: String, titleId: String, name: String) = partnersApi.addTitle(groupId, titleId, name)
@@ -2241,6 +2309,15 @@ class JellyfinClient(
 
         /** Home's Next Up request (the plugin's bundle is kept under it too). */
         val NEXT_UP_QUERY: Map<String, Any?> = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)
+
+        /** How long the rows reuse the latest read of the user's groups (`featuresAndPartners`). */
+        const val TOGETHER_KEPT_MS = 30_000L
+
+        /** How long stored preferences read are shared (`loadCustomPrefs`). */
+        const val PREFS_KEPT_MS = 60_000L
+
+        /** How long a lookup the server answered 404 to isn't asked again (`refused`). */
+        const val REFUSED_MS = 30 * 60_000L
 
         /** How long the Companion plugin's feature list is trusted. */
         const val COMPANION_FEATURES_MS = 5 * 60_000L

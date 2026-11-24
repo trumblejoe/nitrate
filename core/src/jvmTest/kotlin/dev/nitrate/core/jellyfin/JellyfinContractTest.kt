@@ -120,9 +120,12 @@ class JellyfinContractTest {
 
     @Test
     fun `a playlist shared with the user opens though its single lookup says 404`() = runBlocking {
+        val asked = mutableListOf<String>()
         val shared = MockEngine { request ->
             val path = request.url.encodedPath
+            asked += path
             when {
+                path.contains("/Playlists/") -> respond("""{"title":"Not Found","status":404}""", HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "application/json"))
                 path.contains("/Users/AuthenticateBy") -> respond("""{"User":{"Id":"$HEX","Name":"sam"},"AccessToken":"tok"}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 path.endsWith("/Users/Me") -> respond("""{"Id":"$HEX","Name":"sam"}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
                 Regex("/Items/[0-9a-f-]+$").containsMatchIn(path) -> respond("""{"title":"Not Found","status":404}""", HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -136,6 +139,15 @@ class JellyfinContractTest {
         val item = c.getItem(DASHED)
         assertEquals("Road trip", item.name)
         assertEquals(ItemKind.PLAYLIST, item.kind)
+        // Asked again (the next Home): the refused single lookup isn't repeated, only the one that works.
+        val singles = asked.count { Regex("/Items/[0-9a-f-]+$").containsMatchIn(it) }
+        assertEquals("Road trip", c.getItem(DASHED).name)
+        assertEquals(singles, asked.count { Regex("/Items/[0-9a-f-]+$").containsMatchIn(it) })
+        // Its items refused once: not asked for again for a while.
+        assertTrue(runCatching { c.playlistItems(DASHED) }.exceptionOrNull() is dev.nitrate.core.ItemUnavailable)
+        val playlistAsks = asked.count { it.contains("/Playlists/") }
+        assertTrue(runCatching { c.playlistItems(DASHED) }.exceptionOrNull() is dev.nitrate.core.ItemUnavailable)
+        assertEquals(playlistAsks, asked.count { it.contains("/Playlists/") })
         // Not found either way (a library the account lacks, a parental rating): said in words, not as a 404.
         val e = runCatching { c.getItem("00000000-0000-0000-0000-000000000001") }.exceptionOrNull()
         assertTrue("$e", e is dev.nitrate.core.ItemUnavailable && e.message!!.startsWith("You can't open this on this server"))
@@ -157,6 +169,8 @@ class JellyfinContractTest {
 
         assertEquals(mapOf("a" to "1"), client.loadCustomPrefs())
         client.saveCustomPrefs(mapOf("b" to "2"))
+        // Read again within the minute: what was just saved, not asked again (the server here says a=1).
+        assertEquals(mapOf("b" to "2"), client.loadCustomPrefs())
 
         client.homeRows()
         for (collection in listOf(CollectionKind.TV_SHOWS, CollectionKind.MOVIES)) {

@@ -657,6 +657,9 @@ interface MediaServer {
      */
     fun onPartnersLoaded(listener: (dev.nitrate.core.partners.PartnersInfo) -> Unit) {}
 
+    /** Tells [listener] when this app changed the user's playlists (made one, added or removed titles). */
+    fun onPlaylistsChanged(listener: () -> Unit) {}
+
     /**
      * Invites someone to watch together: a listed person by id, or anyone by exact user name;
      * into one of the user's groups ([groupId], which carries its titles) or a new one for

@@ -72,6 +72,29 @@ class PlaylistPlayingTest {
         }
         val playing = PlaylistPlaying(quiet, null, nowMs = { now })
         assertEquals(null, playing.continueRow())
-        assertEquals(listOf("recent"), asked)
+        // The playlists' list (kept half an hour), then what was played lately: nothing more.
+        assertEquals(listOf("playlists", "recent"), asked)
+    }
+
+    @Test
+    fun noPlaylistsAsksNothingMore() = runBlocking {
+        val none = object : MediaServer by server {
+            override suspend fun playlists(): List<MediaItem> { asked += "playlists"; return emptyList() }
+        }
+        val playing = PlaylistPlaying(none, null, nowMs = { now })
+        repeat(3) { assertEquals(null, playing.continueRow()) }
+        // Without playlists, "played lately" is never asked.
+        assertEquals(listOf("playlists"), asked)
+    }
+
+    @Test
+    fun aPlaylistMadeHereIsSeenAtOnce() = runBlocking {
+        val playing = PlaylistPlaying(server, null, nowMs = { now })
+        playing.continueRow()
+        asked.clear()
+        playing.playlistsChanged()
+        playing.continueRow()
+        // The list is read again rather than kept for half an hour.
+        assertEquals(1, asked.count { it == "playlists" })
     }
 }

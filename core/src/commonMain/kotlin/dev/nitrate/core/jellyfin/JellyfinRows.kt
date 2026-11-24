@@ -202,6 +202,17 @@ internal fun JellyfinClient.homeJobs(fresh: Boolean = false, skip: Set<String> =
     return homeJobList(fresh, skip, combine).map { it.after(first) }
 }
 
+/**
+ * Whether any of the user's libraries could hold books or audiobooks (a Books library, or one of
+ * mixed or unknown kind). Continue Reading and Continue Listening ask the server to sort the whole
+ * library by date played (over a second each on a large one), so with none they ask nothing. The
+ * library list as last read serves (it's asked for Home anyway); unknown yet: assume they could.
+ */
+internal suspend fun JellyfinClient.mayHoldBooks(): Boolean {
+    val views = lastViews() ?: runCatching { views() }.getOrNull() ?: return true
+    return views.any { it.collection == null || it.collection == CollectionKind.BOOKS || it.collection == CollectionKind.MIXED }
+}
+
 internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combine: Boolean): List<dev.nitrate.core.rows.RowJob> {
     suspend fun nextUp() = items("Shows", "NextUp", query = NEXT_UP_QUERY)
     // What's half-watched with a group lives on the group's card when Watching together is shown, never twice.
@@ -233,12 +244,14 @@ internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combi
     )
     return watching + listOf(
         dev.nitrate.core.rows.RowJob("Continue Listening", "home/continue_listening") {
+            if (!mayHoldBooks()) return@RowJob emptyList()
             items(
                 "UserItems", "Resume",
                 query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook"),
             ).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_listening", "Continue Listening", it, RowDisplay())) }
         },
         dev.nitrate.core.rows.RowJob("Continue Reading", "home/continue_reading") {
+            if (!mayHoldBooks()) return@RowJob emptyList()
             continueReading(null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
         },
         dev.nitrate.core.rows.RowJob(dev.nitrate.core.partners.TogetherRow.TITLE, dev.nitrate.core.partners.TogetherRow.KEY) {

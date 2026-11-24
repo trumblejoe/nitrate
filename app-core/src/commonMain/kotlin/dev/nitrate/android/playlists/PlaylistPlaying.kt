@@ -87,9 +87,18 @@ class PlaylistPlaying(
         return list.mapTo(HashSet()) { it.id }
     }
 
-    /** The user's video playlists, kept [LIST_MS]. */
+    // Set when this app changed a playlist (the server's change hook): the next ask reads them all again.
+    private var listsChanged = false
+
+    /** This app changed the user's playlists: the list and contents kept are read again next time. */
+    fun playlistsChanged() { listsChanged = true }
+
+    /** The user's video playlists, kept [LIST_MS] (a change made here lets it go: [playlistsChanged]). */
     private suspend fun videoPlaylists(): List<MediaItem> {
-        lock.withLock { playlistList?.takeIf { nowMs() - it.atMs < LIST_MS }?.let { return it.entries } }
+        lock.withLock {
+            if (listsChanged) { listsChanged = false; kept.clear(); members.clear(); playlistList = null }
+            playlistList?.takeIf { nowMs() - it.atMs < LIST_MS }?.let { return it.entries }
+        }
         val list = PlaylistPlaces.candidates(server.playlists())
         lock.withLock { playlistList = Kept(nowMs(), list) }
         return list
@@ -121,10 +130,12 @@ class PlaylistPlaying(
      * "played lately" request, each playlist's kept members, and only the matching ones' contents.
      */
     private suspend fun active(maxPlaylists: Int): List<Pair<String, List<MediaItem>>> = coroutineScope {
+        // The (kept) playlist list first: with no video playlists, the library isn't sorted by date played at all.
+        val playlists = runCatching { videoPlaylists() }.getOrDefault(emptyList()).take(maxPlaylists)
+        if (playlists.isEmpty()) return@coroutineScope emptyList()
         val since = nowMs() - PlaylistPlaces.ACTIVE_MS
         val recent = runCatching { server.recentlyPlayed() }.getOrDefault(emptyList()).filter { (it.user.lastPlayedMs ?: 0) >= since }
         if (recent.isEmpty()) return@coroutineScope emptyList()
-        val playlists = runCatching { videoPlaylists() }.getOrDefault(emptyList()).take(maxPlaylists)
         val watched = playlists.map { pl ->
             async {
                 val ids = runCatching { membersOf(pl.id) }.getOrNull() ?: return@async null
@@ -199,7 +210,8 @@ class PlaylistPlaying(
         /** How long what a playlist holds is trusted before it's read again (watch state comes fresh regardless). */
         const val STRUCTURE_MS = 6 * 60 * 60_000L
         /** How long the list of the user's playlists is kept. */
-        const val LIST_MS = 10 * 60_000L
+        /** The playlist list rarely changes and costs the server seconds on a large library: kept half an hour. */
+        const val LIST_MS = 30 * 60_000L
         /** How many video playlists are looked through for one being watched. */
         const val LOOK_IN = 20
     }
