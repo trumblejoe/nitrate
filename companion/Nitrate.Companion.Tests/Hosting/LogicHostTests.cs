@@ -91,8 +91,11 @@ public sealed class LogicHostTests : IDisposable
         var (host, _) = HostingKit.Host(_dir, HostingKit.Package("1.0.0.1"), key);
         await host.StartAsync(CancellationToken.None);
         await using var server = await TestServer.StartAsync(host);
-        var slow = Fake(server.Client, HttpMethod.Get, "Slow?ms=800");
-        await Task.Delay(200);
+        // Warm up first (a cold first request can take longer than the wait below on a slow machine), then give
+        // the slow request plenty of time to be inside the old logic before the swap starts.
+        Assert.Equal("1.0.0.1", (await Fake(server.Client, HttpMethod.Get, "Version")).Version);
+        var slow = Fake(server.Client, HttpMethod.Get, "Slow?ms=3000");
+        await Task.Delay(1000);
         var swap = host.SwapAsync(HostingKit.Downloaded(key, "1.0.0.2"), CancellationToken.None);
         await Task.Delay(100);
         var during = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => Fake(server.Client, HttpMethod.Get, "Version")));
