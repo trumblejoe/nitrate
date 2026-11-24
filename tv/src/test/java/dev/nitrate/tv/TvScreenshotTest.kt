@@ -2758,6 +2758,19 @@ class TvScreenshotTest {
         check(focusedName() == card) { "focus should come back to the card left: ${focusedName()} vs $card" }
     }
 
+    /**
+     * Focus landing on the edge's invisible catcher without Left being pressed (a page swapped for
+     * another before it has anything to focus) doesn't open the pop-up; Left off the page still does.
+     */
+    @Test fun overlayStaysShutWhenFocusLandsOnTheEdgeByItself() = menuHome("tv-overlay-stays-shut", rowsHome) {
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Menu")).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); compose.waitForIdle()
+        check(!menuOpen()) { "the pop-up opened with no key pressed; focused: ${focusedNodes()}" }
+        press("down")
+        repeat(8) { if (!menuOpen()) press("left") }
+        check(focusedHasText("Home")) { "Left off the page still opens it; focused: ${focusedNodes()}" }
+    }
+
     /** Menu opens the pop-up from mid-page and closes it again; Back closes it too, focus back on the card left. */
     @Test fun overlayMenuKeyAndBack() = menuHome("tv-overlay-menu-key", rowsHome) {
         press("down", "right")

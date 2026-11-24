@@ -280,6 +280,8 @@ fun TvMenu(
     // list), instead of whichever piece of it happens to be nearest. Moves within the page are left
     // alone; a page that handles its own edges (full art) never lets focus leave this way.
     val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    // The arrow just pressed: the edges' catchers act only on it (see EdgeCatcher).
+    val arrows = remember { ArrowPress() }
     @Composable
     fun page(insets: MenuInsets) = Box(
         Modifier.fillMaxSize()
@@ -315,6 +317,7 @@ fun TvMenu(
 
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+            if (e.type == KeyEventType.KeyDown) arrows.pressed(e.key)
             if (e.key != Key.Menu) return@onPreviewKeyEvent false
             if (e.type == KeyEventType.KeyUp) { if (inMenu || dialOpen || panelOpen) toContent() else toMenu() }
             true
@@ -333,13 +336,13 @@ fun TvMenu(
                 // Hidden, the menu has nothing focus could move to: these slivers at the edges are
                 // where moving off the page goes (the page's exit sends it on to the menu or corner).
                 // (The overlay's: on the edge its arrow leads to; along the top for Up.)
-                val catcher = when {
-                    style == TvMenuStyle.RIGHT || (popup && opensWith == Key.DirectionRight) -> Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp)
-                    popup && opensWith == Key.DirectionUp -> Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp)
-                    else -> Modifier.align(Alignment.CenterStart).fillMaxHeight().width(1.dp)
+                val (catcher, catchKey) = when {
+                    style == TvMenuStyle.RIGHT || (popup && opensWith == Key.DirectionRight) -> Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp) to Key.DirectionRight
+                    popup && opensWith == Key.DirectionUp -> Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp) to Key.DirectionUp
+                    else -> Modifier.align(Alignment.CenterStart).fillMaxHeight().width(1.dp) to Key.DirectionLeft
                 }
-                EdgeCatcher("Menu", catcher, enabled = !panelOpen, onFocus = toMenu)
-                if (showCorner) EdgeCatcher("Account and search", Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp), enabled = !panelOpen, onFocus = toCorner)
+                EdgeCatcher("Menu", catcher, enabled = !panelOpen, arrows, catchKey, onFocus = toMenu, elsewhere = toContent)
+                if (showCorner) EdgeCatcher("Account and search", Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp), enabled = !panelOpen, arrows, Key.DirectionUp, onFocus = toCorner, elsewhere = toContent)
             }
             TvMenuStyle.TOP, TvMenuStyle.FADE -> if (overlay) {
                 // At the top on the first row (and when there's only one), at the bottom on the last.
@@ -374,7 +377,7 @@ fun TvMenu(
                 // Moving up past the top lands here and opens the dial.
                 Box(
                     Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp)
-                        .onFocusChanged { if (it.isFocused) dialOpen = true }
+                        .onFocusChanged { if (it.isFocused) { if (arrows.just(Key.DirectionUp)) dialOpen = true else toContent() } }
                         .focusable(enabled = !dialOpen),
                 )
             }
@@ -485,12 +488,30 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     }
 }
 
-/** An invisible sliver at the screen's edge that moving off the page can land on, named for where it leads. */
+/** The last arrow pressed in the menu's page, and when (the edges' catchers ask). */
+internal class ArrowPress {
+    private var key: Key? = null
+    private var at = 0L
+
+    fun pressed(k: Key) {
+        if (k == Key.DirectionLeft || k == Key.DirectionRight || k == Key.DirectionUp || k == Key.DirectionDown) { key = k; at = android.os.SystemClock.uptimeMillis() }
+    }
+
+    /** Whether [k] was the arrow pressed just now (this half second). */
+    fun just(k: Key): Boolean = key == k && android.os.SystemClock.uptimeMillis() - at < 500
+}
+
+/**
+ * An invisible sliver at the screen's edge that moving off the page can land on, named for where
+ * it leads. Only [key] pressed just now leads there ([onFocus]): focus landing on it any other way
+ * (a page swapped for another before it has anything to focus, which made the pop-up open by
+ * itself after choosing a page) goes back to the page ([elsewhere]).
+ */
 @Composable
-private fun EdgeCatcher(name: String, modifier: Modifier, enabled: Boolean, onFocus: () -> Unit) {
+private fun EdgeCatcher(name: String, modifier: Modifier, enabled: Boolean, arrows: ArrowPress, key: Key, onFocus: () -> Unit, elsewhere: () -> Unit) {
     Box(
         modifier
-            .onFocusChanged { if (it.isFocused) onFocus() }
+            .onFocusChanged { if (it.isFocused) { if (arrows.just(key)) onFocus() else elsewhere() } }
             .semantics { contentDescription = name }
             .focusable(enabled = enabled),
     )
