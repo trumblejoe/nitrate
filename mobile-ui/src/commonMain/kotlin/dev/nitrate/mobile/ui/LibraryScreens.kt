@@ -10,6 +10,11 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Close
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
@@ -114,36 +119,78 @@ fun ReadableWidth(max: androidx.compose.ui.unit.Dp, content: @Composable () -> U
     }
 }
 
+/**
+ * A library: Home's look throughout (the artwork-tinted background, a light top bar, pill tabs and
+ * Home's cards). Recommended is its rows; All (and the other list tabs) the full list, whose tabs
+ * and bar stay at the top or scroll away per [DisplayPrefs.phoneGridLayout].
+ */
 @Composable
-fun LibraryScreen(actions: AppActions, libraryId: String) {
+fun LibraryScreen(actions: AppActions, libraryId: String, startTab: Int = 0) {
     val library by produceState<Result<MediaItem>?>(null, libraryId) { value = runCatching { actions.server.getItem(libraryId) } }
     val lib = library?.getOrNull()
-    BackScaffold(lib?.name ?: "", onBack = { actions.nav.popBackStack() }) { padding ->
-        val modifier = Modifier.padding(padding)
-        when {
-            library == null -> Loading(modifier)
-            lib == null -> ErrorMessage(library?.exceptionOrNull()?.message ?: "Couldn't load library", modifier = modifier)
-            lib.collection == CollectionKind.LIVE_TV -> Box(modifier.fillMaxSize()) { LiveTvScreen(actions) }
-            else -> {
-                val hasRecommended = lib.collection == CollectionKind.MOVIES || lib.collection == CollectionKind.TV_SHOWS
-                val music = lib.collection == CollectionKind.MUSIC
-                var tab by rememberSaveable { mutableIntStateOf(0) }
-                Column(modifier.fillMaxSize()) {
-                    if (hasRecommended || music) {
-                        PrimaryTabRow(selectedTabIndex = tab) {
-                            Tab(tab == 0, onClick = { tab = 0 }, text = { Text(if (music) "Albums" else "Recommended") })
-                            Tab(tab == 1, onClick = { tab = 1 }, text = { Text(if (music) "Artists" else "All") })
-                        }
-                    }
+    // The page takes its colour from the library's own picture, as Home does from its first artwork.
+    val tint by dev.nitrate.mobile.platform.rememberArtworkColor(lib?.let { actions.server.backdropUrl(it, 320) ?: actions.server.imageUrl(it) })
+    TintedBackdrop(tint) {
+        Column(Modifier.fillMaxSize()) {
+            PageTopBar(lib?.name ?: "", onBack = { actions.nav.popBackStack() })
+            when {
+                library == null -> Loading()
+                lib == null -> ErrorMessage(library?.exceptionOrNull()?.message ?: "Couldn't load library")
+                lib.collection == CollectionKind.LIVE_TV -> Box(Modifier.fillMaxSize()) { LiveTvScreen(actions) }
+                else -> {
+                    val hasRecommended = lib.collection == CollectionKind.MOVIES || lib.collection == CollectionKind.TV_SHOWS
+                    val music = lib.collection == CollectionKind.MUSIC
+                    var tab by rememberSaveable { mutableIntStateOf(startTab) }
+                    val tabs: (@Composable () -> Unit)? = if (hasRecommended || music) {
+                        { PageTabs(listOf(if (music) "Albums" else "Recommended", if (music) "Artists" else "All"), tab, onSelect = { tab = it }) }
+                    } else null
+                    // The full list carries the tabs itself (pinned or scrolling with it); the others keep them above.
+                    val browsing = !(music && tab == 1) && !(hasRecommended && tab == 0) && lib.collection != CollectionKind.PLAYLISTS
+                    if (!browsing) tabs?.invoke()
                     when {
                         music && tab == 1 -> ArtistsGrid(actions, lib)
                         hasRecommended && tab == 0 -> LibraryRows(actions, lib)
                         // Playlists keep their own tile grid; every other library gets sort, filters and A–Z.
                         lib.collection == CollectionKind.PLAYLISTS -> LibraryGrid(actions, lib)
-                        else -> BrowseLibrary(actions, lib)
+                        else -> BrowseLibrary(actions, lib, header = tabs)
                     }
                 }
             }
+        }
+    }
+}
+
+/** Home's kind of top: no bar of its own, a back arrow and the page's name in bold, over the tinted background. */
+@Composable
+fun PageTopBar(title: String, onBack: () -> Unit, actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {}) {
+    Row(
+        Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = androidx.compose.ui.graphics.Color.White) }
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 4.dp))
+        actions()
+    }
+}
+
+/** A page's tabs as pills, like the selected tab in Home's floating bar: accent-tinted when chosen. */
+@Composable
+fun PageTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val accent = accentColor()
+    Row(modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        labels.forEachIndexed { i, label ->
+            val on = i == selected
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                    .background(if (on) accent.copy(alpha = 0.22f) else androidx.compose.ui.graphics.Color.Transparent)
+                    .selectable(selected = on, role = androidx.compose.ui.semantics.Role.Tab, onClick = { onSelect(i) })
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
         }
     }
 }

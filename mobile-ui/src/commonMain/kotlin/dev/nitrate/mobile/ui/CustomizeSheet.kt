@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -116,6 +117,23 @@ fun CustomizeSheet(row: MediaRow, panel: PagePanel, actions: AppActions, onDismi
                 } else {
                     Text("Order, hide, rename and add your own rows (from filters, collections or playlists).", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = { editingRows = true }) { Text("Edit rows") }
+                    // A library's page: how its full list (All) is laid out, the same choice as Settings › Display.
+                    if (panel.libraryId != null) {
+                        val prefs = LocalDisplayPrefs.current
+                        val scope = androidx.compose.runtime.rememberCoroutineScope()
+                        HorizontalDivider()
+                        Text("Full list", style = MaterialTheme.typography.titleSmall)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            dev.nitrate.core.pages.GridLayout.entries.forEach { g ->
+                                FilterChip(
+                                    selected = prefs.phoneGridLayout == g,
+                                    onClick = { actions.server.userId?.let { u -> scope.launch { actions.container.displaySettings.savePrefs(u, prefs.copy(phoneGridLayout = g)) } } },
+                                    label = { Text(g.label) },
+                                )
+                            }
+                        }
+                        Text(prefs.phoneGridLayout.phoneDetail + ". For every library.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }

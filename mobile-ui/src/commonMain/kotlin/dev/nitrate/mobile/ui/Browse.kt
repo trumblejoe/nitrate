@@ -65,6 +65,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,6 +82,7 @@ import dev.nitrate.core.model.MediaItem
 import dev.nitrate.core.pages.Browse
 import dev.nitrate.core.pages.BrowseOptions
 import dev.nitrate.core.pages.BrowseView
+import dev.nitrate.core.pages.GridLayout
 import dev.nitrate.core.pages.QuerySort
 import dev.nitrate.core.pages.ResolutionFilter
 import dev.nitrate.core.pages.WatchFilter
@@ -92,7 +97,8 @@ private val BROWSE_SORTS = listOf(QuerySort.NAME, QuerySort.DATE_ADDED, QuerySor
  * grid or list, and an A–Z strip to jump through when sorted by name.
  */
 @Composable
-fun BrowseLibrary(actions: AppActions, library: MediaItem) {
+fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable () -> Unit)? = null) {
+    val prefs = LocalDisplayPrefs.current
     val vm = viewModel(key = "browse-${library.id}") { BrowseViewModel(actions.server, actions.container.displaySettings, library) }
     val state by vm.state.collectAsStateWithLifecycle()
     val genres by vm.genres.collectAsStateWithLifecycle()
@@ -142,24 +148,46 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        BrowseBar(options, state.total, onChange = update, onFilters = { filtering = true })
-        if (canBulkEdit) Row(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding), verticalAlignment = Alignment.CenterVertically) {
-            if (!selecting) {
-                TextButton(onClick = { selecting = true }) { Text("Select to edit") }
-            } else {
-                Text("${selected.size} selected", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = { selected = selected + state.items.map { it.id } }) { Text("All shown") }
-                TextButton(onClick = { editing = true }, enabled = selected.isNotEmpty()) { Text("Edit…") }
-                TextButton(onClick = { selecting = false; selected = emptySet() }) { Text("Cancel") }
+    // Fixed grid: the tabs and the bar stay at the top; Scrolling grid: they scroll away with the posters.
+    val pinned = prefs.phoneGridLayout == GridLayout.FIXED
+    // The tabs (from the library page), the Sort/Filters/View bar and, for admins, picking titles to edit.
+    val top: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth()) {
+            header?.invoke()
+            BrowseBar(options, state.total, onChange = update, onFilters = { filtering = true })
+            if (canBulkEdit) Row(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding), verticalAlignment = Alignment.CenterVertically) {
+                if (!selecting) {
+                    TextButton(onClick = { selecting = true }) { Text("Select to edit") }
+                } else {
+                    Text("${selected.size} selected", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { selected = selected + state.items.map { it.id } }) { Text("All shown") }
+                    TextButton(onClick = { editing = true }, enabled = selected.isNotEmpty()) { Text("Edit…") }
+                    TextButton(onClick = { selecting = false; selected = emptySet() }) { Text("Cancel") }
+                }
             }
         }
+    }
+    // Scrolling grid: how tall the top is, so the A–Z strip starts below it.
+    var topHeight by remember { mutableStateOf(0) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // In the grid or list, the top spans the whole width (the cards keep their side padding).
+    val endPad = if (options.alphabetical) 34.dp else ScreenPadding
+    val scrollingTop: @Composable () -> Unit = {
+        Box(Modifier.fullBleed(ScreenPadding, endPad).onSizeChanged { topHeight = it.height }) { top() }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        if (pinned) top()
         Box(Modifier.fillMaxSize()) {
-            val padding = PaddingValues(start = ScreenPadding, end = if (options.alphabetical) 34.dp else ScreenPadding, top = 4.dp, bottom = bottomInset(24.dp))
+            val padding = PaddingValues(start = ScreenPadding, end = endPad, top = 4.dp, bottom = bottomInset(24.dp))
+            // Loading, empty and failed pages: the top above them either way.
+            val withTop: @Composable (@Composable () -> Unit) -> Unit = { content ->
+                if (pinned) content() else Column(Modifier.fillMaxSize()) { top(); Box(Modifier.weight(1f)) { content() } }
+            }
             when {
-                state.error != null && state.items.isEmpty() -> ErrorMessage(state.error ?: "", vm::retry)
-                state.loading -> GridPlaceholder(minWidth = if (artwork) 240.dp else if (square) 140.dp else 110.dp, aspect = if (artwork) 16f / 9f else if (square) 1f else 2f / 3f)
-                state.items.isEmpty() -> EmptyResults(options) { update { it.clearFilters() } }
+                state.error != null && state.items.isEmpty() -> withTop { ErrorMessage(state.error ?: "", vm::retry) }
+                state.loading -> withTop { GridPlaceholder(minWidth = if (artwork) 240.dp else if (square) 140.dp else 110.dp, aspect = if (artwork) 16f / 9f else if (square) 1f else 2f / 3f) }
+                state.items.isEmpty() -> withTop { EmptyResults(options) { update { it.clearFilters() } } }
                 options.view != BrowseView.LIST -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = if (artwork) 240.dp else if (square) 140.dp else 110.dp),
                     state = grid,
@@ -168,15 +196,22 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
+                    if (!pinned) item(key = "top", span = { GridItemSpan(maxLineSpan) }, contentType = "top") { scrollingTop() }
                     items(state.items, key = { it.id }) { item ->
-                        Box(if (item.id == jumpedTo) Modifier.border(2.dp, accentColor(), RoundedCornerShape(10.dp)) else Modifier) {
+                        Box(if (item.id == jumpedTo) Modifier.border(2.dp, accentColor(), RoundedCornerShape(14.dp)) else Modifier) {
+                            // Home's card: the same titles, marks and progress, and the same hold.
                             MediaCard(
                                 item = item,
                                 imageUrl = actions.server.cardImage(item, cardShape),
                                 shape = cardShape,
-                                title = item.name,
-                                subtitle = if (square) item.albumArtist else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
+                                title = if (artwork) item.displayTitle else item.name,
+                                subtitle = when {
+                                    square -> item.albumArtist
+                                    artwork -> listOfNotNull(item.episodeLabel ?: item.productionYear?.takeIf { prefs.year }?.toString(), timeLeft(item)).joinToString(" · ").ifEmpty { null }
+                                    else -> item.productionYear?.takeIf { prefs.year }?.toString()
+                                },
                                 onClick = { tap(item) },
+                                onLongClick = actions.cards?.takeIf { !selecting && it.shares(item) }?.let { c -> { c.hold(item) } },
                             )
                             if (selecting) SelectMark(item.id in selected, Modifier.align(Alignment.TopEnd).padding(6.dp))
                         }
@@ -184,6 +219,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                     if (state.error != null) item(span = { GridItemSpan(maxLineSpan) }) { LoadMoreFailed(state.error.orEmpty(), vm::retry) }
                 }
                 else -> LazyColumn(state = list, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxSize()) {
+                    if (!pinned) item(key = "top", contentType = "top") { scrollingTop() }
                     items(state.items, key = { it.id }) { item ->
                         Box {
                             ListRow(actions, item, onClick = { tap(item) })
@@ -194,7 +230,9 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
                 }
             }
             if (options.alphabetical && state.items.isNotEmpty()) {
-                AlphabetStrip(Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 8.dp), ::jump)
+                // Scrolling grid: the strip starts where the posters do, below the tabs and the bar.
+                val below = if (pinned) 0.dp else with(density) { topHeight.toDp() }
+                AlphabetStrip(Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(top = below + 8.dp, bottom = 8.dp), ::jump)
             }
         }
     }
@@ -208,13 +246,14 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem) {
 @Composable
 private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onFilters: () -> Unit) {
     var sortMenu by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Compact, like Home's top: small glass pills and the count as small text.
+    Row(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box {
-            FilterChip(
-                selected = false,
+            BarPill(
+                options.sort.label,
                 onClick = { sortMenu = true },
-                label = { Text(options.sort.label) },
-                trailingIcon = { Icon(if (options.descending) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, null) },
+                trailing = if (options.descending) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                state = if (options.descending) "Sorted highest or newest first" else "Sorted lowest or oldest first",
             )
             DropdownMenu(sortMenu, onDismissRequest = { sortMenu = false }) {
                 BROWSE_SORTS.forEach { sort ->
@@ -231,20 +270,13 @@ private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOpti
                 )
             }
         }
-        FilterChip(
-            selected = options.filterCount > 0,
-            onClick = onFilters,
-            label = { Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") },
-        )
-        Spacer(Modifier.weight(1f))
-        if (total >= 0) Text("$total", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        BarPill(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters", onClick = onFilters, active = options.filterCount > 0)
         var viewMenu by remember { mutableStateOf(false) }
         Box {
-            FilterChip(
-                selected = false,
+            BarPill(
+                (if (options.view.tvOnly) BrowseView.GRID else options.view).label,
                 onClick = { viewMenu = true },
-                label = { Text((if (options.view.tvOnly) BrowseView.GRID else options.view).label) },
-                leadingIcon = { if (options.view == BrowseView.LIST) Icon(Icons.AutoMirrored.Filled.List, null) },
+                leading = if (options.view == BrowseView.LIST) Icons.AutoMirrored.Filled.List else null,
             )
             DropdownMenu(viewMenu, onDismissRequest = { viewMenu = false }) {
                 BrowseView.entries.filterNot { it.tvOnly }.forEach { v ->
@@ -256,7 +288,43 @@ private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOpti
                 }
             }
         }
+        Spacer(Modifier.weight(1f))
+        if (total >= 0) Text(if (total == 1) "1 title" else "$total titles", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
+}
+
+/** A small glass pill in the bar: its words, an optional arrow or icon, accent-tinted when [active]. */
+@Composable
+private fun BarPill(label: String, onClick: () -> Unit, active: Boolean = false, leading: androidx.compose.ui.graphics.vector.ImageVector? = null, trailing: androidx.compose.ui.graphics.vector.ImageVector? = null, state: String? = null) {
+    val accent = accentColor()
+    val fg = if (active) accent else Color.White
+    Row(
+        Modifier.clip(RoundedCornerShape(16.dp))
+            .background(if (active) accent.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.10f))
+            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
+            .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .then(if (state != null) Modifier.semantics { stateDescription = state } else Modifier)
+            .heightIn(min = 32.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (leading != null) Icon(leading, null, tint = fg, modifier = Modifier.size(16.dp))
+        Text(label, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        if (trailing != null) Icon(trailing, null, tint = fg, modifier = Modifier.size(16.dp))
+    }
+}
+
+/**
+ * Widens a full-span item in a padded grid or list back out to the page's edges, so a bar inside it
+ * lines up with the same bar pinned above the grid.
+ */
+private fun Modifier.fullBleed(start: androidx.compose.ui.unit.Dp, end: androidx.compose.ui.unit.Dp): Modifier = layout { measurable, constraints ->
+    val extra = (start + end).roundToPx()
+    val wide = constraints.copy(minWidth = (constraints.minWidth + extra), maxWidth = if (constraints.hasBoundedWidth) constraints.maxWidth + extra else constraints.maxWidth)
+    val placeable = measurable.measure(wide)
+    val width = (placeable.width - extra).coerceAtLeast(0)
+    layout(width, placeable.height) { placeable.place(-start.roundToPx(), 0) }
 }
 
 /** One row of the list view: poster, title, facts and overview, as the display settings allow. */

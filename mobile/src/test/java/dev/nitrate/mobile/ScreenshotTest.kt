@@ -85,6 +85,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.longClick
 import org.junit.Rule
 import org.junit.Test
@@ -107,6 +108,8 @@ class ScreenshotTest {
         name: String,
         downloads: DownloadsData = DownloadsData(),
         setup: suspend (AppContainer) -> Unit = {},
+        /** Done on the settled screen before the picture (a scroll, say). */
+        act: () -> Unit = {},
         content: @Composable (AppActions) -> Unit,
     ) {
         val container = AppContainer(compose.activity, "test", "0", serverOverride = FakeServer(), downloadStoreOverride = MemoryDownloadStore(downloads))
@@ -143,6 +146,8 @@ class ScreenshotTest {
         // Artwork colours are worked out off the main thread; let them land, then settle animations.
         Thread.sleep(400)
         compose.mainClock.advanceTimeBy(1_500)
+        compose.waitForIdle()
+        act()
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
         // Everything that can be tapped says what it is.
@@ -804,6 +809,30 @@ class ScreenshotTest {
     @Test fun libraryTab() = shoot("phone-library-tab") { MainScreen(it, onSignedOut = {}, startOnLibrary = true) }
 
     @Test fun libraryRecommended() = shoot("phone-library-movies") { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies") }
+
+    /** A library's All tab with Home's look: tinted background, pill tabs, the compact bar; Fixed grid keeps them at the top. */
+    @Test fun libraryAllFixed() = shoot("phone-library-all-fixed") { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies", startTab = 1) }
+
+    /** Fixed grid, scrolled: the tabs and the bar stay while the posters go under them. */
+    @Test fun libraryAllFixedScrolled() = shoot("phone-library-all-fixed-scrolled", act = ::scrollGrid) { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies", startTab = 1) }
+
+    /** Scrolling grid, scrolled: the tabs and the bar have gone up with the posters (the back arrow and name stay). */
+    @Test fun libraryAllScrollingScrolled() = shoot(
+        "phone-library-all-scrolling-scrolled",
+        setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(phoneGridLayout = dev.nitrate.core.pages.GridLayout.SCROLLING)) },
+        act = ::scrollGrid,
+    ) { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies", startTab = 1) }
+
+    /** Scrolling grid at the top: it looks just like the fixed one until it moves. */
+    @Test fun libraryAllScrolling() = shoot(
+        "phone-library-all-scrolling",
+        setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(phoneGridLayout = dev.nitrate.core.pages.GridLayout.SCROLLING)) },
+    ) { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies", startTab = 1) }
+
+    private fun scrollGrid() {
+        compose.onNode(androidx.compose.ui.test.hasScrollAction()).performTouchInput { swipeUp(startY = centerY + 300f, endY = centerY - 300f, durationMillis = 600) }
+        compose.mainClock.advanceTimeBy(1_500)
+    }
 
     @Test fun browseArtwork() = shoot("phone-browse-artwork", setup = { c ->
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.ARTWORK))

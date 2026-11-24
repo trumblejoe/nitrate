@@ -103,6 +103,7 @@ object SettingsSearch {
         SettingEntry("Display", SettingsPlace.DISPLAY, "look appearance"),
         SettingEntry("Easy mode", SettingsPlace.DISPLAY, "simple bigger text accessibility elderly"),
         SettingEntry("True black", SettingsPlace.DISPLAY, "oled dark background"),
+        SettingEntry("Library lists", SettingsPlace.DISPLAY, "fixed scrolling grid layout pinned tabs sort filters view bar all full list posters", P),
         SettingEntry("Screensaver", SettingsPlace.DISPLAY, "ambient idle minutes", T),
         SettingEntry("Clock", SettingsPlace.DISPLAY, "time", T),
         SettingEntry("Menu", SettingsPlace.DISPLAY, "rail bar dial overlay pop-up popup placement fade in black menu side opens with arrow left right up", T),

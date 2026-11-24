@@ -368,6 +368,11 @@ internal fun LazyListScope.displayLook(prefs: DisplayPrefs, update: ((DisplayPre
     item(key = "titles") {
         Choice("Titles under cards", prefs.cardTitles.label) { update { it.copy(cardTitles = CardTitles.entries[(it.cardTitles.ordinal + 1) % CardTitles.entries.size]) } }
     }
+    item(key = "grid") {
+        // A library's full list: tabs and bar pinned, or scrolling away with the posters.
+        val grids = dev.nitrate.core.pages.GridLayout.entries
+        Choice("Library lists", prefs.phoneGridLayout.label, prefs.phoneGridLayout.phoneDetail) { update { it.copy(phoneGridLayout = grids[(it.phoneGridLayout.ordinal + 1) % grids.size]) } }
+    }
 }
 
 /** What Nitrate does around what you play (display profile settings). */
