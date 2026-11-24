@@ -52,6 +52,13 @@ class BrowseViewModel(
     private var loading: Job? = null
 
     init {
+        // Marks changed (here or anywhere): the loaded titles show them, nothing reloaded or moved.
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library all")) {
+            server.watchChanges().collect { change ->
+                val states = GridMarks.of(server, _state.value.items, change)
+                if (states.isNotEmpty()) _state.update { it.copy(items = GridMarks.apply(it.items, states)) }
+            }
+        }
         viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library all")) {
             (userId?.let { store.view(it, key, startWith) } ?: flowOf(startWith)).distinctUntilChanged().collect { options ->
                 if (options != _state.value.options || _state.value.total < 0) restart(options)

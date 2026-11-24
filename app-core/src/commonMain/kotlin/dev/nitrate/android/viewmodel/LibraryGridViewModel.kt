@@ -31,7 +31,16 @@ class LibraryGridViewModel(
     val state: StateFlow<GridState> = _state
     private var loading: Job? = null
 
-    init { loadMore() }
+    init {
+        loadMore()
+        // Marks changed (here or anywhere): the loaded titles show them where they are.
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Library grid")) {
+            repository.watchChanges().collect { change ->
+                val states = GridMarks.of(repository, _state.value.items, change)
+                if (states.isNotEmpty()) _state.update { it.copy(items = GridMarks.apply(it.items, states)) }
+            }
+        }
+    }
 
     fun setSort(sort: LibrarySort) {
         if (sort == _state.value.sort) return

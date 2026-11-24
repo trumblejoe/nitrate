@@ -1585,9 +1585,23 @@ class JellyfinClient(
     override fun events(): Flow<ServerEvent> = socketEvents { token != null }.onEach {
         when (it) {
             is ServerEvent.LibraryChanged -> answers.clear()
-            is ServerEvent.UserDataChanged -> watchStateChanged(it.states)
+            is ServerEvent.UserDataChanged -> { watchStateChanged(it.states); watchFlow.tryEmit(it) }
             else -> Unit
         }
+    }
+
+    private val watchFlow = kotlinx.coroutines.flow.MutableSharedFlow<ServerEvent.UserDataChanged>(extraBufferCapacity = 16)
+
+    override fun watchChanges(): Flow<ServerEvent.UserDataChanged> = watchFlow
+
+    override suspend fun parentIds(ids: List<String>): Map<String, List<String>> {
+        if (ids.isEmpty()) return emptyMap()
+        // Asked straight: which show a just-watched episode is in, not worth keeping.
+        return get(
+            "Items",
+            query = mapOf("ids" to dashless(ids.distinct()), "userId" to userId, "enableImages" to false, "enableUserData" to false, "enableTotalRecordCount" to false),
+        ).decode<QueryResultDto<ItemDto>>().items.map { it.toMediaItem() }
+            .associate { it.id to listOfNotNull(it.seriesId, it.seasonId) }.filterValues { it.isNotEmpty() }
     }
 
     // ---- Nitrate Companion (implemented in JellyfinCompanion.kt) ----

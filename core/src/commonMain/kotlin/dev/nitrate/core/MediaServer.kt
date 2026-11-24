@@ -508,6 +508,15 @@ interface MediaServer {
     /** Live events from the server while signed in (remote control, library and watch changes). */
     fun events(): Flow<ServerEvent> = kotlinx.coroutines.flow.emptyFlow()
 
+    /**
+     * Watch-state changes as they come in over [events] (while the app is connected), for pages that
+     * hold titles of their own (library grids) to put the marks right where they are.
+     */
+    fun watchChanges(): Flow<ServerEvent.UserDataChanged> = kotlinx.coroutines.flow.emptyFlow()
+
+    /** The show and season each of [ids] is in (episodes; nothing for the rest), for the marks on their posters. */
+    suspend fun parentIds(ids: List<String>): Map<String, List<String>> = emptyMap()
+
     // ---- Live TV ----
     /** Whether the server has Live TV set up for this user. */
     suspend fun liveTvAvailable(): Boolean = false
