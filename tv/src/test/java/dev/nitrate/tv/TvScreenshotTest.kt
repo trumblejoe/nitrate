@@ -178,9 +178,12 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
 
-    /** Black menu: the rail on solid black, the page's theme kept off it. */
+    /** Black menu: the overlay's pop-up card on solid black, the page's theme kept off it. */
     @Test fun blackMenuOverTheme() = shoot("tv-home-black-menu", { c ->
         c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenuBlack = true, pageThemes = mapOf(PageKeys.HOME to dev.nitrate.core.effects.PageTheme.ROSES)))
+    }, act = {
+        press("menu")
+        check(menuOpen()) { "Menu opens the pop-up" }
     }) { c ->
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
     }
@@ -378,7 +381,7 @@ class TvScreenshotTest {
         )
     }
 
-    @Test fun railRightExits() = prefsShot("tv-rail-exit", dev.nitrate.core.pages.DisplayPrefs(), {
+    @Test fun railRightExits() = prefsShot("tv-rail-exit", dev.nitrate.core.pages.DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT), {
         press("left")
         org.junit.Assert.assertTrue("Left reaches the rail", focusedHasText("Home"))
         press("right")
@@ -640,7 +643,7 @@ class TvScreenshotTest {
 
     /**
      * Home with tabs (pinned pages), rows one at a time: Right past a row's last card stays in the row (it
-     * used to jump to the tabs); Left off its first card reaches the menu; Right from the menu comes back
+     * used to jump to the tabs); Left off its first card opens the menu; Back from the menu comes back
      * to that card, not the tabs.
      */
     @Test fun homeMenuAndBack() = shoot("tv-home-menu-and-back", setup = { c ->
@@ -654,29 +657,31 @@ class TvScreenshotTest {
         // Left card by card to the menu, remembering the last card on the way.
         var card = name()
         var place = at()
-        // (The overlay menu takes no room: the row starts near the screen's edge.)
-        repeat(10) { if (at().left > 100f) { card = name(); place = at(); press("left") } }
-        check(at().left < 60f) { "Left from the first card should reach the menu, got ${at()}" }
-        press("right")
-        check(name() == card) { "Right from the menu should return to the card left, got ${at()} / was $place\n${name()}\n$card" }
+        // (The overlay is a pop-up in the middle: Left off the first card opens it, Back comes back.)
+        repeat(10) { if (!menuOpen()) { card = name(); place = at(); press("left") } }
+        check(menuOpen()) { "Left from the first card should open the menu, got ${at()}" }
+        press("back")
+        check(!menuOpen()) { "Back closes the menu" }
+        check(name() == card) { "Back from the menu should return to the card left, got ${at()} / was $place\n${name()}\n$card" }
         check(at() == place) { "and the row should stay put (no bounce): was $place, now ${at()}" }
     }) { c ->
         val pages = listOf(dev.nitrate.core.pages.CustomPage("kids", "Kids", pinned = true))
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
     }
 
-    /** Left from a cards-hidden row reaches the menu, and Right comes back. */
+    /** Left from a cards-hidden row opens the menu, and Back comes back. */
     private fun cardsHiddenToMenu(name: String, display: dev.nitrate.core.rows.RowDisplay) = shoot(name, setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)
         c.displaySettings.save("user-1", c.server.homeRows()[1], display)
     }, act = {
         fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
         press("down")
-        repeat(4) { press("left") }
-        check(at().left < 60f) { "Left from a ${display.styleLabel} row should reach the menu, got ${at()}" }
-        press("right")
+        repeat(4) { if (!menuOpen()) press("left") }
+        check(menuOpen()) { "Left from a ${display.styleLabel} row should open the menu, got ${at()}" }
+        press("back")
+        check(!menuOpen()) { "Back closes it" }
         // The row's layer is the whole screen (the overlay menu takes no room of its own).
-        check(at().left > 100f || at().width > 1000f) { "Right from the menu should return to the row, got ${at()}" }
+        check(at().left > 100f || at().width > 1000f) { "Back from the menu should return to the row, got ${at()}" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
     @Test fun cardsHiddenLeftToMenu() = cardsHiddenToMenu("tv-cards-hidden-left-to-menu", dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false))
@@ -2051,6 +2056,22 @@ class TvScreenshotTest {
         DisplaySettingsScreen(c)
     }
 
+    /** Display → Menu with the overlay: "Opens with" (Left by default) steps Left → Right → Up; the rail has no such line. */
+    @Test fun menuOpensWithSetting() = shoot("tv-display-opens-with", act = {
+        repeat(40) { if (!focusedHasText("Opens with")) press("down") }
+        check(focusedHasText("Opens with") && focusedHasText("Left")) { "the overlay's Opens with line, Left by default; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        repeat(10) { if (!focusedHasText("Right")) { Thread.sleep(50); compose.mainClock.advanceTimeBy(200); compose.waitForIdle() } }
+        check(focusedHasText("Opens with") && focusedHasText("Right")) { "OK steps it to Right; focused: ${focusedNodes()}" }
+    }) { c -> DisplaySettingsScreen(c) }
+
+    @Test fun railHasNoOpensWith() = shoot("tv-display-rail-no-opens-with", { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT)) }, act = {
+        repeat(40) { if (!focusedHasText("Rail side")) press("down") }
+        check(focusedHasText("Rail side")) { "the rail's own line shows" }
+        check(!shows("Opens with")) { "Opens with is only for the overlay" }
+    }) { c -> DisplaySettingsScreen(c) }
+
     @Test fun whileWatchingSettings() = shoot("tv-while-watching-settings", { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(hideSpoilers = true)) }) { c ->
         DisplaySettingsScreen(c, dev.nitrate.tv.ui.pages.DisplayPage.WATCHING)
     }
@@ -2590,53 +2611,115 @@ class TvScreenshotTest {
             WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
         }
 
-    /** Nothing of the overlay shows while browsing; Left off a row's first card opens it on Home, Right comes back to that card. */
+    private fun focusedBounds() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+
+    private fun avatars() = compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Joe, account")).fetchSemanticsNodes().size
+
+    /**
+     * The overlay pop-up: nothing shows while browsing (no profile corner either); Left off a row's
+     * first card opens a card in the middle with focus on Home's tile, Search and the avatar in its
+     * top row; the arrows move round the grid and stop at its edges; Back comes back to the card left.
+     */
     @Test fun overlayOpensOnLeft() = menuHome("tv-overlay-open", rowsHome) {
         check(!shows("Movies")) { "the overlay shows nothing until called" }
+        check(avatars() == 0) { "the overlay has no profile corner on the page" }
         press("down")
         val card = focusedName()
-        repeat(8) { if (!focusedHasText("Home")) press("left") }
-        check(focusedHasText("Home")) { "Left from the page should open the overlay on its own stop; focused: ${focusedNodes()}" }
-        check(shows("Movies")) { "the overlay lists the libraries in words" }
-        check(!shows("Settings")) { "Settings is in the profile corner, not a stop" }
+        repeat(8) { if (!menuOpen()) press("left") }
+        check(focusedHasText("Home")) { "Left from the page should open the pop-up on its own stop; focused: ${focusedNodes()}" }
+        val home = focusedBounds()
+        check(home.left > 120f && home.top > 200f) { "the pop-up sits in the middle, not down the edge: $home" }
+        check(shows("Movies") && shows("Search")) { "the pop-up has the libraries and Search in words" }
+        check(avatars() == 1) { "the avatar is in the pop-up's top row" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Settings")).fetchSemanticsNodes().isEmpty()) { "Settings is behind the avatar, not a tile" }
+        check(!shows("Switch user")) { "Switch user is behind the avatar, not a tile" }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/tv-overlay-opened.png")
         press("left")
-        check(focusedHasText("Home")) { "Left inside the overlay goes nowhere" }
+        check(focusedHasText("Home")) { "Left past the grid's edge goes nowhere" }
         press("right")
-        check(!shows("Movies")) { "Right closes the overlay" }
+        check(focusedHasText("Movies")) { "Right moves along the grid; focused: ${focusedNodes()}" }
+        press("right", "right")
+        check(focusedHasText("Customize this page")) { "Customize this page is a tile; focused: ${focusedNodes()}" }
+        press("right")
+        check(focusedHasText("Customize this page")) { "Right past the last tile goes nowhere" }
+        press("left", "left", "left", "up")
+        check(focusedHasText("Search")) { "Up from Home reaches Search in the top row; focused: ${focusedNodes()}" }
+        press("up")
+        check(focusedHasText("Search") && menuOpen()) { "Up past the top goes nowhere" }
+        press("down")
+        check(focusedHasText("Home")) { "Down from Search comes back to the grid; focused: ${focusedNodes()}" }
+        press("back")
+        check(!menuOpen()) { "Back closes the pop-up" }
         check(focusedName() == card) { "focus should come back to the card left: ${focusedName()} vs $card" }
     }
 
-    /** Menu opens the overlay from mid-page and closes it again; Back closes it too, focus back on the card left. */
+    /** Menu opens the pop-up from mid-page and closes it again; Back closes it too, focus back on the card left. */
     @Test fun overlayMenuKeyAndBack() = menuHome("tv-overlay-menu-key", rowsHome) {
         press("down", "right")
         val card = focusedName()
         press("menu")
-        check(focusedHasText("Home")) { "Menu should open the overlay on Home; focused: ${focusedNodes()}" }
+        check(focusedHasText("Home")) { "Menu should open the pop-up on Home; focused: ${focusedNodes()}" }
         press("menu")
         check(!shows("Movies")) { "Menu again closes it" }
         check(focusedName() == card) { "focus goes back to the card left: ${focusedName()} vs $card" }
         press("menu")
         check(focusedHasText("Home"))
         press("down")
-        check(!focusedHasText("Home")) { "Down moves along the stops" }
+        check(!focusedHasText("Home") && menuOpen()) { "Down moves within the grid" }
         press("back")
         check(!shows("Movies")) { "Back closes it" }
         check(focusedName() == card) { "focus goes back to the card left after Back too: ${focusedName()} vs $card" }
     }
 
-    /** A group opens in place in the overlay, focus on its first library, the overlay staying open. */
+    /** More's stops are a section of the pop-up under a "More" heading (no More tile); Down reaches them. */
+    @Test fun overlayMoreSection() = menuHome("tv-overlay-more", rowsHome) {
+        press("menu")
+        check(focusedHasText("Home"))
+        check(shows("Your pages")) { "More's stops show in the pop-up" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("More")).fetchSemanticsNodes().size == 1) { "one More heading, no More tile" }
+        press("down")
+        check(focusedHasText("Your pages") || focusedHasText("Comics")) { "Down from the main tiles reaches More's; focused: ${focusedNodes()}" }
+        press("down")
+        check(menuOpen()) { "Down past the bottom goes nowhere" }
+    }
+
+    /** A page kept in More (Your pages): the pop-up opens on its tile in the More section, marked. */
+    @Test fun overlayOpensOnMoreStop() = shoot("tv-overlay-more-current", act = {
+        check(focusedHasText("New page")) { "Your pages should open on its first tile" }
+        press("left")
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); compose.waitForIdle()
+        check(focusedHasText("Your pages")) { "the pop-up opens on Your pages, in More; focused: ${focusedNodes()}" }
+    }) { c ->
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(groupLibraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions(onPages = {}), current = "")
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, dev.nitrate.tv.ui.pages.LocalTvContainer provides c) {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.PAGES, overlay = false) {
+                dev.nitrate.tv.ui.pages.PagesScreen(c) { _, _ -> }
+            }
+        }
+    }
+
+    /** A group opens as its own small grid in the pop-up, focus on its first stop; Back folds it to the group's tile, Back again closes. */
     @Test fun overlayGroupOpens() = shoot("tv-overlay-group", { c ->
         c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenuGroups = listOf(animeGroup)))
     }, act = {
         press("left")
-        check(focusedHasText("Movies")) { "the overlay opens on the page's stop: ${focusedNodes()}" }
-        press("down", "down")
-        check(focusedHasText("Anime")) { "Down twice from Movies reaches the Anime group" }
+        check(focusedHasText("Movies")) { "the pop-up opens on the page's stop: ${focusedNodes()}" }
+        press("right", "right")
+        check(focusedHasText("Anime")) { "Right twice from Movies reaches the Anime group; focused: ${focusedNodes()}" }
+        check(shows("Collections")) { "Collections (kept in More) shows in the More section" }
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(focusedHasText("Movies") && !focusedHasText("Anime")) { "focus goes to the group's first stop: ${focusedNodes()}" }
-        check(shows("TV Shows")) { "the group shows open" }
+        check(shows("Back returns to the menu") && shows("TV Shows") && !shows("Kids")) { "the group's own grid, under its name" }
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/tv-overlay-group-open.png")
+        press("right")
+        check(focusedHasText("TV Shows")) { "Right moves within the group's grid" }
+        press("back")
+        compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
+        check(focusedHasText("Anime") && shows("Kids Movies")) { "Back folds the group, focus on its tile; focused: ${focusedNodes()}" }
+        press("back")
+        check(!shows("Kids Movies")) { "Back again closes the pop-up" }
+        check(focusedHasText("Movies page")) { "focus is back on the page; focused: ${focusedNodes()}" }
     }) { c ->
         val catalog = dev.nitrate.tv.ui.home.menuCatalog(groupLibraries, emptyList(), dev.nitrate.tv.ui.home.MenuActions(), current = "")
         androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, dev.nitrate.tv.ui.pages.LocalTvContainer provides c) {
@@ -2646,6 +2729,51 @@ class TvScreenshotTest {
                 androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
             }
         }
+    }
+
+    /** Many stops: the grid scrolls inside the card, the focused tile always brought into view. */
+    @Test fun overlayScrollsManyStops() = shoot("tv-overlay-many", act = {
+        press("menu")
+        check(focusedHasText("Home")) { "Menu opens the pop-up on Home" }
+        repeat(8) { press("down") }
+        val at = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+        check(focusedHasText("Comics") || focusedHasText("Your pages")) { "Down reaches the More section at the bottom; focused: ${focusedNodes()}" }
+        check(at.top >= 0f && at.bottom <= 1080f) { "the focused tile is on screen: $at" }
+    }) { c ->
+        val many = (1..24).map { library("x$it", "Library $it", dev.nitrate.core.model.CollectionKind.MOVIES) }
+        val catalog = dev.nitrate.tv.ui.home.menuCatalog(many, emptyList(), dev.nitrate.tv.ui.home.MenuActions(), current = "")
+        androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.home.LocalMenuCatalog provides catalog, dev.nitrate.tv.ui.pages.LocalTvContainer provides c) {
+            dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.HOME, overlay = false) {
+                val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+                androidx.tv.material3.Button(onClick = {}, modifier = Modifier.padding(200.dp).focusRequester(focus)) { androidx.tv.material3.Text("Home page") }
+                androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+            }
+        }
+    }
+
+    /** "Opens with: Up": Up off the page's top opens the pop-up; Left at the edge no longer does. */
+    @Test fun overlayOpensWithUp() = menuHome("tv-overlay-up", rowsHome.copy(tvPopupKey = dev.nitrate.core.pages.PopupKey.UP)) {
+        repeat(6) { press("left") }
+        check(!menuOpen()) { "Left doesn't open it with Up chosen" }
+        var card = focusedName()
+        repeat(4) { if (!menuOpen()) { card = focusedName(); press("up") } }
+        check(menuOpen() && focusedHasText("Home")) { "Up from the top opens the pop-up on Home; focused: ${focusedNodes()}" }
+        press("back")
+        check(!menuOpen()) { "Back closes it" }
+        check(focusedName() == card) { "focus goes back where it was: ${focusedName()} vs $card" }
+    }
+
+    /** "Opens with: Right": Right off the row's end opens the pop-up; Left at the start doesn't. */
+    @Test fun overlayOpensWithRight() = menuHome("tv-overlay-right", rowsHome.copy(tvPopupKey = dev.nitrate.core.pages.PopupKey.RIGHT)) {
+        press("down")
+        repeat(4) { press("left") }
+        check(!menuOpen()) { "Left doesn't open it with Right chosen" }
+        var card = focusedName()
+        repeat(12) { if (!menuOpen()) { card = focusedName(); press("right") } }
+        check(menuOpen() && focusedHasText("Home")) { "Right past the row's end opens the pop-up on Home; focused: ${focusedNodes()}" }
+        press("menu")
+        check(!menuOpen()) { "Menu closes it" }
+        check(focusedName() == card) { "focus goes back to the card left: ${focusedName()} vs $card" }
     }
 
     /** The side rail: hidden until called, then at once a column of icons and words; Right and Back close it. */
@@ -2676,7 +2804,7 @@ class TvScreenshotTest {
     }
 
     /** Up from the page's top reaches the profile corner; the avatar opens the account panel, and Back returns to the avatar. */
-    @Test fun profileCorner() = menuHome("tv-profile-corner", rowsHome) {
+    @Test fun profileCorner() = menuHome("tv-profile-corner", rowsHome.copy(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT)) {
         press("down", "up")
         repeat(3) { if (!focusedSays("account")) press("up") }
         check(focusedSays("Joe, account")) { "Up from the top should reach the avatar; focused: ${focusedNodes()}" }
@@ -2697,18 +2825,28 @@ class TvScreenshotTest {
         check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "something on the page has focus" }
     }
 
-    /** Easy mode: the corner is the way to Settings, the overlay has no Customize, and Sign out asks first. */
+    /**
+     * Easy mode: the pop-up has no Customize; its avatar (top row) is the way to Settings, Back from
+     * the account panel returns to the avatar, and Sign out asks first.
+     */
     @Test fun easyModeCornerAndOverlay() = menuHome("tv-easy-corner", rowsHome.copy(easyMode = true)) {
         press("menu")
-        check(focusedHasText("Home")) { "Menu opens the overlay in easy mode too" }
+        check(focusedHasText("Home")) { "Menu opens the pop-up in easy mode too" }
         check(!shows("Customize this page")) { "no Customize in easy mode" }
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/tv-easy-overlay.png")
-        press("back")
-        repeat(4) { if (!focusedSays("account")) press("up") }
-        check(focusedSays("Joe, account")) { "Up reaches the avatar; focused: ${focusedNodes()}" }
+        press("up")
+        check(focusedHasText("Search")) { "Up from Home reaches Search; focused: ${focusedNodes()}" }
+        press("right")
+        check(focusedSays("Joe, account")) { "the avatar sits beside Search; focused: ${focusedNodes()}" }
         press("ok")
         compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
-        check(shows("Settings")) { "Settings is in the account panel" }
+        check(shows("Sign out") && compose.onAllNodes(androidx.compose.ui.test.hasText("Settings")).fetchSemanticsNodes().isNotEmpty()) { "Settings is in the account panel" }
+        press("back")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(!shows("Sign out")) { "Back closes the panel" }
+        check(focusedSays("Joe, account") && shows("Movies")) { "focus is back on the avatar, the pop-up still open; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
         repeat(6) { if (!focusedHasText("Sign out")) press("down") }
         check(focusedHasText("Sign out"))
         press("ok")

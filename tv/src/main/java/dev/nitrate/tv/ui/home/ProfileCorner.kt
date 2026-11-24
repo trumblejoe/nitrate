@@ -149,7 +149,7 @@ private fun CornerButton(onClick: () -> Unit, spoken: String, modifier: Modifier
 
 /** The user's picture in a circle, their initial underneath (shown while it loads, or without one). */
 @Composable
-private fun Avatar(account: CornerAccount, size: Dp) {
+internal fun Avatar(account: CornerAccount, size: Dp) {
     Box(
         Modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
         contentAlignment = Alignment.Center,
@@ -161,17 +161,18 @@ private fun Avatar(account: CornerAccount, size: Dp) {
 
 /**
  * The account panel the avatar opens (a side panel; Back closes it and focus goes back to the
- * avatar): who's signed in, Switch user, Settings, the display profile this TV uses (when the user
+ * avatar, the corner's or the overlay pop-up's): who's signed in, Switch user, Settings, the display profile this TV uses (when the user
  * has profiles of their own to switch between) and Sign out, which easy mode asks about first.
  */
 @Composable
-internal fun AccountPanel(account: CornerAccount, actions: CornerActions, onDismiss: () -> Unit) {
+internal fun AccountPanel(account: CornerAccount, actions: CornerActions, onChosen: (() -> Unit)? = null, onDismiss: () -> Unit) {
     val container = dev.nitrate.tv.ui.pages.LocalTvContainer.current
     val easy = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.easyMode
     val scope = rememberCoroutineScope()
     var asking by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
-    fun then(action: (() -> Unit)?): () -> Unit = { onDismiss(); action?.invoke() }
+    // Choosing something closes the panel first ([onChosen]: the overlay's pop-up closes with it).
+    fun then(action: (() -> Unit)?): () -> Unit = { (onChosen ?: onDismiss)(); action?.invoke() }
     dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 480) {
         // Back closes it (taken as a key as well as the window's own Back).
         Column(

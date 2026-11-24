@@ -98,8 +98,10 @@ data class DisplayPrefs(
     val tvMenu: TvMenuStyle = TvMenuStyle.OVERLAY,
     /** Keep the menu invisible until you move onto it (any menu but the dial). */
     val tvMenuAutoHide: Boolean = false,
-    /** The TV menu (rail, bar or dial) on solid black, so it stands out over page themes and art. */
+    /** The TV menu (pop-up card, rail, bar or dial) on solid black, so it stands out over page themes and art. */
     val tvMenuBlack: Boolean = false,
+    /** The overlay pop-up ([TvMenuStyle.OVERLAY]): which arrow at the page's edge opens it (Menu always does). */
+    val tvPopupKey: PopupKey = PopupKey.LEFT,
     /** Where the title's caption sits (rows one at a time, full art, showcases). */
     val tvCaptionCorner: CaptionCorner = CaptionCorner.ALTERNATE,
     val tvCaptionSize: CaptionSize = CaptionSize.NORMAL,
@@ -280,8 +282,8 @@ enum class PageArrangement(val label: String, val note: String) {
 
 @Serializable
 enum class TvMenuStyle(val label: String, val detail: String) {
-    /** Nothing on screen until called: a full-height panel of big stops over the dimmed page (the default). */
-    OVERLAY("Overlay", "Nothing on screen while you browse; Left at the page's edge or Menu opens big stops over the page"),
+    /** Nothing on screen until called: a pop-up card of big tiles in the middle of the dimmed page (the default). */
+    OVERLAY("Overlay", "Nothing on screen while you browse; Menu, or the arrow you choose at the page's edge, opens a pop-up of big tiles in the middle"),
     /** The side rail: hidden until called, then a column of icons and words at the edge, over the page. */
     LEFT("Side rail", "Hidden until you move off the page's left edge or press Menu; then icons and words down the left"),
     RIGHT("Side rail", "Hidden until you move off the page's right edge or press Menu; then icons and words down the right"),
@@ -295,11 +297,16 @@ enum class TvMenuStyle(val label: String, val detail: String) {
     val rail: Boolean get() = this == LEFT || this == RIGHT
 
     /**
-     * Search, Settings and Switch user live in the profile corner (top right of every page) and
-     * leave the menu's stops: on the overlay and the rail. The bar and the dial keep them.
+     * Search, Settings and Switch user leave the menu's stops: on the rail they live in the profile
+     * corner (top right of every page), on the overlay in the pop-up's top row (Search and the
+     * avatar, whose panel has Switch user and Settings). The bar and the dial keep them.
      */
     val cornerStops: Boolean get() = this == OVERLAY || rail
 }
+
+/** Which arrow at the page's edge opens the overlay pop-up (`DisplayPrefs.tvPopupKey`); stored by name. */
+@Serializable
+enum class PopupKey(val label: String) { LEFT("Left"), RIGHT("Right"), UP("Up") }
 
 @Serializable
 enum class CardTitles(val label: String) { BY_ROW("As each row is set"), ALWAYS("Always"), NEVER("Never") }

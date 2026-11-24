@@ -159,14 +159,17 @@ internal enum class Edge { TOP, BOTTOM }
  * the menu keeps clear at each edge.
  *
  * The overlay (the default) and the side rail show nothing while you browse: moving off the page's
- * edge (left; the right for a rail on the right) or the Menu key opens them over the page, focus on
- * the current page's stop, and towards the page, Back or Menu close them, focus going back where it
- * was on the page. The fade-in bar and the dial wait at the top edge, and the Top/Bottom bar is at
+ * edge (the rail's side; for the overlay the arrow chosen in [opensWith], Left unless changed) or the
+ * Menu key opens them over the page, focus on the current page's stop, and Back or Menu close them
+ * (the rail also towards the page), focus going back where it was on the page. The overlay is a
+ * pop-up card in the middle ([MenuPopup]) with Search and the avatar in its top row and More's
+ * stops ([more]) below the menu's own. The fade-in bar and the dial wait at the top edge, and the Top/Bottom bar is at
  * the top on the first row and at the bottom on the last. The remote's Menu key opens and closes the
  * menu from anywhere, and Back from the menu returns to the page. Back on the page is never taken over.
  *
  * With [corner], the profile corner sits top right (Search and the avatar, [ProfileCorner]): Up from
  * the page's top reaches it (on the Top bar and the dial, Up from the bar or past the dial's top).
+ * The overlay shows no corner: its pop-up holds Search and the avatar itself.
  */
 @Composable
 fun TvMenu(
@@ -177,6 +180,10 @@ fun TvMenu(
     /** Keep the menu invisible until focus reaches it, fading in over the page (as on Home). */
     autoHide: Boolean = false,
     corner: CornerActions? = null,
+    /** The overlay pop-up's "More" section: the stops kept in More (other styles reach them through the More page). */
+    more: List<NavEntry> = emptyList(),
+    /** The overlay: which arrow at the page's edge opens it (Left, Right or Up). */
+    opensWith: Key = Key.DirectionLeft,
     content: @Composable (MenuInsets) -> Unit,
 ) {
     // A hidden menu takes no room of its own: it fades in over the page on every page, not only
@@ -184,6 +191,9 @@ fun TvMenu(
     @Suppress("NAME_SHADOWING") val overlay = overlay || autoHide
     // The overlay and the rail: nothing on screen until called, then a column over the page.
     val panel = style == TvMenuStyle.OVERLAY || style.rail
+    // The overlay is a pop-up in the middle, which holds Search and the account itself: no corner.
+    val popup = style == TvMenuStyle.OVERLAY
+    val showCorner = corner != null && !popup
     val contentFocus = remember { FocusRequester() }
     val menuFocus = remember { FocusRequester() }
     var inMenu by remember { mutableStateOf(false) }
@@ -238,15 +248,17 @@ fun TvMenu(
             kotlinx.coroutines.delay(16)
         }
     }
-    // Focus gone from the open panel for good (not just handed between stops): it closes.
-    LaunchedEffect(panelOpen, inMenu) {
-        if (panelOpen && !inMenu) { kotlinx.coroutines.delay(250); if (!inMenu) panelOpen = false }
+    // Focus gone from the open panel for good (not just handed between stops): it closes. Not while
+    // the pop-up's account panel is open over it (a window of its own has focus then).
+    LaunchedEffect(panelOpen, inMenu, accountOpen) {
+        if (panelOpen && !inMenu && !accountOpen) { kotlinx.coroutines.delay(250); if (!inMenu && !accountOpen) panelOpen = false }
     }
     BackHandler(enabled = inMenu || dialOpen || panelOpen || inCorner, onBack = toContent)
 
     val side: (Key) -> Boolean = { key ->
         when (style) {
-            TvMenuStyle.OVERLAY, TvMenuStyle.LEFT -> key == Key.DirectionLeft
+            TvMenuStyle.OVERLAY -> key == opensWith
+            TvMenuStyle.LEFT -> key == Key.DirectionLeft
             TvMenuStyle.RIGHT -> key == Key.DirectionRight
             // With one row the bar is only at the top.
             TvMenuStyle.TOP, TvMenuStyle.FADE -> (key == Key.DirectionUp && onFirst) || (key == Key.DirectionDown && onLast && !onFirst)
@@ -257,7 +269,7 @@ fun TvMenu(
     val reach: (Key) -> Boolean = { key ->
         when {
             side(key) -> { toMenu(); true }
-            key == Key.DirectionUp && corner != null -> { toCorner(); true }
+            key == Key.DirectionUp && showCorner -> { toCorner(); true }
             else -> false
         }
     }
@@ -284,7 +296,7 @@ fun TvMenu(
                     }
                     when {
                         key != null && side(key) -> { mainHandler.post { toMenu() }; FocusRequester.Cancel }
-                        key == Key.DirectionUp && corner != null -> { mainHandler.post { toCorner() }; FocusRequester.Cancel }
+                        key == Key.DirectionUp && showCorner -> { mainHandler.post { toCorner() }; FocusRequester.Cancel }
                         else -> FocusRequester.Default
                     }
                 }
@@ -294,7 +306,7 @@ fun TvMenu(
         CompositionLocalProvider(
             LocalMenuEdge provides reach, LocalMenuSide provides side, LocalMenuRows provides rows,
             dev.nitrate.tv.ui.rows.LocalFocusReturn provides focusReturn,
-            LocalCornerRoom provides if (corner != null) CornerRoom else 0.dp,
+            LocalCornerRoom provides if (showCorner) CornerRoom else 0.dp,
         ) { content(insets) }
     }
     val shown by animateFloatAsState(if (!autoHide || inMenu) 1f else 0f, label = "menu-fade")
@@ -320,8 +332,14 @@ fun TvMenu(
                 page(MenuInsets())
                 // Hidden, the menu has nothing focus could move to: these slivers at the edges are
                 // where moving off the page goes (the page's exit sends it on to the menu or corner).
-                EdgeCatcher("Menu", Modifier.align(if (style == TvMenuStyle.RIGHT) Alignment.CenterEnd else Alignment.CenterStart).fillMaxHeight().width(1.dp), enabled = !panelOpen, onFocus = toMenu)
-                if (corner != null) EdgeCatcher("Account and search", Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp), enabled = !panelOpen, onFocus = toCorner)
+                // (The overlay's: on the edge its arrow leads to; along the top for Up.)
+                val catcher = when {
+                    style == TvMenuStyle.RIGHT || (popup && opensWith == Key.DirectionRight) -> Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(1.dp)
+                    popup && opensWith == Key.DirectionUp -> Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp)
+                    else -> Modifier.align(Alignment.CenterStart).fillMaxHeight().width(1.dp)
+                }
+                EdgeCatcher("Menu", catcher, enabled = !panelOpen, onFocus = toMenu)
+                if (showCorner) EdgeCatcher("Account and search", Modifier.align(Alignment.TopCenter).fillMaxWidth().height(1.dp), enabled = !panelOpen, onFocus = toCorner)
             }
             TvMenuStyle.TOP, TvMenuStyle.FADE -> if (overlay) {
                 // At the top on the first row (and when there's only one), at the bottom on the last.
@@ -362,7 +380,7 @@ fun TvMenu(
             }
         }
         // The profile corner, top right on every page; under the open menu (its dimming covers it).
-        if (corner != null && account != null) {
+        if (showCorner && account != null) {
             ProfileCorner(
                 account,
                 onSearch = corner.onSearch,
@@ -379,16 +397,31 @@ fun TvMenu(
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 26.dp)
                     .onFocusChanged { inCorner = it.hasFocus },
             )
-            if (accountOpen) AccountPanel(account, corner) {
-                accountOpen = false
-                // Back on the avatar once the panel's window has gone.
-                focusAvatar++
-            }
         }
-        if (panel && panelOpen) {
+        if (accountOpen && corner != null && account != null) AccountPanel(
+            account, corner,
+            // From the pop-up, choosing something closes the pop-up too (back to the page, then on).
+            onChosen = if (popup) ({ accountOpen = false; toContent() }) else null,
+        ) {
+            accountOpen = false
+            // Back on the avatar (the corner's or the pop-up's) once the panel's window has gone.
+            focusAvatar++
+        }
+        if (popup && panelOpen) {
+            MenuPopup(
+                stops, more,
+                account = account ?: CornerAccount("", null),
+                onSearch = corner?.onSearch,
+                onAvatar = if (corner != null) ({ accountOpen = true }) else null,
+                menuFocus = menuFocus,
+                avatarFocus = avatarFocus,
+                onClose = toContent,
+                modifier = Modifier.onFocusChanged { inMenu = it.hasFocus },
+            )
+        } else if (panel && panelOpen) {
             SideMenu(
                 stops,
-                large = style == TvMenuStyle.OVERLAY,
+                large = false,
                 end = style == TvMenuStyle.RIGHT,
                 menuFocus = menuFocus,
                 exitKey = if (style == TvMenuStyle.RIGHT) Key.DirectionLeft else Key.DirectionRight,
@@ -422,7 +455,11 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
     // every page with a layout of its own: the way to change the page without knowing to hold OK
     // on a row. Not in easy mode.
     val customizeStop = if (pageKey != null && !prefs.easyMode) NavEntry("Customize this page", NavIcons.customize, id = CUSTOMIZE_STOP, onClick = { customize.openPage() }) else null
+    // The overlay's pop-up shows More's stops in a section of their own, so it has no More stop.
+    val popup = style == TvMenuStyle.OVERLAY
+    val more = if (popup) marked.more(prefs) else emptyList()
     val stops = marked.stops(prefs)
+        .let { s -> if (popup) s.filter { it.id != MenuStops.MORE } else s }
         .let { s -> if (customizeStop == null) s else s.indexOfFirst { it.id == dev.nitrate.core.pages.MenuStops.SETTINGS }.let { at -> if (at < 0) s + customizeStop else s.take(at) + customizeStop + s.drop(at) } }
         .let { s -> if (music && marked.nowPlaying != null) listOf(marked.nowPlaying) + s else s }
     // The profile corner: Search, and the account panel's Switch user, Settings and Sign out.
@@ -435,7 +472,15 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
             onSignOut = marked.signOut,
         )
     }
-    TvMenu(style, stops, marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE, corner = corner) { insets ->
+    val opensWith = when (prefs.tvPopupKey) {
+        dev.nitrate.core.pages.PopupKey.LEFT -> Key.DirectionLeft
+        dev.nitrate.core.pages.PopupKey.RIGHT -> Key.DirectionRight
+        dev.nitrate.core.pages.PopupKey.UP -> Key.DirectionUp
+    }
+    TvMenu(
+        style, stops, marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE, corner = corner,
+        more = more, opensWith = opensWith,
+    ) { insets ->
         ThemedPage(pageKey, insets, customize) { content(insets) }
     }
 }

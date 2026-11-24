@@ -459,6 +459,17 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
                 trailingContent = { Text("${menuKindName(kind)}  ›", color = MaterialTheme.colorScheme.primary) },
             )
         }
+        // The overlay pop-up: which arrow at the page's edge opens it (Menu always does).
+        if (now == TvMenuStyle.OVERLAY) item {
+            val keys = dev.nitrate.core.pages.PopupKey.entries
+            ListItem(
+                selected = false,
+                onClick = { update { it.copy(tvPopupKey = keys[(it.tvPopupKey.ordinal + 1) % keys.size]) } },
+                headlineContent = { Text("Opens with") },
+                supportingContent = { Text("The arrow that opens the menu when you press it at the page's edge (the remote's Menu key always does)") },
+                trailingContent = { Text("${prefs.tvPopupKey.label}  ›", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
         if (now.rail) item {
             ListItem(
                 selected = false,

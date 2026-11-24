@@ -70,4 +70,13 @@ class MenuStopsTest {
         assertEquals(true, "\"tvMenu\":\"OVERLAY\"" in saved, saved)
         assertEquals(TvMenuStyle.OVERLAY, DisplayPrefs.decode(json, saved).tvMenu)
     }
+
+    @Test fun popupOpensWithLeftUnlessChosen() {
+        // Nothing saved: Left, as the overlay always opened.
+        assertEquals(PopupKey.LEFT, DisplayPrefs().tvPopupKey)
+        assertEquals(PopupKey.LEFT, DisplayPrefs.decode(json, """{"tvMenu":"OVERLAY"}""").tvPopupKey)
+        val saved = json.encodeToString(DisplayPrefs.serializer(), DisplayPrefs(tvPopupKey = PopupKey.UP))
+        assertEquals(true, "\"tvPopupKey\":\"UP\"" in saved, saved)
+        assertEquals(PopupKey.UP, DisplayPrefs.decode(json, saved).tvPopupKey)
+    }
 }

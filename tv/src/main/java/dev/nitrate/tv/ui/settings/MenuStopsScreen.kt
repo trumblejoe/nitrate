@@ -100,7 +100,8 @@ internal fun MenuStopsEditor(prefs: DisplayPrefs, catalog: MenuCatalog, update: 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (prefs.tvMenu.cornerStops) Text(
-            "Search, Settings and Switch user are in the top-right corner of every page (Up from the top of a page), so they aren't stops in this menu.",
+            if (prefs.tvMenu == dev.nitrate.core.pages.TvMenuStyle.OVERLAY) "Search and your account (Settings, Switch user) sit in the menu's top row, so they aren't stops in this menu. Stops in More show in the menu under a More heading."
+            else "Search, Settings and Switch user are in the top-right corner of every page (Up from the top of a page), so they aren't stops in this menu.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

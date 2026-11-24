@@ -100,13 +100,13 @@ import dev.nitrate.core.model.MediaItem
 internal val BarHeight = 76.dp
 
 /**
- * The overlay ([large], the default menu) and the side rail: nothing on screen until called, then
- * a full-height column of stops at the edge ([end]: the right), each its icon and its words, laid
- * over the page (never pushing it). The overlay dims the page behind a wide panel of big stops; the
- * rail is a narrower column. Focus starts on the current page's stop ([menuFocus]); ▲▼ move, a group
- * opens in place (its stops indented under it, focus on the first; moving off it or Back folds it,
- * and the page's own group shows open with its stop marked), and towards the page ([exitKey]) closes
- * it, as Back and Menu do (`TvMenu`). Choosing a stop closes it first ([onClose]).
+ * The side rail (and [large]: a wider panel of big stops over the dimmed page, which the overlay
+ * used to be before it became the centred pop-up, `MenuPopup`): nothing on screen until called,
+ * then a full-height column of stops at the edge ([end]: the right), each its icon and its words,
+ * laid over the page (never pushing it). Focus starts on the current page's stop ([menuFocus]); ▲▼
+ * move, a group opens in place (its stops indented under it, focus on the first; moving off it or
+ * Back folds it, and the page's own group shows open with its stop marked), and towards the page
+ * ([exitKey]) closes it, as Back and Menu do (`TvMenu`). Choosing a stop closes it first ([onClose]).
  */
 @Composable
 internal fun SideMenu(

@@ -105,7 +105,7 @@ object SettingsSearch {
         SettingEntry("True black", SettingsPlace.DISPLAY, "oled dark background"),
         SettingEntry("Screensaver", SettingsPlace.DISPLAY, "ambient idle minutes", T),
         SettingEntry("Clock", SettingsPlace.DISPLAY, "time", T),
-        SettingEntry("Menu", SettingsPlace.DISPLAY, "rail bar dial placement fade in black menu side", T),
+        SettingEntry("Menu", SettingsPlace.DISPLAY, "rail bar dial overlay pop-up popup placement fade in black menu side opens with arrow left right up", T),
         SettingEntry("Menu stops", SettingsPlace.MENU_STOPS, "menu items order comics channels radial dial hide hidden", T),
         SettingEntry("Menu groups", SettingsPlace.MENU_STOPS, "group libraries together anime kids folder split rename", T),
         SettingEntry("More page", SettingsPlace.MENU_STOPS, "more stops out of the menu collections playlists switch user", T),
