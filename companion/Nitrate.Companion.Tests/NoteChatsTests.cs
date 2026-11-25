@@ -337,8 +337,8 @@ public sealed class NoteChatsTests : IDisposable
     {
         var keeping = new ChatKeeping(_db, _book, _chats);
         keeping.Save(new ChatKeepingSettings(14, new[] { Hidden }));
-        var page = Nitrate.Companion.Api.SettingsController.Page(keeping.Settings);
-        var fields = Assert.Single(page.Sections).Fields;
+        var page = Nitrate.Companion.Api.SettingsController.Page(keeping.Settings, []);
+        var fields = page.Sections.First().Fields;
         Assert.Equal(14, fields.Single(f => f.Key == Nitrate.Companion.Api.SettingsController.ChatDays).Value.GetInt32());
         var users = fields.Single(f => f.Key == Nitrate.Companion.Api.SettingsController.ChatKeepFrom);
         Assert.Equal("users", users.Type);

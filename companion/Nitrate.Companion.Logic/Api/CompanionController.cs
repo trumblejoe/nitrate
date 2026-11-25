@@ -107,6 +107,8 @@ public class CompanionController : ControllerBase
             features.Add("chathistory");
         }
 
+        // Metadata editors: chosen accounts edit titles in chosen libraries (/Nitrate/Metadata; docs/features/admin.md).
+        features.Add("metadata");
         features.Add("home");
         features.Add("formats");
         // Only once the timing middleware is known to be in the server's pipeline.

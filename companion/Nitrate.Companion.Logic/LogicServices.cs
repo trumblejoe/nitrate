@@ -134,6 +134,12 @@ public static class LogicServices
             new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
             sp.GetRequiredService<TimeProvider>()));
 
+        // Metadata editors: who may edit where, the log of every change, and per-editor limits (memory only).
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Metadata.MetadataEditorStore(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddSingleton<Nitrate.Companion.Metadata.MetadataLimiter>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Metadata.IMetadataServer, Nitrate.Companion.Metadata.JellyfinMetadataServer>();
+
         // The nightly tasks (run through the shell's adapters, which keep their old names) and the segment provider.
         serviceCollection.AddSingleton<Nitrate.Companion.Credits.CreditScanJob>();
         serviceCollection.AddSingleton<Nitrate.Companion.Intros.IntroScanJob>();

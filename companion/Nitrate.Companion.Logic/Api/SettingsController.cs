@@ -44,13 +44,18 @@ public class SettingsController : ControllerBase
     /// <summary>"Never delete chats from these users".</summary>
     public const string ChatKeepFrom = "Chats.KeepFrom";
 
+    /// <summary>"Metadata editors" (users who may edit titles; ticked here: every library).</summary>
+    public const string MetadataEditors = "Metadata.Editors";
+
     private const string UserIdClaim = "Jellyfin-UserId";
     private readonly IUserManager _users;
     private readonly ChatKeeping _chats;
+    private readonly Nitrate.Companion.Metadata.MetadataEditorStore _editors;
 
     /// <summary>Initializes a new instance of the <see cref="SettingsController"/> class.</summary>
-    public SettingsController(IUserManager users, ChatKeeping chats)
+    public SettingsController(IUserManager users, ChatKeeping chats, Nitrate.Companion.Metadata.MetadataEditorStore editors)
     {
+        _editors = editors;
         _users = users;
         _chats = chats;
     }
@@ -59,7 +64,7 @@ public class SettingsController : ControllerBase
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public ActionResult<LogicSettingsPage> Get() => Admin() is { } refused ? refused : Page(_chats.Settings);
+    public ActionResult<LogicSettingsPage> Get() => Admin() is { } refused ? refused : Page(_chats.Settings, _editors.Editors());
 
     /// <summary>Saves changed settings (unknown keys are ignored); answers with them as saved.</summary>
     [HttpPost]
@@ -74,6 +79,7 @@ public class SettingsController : ControllerBase
         }
 
         var settings = _chats.Settings;
+        List<Guid>? editors = null;
         try
         {
             if (post.Values.TryGetValue(ChatDays, out var days))
@@ -85,6 +91,11 @@ public class SettingsController : ControllerBase
             {
                 settings = settings with { KeepFrom = people.ValueKind == JsonValueKind.Array ? people.EnumerateArray().Select(p => Guid.Parse(p.GetString() ?? string.Empty)).ToList() : new List<Guid>() };
             }
+
+            if (post.Values.TryGetValue(MetadataEditors, out var chosen))
+            {
+                editors = chosen.ValueKind == JsonValueKind.Array ? chosen.EnumerateArray().Select(p => Guid.Parse(p.GetString() ?? string.Empty)).ToList() : new List<Guid>();
+            }
         }
         catch (Exception e) when (e is FormatException or InvalidOperationException)
         {
@@ -92,11 +103,16 @@ public class SettingsController : ControllerBase
         }
 
         _chats.Save(settings);
-        return Page(_chats.Settings);
+        if (editors is not null)
+        {
+            SaveEditors(editors);
+        }
+
+        return Page(_chats.Settings, _editors.Editors());
     }
 
-    /// <summary>The settings page for these chat settings.</summary>
-    public static LogicSettingsPage Page(ChatKeepingSettings chats) => new(new[]
+    /// <summary>The settings page for these chat settings and metadata editors.</summary>
+    public static LogicSettingsPage Page(ChatKeepingSettings chats, IReadOnlyList<Nitrate.Companion.Metadata.EditorScope> editors) => new(new[]
     {
         new LogicSettingsSection(
             "Chat histories",
@@ -106,7 +122,29 @@ public class SettingsController : ControllerBase
                 new LogicSetting(ChatDays, "Delete chats after (days)", "0 or empty: never deleted.", "number", JsonSerializer.SerializeToElement(chats.DeleteAfterDays)),
                 new LogicSetting(ChatKeepFrom, "Never delete chats from these users", "A chat with a message from anyone ticked here is kept.", "users", JsonSerializer.SerializeToElement(chats.Kept.Select(g => g.ToString("D")).ToList())),
             }),
+        new LogicSettingsSection(
+            "Metadata editors",
+            "People ticked here can edit titles' details, matches and images, and refresh them, in Nitrate's apps, as an administrator can (never files or paths). Every change is logged, and an administrator can undo detail changes from the log.",
+            new[]
+            {
+                new LogicSetting(MetadataEditors, "Metadata editors", "Someone ticked here edits every library; to limit someone to some libraries, choose them in a Nitrate app (Settings, Metadata editors).", "users", JsonSerializer.SerializeToElement(editors.Select(e => e.UserId.ToString("D")).ToList())),
+            }),
     });
+
+    // Ticked: an editor (a new one edits every library; one already an editor keeps their libraries). Unticked: not an editor.
+    private void SaveEditors(IReadOnlyCollection<Guid> chosen)
+    {
+        var now = _editors.Editors();
+        foreach (var editor in now.Where(e => !chosen.Contains(e.UserId)))
+        {
+            _editors.Remove(editor.UserId);
+        }
+
+        foreach (var user in chosen.Distinct().Where(u => now.All(e => e.UserId != u) && _users.GetUserById(u) is not null))
+        {
+            _editors.Put(new Nitrate.Companion.Metadata.EditorScope(user, true, []));
+        }
+    }
 
     private ActionResult? Admin()
     {
