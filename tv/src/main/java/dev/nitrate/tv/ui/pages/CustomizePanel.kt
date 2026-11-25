@@ -287,7 +287,7 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
         Column {
             if (hasRows) ListItem(
                 selected = false, onClick = { open = "rows" },
-                headlineContent = { Text("Rows") }, supportingContent = { Text("Order, hide, rename and add your own") },
+                headlineContent = { Text("Edit rows") }, supportingContent = { Text("Choose which rows this page has, their order and names, and add your own") },
                 trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
                 modifier = Modifier.focusRequester(first),
             )
