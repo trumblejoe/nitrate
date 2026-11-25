@@ -258,7 +258,7 @@ private fun TabRows(
                 // The library's main page (Recommended) is always its rows; the other row tabs get the
                 // View button (as their rows, or their titles in one of the All tab's views).
                 if (pageKey == dev.nitrate.core.pages.PageKeys.library(lib.id)) page(tabs)
-                else RowsOrTitles("rows/$pageKey", s.rows, repository, displaySettings, tabs, onOpen, onPlay, music = lib.collection == CollectionKind.MUSIC) { header -> page(header) }
+                else RowsOrTitles("rows/$pageKey", s.rows, repository, displaySettings, tabs, onOpen, onPlay, music = lib.collection == CollectionKind.MUSIC, label = lib.name) { header -> page(header) }
             }
         }
         is RowsState.Error -> Column { tabs(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
@@ -333,28 +333,15 @@ private fun CollectionsGrid(
         }
         return
     }
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(columns),
-        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { tabs() }
-        item(span = { GridItemSpan(maxLineSpan) }) { bar() }
-        when {
-            list == null -> item(span = { GridItemSpan(maxLineSpan) }) { dev.nitrate.tv.ui.components.GridPlaceholder() }
-            list.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Text(empty) }
-            else -> items(list, key = { it.id }) { c ->
-                val artwork = view == dev.nitrate.core.pages.BrowseView.ARTWORK
-                if (view == dev.nitrate.core.pages.BrowseView.LIST) {
-                    MediaCard(item = c, imageUrl = repository.backdropUrl(c, 640) ?: repository.imageUrl(c, ImageKind.PRIMARY, 360), width = null, aspectRatio = 16f / 9f, title = c.name, subtitle = c.overview?.take(80), onClick = { onOpen(c) })
-                } else MediaCard(
-                    item = c,
-                    imageUrl = if (artwork) repository.imageUrl(c, ImageKind.THUMB, 360) ?: repository.backdropUrl(c, 640) else repository.imageUrl(c, ImageKind.PRIMARY, 360),
-                    width = null, aspectRatio = if (artwork) 16f / 9f else 2f / 3f, title = c.name, onClick = { onOpen(c) },
-                )
+    // As the All tab: the page theme and the focused collection behind, Home's cards, Fixed or Scrolling grid.
+    TitleGrid(
+        list, view, columns, repository, lib.name,
+        bar = {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { tabs() }
+                Box(Modifier.padding(end = PagePadding + dev.nitrate.tv.ui.components.LocalClockRoom.current)) { bar() }
             }
-        }
-    }
+        },
+        upTo = viewButton, onOpen = onOpen, onPlay = onPlay, empty = empty,
+    )
 }

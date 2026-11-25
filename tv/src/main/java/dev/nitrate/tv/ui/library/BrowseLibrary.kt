@@ -304,7 +304,7 @@ fun BrowseLibrary(
         contentPadding = PaddingValues(start = PagePadding, end = PagePadding, top = if (fixed) 10.dp else 0.dp, bottom = 48.dp),
         horizontalArrangement = Arrangement.spacedBy(prefs.tvCardSpacing.dp.dp),
         verticalArrangement = Arrangement.spacedBy((prefs.tvCardSpacing.dp + 4).dp),
-        modifier = Modifier.weight(1f).fillMaxWidth().then(if (fixed) Modifier.fadeTop(18.dp) else Modifier),
+        modifier = Modifier.weight(1f).fillMaxWidth().then(if (fixed) Modifier.fadeTop(18.dp) { grid.canScrollBackward } else Modifier),
     ) {
         // Scrolling: the tabs bar is the grid's first line, scrolling away with the posters (the
         // page's own edge, not the grid's padding).
@@ -429,7 +429,7 @@ internal fun BarButton(text: String, modifier: Modifier = Modifier, enabled: Boo
  * under the posters, so their words and focus read over any picture.
  */
 @Composable
-private fun GridShade(fixed: Boolean) {
+internal fun GridShade(fixed: Boolean) {
     val dark = Color.Black
     val brush = if (fixed) androidx.compose.ui.graphics.Brush.verticalGradient(
         0f to dark.copy(alpha = 0.55f), 0.3f to dark.copy(alpha = 0.25f), 0.45f to dark.copy(alpha = 0.55f), 1f to dark.copy(alpha = 0.88f),
@@ -442,7 +442,7 @@ private fun GridShade(fixed: Boolean) {
 
 /** Scrolls just enough to show what took focus whole, with [gap] px to spare above and below (when it fits). */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-private class WholeInSight(private val gap: Float) : androidx.compose.foundation.gestures.BringIntoViewSpec {
+internal class WholeInSight(private val gap: Float) : androidx.compose.foundation.gestures.BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         val room = if (size + 2 * gap <= containerSize) gap else 0f
         return when {
@@ -454,15 +454,18 @@ private class WholeInSight(private val gap: Float) : androidx.compose.foundation
 }
 
 /** Fades out what scrolls up under the details over its top [by] (rather than a hard edge). */
-private fun Modifier.fadeTop(by: androidx.compose.ui.unit.Dp) = graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+internal fun Modifier.fadeTop(by: androidx.compose.ui.unit.Dp, scrolled: () -> Boolean = { true }) = graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
-        val fade = (by.toPx() / size.height).coerceIn(0f, 1f)
-        drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(0f to Color.Transparent, fade to Color.Black), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+        // Only once the grid has moved: the first row, and its focus frame, sit whole at the start.
+        if (scrolled()) {
+            val fade = (by.toPx() / size.height).coerceIn(0f, 1f)
+            drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(0f to Color.Transparent, fade to Color.Black), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+        }
     }
 
 /** Lays [this] out [by] wider on each side than its slot: the tabs bar inside the padded grid, at the page's own edge. */
-private fun Modifier.bleed(by: androidx.compose.ui.unit.Dp) = layout { measurable, constraints ->
+internal fun Modifier.bleed(by: androidx.compose.ui.unit.Dp) = layout { measurable, constraints ->
     val px = by.roundToPx()
     val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + 2 * px, maxWidth = constraints.maxWidth + 2 * px))
     layout(constraints.maxWidth, placeable.height) { placeable.place(-px, 0) }
@@ -470,7 +473,7 @@ private fun Modifier.bleed(by: androidx.compose.ui.unit.Dp) = layout { measurabl
 
 /** A wide row for the list view: poster, title, facts and overview (as display settings allow). */
 @Composable
-private fun ListCard(repository: MediaServer, item: MediaItem, modifier: Modifier, onClick: () -> Unit) {
+internal fun ListCard(repository: MediaServer, item: MediaItem, modifier: Modifier, onClick: () -> Unit) {
     val prefs = LocalDisplayPrefs.current
     // The page's card corners, see-through over the picture behind, framed when focused.
     val square = prefs.tvCardCorners == dev.nitrate.core.pages.CardCorners.SQUARE

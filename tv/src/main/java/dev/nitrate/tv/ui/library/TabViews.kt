@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
@@ -55,6 +56,8 @@ fun RowsOrTitles(
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
     music: Boolean = false,
+    /** What the focused title's details call the list ("Movies · 3 / 40"). */
+    label: String = "",
     rowsContent: @Composable (header: @Composable () -> Unit) -> Unit,
 ) {
     val user = repository.userId
@@ -100,7 +103,7 @@ fun RowsOrTitles(
         rowsContent { Row(verticalAlignment = Alignment.CenterVertically) { header(); Row(Modifier.padding(end = PagePadding)) { button() } } }
     } else {
         val items = remember(rows) { rows.flatMap { it.items }.distinctBy { it.id } }
-        TitlesInView(items, look.view, columns, repository, header, button, onOpen, onPlay, music)
+        TitlesInView(items, look.view, columns, repository, header, button, onOpen, onPlay, music, upTo = viewButton, label = label)
     }
 }
 
@@ -120,6 +123,9 @@ internal fun TitlesInView(
     onPlay: (MediaItem) -> Unit,
     music: Boolean = false,
     empty: String = "Nothing here yet.",
+    /** The bar's button ▲ from the grid's first row goes to. */
+    upTo: FocusRequester? = null,
+    label: String = "",
 ) {
     if (view.tvOnly) {
         Column(Modifier.fillMaxSize().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -139,35 +145,16 @@ internal fun TitlesInView(
         }
         return
     }
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(columns),
-        contentPadding = PaddingValues(start = PagePadding, end = PagePadding, bottom = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { header() }
-        item(span = { GridItemSpan(maxLineSpan) }) { bar() }
-        when {
-            items == null -> item(span = { GridItemSpan(maxLineSpan) }) { dev.nitrate.tv.ui.components.GridPlaceholder() }
-            items.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Text(empty) }
-            else -> items(items, key = { it.id }) { item ->
-                val artwork = view == BrowseView.ARTWORK && !music
-                val list = view == BrowseView.LIST
-                MediaCard(
-                    item = item,
-                    imageUrl = when {
-                        list || artwork -> repository.imageUrl(item, ImageKind.THUMB, 360) ?: repository.backdropUrl(item, 640) ?: repository.imageUrl(item, ImageKind.PRIMARY, 360)
-                        else -> repository.imageUrl(item, ImageKind.PRIMARY, 360)
-                    },
-                    width = null,
-                    aspectRatio = if (music) 1f else if (list || artwork) 16f / 9f else 2f / 3f,
-                    title = item.name,
-                    subtitle = if (list) item.overview?.take(90) else item.productionYear?.takeIf { LocalDisplayPrefs.current.year }?.toString(),
-                    onClick = { onOpen(item) },
-                    onPlay = { if (item.isPlayable) onPlay(item) else onOpen(item) },
-                )
+    // As the All tab: the page theme and the focused title behind, Home's cards, Fixed or Scrolling grid.
+    val target = upTo ?: remember { FocusRequester() }
+    TitleGrid(
+        items, view, columns, repository, label,
+        bar = {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { header() }
+                androidx.compose.foundation.layout.Box(Modifier.padding(end = PagePadding + dev.nitrate.tv.ui.components.LocalClockRoom.current).then(if (upTo == null) Modifier.focusRequester(target).focusGroup() else Modifier)) { bar() }
             }
-        }
-    }
+        },
+        upTo = target, onOpen = onOpen, onPlay = onPlay, music = music, empty = empty,
+    )
 }

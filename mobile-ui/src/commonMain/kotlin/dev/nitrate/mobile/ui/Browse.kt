@@ -61,6 +61,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -194,7 +197,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
                     contentPadding = padding,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(if (pinned) Modifier.fadeUnderBar { grid.canScrollBackward } else Modifier),
                 ) {
                     if (!pinned) item(key = "top", span = { GridItemSpan(maxLineSpan) }, contentType = "top") { scrollingTop() }
                     items(state.items, key = { it.id }) { item ->
@@ -218,7 +221,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
                     }
                     if (state.error != null) item(span = { GridItemSpan(maxLineSpan) }) { LoadMoreFailed(state.error.orEmpty(), vm::retry) }
                 }
-                else -> LazyColumn(state = list, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxSize()) {
+                else -> LazyColumn(state = list, contentPadding = padding, verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.fillMaxSize().then(if (pinned) Modifier.fadeUnderBar { list.canScrollBackward } else Modifier)) {
                     if (!pinned) item(key = "top", contentType = "top") { scrollingTop() }
                     items(state.items, key = { it.id }) { item ->
                         Box {
@@ -497,3 +500,18 @@ private fun LoadMoreFailed(error: String, onRetry: () -> Unit) {
         TextButton(onClick = onRetry) { Text("Try again") }
     }
 }
+
+/**
+ * Fixed grid: what scrolls up under the pinned bar fades out over [FADE] rather than being cut off
+ * at a hard edge; nothing fades until the list has moved ([scrolled]), so the first row sits whole.
+ */
+private fun Modifier.fadeUnderBar(scrolled: () -> Boolean) = graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        if (scrolled()) {
+            val fade = (FADE.toPx() / size.height).coerceIn(0f, 1f)
+            drawRect(Brush.verticalGradient(0f to Color.Transparent, fade to Color.Black), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+        }
+    }
+
+private val FADE = 28.dp

@@ -439,6 +439,28 @@ class TvScreenshotTest {
         }
     }
 
+    /** The Collections tab looks like All (Fixed grid): the focused collection's details at the top, ▲ from the first row to View. */
+    @Test fun libraryCollectionsTab() = shoot("tv-library-collections", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+            dev.nitrate.core.pages.LibraryTab("collections", dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS),
+            dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
+        ))
+    }, act = {
+        press("down")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        press("up")
+        check(focusedHasText("View")) { "Up from the first row should reach the View button" }
+        press("down")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+    }) { c ->
+        WithMenu(c) {
+            dev.nitrate.tv.ui.home.MainMenu("lib-movies", overlay = false) { insets ->
+                dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}, insets = insets)
+            }
+        }
+    }
+
     /** A library's main page (Recommended) has no View button: that's only on its other tabs. */
     @Test fun libraryRecommendedNoViewButton() = libraryShot("tv-library-recommended-no-view", rowsLibrary) {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("View", substring = true)).fetchSemanticsNodes().isEmpty()) { "Recommended shouldn't have a View button" }
@@ -455,10 +477,13 @@ class TvScreenshotTest {
         c.displaySettings.saveView("user-1", "rows/" + dev.nitrate.core.pages.LibraryTabs.pageKey("lib-movies", dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES)), dev.nitrate.core.pages.TabView(rows = false))
     }, act = {
         // Down from the tabs into the titles, along to the first, Up to the View button above it.
+        // (Nothing has focus when the test starts: the first ▼ only gives it to the tab.)
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
         press("down")
+        if (compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText("Genres")).fetchSemanticsNodes().isNotEmpty()) press("down")
         repeat(4) { if (!focusedHasText("Nitrate")) press("left") }
         press("up")
-        check(focusedHasText("View")) { "Up from the first title should reach the View button" }
+        check(focusedHasText("View")) { "Up from the first title should reach the View button; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() + " " + it.boundsInRoot } }
         press("ok")
         compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
         check(focusedHasText("Posters")) { "the dialog should open on the current view" }
