@@ -18,11 +18,6 @@ using Nitrate.Companion.Recommendations;
 
 namespace Nitrate.Companion.Api;
 
-/// <summary>One "Because you watched" row: its seed's name and the titles, as the server's own items.</summary>
-/// <param name="SeedName">What it's based on.</param>
-/// <param name="Items">The titles, not yet watched.</param>
-public record BecauseOut(string SeedName, IReadOnlyList<BaseItemDto> Items);
-
 /// <summary>One library's newest titles.</summary>
 /// <param name="LibraryId">The library.</param>
 /// <param name="Items">Its newest titles.</param>
@@ -32,7 +27,6 @@ public record LatestOut(Guid LibraryId, IReadOnlyList<BaseItemDto> Items);
 /// <param name="Resume">Continue Watching.</param>
 /// <param name="NextUp">Next Up.</param>
 /// <param name="Latest">"Latest in…" for each library asked for.</param>
-/// <param name="Because">"Because you watched" (made overnight).</param>
 /// <param name="Reading">Books under way (Continue Reading), with [reading].</param>
 /// <param name="ReadingDone">Books finished lately (Continue Reading carries on a series from them), with [reading].</param>
 /// <param name="Listening">Audiobooks under way (Continue Listening), with [listening].</param>
@@ -40,7 +34,6 @@ public record HomeOut(
     IReadOnlyList<BaseItemDto>? Resume,
     IReadOnlyList<BaseItemDto>? NextUp,
     IReadOnlyList<LatestOut> Latest,
-    IReadOnlyList<BecauseOut>? Because,
     IReadOnlyList<BaseItemDto>? Reading = null,
     IReadOnlyList<BaseItemDto>? ReadingDone = null,
     IReadOnlyList<BaseItemDto>? Listening = null);
@@ -85,22 +78,24 @@ public class HomeController : ControllerBase
         _formats = formats;
     }
 
-    /// <summary>The caller's "Because you watched" rows: [limit] titles each, watched ones left out.</summary>
-    [HttpGet("Because")]
+    /// <summary>
+    /// Facts for the caller's "Because you watched" (made overnight): what they played lately and the
+    /// server's similar titles for the first few films and shows of it. The apps make the rows.
+    /// None yet after a start: they're made in the background and an empty answer is given meanwhile.
+    /// </summary>
+    [HttpGet("Because/Facts")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<BecauseOut>>> Because([FromQuery] int limit = 16, CancellationToken cancellationToken = default) =>
-        Me() is { } user ? Ok(await BecauseFor(user, limit, cancellationToken).ConfigureAwait(false)) : Unauthorized();
+    public ActionResult<BecauseFacts> BecauseFacts() => Me() is { } user ? Ok(_because.For(user)) : Unauthorized();
 
     /// <summary>
     /// Home's rows in one answer: Continue Watching and Next Up when asked for, "Latest in…" for each
-    /// of [latest] ("&lt;library id&gt;:Movie" or ":Series", newest first) and "Because you watched".
+    /// of [latest] ("&lt;library id&gt;:Movie" or ":Series", newest first), Continue Reading and Listening.
     /// </summary>
     [HttpGet("Home")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<HomeOut>> Home(
         [FromQuery] bool resume = true,
         [FromQuery] bool nextUp = true,
-        [FromQuery] bool because = true,
         [FromQuery] string? latest = null,
         [FromQuery] int limit = 24,
         [FromQuery] bool reading = false,
@@ -157,7 +152,6 @@ public class HomeController : ControllerBase
             latestOut.Add(new LatestOut(library, Dtos(items, options, user)));
         }
 
-        var becauseOut = because ? await BecauseFor(user, 16, cancellationToken).ConfigureAwait(false) : null;
         // Continue Reading and Listening, as the apps' own requests would have them (books sorted by date played).
         IReadOnlyList<BaseItemDto>? Played(BaseItemKind kind, bool? resumable, bool? played, int count) => Dtos(
             _library.GetItemsResult(new InternalItemsQuery(user)
@@ -177,7 +171,6 @@ public class HomeController : ControllerBase
             resumeOut,
             nextOut,
             latestOut,
-            becauseOut,
             reading ? Played(BaseItemKind.Book, true, null, limit) : null,
             reading ? Played(BaseItemKind.Book, null, true, 10) : null,
             listening ? Played(BaseItemKind.AudioBook, true, null, limit) : null));
@@ -211,26 +204,6 @@ public class HomeController : ControllerBase
             .Distinct()
             .Take(20)
             .ToList();
-
-    private async Task<IReadOnlyList<BecauseOut>> BecauseFor(User user, int limit, CancellationToken cancellationToken)
-    {
-        var set = _because.For(user);
-        var options = Options();
-        var ids = set.Rows.SelectMany(r => r.ItemIds).Distinct().ToArray();
-        if (ids.Length == 0)
-        {
-            return Array.Empty<BecauseOut>();
-        }
-
-        // One read for every row's titles, as the person may see them now, with their watch state.
-        var dtos = Dtos(_library.GetItemList(new InternalItemsQuery(user) { ItemIds = ids, DtoOptions = options }), options, user).ToDictionary(d => d.Id);
-        return set.Rows
-            .Select(r => new BecauseOut(
-                r.SeedName,
-                BecauseRows.Showing(r, id => !dtos.TryGetValue(id, out var d) || d.UserData?.Played == true, limit).Select(id => dtos[id]).ToList()))
-            .Where(r => r.Items.Count > 0)
-            .ToList();
-    }
 
     private static DtoOptions Options() => new(false) { Fields = CardFields, EnableImages = true, EnableUserData = true };
 

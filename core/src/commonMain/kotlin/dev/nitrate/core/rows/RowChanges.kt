@@ -54,6 +54,34 @@ object RowChanges {
         else -> null
     }
 
+    /**
+     * What a custom row's contents depend on (watched marks aside), or null when it always loads: a
+     * query on titles and watch state (it can filter on watched), a collection on titles, a playlist
+     * on playlists and titles, an app row as that row.
+     */
+    fun dependsOn(source: dev.nitrate.core.pages.RowSource): Set<ChangeArea>? = when (source) {
+        is dev.nitrate.core.pages.RowSource.Query -> setOf(ChangeArea.LIBRARY, ChangeArea.WATCH)
+        is dev.nitrate.core.pages.RowSource.Collection -> setOf(ChangeArea.LIBRARY)
+        is dev.nitrate.core.pages.RowSource.Playlist -> setOf(ChangeArea.PLAYLISTS, ChangeArea.LIBRARY)
+        is dev.nitrate.core.pages.RowSource.AppRow -> dependsOn(source.key)
+        is dev.nitrate.core.pages.RowSource.BuiltIn -> null
+    }
+
+    /**
+     * Whether a custom row loaded under [stamp] (as made by [stampOf]) can be kept now the counters are
+     * [token]: the same row (its source unchanged) and nothing it depends on changed.
+     */
+    fun keepCustom(source: dev.nitrate.core.pages.RowSource, stamp: String?, token: String): Boolean {
+        val depends = dependsOn(source) ?: return false
+        if (stamp == null) return false
+        val old = stamp.substringBefore('#')
+        if (stamp.substringAfter('#', "") != source.toString()) return false
+        return compare(old, token).none(depends::contains)
+    }
+
+    /** What's kept with a custom row: the counters it was loaded under and what it is. */
+    fun stampOf(source: dev.nitrate.core.pages.RowSource, token: String) = "$token#$source"
+
     /** The rows of [rows] that can be kept as they are, given [changed]. */
     fun keepable(rows: List<MediaRow>, changed: Set<ChangeArea>): List<MediaRow> =
         rows.filter { r -> dependsOn(r.key)?.let { it.none(changed::contains) } == true }

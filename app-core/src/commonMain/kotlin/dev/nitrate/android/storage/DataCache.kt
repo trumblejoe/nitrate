@@ -19,6 +19,8 @@ data class CachedPage(
     val custom: Map<String, MediaRow> = emptyMap(),
     /** The server's change counters when [builtIn] was loaded (`MediaServer.changeCheck`), if it has them. */
     val stamps: String? = null,
+    /** Each custom row's change counters and source when it was loaded (`RowChanges.stampOf`), by entry id. */
+    val customStamps: Map<String, String> = emptyMap(),
 )
 
 /**

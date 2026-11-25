@@ -34,9 +34,14 @@ class RowChangesPageTest {
 
     private val asked = mutableListOf<Set<String>>()
     private val fake = FakeServer()
+    // Only the user's watch state changed between them.
+    private val t1 = dev.nitrate.core.rows.RowChanges.token("e", 1, 1, 1, 1, 0)
+    private val t2 = dev.nitrate.core.rows.RowChanges.token("e", 1, 1, 1, 2, 0)
+    private val playlistReads = mutableListOf<Int>()
     private val server = object : MediaServer by fake {
-        override suspend fun changeCheck(since: String?) = ChangeCheck("t2", if (since == "t1") setOf(ChangeArea.WATCH) else ChangeArea.entries.toSet())
+        override suspend fun changeCheck(since: String?) = ChangeCheck(t2, dev.nitrate.core.rows.RowChanges.compare(since, t2))
         override suspend fun withFreshMarks(rows: List<MediaRow>) = rows.map { it.copy(title = it.title + " (marks)") }
+        override suspend fun playlistRow(playlistId: String, limit: Int): List<MediaItem> { playlistReads += limit; return listOf(MediaItem("p-1", "From the playlist", ItemKind.MOVIE)) }
     }
     private val loader: (Set<String>) -> kotlinx.coroutines.flow.Flow<RowsProgress> = { hidden ->
         asked += hidden
@@ -44,7 +49,8 @@ class RowChangesPageTest {
     }
 
     private fun settle(vm: RowsViewModel, until: (List<String>) -> Boolean): List<String> {
-        val end = System.currentTimeMillis() + 5_000
+        // Generous: the first test in a fresh test run starts slowly.
+        val end = System.currentTimeMillis() + 20_000
         var titles = emptyList<String>()
         while (System.currentTimeMillis() < end) {
             ShadowLooper.idleMainLooper(); Thread.sleep(10)
@@ -64,7 +70,7 @@ class RowChangesPageTest {
 
     @Test fun onlyWhatChangedIsAskedFor() = withContainer { c ->
         val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
-        runBlocking { c.dataCache.write(account, PageKeys.HOME, CachedPage(listOf(row("home/latest/m", "Latest"), row("home/continue_watching", "Continue")), stamps = "t1")) }
+        runBlocking { c.dataCache.write(account, PageKeys.HOME, CachedPage(listOf(row("home/latest/m", "Latest"), row("home/continue_watching", "Continue")), stamps = t1)) }
         val vm = RowsViewModel(PageKeys.HOME, { emptyList() }, c.displaySettings, server, cache = c.dataCache, loadProgressSkipping = loader)
         val titles = settle(vm) { "Continue new" in it }
         // Only the user's watching changed: "Latest in…" is kept (its marks read afresh) and never asked for.
@@ -72,12 +78,12 @@ class RowChangesPageTest {
         assertTrue("home/latest/m" in asked.single())
         // The new counters are kept with the page for next time.
         val saved = runBlocking { c.dataCache.read(account, PageKeys.HOME) }
-        assertEquals("t2", saved?.stamps)
+        assertEquals(t2, saved?.stamps)
     }
 
     @Test fun pullingToRefreshLoadsEverything() = withContainer { c ->
         val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
-        runBlocking { c.dataCache.write(account, PageKeys.HOME, CachedPage(listOf(row("home/latest/m", "Latest")), stamps = "t1")) }
+        runBlocking { c.dataCache.write(account, PageKeys.HOME, CachedPage(listOf(row("home/latest/m", "Latest")), stamps = t1)) }
         val vm = RowsViewModel(PageKeys.HOME, { emptyList() }, c.displaySettings, server, cache = c.dataCache, loadProgressSkipping = loader)
         settle(vm) { "Continue new" in it }
         asked.clear()
@@ -86,5 +92,23 @@ class RowChangesPageTest {
         // The loader's own order, as any whole load.
         assertEquals(listOf("Continue new", "Latest new"), titles)
         assertTrue("home/latest/m" !in asked.single())
+    }
+
+    @Test fun customRowsNothingChangedForAreKept() = withContainer { c ->
+        val account = server.currentAccountKey ?: "${server.serverUrl}|${server.userId}"
+        val page = dev.nitrate.core.pages.PageKeys.custom("mine")
+        val entry = dev.nitrate.core.pages.RowEntry("e1", dev.nitrate.core.pages.RowSource.Playlist("pl-1", "Marathon"))
+        runBlocking { c.displaySettings.saveLayout(server.userId!!, page, dev.nitrate.core.pages.PageLayout(listOf(entry))) }
+        // Not kept from before: read, but only the row's first page.
+        val first = RowsViewModel(page, { emptyList() }, c.displaySettings, server, cache = c.dataCache)
+        assertEquals(listOf("Marathon"), settle(first) { "Marathon" in it })
+        assertEquals(listOf(24), playlistReads)
+        // Kept with the counters it was read under; watched since (no playlist changed): kept, marks read afresh.
+        val saved = runBlocking { c.dataCache.read(account, page) }!!
+        runBlocking { c.dataCache.write(account, page, saved.copy(customStamps = saved.customStamps.mapValues { it.value.replace(t2, t1) })) }
+        playlistReads.clear()
+        val again = RowsViewModel(page, { emptyList() }, c.displaySettings, server, cache = c.dataCache)
+        assertEquals(listOf("Marathon (marks)"), settle(again) { "Marathon (marks)" in it })
+        assertEquals(emptyList<Int>(), playlistReads)
     }
 }

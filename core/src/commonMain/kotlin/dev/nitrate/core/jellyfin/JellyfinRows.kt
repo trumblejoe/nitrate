@@ -127,11 +127,25 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
-/** "Because you watched" as the plugin made it overnight; null without the plugin (or if it fails). */
+/**
+ * "Because you watched" from the plugin's facts (made overnight: what was played lately and the
+ * server's similar titles for the films and shows of it), the rows made here by the app's own rules
+ * (core `BecauseYouWatched`), each seed's similar titles read as cards with today's watch state in one
+ * request. Null without the plugin (or if it fails); empty while it's still making them after a start.
+ */
 internal suspend fun JellyfinClient.companionBecause(): List<MediaRow>? {
-    if (!companionHas("because")) return null
+    if (!companionHas("becausefacts")) return null
+    val facts = runCatching { get("Nitrate", "Because", "Facts").decode<BecauseFactsDto>() }.getOrNull() ?: return null
+    val recent = facts.recent.map { r ->
+        MediaItem(
+            normalizeId(r.id), r.name.orEmpty(), itemKind(r.kind),
+            seriesId = r.seriesId?.let(::normalizeId), seriesName = r.seriesName,
+            user = dev.nitrate.core.model.UserState(played = true),
+        )
+    }
+    val similar = facts.similar.associate { normalizeId(it.titleId) to it.itemIds.map(::normalizeId) }
     return runCatching {
-        get("Nitrate", "Because", query = mapOf("limit" to 16)).decode<List<BecauseBundleDto>>().toBecauseRows()
+        dev.nitrate.core.rows.BecauseYouWatched.rows(recent, similar = { seed -> cardsFor(similar[seed].orEmpty()) })
     }.getOrNull()
 }
 
@@ -144,7 +158,6 @@ internal suspend fun JellyfinClient.homeBundle(skip: Set<String>, combine: Boole
     if (!companionHas("home")) return
     val wantsResume = combine || "home/continue_watching" !in skip
     val wantsNextUp = combine || "home/next_up" !in skip
-    val wantsBecause = dev.nitrate.core.rows.BecauseYouWatched.slots().keys.any { it !in skip }
     // Continue Reading and Listening come along (each a second's sort by date played when asked alone).
     val books = ("home/continue_reading" !in skip || "home/continue_listening" !in skip) && mayHoldBooks()
     val wantsReading = books && "home/continue_reading" !in skip
@@ -161,7 +174,7 @@ internal suspend fun JellyfinClient.homeBundle(skip: Set<String>, combine: Boole
             get(
                 "Nitrate", "Home",
                 query = mapOf(
-                    "resume" to wantsResume, "nextUp" to wantsNextUp, "because" to wantsBecause, "limit" to ROW_LIMIT,
+                    "resume" to wantsResume, "nextUp" to wantsNextUp, "because" to false, "limit" to ROW_LIMIT,
                     "reading" to wantsReading.takeIf { it }, "listening" to wantsListening.takeIf { it },
                     "latest" to libraries.joinToString(",") { (v, kind) -> "${dashless(listOf(v.id))}:$kind" }.ifEmpty { null },
                 ),
@@ -178,7 +191,6 @@ internal suspend fun JellyfinClient.homeBundle(skip: Set<String>, combine: Boole
         bundle.reading?.let { keepList(arrayOf("Items"), booksQuery(null, "IsResumable", ROW_LIMIT), it.map { d -> d.toMediaItem() }) }
         bundle.readingDone?.let { keepList(arrayOf("Items"), booksQuery(null, "IsPlayed", 10), it.map { d -> d.toMediaItem() }) }
         bundle.listening?.let { keepList(arrayOf("UserItems", "Resume"), LISTENING_QUERY, it.map { d -> d.toMediaItem() }) }
-        bundle.because?.takeIf { it.isNotEmpty() }?.let { answers.put(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR, it.toBecauseRows() to false) }
     }
 }
 
@@ -335,7 +347,7 @@ internal suspend fun JellyfinClient.withFreshUserData(rows: List<MediaRow>): Lis
 /** The rows, and whether they were kept from earlier (true) rather than just made. */
 @OptIn(ExperimentalTime::class)
 internal suspend fun JellyfinClient.becauseYouWatchedNow(fresh: Boolean): Pair<List<MediaRow>, Boolean> {
-    // Made overnight by the plugin, with today's watch state: nothing costly asked here.
+    // From the plugin's overnight facts, with today's watch state: nothing costly asked here.
     companionBecause()?.let { return it to false }
     val key = "because/${accountKey ?: "$baseUrl|$userId"}"
     val now = Clock.System.now().toEpochMilliseconds()

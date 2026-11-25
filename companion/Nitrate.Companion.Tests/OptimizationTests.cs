@@ -14,30 +14,18 @@ public class OptimizationTests
     private static Guid G(int n) => new(n, 0, 0, new byte[8]);
 
     [Fact]
-    public async Task BecauseRowsFollowTheAppsRules()
+    public void BecauseGathersSimilarForTheShowsAndFilmsPlayed()
     {
-        var seeds = BecauseRows.Seeds(new[] { new BecauseSeed(G(1), "Dune"), new BecauseSeed(G(1), "Dune"), new BecauseSeed(G(2), "Alien"), new BecauseSeed(G(3), "Heat") }, 6);
-        Assert.Equal(3, seeds.Count);
-        var asked = new List<Guid>();
-        var rows = await BecauseRows.BuildAsync(
-            seeds,
-            seed =>
-            {
-                asked.Add(seed.Id);
-                // Alien's similar titles are mostly already in Dune's row: too few left for a row.
-                IReadOnlyList<Guid> like = seed.Id == G(1) ? new[] { G(10), G(11), G(12), G(13), G(2) }
-                    : seed.Id == G(2) ? new[] { G(10), G(11), G(20) }
-                    : new[] { G(30), G(31), G(32), G(33) };
-                return Task.FromResult(like);
-            },
-            id => id == G(13));
-        Assert.Equal(new[] { "Dune", "Heat" }, rows.Select(r => r.SeedName));
-        // Seeds and watched titles never come back.
-        Assert.Equal(new[] { G(10), G(11), G(12) }, rows[0].ItemIds);
-        Assert.Equal(3, asked.Count);
-        // Watching more since leaves too few: the row isn't shown.
-        Assert.Empty(BecauseRows.Showing(rows[0], id => id == G(10), 16));
-        Assert.Equal(2, BecauseRows.Showing(rows[1], id => false, 2).Count);
+        var recent = new[]
+        {
+            new BecauseRecent(G(1), "Episode", "Pilot", G(10), "The Night Reel"),
+            new BecauseRecent(G(2), "Episode", "Two", G(10), "The Night Reel"),
+            new BecauseRecent(G(3), "Movie", "Dune", null, null),
+            new BecauseRecent(G(4), "Movie", "Alien", null, null),
+        };
+        // Episodes count as their show, each once, most recent first; nothing else is decided here.
+        Assert.Equal(new[] { G(10), G(3) }, BecauseGather.TitlesOf(recent, 2));
+        Assert.Equal(new[] { G(10), G(3), G(4) }, BecauseGather.TitlesOf(recent, 9));
     }
 
     [Fact]
@@ -45,8 +33,8 @@ public class OptimizationTests
     {
         var store = new BecauseStore();
         Assert.Null(store.Get(G(1)));
-        store.Put(G(1), new BecauseSet(DateTimeOffset.UnixEpoch, new[] { new BecauseRow(G(2), "Dune", new[] { G(3) }) }));
-        Assert.Equal("Dune", store.Get(G(1))!.Rows.Single().SeedName);
+        store.Put(G(1), new BecauseFacts(DateTimeOffset.UnixEpoch, Array.Empty<BecauseRecent>(), new[] { new BecauseSimilar(G(2), new[] { G(3) }) }));
+        Assert.Equal(G(3), store.Get(G(1))!.Similar.Single().ItemIds.Single());
         Assert.Null(store.Get(G(9)));
     }
 

@@ -20,9 +20,6 @@ namespace Nitrate.Companion.Recommendations;
 /// </summary>
 public class BecauseRowsBuilder : IScheduledTask
 {
-    /// <summary>Recently watched titles looked at for seeds.</summary>
-    public const int Recent = 12;
-
     /// <summary>Rows older than this are made again in the background when asked for (the nightly task normally does it first).</summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromHours(30);
 
@@ -88,7 +85,7 @@ public class BecauseRowsBuilder : IScheduledTask
     /// the background and what's kept (maybe nothing) is answered now, so Home never waits for the
     /// similar-titles search.
     /// </summary>
-    public BecauseSet For(User user)
+    public BecauseFacts For(User user)
     {
         var kept = _store.Get(user.Id);
         if (kept == null || DateTimeOffset.UtcNow - kept.Built >= MaxAge)
@@ -96,7 +93,7 @@ public class BecauseRowsBuilder : IScheduledTask
             BuildSoon(user);
         }
 
-        return kept ?? new BecauseSet(DateTimeOffset.MinValue, Array.Empty<BecauseRow>());
+        return kept ?? new BecauseFacts(DateTimeOffset.MinValue, Array.Empty<BecauseRecent>(), Array.Empty<BecauseSimilar>());
     }
 
     /// <summary>Makes the person's rows in the background (once at a time per person).</summary>
@@ -168,7 +165,7 @@ public class BecauseRowsBuilder : IScheduledTask
     /// <summary>Whether the person has watched [id].</summary>
     public bool Watched(User user, Guid id) => _library.GetItemById(id) is { } item && _userData.GetUserData(user, item)?.Played == true;
 
-    private async Task<BecauseSet> BuildAsync(User user, CancellationToken cancellationToken)
+    private async Task<BecauseFacts> BuildAsync(User user, CancellationToken cancellationToken)
     {
         await _one.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -180,27 +177,28 @@ public class BecauseRowsBuilder : IScheduledTask
                 IsPlayed = true,
                 IsVirtualItem = false,
                 OrderBy = new[] { (ItemSortBy.DatePlayed, SortOrder.Descending) },
-                Limit = Recent,
+                Limit = BecauseGather.Recent,
                 DtoOptions = new DtoOptions(false) { EnableImages = false },
             });
-            var seeds = BecauseRows.Seeds(
-                recent.Select(i => i is Episode e && e.SeriesId != Guid.Empty ? new BecauseSeed(e.SeriesId, e.SeriesName ?? e.Name) : new BecauseSeed(i.Id, i.Name)),
-                BecauseRows.Rows * 3);
-            var rows = await BecauseRows.BuildAsync(
-                seeds,
-                async seed =>
+            var played = recent.Select(i => i is Episode e
+                    ? new BecauseRecent(e.Id, "Episode", e.Name, e.SeriesId == Guid.Empty ? null : e.SeriesId, e.SeriesName)
+                    : new BecauseRecent(i.Id, i.GetBaseItemKind().ToString(), i.Name, null, null))
+                .ToList();
+            // The server's similar titles for the first few films and shows played: which become rows is the apps' choice.
+            var similar = new List<BecauseSimilar>();
+            foreach (var id in BecauseGather.TitlesOf(played, BecauseGather.Titles))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_library.GetItemById(id) is not { } item)
                 {
-                    var item = _library.GetItemById(seed.Id);
-                    if (item == null)
-                    {
-                        return Array.Empty<Guid>();
-                    }
+                    continue;
+                }
 
-                    var like = await _similar.GetSimilarItemsAsync(item, Array.Empty<Guid>(), user, new DtoOptions(false) { EnableImages = false }, BecauseRows.Keep + 10, _library.GetLibraryOptions(item), cancellationToken).ConfigureAwait(false);
-                    return like.Select(i => i.Id).ToList();
-                },
-                id => Watched(user, id)).ConfigureAwait(false);
-            var set = new BecauseSet(DateTimeOffset.UtcNow, rows);
+                var like = await _similar.GetSimilarItemsAsync(item, Array.Empty<Guid>(), user, new DtoOptions(false) { EnableImages = false }, BecauseGather.Similar, _library.GetLibraryOptions(item), cancellationToken).ConfigureAwait(false);
+                similar.Add(new BecauseSimilar(id, like.Select(i => i.Id).ToList()));
+            }
+
+            var set = new BecauseFacts(DateTimeOffset.UtcNow, played, similar);
             _store.Put(user.Id, set);
             return set;
         }

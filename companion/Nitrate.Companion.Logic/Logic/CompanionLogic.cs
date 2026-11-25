@@ -188,7 +188,7 @@ public sealed class CompanionLogic : ICompanionLogic
         Take<List<Insights.AlongState>>(HandOver.SessionChats, s => _services.GetRequiredService<Insights.GroupNotes>().ImportAlong(s));
         Take<List<Sso.PendingSignInState>>(HandOver.Sso, s => _services.GetRequiredService<Sso.SsoService>().ImportState(s));
         Take<QueryTimes.QueryTimesState>(HandOver.QueryTimes, s => _services.GetRequiredService<QueryTimes.QueryTimeStore>().ImportState(s));
-        Take<Dictionary<Guid, Recommendations.BecauseSet>>(HandOver.Because, s => _services.GetRequiredService<Recommendations.BecauseStore>().ImportState(s));
+        Take<Dictionary<Guid, Recommendations.BecauseFacts>>(HandOver.Because, s => _services.GetRequiredService<Recommendations.BecauseStore>().ImportState(s));
         Take<List<Insights.SittingState>>(HandOver.Sittings, s => _services.GetRequiredService<Insights.SittingRecorder>().ImportState(s));
         Take<List<Partners.TogetherSeenState>>(HandOver.Together, s => _services.GetRequiredService<Partners.TogetherRecorder>().ImportState(s));
         Take<List<Partners.GroupSessionState>>(HandOver.GroupSessions, s => _services.GetRequiredService<Partners.PartnerHub>().ImportSessions(s));

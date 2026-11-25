@@ -872,12 +872,6 @@ class JellyfinClient(
         return feature in features
     }
 
-    internal fun List<BecauseBundleDto>.toBecauseRows(): List<MediaRow> = mapIndexedNotNull { i, r ->
-        val items = r.items.map { it.toMediaItem() }
-        if (items.isEmpty() || i >= 2) null
-        else MediaRow(dev.nitrate.core.rows.BecauseYouWatched.key(i + 1), "Because you watched ${r.seedName}", items, RowDisplay())
-    }
-
     internal suspend fun <T> withQueryOriginHere(part: String, block: suspend () -> T): T = dev.nitrate.core.diagnostics.withQueryOrigin(part, block)
 
     override suspend fun queryTrends(days: Int): List<dev.nitrate.core.companion.QueryTrend> =
@@ -1358,6 +1352,14 @@ class JellyfinClient(
     }
 
     override suspend fun withFreshMarks(rows: List<MediaRow>): List<MediaRow> = runCatching { withFreshUserData(rows) }.getOrDefault(rows)
+
+    override suspend fun playlistRow(playlistId: String, limit: Int): List<MediaItem> {
+        if (refused("playlist", playlistId)) throw dev.nitrate.core.ItemUnavailable(playlistId)
+        return items("Playlists", playlistId, "Items", query = mapOf("fields" to ROW_FIELDS, "startIndex" to 0, "limit" to limit))
+    }
+
+    override fun moreOfPlaylist(playlistId: String): dev.nitrate.core.rows.RowMore =
+        rowMore("Playlists", playlistId, "Items", query = mapOf("fields" to ROW_FIELDS))
 
     override suspend fun playlistMembers(playlistId: String) =
         items("Playlists", playlistId, "Items", query = mapOf("enableImages" to false, "enableUserData" to false))

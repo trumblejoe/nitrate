@@ -16,11 +16,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** With the Companion plugin, Home is one request, "Because you watched" is the plugin's, and format filters read its index. */
+/**
+ * With the Companion plugin, Home is one request, "Because you watched" is made here from the plugin's
+ * facts (no similar search asked), and format filters read its index.
+ */
 class CompanionShortcutsTest {
     private val server = "http://jf.example:8096"
     private val asked = mutableListOf<String>()
-    private var features = """["home","because","formats"]"""
+    private var features = """["home","becausefacts","formats"]"""
 
     private fun item(c: Char, name: String) = """{"Id":"${c.toString().repeat(32)}","Name":"$name","Type":"Movie"}"""
 
@@ -29,9 +32,17 @@ class CompanionShortcutsTest {
         synchronized(asked) { asked += if (path == "/UserItems/Resume") path + "?" + request.url.parameters["mediaTypes"] else path }
         val body = when (path) {
             "/Nitrate/Companion" -> """{"Version":"1","Features":$features}"""
-            "/Nitrate/Home" -> """{"Resume":[${item('a', "Part way")}],"NextUp":[${item('b', "Next")}],"Latest":[],"Because":[{"SeedName":"Dune","Items":[${item('c', "C")},${item('d', "D")},${item('e', "E")}]}]}"""
+            "/Nitrate/Home" -> """{"Resume":[${item('a', "Part way")}],"NextUp":[${item('b', "Next")}],"Latest":[]}"""
+            // Dune played lately; the server's similar titles for it (one of them, D, watched since).
+            "/Nitrate/Because/Facts" -> """{"Recent":[{"Id":"${"1".repeat(32)}","Kind":"Movie","Name":"Dune"}],"Similar":[{"TitleId":"${"1".repeat(32)}","ItemIds":["${"c".repeat(32)}","${"d".repeat(32)}","${"e".repeat(32)}","${"7".repeat(32)}"]}]}"""
             "/Nitrate/Formats" -> """[{"Id":"${"f".repeat(32)}","Video":[{"Codec":"hevc","BitDepth":10,"RangeType":"HDR10"}],"Audio":["eac3"]},{"Id":"${"9".repeat(32)}","Video":[{"Codec":"h264","BitDepth":8,"RangeType":"SDR"}],"Audio":["aac"]}]"""
-            "/Items" -> if (request.url.parameters["ids"] != null) """{"Items":[${item('f', "HDR film")}]}"""
+            "/Items" -> if (request.url.parameters["ids"] != null) request.url.parameters["ids"]!!.split(',').joinToString(",", """{"Items":[""", "]}") { id ->
+                    when (id[0]) {
+                        'f' -> item('f', "HDR film")
+                        'd' -> """{"Id":"$id","Name":"D","Type":"Movie","UserData":{"Played":true}}"""
+                        else -> item(id[0], id[0].uppercase())
+                    }
+                }
                 else """{"Items":[${item('f', "HDR film")},${item('9', "Plain film")}],"TotalRecordCount":2}"""
             else -> """{"Items":[]}"""
         }
@@ -53,7 +64,10 @@ class CompanionShortcutsTest {
         val rows = client().homeRows()
         assertEquals("Part way", rows.first { it.key == "home/continue_watching" }.items.single().name)
         assertEquals("Next", rows.first { it.key == "home/next_up" }.items.single().name)
-        assertEquals("Because you watched Dune", rows.first { it.key == "home/because_you_watched_1" }.title)
+        val because = rows.first { it.key == "home/because_you_watched_1" }
+        assertEquals("Because you watched Dune", because.title)
+        // The app's rules over the facts: watched titles left out.
+        assertEquals(listOf("C", "E", "7"), because.items.map { it.name })
         // None of the requests the bundle answers went out on their own.
         // (Continue Listening's audiobooks aren't in it.)
         listOf("/UserItems/Resume?Video", "/Shows/NextUp").forEach { assertTrue("$it asked", it !in asked) }

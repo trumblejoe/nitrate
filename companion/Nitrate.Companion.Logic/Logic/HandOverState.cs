@@ -128,8 +128,8 @@ namespace Nitrate.Companion.Logic
         /// <summary>Request times (<see cref="QueryTimes.QueryTimeStore"/>).</summary>
         public const string QueryTimes = "querytimes.v1";
 
-        /// <summary>Because you watched rows (<see cref="BecauseStore"/>).</summary>
-        public const string Because = "because.v1";
+        /// <summary>Because you watched facts (<see cref="BecauseStore"/>); "because.v1" held rows, no longer taken.</summary>
+        public const string Because = "becausefacts.v1";
 
         /// <summary>Open sittings (<see cref="Insights.SittingRecorder"/>).</summary>
         public const string Sittings = "sittings.v1";

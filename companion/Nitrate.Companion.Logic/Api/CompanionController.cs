@@ -84,7 +84,8 @@ public class CompanionController : ControllerBase
         features.Add("creditsreport");
         features.Add("timing");
         features.Add("intros");
-        features.Add("because");
+        // Facts for "Because you watched" (GET /Nitrate/Because/Facts); the rows are the apps' to make.
+        features.Add("becausefacts");
         features.Add("segmentfeedback");
         features.Add("watching");
         features.Add("problems");

@@ -110,7 +110,7 @@ class RowsViewModel(
             cache?.read(account, pageKey)?.let { cached ->
                 if (builtIn.value == null && cached.builtIn.isNotEmpty()) builtIn.value = Result.success(cached.builtIn.map { it.copy(defaultDisplay = defaults(it).normalized()) })
                 if (custom.value.isEmpty()) custom.value = cached.custom
-                if (lastRows == null) { lastRows = cached.builtIn; stamps = cached.stamps }
+                if (lastRows == null) { lastRows = cached.builtIn; stamps = cached.stamps; customStamps.putAll(cached.customStamps) }
             }
             refresh(checked = true)
         }
@@ -146,6 +146,7 @@ class RowsViewModel(
             viewModelScope.launch {
                 _refreshing.value = true
                 val check = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { server.changeCheck(stamps) } }.getOrNull()
+                check?.let { checked(it.token) }
                 val before = lastRows.orEmpty()
                 val kept = if (!checked || check == null || stamps == null) emptyList() else {
                     val keep = dev.nitrate.core.rows.RowChanges.keepable(before, check.changed)
@@ -216,7 +217,7 @@ class RowsViewModel(
         val rows = finished
         _refreshing.value = false
         if (rows != null) { lastRows = rows; stamps = token }
-        if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value, token))
+        if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value, token, customStamps.toMap()))
     }
 
     private fun refreshAll() {
@@ -229,32 +230,77 @@ class RowsViewModel(
             loadCustom(layout.value.entries.filter { it.isCustom })
             val rows = result.getOrNull()
             _refreshing.value = false
-            if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value))
+            if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value, stamps, customStamps.toMap()))
         }
     }
 
-    private suspend fun loadCustom(all: List<RowEntry>) = coroutineScope {
+    /** Each custom row's change counters and source when it was loaded (`RowChanges.stampOf`). */
+    private val customStamps = mutableMapOf<String, String>()
+    private var lastToken: Pair<Long, String>? = null
+
+    private fun checked(token: String) { lastToken = dev.nitrate.android.nowMs() to token }
+
+    /** The server's change counters now (one tiny request, reused for a few seconds), or null without them. */
+    private suspend fun tokenNow(): String? {
+        lastToken?.takeIf { dev.nitrate.android.nowMs() - it.first < TOKEN_REUSE_MS }?.let { return it.second }
+        return runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { server.changeCheck(null) } }.getOrNull()?.token?.also(::checked)
+    }
+
+    // One custom-row load at a time: opening a page starts two (the layout arriving, the first load),
+    // and the second then keeps what the first just read instead of reading it again.
+    private val customLock = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun loadCustom(all: List<RowEntry>) = customLock.withLock { loadCustomNow(all) }
+
+    private suspend fun loadCustomNow(all: List<RowEntry>) = coroutineScope {
         // A hidden custom row is off: never queried.
         val entries = all.filterNot { it.hidden }
-        val loaded = entries.map { e ->
+        // Rows nothing has changed for since they were loaded are kept (`RowChanges.dependsOn`).
+        val token = if (entries.isEmpty()) null else tokenNow()
+        val before = custom.value
+        val keep = if (token == null) emptySet() else entries.filter { e ->
+            e.id in before && dev.nitrate.core.rows.RowChanges.keepCustom(e.source, customStamps[e.id], token)
+        }.map { it.id }.toSet()
+        // Their watched marks read afresh when watch state changed (one request for all of them).
+        val kept = keep.takeIf { it.isNotEmpty() }?.let { ids ->
+            val rows = ids.mapNotNull { id -> before[id]?.let { id to it } }
+            val watchChanged = entries.filter { it.id in ids }.any { e ->
+                customStamps[e.id]?.substringBefore('#')?.let { dev.nitrate.core.rows.ChangeArea.WATCH in dev.nitrate.core.rows.RowChanges.compare(it, token!!) } != false
+            }
+            if (!watchChanged) rows.toMap() else {
+                val fresh = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { server.withFreshMarks(rows.map { it.second }) } }.getOrNull()
+                if (fresh == null || fresh.size != rows.size) rows.toMap() else rows.map { it.first }.zip(fresh).toMap()
+            }
+        }.orEmpty()
+        val loaded = entries.filter { it.id !in keep }.map { e ->
             async {
                 val items = runCatching {
                     dev.nitrate.core.diagnostics.withQueryOrigin("$origin › ${titleOf(e)}") { when (val src = e.source) {
                         is RowSource.Query -> server.queryItems(src.query)
                         is RowSource.Collection -> server.collectionItems(src.id)
-                        is RowSource.Playlist -> server.playlistItems(src.id)
+                        // Only the row's first page: a long playlist is never read whole for a row.
+                        is RowSource.Playlist -> server.playlistRow(src.id, CUSTOM_ROW_LIMIT)
                         is RowSource.BuiltIn -> emptyList()
                         // The app's own rows answer from Home's shared requests.
                         is RowSource.AppRow -> server.appRow(src.key, src.libraryId)?.also { appRows[e.id] = it }?.items.orEmpty()
                     } }
                 }.getOrNull()
                 val app = appRows[e.id]?.takeIf { e.source is RowSource.AppRow }
-                val more = (e.source as? RowSource.Query)?.let { server.moreOfQuery(it.query) } ?: app?.more
+                val more = when (val src = e.source) {
+                    is RowSource.Query -> server.moreOfQuery(src.query)
+                    is RowSource.Playlist -> server.moreOfPlaylist(src.id)
+                    else -> null
+                } ?: app?.more
                 items?.let { e.id to MediaRow(e.rowKey, e.title?.takeIf { it.isNotBlank() } ?: app?.title ?: defaultTitle(e), it, (e.display ?: app?.defaultDisplay ?: PageComposer.defaultDisplay(e.source)).normalized(), more) }
             }
         }.awaitAll().filterNotNull().toMap()
+        if (token != null) (kept.keys + loaded.keys).forEach { id -> entries.firstOrNull { it.id == id }?.let { customStamps[id] = dev.nitrate.core.rows.RowChanges.stampOf(it.source, token) } }
+        // A kept row takes its entry's current title and look (only its cards were kept).
+        val keptNow = kept.mapNotNull { (id, row) ->
+            entries.firstOrNull { it.id == id }?.let { e -> id to row.copy(title = e.title?.takeIf { it.isNotBlank() } ?: row.title, defaultDisplay = (e.display ?: row.defaultDisplay).normalized()) }
+        }.toMap()
         // Keep earlier results for rows that failed this time.
-        custom.value = custom.value.filterKeys { id -> entries.any { it.id == id } } + loaded
+        custom.value = before.filterKeys { id -> entries.any { it.id == id } } + keptNow + loaded
     }
 
     /** What the editor calls a row. */
@@ -308,6 +354,12 @@ class RowsViewModel(
 }
 
 private const val LIVE_REFRESH_DEBOUNCE_MS = 2_000L
+
+/** How long the server's change counters, once asked, serve a page's custom rows without asking again. */
+private const val TOKEN_REUSE_MS = 5_000L
+
+/** How many titles a custom playlist row reads at first (more as it's scrolled, `RowMore`). */
+private const val CUSTOM_ROW_LIMIT = 24
 
 /**
  * Home's rows for [RowsViewModel] (`loadProgressSkipping`): the page's hidden rows left out, and

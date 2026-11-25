@@ -35,7 +35,7 @@ public sealed class HandOverTests : IDisposable
         s.GetRequiredService<GroupNotes>().ImportAlong([new AlongState(Guid.Parse("00000000-0000-0000-0000-0000000000c1"), Guid.Parse("00000000-0000-0000-0000-0000000000c3"), Guid.Parse("00000000-0000-0000-0000-0000000000c4"), Sam, DateTimeOffset.UtcNow)]);
         s.GetRequiredService<SsoService>().ImportState([new PendingSignInState("ABCD2345", "secret", new SsoDevice("d", "TV", "Nitrate", "1"), DateTimeOffset.UtcNow.AddMinutes(5), "state", "nonce", "verifier", "https://x/cb", Sam, "sam", null)]);
         s.GetRequiredService<QueryTimeStore>().Record(Sam, "run1-1", 42, "GET /Items");
-        s.GetRequiredService<BecauseStore>().Put(Sam, new BecauseSet(DateTimeOffset.UtcNow, [new BecauseRow(Guid.Empty, "Seed", [Alex])]));
+        s.GetRequiredService<BecauseStore>().Put(Sam, new BecauseFacts(DateTimeOffset.UtcNow, [new BecauseRecent(Alex, "Movie", "Seed", null, null)], [new BecauseSimilar(Alex, [Sam])]));
         s.GetRequiredService<SittingRecorder>().ImportState([new SittingState("play|item", DateTimeOffset.UtcNow.AddMinutes(-20), DateTimeOffset.UtcNow, false, 1_200_000)]);
         s.GetRequiredService<TogetherRecorder>().ImportState([new TogetherSeenState("session", Alex, [Sam, Alex], DateTimeOffset.UtcNow, "syncplay-1")]);
         s.GetRequiredService<PartnerHub>().ImportSessions([new GroupSessionState("syncplay-1", [Guid.Parse("00000000-0000-0000-0000-0000000000c2")], DateTimeOffset.UtcNow)]);
@@ -58,7 +58,7 @@ public sealed class HandOverTests : IDisposable
         Assert.Equal(Sam, Assert.Single(n.GetRequiredService<GroupNotes>().ExportAlong()).By);
         Assert.Equal((Sam, "sam"), n.GetRequiredService<SsoService>().Find("abcd-2345")!.User);
         Assert.Equal(42, Assert.Single(n.GetRequiredService<QueryTimeStore>().For(Sam, "run1")).Ms);
-        Assert.Equal("Seed", n.GetRequiredService<BecauseStore>().Get(Sam)!.Rows[0].SeedName);
+        Assert.Equal("Seed", n.GetRequiredService<BecauseStore>().Get(Sam)!.Recent[0].Name);
         Assert.Equal(1_200_000, Assert.Single(n.GetRequiredService<SittingRecorder>().ExportState()).WatchedMs);
         var seen = Assert.Single(n.GetRequiredService<TogetherRecorder>().ExportState());
         Assert.Equal([Sam, Alex], seen.Present);

@@ -307,6 +307,12 @@ interface MediaServer {
     suspend fun nextUpFor(seriesId: String): MediaItem?
     suspend fun similar(itemId: String): List<MediaItem>
     suspend fun playlistItems(playlistId: String): List<MediaItem>
+
+    /** A playlist's first [limit] titles, for a row (the rest through [moreOfPlaylist]). */
+    suspend fun playlistRow(playlistId: String, limit: Int): List<MediaItem> = playlistItems(playlistId).take(limit)
+
+    /** How a playlist's row reads more of it, or null when it can't. */
+    fun moreOfPlaylist(playlistId: String): dev.nitrate.core.rows.RowMore? = null
     suspend fun setPlayed(itemId: String, played: Boolean)
     suspend fun setFavorite(itemId: String, favorite: Boolean)
 

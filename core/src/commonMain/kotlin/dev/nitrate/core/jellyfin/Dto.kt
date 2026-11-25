@@ -435,7 +435,6 @@ internal data class HomeBundleDto(
     val resume: List<ItemDto>? = null,
     val nextUp: List<ItemDto>? = null,
     val latest: List<LatestBundleDto> = emptyList(),
-    val because: List<BecauseBundleDto>? = null,
     val reading: List<ItemDto>? = null,
     val readingDone: List<ItemDto>? = null,
     val listening: List<ItemDto>? = null,
@@ -444,8 +443,15 @@ internal data class HomeBundleDto(
 @Serializable
 internal data class LatestBundleDto(val libraryId: String, val items: List<ItemDto> = emptyList())
 
+/** The Companion plugin's facts for "Because you watched" (GET /Nitrate/Because/Facts). */
 @Serializable
-internal data class BecauseBundleDto(val seedName: String, val items: List<ItemDto> = emptyList())
+internal data class BecauseFactsDto(val recent: List<BecauseRecentDto> = emptyList(), val similar: List<BecauseSimilarDto> = emptyList())
+
+@Serializable
+internal data class BecauseRecentDto(val id: String, val kind: String? = null, val name: String? = null, val seriesId: String? = null, val seriesName: String? = null)
+
+@Serializable
+internal data class BecauseSimilarDto(val titleId: String, val itemIds: List<String> = emptyList())
 
 /** A title's formats from the Companion plugin's index. */
 @Serializable
