@@ -102,6 +102,8 @@ fun BrowseLibrary(
     startWith: dev.nitrate.core.pages.BrowseOptions = dev.nitrate.core.pages.BrowseOptions(),
     /** The chosen tab: ▲ from the options bar goes straight to it (not whichever tab is nearest). */
     tabFocus: FocusRequester? = null,
+    /** The tab's name, for Customize → View. */
+    tabName: String = "All",
 ) {
     val vm = viewModel(key = "browse-${library.id}-${viewKey.orEmpty()}") {
         if (viewKey == null) BrowseViewModel(repository, displaySettings, library) else BrowseViewModel(repository, displaySettings, library, viewKey, startWith)
@@ -150,18 +152,6 @@ fun BrowseLibrary(
     // Album covers are square.
     val music = library.collection == dev.nitrate.core.model.CollectionKind.MUSIC
     val columns = options.columnsFor(options.view, music)
-    // Changing the view rebuilds the page around it (a show view isn't a grid): focus goes back to the
-    // View button, else it fell through to the menu.
-    val viewButton = remember { FocusRequester() }
-    var viewChanged by remember { mutableStateOf(0) }
-    LaunchedEffect(viewChanged) {
-        if (viewChanged == 0) return@LaunchedEffect
-        repeat(12) {
-            kotlinx.coroutines.android.awaitFrame()
-            if (runCatching { viewButton.requestFocus() }.isSuccess) return@LaunchedEffect
-            kotlinx.coroutines.delay(30)
-        }
-    }
     // The A–Z bar: above the titles, down one side (the user's choice, away from the menu by
     // default) or off. Above, it's one of the grid's first items.
     val prefs = LocalDisplayPrefs.current
@@ -188,7 +178,17 @@ fun BrowseLibrary(
             repeat(10) { if (runCatching { sortButton.requestFocus() }.getOrDefault(false)) return@launch; kotlinx.coroutines.delay(32) }
         }
     }
-    // Sort, filters, view, the count and selecting: small, at the end of the tabs bar; ▲ from them to the chosen tab.
+    // The view is chosen in Customize (the menu's pencil), for this tab: it rebuilds the page around
+    // it (a show view isn't a grid), and focus goes to Sort once the panel closes.
+    dev.nitrate.tv.ui.pages.ReportTabView(
+        dev.nitrate.tv.ui.pages.TabViewChoice(
+            tabName, rows = null, view = options.view, columns = columns, onRows = {},
+            onView = { v -> update { it.copy(view = v) } },
+            onColumns = { n -> vm.update { it.copy(columns = it.columns + (it.view to n)) } },
+        ),
+        refocus = sortButton,
+    )
+    // Sort, filters, the count and selecting: small, at the end of the tabs bar; ▲ from them to the chosen tab.
     val buttons: @Composable () -> Unit = {
         Row(
             Modifier.focusProperties { if (tabFocus != null) up = tabFocus },
@@ -197,7 +197,6 @@ fun BrowseLibrary(
             if (state.total >= 0) Text("${state.total} items", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
             BarButton("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}", Modifier.focusRequester(sortButton)) { dialog = "sort" }
             BarButton(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") { dialog = "filters" }
-            BarButton("View: ${options.view.label}" + if (options.view.columnChoices.isEmpty()) "" else " · $columns", Modifier.focusRequester(viewButton)) { dialog = "view" }
             if (options.filterCount > 0) BarButton("Clear filters") { update { it.clearFilters() } }
             if (canBulkEdit) {
                 if (!selecting) BarButton("Select to edit") { selecting = true }
@@ -374,12 +373,6 @@ fun BrowseLibrary(
             dialog = null
             if (changed) { selecting = false; selected = emptySet(); vm.reload() }
         }
-        "view" -> ViewDialog(
-            options.view, columns,
-            onPick = { v -> update { it.copy(view = v) }; dialog = null; viewChanged++ },
-            onColumns = { n -> vm.update { it.copy(columns = it.columns + (it.view to n)) } },
-            onDismiss = { dialog = null; viewChanged++ },
-        )
         "sort" -> SortDialog(options, onPick = { change -> update(change); dialog = null }, onDismiss = { dialog = null })
         "filters" -> FilterDialog(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
     }
@@ -414,7 +407,7 @@ private fun LetterKey(letter: String, modifier: Modifier, small: Boolean = false
     }
 }
 
-/** A small button at the end of the tabs bar (Sort, Filters, View and the like). */
+/** A small button at the end of the tabs bar (Sort, Filters and the like). */
 @Composable
 internal fun BarButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
     OutlinedButton(
@@ -521,38 +514,6 @@ private fun SortDialog(options: BrowseOptions, onPick: ((BrowseOptions) -> Brows
                 Text(if (options.descending) "Reverse (lowest/oldest first)" else "Reverse (highest/newest first)")
             }
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-        }
-    }
-}
-
-/** Every way to lay the titles out: the plain ones, then the show views. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun ViewDialog(
-    current: BrowseView, columns: Int, onPick: (BrowseView) -> Unit, onColumns: (Int) -> Unit, onDismiss: () -> Unit,
-    /** For a page of rows: whether it shows as rows now (null: no Rows choice), and choosing it. */
-    rows: Boolean? = null, onRows: () -> Unit = {},
-) {
-    val first = remember { FocusRequester() }
-    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 620) {
-        Column(
-            Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("View", style = MaterialTheme.typography.headlineSmall)
-            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (rows != null) FilterChip(selected = rows, onClick = onRows, modifier = if (rows) Modifier.focusRequester(first) else Modifier) { Text("Rows") }
-                BrowseView.entries.forEach { v ->
-                    val on = rows != true && v == current
-                    FilterChip(selected = on, onClick = { onPick(v) }, modifier = if (on) Modifier.focusRequester(first) else Modifier) { Text(v.label) }
-                }
-            }
-            // The plain grids: how many titles across (kept per view).
-            if (rows != true && !current.columnChoices.isEmpty()) {
-                Text("Columns", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    current.columnChoices.forEach { n -> FilterChip(selected = n == columns, onClick = { onColumns(n) }) { Text("$n") } }
-                }
-            }
-            LaunchedEffect(Unit) { kotlinx.coroutines.android.awaitFrame(); runCatching { first.requestFocus() } }
         }
     }
 }

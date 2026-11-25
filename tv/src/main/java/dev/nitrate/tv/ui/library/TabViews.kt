@@ -3,7 +3,6 @@ package dev.nitrate.tv.ui.library
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -12,17 +11,12 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -41,10 +35,10 @@ import kotlinx.coroutines.launch
 private val PagePadding = 58.dp
 
 /**
- * A page of rows (Home's tabs, a library's Recommended, Genres, Studios, Decades or own tab) shown as
- * its rows ([rowsContent], each row with its own look) or, chosen with the View button beside the
- * tabs, its titles together in one of the All tab's views; saved per page under [viewKey]. In rows
- * the button joins [header], which [rowsContent] places as the page's tabs.
+ * A page of rows (Home's tabs, a library's Genres, Studios, Decades or own tab) shown as its rows
+ * ([rowsContent], each row with its own look) or its titles together in one of the All tab's views,
+ * chosen in Customize → View ([dev.nitrate.tv.ui.pages.ReportTabView]); saved per page under [viewKey].
+ * [upTo] is the chosen tab: ▲ from a grid's first row goes there.
  */
 @Composable
 fun RowsOrTitles(
@@ -58,6 +52,9 @@ fun RowsOrTitles(
     music: Boolean = false,
     /** What the focused title's details call the list ("Movies · 3 / 40"). */
     label: String = "",
+    /** The tab's name, for Customize → View. */
+    tabName: String = "",
+    upTo: FocusRequester? = null,
     rowsContent: @Composable (header: @Composable () -> Unit) -> Unit,
 ) {
     val user = repository.userId
@@ -66,50 +63,27 @@ fun RowsOrTitles(
     }.collectAsStateWithLifecycle(TabView())
     val scope = rememberCoroutineScope()
     fun save(next: TabView) { val u = user ?: return; scope.launch { displaySettings.saveView(u, viewKey, next) } }
-    var choosing by remember { mutableStateOf(false) }
-    val viewButton = remember { FocusRequester() }
-    var changed by remember { mutableStateOf(0) }
-    // Rows and a view are laid out differently: focus goes back to the View button after a change.
-    // (Asked again until it has it: a request made before the new layout is placed can come to nothing.)
-    var buttonFocused by remember { mutableStateOf(false) }
-    // Keyed on the look too: the choice is saved and comes back a moment later, swapping the layout
-    // (and the button) again after focus first landed.
-    LaunchedEffect(changed, look.rows, look.view) {
-        if (changed == 0) return@LaunchedEffect
-        buttonFocused = false
-        repeat(40) {
-            kotlinx.coroutines.android.awaitFrame()
-            if (buttonFocused) return@LaunchedEffect
-            runCatching { viewButton.requestFocus() }
-            kotlinx.coroutines.delay(30)
-        }
-    }
     val columns = look.columnsFor(music)
-    val button: @Composable () -> Unit = {
-        BarButton(
-            if (look.rows) "View: Rows" else "View: ${look.view.label}" + if (look.view.columnChoices.isEmpty()) "" else " · $columns",
-            Modifier.focusRequester(viewButton).onFocusChanged { buttonFocused = it.isFocused },
-        ) { choosing = true }
-    }
-    if (choosing) ViewDialog(
-        look.view, columns,
-        onPick = { v -> save(look.copy(rows = false, view = v)); choosing = false; changed++ },
-        onColumns = { n -> save(look.copy(columns = look.columns + (look.view to n))) },
-        onDismiss = { choosing = false; changed++ },
-        rows = look.rows,
-        onRows = { save(look.copy(rows = true)); choosing = false; changed++ },
+    dev.nitrate.tv.ui.pages.ReportTabView(
+        dev.nitrate.tv.ui.pages.TabViewChoice(
+            tabName, rows = look.rows, view = look.view, columns = columns,
+            onRows = { save(look.copy(rows = true)) },
+            onView = { v -> save(look.copy(rows = false, view = v)) },
+            onColumns = { n -> save(look.copy(columns = look.columns + (look.view to n))) },
+        ),
+        refocus = upTo,
     )
     if (look.rows) {
-        rowsContent { Row(verticalAlignment = Alignment.CenterVertically) { header(); Row(Modifier.padding(end = PagePadding)) { button() } } }
+        rowsContent(header)
     } else {
         val items = remember(rows) { rows.flatMap { it.items }.distinctBy { it.id } }
-        TitlesInView(items, look.view, columns, repository, header, button, onOpen, onPlay, music, upTo = viewButton, label = label)
+        TitlesInView(items, look.view, columns, repository, header, onOpen, onPlay, music, upTo = upTo, label = label)
     }
 }
 
 /**
- * [items] in one of the All tab's views under [header] and [bar]: a grid ([columns] across: posters,
- * artwork or a list) or a show view filling the page.
+ * [items] in one of the All tab's views under [header]: a grid ([columns] across: posters, artwork
+ * or a list) or a show view filling the page.
  */
 @Composable
 internal fun TitlesInView(
@@ -118,19 +92,17 @@ internal fun TitlesInView(
     columns: Int,
     repository: MediaServer,
     header: @Composable () -> Unit,
-    bar: @Composable () -> Unit,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
     music: Boolean = false,
     empty: String = "Nothing here yet.",
-    /** The bar's button ▲ from the grid's first row goes to. */
+    /** Where ▲ from the grid's first row goes (the chosen tab); else into the tabs. */
     upTo: FocusRequester? = null,
     label: String = "",
 ) {
     if (view.tvOnly) {
         Column(Modifier.fillMaxSize().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             header()
-            Row(Modifier.padding(start = PagePadding)) { bar() }
             Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = PagePadding)) {
                 when {
                     items == null -> dev.nitrate.tv.ui.components.GridPlaceholder()
@@ -150,10 +122,7 @@ internal fun TitlesInView(
     TitleGrid(
         items, view, columns, repository, label,
         bar = {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { header() }
-                androidx.compose.foundation.layout.Box(Modifier.padding(end = PagePadding + dev.nitrate.tv.ui.components.LocalClockRoom.current).then(if (upTo == null) Modifier.focusRequester(target).focusGroup() else Modifier)) { bar() }
-            }
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().then(if (upTo == null) Modifier.focusRequester(target).focusGroup() else Modifier)) { header() }
         },
         upTo = target, onOpen = onOpen, onPlay = onPlay, music = music, empty = empty,
     )

@@ -411,6 +411,29 @@ class TvScreenshotTest {
     }
     private val rowsLibrary = dev.nitrate.core.pages.DisplayPrefs(tvLibraryArrangement = dev.nitrate.core.pages.PageArrangement.ROWS)
 
+    /** The Movies library in its menu frame (so the menu's Customize stop and the panel are there). */
+    @Composable
+    private fun MoviesWithMenu(c: AppContainer) = WithMenu(c) {
+        dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library("lib-movies"), overlay = false) { insets ->
+            dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}, insets = insets)
+        }
+    }
+
+    /** The menu's "Customize this page" stop: the Customize panel on the page (on the tab showing). */
+    private fun openCustomize() {
+        press("menu")
+        compose.onAllNodes(androidx.compose.ui.test.hasClickAction() and (androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasContentDescription("Customize this page")) or androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasText("Customize this page"))), useUnmergedTree = true)
+            .onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        // The panel asks for its first choice over a few frames: step through them.
+        repeat(10) { compose.mainClock.advanceTimeBy(200); compose.waitForIdle() }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Customize")).fetchSemanticsNodes().isNotEmpty()) { "the Customize panel should be open" }
+    }
+
+    /** Steps the clock (and real time, for the settings store) until [done], 5 s at most. */
+    private fun waitFor(done: () -> Boolean) {
+        repeat(50) { if (done()) return; Thread.sleep(50); compose.mainClock.advanceTimeBy(200); compose.waitForIdle() }
+    }
+
     /** From the first row back up to the tabs: the row stays whole in its place under them. */
     @Test fun libraryRowUpToTabs() = libraryShot("tv-library-row-up-to-tabs", rowsLibrary) {
         press("down")
@@ -419,7 +442,7 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
     }
 
-    /** Recommended shown as its titles in a view (Artwork, 5 across) instead of rows. */
+    /** Genres shown as its titles in a view (Artwork, 5 across) instead of rows; Customize → View says so. */
     @Test fun libraryGenresAsView() = shoot("tv-library-genres-as-view", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)
         c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
@@ -430,16 +453,19 @@ class TvScreenshotTest {
         c.displaySettings.saveView("user-1", "rows/" + dev.nitrate.core.pages.LibraryTabs.pageKey("lib-movies", dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES)),
             dev.nitrate.core.pages.TabView(rows = false, view = dev.nitrate.core.pages.BrowseView.ARTWORK, columns = mapOf(dev.nitrate.core.pages.BrowseView.ARTWORK to 5)))
     }, act = {
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("View: Artwork · 5")).fetchSemanticsNodes().isNotEmpty()) { "the View button should say the view" }
-    }) { c ->
-        WithMenu(c) {
-            dev.nitrate.tv.ui.home.MainMenu("lib-movies", overlay = false) { insets ->
-                dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}, insets = insets)
-            }
-        }
-    }
+        check(!shows("View:")) { "the tabs bar has no View button any more" }
+        // Nothing has focus when the test starts: the first ▼ gives it to the page.
+        press("down")
+        openCustomize()
+        check(focusedHasText("Artwork")) { "Customize → View should open on the view in use; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.isSelected() and androidx.compose.ui.test.hasText("5")).fetchSemanticsNodes().isNotEmpty()) { "the columns in use should be chosen" }
+        check(shows("Rows")) { "a tab of rows offers Rows" }
+        // The panel itself (a window of its own), with the page beside it.
+        compose.onAllNodes(androidx.compose.ui.test.isRoot()).let { it[it.fetchSemanticsNodes().size - 1] }.captureRoboImage("build/outputs/roborazzi/tv-customize-view-genres.png")
+        press("back")
+    }) { c -> MoviesWithMenu(c) }
 
-    /** The Collections tab looks like All (Fixed grid): the focused collection's details at the top, ▲ from the first row to View. */
+    /** The Collections tab looks like All (Fixed grid): the focused collection's details at the top, ▲ from the first row to its tab. */
     @Test fun libraryCollectionsTab() = shoot("tv-library-collections", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)
         c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
@@ -450,49 +476,62 @@ class TvScreenshotTest {
         press("down")
         compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
         press("up")
-        check(focusedHasText("View")) { "Up from the first row should reach the View button" }
+        compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
+        check(focusedHasText("Collections")) { "Up from the first row should reach the Collections tab; focused: ${focusedNodes()}" }
+        check(!shows("View:")) { "no View button on the bar" }
         press("down")
         compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
-    }) { c ->
-        WithMenu(c) {
-            dev.nitrate.tv.ui.home.MainMenu("lib-movies", overlay = false) { insets ->
-                dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}, insets = insets)
-            }
-        }
-    }
+    }) { c -> MoviesWithMenu(c) }
 
-    /** A library's main page (Recommended) has no View button: that's only on its other tabs. */
-    @Test fun libraryRecommendedNoViewButton() = libraryShot("tv-library-recommended-no-view", rowsLibrary) {
+    /** A library's main page (Recommended) is always its rows: no View button, and no View in its Customize. */
+    @Test fun libraryRecommendedNoViewButton() = shoot("tv-library-recommended-no-view", setup = { c -> c.displaySettings.savePrefs("user-1", rowsLibrary) }, act = {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("View", substring = true)).fetchSemanticsNodes().isEmpty()) { "Recommended shouldn't have a View button" }
-    }
+        openCustomize()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("View")).fetchSemanticsNodes().isEmpty()) { "Recommended's Customize shouldn't offer a view" }
+        press("back")
+    }) { c -> MoviesWithMenu(c) }
 
-    /** Back from a view to rows through the View button: Rows, and focus stays on the button. */
-    @Test fun libraryViewBackToRows() = shoot("tv-library-view-back-to-rows", setup = { c ->
-        c.displaySettings.savePrefs("user-1", rowsLibrary)
-        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
-            dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES),
-            dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
-            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
-        ))
-        c.displaySettings.saveView("user-1", "rows/" + dev.nitrate.core.pages.LibraryTabs.pageKey("lib-movies", dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES)), dev.nitrate.core.pages.TabView(rows = false))
-    }, act = {
-        // Down from the tabs into the titles, along to the first, Up to the View button above it.
-        // (Nothing has focus when the test starts: the first ▼ only gives it to the tab.)
-        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
-        press("down")
-        if (compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText("Genres")).fetchSemanticsNodes().isNotEmpty()) press("down")
-        repeat(4) { if (!focusedHasText("Nitrate")) press("left") }
-        press("up")
-        check(focusedHasText("View")) { "Up from the first title should reach the View button; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() + " " + it.boundsInRoot } }
-        press("ok")
-        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
-        check(focusedHasText("Posters")) { "the dialog should open on the current view" }
-        press("left", "ok")
-        compose.mainClock.advanceTimeBy(1_200); compose.waitForIdle()
-        // The choice is saved and read back: a busy machine can take a moment longer.
-        repeat(10) { if (!focusedHasText("View: Rows")) { Thread.sleep(100); compose.mainClock.advanceTimeBy(300); compose.waitForIdle() } }
-        check(focusedHasText("View: Rows")) { "focus should come back to the View button, now on Rows; focused: " + compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() + " " + it.boundsInRoot } }
-    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+    /**
+     * Genres as a view: ▲ from the first title goes to the Genres tab; Customize → View → Rows puts it
+     * back to rows (saved where it was), and closing the panel leaves focus on the tab.
+     */
+    @Test fun libraryViewBackToRows() {
+        lateinit var container: AppContainer
+        val genres = "rows/" + dev.nitrate.core.pages.LibraryTabs.pageKey("lib-movies", dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES))
+        shoot("tv-library-view-back-to-rows", setup = { c ->
+            container = c
+            c.displaySettings.savePrefs("user-1", rowsLibrary)
+            c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+                dev.nitrate.core.pages.LibraryTab("genres", dev.nitrate.core.pages.LibraryTabKind.GENRES),
+                dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
+                dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
+            ))
+            c.displaySettings.saveView("user-1", genres, dev.nitrate.core.pages.TabView(rows = false))
+        }, act = {
+            // Down from the tabs into the titles, along to the first, Up to the Genres tab above it.
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            press("down")
+            if (compose.onAllNodes(androidx.compose.ui.test.isFocused() and androidx.compose.ui.test.hasText("Genres")).fetchSemanticsNodes().isNotEmpty()) press("down")
+            repeat(4) { if (!focusedHasText("Nitrate")) press("left") }
+            press("up")
+            compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
+            check(focusedHasText("Genres")) { "Up from the first title should reach the Genres tab; focused: ${focusedNodes()}" }
+            openCustomize()
+            check(focusedHasText("Posters")) { "Customize → View should open on the current view; focused: ${focusedNodes()}" }
+            press("left")
+            check(focusedHasText("Rows")) { "Rows should be first in View" }
+            press("ok")
+            fun stored() = runBlocking { container.displaySettings.view("user-1", genres, dev.nitrate.core.pages.TabView()).first() }
+            waitFor { stored().rows }
+            check(stored().rows) { "Rows should be saved for the tab: ${stored()}" }
+            press("back")
+            waitFor { compose.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().size == 1 && compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty() }
+            // Back on the page as rows, focus on it (the rows put it on their first card), never lost or in the menu.
+            check(compose.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().size == 1) { "Back should close the panel" }
+            check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "something on the page should have focus" }
+            check(!menuOpen()) { "the menu should be closed" }
+        }) { c -> MoviesWithMenu(c) }
+    }
 
     /** Choosing All keeps focus on the tabs (it used to fall through to the menu). */
     @Test fun libraryTabSwitch() = libraryShot("tv-library-tab-switch", rowsLibrary) {
@@ -632,7 +671,7 @@ class TvScreenshotTest {
         c.displaySettings.save("user-1", rows[0], dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, cards = false))
     }, act = {
         press("down", "up")
-        check(focusedHasText("Recommended") || focusedHasText("All") || focusedHasText("View")) { "Up from the row should reach the tabs (or the View button among them)" }
+        check(focusedHasText("Recommended") || focusedHasText("All")) { "Up from the row should reach the tabs" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
     /** The All view as a bouncing box: posters flying round it; Down from the bar catches one. */
@@ -663,7 +702,7 @@ class TvScreenshotTest {
         repeat(rights) { press("right") }
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
         val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
-        // The view starts just under the tabs bar (Sort, Filters and View sit at its end).
+        // The view starts just under the tabs bar (Sort and Filters sit at its end).
         check(focused.isNotEmpty() && focused.first().boundsInRoot.top > 110f) { "focus should be in the ${view.label} view, got ${focused.map { it.boundsInRoot }}" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
@@ -676,26 +715,67 @@ class TvScreenshotTest {
     /** The deck after five deals: the dealt cards lie scattered on the table behind. */
     @Test fun libraryDeck() = showViewShot(dev.nitrate.core.pages.BrowseView.DECK, downs = 3, rights = 5)
 
-    /** Choosing a new view from the View button leaves focus on it (switching to the box used to drop it to the menu). */
-    @Test fun libraryViewSwitchKeepsFocus() = shoot("tv-library-view-switch", setup = { c ->
-        c.displaySettings.savePrefs("user-1", rowsLibrary)
-        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
-            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
-        ))
-    }, act = {
-        // Into the grid, then Up to the bar's buttons (at the end of the tabs bar) and along to View.
-        press("down")
-        repeat(2) { if (!focusedHasText("Sort") && !focusedHasText("View")) press("up") }
-        repeat(4) { if (!focusedHasText("View")) press("right") }
-        check(focusedHasText("View")) { "should reach the View button; focused: ${focusedNodes()}" }
-        press("ok")
-        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
-        repeat(3) { press("right") }
-        check(focusedHasText("Bouncing box")) { "should reach Bouncing box in the dialog" }
-        press("ok")
-        compose.mainClock.advanceTimeBy(1_200); compose.waitForIdle()
-        check(focusedHasText("View")) { "focus should come back to the View button" }
-    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+    /**
+     * Choosing a show view in Customize (the box, which isn't a grid) rebuilds the All tab behind the
+     * panel; closing it leaves focus on Sort (switching to the box used to drop it to the menu).
+     */
+    @Test fun libraryViewSwitchKeepsFocus() {
+        lateinit var container: AppContainer
+        shoot("tv-library-view-switch", setup = { c ->
+            container = c
+            c.displaySettings.savePrefs("user-1", rowsLibrary)
+            c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL)))
+        }, act = {
+            check(!shows("View:")) { "the bar has no View button any more" }
+            openCustomize()
+            check(focusedHasText("Posters")) { "Customize → View should open on Posters; focused: ${focusedNodes()}" }
+            repeat(3) { press("right") }
+            check(focusedHasText("Bouncing box")) { "should reach Bouncing box; focused: ${focusedNodes()}" }
+            press("ok")
+            fun stored() = runBlocking { container.displaySettings.view("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions()).first() }
+            waitFor { stored().view == dev.nitrate.core.pages.BrowseView.BOUNCE }
+            check(stored().view == dev.nitrate.core.pages.BrowseView.BOUNCE) { "the view should be saved for All: ${stored()}" }
+            check(focusedHasText("Bouncing box")) { "focus stays on the choice in the panel" }
+            press("back")
+            waitFor { focusedHasText("Sort") }
+            check(focusedHasText("Sort")) { "closing the panel should leave focus on Sort; focused: ${focusedNodes()}" }
+        }) { c -> MoviesWithMenu(c) }
+    }
+
+    /** Customize on the All tab → View → Artwork: the grid shows artwork (wide cards with their names), columns offered for it. */
+    @Test fun customizeAllTabArtwork() {
+        lateinit var container: AppContainer
+        shoot("tv-customize-all-artwork", setup = { c ->
+            container = c
+            c.displaySettings.savePrefs("user-1", rowsLibrary)
+            c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL)))
+        }, act = {
+            openCustomize()
+            check(shows("Columns")) { "Posters offers its columns" }
+            press("right")
+            check(focusedHasText("Artwork")) { "Artwork is next to Posters; focused: ${focusedNodes()}" }
+            press("ok")
+            fun stored() = runBlocking { container.displaySettings.view("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions()).first() }
+            waitFor { stored().view == dev.nitrate.core.pages.BrowseView.ARTWORK }
+            check(stored().view == dev.nitrate.core.pages.BrowseView.ARTWORK) { "Artwork should be saved for All: ${stored()}" }
+            // Artwork's own column choices (2 to 6), 4 across by default.
+            check(compose.onAllNodes(androidx.compose.ui.test.isSelected() and androidx.compose.ui.test.hasText("4")).fetchSemanticsNodes().isNotEmpty()) { "Artwork's 4 across should be chosen" }
+            check(shows("Columns") && compose.onAllNodes(androidx.compose.ui.test.hasText("2")).fetchSemanticsNodes().isNotEmpty()) { "Artwork's columns should be offered" }
+            press("back")
+            waitFor { focusedHasText("Sort") }
+            check(focusedHasText("Sort")) { "closing the panel should leave focus on Sort; focused: ${focusedNodes()}" }
+            // Into the grid: its cards are artwork now (wide).
+            press("down")
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            val card = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
+            check(card.width > card.height) { "the grid should show artwork (wide cards), focused card at $card" }
+            press("up")
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            check(focusedHasText("Sort")) { "Up from the first row should reach Sort; focused: ${focusedNodes()}" }
+            press("down")
+            compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        }) { c -> MoviesWithMenu(c) }
+    }
 
     /** Home rows over a smart gradient: the page's colour taken from the focused title. */
     @Test fun homeSmartGradient() = shoot("tv-home-smart-gradient", { c ->

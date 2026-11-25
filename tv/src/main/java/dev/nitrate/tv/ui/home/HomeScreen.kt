@@ -141,7 +141,7 @@ fun HomeScreen(
         // The page draws its tabs again as it goes from loading to its rows: keep focus on the tab
         // chosen through that (only just after choosing it, so later reloads never take focus).
         var chosenAt by remember(openPage.id) { mutableStateOf(System.currentTimeMillis()) }
-        PinnedPage(openPage, repository, displaySettings, changes, dataCache, fullArt, insets, tabs!!, onOpen, onPlay,
+        PinnedPage(openPage, repository, displaySettings, changes, dataCache, fullArt, insets, tabs!!, onOpen, onPlay, tabFocus(openPage.id),
             onRedrawn = { if (System.currentTimeMillis() - chosenAt < 4_000) switched = openPage.id + "#" + System.nanoTime() })
     } else when (val s = state) {
         RowsState.Loading -> dev.nitrate.tv.ui.components.RowsPlaceholder()
@@ -203,6 +203,8 @@ private fun PinnedPage(
     tabs: @Composable () -> Unit,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
+    /** The page's tab: ▲ from a grid's first row goes there. */
+    tabFocus: FocusRequester,
     onRedrawn: () -> Unit,
 ) {
     val vm = viewModel(key = "custom-${page.id}") { RowsViewModel(PageKeys.custom(page.id), { emptyList() }, displaySettings, repository, changes, cache = dataCache) }
@@ -224,7 +226,7 @@ private fun PinnedPage(
                     Modifier.padding(horizontal = 58.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = { editing = true }, modifier = Modifier.padding(horizontal = 58.dp)) { Text("Edit rows") }
             }
-            else -> dev.nitrate.tv.ui.library.RowsOrTitles("rows/${PageKeys.custom(page.id)}", s.rows, repository, displaySettings, tabs, onOpen, onPlay) { header ->
+            else -> dev.nitrate.tv.ui.library.RowsOrTitles("rows/${PageKeys.custom(page.id)}", s.rows, repository, displaySettings, tabs, onOpen, onPlay, tabName = page.title, upTo = tabFocus) { header ->
                 androidx.compose.runtime.CompositionLocalProvider(dev.nitrate.tv.ui.pages.LocalPageRows provides vm) {
                 if (fullArt) FullArtPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, onEditPage = { editing = true }, insets = insets, header = header)
                 else RowsPage(s.rows, overrides, repository, onOpen, onPlay, vm::save, header = header, onEditPage = { editing = true })

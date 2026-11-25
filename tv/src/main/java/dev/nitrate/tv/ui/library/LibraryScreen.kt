@@ -166,7 +166,7 @@ fun LibraryScreen(
         when (tab.kind) {
             dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED -> TabRows(
                 "library-rows-$libraryId", PageKeys.library(lib.id), { repository.libraryRows(lib) }, { skip -> repository.libraryRowsProgress(lib, skip) },
-                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay, tab.label, tabFocus(tab.id),
             )
             dev.nitrate.core.pages.LibraryTabKind.GENRES, dev.nitrate.core.pages.LibraryTabKind.STUDIOS, dev.nitrate.core.pages.LibraryTabKind.DECADES -> TabRows(
                 "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab),
@@ -185,27 +185,27 @@ fun LibraryScreen(
                         ), complete = true))
                     }
                 },
-                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay, tab.label, tabFocus(tab.id),
             )
             // The user's own page of rows (made in Settings → Display → Pages).
             dev.nitrate.core.pages.LibraryTabKind.OWN -> TabRows(
                 "library-rows-$libraryId-${tab.id}", dev.nitrate.core.pages.LibraryTabs.pageKey(lib.id, tab), { emptyList() }, null,
-                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay,
+                lib, repository, displaySettings, changes, dataCache, fullArt, insets, tabs, onOpen, onPlay, tab.label, tabFocus(tab.id),
                 empty = "No rows here yet. Add some in Settings → Display → Pages → ${lib.name}.",
             )
-            dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay) }
+            dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS -> Box(padded) { CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay, tab.label, tabFocus(tab.id)) }
             // The user's music playlists; OK opens one (its page plays it as a queue).
             dev.nitrate.core.pages.LibraryTabKind.PLAYLISTS -> Box(padded) {
-                CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay,
+                CollectionsGrid(repository, displaySettings, lib, tabs, onOpen, onPlay, tab.label, tabFocus(tab.id),
                     key = "browse/${lib.id}/playlists", empty = "No music playlists yet.",
                     load = { repository.playlists().filter { it.mediaKind == dev.nitrate.core.model.MediaKind.AUDIO } })
             }
             dev.nitrate.core.pages.LibraryTabKind.UNWATCHED -> Box(padded) {
-                BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin, tabFocus = tabFocus(tab.id),
+                BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin, tabFocus = tabFocus(tab.id), tabName = tab.label,
                     viewKey = "browse/${lib.id}/unwatched",
                     startWith = dev.nitrate.core.pages.BrowseOptions(watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, sort = dev.nitrate.core.pages.QuerySort.DATE_ADDED, descending = true))
             }
-            dev.nitrate.core.pages.LibraryTabKind.ALL -> Box(padded) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin, tabFocus = tabFocus(tab.id)) }
+            dev.nitrate.core.pages.LibraryTabKind.ALL -> Box(padded) { if (music && artists) ArtistsGrid(repository, lib, tabs, onOpen) else BrowseLibrary(repository, displaySettings, lib, tabs, onOpen, onPlay, admin = admin, tabFocus = tabFocus(tab.id), tabName = tab.label) }
         }
     }
 }
@@ -230,6 +230,9 @@ private fun TabRows(
     tabs: @Composable () -> Unit,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
+    /** The tab's name (Customize → View) and its focus (▲ from a grid's first row). */
+    tabName: String,
+    tabFocus: androidx.compose.ui.focus.FocusRequester,
     empty: String = "Nothing here yet.",
 ) {
     val vm = viewModel(key = vmKey) {
@@ -255,10 +258,10 @@ private fun TabRows(
                     )
                     }
                 }
-                // The library's main page (Recommended) is always its rows; the other row tabs get the
-                // View button (as their rows, or their titles in one of the All tab's views).
+                // The library's main page (Recommended) is always its rows; the other row tabs have a
+                // view in Customize (their rows, or their titles in one of the All tab's views).
                 if (pageKey == dev.nitrate.core.pages.PageKeys.library(lib.id)) page(tabs)
-                else RowsOrTitles("rows/$pageKey", s.rows, repository, displaySettings, tabs, onOpen, onPlay, music = lib.collection == CollectionKind.MUSIC, label = lib.name) { header -> page(header) }
+                else RowsOrTitles("rows/$pageKey", s.rows, repository, displaySettings, tabs, onOpen, onPlay, music = lib.collection == CollectionKind.MUSIC, label = lib.name, tabName = tabName, upTo = tabFocus) { header -> page(header) }
             }
         }
         is RowsState.Error -> Column { tabs(); Text(s.message, Modifier.padding(PagePadding), color = MaterialTheme.colorScheme.error) }
@@ -268,7 +271,8 @@ private fun TabRows(
 
 /**
  * The server's collections (box sets), under the tabs, in any of the All tab's views (the grids with
- * their column choice, or a show view), saved for the tab.
+ * their column choice, or a show view), chosen in Customize → View and saved for the tab. ▲ from the
+ * grid's first row goes to the chosen tab ([tabFocus]).
  */
 @Composable
 private fun CollectionsGrid(
@@ -278,6 +282,8 @@ private fun CollectionsGrid(
     tabs: @Composable () -> Unit,
     onOpen: (MediaItem) -> Unit,
     onPlay: (MediaItem) -> Unit,
+    tabName: String,
+    tabFocus: androidx.compose.ui.focus.FocusRequester,
     /** Where the view is saved; the Playlists tab (music) uses the same grid with its own. */
     key: String = "browse/${lib.id}/collections",
     empty: String = "No collections on this server yet.",
@@ -293,34 +299,20 @@ private fun CollectionsGrid(
         val user = userId ?: return
         scope.launch { displaySettings.saveView(user, key, change(options)) }
     }
-    var choosing by remember { mutableStateOf(false) }
-    val viewButton = remember { androidx.compose.ui.focus.FocusRequester() }
-    var changed by remember { mutableStateOf(0) }
-    var buttonFocused by remember { mutableStateOf(false) }
-    // Also after the saved choice comes back (it swaps the layout, and the button, again).
-    LaunchedEffect(changed, options.view) {
-        if (changed == 0) return@LaunchedEffect
-        buttonFocused = false
-        repeat(40) {
-            kotlinx.coroutines.android.awaitFrame()
-            if (buttonFocused) return@LaunchedEffect
-            runCatching { viewButton.requestFocus() }
-            kotlinx.coroutines.delay(30)
-        }
-    }
     val view = options.view
     val columns = options.columnsFor(view, music = false)
-    val bar: @Composable () -> Unit = {
-        BarButton("View: ${view.label}" + if (view.columnChoices.isEmpty()) "" else " · $columns", Modifier.focusRequester(viewButton).onFocusChanged { buttonFocused = it.isFocused }) { choosing = true }
-    }
-    if (choosing) ViewDialog(view, columns,
-        onPick = { v -> save { it.copy(view = v) }; choosing = false; changed++ },
-        onColumns = { n -> save { it.copy(columns = it.columns + (it.view to n)) } },
-        onDismiss = { choosing = false; changed++ })
+    dev.nitrate.tv.ui.pages.ReportTabView(
+        dev.nitrate.tv.ui.pages.TabViewChoice(
+            tabName, rows = null, view = view, columns = columns, onRows = {},
+            onView = { v -> save { it.copy(view = v) } },
+            onColumns = { n -> save { it.copy(columns = it.columns + (it.view to n)) } },
+        ),
+        refocus = tabFocus,
+    )
     val list = collections
     if (view.tvOnly) {
         Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            tabs(); bar()
+            tabs()
             when {
                 list == null -> dev.nitrate.tv.ui.components.GridPlaceholder()
                 list.isEmpty() -> Text(empty)
@@ -336,12 +328,7 @@ private fun CollectionsGrid(
     // As the All tab: the page theme and the focused collection behind, Home's cards, Fixed or Scrolling grid.
     TitleGrid(
         list, view, columns, repository, lib.name,
-        bar = {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { tabs() }
-                Box(Modifier.padding(end = PagePadding + dev.nitrate.tv.ui.components.LocalClockRoom.current)) { bar() }
-            }
-        },
-        upTo = viewButton, onOpen = onOpen, onPlay = onPlay, empty = empty,
+        bar = { Box(Modifier.fillMaxWidth()) { tabs() } },
+        upTo = tabFocus, onOpen = onOpen, onPlay = onPlay, empty = empty,
     )
 }

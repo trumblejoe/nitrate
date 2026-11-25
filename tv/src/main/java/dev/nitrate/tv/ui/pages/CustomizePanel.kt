@@ -30,6 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -70,6 +73,50 @@ val LocalCustomizeHost = staticCompositionLocalOf<CustomizeHost?> { null }
 
 enum class CustomizeSection(val label: String) { ROW("This row"), PAGE("This page") }
 
+/**
+ * The view of the tab showing (a library's All, Unwatched, Collections, Genres, Studios, Decades or
+ * own tab, or a page pinned to Home), told by the tab while it shows ([ReportTabView]) so the panel's
+ * View acts on it, saving where the tab keeps it. [rows] is whether it shows as its rows now (null: a
+ * list tab, with no Rows choice); [columns] is the count shown now.
+ */
+class TabViewChoice(
+    val tab: String,
+    val rows: Boolean?,
+    val view: dev.nitrate.core.pages.BrowseView,
+    val columns: Int,
+    val onRows: () -> Unit,
+    val onView: (dev.nitrate.core.pages.BrowseView) -> Unit,
+    val onColumns: (Int) -> Unit,
+)
+
+/**
+ * Tells the page's Customize panel the view of the tab showing (while it shows). Changing the view
+ * from the panel rebuilds the tab behind it; once the panel closes, focus goes to [refocus] (the
+ * bar's first button, else the chosen tab) so it's never left on nothing.
+ */
+@Composable
+fun ReportTabView(choice: TabViewChoice, refocus: FocusRequester?) {
+    val host = LocalCustomizeHost.current ?: return
+    val reported = remember { arrayOfNulls<TabViewChoice>(1) }
+    androidx.compose.runtime.SideEffect { reported[0] = choice; host.view = choice }
+    androidx.compose.runtime.DisposableEffect(host) {
+        onDispose { if (host.view != null && host.view === reported[0]) host.view = null }
+    }
+    val latest by androidx.compose.runtime.rememberUpdatedState(choice)
+    val open = host.request != null
+    var atOpen by remember { mutableStateOf<Pair<Boolean?, dev.nitrate.core.pages.BrowseView>?>(null) }
+    LaunchedEffect(open) {
+        if (open) { atOpen = latest.rows to latest.view; return@LaunchedEffect }
+        val before = atOpen ?: return@LaunchedEffect
+        atOpen = null
+        if (before == (latest.rows to latest.view) || refocus == null) return@LaunchedEffect
+        repeat(30) {
+            kotlinx.coroutines.delay(40)
+            if (runCatching { refocus.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+        }
+    }
+}
+
 /** What the panel was opened for: a row (with the rows it's in), or just the page. */
 data class CustomizeRequest(val row: MediaRow?, val vm: RowsViewModel?, val section: CustomizeSection)
 
@@ -79,6 +126,9 @@ data class CustomizeRequest(val row: MediaRow?, val vm: RowsViewModel?, val sect
  */
 class CustomizeHost {
     var request by mutableStateOf<CustomizeRequest?>(null)
+
+    /** The view of the tab showing, when it has one (for This page → View). */
+    var view by mutableStateOf<TabViewChoice?>(null)
 
     /** The row the page last had focus in (and the rows it's in), told by the page as focus moves. */
     var lastRow: MediaRow? = null
@@ -114,16 +164,16 @@ internal fun rememberStoredPrefs(container: AppContainer): DisplayPrefs {
 fun CustomizeLayer(host: CustomizeHost, pageKey: String) {
     val container = LocalTvContainer.current ?: return
     val request = host.request ?: return
-    CustomizePanel(container, pageKey, request, onClose = { host.request = null })
+    CustomizePanel(container, pageKey, request, view = host.view, onClose = { host.request = null })
 }
 
 /**
  * Customize: a panel down the right with the page live beside it, so every change shows at once.
- * This row (its look, place, name, hide), this page (rows, tabs, theme, background) and its layout
- * (this page only, or every page). Back closes it.
+ * This row (its look, place, name, hide), this page (the tab's [view], rows, tabs, theme, background)
+ * and its layout (this page only, or every page). Back closes it.
  */
 @Composable
-fun CustomizePanel(container: AppContainer, pageKey: String, request: CustomizeRequest, onClose: () -> Unit) {
+fun CustomizePanel(container: AppContainer, pageKey: String, request: CustomizeRequest, view: TabViewChoice? = null, onClose: () -> Unit) {
     val owner = PageLooks.ownerOf(pageKey)
     val sections = CustomizeSection.entries.filter { it != CustomizeSection.ROW || (request.row != null && request.vm != null) }
     var section by remember { mutableStateOf(request.section.takeIf { it in sections } ?: CustomizeSection.PAGE) }
@@ -145,7 +195,11 @@ fun CustomizePanel(container: AppContainer, pageKey: String, request: CustomizeR
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         // The page stays in full view beside the panel: no dimming.
         (LocalView.current.parent as? DialogWindowProvider)?.window?.setDimAmount(0f)
-        Box(Modifier.fillMaxSize()) {
+        // Back closes the panel (taken as a key, as the player's panels do: the dialog's own Back
+        // handling isn't always reached).
+        Box(Modifier.fillMaxSize().onKeyEvent { e ->
+            if (e.key == androidx.compose.ui.input.key.Key.Back) { if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) onClose(); true } else false
+        }) {
             Column(
                 Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(500.dp).ignoreHeldSelect()
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)).padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 12.dp),
@@ -170,7 +224,11 @@ fun CustomizePanel(container: AppContainer, pageKey: String, request: CustomizeR
                             request.row, request.vm, (overrides[request.row.key] ?: request.row.defaultDisplay).normalized(), entry, first,
                             onRename = { renaming = true }, onClose = onClose,
                         )
-                        CustomizeSection.PAGE -> pageSection(container, owner, name, request.vm, first)
+                        CustomizeSection.PAGE -> {
+                            // The tab's view first (its choice in use takes focus), then the rest of the page.
+                            if (view != null) viewItems(view, first)
+                            pageSection(container, owner, name, request.vm, if (view != null) FocusRequester() else first)
+                        }
                     }
                 }
             }
@@ -310,6 +368,36 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
                 Modifier.size(width = 820.dp, height = 600.dp)
                     .background(MaterialTheme.colorScheme.surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(8.dp),
             ) { DisplaySettingsScreen(container, page = DisplayPage.SHOWN) }
+        }
+    }
+}
+
+/**
+ * The tab's view, as its View button used to offer it: Rows (a tab of rows), the plain grids and the
+ * show views, then how many across for a grid. Saved for that tab, shown behind the panel at once.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+private fun LazyListScope.viewItems(choice: TabViewChoice, first: FocusRequester) {
+    item { Heading("View", choice.tab) }
+    item {
+        androidx.compose.foundation.layout.FlowRow(
+            Modifier.padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (choice.rows != null) FilterChip(selected = choice.rows, onClick = choice.onRows, modifier = if (choice.rows) Modifier.focusRequester(first) else Modifier) { Text("Rows") }
+            dev.nitrate.core.pages.BrowseView.entries.forEach { v ->
+                val on = choice.rows != true && v == choice.view
+                FilterChip(selected = on, onClick = { choice.onView(v) }, modifier = if (on) Modifier.focusRequester(first) else Modifier) { Text(v.label) }
+            }
+        }
+    }
+    // The plain grids: how many titles across (kept per view).
+    if (choice.rows != true && !choice.view.columnChoices.isEmpty()) item {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Columns", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                choice.view.columnChoices.forEach { n -> FilterChip(selected = n == choice.columns, onClick = { choice.onColumns(n) }) { Text("$n") } }
+            }
         }
     }
 }
