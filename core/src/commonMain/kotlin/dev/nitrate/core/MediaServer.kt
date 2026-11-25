@@ -1000,11 +1000,16 @@ interface MediaServer {
     suspend fun playlistMembers(playlistId: String): List<MediaItem> = playlistItems(playlistId)
 
     /**
-     * Home's "Continue your playlists" worked out by the server (the Companion): what carries on from
-     * where each video playlist was left, most recent first. Null when the server can't, and the app
-     * works it out itself.
+     * Facts about the video playlists the user is watching through, from the server (the Companion):
+     * each playlist holding something played since [sinceMs], with its entries (ids, kinds, watch
+     * state; no names or pictures) and the episodes of shows and seasons put in whole. The rules
+     * (core `PlaylistPlaces`) are applied by the app. Null when the server doesn't offer it; throws
+     * when it does but doesn't answer.
      */
-    suspend fun continuePlaylists(max: Int): List<MediaItem>? = null
+    suspend fun playlistFacts(sinceMs: Long): List<dev.nitrate.core.playlists.PlaylistFacts>? = null
+
+    /** Titles by id with what a card shows (in [ids]' order; any not found left out). */
+    suspend fun cardsFor(ids: List<String>): List<MediaItem> = ids.mapNotNull { runCatching { getItem(it) }.getOrNull() }
 
     /**
      * The server's change counters (the Companion) and what changed since [since] (a token from an

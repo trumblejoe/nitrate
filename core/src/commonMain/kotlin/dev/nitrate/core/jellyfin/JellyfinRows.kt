@@ -182,18 +182,6 @@ internal suspend fun JellyfinClient.homeBundle(skip: Set<String>, combine: Boole
     }
 }
 
-/** "Continue your playlists" from the plugin, shared like any row's answer; null without it (or if it fails). */
-internal suspend fun JellyfinClient.companionContinuePlaylists(max: Int): List<MediaItem>? {
-    if (!companionHas("homeplaylists")) return null
-    val segments = arrayOf("Nitrate", "Home", "Playlists")
-    val query = mapOf("limit" to max)
-    return runCatching {
-        shared(dev.nitrate.core.cache.AnswerKind.WATCHING, segments, query) {
-            get(*segments, query = query).decode<List<ItemDto>>().map { it.toMediaItem() }
-        }
-    }.getOrNull()
-}
-
 internal fun JellyfinClient.becauseKey() = "because|${accountKey ?: "$baseUrl|$userId"}"
 
 /** What a row asked the server, so the row can be continued ([moreOfRow]). */

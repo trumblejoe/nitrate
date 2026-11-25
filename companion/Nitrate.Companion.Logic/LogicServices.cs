@@ -49,6 +49,8 @@ public static class LogicServices
         serviceCollection.AddSingleton<Nitrate.Companion.Changes.ChangeCounters>();
         serviceCollection.AddSingleton<Nitrate.Companion.Changes.ChangeStamps>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Changes.ChangeStamps>());
+        serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.PlaylistFacts>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Recommendations.PlaylistFacts>());
         serviceCollection.AddSingleton<Nitrate.Companion.Formats.FormatIndex>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Formats.FormatIndex>());
         // The server's own time for each request Nitrate tags (the apps' query analyzer); the shell's middleware times them.

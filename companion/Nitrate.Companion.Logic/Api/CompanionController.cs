@@ -112,8 +112,8 @@ public class CompanionController : ControllerBase
         // Metadata editors: chosen accounts edit titles in chosen libraries (/Nitrate/Metadata; docs/features/admin.md).
         features.Add("metadata");
         features.Add("home");
-        // Home's "Continue your playlists" worked out here (GET /Nitrate/Home/Playlists).
-        features.Add("homeplaylists");
+        // Facts about the playlists a person is watching through, for the apps' own rules (GET /Nitrate/Playlists/Watching).
+        features.Add("playlistfacts");
         // Change counters for the apps' kept rows (GET /Nitrate/Changes).
         features.Add("changes");
         features.Add("formats");

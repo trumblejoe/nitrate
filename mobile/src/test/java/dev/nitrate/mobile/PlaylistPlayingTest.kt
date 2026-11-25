@@ -12,6 +12,7 @@ import dev.nitrate.testing.FakeServer
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -98,14 +99,44 @@ class PlaylistPlayingTest {
         assertEquals(1, asked.count { it == "playlists" })
     }
 
+    /** The Companion's facts for playlist p1: a film, then a show put in whole (S1 E2 played a day ago). */
+    private fun facts() = listOf(
+        dev.nitrate.core.playlists.PlaylistFacts(
+            "p1",
+            listOf(MediaItem("m1", "", ItemKind.MOVIE), MediaItem("series-1", "", ItemKind.SERIES)),
+            mapOf("series-1" to (1..4).map { n -> episode(1, n, if (n <= 2) 3 - n else null).copy(name = "") } + episode(0, 1, null).copy(name = "")),
+        ),
+    )
+
     @Test
-    fun theCompanionsRowReadsNoPlaylist() = runBlocking {
+    fun theCompanionsFactsReadNoPlaylist() = runBlocking {
+        var failing = false
         val companion = object : MediaServer by server {
-            override suspend fun continuePlaylists(max: Int): List<MediaItem> { asked += "companion"; return listOf(episode(1, 3, null)) }
+            override suspend fun playlistFacts(sinceMs: Long): List<dev.nitrate.core.playlists.PlaylistFacts> {
+                asked += "facts"
+                if (failing) throw IllegalStateException("Socket timeout has expired")
+                return facts()
+            }
+            override suspend fun cardsFor(ids: List<String>) = ids.map { asked += "card:$it"; episode(1, 3, null) }
+            override suspend fun withFreshMarks(rows: List<dev.nitrate.core.rows.MediaRow>) = rows.also { asked += "marks" }
         }
-        val row = PlaylistPlaying(companion, null, nowMs = { now }).continueRow()
+        val playing = PlaylistPlaying(companion, DataCache(ApplicationProvider.getApplicationContext<Context>()), nowMs = { now })
+        // The app's own rules over the facts: carries on after S1 E2 (specials left out), the card read whole.
+        val row = playing.continueRow()
         assertEquals(listOf("s1e3"), row!!.items.map { it.id })
-        assertEquals(listOf("companion"), asked)
+        assertEquals(listOf("facts", "card:s1e3"), asked)
+        assertNotNull(playing.status.value.answeredMs)
+        // The Companion stops answering: no reading of playlists here, and the row stays as it was.
+        asked.clear()
+        failing = true
+        assertEquals(listOf("s1e3"), playing.continueRow()!!.items.map { it.id })
+        assertEquals(listOf("facts", "marks"), asked)
+        assertNotNull(playing.status.value.failingSinceMs)
+        assertTrue(playing.status.value.line { "t" }!!.contains("hasn't answered"))
+        // Not asked again within a minute.
+        asked.clear()
+        playing.continueRow()
+        assertEquals(listOf("marks"), asked)
     }
 
     @Test

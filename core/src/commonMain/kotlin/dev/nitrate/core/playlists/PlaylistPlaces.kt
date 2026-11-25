@@ -3,6 +3,13 @@ package dev.nitrate.core.playlists
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 
+/**
+ * A playlist's contents as facts from the server: its [items] as stored (titles, and shows or seasons
+ * put in whole) and those shows' and seasons' [episodes] (by their id), each with only an id, kind,
+ * numbers and the user's watch state. [PlaylistPlaces.entries] makes the watching order from them.
+ */
+data class PlaylistFacts(val playlistId: String, val items: List<MediaItem>, val episodes: Map<String, List<MediaItem>>)
+
 /** Where the user is in a playlist. */
 data class PlaylistStatus(val watched: Int, val total: Int, val next: MediaItem?, val resuming: Boolean) {
     val share: Float get() = if (total == 0) 0f else watched / total.toFloat()

@@ -65,6 +65,8 @@ fun QueryAnalyzerScreen(actions: AppActions) {
     val readable = remember(shown, names) { shown.map { it.copy(origin = QueryLog.readable(it.origin, names)) } }
     val summary = remember(readable) { QuerySummary.of(readable) }
     val title = recording?.takeIf { !everything }?.let { "Visit: ${it.label}" } ?: "This run"
+    val playlistsStatus by container.playlists.status.collectAsState()
+    val playlistsLine = playlistsStatus.line { dev.nitrate.mobile.platform.formatTime(it) }
 
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         item {
@@ -90,7 +92,7 @@ fun QueryAnalyzerScreen(actions: AppActions) {
                         message = "Saving…"
                         scope.launch { message = container.sendQueryReport(title, shown).fold({ "Saved on your server as $it (Dashboard → Logs)" }, { "Couldn't save: ${it.message}" }) }
                     }) { Text("Save to server logs") }
-                    OutlinedButton(onClick = { platformActions.copy(summary.render(title), "Nitrate query analyzer"); message = "Copied" }) { Text("Copy") }
+                    OutlinedButton(onClick = { platformActions.copy(listOfNotNull(playlistsLine, summary.render(title)).joinToString("\n\n"), "Nitrate query analyzer"); message = "Copied" }) { Text("Copy") }
                     if (container.serverTimesQueries()) OutlinedButton(onClick = {
                         scope.launch { message = if (container.fetchServerQueryTimes()) "Server times added" else "The server didn't answer" }
                     }) { Text("Server times") }
@@ -98,6 +100,7 @@ fun QueryAnalyzerScreen(actions: AppActions) {
                 }
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor()) }
                 Text("$title: ${summary.headline}", style = MaterialTheme.typography.titleSmall)
+                playlistsLine?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (playlistsStatus.failingSinceMs != null) HintColor else MaterialTheme.colorScheme.onSurfaceVariant) }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     (listOf("Costliest", "By page", "Latest") + (if (household.isNotEmpty()) listOf("Household") else emptyList()) + (if (trends.isNotEmpty()) listOf("Over time") else emptyList())).forEachIndexed { i, label -> FilterChip(view == i, { view = i }, label = { Text(label) }) }
                 }

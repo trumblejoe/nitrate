@@ -1331,7 +1331,21 @@ class JellyfinClient(
         }
     }
 
-    override suspend fun continuePlaylists(max: Int): List<MediaItem>? = companionContinuePlaylists(max)
+    override suspend fun playlistFacts(sinceMs: Long): List<dev.nitrate.core.playlists.PlaylistFacts>? {
+        if (!companionHas("playlistfacts")) return null
+        return shared(dev.nitrate.core.cache.AnswerKind.WATCHING, arrayOf("Nitrate", "Playlists", "Watching"), mapOf("since" to sinceMs)) {
+            get("Nitrate", "Playlists", "Watching", query = mapOf("since" to sinceMs)).decode<List<PlaylistFactsDto>>().map { it.toFacts() }
+        }
+    }
+
+    override suspend fun cardsFor(ids: List<String>): List<MediaItem> {
+        if (ids.isEmpty()) return emptyList()
+        val found = items(
+            "Items",
+            query = mapOf("ids" to dashless(ids), "userId" to userId, "fields" to ROW_FIELDS, "enableTotalRecordCount" to false),
+        ).associateBy { it.id }
+        return ids.mapNotNull { found[it] }
+    }
 
     override suspend fun changeCheck(since: String?): dev.nitrate.core.rows.ChangeCheck? {
         if (!companionHas("changes")) return null

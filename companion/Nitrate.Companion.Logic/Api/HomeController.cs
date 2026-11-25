@@ -67,16 +67,16 @@ public class HomeController : ControllerBase
     private readonly ITVSeriesManager _tv;
     private readonly BecauseRowsBuilder _because;
     private readonly FormatIndex _formats;
-    private readonly IUserDataManager _userData;
     private readonly Nitrate.Companion.Changes.ChangeCounters _changes;
     private readonly BecauseStore _becauseStore;
+    private readonly PlaylistFacts _playlistFacts;
 
     /// <summary>Initializes a new instance of the <see cref="HomeController"/> class.</summary>
-    public HomeController(ILibraryManager library, IUserManager users, IDtoService dto, ITVSeriesManager tv, BecauseRowsBuilder because, FormatIndex formats, IUserDataManager userData, Nitrate.Companion.Changes.ChangeCounters changes, BecauseStore becauseStore)
+    public HomeController(ILibraryManager library, IUserManager users, IDtoService dto, ITVSeriesManager tv, BecauseRowsBuilder because, FormatIndex formats, Nitrate.Companion.Changes.ChangeCounters changes, BecauseStore becauseStore, PlaylistFacts playlistFacts)
     {
+        _playlistFacts = playlistFacts;
         _changes = changes;
         _becauseStore = becauseStore;
-        _userData = userData;
         _library = library;
         _users = users;
         _dto = dto;
@@ -193,88 +193,14 @@ public class HomeController : ControllerBase
         Me() is { } user ? Ok(_changes.For(user.Id, _becauseStore.Get(user.Id)?.Built)) : Unauthorized();
 
     /// <summary>
-    /// Home's "Continue your playlists": for each video playlist the caller watched from in the last 60
-    /// days (most recent first), what carries on from the entry played last. Worked out here from each
-    /// playlist's own list and the caller's play dates, so the apps never download whole playlists.
+    /// Facts about the playlists the caller is watching through, for the apps' own rules: playlists
+    /// holding something they played since [since] (epoch ms), and what those hold with their watch
+    /// state. Nothing is decided here (see <see cref="PlaylistFacts"/>).
     /// </summary>
-    [HttpGet("Home/Playlists")]
+    [HttpGet("Playlists/Watching")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public ActionResult<IReadOnlyList<BaseItemDto>> Playlists([FromQuery] int limit = 12)
-    {
-        if (Me() is not { } user)
-        {
-            return Unauthorized();
-        }
-
-        var seen = new Dictionary<Guid, BaseItem>();
-        var lists = new List<IReadOnlyList<PlaylistEntry>>();
-        var playlists = _library.GetItemList(new InternalItemsQuery(user) { IncludeItemTypes = new[] { BaseItemKind.Playlist }, Recursive = true })
-            .OfType<MediaBrowser.Controller.Playlists.Playlist>()
-            .Where(p => p.MediaType != MediaType.Audio)
-            .Take(200);
-        foreach (var playlist in playlists)
-        {
-            var entries = new List<PlaylistEntry>();
-            var inIt = new HashSet<Guid>();
-            foreach (var item in playlist.GetChildren(user, true, new InternalItemsQuery(user)).SelectMany(Expand))
-            {
-                if (!inIt.Add(item.Id))
-                {
-                    continue;
-                }
-
-                var data = _userData.GetUserData(user, item);
-                seen[item.Id] = item;
-                entries.Add(new PlaylistEntry(item.Id, data?.Played == true, data?.LastPlayedDate));
-            }
-
-            lists.Add(entries);
-        }
-
-        var ids = PlaylistPlaces.Continue(lists, DateTime.UtcNow, Math.Clamp(limit, 1, 50));
-        var options = Options();
-        return Ok(Dtos(ids.Select(id => seen[id]).ToList(), options, user));
-    }
-
-    /// <summary>
-    /// A playlist entry as what's watched: a show or season put in whole is its episodes (specials and
-    /// missing ones left out), films, episodes and videos are themselves, anything else is left out.
-    /// </summary>
-    private IEnumerable<BaseItem> Expand(BaseItem item)
-    {
-        if (item is Series or Season)
-        {
-            return _library.GetItemList(new InternalItemsQuery
-            {
-                AncestorIds = new[] { item.Id },
-                IncludeItemTypes = new[] { BaseItemKind.Episode },
-                Recursive = true,
-                IsVirtualItem = false,
-                OrderBy = new[] { (ItemSortBy.ParentIndexNumber, SortOrder.Ascending), (ItemSortBy.IndexNumber, SortOrder.Ascending) },
-            }).OfType<Episode>().Where(e => (e.ParentIndexNumber ?? 1) > 0);
-        }
-
-        return item.GetBaseItemKind() is BaseItemKind.Movie or BaseItemKind.Episode or BaseItemKind.Video ? new[] { item } : Array.Empty<BaseItem>();
-    }
-
-    /// <summary>
-    /// What every film and show (and other video) the caller can see in [parentId] is made of, for
-    /// format filters: video codec, bit depth, HDR and Dolby Vision profile, and sound codecs.
-    /// </summary>
-    [HttpGet("Formats")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public ActionResult<IReadOnlyList<TitleFormats>> Formats([FromQuery] Guid? parentId, [FromQuery] string? types)
-    {
-        if (Me() is not { } user)
-        {
-            return Unauthorized();
-        }
-
-        var kinds = (types ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(t => Enum.TryParse<BaseItemKind>(t, true, out var k) ? k : (BaseItemKind?)null)
-            .OfType<BaseItemKind>().ToList();
-        return Ok(_formats.For(user, parentId, kinds));
-    }
+    public async Task<ActionResult<IReadOnlyList<PlaylistFactsOut>>> PlaylistsWatching([FromQuery] long since, [FromQuery] int limit = 20, CancellationToken cancellationToken = default) =>
+        Me() is { } user ? Ok(await _playlistFacts.ForAsync(user, since, Math.Clamp(limit, 1, 20), cancellationToken).ConfigureAwait(false)) : Unauthorized();
 
     /// <summary>"&lt;id&gt;:Movie,&lt;id&gt;:Series" into libraries and kinds (anything else left out).</summary>
     public static IReadOnlyList<(Guid Library, BaseItemKind Kind)> ParseLatest(string? latest) =>

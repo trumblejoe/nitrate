@@ -63,6 +63,9 @@ fun QueryAnalyzerScreen(container: AppContainer) {
     val readable = remember(shown, names) { shown.map { it.copy(origin = QueryLog.readable(it.origin, names)) } }
     val summary = remember(readable) { QuerySummary.of(readable) }
     val title = recording?.takeIf { !everything }?.let { "Visit: ${it.label}" } ?: "This run"
+    val playlistsStatus by container.playlists.status.collectAsState()
+    val timeFormat = remember { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) }
+    val playlistsLine = playlistsStatus.line { timeFormat.format(java.util.Date(it)) }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 58.dp, vertical = 36.dp),
@@ -105,6 +108,7 @@ fun QueryAnalyzerScreen(container: AppContainer) {
                 }
                 message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                 Text("$title: ${summary.headline}", style = MaterialTheme.typography.titleMedium)
+                playlistsLine?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = if (playlistsStatus.failingSinceMs != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
         if (summary.groups.isNotEmpty()) item { QueryHeading("Costliest requests") }

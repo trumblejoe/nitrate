@@ -28,7 +28,8 @@ data class PlaylistContext(val playlistId: String, val index: Int, val total: In
  * members (ids only, kept on the device until the playlist's etag changes); only those being watched have their whole contents read
  * (shows put in whole as their episodes, also kept [STRUCTURE_MS], in memory and on disk), with the
  * watch state laid over them from the played-lately list, which is always fresh. With the Companion
- * (`MediaServer.continuePlaylists`), Home's row is worked out by the server and none of this is asked.
+ * (`MediaServer.playlistFacts`), the server hands over facts (which playlists hold what was played lately, with
+ * watch state) and these same rules are applied to them; nothing else is read.
  */
 class PlaylistPlaying(
     private val server: MediaServer,
@@ -155,7 +156,25 @@ class PlaylistPlaying(
      * `PlaylistPlaces.ACTIVE_MS`), most recent first, with their entries and fresh watch state: one
      * "played lately" request, each playlist's kept members, and only the matching ones' contents.
      */
-    private suspend fun active(maxPlaylists: Int): List<Pair<String, List<MediaItem>>> = coroutineScope {
+    private suspend fun active(maxPlaylists: Int): List<Pair<String, List<MediaItem>>> =
+        fromFacts(maxPlaylists) ?: activeHere(maxPlaylists)
+
+    /**
+     * With the Companion: its facts (which playlists hold something played lately, and their entries
+     * with watch state), the rules applied here, most recently played from first. Null when the server
+     * doesn't offer them; throws when it does but doesn't answer (nothing else is tried then).
+     */
+    private suspend fun fromFacts(maxPlaylists: Int): List<Pair<String, List<MediaItem>>>? {
+        // From the start of the day, so the server's kept answer serves the whole day's asking.
+        val since = (nowMs() - PlaylistPlaces.ACTIVE_MS).let { it - it % DAY_MS }
+        val facts = server.playlistFacts(since) ?: return null
+        return facts.map { it.playlistId to PlaylistPlaces.entries(it.items, it.episodes) }
+            .filter { (_, entries) -> (PlaylistPlaces.lastPlayedMs(entries) ?: 0) >= nowMs() - PlaylistPlaces.ACTIVE_MS }
+            .sortedByDescending { (_, entries) -> PlaylistPlaces.lastPlayedMs(entries) ?: 0 }
+            .take(maxPlaylists)
+    }
+
+    private suspend fun activeHere(maxPlaylists: Int): List<Pair<String, List<MediaItem>>> = coroutineScope {
         // The (kept) playlist list first: with no video playlists, the library isn't sorted by date played at all.
         val playlists = runCatching { videoPlaylists() }.getOrDefault(emptyList()).take(maxPlaylists)
         if (playlists.isEmpty()) return@coroutineScope emptyList()
@@ -197,7 +216,8 @@ class PlaylistPlaying(
     }
 
     private suspend fun remember(playlistId: String, entries: List<MediaItem>, at: Int): PlaylistContext {
-        val next = entries.getOrNull(at + 1)
+        // Entries from the Companion's facts are ids and watch state only: the next one is read whole.
+        val next = entries.getOrNull(at + 1)?.let { n -> if (n.name.isNotEmpty()) n else runCatching { server.getItem(n.id) }.getOrDefault(n) }
         // The next one rolls on from this playlist too, before the server has its play date.
         if (next != null) startedFrom(playlistId, next.id)
         return PlaylistContext(playlistId, at, entries.size, next)
@@ -208,14 +228,76 @@ class PlaylistPlaying(
      * on from its last-played entry; finished ones drop out.
      */
     suspend fun continueRow(max: Int = 12): MediaRow? {
-        // Worked out by the server (the Companion): no playlist is read here at all.
-        server.continuePlaylists(max)?.let { items ->
-            return if (items.isEmpty()) null else MediaRow(ROW_KEY, "Continue your playlists", items.distinctBy { it.id }, RowDisplay())
+        val account = server.currentAccountKey
+        // The Companion failed under a minute ago: not asked again yet; the row from last time stays.
+        lock.withLock { failedAtMs }?.let { at -> if (nowMs() - at < RETRY_MS) return keptRow(account) }
+        val facts = try {
+            fromFacts(LOOK_IN)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return failed(account, e)
         }
-        val next = runCatching { active(LOOK_IN) }.getOrDefault(emptyList()).take(max)
+        val lists = facts ?: runCatching { activeHere(LOOK_IN) }.getOrDefault(emptyList())
+        val next = lists.take(max)
             .mapNotNull { (_, entries) -> PlaylistPlaces.lastPlayed(entries)?.let { PlaylistPlaces.continueFrom(entries, it) } }
             .distinctBy { it.id }
-        return if (next.isEmpty()) null else MediaRow(ROW_KEY, "Continue your playlists", next, RowDisplay())
+        val items = if (facts == null) next else try {
+            // The facts carry no names or pictures: the cards are read in one request.
+            server.cardsFor(next.map { it.id })
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return failed(account, e)
+        }
+        val row = if (items.isEmpty()) null else MediaRow(ROW_KEY, "Continue your playlists", items, RowDisplay())
+        if (facts != null) {
+            val at = nowMs()
+            lock.withLock { failedAtMs = null; lastRow = row; lastRowAccount = account }
+            _status.value = FactsStatus(answeredMs = at)
+            if (account != null) runCatching { cache?.write(account, ROW_CACHE, KeptRow(row), KeptRow.serializer()) }
+        }
+        return row
+    }
+
+    /** How "Continue your playlists" is getting on with the Companion, for Diagnostics (the query analyzer). */
+    data class FactsStatus(val answeredMs: Long? = null, val failingSinceMs: Long? = null, val reason: String? = null) {
+        /** One line for Diagnostics, or null before the Companion has been asked. */
+        fun line(time: (Long) -> String): String? = when {
+            failingSinceMs != null -> "Continue your playlists: " + (answeredMs?.let { "last answered ${time(it)}; " } ?: "") +
+                "the Companion hasn't answered since ${time(failingSinceMs)} (${reason ?: "no answer"}), so the row shows its last answer"
+            answeredMs != null -> "Continue your playlists: answered by the Companion at ${time(answeredMs)}"
+            else -> null
+        }
+    }
+
+    private val _status = kotlinx.coroutines.flow.MutableStateFlow(FactsStatus())
+    val status: kotlinx.coroutines.flow.StateFlow<FactsStatus> = _status
+
+    @kotlinx.serialization.Serializable
+    private data class KeptRow(val row: MediaRow?)
+
+    private var lastRow: MediaRow? = null
+    private var lastRowAccount: String? = null
+    private var failedAtMs: Long? = null
+
+    /**
+     * The Companion didn't answer: never the costly reading here instead (it would add to a busy server's
+     * load), and the row never just disappears; the last answer stays, its watched marks read afresh, and
+     * the failure shows in Diagnostics. Not asked again for [RETRY_MS].
+     */
+    private suspend fun failed(account: String?, e: Exception): MediaRow? {
+        val at = nowMs()
+        lock.withLock { failedAtMs = at }
+        val was = _status.value
+        _status.value = was.copy(failingSinceMs = was.failingSinceMs ?: at, reason = e.message ?: e::class.simpleName ?: "no answer")
+        return keptRow(account)
+    }
+
+    private suspend fun keptRow(account: String?): MediaRow? {
+        val row = lock.withLock { lastRow?.takeIf { lastRowAccount == account } }
+            ?: account?.let { a -> runCatching { cache?.read(a, ROW_CACHE, KeptRow.serializer()) }.getOrNull()?.row }
+        return row?.let { r -> runCatching { server.withFreshMarks(listOf(r)).first() }.getOrDefault(r) }
     }
 
     /**
@@ -244,5 +326,9 @@ class PlaylistPlaying(
         const val LIST_MS = 30 * 60_000L
         /** How many video playlists are looked through for one being watched. */
         const val LOOK_IN = 20
+        /** After the Companion fails to answer, how long until it's asked again (the last row shows meanwhile). */
+        const val RETRY_MS = 60_000L
+        private const val DAY_MS = 86_400_000L
+        private const val ROW_CACHE = "playlist-row"
     }
 }

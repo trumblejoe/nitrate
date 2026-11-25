@@ -367,6 +367,57 @@ internal data class QueryFiltersLegacyDto(
 @Serializable
 internal data class QueryTimeDto(val tag: String, val ms: Long)
 
+/** One playlist's facts from the Companion (GET /Nitrate/Playlists/Watching). */
+@Serializable
+internal data class PlaylistFactsDto(val id: String, val entries: List<EntryFactsDto> = emptyList()) {
+    fun toFacts(): dev.nitrate.core.playlists.PlaylistFacts {
+        fun state(played: Boolean, at: Long?, position: Long) = dev.nitrate.core.model.UserState(played = played, lastPlayedMs = at, positionMs = position)
+        val items = entries.map { e ->
+            dev.nitrate.core.model.MediaItem(
+                normalizeId(e.id), "", itemKind(e.kind),
+                seriesId = e.seriesId?.let(::normalizeId), seasonId = e.seasonId?.let(::normalizeId), seasonNumber = e.season,
+                user = state(e.played, e.lastPlayedMs, e.positionMs),
+            )
+        }
+        val episodes = entries.filter { it.episodes != null }.associate { e ->
+            normalizeId(e.id) to e.episodes.orEmpty().map { ep ->
+                dev.nitrate.core.model.MediaItem(
+                    normalizeId(ep.id), "", dev.nitrate.core.model.ItemKind.EPISODE,
+                    seriesId = if (e.kind == "Series") normalizeId(e.id) else e.seriesId?.let(::normalizeId),
+                    seasonId = ep.seasonId?.let(::normalizeId), seasonNumber = ep.season, indexNumber = ep.number,
+                    isMissing = ep.missing, user = state(ep.played, ep.lastPlayedMs, ep.positionMs),
+                )
+            }
+        }
+        return dev.nitrate.core.playlists.PlaylistFacts(normalizeId(id), items, episodes)
+    }
+}
+
+@Serializable
+internal data class EntryFactsDto(
+    val id: String,
+    val kind: String? = null,
+    val seriesId: String? = null,
+    val seasonId: String? = null,
+    val season: Int? = null,
+    val played: Boolean = false,
+    val lastPlayedMs: Long? = null,
+    val positionMs: Long = 0,
+    val episodes: List<EpisodeFactsDto>? = null,
+)
+
+@Serializable
+internal data class EpisodeFactsDto(
+    val id: String,
+    val seasonId: String? = null,
+    val season: Int? = null,
+    val number: Int? = null,
+    val missing: Boolean = false,
+    val played: Boolean = false,
+    val lastPlayedMs: Long? = null,
+    val positionMs: Long = 0,
+)
+
 /** The Companion plugin's change counters (GET /Nitrate/Changes). */
 @Serializable
 internal data class ChangesDto(
