@@ -148,6 +148,21 @@ private fun LazyListScope.mainPage(
             update { it.copy(audioDelayMs = steps.firstOrNull { s -> s > it.audioDelayMs } ?: steps.first()) }
         }
     }
+    item {
+        ToggleRow(
+            "Line up drifting sound", settings.autoResync,
+            "When sound and picture slowly drift apart while playing (common with DTS or Dolby passed through to a receiver), line them up again at once, as stopping and playing again does.",
+        ) { v -> update { it.copy(autoResync = v) } }
+    }
+    // Formats chosen to be decoded here because they kept drifting: each can go back to the receiver.
+    settings.decodeHere.sorted().forEach { codec ->
+        item {
+            ChoiceRow(
+                "${dev.nitrate.core.playback.codecLabel(codec)} decoded here", "Pass through again",
+                "Chosen because it kept drifting from the picture when passed through. OK sends it to the receiver untouched again.",
+            ) { update { it.copy(decodeHere = it.decodeHere - codec) } }
+        }
+    }
     section("Picture")
     item {
         val m = settings.frameRateMatch

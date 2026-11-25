@@ -55,4 +55,86 @@ class SyncWatchTest {
         w.timingJump(40_000)
         assertEquals(SyncTrouble.TIMING_JUMP, w.warning?.trouble)
     }
+
+    /** Plays from [fromMs] for [seconds] with the player's sound clock running at [rate] of real time; answers the re-syncs asked for. */
+    private fun SyncWatch.play(fromMs: Long, seconds: Int, rate: Double, startPos: Long = 0L): List<Pair<Long, Long>> {
+        val asked = mutableListOf<Pair<Long, Long>>()
+        var t = fromMs
+        while (t <= fromMs + seconds * 1000L) {
+            val pos = startPos + ((t - fromMs) * rate).toLong()
+            clock(pos, t, steady = true)?.let { asked += t to it }
+            t += SyncWatch.CLOCK_EVERY_MS
+        }
+        return asked
+    }
+
+    @Test fun inStepAsksNothing() {
+        val w = SyncWatch()
+        w.settling(0)
+        assertTrue(w.play(5_000, 3_600, 1.0).isEmpty())
+        assertNull(w.warning)
+    }
+
+    @Test fun aClockCreepingAwayIsDriftAndAskedToResync() {
+        val w = SyncWatch()
+        w.settling(0)
+        // The sound clock 0.5% slow: 120 ms behind after 24 s, so re-sync soon after (3 looks past the line).
+        val asked = w.play(5_000, 60, 0.995)
+        assertTrue(asked.isNotEmpty())
+        val (at, offset) = asked.first()
+        assertTrue(offset <= -SyncWatch.DRIFT_MS, "offset $offset")
+        assertTrue(at in 25_000..40_000, "asked at $at")
+        // One re-sync isn't a warning yet.
+        assertNull(w.warning)
+    }
+
+    @Test fun clocksDifferingByNatureAreNotDrift() {
+        val w = SyncWatch()
+        w.settling(0)
+        // 0.005% (a quartz crystal's difference): 0.36 s over two hours, never fast enough to count.
+        assertTrue(w.play(5_000, 7_200, 0.99995).isEmpty())
+    }
+
+    @Test fun aPauseKeepsWhatWasMeasuredAndASeekStartsAfresh() {
+        val w = SyncWatch()
+        w.settling(0)
+        // 0.5% slow for 16 s: about 80 ms behind, not yet past the line.
+        assertTrue(w.play(5_000, 16, 0.995).isEmpty())
+        // Paused for a minute: the player's position stands still, which isn't drift.
+        repeat(30) { w.clock(15_920, 21_000L + it * 2_000L, steady = false) }
+        // Playing on, still 0.5% slow: the 80 ms carried over gets past the line sooner than from nothing.
+        val afterPause = w.play(81_000, 30, 0.995, startPos = 15_920)
+        assertTrue(afterPause.isNotEmpty() && afterPause.first().first < 81_000 + 24_000)
+        // A seek: everything measured goes.
+        w.settling(200_000)
+        assertTrue(w.play(205_000, 20, 0.995).isEmpty())
+    }
+
+    @Test fun repeatedDriftWarnsWithTheLastingFix() {
+        val w = SyncWatch()
+        w.soundPath("DTS passed through to the receiver")
+        w.settling(0)
+        // Drifting again after every re-sync (which the player does by seeking: settling again).
+        var t = 5_000L
+        repeat(2) {
+            val asked = w.play(t, 100, 0.995)
+            assertTrue(asked.isNotEmpty())
+            t = asked.first().first + SyncWatch.FIX_EVERY_MS
+            w.settling(t)
+            t += SyncWatch.SETTLE_MS
+        }
+        val warning = w.warning!!
+        assertEquals(SyncTrouble.DRIFT, warning.trouble)
+        assertTrue("DTS passed through to the receiver" in warning.text, warning.text)
+        assertEquals(2, w.driftFixes)
+    }
+
+    @Test fun theSoundRunningDryIsNotDrift() {
+        val w = SyncWatch()
+        w.settling(0)
+        // Behind by 100 ms, then the sound runs dry (the picture held for it): measuring starts again.
+        w.play(5_000, 20, 0.995)
+        w.underrun(26_000)
+        assertTrue(w.play(27_000, 20, 0.995, startPos = 21_900).isEmpty())
+    }
 }

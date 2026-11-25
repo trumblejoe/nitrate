@@ -10,6 +10,12 @@ enum class SyncTrouble(val title: String) {
     SOUND_RESTARTED("Sound restarted"),
     /** The file's own timing jumped (a gap or a step in its timestamps). */
     TIMING_JUMP("The file's timing jumped"),
+    /**
+     * The player's idea of where the sound is crept away from real time while playing smoothly:
+     * the picture follows that idea, so it drifted off the sound actually heard (typically sound
+     * passed through to a receiver, whose timing the device reads poorly).
+     */
+    DRIFT("Sound and picture drifted apart"),
 }
 
 /** A sync problem seen while playing: what, in a sentence, and whether having the server convert it helps. */
@@ -29,6 +35,19 @@ class SyncWatch {
     private var lateSumUs = 0L
     private var current: SyncWarning? = null
 
+    // Drift: where the sound was (by the player) against real time, from a steady stretch's start.
+    private var baseline: Pair<Long, Long>? = null
+    private var carriedMs = 0L
+    private var lastOffsetMs = 0L
+    private var overSamples = 0
+    private var steadySinceMs = 0L
+    private var lastFixMs = Long.MIN_VALUE / 2
+    private var fixes = 0
+    private var context = ""
+
+    /** How many times drift was fixed in this playback. */
+    val driftFixes: Int get() = fixes
+
     val warning: SyncWarning? get() = current
 
     /** Playback started or jumped: give it [SETTLE_MS] to settle. */
@@ -37,6 +56,58 @@ class SyncWatch {
         underruns.clear()
         lateReports = 0
         lateSumUs = 0
+        // A seek or a start sets the sound output going afresh: drift is measured from here.
+        restartDrift()
+    }
+
+    private fun restartDrift() {
+        baseline = null
+        carriedMs = 0
+        lastOffsetMs = 0
+        overSamples = 0
+    }
+
+    /** What the sound goes out as, for the warning's words (e.g. "DTS passed through to the receiver"). */
+    fun soundPath(words: String) { context = words }
+
+    /**
+     * One look at the clock: [positionMs] is where the player says the sound is, [realMs] a steady
+     * clock ([steady]: playing at normal speed, not buffering). Playing smoothly, the two advance
+     * together; a gap that keeps growing past [DRIFT_MS], faster than clocks differ by nature
+     * ([DRIFT_RATE]), is drift. Answers the drift in ms when it's time to re-sync (at most once per
+     * [FIX_EVERY_MS]), else null. A pause or buffering keeps what was measured (the sound output
+     * isn't set up again then); a seek or a start ([settling]) and the sound running dry
+     * ([underrun]) start afresh.
+     */
+    fun clock(positionMs: Long, realMs: Long, steady: Boolean): Long? {
+        if (!settled(realMs) || !steady) {
+            if (baseline != null) carriedMs = lastOffsetMs
+            baseline = null
+            overSamples = 0
+            return null
+        }
+        val base = baseline ?: (positionMs to realMs).also {
+            baseline = it
+            if (carriedMs == 0L) steadySinceMs = realMs
+        }
+        val offset = carriedMs + (positionMs - base.first) - (realMs - base.second)
+        lastOffsetMs = offset
+        val elapsed = (realMs - steadySinceMs).coerceAtLeast(1)
+        val drifting = kotlin.math.abs(offset) >= DRIFT_MS && kotlin.math.abs(offset).toDouble() / elapsed >= DRIFT_RATE
+        overSamples = if (drifting) overSamples + 1 else 0
+        if (overSamples < DRIFT_SAMPLES || realMs - lastFixMs < FIX_EVERY_MS) return null
+        lastFixMs = realMs
+        fixes++
+        if (fixes >= DRIFTS_FOR_WARNING) raise(
+            SyncWarning(
+                SyncTrouble.DRIFT,
+                "Sound and picture drifted apart $fixes times (about ${kotlin.math.abs(offset)} ms each time)${context.takeIf { it.isNotBlank() }?.let { " with $it" } ?: ""}. " +
+                    "Each time it was lined up again; letting this device decode the sound instead usually stops it for good.",
+                convertHelps = false,
+            ),
+        )
+        restartDrift()
+        return offset
     }
 
     /** After a reload that lined them up again: forget what was seen. */
@@ -49,6 +120,8 @@ class SyncWatch {
 
     /** The sound output ran out of data. */
     fun underrun(atMs: Long) {
+        // The sound really stopped for a moment (the picture held for it): not drift.
+        restartDrift()
         if (!settled(atMs)) return
         underruns.addLast(atMs)
         while (underruns.isNotEmpty() && atMs - underruns.first() > WINDOW_MS) underruns.removeFirst()
@@ -118,7 +191,8 @@ class SyncWatch {
         SyncTrouble.SOUND_RESTARTED -> 0
         SyncTrouble.SOUND_GAPS -> 1
         SyncTrouble.TIMING_JUMP -> 2
-        SyncTrouble.PICTURE_LATE -> 3
+        SyncTrouble.DRIFT -> 3
+        SyncTrouble.PICTURE_LATE -> 4
     }
 
     companion object {
@@ -128,5 +202,18 @@ class SyncWatch {
         /** Frames this late on average (40 ms) are visibly behind the sound. */
         const val LATE_US = 40_000L
         const val LATE_REPORTS = 3
+
+        /** Drift this big (ms) is about where lips visibly part from voices. */
+        const val DRIFT_MS = 120L
+        /** Faster than clocks differ by nature (0.02%: 0.72 s an hour; crystals differ by about 0.005%). */
+        const val DRIFT_RATE = 0.0002
+        /** Looks in a row past the line before acting (the player's position wobbles a little). */
+        const val DRIFT_SAMPLES = 3
+        /** How often the clock is looked at while playing. */
+        const val CLOCK_EVERY_MS = 2_000L
+        /** At most one re-sync this often. */
+        const val FIX_EVERY_MS = 120_000L
+        /** After this many re-syncs in one playback, say so and offer the lasting fix. */
+        const val DRIFTS_FOR_WARNING = 2
     }
 }

@@ -123,6 +123,16 @@ data class PlaybackSettings(
     val threeD: ThreeDMode = ThreeDMode.TWO_D,
     /** How the writing pane shares the screen with the video (phones and tablets). */
     val writingSplit: WritingSplit = WritingSplit.AUTO,
+    /**
+     * Sound and picture drifting apart while playing smoothly (core [SyncWatch]): line them up
+     * again at once, the way stopping and playing again does.
+     */
+    val autoResync: Boolean = true,
+    /**
+     * Encoded sound formats (server codec names, e.g. "dts") decoded on this device rather than
+     * passed through to a receiver: the lasting fix when they keep drifting from the picture.
+     */
+    val decodeHere: Set<String> = emptySet(),
 ) {
     /** Whether [id] may be direct played, given what the device claims. */
     fun allows(id: String, claimed: Boolean): Boolean = when (overrides[id]) {

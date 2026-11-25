@@ -75,6 +75,7 @@ object SettingsSearch {
         SettingEntry("Speakers", SettingsPlace.SOUND, "upmix stereo surround 5.1 7.1 receiver soundbar keep stereo layout"),
         SettingEntry("Music loudness", SettingsPlace.SOUND, "levelling normalization volume album songs"),
         SettingEntry("Audio sync", SettingsPlace.SOUND, "delay lip sync lag offset out of step"),
+        SettingEntry("Line up drifting sound", SettingsPlace.SOUND, "drift drifting out of sync resync re-sync passthrough receiver dts lip"),
         SettingEntry("Match frame rate", SettingsPlace.SOUND, "refresh rate judder 24p 23.976 hz display mode", T),
         SettingEntry("Stay at the film's rate", SettingsPlace.SOUND, "refresh rate hold keep afterwards", T),
         SettingEntry("How refresh rate works", SettingsPlace.SOUND, "refresh rate judder black screen", T),

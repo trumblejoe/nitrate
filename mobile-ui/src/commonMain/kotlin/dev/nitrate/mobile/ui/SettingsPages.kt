@@ -151,6 +151,16 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                         },
                     )
                 }
+                item { Toggle("Line up drifting sound", "When sound and picture slowly drift apart while playing (e.g. sound passed through to a receiver), line them up again at once", playback.autoResync) { v -> updatePlayback { it.copy(autoResync = v) } } }
+                playback.decodeHere.sorted().forEach { codec ->
+                    item {
+                        ListItem(
+                            headlineContent = { Text("${dev.nitrate.core.playback.codecLabel(codec)} decoded here") },
+                            supportingContent = { Text("Chosen because it kept drifting from the picture when passed through to a receiver") },
+                            trailingContent = { androidx.compose.material3.TextButton(onClick = { updatePlayback { it.copy(decodeHere = it.decodeHere - codec) } }) { Text("Pass through again") } },
+                        )
+                    }
+                }
                 heading("Player")
                 item { Toggle("Keep playing in the background", "Audio continues with the screen off or in another app", playback.backgroundAudio) { v -> updatePlayback { it.copy(backgroundAudio = v) } } }
                 item { Toggle("Picture-in-picture", "Leaving the app mid-video keeps it in a small window", playback.pictureInPicture) { v -> updatePlayback { it.copy(pictureInPicture = v) } } }

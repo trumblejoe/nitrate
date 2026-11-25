@@ -37,6 +37,11 @@ sealed interface SettingsChange {
         override fun apply(s: PlaybackSettings) = s.copy(overrides = s.overrides + (id to Override.ALWAYS))
     }
 
+    /** Decode [codec] on this device instead of passing it through (it drifted from the picture). */
+    data class DecodeHere(val codec: String) : SettingsChange {
+        override fun apply(s: PlaybackSettings) = s.copy(decodeHere = s.decodeHere + codec)
+    }
+
     data class ForgetFailure(val id: String) : SettingsChange {
         override fun apply(s: PlaybackSettings) = s.copy(learnedFailures = s.learnedFailures - id, failedTitles = s.failedTitles.filterValues { it.capability != id })
     }
