@@ -62,6 +62,12 @@ data class MediaItem(
     val dateAddedMs: Long? = null,
     /** The server's etag for it, where asked for: it changes whenever the item is saved (a playlist: its entries). */
     val version: String? = null,
+    /**
+     * Shown spoiler-safe (core `partners/Spoilers.safe`): named "Episode 5", its description left out,
+     * its picture blurred. Never stored.
+     */
+    @kotlinx.serialization.Transient
+    val spoiler: Boolean = false,
     /** First air or release date (epoch ms), where known. */
     val premiereDateMs: Long? = null,
     /** Copies of this title the server has (4K, 1080p...), when there's more than one. */
@@ -107,7 +113,7 @@ data class MediaItem(
         else -> name
     }
 
-    val episodeLabel get() = if (isEpisode) "S${seasonNumber ?: "?"}:E${indexNumber ?: "?"} · $name" else null
+    val episodeLabel get() = if (!isEpisode) null else "S${seasonNumber ?: "?"}:E${indexNumber ?: "?"}" + (if (spoiler) "" else " · $name")
 
     companion object {
         val PLAYABLE = setOf(ItemKind.MOVIE, ItemKind.EPISODE, ItemKind.VIDEO, ItemKind.MUSIC_VIDEO, ItemKind.AUDIO, ItemKind.TV_CHANNEL, ItemKind.AUDIOBOOK)

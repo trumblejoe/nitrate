@@ -120,7 +120,7 @@ fun FilmStripRow(row: MediaRow, actions: AppActions) {
                             Canvas(Modifier.fillMaxSize()) { drawSprockets(14.dp.toPx(), 10.dp.toPx(), 24.dp.toPx(), 8.dp.toPx()) }
                             Column(Modifier.padding(top = 30.dp)) {
                                 Box(Modifier.padding(horizontal = 7.dp).fillMaxWidth().height(118.dp).clip(RoundedCornerShape(3.dp)).alpha(if (inGate) 1f else 0.55f)) {
-                                    AsyncImage(actions.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().sharedArtwork("${row.key}-${item.id}"))
+                                    AsyncImage(actions.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().sharedArtwork("${row.key}-${item.id}").spoilerBlur(item))
                                     Canvas(Modifier.fillMaxSize()) { drawWornFrame() }
                                 }
                                 Text(
@@ -180,8 +180,8 @@ private fun DoubleBill(left: MediaItem, right: MediaItem, actions: AppActions, m
                 }
             },
     ) {
-        AsyncImage(actions.artwork(left), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(GenericShape { s, _ -> addPath(RowArtDrawing.boltSide(s.width, s.height, false)) }))
-        AsyncImage(actions.artwork(right), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(GenericShape { s, _ -> addPath(RowArtDrawing.boltSide(s.width, s.height, true)) }))
+        AsyncImage(actions.artwork(left), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(left).clip(GenericShape { s, _ -> addPath(RowArtDrawing.boltSide(s.width, s.height, false)) }))
+        AsyncImage(actions.artwork(right), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(right).clip(GenericShape { s, _ -> addPath(RowArtDrawing.boltSide(s.width, s.height, true)) }))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent, Color(0xAA000000)))))
         Canvas(Modifier.fillMaxSize()) { drawBolt(accent) }
         Column(Modifier.align(Alignment.TopStart).padding(20.dp).fillMaxWidth(0.55f)) {
@@ -199,7 +199,7 @@ private fun DoubleBill(left: MediaItem, right: MediaItem, actions: AppActions, m
 @Composable
 private fun SingleBill(item: MediaItem, actions: AppActions, modifier: Modifier) {
     Box(modifier.aspectRatio(0.92f).clip(RoundedCornerShape(24.dp)).cardPress(actions, item) { actions.open(item) }) {
-        AsyncImage(actions.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        AsyncImage(actions.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(item))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xCC000000))))
         Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
             Text(item.displayTitle.uppercase(), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -232,11 +232,11 @@ fun CressidaCard(item: MediaItem, actions: AppActions, sharedKey: String, displa
     BoxWithConstraints(modifier.height(440.dp).clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = 0.06f)).cardPress(actions, item) { actions.open(item, sharedKey) }) {
         // Narrow cards (small phones, galleries) get a round play button instead of a pill.
         val compact = maxWidth < 300.dp
-        AsyncImage(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey))
+        AsyncImage(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey).spoilerBlur(item))
         AsyncImage(
             art, null, contentScale = ContentScale.Crop,
             colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
-            modifier = Modifier.fillMaxSize().clip(GenericShape { s, _ -> addPath(RowArtDrawing.cressidaMarked(s.width, s.height)) }),
+            modifier = Modifier.fillMaxSize().spoilerBlur(item).clip(GenericShape { s, _ -> addPath(RowArtDrawing.cressidaMarked(s.width, s.height)) }),
         )
         Box(Modifier.fillMaxHeight().fillMaxWidth(RowArt.CRESSIDA_SPLIT).background(Brush.horizontalGradient(listOf(Color(0xCC000000), Color(0x22000000)))))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color(0xAA000000))))

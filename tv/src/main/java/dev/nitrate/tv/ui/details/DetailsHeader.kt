@@ -109,8 +109,10 @@ internal fun Header(
         Spacer(Modifier.height(60.dp))
         if (item.kind == ItemKind.EPISODE) {
             WhereItBelongs(item, state, onOpen)
+            // An episode not seen yet goes by "Episode 5" here too.
+            val safe = dev.nitrate.tv.ui.partners.spoilerSafe(item)
             Text(
-                listOfNotNull(item.indexNumber?.let { "$it." }, item.name).joinToString(" "),
+                if (safe.spoiler) safe.name else listOfNotNull(item.indexNumber?.let { "$it." }, item.name).joinToString(" "),
                 style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         } else if (season != null) {

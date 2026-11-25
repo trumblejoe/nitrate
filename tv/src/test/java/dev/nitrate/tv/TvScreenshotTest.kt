@@ -2631,6 +2631,36 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.search.SearchScreen(c.server, c.searchHistory, initialQuery = "re", onOpen = {}, onPerson = {})
     }
 
+    /**
+     * Every row style shows an episode not seen yet spoiler-safe: its name never shows ("Episode 7"
+     * instead), whatever the style draws (posters, artwork, showcases, film strip, lightning, Cressida).
+     */
+    private fun spoilerRow(style: dev.nitrate.core.rows.RowStyle) {
+        // Home's own rows, every one in [style], "Hide spoilers" on: no unwatched episode's name shows.
+        val hidden = mutableListOf<String>()
+        shoot("tv-spoiler-row-${style.name.lowercase()}", setup = { c ->
+            c.displaySettings.savePrefs("user-1", rowsHome.copy(hideSpoilers = true))
+            c.server.homeRows().forEach { row ->
+                c.displaySettings.save("user-1", row, dev.nitrate.core.rows.RowDisplay(style))
+                hidden += row.items.filter { it.kind == dev.nitrate.core.model.ItemKind.EPISODE && !it.user.played }.map { it.name }
+            }
+        }) { c ->
+            WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) }
+        }
+        check(hidden.isNotEmpty()) { "the sample Home has no unwatched episode to hide" }
+        hidden.distinct().forEach { name ->
+            compose.onAllNodes(androidx.compose.ui.test.hasText(name, substring = true), useUnmergedTree = true).assertCountEquals(0)
+        }
+    }
+
+    @Test fun spoilerRowPosters() = spoilerRow(dev.nitrate.core.rows.RowStyle.POSTER)
+    @Test fun spoilerRowArtwork() = spoilerRow(dev.nitrate.core.rows.RowStyle.WIDE)
+    @Test fun spoilerRowShowcase() = spoilerRow(dev.nitrate.core.rows.RowStyle.SHOWCASE)
+    @Test fun spoilerRowFullShowcase() = spoilerRow(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE)
+    @Test fun spoilerRowFilmStrip() = spoilerRow(dev.nitrate.core.rows.RowStyle.FILM_STRIP)
+    @Test fun spoilerRowLightning() = spoilerRow(dev.nitrate.core.rows.RowStyle.LIGHTNING)
+    @Test fun spoilerRowCressida() = spoilerRow(dev.nitrate.core.rows.RowStyle.CRESSIDA)
+
     @Test fun movieSpoilerFree() = shoot("tv-movie-spoilers", setup = { c ->
         c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(hideSpoilers = true))
     }) { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "m1", null, onPlay = { _, _ -> }, onOpen = {}, onManage = {}) }

@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.partners
 
+import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -67,19 +68,50 @@ val LocalTogetherCards = staticCompositionLocalOf<TogetherCards?> { null }
  */
 @Composable
 fun spoilerStill(item: MediaItem): Boolean {
-    val prefs = LocalDisplayPrefs.current
-    // Only Together groups' partners hide spoilers (a group with it off only tracks progress and pace).
-    val progress = WatchPartners.spoilerProgress(LocalPartnerProgress.current, dev.nitrate.tv.ui.components.LocalPartnersInfo.current)
-    return prefs.isSpoiler(item) || (progress.isNotEmpty() && WatchPartners.isSpoiler(prefs, item, progress)) || lockedNow(item)
+    val info = dev.nitrate.tv.ui.components.LocalPartnersInfo.current
+    val progress = WatchPartners.spoilerProgress(LocalPartnerProgress.current, info)
+    return dev.nitrate.core.partners.Spoilers.picture(LocalDisplayPrefs.current, item, progress, info, lockedNow(item))
 }
 
-/** Whether a description waits behind "Show": by the same rules as [spoilerStill]. */
+/** Whether a description waits behind "Show": by the same rules as [spoilerStill] (films too). */
 @Composable
 fun descriptionHidden(item: MediaItem): Boolean {
+    val info = dev.nitrate.tv.ui.components.LocalPartnersInfo.current
+    val progress = WatchPartners.spoilerProgress(LocalPartnerProgress.current, info)
+    return dev.nitrate.core.partners.Spoilers.description(LocalDisplayPrefs.current, item, progress, info, lockedNow(item))
+}
+
+/**
+ * [items] as every screen shows them (core `Spoilers.safe`): an episode that would give something
+ * away named "Episode 5", without its description and blurred; a film's description held back. Rows,
+ * details pages, the player and playlists all show these, so none can skip the rule.
+ */
+@Composable
+fun spoilerSafe(items: List<MediaItem>): List<MediaItem> {
     val prefs = LocalDisplayPrefs.current
-    // Only Together groups' partners hide spoilers (a group with it off only tracks progress and pace).
-    val progress = WatchPartners.spoilerProgress(LocalPartnerProgress.current, dev.nitrate.tv.ui.components.LocalPartnersInfo.current)
-    return prefs.hidesDescription(item) || (progress.isNotEmpty() && WatchPartners.hidesDescription(prefs, item, progress)) || lockedNow(item)
+    val info = dev.nitrate.tv.ui.components.LocalPartnersInfo.current
+    val standings = dev.nitrate.tv.ui.components.LocalGroupStandings.current
+    val progress = WatchPartners.spoilerProgress(LocalPartnerProgress.current, info)
+    return androidx.compose.runtime.remember(items, prefs, info, standings, progress) {
+        items.map { i -> dev.nitrate.core.partners.Spoilers.safe(i, prefs, progress, info) { dev.nitrate.core.partners.PartLock.of(it, info, standings) != null } }
+    }
+}
+
+/** Blurs a picture of [item] when it's shown spoiler-safe ([spoilerSafe]); any picture of a title goes through this. */
+fun Modifier.spoilerBlur(item: MediaItem): Modifier = if (item.spoiler) this.then(Modifier.blur(24.dp)) else this
+
+/** One item as screens show it (see the list form). */
+@Composable
+fun spoilerSafe(item: MediaItem): MediaItem = spoilerSafe(listOf(item)).first()
+
+/** Rows as screens show them: each row's titles spoiler-safe. */
+@Composable
+fun spoilerSafeRows(rows: List<dev.nitrate.core.rows.MediaRow>): List<dev.nitrate.core.rows.MediaRow> {
+    val all = spoilerSafe(rows.flatMap { it.items })
+    return androidx.compose.runtime.remember(rows, all) {
+        var at = 0
+        rows.map { r -> r.copy(items = all.subList(at, at + r.items.size).also { at += r.items.size }) }
+    }
 }
 
 /** Whether a group's schedule locks [item] for the user now (not out yet, or for watching together). */

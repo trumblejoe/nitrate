@@ -323,10 +323,12 @@ private fun Modifier.fullBleed(start: androidx.compose.ui.unit.Dp, end: androidx
 /** One row of the list view: poster, title, facts and overview, as the display settings allow. */
 @Composable
 private fun ListRow(actions: AppActions, item: MediaItem, onClick: () -> Unit = { actions.open(item) }) {
+    // Spoiler-safe: an episode not seen yet is "Episode 5", blurred, without its description.
+    @Suppress("NAME_SHADOWING") val item = spoilerSafe(item)
     val prefs = LocalDisplayPrefs.current
     Row(Modifier.fillMaxWidth().pressable(onClick), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Box(Modifier.width(72.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.08f))) {
-            actions.server.imageUrl(item, ImageKind.PRIMARY, 240)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+            actions.server.imageUrl(item, ImageKind.PRIMARY, 240)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(item)) }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)

@@ -97,6 +97,22 @@ class RowsViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, RowsState.Loading)
 
+    /** The built-in rows as last loaded whole (or kept from last time), and the server's change counters then. */
+    private var lastRows: List<MediaRow>? = null
+    private var stamps: String? = null
+
+    /** Each custom row's change counters and source when it was loaded (`RowChanges.stampOf`). */
+    private val customStamps = mutableMapOf<String, String>()
+    private var lastToken: Pair<Long, String>? = null
+
+    // One custom-row load at a time: opening a page starts two (the layout arriving, the first load),
+    // and the second then keeps what the first just read instead of reading it again.
+    private val customLock = kotlinx.coroutines.sync.Mutex()
+
+    /** Last time's page has been read from the device (or there's none): custom rows wait for it, to know what they can keep. */
+    private val cacheRead = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    // (Declared before `init`, which already uses them.)
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun watchChanges() = viewModelScope.launch {
         // A library scan sends many changes in a row: reload once things settle.
@@ -107,11 +123,12 @@ class RowsViewModel(
         // Last time's rows straight away (read first, so the load knows they're on screen); the
         // fresh page replaces them once it has arrived.
         viewModelScope.launch {
-            cache?.read(account, pageKey)?.let { cached ->
+            runCatching { cache?.read(account, pageKey) }.getOrNull()?.let { cached ->
                 if (builtIn.value == null && cached.builtIn.isNotEmpty()) builtIn.value = Result.success(cached.builtIn.map { it.copy(defaultDisplay = defaults(it).normalized()) })
                 if (custom.value.isEmpty()) custom.value = cached.custom
                 if (lastRows == null) { lastRows = cached.builtIn; stamps = cached.stamps; customStamps.putAll(cached.customStamps) }
             }
+            cacheRead.complete(Unit)
             refresh(checked = true)
         }
         watchChanges()
@@ -126,10 +143,6 @@ class RowsViewModel(
         val saved = userId?.let { runCatching { store.layout(it, pageKey).first() }.getOrNull() } ?: return emptySet()
         return saved.entries.filter { it.hidden && !it.isCustom }.map { it.rowKey }.toSet()
     }
-
-    /** The built-in rows as last loaded whole (or kept from last time), and the server's change counters then. */
-    private var lastRows: List<MediaRow>? = null
-    private var stamps: String? = null
 
     /** Loads the page again, every row (pull to refresh, a setting changed). */
     fun refresh() = refresh(checked = false)
@@ -234,10 +247,6 @@ class RowsViewModel(
         }
     }
 
-    /** Each custom row's change counters and source when it was loaded (`RowChanges.stampOf`). */
-    private val customStamps = mutableMapOf<String, String>()
-    private var lastToken: Pair<Long, String>? = null
-
     private fun checked(token: String) { lastToken = dev.nitrate.android.nowMs() to token }
 
     /** The server's change counters now (one tiny request, reused for a few seconds), or null without them. */
@@ -246,11 +255,7 @@ class RowsViewModel(
         return runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { server.changeCheck(null) } }.getOrNull()?.token?.also(::checked)
     }
 
-    // One custom-row load at a time: opening a page starts two (the layout arriving, the first load),
-    // and the second then keeps what the first just read instead of reading it again.
-    private val customLock = kotlinx.coroutines.sync.Mutex()
-
-    private suspend fun loadCustom(all: List<RowEntry>) = customLock.withLock { loadCustomNow(all) }
+    private suspend fun loadCustom(all: List<RowEntry>) = customLock.withLock { cacheRead.await(); loadCustomNow(all) }
 
     private suspend fun loadCustomNow(all: List<RowEntry>) = coroutineScope {
         // A hidden custom row is off: never queried.

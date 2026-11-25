@@ -71,6 +71,8 @@ fun FullArtPage(
     /** Above the first row, top right (a library's tabs): Up from the first row, Down back. */
     header: (@Composable () -> Unit)? = null,
 ) {
+    // Every row style shows titles spoiler-safe (named "Episode 5", blurred, no description).
+    @Suppress("NAME_SHADOWING") val rows = dev.nitrate.tv.ui.partners.spoilerSafeRows(rows)
     val pageFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val headerFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     // The page sees keys before the tabs over it: while they have focus, the keys are theirs.

@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.rows
 
+import dev.nitrate.tv.ui.partners.spoilerBlur
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clipToBounds
@@ -177,7 +178,7 @@ fun FilmStripRow(row: MediaRow, repository: MediaServer, actions: RowActions, si
                                         .focusProperties { canFocus = !upDown[0] || inGate }
                                         .onFocusChanged { if (it.isFocused) { gate = i; actions.onFocus(item) } }.onPlayKey { actions.onPlay(item) },
                                 ) {
-                                    AsyncImage(repository.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                    AsyncImage(repository.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(item))
                                     Canvas(Modifier.fillMaxSize()) { drawWornFrame() }
                                 }
                                 Text(
@@ -256,7 +257,7 @@ private fun DoubleBill(row: MediaRow, left: MediaItem, right: MediaItem, reposit
                 // The picture is laid out for the whole card, then this side shows its part.
                 AsyncImage(
                     repository.artwork(item), null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().layout { m, c ->
+                    modifier = Modifier.fillMaxSize().spoilerBlur(item).layout { m, c ->
                         val cardW = (c.maxWidth / width).toInt()
                         val p = m.measure(Constraints.fixed(cardW, c.maxHeight))
                         layout(c.maxWidth, c.maxHeight) { p.place((-cardW * start).toInt(), 0) }
@@ -288,7 +289,7 @@ private fun SingleBill(row: MediaRow, item: MediaItem, repository: MediaServer, 
         border = accentBorder(shape),
         modifier = Modifier.cardFx(item.id).returnFocus(item.id).size(640.dp, 340.dp).onFocusChanged { if (it.isFocused) actions.onFocus(item) }.onPlayKey { actions.onPlay(item) },
     ) {
-        AsyncImage(repository.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        AsyncImage(repository.artwork(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(item))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xCC000000))))
         Text(item.displayTitle.uppercase(), color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.BottomStart).padding(22.dp))
     }
@@ -318,11 +319,11 @@ fun CressidaRow(row: MediaRow, repository: MediaServer, actions: RowActions, dis
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
                     modifier = Modifier.cardFx(item.id).returnFocus(item.id).designScale(cardScale(display.size)).size(600.dp, 340.dp).onFocusChanged { if (it.isFocused) actions.onFocus(item) }.onPlayKey { actions.onPlay(item) },
                 ) {
-                    AsyncImage(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    AsyncImage(art, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(item))
                     AsyncImage(
                         art, null, contentScale = ContentScale.Crop,
                         colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }),
-                        modifier = Modifier.fillMaxSize().clip(GenericShape { s, _ -> addPath(RowArtDrawing.cressidaMarked(s.width, s.height)) }),
+                        modifier = Modifier.fillMaxSize().spoilerBlur(item).clip(GenericShape { s, _ -> addPath(RowArtDrawing.cressidaMarked(s.width, s.height)) }),
                     )
                     Box(Modifier.fillMaxHeight().fillMaxWidth(RowArt.CRESSIDA_SPLIT).background(Brush.horizontalGradient(listOf(Color(0xCC000000), Color(0x22000000)))))
                     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to Color(0xAA000000))))

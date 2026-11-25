@@ -146,6 +146,8 @@ fun BoxScope.SkipButton(segment: MediaSegment?, onSkip: (MediaSegment) -> Unit) 
  */
 @Composable
 fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, onCountdownEnd: () -> Unit = onPlay) {
+    // Spoiler-safe: an episode not seen yet shows as "S1:E5", blurred.
+    @Suppress("NAME_SHADOWING") val next = spoilerSafe(next)
     var left by androidx.compose.runtime.remember(next.id) { mutableIntStateOf(seconds ?: 0) }
     LaunchedEffect(next.id) {
         if (seconds == null) return@LaunchedEffect
@@ -163,7 +165,7 @@ fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onP
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.width(150.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(Color.DarkGray).pressable(onPlay), Alignment.Center) {
-                server.cardImage(next, CardShape.WIDE, 240)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                server.cardImage(next, CardShape.WIDE, 240)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(next)) }
                 Box(Modifier.fillMaxSize().background(Color(0x55000000)))
                 // Countdown ring around a play icon.
                 Canvas(Modifier.size(46.dp)) {

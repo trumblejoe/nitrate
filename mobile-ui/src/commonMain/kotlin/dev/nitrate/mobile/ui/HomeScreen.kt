@@ -201,6 +201,8 @@ fun PillButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVec
  */
 @Composable
 fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onDisplay: ((RowDisplay) -> Unit)? = null) {
+    // Every row style shows titles spoiler-safe (named "Episode 5", blurred, no description).
+    @Suppress("NAME_SHADOWING") val row = spoilerSafeRows(listOf(row)).first()
     // What's watched together sits in Continue Watching: invites answer a tap themselves, a long press
     // on a shared title offers its choices, and those cards say whose turn it is. Others are as anywhere.
     val cards = if (row.key in dev.nitrate.core.partners.TogetherRow.ROW_KEYS) LocalTogetherCards.current else null
@@ -379,7 +381,7 @@ private fun FullShowcasePage(item: MediaItem, sharedKey: String, display: RowDis
             server.fullShowcaseImage(item, portrait),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey),
+            modifier = Modifier.fillMaxSize().sharedArtwork(sharedKey).spoilerBlur(item),
         )
         // Dark at the top for the row's name, and deep at the bottom for the title and buttons.
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x99000000), 0.18f to Color.Transparent, 0.45f to Color.Transparent, 1f to Color(0xF2000000))))

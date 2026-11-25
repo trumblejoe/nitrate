@@ -468,6 +468,33 @@ class ScreenshotTest {
 
     @Test fun details() = shoot("phone-series") { DetailsScreen(it, "series-1", null) }
 
+    /**
+     * Every row style shows an episode not seen yet spoiler-safe: Home's rows, all in one style,
+     * "Hide spoilers" on, and no unwatched episode's name anywhere on screen.
+     */
+    private fun spoilerRow(style: dev.nitrate.core.rows.RowStyle) {
+        val hidden = mutableListOf<String>()
+        shoot("phone-spoiler-row-${style.name.lowercase()}", setup = { c ->
+            c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(hideSpoilers = true))
+            c.server.homeRows().forEach { row ->
+                c.displaySettings.save("user-1", row, dev.nitrate.core.rows.RowDisplay(style))
+                hidden += row.items.filter { it.kind == dev.nitrate.core.model.ItemKind.EPISODE && !it.user.played }.map { it.name }
+            }
+        }) { MainScreen(it) {} }
+        check(hidden.isNotEmpty()) { "the sample Home has no unwatched episode to hide" }
+        hidden.distinct().forEach { name ->
+            compose.onAllNodes(androidx.compose.ui.test.hasText(name, substring = true), useUnmergedTree = true).assertCountEquals(0)
+        }
+    }
+
+    @Test fun spoilerRowPosters() = spoilerRow(dev.nitrate.core.rows.RowStyle.POSTER)
+    @Test fun spoilerRowArtwork() = spoilerRow(dev.nitrate.core.rows.RowStyle.WIDE)
+    @Test fun spoilerRowShowcase() = spoilerRow(dev.nitrate.core.rows.RowStyle.SHOWCASE)
+    @Test fun spoilerRowFullShowcase() = spoilerRow(dev.nitrate.core.rows.RowStyle.FULL_SHOWCASE)
+    @Test fun spoilerRowFilmStrip() = spoilerRow(dev.nitrate.core.rows.RowStyle.FILM_STRIP)
+    @Test fun spoilerRowLightning() = spoilerRow(dev.nitrate.core.rows.RowStyle.LIGHTNING)
+    @Test fun spoilerRowCressida() = spoilerRow(dev.nitrate.core.rows.RowStyle.CRESSIDA)
+
     @Test fun movie() = shoot("phone-movie") { DetailsScreen(it, "m1", null) }
 
     /** A season's page: "The Night Reel ›", the season's name, its episode count, Play its next episode. */

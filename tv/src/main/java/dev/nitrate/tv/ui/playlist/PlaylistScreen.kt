@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.playlist
 
+import dev.nitrate.tv.ui.partners.spoilerBlur
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.filled.MoreVert
@@ -146,7 +147,7 @@ fun PlaylistScreen(
     val prefsNow = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val inOrder = pl.id in prefsNow.recapPlaylists
 
-    val shown = focused ?: pl
+    val shown = dev.nitrate.tv.ui.partners.spoilerSafe(focused ?: pl)
     Box(Modifier.fillMaxSize()) {
         Backdrop(repository.backdropUrl(shown) ?: list.firstNotNullOfOrNull(repository::backdropUrl), Modifier.fillMaxSize())
 
@@ -367,6 +368,8 @@ private fun PlaylistEntry(
     onLongClick: () -> Unit,
     modifier: Modifier,
 ) {
+    // Spoiler-safe: an episode not seen yet is "Episode 5", blurred.
+    @Suppress("NAME_SHADOWING") val item = dev.nitrate.tv.ui.partners.spoilerSafe(item)
     val audio = item.mediaKind == MediaKind.AUDIO
     val thumb = if (audio) {
         repository.imageUrl(item, ImageKind.PRIMARY, 120)
@@ -386,7 +389,7 @@ private fun PlaylistEntry(
                     Modifier.height(48.dp).aspectRatio(if (audio) 1f else 16f / 9f)
                         .clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    if (thumb != null) AsyncImage(thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    if (thumb != null) AsyncImage(thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(item))
                 }
             }
         },

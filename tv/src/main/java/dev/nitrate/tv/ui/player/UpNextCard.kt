@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.player
 
+import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,13 +54,15 @@ fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -
         }
         onCountdownEnd()
     }
+    // Spoiler-safe: an episode not seen yet shows as "S1:E5", blurred.
+    val shownNext = dev.nitrate.tv.ui.partners.spoilerSafe(next)
     Row(
         modifier.width(560.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xE6101216)).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(200.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(Color.DarkGray)) {
             (server.backdropUrl(next, 400) ?: server.imageUrl(next, dev.nitrate.core.model.ImageKind.PRIMARY, 400))?.let {
-                AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().then(if (shownNext.spoiler) Modifier.blur(20.dp) else Modifier))
             }
         }
         Column(Modifier.padding(start = 18.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -68,7 +71,7 @@ fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -
                 style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold,
             )
             Text(
-                next.episodeLabel ?: (next.name + (next.productionYear?.let { " ($it)" } ?: "")),
+                shownNext.episodeLabel ?: (shownNext.name + (shownNext.productionYear?.let { " ($it)" } ?: "")),
                 style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 6.dp)) {

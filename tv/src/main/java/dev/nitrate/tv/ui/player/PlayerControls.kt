@@ -161,6 +161,9 @@ internal class TitleCard(val item: MediaItem, val title: String, val subtitle: S
 internal fun TitleCardView(card: TitleCard, onClick: () -> Unit, modifier: Modifier) {
     val prefs = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current
     val user = card.item.user
+    // An episode not seen yet goes by "Episode 5" (core Spoilers), blurred.
+    val safe = dev.nitrate.tv.ui.partners.spoilerSafe(card.item)
+    val title = if (safe.spoiler) safe.name else card.title
     var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(CHAPTER_WIDTH), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         androidx.tv.material3.Surface(
@@ -179,7 +182,7 @@ internal fun TitleCardView(card: TitleCard, onClick: () -> Unit, modifier: Modif
                     Modifier.matchParentSize().background(Brush.linearGradient(listOf(Color(0xFF2C343E), Color(0xFF161A1F)))),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(card.title, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.45f), maxLines = 2, modifier = Modifier.padding(8.dp))
+                    Text(title, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.45f), maxLines = 2, modifier = Modifier.padding(8.dp))
                 }
                 if (card.imageUrl != null) {
                     val blur = dev.nitrate.tv.ui.partners.spoilerStill(card.item)
@@ -207,7 +210,7 @@ internal fun TitleCardView(card: TitleCard, onClick: () -> Unit, modifier: Modif
                 }
             }
         }
-        Text(card.title, style = MaterialTheme.typography.labelLarge, color = if (focused) Color.White else Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Text(title, style = MaterialTheme.typography.labelLarge, color = if (focused) Color.White else Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         card.subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
     }
 }

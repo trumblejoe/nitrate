@@ -326,6 +326,8 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
         val videoNext = if (video) dev.nitrate.core.playlists.PlaylistPlaces.nextUp(all) else null
         // The playlist's own entry holding what's next (a whole show or season stands for its episodes).
         val nextEntry = videoNext?.let { n -> list.indexOfFirst { it.id == n.id || it.id == n.seriesId || it.id == n.seasonId } }?.takeIf { it >= 0 }
+        // Spoiler-safe entries: an episode not seen yet is "Episode 5", blurred.
+        val safeList = spoilerSafe(list)
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -375,7 +377,7 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                     if (!editing && list.isNotEmpty() && list.all { it.kind == ItemKind.AUDIO }) MusicDownloadButton(actions, list, "playlist")
                 }
             }
-            itemsIndexed(list, key = { i, it -> it.playlistEntryId ?: "$i-${it.id}" }) { index, item ->
+            itemsIndexed(safeList, key = { i, it -> it.playlistEntryId ?: "$i-${it.id}" }) { index, item ->
                 val audio = item.mediaKind == MediaKind.AUDIO
                 val thumb = if (audio) server.imageUrl(item, ImageKind.PRIMARY, 120) else server.cardImage(item, CardShape.WIDE, 160)
                 val entry = item.playlistEntryId
@@ -387,7 +389,7 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                     ) { if (!audio && video) playFrom(item) else actions.playQueue(list.drop(index).map { it.id }) },
                     leadingContent = {
                         Box(Modifier.height(48.dp).aspectRatio(if (audio) 1f else 16f / 9f).clip(RoundedCornerShape(6.dp))) {
-                            if (thumb != null) AsyncImage(thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            if (thumb != null) AsyncImage(thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(item))
                         }
                     },
                     headlineContent = { Text(item.displayTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },

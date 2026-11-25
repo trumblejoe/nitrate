@@ -105,6 +105,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
     }
     val server = actions.server
     val backdrop = server.backdropUrl(item) ?: server.imageUrl(item, maxHeight = 1080)
+    val headerStill = server.backdropUrl(item) == null && spoilerStill(item)
     val tint by rememberArtworkColor(backdrop)
     val records by actions.container.downloads.downloads.collectAsState(emptyList())
     val downloaded = remember(records) { records.map { it.itemId }.toSet() }
@@ -135,7 +136,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                             backdrop,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().sharedArtwork(artKey).fadeBottom(0.55f).graphicsLayer {
+                            // An episode's own still (no backdrop to show instead) blurs while it would give something away.
+                            modifier = Modifier.fillMaxSize().sharedArtwork(artKey).then(if (headerStill) Modifier.blur(16.dp) else Modifier).fadeBottom(0.55f).graphicsLayer {
                                 if (wide) return@graphicsLayer
                                 // Parallax: the picture scrolls at half speed and fades as it leaves.
                                 val scrolled = if (list.firstVisibleItemIndex == 0) list.firstVisibleItemScrollOffset.toFloat() else size.height
@@ -151,8 +153,10 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                                 Text(season.name, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             } else if (item.kind == ItemKind.EPISODE) {
                                 WhereItBelongs(actions, item, state.seasons.firstOrNull { it.id == item.seasonId }?.name)
+                                // An episode not seen yet goes by "Episode 5" here too.
+                                val safe = spoilerSafe(item)
                                 Text(
-                                    listOfNotNull(item.indexNumber?.let { "$it." }, item.name).joinToString(" "),
+                                    if (safe.spoiler) safe.name else listOfNotNull(item.indexNumber?.let { "$it." }, item.name).joinToString(" "),
                                     style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black, color = Color.White, maxLines = 3, overflow = TextOverflow.Ellipsis,
                                 )
                             } else if (logo != null) {
@@ -549,7 +553,9 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 }
             }
             Column(Modifier.padding(start = 14.dp).weight(1f)) {
-                Text("${episode.indexNumber ?: "–"}. ${episode.name}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // An episode not seen yet goes by "Episode 5" (core Spoilers).
+                val safe = spoilerSafe(episode)
+                Text(if (safe.spoiler) safe.name else "${episode.indexNumber ?: "–"}. ${episode.name}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val status = if (thisOne) "This one" else dev.nitrate.core.model.AirDates.status(episode, dev.nitrate.android.nowMs())
                 if (status != null) Text(status, style = MaterialTheme.typography.labelMedium, color = accentColor(), modifier = Modifier.padding(top = 2.dp))
                 else episode.runtimeMs?.let { Text(formatRuntime(it), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp)) }

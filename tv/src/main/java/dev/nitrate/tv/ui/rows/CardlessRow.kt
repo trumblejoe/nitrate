@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.rows
 
+import dev.nitrate.tv.ui.partners.spoilerBlur
 import dev.nitrate.tv.ui.components.LocalDisplayPrefs
 import dev.nitrate.core.pages.hidesDescription
 import androidx.compose.animation.core.animateFloatAsState
@@ -178,7 +179,7 @@ private fun Collapsed(row: MediaRow, item: MediaItem, artwork: String?, display:
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alignment = Alignment.TopCenter,
-                    modifier = Modifier.fillMaxSize().drawWithContent {
+                    modifier = Modifier.fillMaxSize().spoilerBlur(item).drawWithContent {
                         drawContent()
                         drawRect(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xCC000000)))
                     },

@@ -165,13 +165,15 @@ fun DetailsScreen(
                         // Coming down into the row lands on this episode (then the one last focused there).
                         val here = remember { FocusRequester() }
                         val start = state.episodes.indexOfFirst { it.id == item.id }
+                        val safeEpisodes = dev.nitrate.tv.ui.partners.spoilerSafe(state.episodes)
                         LazyRow(
                             state = androidx.compose.foundation.lazy.rememberLazyListState((start - 1).coerceAtLeast(0)),
                             contentPadding = PaddingValues(horizontal = PagePadding),
                             horizontalArrangement = Arrangement.spacedBy(18.dp),
                             modifier = if (start >= 0) Modifier.focusRestorer(here) else Modifier,
                         ) {
-                            items(state.episodes, key = { it.id }) { episode ->
+                            // Spoiler-safe: an episode not seen yet is "Episode 5", blurred, with no description.
+                            items(safeEpisodes, key = { it.id }) { episode ->
                                 val thisOne = episode.id == item.id
                                 // Entered from a watch group: its own mark on each episode it has (toggled on the episode's page).
                                 val groupMark = dev.nitrate.tv.ui.partners.groupMarkFor(episode)?.takeIf { dev.nitrate.core.partners.GroupMarks.watched(it, episode) }
@@ -181,7 +183,7 @@ fun DetailsScreen(
                                     imageUrl = repository.imageUrl(episode, ImageKind.PRIMARY, 300),
                                     width = 280.dp,
                                     aspectRatio = 16f / 9f,
-                                    title = "${episode.indexNumber ?: "–"}. ${episode.name.orEmpty()}",
+                                    title = if (episode.spoiler) episode.name else "${episode.indexNumber ?: "–"}. ${episode.name.orEmpty()}",
                                     subtitle = listOfNotNull(
                                         if (thisOne) "This one" else dev.nitrate.core.model.AirDates.status(episode, System.currentTimeMillis()) ?: episode.runtimeMs?.let(::formatRuntime),
                                         groupMark,

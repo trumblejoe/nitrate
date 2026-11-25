@@ -98,6 +98,8 @@ fun RowsPage(
      */
     startOnRows: Boolean = false,
 ) {
+    // Every row style shows titles spoiler-safe (named "Episode 5", blurred, no description).
+    @Suppress("NAME_SHADOWING") val rows = dev.nitrate.tv.ui.partners.spoilerSafeRows(rows)
     var focused by remember { mutableStateOf<MediaItem?>(null) }
     var activeShowcase by remember { mutableStateOf<String?>(null) }
     // The row holding focus: a Full Showcase above it draws as its banner, not a screen-tall picture

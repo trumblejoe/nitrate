@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.library
 
+import dev.nitrate.tv.ui.partners.spoilerBlur
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -467,6 +468,8 @@ internal fun Modifier.bleed(by: androidx.compose.ui.unit.Dp) = layout { measurab
 /** A wide row for the list view: poster, title, facts and overview (as display settings allow). */
 @Composable
 internal fun ListCard(repository: MediaServer, item: MediaItem, modifier: Modifier, onClick: () -> Unit) {
+    // Spoiler-safe: an episode not seen yet is "Episode 5", blurred, without its description.
+    @Suppress("NAME_SHADOWING") val item = dev.nitrate.tv.ui.partners.spoilerSafe(item)
     val prefs = LocalDisplayPrefs.current
     // The page's card corners, see-through over the picture behind, framed when focused.
     val square = prefs.tvCardCorners == dev.nitrate.core.pages.CardCorners.SQUARE
@@ -481,7 +484,7 @@ internal fun ListCard(repository: MediaServer, item: MediaItem, modifier: Modifi
     ) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(Modifier.width(90.dp).aspectRatio(2f / 3f).clip(if (square) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.08f))) {
-                repository.imageUrl(item, ImageKind.PRIMARY, 270)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                repository.imageUrl(item, ImageKind.PRIMARY, 270)?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().spoilerBlur(item)) }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
