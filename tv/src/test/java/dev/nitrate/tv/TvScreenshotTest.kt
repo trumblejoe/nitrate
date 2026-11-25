@@ -821,15 +821,18 @@ class TvScreenshotTest {
         WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}, customPages = pages) }
     }
 
-    /** Left from a cards-hidden row opens the menu, and Back comes back. */
+    /** On a cards-hidden row, Left at its start keeps focus (the overlay opens with Menu or Up past the top); Menu opens it there and Back comes back. */
     private fun cardsHiddenToMenu(name: String, display: dev.nitrate.core.rows.RowDisplay) = shoot(name, setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome)
         c.displaySettings.save("user-1", c.server.homeRows()[1], display)
     }, act = {
         fun at() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().first().boundsInRoot
         press("down")
-        repeat(4) { if (!menuOpen()) press("left") }
-        check(menuOpen()) { "Left from a ${display.styleLabel} row should open the menu, got ${at()}" }
+        repeat(4) { press("left") }
+        check(!menuOpen()) { "Left at a ${display.styleLabel} row's start doesn't open the menu" }
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "focus isn't lost at the row's start" }
+        press("menu")
+        check(menuOpen()) { "Menu on a ${display.styleLabel} row should open the menu, got ${at()}" }
         press("back")
         check(!menuOpen()) { "Back closes it" }
         // The row's layer is the whole screen (the overlay menu takes no room of its own).
@@ -917,7 +920,7 @@ class TvScreenshotTest {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Three seasons inside a cinema", substring = true)).fetchSemanticsNodes().isEmpty()) { "Compact should leave the description out" }
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
-    /** Rows down the left or right: ▲▼ along each column and on to the next row, never the menu. */
+    /** Rows down the left or right: ▲▼ along each column and on to the next row; the menu only past the page's very top (as the overlay opens). */
     private fun sideRowsKeepFocus(name: String, place: dev.nitrate.core.pages.RowPlace) = shoot(name, setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsHome.copy(tvRowPlace = place))
     }, act = {
@@ -929,10 +932,15 @@ class TvScreenshotTest {
             val at = node?.boundsInRoot
             val label = node?.config?.firstOrNull { it.key == androidx.compose.ui.semantics.SemanticsProperties.ContentDescription }?.value?.toString()
             trail += "$key→$label@${at?.left?.toInt()},${at?.top?.toInt()}"
-            check(at != null && !menuOpen() && at.left >= 0f && at.top >= -5f && at.bottom <= 1085f) { "Focus lost or off screen: $trail" }
+            check(at != null && (!menuOpen() || key == "up") && at.left >= 0f && at.top >= -5f && at.bottom <= 1085f) { "Focus lost or off screen: $trail" }
         }
         repeat(12) { step("down") }
-        repeat(12) { step("up") }
+        // Up past the page's top opens the overlay: that's the end of the way up.
+        run { repeat(12) { step("up"); if (menuOpen()) return@run } }
+        if (menuOpen()) {
+            press("back")
+            check(!menuOpen()) { "Back closes the menu again" }
+        }
         println("TRAIL $name: $trail")
     }) { c -> WithMenu(c) { HomeScreen(c.server, c.displaySettings, onOpen = {}, onPlay = {}, onSettings = {}, onSignOut = {}) } }
 
