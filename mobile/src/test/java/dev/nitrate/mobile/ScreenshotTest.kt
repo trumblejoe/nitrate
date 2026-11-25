@@ -90,6 +90,7 @@ import androidx.compose.ui.test.longClick
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.flow.first
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -110,6 +111,8 @@ class ScreenshotTest {
         setup: suspend (AppContainer) -> Unit = {},
         /** Done on the settled screen before the picture (a scroll, say). */
         act: () -> Unit = {},
+        /** Picture every window (a sheet or dialog [act] left open), not only the page's. */
+        wholeScreen: Boolean = false,
         content: @Composable (AppActions) -> Unit,
     ) {
         val container = AppContainer(compose.activity, "test", "0", serverOverride = FakeServer(), downloadStoreOverride = MemoryDownloadStore(downloads))
@@ -149,13 +152,18 @@ class ScreenshotTest {
         compose.waitForIdle()
         act()
         compose.waitForIdle()
-        compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+        if (wholeScreen) com.github.takahirom.roborazzi.captureScreenRoboImage("build/outputs/roborazzi/$name.png")
+        else compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
         // Everything that can be tapped says what it is.
         val silent = dev.nitrate.testing.A11y.silent(compose)
         check(silent.isEmpty()) { "$name: a screen reader would say nothing for:\n" + silent.joinToString("\n") }
         // Leaving any group stops its clock-sync loop, which would otherwise keep the next test busy.
         compose.runOnUiThread { container.syncPlay.handle(dev.nitrate.core.events.ServerEvent.SyncPlayGroupUpdate("", dev.nitrate.core.syncplay.SyncPlayUpdate.Left)) }
+        shot = container
     }
+
+    /** The container of the last [shoot], to check what it stored. */
+    private var shot: AppContainer? = null
 
     @Test @Config(qualifiers = "w891dp-h411dp-land-night-xxhdpi")
     fun swipeLevel() = shoot("phone-swipe-level") {
@@ -828,6 +836,36 @@ class ScreenshotTest {
         "phone-library-all-scrolling",
         setup = { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(phoneGridLayout = dev.nitrate.core.pages.GridLayout.SCROLLING)) },
     ) { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies", startTab = 1) }
+
+    /** A library's All tab: the top bar's pencil opens Customize on the list, its View (Posters, Artwork, List) and Full list. */
+    @Test fun libraryAllCustomize() {
+        shoot("phone-library-all-customize", act = ::openListCustomize, wholeScreen = true) { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies", startTab = 1) }
+        compose.onNodeWithText("View").assertExists()
+        compose.onNodeWithText("Full list").assertExists()
+    }
+
+    /** Artwork picked in Customize: the All tab shows wide artwork at once, saved under the library's own key. */
+    @Test fun libraryAllCustomizeArtwork() {
+        shoot("phone-library-all-artwork", act = {
+            openListCustomize()
+            compose.onNodeWithText("Artwork").performClick()
+            compose.waitForIdle()
+            androidx.test.espresso.Espresso.pressBack()
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(1_500)
+            compose.waitForIdle()
+        }) { dev.nitrate.mobile.ui.LibraryScreen(it, "lib-movies", startTab = 1) }
+        compose.onNodeWithText("View").assertDoesNotExist()
+        val saved = kotlinx.coroutines.runBlocking { shot!!.displaySettings.view("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions()).first() }
+        check(saved.view == dev.nitrate.core.pages.BrowseView.ARTWORK) { "Artwork should be saved under browse/lib-movies, was ${saved.view}" }
+    }
+
+    private fun openListCustomize() {
+        compose.onNodeWithContentDescription("Customize this page").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+    }
 
     private fun scrollGrid() {
         compose.onNode(androidx.compose.ui.test.hasScrollAction()).performTouchInput { swipeUp(startY = centerY + 300f, endY = centerY - 300f, durationMillis = 600) }

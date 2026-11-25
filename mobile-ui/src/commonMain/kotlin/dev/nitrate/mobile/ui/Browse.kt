@@ -35,7 +35,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -96,13 +95,22 @@ import kotlinx.coroutines.launch
 private val BROWSE_SORTS = listOf(QuerySort.NAME, QuerySort.DATE_ADDED, QuerySort.RELEASE_DATE, QuerySort.RATING, QuerySort.CRITIC_RATING, QuerySort.RUNTIME, QuerySort.DATE_PLAYED)
 
 /**
+ * A library's full list's options and titles: one per library on a screen, shared by the list and
+ * the Customize sheet (which holds its View) so a change there shows at once.
+ */
+@Composable
+fun browseViewModel(actions: AppActions, library: MediaItem): BrowseViewModel =
+    viewModel(key = "browse-${library.id}") { BrowseViewModel(actions.server, actions.container.displaySettings, library) }
+
+/**
  * A library's full list: sort, filters (watched, favourites, genres, decade, rating, 4K/HD),
- * grid or list, and an A–Z strip to jump through when sorted by name.
+ * and an A–Z strip to jump through when sorted by name. Posters, artwork or lines (its view)
+ * is chosen in the page's Customize sheet.
  */
 @Composable
 fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable () -> Unit)? = null) {
     val prefs = LocalDisplayPrefs.current
-    val vm = viewModel(key = "browse-${library.id}") { BrowseViewModel(actions.server, actions.container.displaySettings, library) }
+    val vm = browseViewModel(actions, library)
     val state by vm.state.collectAsStateWithLifecycle()
     val genres by vm.genres.collectAsStateWithLifecycle()
     val libraryFilters by vm.filters.collectAsStateWithLifecycle()
@@ -153,7 +161,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
 
     // Fixed grid: the tabs and the bar stay at the top; Scrolling grid: they scroll away with the posters.
     val pinned = prefs.phoneGridLayout == GridLayout.FIXED
-    // The tabs (from the library page), the Sort/Filters/View bar and, for admins, picking titles to edit.
+    // The tabs (from the library page), the Sort/Filters bar and, for admins, picking titles to edit.
     val top: @Composable () -> Unit = {
         Column(Modifier.fillMaxWidth()) {
             header?.invoke()
@@ -274,23 +282,6 @@ private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOpti
             }
         }
         BarPill(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters", onClick = onFilters, active = options.filterCount > 0)
-        var viewMenu by remember { mutableStateOf(false) }
-        Box {
-            BarPill(
-                (if (options.view.tvOnly) BrowseView.GRID else options.view).label,
-                onClick = { viewMenu = true },
-                leading = if (options.view == BrowseView.LIST) Icons.AutoMirrored.Filled.List else null,
-            )
-            DropdownMenu(viewMenu, onDismissRequest = { viewMenu = false }) {
-                BrowseView.entries.filterNot { it.tvOnly }.forEach { v ->
-                    DropdownMenuItem(
-                        text = { Text(v.label) },
-                        trailingIcon = { if (v == options.view) Icon(Icons.Default.Check, null) },
-                        onClick = { onChange { it.copy(view = v) }; viewMenu = false },
-                    )
-                }
-            }
-        }
         Spacer(Modifier.weight(1f))
         if (total >= 0) Text(if (total == 1) "1 title" else "$total titles", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
@@ -298,7 +289,7 @@ private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOpti
 
 /** A small glass pill in the bar: its words, an optional arrow or icon, accent-tinted when [active]. */
 @Composable
-private fun BarPill(label: String, onClick: () -> Unit, active: Boolean = false, leading: androidx.compose.ui.graphics.vector.ImageVector? = null, trailing: androidx.compose.ui.graphics.vector.ImageVector? = null, state: String? = null) {
+private fun BarPill(label: String, onClick: () -> Unit, active: Boolean = false, trailing: androidx.compose.ui.graphics.vector.ImageVector? = null, state: String? = null) {
     val accent = accentColor()
     val fg = if (active) accent else Color.White
     Row(
@@ -312,7 +303,6 @@ private fun BarPill(label: String, onClick: () -> Unit, active: Boolean = false,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (leading != null) Icon(leading, null, tint = fg, modifier = Modifier.size(16.dp))
         Text(label, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
         if (trailing != null) Icon(trailing, null, tint = fg, modifier = Modifier.size(16.dp))
     }

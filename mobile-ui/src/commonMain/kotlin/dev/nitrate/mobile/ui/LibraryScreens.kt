@@ -130,22 +130,30 @@ fun LibraryScreen(actions: AppActions, libraryId: String, startTab: Int = 0) {
     val lib = library?.getOrNull()
     // The page takes its colour from the library's own picture, as Home does from its first artwork.
     val tint by dev.nitrate.mobile.platform.rememberArtworkColor(lib?.let { actions.server.backdropUrl(it, 320) ?: actions.server.imageUrl(it) })
+    val hasRecommended = lib?.collection == CollectionKind.MOVIES || lib?.collection == CollectionKind.TV_SHOWS
+    val music = lib?.collection == CollectionKind.MUSIC
+    var tab by rememberSaveable { mutableIntStateOf(startTab) }
+    // The full list showing (All, or a library without Recommended): it carries the tabs itself, and
+    // the top bar's pencil opens Customize with its View.
+    val browsing = lib != null && lib.collection != CollectionKind.LIVE_TV && lib.collection != CollectionKind.PLAYLISTS &&
+        !(music && tab == 1) && !(hasRecommended && tab == 0)
+    var customizing by remember { mutableStateOf(false) }
     TintedBackdrop(tint) {
         Column(Modifier.fillMaxSize()) {
-            PageTopBar(lib?.name ?: "", onBack = { actions.nav.popBackStack() })
+            PageTopBar(lib?.name ?: "", onBack = { actions.nav.popBackStack() }) {
+                if (browsing) IconButton(onClick = { customizing = true }) { Icon(Icons.Default.Edit, "Customize this page", tint = androidx.compose.ui.graphics.Color.White) }
+            }
+            if (customizing && browsing && lib != null) {
+                CustomizeSheet(null, null, actions, onDismiss = { customizing = false }, list = ListPanel(lib.name, lib.id, browseViewModel(actions, lib)))
+            }
             when {
                 library == null -> Loading()
                 lib == null -> ErrorMessage(library?.exceptionOrNull()?.message ?: "Couldn't load library")
                 lib.collection == CollectionKind.LIVE_TV -> Box(Modifier.fillMaxSize()) { LiveTvScreen(actions) }
                 else -> {
-                    val hasRecommended = lib.collection == CollectionKind.MOVIES || lib.collection == CollectionKind.TV_SHOWS
-                    val music = lib.collection == CollectionKind.MUSIC
-                    var tab by rememberSaveable { mutableIntStateOf(startTab) }
                     val tabs: (@Composable () -> Unit)? = if (hasRecommended || music) {
                         { PageTabs(listOf(if (music) "Albums" else "Recommended", if (music) "Artists" else "All"), tab, onSelect = { tab = it }) }
                     } else null
-                    // The full list carries the tabs itself (pinned or scrolling with it); the others keep them above.
-                    val browsing = !(music && tab == 1) && !(hasRecommended && tab == 0) && lib.collection != CollectionKind.PLAYLISTS
                     if (!browsing) tabs?.invoke()
                     when {
                         music && tab == 1 -> ArtistsGrid(actions, lib)

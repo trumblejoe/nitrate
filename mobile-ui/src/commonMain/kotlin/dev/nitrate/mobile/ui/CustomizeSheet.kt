@@ -46,12 +46,75 @@ class PagePanel(val title: String, val vm: RowsViewModel, val libraryId: String?
 val LocalPagePanel = compositionLocalOf<PagePanel?> { null }
 
 /**
+ * A library's full list showing (its All tab, or the list of a library without Recommended), for the
+ * Customize sheet: its [title], the library, and the list's own options (its view among them).
+ */
+class ListPanel(val title: String, val libraryId: String, val vm: dev.nitrate.android.viewmodel.BrowseViewModel)
+
+/**
  * Customize, from a row's header: This row (its look, where it sits, its name, hiding it) and This
- * page (its rows). The page shows the changes as they're made.
+ * page (its rows). From a library's full list ([row] and [panel] null, [list] set: the top bar's
+ * pencil) only This page, with the list's View (Posters, Artwork, List) and Full list.
+ * The page shows the changes as they're made.
  */
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun CustomizeSheet(row: MediaRow, panel: PagePanel, actions: AppActions, onDismiss: () -> Unit) {
+fun CustomizeSheet(row: MediaRow?, panel: PagePanel?, actions: AppActions, onDismiss: () -> Unit, list: ListPanel? = null) {
+    if (row != null && panel != null) RowCustomizeSheet(row, panel, actions, onDismiss)
+    else ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text("Customize", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp))
+            Text(list?.title ?: panel?.title.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ListSections(list, libraryPage = list != null || panel?.libraryId != null, actions, divider = false)
+            }
+        }
+    }
+}
+
+/**
+ * This page's sections for a library's full list: View (the list showing, saved with its sort and
+ * filters under its own key, as the bar's View pill once did) and Full list (Fixed or Scrolling grid,
+ * for every library).
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ListSections(list: ListPanel?, libraryPage: Boolean, actions: AppActions, divider: Boolean) {
+    if (list != null) {
+        val state by list.vm.state.collectAsStateWithLifecycle()
+        // TV-only views (Bouncing box…) show as Posters here, as the list draws them.
+        val view = state.options.view.let { if (it.tvOnly) dev.nitrate.core.pages.BrowseView.GRID else it }
+        if (divider) HorizontalDivider()
+        Text("View", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            dev.nitrate.core.pages.BrowseView.entries.filterNot { it.tvOnly }.forEach { v ->
+                FilterChip(selected = view == v, onClick = { list.vm.update { it.copy(view = v) } }, label = { Text(v.label) })
+            }
+        }
+        Text("How this list shows its titles: posters, wide artwork, or lines with details.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    // A library's page: how its full list (All) is laid out, the same choice as Settings › Display.
+    if (libraryPage) {
+        val prefs = LocalDisplayPrefs.current
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        if (divider || list != null) HorizontalDivider()
+        Text("Full list", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            dev.nitrate.core.pages.GridLayout.entries.forEach { g ->
+                FilterChip(
+                    selected = prefs.phoneGridLayout == g,
+                    onClick = { actions.server.userId?.let { u -> scope.launch { actions.container.displaySettings.savePrefs(u, prefs.copy(phoneGridLayout = g)) } } },
+                    label = { Text(g.label) },
+                )
+            }
+        }
+        Text(prefs.phoneGridLayout.phoneDetail + ". For every library.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun RowCustomizeSheet(row: MediaRow, panel: PagePanel, actions: AppActions, onDismiss: () -> Unit) {
     val vm = panel.vm
     val overrides by vm.overrides.collectAsStateWithLifecycle()
     val entries by vm.entries.collectAsStateWithLifecycle()
@@ -117,23 +180,7 @@ fun CustomizeSheet(row: MediaRow, panel: PagePanel, actions: AppActions, onDismi
                 } else {
                     Text("Order, hide, rename and add your own rows (from filters, collections or playlists).", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = { editingRows = true }) { Text("Edit rows") }
-                    // A library's page: how its full list (All) is laid out, the same choice as Settings › Display.
-                    if (panel.libraryId != null) {
-                        val prefs = LocalDisplayPrefs.current
-                        val scope = androidx.compose.runtime.rememberCoroutineScope()
-                        HorizontalDivider()
-                        Text("Full list", style = MaterialTheme.typography.titleSmall)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            dev.nitrate.core.pages.GridLayout.entries.forEach { g ->
-                                FilterChip(
-                                    selected = prefs.phoneGridLayout == g,
-                                    onClick = { actions.server.userId?.let { u -> scope.launch { actions.container.displaySettings.savePrefs(u, prefs.copy(phoneGridLayout = g)) } } },
-                                    label = { Text(g.label) },
-                                )
-                            }
-                        }
-                        Text(prefs.phoneGridLayout.phoneDetail + ". For every library.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    ListSections(null, libraryPage = panel.libraryId != null, actions, divider = true)
                 }
             }
         }

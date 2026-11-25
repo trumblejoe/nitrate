@@ -117,7 +117,7 @@ data class DisplayPrefs(
     val tvCardSpacing: CardSpacing = CardSpacing.NORMAL,
     /** A library's full list (All and the other list tabs): the focused title's details held at the top, or posters filling the page (per page through [PageLook.gridLayout]). */
     val tvGridLayout: GridLayout = GridLayout.FIXED,
-    /** Phones, tablets, iPhone, iPad and desktop: a library's full list keeps its tabs and Sort/Filters/View bar pinned, or lets them scroll away. */
+    /** Phones, tablets, iPhone, iPad and desktop: a library's full list keeps its tabs and Sort/Filters bar pinned, or lets them scroll away. */
     val phoneGridLayout: GridLayout = GridLayout.FIXED,
     /** Rows one at a time and full art: a slim marker saying which row this is ("3 / 9"). */
     val tvRowMarker: Boolean = true,
@@ -233,12 +233,12 @@ enum class CardCorners(val label: String) { ROUNDED("Rounded"), SQUARE("Square")
 /**
  * How a library's full list is laid out. TV: [FIXED] holds the focused title's picture and details at
  * the top as Home does, the posters scrolling beneath; [SCROLLING] lets the posters fill the page and
- * everything scroll together. Phone and the rest: [FIXED] pins the tabs and the Sort/Filters/View bar,
+ * everything scroll together. Phone and the rest: [FIXED] pins the tabs and the Sort/Filters bar,
  * [SCROLLING] lets them scroll away with the posters.
  */
 @Serializable
 enum class GridLayout(val label: String, val tvDetail: String, val phoneDetail: String) {
-    FIXED("Fixed grid", "The focused title's details stay at the top, the posters scroll beneath", "The tabs and the Sort, Filters and View bar stay at the top"),
+    FIXED("Fixed grid", "The focused title's details stay at the top, the posters scroll beneath", "The tabs and the Sort and Filters bar stay at the top"),
     SCROLLING("Scrolling grid", "The posters fill the page and scroll with it", "The tabs and the bar scroll away with the posters"),
 }
 
