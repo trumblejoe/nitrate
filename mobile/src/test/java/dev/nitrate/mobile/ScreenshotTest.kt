@@ -380,6 +380,19 @@ class ScreenshotTest {
                 party = dev.nitrate.core.partners.PartyTime(listOf(5), 21, 0)))) {}
     }
 
+    /** Changing a two-title group's schedule: every pace's choices, the time, parts per release, the first part, Sequential in order. */
+    @Test fun scheduleChange() = shoot("phone-schedule-change", setup = { c -> c.refreshCompanionForTests() }) { actions ->
+        val g = (actions.container.server as dev.nitrate.testing.FakeServer).partnerInfo.groups.first().let {
+            it.copy(
+                titleList = listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")),
+                schedule = dev.nitrate.core.partners.GroupSchedule(
+                    dev.nitrate.core.partners.GroupSchedule.WEEKLY, weekdays = listOf(1, 4), hour = 20, minute = 30, perRelease = 2, sequential = true,
+                ),
+            )
+        }
+        dev.nitrate.mobile.ui.ScheduleChangeDialog(actions, g) {}
+    }
+
     @Test fun watchPartners() = shoot("phone-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { dev.nitrate.mobile.ui.WatchPartnersScreen(it) }
 
     /** The guided setup's first step: titles picked from what was watched lately, Next, and Cancel (Back on the first page). */

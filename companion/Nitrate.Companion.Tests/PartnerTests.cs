@@ -431,6 +431,71 @@ public class PartnerTests
     }
 
     [Fact]
+    public void NewPacesReleaseWhenSaid()
+    {
+        DateTimeOffset At(string s) => DateTimeOffset.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+        // 2026-11-15 is a Sunday.
+        var sunday = At("2026-11-15T20:00:00Z");
+        var daily = new GroupSchedule { Cadence = GroupSchedule.Daily, Hour = 19, Minute = 30, TimeZone = "UTC", Since = sunday };
+        Assert.Equal(At("2026-11-16T19:30:00Z"), ScheduleRules.NextRelease(daily, sunday));
+        Assert.Equal(At("2026-11-16T19:30:00Z"), ScheduleRules.NextRelease(daily, At("2026-11-16T10:00:00Z")));
+        var every4 = new GroupSchedule { Cadence = GroupSchedule.EveryFewDays, EveryDays = 4, Hour = 19, TimeZone = "UTC", Since = sunday };
+        Assert.Equal(At("2026-11-19T19:00:00Z"), ScheduleRules.NextRelease(every4, sunday));
+        // Monday, Wednesday and Friday at 9pm.
+        var mwf = new GroupSchedule { Cadence = GroupSchedule.Weekly, Weekdays = new() { 1, 3, 5 }, Hour = 21, TimeZone = "UTC", Since = sunday };
+        Assert.Equal(At("2026-11-16T21:00:00Z"), ScheduleRules.NextRelease(mwf, sunday));
+        Assert.Equal(At("2026-11-18T21:00:00Z"), ScheduleRules.NextRelease(mwf, At("2026-11-16T22:00:00Z")));
+        // Thursdays every 2 weeks: the week it was set, then two weeks on.
+        var fortnight = new GroupSchedule { Cadence = GroupSchedule.Weekly, Weekdays = new() { 4 }, EveryWeeks = 2, Hour = 19, TimeZone = "UTC", Since = sunday };
+        Assert.Equal(At("2026-11-19T19:00:00Z"), ScheduleRules.NextRelease(fortnight, sunday));
+        Assert.Equal(At("2026-12-03T19:00:00Z"), ScheduleRules.NextRelease(fortnight, At("2026-11-19T20:00:00Z")));
+        // Monthly on the 1st.
+        var monthly = new GroupSchedule { Cadence = GroupSchedule.Monthly, MonthDay = 1, Hour = 20, TimeZone = "UTC", Since = sunday };
+        Assert.Equal(At("2026-12-01T20:00:00Z"), ScheduleRules.NextRelease(monthly, sunday));
+        Assert.Equal(At("2027-01-01T20:00:00Z"), ScheduleRules.NextRelease(monthly, At("2026-12-01T21:00:00Z")));
+        Assert.True(daily.Limits && every4.Limits && mwf.Limits && monthly.Limits);
+    }
+
+    [Fact]
+    public void PartsPerReleaseAndTheFirstPartLocked()
+    {
+        DateTimeOffset At(string s) => DateTimeOffset.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+        var sunday = At("2026-11-15T20:00:00Z");
+        var thursday = At("2026-11-19T19:00:00Z");
+        var order = new[] { Ep1, Ep2, Ep3 };
+        var two = new GroupSchedule { Cadence = GroupSchedule.Weekly, Day = 4, Hour = 19, TimeZone = "UTC", Since = sunday, PerRelease = 2 };
+        // Nothing watched: two parts open at once, the third waits.
+        Assert.Equal(new ScheduleLock(Ep3, null), ScheduleRules.Of(two, order, -1, null, sunday));
+        // The first part locked: nothing opens until Thursday 7pm, then two.
+        var locked = new GroupSchedule { Cadence = GroupSchedule.Weekly, Day = 4, Hour = 19, TimeZone = "UTC", Since = sunday, FirstLocked = true };
+        Assert.Equal(new ScheduleLock(Ep1, thursday), ScheduleRules.Of(locked, order, -1, null, sunday.AddHours(1)));
+        Assert.Equal(new ScheduleLock(Ep2, null), ScheduleRules.Of(locked, order, -1, null, thursday.AddMinutes(1)));
+        // Open now (the default): the first part plays at once.
+        locked.FirstLocked = false;
+        Assert.Equal(new ScheduleLock(Ep2, null), ScheduleRules.Of(locked, order, -1, null, sunday.AddHours(1)));
+    }
+
+    [Fact]
+    public void SequentialTitlesWaitForTheOneBefore()
+    {
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        var c = Guid.NewGuid();
+        var s = new GroupSchedule { Cadence = GroupSchedule.Weekly, Sequential = true, TitleOrder = new() { c, a } };
+        // The schedule's order first, then the rest as they were.
+        Assert.Equal(new[] { c, a, b }, ScheduleRules.InOrder(s, new[] { a, b, c }));
+        var ordered = new List<(Guid Id, IReadOnlyList<Guid> Order)> { (c, new[] { Sv1, Sv2 }), (a, new[] { Ep1, Ep2 }), (b, new[] { Ep3 }) };
+        var opens = DateTimeOffset.Parse("2026-11-19T19:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        // The run holds back the first part of the second title: the first title is open, the third waits from its start.
+        var spread = ScheduleRules.Spread(new ScheduleLock(Ep1, opens), ordered);
+        Assert.Equal(new ScheduleLock(null, null), spread[c]);
+        Assert.Equal(new ScheduleLock(Ep1, opens), spread[a]);
+        Assert.Equal(new ScheduleLock(Ep3, null), spread[b]);
+        // Nothing held back: everything's open.
+        Assert.All(ScheduleRules.Spread(new ScheduleLock(null, null), ordered).Values, l => Assert.Null(l.LockedFromId));
+    }
+
+    [Fact]
     public void OneNewPartOpensAtATime()
     {
         var since = _time.GetUtcNow();
@@ -744,6 +809,30 @@ public class PartnerTests
         Assert.Empty(G(Sam, withSam).Mine!);
         Assert.DoesNotContain(Ep3, G(Joe, withSam).Mine!);
         Assert.Throws<PartnerException>(() => hub.Mark(Joe, new[] { withSam }, Array.Empty<Guid>()));
+    }
+
+    [Fact]
+    public void SequentialTitlesInAGroup()
+    {
+        var hub = Hub();
+        var s = Weekly();
+        s.Sequential = true;
+        s.TitleOrder = new() { Bear, Sev };
+        hub.Request(Joe, Sam, null, Guid.Empty, string.Empty, schedule: s, titles: new[] { new GroupTitle { Id = Sev, Name = "Severance" }, new GroupTitle { Id = Bear, Name = "The Bear" } });
+        var gid = hub.Accept(Sam, hub.Incoming(Sam).Single().Id).Id;
+        // Nothing watched: The Bear (first in the schedule's order) opens its first part; Severance waits from its start.
+        var g = hub.Groups(Sam).Single();
+        Assert.Equal(Ep2, g.Titles!.Single(t => t.Id == Bear).LockedFromId);
+        Assert.Equal(Sv1, g.Titles!.Single(t => t.Id == Sev).LockedFromId);
+        Assert.True(g.Schedule!.Sequential);
+        Assert.Equal(new[] { Bear, Sev }, g.Schedule.TitleOrder);
+        // Watching The Bear's first part: its second waits for Thursday, Severance still from its start.
+        _time.Advance(TimeSpan.FromHours(1));
+        hub.Mark(Joe, new[] { gid }, new[] { Ep1 });
+        g = hub.Groups(Sam).Single();
+        Assert.Equal(Ep2, g.Titles!.Single(t => t.Id == Bear).LockedFromId);
+        Assert.Equal(DayOfWeek.Thursday, g.Titles!.Single(t => t.Id == Bear).OpensAt?.DayOfWeek);
+        Assert.Equal(Sv1, g.Titles!.Single(t => t.Id == Sev).LockedFromId);
     }
 
     [Fact]

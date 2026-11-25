@@ -263,9 +263,13 @@ public class PartyTests
         var ahead = new ShowProgress(new[] { Ep1, Ep2 }, null, null, order);
         var behind = new ShowProgress(new[] { Ep1 }, null, null, order);
 
-        // Together off: the part after the furthest everyone has watched with the group; Together on: after the group's furthest.
+        // The first part not everyone has watched, Together on or off: nobody misses one (Together on
+        // used to offer the part after the furthest anyone had watched, skipping it for the rest).
         Assert.Equal(Ep2, PartnerHub.PartOf(false, new[] { ahead, behind }));
-        Assert.Equal(Ep3, PartnerHub.PartOf(true, new[] { ahead, behind }));
+        Assert.Equal(Ep2, PartnerHub.PartOf(true, new[] { ahead, behind }));
+        // Episode 1 open and watched by one of them alone: the session still offers episode 1.
+        var none = new ShowProgress(Array.Empty<Guid>(), null, null, order);
+        Assert.Equal(Ep1, PartnerHub.PartOf(true, new[] { behind, none }));
         Assert.Null(PartnerHub.PartOf(false, new[] { new ShowProgress(order, null, null, order) }));
 
         var hub = Hub();

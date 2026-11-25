@@ -21,14 +21,51 @@ public class GroupSchedule
     /// <summary>One every 3 days.</summary>
     public const string Days3 = "days3";
 
-    /// <summary>One a week, on <see cref="Day"/>.</summary>
+    /// <summary>On <see cref="Weekdays"/> (else <see cref="Day"/>), every week or every <see cref="EveryWeeks"/> weeks.</summary>
     public const string Weekly = "weekly";
 
-    /// <summary>Gets or sets the cadence (<see cref="Binge"/>, <see cref="Days2"/>, <see cref="Days3"/>, <see cref="Weekly"/>).</summary>
+    /// <summary>Every day.</summary>
+    public const string Daily = "daily";
+
+    /// <summary>Every <see cref="EveryDays"/> days (2–7).</summary>
+    public const string EveryFewDays = "days";
+
+    /// <summary>Once a month, on <see cref="MonthDay"/>.</summary>
+    public const string Monthly = "monthly";
+
+    /// <summary>Gets or sets the cadence: <see cref="Binge"/>, <see cref="Daily"/>, <see cref="EveryFewDays"/>, <see cref="Weekly"/>, <see cref="Monthly"/> (and the older <see cref="Days2"/>, <see cref="Days3"/>).</summary>
     public string Cadence { get; set; } = Binge;
 
-    /// <summary>Gets or sets the day for <see cref="Weekly"/> (0 = Sunday … 6 = Saturday).</summary>
+    /// <summary>Gets or sets the day for <see cref="Weekly"/> (0 = Sunday … 6 = Saturday): the older single day, used when <see cref="Weekdays"/> is empty.</summary>
     public int Day { get; set; } = 4;
+
+    /// <summary>Gets or sets the days for <see cref="Weekly"/> (0 = Sunday … 6 = Saturday); empty: <see cref="Day"/>.</summary>
+    public List<int> Weekdays { get; set; } = new();
+
+    /// <summary>Gets or sets every how many weeks <see cref="Weekly"/> goes (1 or 2), counted from <see cref="Since"/>'s week.</summary>
+    public int EveryWeeks { get; set; } = 1;
+
+    /// <summary>Gets or sets every how many days <see cref="EveryFewDays"/> goes (2–7), counted from <see cref="Since"/>'s day.</summary>
+    public int EveryDays { get; set; } = 2;
+
+    /// <summary>Gets or sets the day of the month for <see cref="Monthly"/> (1–28).</summary>
+    public int MonthDay { get; set; } = 1;
+
+    /// <summary>Gets or sets how many parts each release opens (1–3).</summary>
+    public int PerRelease { get; set; } = 1;
+
+    /// <summary>Gets or sets whether the first part waits for the first release (else it's open at once).</summary>
+    public bool FirstLocked { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the group's titles go one after another (<see cref="TitleOrder"/>, else
+    /// the group's own order): the next title's first part opens once the one before is done, and
+    /// the pace counts across them. False (separate, the default): each title keeps its own pace.
+    /// </summary>
+    public bool Sequential { get; set; }
+
+    /// <summary>Gets or sets the titles' order for <see cref="Sequential"/> (titles not in it come after, in the group's order).</summary>
+    public List<Guid> TitleOrder { get; set; } = new();
 
     /// <summary>Gets or sets the hour each new part opens (0–23).</summary>
     public int Hour { get; set; } = 19;
@@ -63,7 +100,7 @@ public class GroupSchedule
     public DateTimeOffset Since { get; set; }
 
     /// <summary>Gets a value indicating whether anything is rationed.</summary>
-    public bool Limits => Cadence is Days2 or Days3 or Weekly;
+    public bool Limits => Cadence is Days2 or Days3 or Weekly or Daily or EveryFewDays or Monthly;
 
     /// <summary>Gets a value indicating whether it holds anything back: paced, or Together on.</summary>
     public bool Active => Limits || Together;
@@ -81,6 +118,8 @@ public class GroupSchedule
     {
         var c = (GroupSchedule)MemberwiseClone();
         c.Party = Party?.Copy();
+        c.Weekdays = Weekdays.ToList();
+        c.TitleOrder = TitleOrder.ToList();
         return c;
     }
 }
@@ -148,20 +187,49 @@ public static class ScheduleRules
         }
     }
 
+    /// <summary>The group's titles in the schedule's order (<see cref="GroupSchedule.TitleOrder"/>; the rest after, as they are).</summary>
+    public static List<Guid> InOrder(GroupSchedule s, IReadOnlyList<Guid> titles) =>
+        s.TitleOrder.Where(titles.Contains).Concat(titles.Where(t => !s.TitleOrder.Contains(t))).ToList();
+
+    /// <summary>
+    /// A lock over a sequential run ([ordered]: each title's parts, in the run's order) put back on
+    /// each title: the title it falls in gets it, the ones after it wait from their first part (once
+    /// the one before is done), the ones before it are open.
+    /// </summary>
+    public static Dictionary<Guid, ScheduleLock> Spread(ScheduleLock run, IReadOnlyList<(Guid Id, IReadOnlyList<Guid> Order)> ordered)
+    {
+        var result = new Dictionary<Guid, ScheduleLock>();
+        var at = run.LockedFromId is { } id ? ordered.Select((x, i) => (x, i)).Where(p => p.x.Order.Contains(id)).Select(p => p.i).DefaultIfEmpty(-1).First() : -1;
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            result[ordered[i].Id] = at < 0 || i < at ? new ScheduleLock(null, null)
+                : i == at ? new ScheduleLock(run.LockedFromId, run.OpensAt)
+                : new ScheduleLock(ordered[i].Order[0], null);
+        }
+
+        return result;
+    }
+
     /// <summary>The first time after [after] that a new part opens.</summary>
     public static DateTimeOffset NextRelease(GroupSchedule s, DateTimeOffset after)
     {
         var zone = Zone(s);
         var local = TimeZoneInfo.ConvertTime(after, zone);
         var since = TimeZoneInfo.ConvertTime(s.Since, zone).Date;
-        for (var day = 0; day <= 8; day++)
+        var weekdays = s.Weekdays.Count > 0 ? s.Weekdays : new List<int> { s.Day };
+        // The Sunday starting the week it was set (every 2 weeks counts from it; none set: any week).
+        var sinceWeek = since > DateTime.MinValue.AddDays(7) ? since.AddDays(-(int)since.DayOfWeek) : local.Date.AddDays(-(int)local.DayOfWeek);
+        for (var day = 0; day <= 62; day++)
         {
             var date = local.Date.AddDays(day);
             var wanted = s.Cadence switch
             {
-                GroupSchedule.Weekly => (int)date.DayOfWeek == s.Day,
+                GroupSchedule.Weekly => weekdays.Contains((int)date.DayOfWeek) &&
+                    (Math.Clamp(s.EveryWeeks, 1, 2) == 1 || ((int)Math.Floor((date - sinceWeek).TotalDays / 7)) % 2 == 0),
                 GroupSchedule.Days2 => (date - since).Days % 2 == 0,
                 GroupSchedule.Days3 => (date - since).Days % 3 == 0,
+                GroupSchedule.EveryFewDays => (date - since).Days % Math.Clamp(s.EveryDays, 2, 7) == 0,
+                GroupSchedule.Monthly => date.Day == Math.Min(Math.Clamp(s.MonthDay, 1, 28), DateTime.DaysInMonth(date.Year, date.Month)),
                 _ => true,
             };
             if (!wanted)
@@ -177,7 +245,7 @@ public static class ScheduleRules
             }
         }
 
-        return after.AddDays(7);
+        return after.AddDays(31);
     }
 
     /// <summary>
@@ -208,12 +276,19 @@ public static class ScheduleRules
             return new ScheduleLock(null, null, together);
         }
 
-        var opensAt = frontierAt is { } at && at >= s.Since ? NextRelease(s, at) : (DateTimeOffset?)null;
+        // The next release after the frontier was watched (straight away when it was watched before
+        // the schedule was set); with nothing watched yet, the first part is open at once unless it
+        // waits for the first release.
+        DateTimeOffset? opensAt = frontier < 0
+            ? (s.FirstLocked ? NextRelease(s, s.Since) : null)
+            : frontierAt is { } at && at >= s.Since ? NextRelease(s, at) : null;
         if (opensAt is { } o && now < o)
         {
             return new ScheduleLock(order[next], o, together);
         }
 
-        return next + 1 < order.Count ? new ScheduleLock(order[next + 1], null, together) : new ScheduleLock(null, null, together);
+        // A release opens [PerRelease] parts; what's after them waits until someone watches on.
+        var after = next + Math.Clamp(s.PerRelease, 1, 3);
+        return after < order.Count ? new ScheduleLock(order[after], null, together) : new ScheduleLock(null, null, together);
     }
 }

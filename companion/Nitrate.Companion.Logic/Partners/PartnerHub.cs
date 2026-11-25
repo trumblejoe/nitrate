@@ -785,11 +785,19 @@ public partial class PartnerHub
     private static GroupSchedule Valid(GroupSchedule s)
     {
         var v = s.Copy();
-        if (v.Cadence is not (GroupSchedule.Binge or GroupSchedule.Days2 or GroupSchedule.Days3 or GroupSchedule.Weekly))
+        if (v.Cadence is not (GroupSchedule.Binge or GroupSchedule.Days2 or GroupSchedule.Days3 or GroupSchedule.Weekly
+            or GroupSchedule.Daily or GroupSchedule.EveryFewDays or GroupSchedule.Monthly))
         {
-            throw new PartnerException(PartnerError.Invalid, "Choose binge, every 2 days, every 3 days or weekly.");
+            throw new PartnerException(PartnerError.Invalid, "Choose binge, daily, every few days, weekly or monthly.");
         }
 
+        v.Day = Math.Clamp(v.Day, 0, 6);
+        v.Weekdays = (v.Weekdays ?? new List<int>()).Where(d => d is >= 0 and <= 6).Distinct().OrderBy(d => d).ToList();
+        v.EveryWeeks = Math.Clamp(v.EveryWeeks, 1, 2);
+        v.EveryDays = Math.Clamp(v.EveryDays, 2, 7);
+        v.MonthDay = Math.Clamp(v.MonthDay, 1, 28);
+        v.PerRelease = Math.Clamp(v.PerRelease, 1, 3);
+        v.TitleOrder = (v.TitleOrder ?? new List<Guid>()).Where(id => id != Guid.Empty).Distinct().ToList();
         v.Hour = Math.Clamp(v.Hour, 0, 23);
         v.Minute = Math.Clamp(v.Minute, 0, 59);
         v.TimeZone = string.IsNullOrWhiteSpace(v.TimeZone) ? string.Empty : ScheduleRules.Zone(v).Id;
@@ -1237,6 +1245,9 @@ public partial class PartnerHub
         var pending = g.Pending is { } p
             ? new ScheduleChangeView(p.Id, Name(p.From), p.Proposed, p.Yes.Select(Name).ToList(), p.No.Select(Name).ToList(), p.Yes.Contains(user) || p.No.Contains(user), p.At)
             : null;
+        // Sequential: the titles go one after another, the pace counting across them (what holds
+        // each one back is worked out over the whole run, below).
+        var run = SequentialLocks(g, record, orders);
         var titles = g.Titles.Select(t => WithReach(g, user, t.Id, TitleOf(t))).ToList();
         TitleView TitleOf(GroupTitle t)
         {
@@ -1257,6 +1268,12 @@ public partial class PartnerHub
             }
 
             var l = ScheduleRules.Of(g.Schedule, order, frontier, at, _time.GetUtcNow());
+            if (run is not null && run.TryGetValue(t.Id, out var held))
+            {
+                // The run decides what's out; Together still goes by this title's own record.
+                l = held with { TogetherFromId = l.TogetherFromId };
+            }
+
             return new TitleView(t.Id, t.Name, l.LockedFromId, l.OpensAt, l.OpensDay(g.Schedule), l.TogetherFromId);
         }
 
@@ -1269,6 +1286,41 @@ public partial class PartnerHub
         {
             Resume = g.Resume.Where(r => r.Member == user).OrderByDescending(r => r.At).Select(r => new ResumeView(r.ItemId, r.PositionMs, r.At)).ToList(),
         };
+    }
+
+    /// <summary>
+    /// What a <see cref="GroupSchedule.Sequential"/> schedule holds back in each title (null when
+    /// the schedule isn't sequential and paced, or the parts aren't read): the titles in the
+    /// schedule's order as one run, the group's frontier over the whole of it, and the lock of the
+    /// run put back on the title it falls in; titles after it wait from their first part until the
+    /// one before is done, titles before it are open.
+    /// </summary>
+    private Dictionary<Guid, ScheduleLock>? SequentialLocks(WatchGroup g, IReadOnlyList<GroupWatch> record, IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>? orders)
+    {
+        var s = g.Schedule;
+        if (s is not { Sequential: true, Limits: true } || orders is null || g.Titles.Count < 2)
+        {
+            return null;
+        }
+
+        var ordered = ScheduleRules.InOrder(s, g.Titles.Select(t => t.Id).ToList())
+            .Select(id => (Id: id, Order: orders.TryGetValue(id, out var o) ? o : Array.Empty<Guid>())).Where(x => x.Order.Count > 0).ToList();
+        var whole = ordered.SelectMany(x => x.Order).ToList();
+        if (whole.Count == 0)
+        {
+            return null;
+        }
+
+        var everyone = g.Members.Select(m => FromRecord(whole, record, m)).ToList();
+        var reach = everyone.Select(x => (Furthest: x.Watched.Select(id => IndexIn(whole, id)).DefaultIfEmpty(-1).Max(), x.FurthestAt)).ToList();
+        var frontier = reach.Max(r => r.Furthest);
+        var at = reach.Where(r => r.Furthest == frontier && frontier >= 0).Select(r => r.FurthestAt).Where(x => x != null).DefaultIfEmpty(null).Min();
+        if (reach.Any(r => r.Furthest == frontier && frontier >= 0 && r.FurthestAt is null))
+        {
+            at = null;
+        }
+
+        return ScheduleRules.Spread(ScheduleRules.Of(s, whole, frontier, at, _time.GetUtcNow()), ordered);
     }
 
     /// <summary>

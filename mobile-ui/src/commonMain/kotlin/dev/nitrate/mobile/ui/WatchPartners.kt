@@ -1,5 +1,7 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.background
@@ -217,8 +219,8 @@ fun WatchWithDialog(actions: AppActions, series: MediaItem, groupId: String? = n
  * they mean.
  */
 @Composable
-fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, lockable: Boolean = true, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
-    PacePicker(schedule, onChange)
+fun SchedulePicker(schedule: dev.nitrate.core.partners.GroupSchedule, lockable: Boolean = true, titles: List<dev.nitrate.core.partners.GroupTitle> = emptyList(), onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
+    PacePicker(schedule, titles, onChange)
     PartyTimePicker(schedule, onChange)
     TogetherSwitch(schedule, onChange)
     if (lockable) PlayAheadPicker(schedule, onChange)
@@ -246,22 +248,79 @@ fun PlayAheadPicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange:
     Text(schedule.lockNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-/** The release schedule: Binge, every 2 days, every 3 days or weekly (with its day), and the time new parts open. */
+/**
+ * The release schedule: Binge, Daily, Every few days (2–7), Weekly (any days, every week or every
+ * other week) or Monthly (a day of the month); the time new parts open (any hour, in 15-minute
+ * steps), how many each release opens, whether the first part waits for the first release, and with
+ * several [titles] Separate or Sequential (in an order set here).
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PacePicker(schedule: dev.nitrate.core.partners.GroupSchedule, onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
+fun PacePicker(schedule: dev.nitrate.core.partners.GroupSchedule, titles: List<dev.nitrate.core.partners.GroupTitle> = emptyList(), onChange: (dev.nitrate.core.partners.GroupSchedule) -> Unit) {
     val g = dev.nitrate.core.partners.GroupSchedule
-    Text("Release schedule", style = MaterialTheme.typography.labelLarge)
+    @Composable fun label(text: String) = Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+    label("Release schedule")
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        g.CADENCES.forEach { (id, label) -> FilterChip(schedule.cadence == id, { onChange(schedule.copy(cadence = id)) }, label = { Text(label) }) }
+        g.CADENCES.forEach { (id, name) -> FilterChip(g.pickerCadence(schedule.cadence) == id, { onChange(schedule.picked(id)) }, label = { Text(name) }) }
     }
-    if (schedule.limits) {
-        if (schedule.cadence == g.WEEKLY) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            g.DAYS.forEachIndexed { i, d -> FilterChip(schedule.day == i, { onChange(schedule.copy(day = i)) }, label = { Text(d.take(3)) }) }
+    if (!schedule.limits) return
+    when (g.pickerCadence(schedule.cadence)) {
+        g.EVERY_FEW_DAYS -> {
+            val every = when (schedule.cadence) { g.DAYS2 -> 2; g.DAYS3 -> 3; else -> schedule.everyDays }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                (2..7).forEach { n -> FilterChip(every == n, { onChange(schedule.copy(cadence = g.EVERY_FEW_DAYS, everyDays = n)) }, label = { Text("Every $n days") }) }
+            }
         }
+        g.WEEKLY -> {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                g.DAYS.forEachIndexed { i, d -> FilterChip(i in schedule.days, { onChange(schedule.toggleDay(i)) }, label = { Text(d.take(3)) }) }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(1 to "Every week", 2 to "Every other week").forEach { (n, name) -> FilterChip(schedule.everyWeeks == n, { onChange(schedule.copy(everyWeeks = n)) }, label = { Text(name) }) }
+            }
+        }
+        g.MONTHLY -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("On the", Modifier.padding(end = 8.dp))
+            TextButton(onClick = { onChange(schedule.copy(monthDay = (schedule.monthDay - 2).mod(28) + 1)) }) { Text("−") }
+            Text(g.ordinal(schedule.monthDay.coerceIn(1, 28)), style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { onChange(schedule.copy(monthDay = schedule.monthDay % 28 + 1)) }) { Text("+") }
+            Text("of each month")
+        }
+    }
+    // The time: an hour back or on, and the minutes.
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("At", Modifier.padding(end = 8.dp))
+        TextButton(onClick = { onChange(schedule.hourStep(-1)) }, modifier = Modifier.semantics { contentDescription = "An hour earlier" }) { Text("−") }
+        Text(schedule.clock, style = MaterialTheme.typography.titleMedium)
+        TextButton(onClick = { onChange(schedule.hourStep(1)) }, modifier = Modifier.semantics { contentDescription = "An hour later" }) { Text("+") }
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        g.MINUTES.forEach { m -> FilterChip(schedule.minute == m, { onChange(schedule.copy(minute = m)) }, label = { Text(":" + m.toString().padStart(2, '0')) }) }
+    }
+    label("Each release opens")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        g.PER_RELEASE.forEach { (n, name) -> FilterChip(schedule.perRelease == n, { onChange(schedule.copy(perRelease = n)) }, label = { Text(name) }) }
+    }
+    label("The first part")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        g.FIRST_CHOICES.forEach { (on, name) -> FilterChip(schedule.firstLocked == on, { onChange(schedule.copy(firstLocked = on)) }, label = { Text(name) }) }
+    }
+    if (titles.size > 1) {
+        label("Titles")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            g.HOURS.forEach { h -> FilterChip(schedule.hour == h && schedule.minute == 0, { onChange(schedule.copy(hour = h, minute = 0)) }, label = { Text(g.clockOf(h, 0)) }) }
+            g.ORDER_CHOICES.forEach { (on, name) -> FilterChip(schedule.sequential == on, { onChange(schedule.copy(sequential = on)) }, label = { Text(name) }) }
         }
+        if (schedule.sequential) {
+            val ordered = schedule.ordered(titles)
+            ordered.forEachIndexed { i, t ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${i + 1}. ${t.name}", Modifier.weight(1f))
+                    TextButton(onClick = { onChange(schedule.moved(titles, t.id, -1)) }, enabled = i > 0, modifier = Modifier.semantics { contentDescription = "Move ${t.name} up" }) { Text("▲") }
+                    TextButton(onClick = { onChange(schedule.moved(titles, t.id, 1)) }, enabled = i < ordered.lastIndex, modifier = Modifier.semantics { contentDescription = "Move ${t.name} down" }) { Text("▼") }
+                }
+            }
+        }
+        Text(g.ORDER_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -292,7 +351,7 @@ fun ScheduleChangeDialog(actions: AppActions, group: dev.nitrate.core.partners.W
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${group.titleNames} now: ${group.schedule?.label ?: "Binge"}. ${if (group.others.size == 1) "${group.label} has to agree" else "Most of the group has to agree"} before it changes.", style = MaterialTheme.typography.bodySmall)
-                SchedulePicker(schedule, lockable(actions)) { schedule = it }
+                SchedulePicker(schedule, lockable(actions), group.titles) { schedule = it }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -710,7 +769,7 @@ fun GroupSetupPages(actions: AppActions, start: dev.nitrate.core.partners.GroupS
                 }
                 dev.nitrate.core.partners.GroupSetup.Step.PACE -> {
                     if (!easy) Text("How new parts are let out to the group. Anything someone has watched with the group stays open; whether anyone may play ahead is the last step's choice.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    PacePicker(setup.schedule) { setup = setup.copy(schedule = it) }
+                    PacePicker(setup.schedule, setup.titles) { setup = setup.copy(schedule = it) }
                 }
                 dev.nitrate.core.partners.GroupSetup.Step.SESSION -> {
                     if (!easy) Text("Optional: a regular time to meet and watch the next part together, with a reminder 15 minutes before.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

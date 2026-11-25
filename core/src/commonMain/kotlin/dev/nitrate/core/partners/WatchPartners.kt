@@ -152,8 +152,27 @@ data class GroupSchedule(
     val party: PartyTime? = null,
     /** "If someone plays ahead": false "Ask first" (the default), true "Don't allow". Only matters while [active]. */
     val locked: Boolean = false,
+    /** [WEEKLY]'s days (0 = Sunday); empty: the older single [day]. */
+    val weekdays: List<Int> = emptyList(),
+    /** [WEEKLY] every week (1) or every other week (2). */
+    val everyWeeks: Int = 1,
+    /** [EVERY_FEW_DAYS]: every how many days (2–7). */
+    val everyDays: Int = 2,
+    /** [MONTHLY]: the day of the month (1–28). */
+    val monthDay: Int = 1,
+    /** How many parts each release opens (1–3). */
+    val perRelease: Int = 1,
+    /** The first part waits for the first release (else it's open at once). */
+    val firstLocked: Boolean = false,
+    /** The group's titles go one after another ([titleOrder]); else each keeps its own pace (separate, the default). */
+    val sequential: Boolean = false,
+    /** The titles' order when [sequential] (ids; the rest after, in the group's order). */
+    val titleOrder: List<String> = emptyList(),
 ) {
-    val limits get() = cadence == DAYS2 || cadence == DAYS3 || cadence == WEEKLY
+    val limits get() = cadence in PACED
+
+    /** [WEEKLY]'s days, the older single [day] when none are listed. */
+    val days: List<Int> get() = weekdays.ifEmpty { listOf(day.coerceIn(0, 6)) }.sorted()
 
     /** Whether it holds anything back: paced, or Together on. */
     val active get() = limits || together
@@ -166,9 +185,12 @@ data class GroupSchedule(
 
     /** The pace in a few words, for "ahead of your weekly schedule": "weekly", "every 2 days"... */
     val pace: String get() = when (cadence) {
+        DAILY -> "daily"
         DAYS2 -> "every 2 days"
         DAYS3 -> "every 3 days"
-        WEEKLY -> "weekly"
+        EVERY_FEW_DAYS -> "every ${everyDays.coerceIn(2, 7)} days"
+        WEEKLY -> if (everyWeeks >= 2) "every other week" else "weekly"
+        MONTHLY -> "monthly"
         else -> "binge"
     }
 
@@ -178,13 +200,23 @@ data class GroupSchedule(
      */
     val label: String get() = paceLabel + (if (together) ", together" else "") + (if (locked && active) ", locked" else "") + (party?.let { ", Group Watch Session ${it.label}" } ?: "")
 
-    /** The pace alone: "Thursdays 7pm", "Every 2 days, 7pm", "Binge". */
+    /**
+     * The pace alone: "Daily, 7pm", "Every 4 days, 7pm", "Thursdays 7pm", "Mon, Wed and Fri 9pm",
+     * "Every other Thursday 7pm", "Monthly on the 1st, 8pm", "Binge"; ", 2 at a time" when a release opens more than one.
+     */
     val paceLabel: String get() = when (cadence) {
+        DAILY -> "Daily, $clock"
         DAYS2 -> "Every 2 days, $clock"
         DAYS3 -> "Every 3 days, $clock"
-        WEEKLY -> "${DAYS[day.coerceIn(0, 6)]}s $clock"
+        EVERY_FEW_DAYS -> "Every ${everyDays.coerceIn(2, 7)} days, $clock"
+        WEEKLY -> {
+            val d = days
+            val which = if (d.size == 1) DAYS[d[0]] + (if (everyWeeks >= 2) "" else "s") else WatchPartners.names(d.map { DAYS[it].take(3) })
+            (if (everyWeeks >= 2) (if (d.size == 1) "Every other " else "Every other week: ") else "") + "$which $clock"
+        }
+        MONTHLY -> "Monthly on the ${ordinal(monthDay.coerceIn(1, 28))}, $clock"
         else -> "Binge"
-    }
+    } + (if (limits && perRelease > 1) ", ${perRelease.coerceIn(1, 3)} at a time" else "")
 
     /**
      * What accepting an invite agrees to, one short point each (the invite's prompt lists them):
@@ -193,6 +225,8 @@ data class GroupSchedule(
     val termLines: List<String> get() = buildList {
         if (limits) {
             add("Pace: $paceLabel")
+            if (firstLocked) add("The first part opens on the first release")
+            if (sequential) add("Titles: sequential, each one starting when the one before is done")
             add(if (locked) "Playing ahead: not allowed. Each part opens on the schedule" else "Playing ahead: allowed, with a note saying when it opens")
         }
         if (together) add(
@@ -200,6 +234,37 @@ data class GroupSchedule(
                 if (locked) "what the group hasn't watched plays only when you watch it together" else "playing what the group hasn't watched asks first",
         )
         party?.let { add("Group Watch Session: ${it.label}, to watch the next part together") }
+    }
+
+    /** The pace picked in a picker ([pickerCadence]: the older every 2/3 days read as every few days, keeping their count). */
+    fun picked(id: String): GroupSchedule = when {
+        id == EVERY_FEW_DAYS && cadence == DAYS2 -> copy(cadence = id, everyDays = 2)
+        id == EVERY_FEW_DAYS && cadence == DAYS3 -> copy(cadence = id, everyDays = 3)
+        id == WEEKLY && weekdays.isEmpty() -> copy(cadence = id, weekdays = listOf(day.coerceIn(0, 6)))
+        else -> copy(cadence = id)
+    }
+
+    /** [WEEKLY] with [weekday] added or taken off (one always stays). */
+    fun toggleDay(weekday: Int): GroupSchedule {
+        val now = days
+        val next = if (weekday in now) now - weekday else now + weekday
+        return if (next.isEmpty()) this else copy(weekdays = next.sorted(), day = next.min())
+    }
+
+    /** The release time an hour on or back (round the clock). */
+    fun hourStep(delta: Int): GroupSchedule = copy(hour = ((hour + delta) % 24 + 24) % 24)
+
+    /** [titles] in the order a [sequential] schedule plays them ([titleOrder] first, the rest as they are). */
+    fun ordered(titles: List<GroupTitle>): List<GroupTitle> =
+        titleOrder.mapNotNull { id -> titles.firstOrNull { it.id == id } } + titles.filter { it.id !in titleOrder }
+
+    /** [titleId] moved [delta] places in [ordered] (the order then kept in [titleOrder]). */
+    fun moved(titles: List<GroupTitle>, titleId: String, delta: Int): GroupSchedule {
+        val list = ordered(titles).toMutableList()
+        val at = list.indexOfFirst { it.id == titleId }.takeIf { it >= 0 } ?: return this
+        val to = (at + delta).coerceIn(0, list.lastIndex)
+        list.add(to, list.removeAt(at))
+        return copy(titleOrder = list.map { it.id })
     }
 
     /** "Ask first" / "Don't allow". */
@@ -249,7 +314,43 @@ data class GroupSchedule(
         const val DAYS2 = "days2"
         const val DAYS3 = "days3"
         const val WEEKLY = "weekly"
-        val CADENCES = listOf(BINGE to "Binge", DAYS2 to "Every 2 days", DAYS3 to "Every 3 days", WEEKLY to "Weekly")
+        const val DAILY = "daily"
+        const val EVERY_FEW_DAYS = "days"
+        const val MONTHLY = "monthly"
+
+        /** Every pace that rations parts (the older every-2 and every-3 days included). */
+        val PACED = setOf(DAILY, DAYS2, DAYS3, EVERY_FEW_DAYS, WEEKLY, MONTHLY)
+
+        /** The paces offered, in order (every 2 and 3 days are now Every few days). */
+        val CADENCES = listOf(BINGE to "Binge", DAILY to "Daily", EVERY_FEW_DAYS to "Every few days", WEEKLY to "Weekly", MONTHLY to "Monthly")
+
+        /** The older every-2/3-days paces read as Every few days in the pickers. */
+        fun pickerCadence(cadence: String) = if (cadence == DAYS2 || cadence == DAYS3) EVERY_FEW_DAYS else cadence
+
+        /** "1st", "2nd", "3rd", "4th"… */
+        fun ordinal(n: Int): String = "$n" + when {
+            n % 100 in 11..13 -> "th"
+            n % 10 == 1 -> "st"
+            n % 10 == 2 -> "nd"
+            n % 10 == 3 -> "rd"
+            else -> "th"
+        }
+
+        /** The minutes a release can fall on. */
+        val MINUTES = listOf(0, 15, 30, 45)
+
+        /** Parts each release opens, as offered. */
+        val PER_RELEASE = listOf(1 to "1 part", 2 to "2 parts", 3 to "3 parts")
+
+        /** The first part: open at once (the default), or waiting for the first release. */
+        val FIRST_CHOICES = listOf(false to "Open now", true to "On the first release")
+
+        /** Separate (the default) or Sequential. */
+        val ORDER_CHOICES = listOf(false to "Separate", true to "Sequential")
+
+        /** What Separate and Sequential mean, and when a playlist is better. */
+        const val ORDER_NOTE = "Separate: each title keeps its own pace. Sequential: the titles go one after another, " +
+            "each starting when the one before is done. For a mixed order, such as two shows interleaved, make a playlist and watch that."
         val DAYS = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 
         /** What Together on means, in one line. */

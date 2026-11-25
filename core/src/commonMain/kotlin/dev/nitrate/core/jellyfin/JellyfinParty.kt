@@ -58,6 +58,8 @@ internal fun ScheduleDto.toScheduleModel() = dev.nitrate.core.partners.GroupSche
     cadence, day, hour, minute, softLock, together,
     party?.takeIf { it.days.isNotEmpty() }?.let { dev.nitrate.core.partners.PartyTime(it.days, it.hour, it.minute) },
     locked = locked,
+    weekdays = weekdays, everyWeeks = everyWeeks, everyDays = everyDays, monthDay = monthDay, perRelease = perRelease,
+    firstLocked = firstLocked, sequential = sequential, titleOrder = titleOrder.map(::normalizeId),
 )
 
 /** A "Nitrate.Party" message's schedule news (null when it's party news, or not a message at all). */

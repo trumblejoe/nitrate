@@ -2774,6 +2774,25 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.partners.GroupSetupDialog(c, start) {}
     }
 
+    /** The pace step with two titles: weekly on two days, two parts a release, Sequential with the titles in order; ▼ reaches each choice. */
+    @Test fun groupSetupPace() = shoot("tv-group-setup-pace", setup = { c -> c.refreshCompanionForTests() }, act = {
+        check(focusedHasText("Binge")) { "focus on the first pace; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Sequential")).fetchSemanticsNodes().isNotEmpty()) { "Separate or Sequential with two titles" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("1. Nitrate")).fetchSemanticsNodes().isNotEmpty()) { "the titles in the schedule's order" }
+        repeat(6) { press("down") }
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "▼ keeps focus in the picker" }
+    }) { c ->
+        val start = dev.nitrate.core.partners.GroupSetup(
+            dev.nitrate.core.partners.GroupSetup.Step.PACE,
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")), people = listOf("user-2"),
+            schedule = dev.nitrate.core.partners.GroupSchedule(
+                dev.nitrate.core.partners.GroupSchedule.WEEKLY, weekdays = listOf(1, 4), hour = 20, minute = 30, perRelease = 2,
+                sequential = true, titleOrder = listOf("m1", "series-1"),
+            ),
+        )
+        dev.nitrate.tv.ui.partners.GroupSetupDialog(c, start) {}
+    }
+
     /** Sending the invite: Done takes focus (the Send button it replaces had it), plainly focused. */
     @Test fun groupSetupSentFocusesDone() = shoot("tv-group-setup-sent", setup = { c -> c.refreshCompanionForTests() }, act = {
         compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText("Send the invite"))

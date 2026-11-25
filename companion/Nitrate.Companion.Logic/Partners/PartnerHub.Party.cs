@@ -408,8 +408,7 @@ public partial class PartnerHub
 
     /// <summary>
     /// What plays at the Group Watch Session, by the group's record: in the title the group watched
-    /// most lately that still has a part to play (else the first such title), with Together on the
-    /// part after the furthest anyone watched with the group; else the part after the furthest
+    /// most lately that still has a part to play (else the first such title), the first part not
     /// everyone has watched (so nobody misses one); labelled "S1:E4" or by name.
     /// </summary>
     private PartyView WithPart(PartyView stub, WatchGroup g, IReadOnlyList<GroupWatch> record, IReadOnlyDictionary<Guid, IReadOnlyList<Guid>> orders)
@@ -436,7 +435,10 @@ public partial class PartnerHub
 
         var index = order.Select((id, i) => (id, i)).GroupBy(x => x.id).ToDictionary(x => x.Key, x => x.First().i);
         var reach = everyone.Select(x => x.Watched.Where(index.ContainsKey).Select(id => index[id]).DefaultIfEmpty(-1).Max()).ToList();
-        var from = record ? reach.Max() : reach.Min();
+        // The first part not everyone has watched, so nobody misses one (with Together on as well:
+        // offering the part after the furthest anyone had watched skipped it for the rest).
+        _ = record;
+        var from = reach.Min();
         return from + 1 < order.Count ? order[from + 1] : null;
     }
 
