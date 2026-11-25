@@ -31,6 +31,7 @@ import kotlinx.serialization.Serializable
     val rating: Int? = null,
     val note: String? = null,
     val logged: Boolean = false,
+    val groupIds: List<String>? = null,
 )
 @Serializable internal data class LinesStatusDto(val titles: Int = 0, val lines: Long = 0, val enabled: Boolean = true)
 @Serializable internal data class DiaryPostDto(val itemId: String, val watchedAt: Long?, val rating: Int?, val note: String?)
@@ -88,7 +89,7 @@ internal class JellyfinDiary(private val client: JellyfinClient) {
 
     private fun DiaryEntryDto.toModel() = DiaryEntry(
         normalizeId(id), normalizeId(itemId), kind(kind), name, seriesId?.let(::normalizeId), seriesName, season, episode, year, runtimeMs,
-        genres, watchedAt, rating, note, logged,
+        genres, watchedAt, rating, note, logged, groupIds.orEmpty().map(::normalizeId),
     )
 
     private fun kind(k: String) = if (k.equals("Episode", ignoreCase = true)) ItemKind.EPISODE else ItemKind.MOVIE

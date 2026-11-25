@@ -200,6 +200,12 @@ class WatchCompany(
     private val ask: (CountAsk) -> Unit = {},
     /** Where a part was left part-way while watching it for a group: the group's own resume point (`setGroupResume`). */
     private val resume: suspend (groupId: String, itemId: String, positionMs: Long) -> Unit = { _, _, _ -> },
+    /**
+     * Says a playback is watched for [groupIds] (empty: the user's own after all), with the user's own
+     * state for it from before it started, so the server puts that back when it stops and a group
+     * watch never shows in the user's own history (`MediaServer.groupPlay`).
+     */
+    private val forGroups: suspend (itemId: String, groupIds: List<String>, before: dev.nitrate.core.model.UserState) -> Unit = { _, _, _ -> },
 ) {
     private val item = MutableStateFlow<MediaItem?>(null)
     private val with = MutableStateFlow<WatchingWith?>(null)
@@ -209,6 +215,36 @@ class WatchCompany(
     private var titleId: String? = null
 
     private val inputs = combine(item, with, inRoom, origin) { i, w, r, o -> Inputs(i, w, r, o) }
+
+    /** Each item's own watch state as it was handed to the player (before it played), by id. */
+    private val before = mutableMapOf<String, dev.nitrate.core.model.UserState>()
+
+    /** What was last said to the server: the item and the groups it's watched for. */
+    private var said: Pair<String, List<String>>? = null
+
+    init {
+        // Whenever who a playback is for changes (it starts, "Change", the room, a live session),
+        // the server is told, with the user's own state from before it.
+        scope.launch {
+            combine(inputs, partners, standings, session) { x, _, _, p -> x.item?.let { it to groupsFor(it, p) } }
+                .collect { now ->
+                    val (playing, groups) = now ?: return@collect
+                    val last = said
+                    // A new item that's the user's own: nothing to say.
+                    if (groups.isEmpty() && last?.first != playing.id) return@collect
+                    if (last == playing.id to groups) return@collect
+                    said = playing.id to groups
+                    runCatching { forGroups(playing.id, groups, before[playing.id] ?: playing.user) }
+                }
+        }
+    }
+
+    /** The groups [playing] is watched for now: a live session's, the room's, else what it counts for. */
+    private fun groupsFor(playing: MediaItem, live: GroupWatchSession?): List<String> = when {
+        live != null && live.live && live.itemId == playing.id -> listOf(live.groupId)
+        inRoom.value != null -> listOf(inRoom.value!!.groupId)
+        else -> counting(playing)?.groups?.map { it.id }.orEmpty()
+    }
 
     private data class Inputs(val item: MediaItem?, val with: WatchingWith?, val room: SameRoom?, val origin: PlayOrigin)
 
@@ -232,6 +268,8 @@ class WatchCompany(
             origin.value = said ?: PlayOrigin.Elsewhere
         } else if (said != null) origin.value = said
         onPlaying(title, origin.value)
+        // As handed to the player, before it played: what the server puts back after a group watch.
+        if (playing.id !in before) before[playing.id] = playing.user
         item.value = playing
     }
 

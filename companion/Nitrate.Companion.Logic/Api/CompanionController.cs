@@ -115,6 +115,8 @@ public class CompanionController : ControllerBase
         features.Add("home");
         // Facts about the playlists a person is watching through, for the apps' own rules (GET /Nitrate/Playlists/Watching).
         features.Add("playlistfacts");
+        // Group watches kept out of the person's own history (POST /Nitrate/Partners/GroupPlay; diary entries carry GroupIds).
+        features.Add("groupplay");
         // Change counters for the apps' kept rows (GET /Nitrate/Changes).
         features.Add("changes");
         features.Add("formats");

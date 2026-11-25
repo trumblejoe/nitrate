@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -56,6 +57,8 @@ fun DiaryScreen(actions: AppActions) {
     val files = dev.nitrate.mobile.platform.rememberFilePickers(onOpened = {}, onResult = { message = it })
     val list = entries?.getOrNull()
     val rewatches = remember(list) { list?.let(Diary::rewatches).orEmpty() }
+    val groupsInfo by actions.container.partners.collectAsState()
+    fun groupName(id: String) = groupsInfo?.groups?.firstOrNull { it.id == id }?.let(dev.nitrate.core.partners.WithChip::nameOf)
 
     LazyColumn(
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
@@ -84,7 +87,8 @@ fun DiaryScreen(actions: AppActions) {
                         Text(dev.nitrate.mobile.platform.formatPattern(e.watchedAtMs, "EEE d"), style = MaterialTheme.typography.labelMedium, color = accentColor(), modifier = Modifier.width(56.dp))
                         Column(Modifier.weight(1f)) {
                             Text(e.title + (e.year?.takeIf { e.episodeLabel == null }?.let { " ($it)" } ?: ""), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            val sub = listOfNotNull(e.episodeLabel, "Rewatch".takeIf { e.id in rewatches })
+                            // A group watch says who with: it's kept apart from the user's own watching.
+                            val sub = listOfNotNull(e.episodeLabel, Diary.withLabel(e, ::groupName), "Rewatch".takeIf { e.id in rewatches })
                             if (sub.isNotEmpty()) Text(sub.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             e.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                         }

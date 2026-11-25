@@ -1341,6 +1341,17 @@ class JellyfinClient(
         return ids.mapNotNull { found[it] }
     }
 
+    override suspend fun groupPlay(itemId: String, groupIds: List<String>, before: dev.nitrate.core.model.UserState) {
+        if (!companionHas("groupplay")) return
+        post<GroupPlayDto>(
+            "Nitrate", "Partners", "GroupPlay",
+            body = GroupPlayDto(
+                dashless(listOf(itemId)), groupIds.map { dashless(listOf(it)) },
+                OwnStateDto(before.played, before.positionMs, before.playCount, before.lastPlayedMs),
+            ),
+        )
+    }
+
     override suspend fun changeCheck(since: String?): dev.nitrate.core.rows.ChangeCheck? {
         if (!companionHas("changes")) return null
         return runCatching {

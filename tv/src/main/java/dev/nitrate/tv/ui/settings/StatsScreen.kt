@@ -47,22 +47,30 @@ private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Au
 
 /** "Your year" on TV: what you watched and listened to, from your server's record. */
 @Composable
-fun StatsScreen(server: MediaServer) {
+fun StatsScreen(server: MediaServer, groups: dev.nitrate.core.partners.PartnersInfo? = null) {
     // With the watch diary (Companion plugin), every watch counts on its own date.
     var fromDiary by remember { mutableStateOf<Long?>(null) }
-    val history by produceState<Result<List<MediaItem>>?>(null) {
+    // The server's record and the diary (whose entries say which were watched with a group).
+    val history by produceState<Result<Pair<List<MediaItem>, List<dev.nitrate.core.diary.DiaryEntry>?>>?>(null) {
         value = runCatching {
             val record = server.watchHistory()
             val diary = if (server.companion()?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) runCatching { server.diary() }.getOrNull() else null
             fromDiary = diary?.minOfOrNull { it.watchedAtMs }
-            diary?.takeIf { it.isNotEmpty() }?.let { dev.nitrate.core.diary.Diary.asHistory(it, record) } ?: record
+            record to diary?.takeIf { it.isNotEmpty() }
         }
     }
     val offset = remember { java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong() }
-    val list = history?.getOrNull()
+    val loaded = history?.getOrNull()
+    // Years with any watching, the user's own or with groups.
+    val list = remember(loaded) { loaded?.let { (record, diary) -> if (diary == null) record else dev.nitrate.core.diary.Diary.asHistory(diary, record) } }
     val years = remember(list) { list?.let { WatchStatsBuilder.years(it, offset) }.orEmpty() }
     var year by remember(years) { mutableStateOf(years.firstOrNull()) }
-    val stats = remember(list, year) { list?.let { WatchStatsBuilder.build(it, year, offset) } }
+    val split = remember(loaded, year, groups) {
+        loaded?.let { (record, diary) ->
+            dev.nitrate.core.stats.SplitStatsBuilder.build(diary, record, year, offset) { id -> groups?.groups?.firstOrNull { it.id == id }?.let(dev.nitrate.core.partners.WithChip::nameOf) }
+        }
+    }
+    val stats = split?.own
     // Real watch time (Companion `watching`): every sitting, pauses left out.
     val sittings by produceState(emptyList<dev.nitrate.core.companion.Sitting>()) {
         value = runCatching { server.sittings(0, System.currentTimeMillis()) }.getOrDefault(emptyList())
@@ -102,6 +110,21 @@ fun StatsScreen(server: MediaServer) {
                 }
                 if (stats.byMonth.any { it > 0 }) item { Stop { Months(stats.byMonth) } }
                 if (listOf(stats.topShows, stats.topGenres, stats.rewatched, stats.topArtists).any { it.isNotEmpty() }) item { Stop { Tops(stats) } }
+                // Watching with groups, kept apart from the user's own.
+                split?.takeIf { it.groups.isNotEmpty() || !it.withGroups.isEmpty }?.let { s ->
+                    item {
+                        Stop {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("With your watch groups", style = MaterialTheme.typography.titleLarge)
+                                Text(
+                                    "${WatchStatsBuilder.duration(s.withGroups.watchMinutes)} · ${s.withGroups.films + s.withGroups.episodes} films and episodes. Counted here, not in your own figures above.",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                s.groups.forEach { g -> Text("${g.name}: ${g.count} watched · ${WatchStatsBuilder.duration(g.minutes)}", style = MaterialTheme.typography.bodyMedium) }
+                            }
+                        }
+                    }
+                }
                 item {
                     Stop { Text(
                         fromDiary?.let { "From your watch diary, which counts every watch on its own date (since ${java.text.DateFormat.getDateInstance().format(java.util.Date(it))}; before that, your server's record of the last time you watched each title)." }

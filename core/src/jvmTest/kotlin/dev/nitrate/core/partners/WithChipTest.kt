@@ -131,6 +131,36 @@ class WithChipTest {
         assertEquals("Counting for you and Kim · Change", next.chip.value!!.label)
     }
 
+    @Test fun aGroupWatchIsSaidWithTheOwnStateFromBefore() = runTest(UnconfinedTestDispatcher()) {
+        val st = standings(tommySuzy, kim)
+        val said = mutableListOf<String>()
+        val handed = mutableMapOf<String, PlayOrigin>("e4" to PlayOrigin.GroupCard("ts"))
+        val company = WatchCompany(
+            backgroundScope, MutableStateFlow(info(tommySuzy, kim)), MutableStateFlow(st), MutableStateFlow(null), { "Me" },
+            originOf = { handed.remove(it.id) },
+            forGroups = { item, groups, before -> said += "$item $groups ${before.played} ${before.positionMs}" },
+        )
+        // Handed to the player before it played: unwatched, left at 2 minutes on the user's own.
+        val own = eps[3].copy(user = eps[3].user.copy(played = false, positionMs = 120_000))
+        company.start(own, st)
+        advanceUntilIdle()
+        assertEquals(listOf("e4 [ts] false 120000"), said)
+        // The same item handed again later (now with what the playback did to it): the state from before stays.
+        company.start(own.copy(user = own.user.copy(played = true, positionMs = 0)), st)
+        advanceUntilIdle()
+        assertEquals(1, said.size)
+        // "Change" to just the user: it's theirs after all.
+        company.countFor(WatchingWith.JustMe)
+        advanceUntilIdle()
+        assertEquals("e4 [] false 120000", said.last())
+        // A playback that's the user's own from the start says nothing.
+        val solo = WatchCompany(backgroundScope, MutableStateFlow(info(tommySuzy, kim)), MutableStateFlow(st), MutableStateFlow(null), { "Me" },
+            forGroups = { item, groups, _ -> said += "solo $item $groups" })
+        solo.start(eps[5], st)
+        advanceUntilIdle()
+        assertTrue(said.none { it.startsWith("solo") })
+    }
+
     @Test fun fromAGroupsCardItCountsThereAndAsksAboutTheOthersOnce() = runTest(UnconfinedTestDispatcher()) {
         // Episode 4 is next with Tommy & Suzy and with Kim; played from Tommy & Suzy's card.
         val st = standings(tommySuzy, kim)

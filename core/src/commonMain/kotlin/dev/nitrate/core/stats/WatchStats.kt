@@ -105,3 +105,41 @@ object WatchStatsBuilder {
         }
     }
 }
+
+/** One watch group's share of the watching: how many films and episodes, and how long. */
+data class GroupTally(val groupId: String, val name: String, val count: Int, val minutes: Long)
+
+/**
+ * Watching split by who it was with: the user's own (their server record and diary entries of their
+ * own), everything watched with groups (diary entries watched for a group), and each group's share.
+ * A group watch never counts in the user's own figures.
+ */
+data class SplitStats(val own: WatchStats, val withGroups: WatchStats, val groups: List<GroupTally>)
+
+object SplitStatsBuilder {
+    /**
+     * [diary] (with each entry's groups), [record] (the server's own record) for [year], [groupName]
+     * naming a group id ("Tommy & Suzy"; null: a group the user is no longer in, "A past group").
+     */
+    fun build(
+        diary: List<dev.nitrate.core.diary.DiaryEntry>?,
+        record: List<MediaItem>,
+        year: Int?,
+        utcOffsetMs: Long,
+        groupName: (String) -> String?,
+    ): SplitStats {
+        val own = diary.orEmpty().filter { !it.withGroup }
+        val withGroups = diary.orEmpty().filter { it.withGroup }
+        val ownHistory = if (own.isEmpty()) record else dev.nitrate.core.diary.Diary.asHistory(own, record)
+        val groupHistory = if (withGroups.isEmpty()) emptyList() else dev.nitrate.core.diary.Diary.asHistory(withGroups, emptyList())
+        fun inYear(e: dev.nitrate.core.diary.DiaryEntry) = year == null || WatchStatsBuilder.civil(e.watchedAtMs + utcOffsetMs).first == year
+        val perGroup = withGroups.filter(::inYear).flatMap { e -> e.groupIds.map { it to e } }.groupBy({ it.first }, { it.second })
+            .map { (id, es) -> GroupTally(id, groupName(id) ?: "A past group", es.size, es.sumOf { (it.runtimeMs ?: 0) / 60_000 }) }
+            .sortedByDescending { it.minutes }
+        return SplitStats(
+            WatchStatsBuilder.build(ownHistory, year, utcOffsetMs),
+            WatchStatsBuilder.build(groupHistory, year, utcOffsetMs),
+            perGroup,
+        )
+    }
+}

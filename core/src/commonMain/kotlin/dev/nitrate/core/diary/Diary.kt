@@ -25,7 +25,12 @@ data class DiaryEntry(
     val rating: Int?,
     val note: String?,
     val logged: Boolean,
+    /** Watched for these watch groups (kept apart from the user's own watching); empty: their own. */
+    val groupIds: List<String> = emptyList(),
 ) {
+    /** Watched with a group rather than on the user's own. */
+    val withGroup: Boolean get() = groupIds.isNotEmpty()
+
     val title: String get() = if (kind == ItemKind.EPISODE) seriesName ?: name else name
     val episodeLabel: String? get() = if (kind == ItemKind.EPISODE) "S${season ?: "?"}:E${episode ?: "?"} · $name" else null
 }
@@ -74,6 +79,10 @@ object Diary {
      * plays counted and its last watch as the date. Titles finished before the diary began
      * ([history] items last played before the first entry) are added as before.
      */
+    /** "With Tommy & Suzy" for an entry watched with groups ([groupName] names a group id; null: no longer in it), else null. */
+    fun withLabel(entry: DiaryEntry, groupName: (String) -> String?): String? =
+        if (!entry.withGroup) null else "With " + entry.groupIds.map { groupName(it) ?: "a past group" }.distinct().joinToString(", ")
+
     fun asHistory(entries: List<DiaryEntry>, history: List<MediaItem>): List<MediaItem> {
         val start = entries.minOfOrNull { it.watchedAtMs } ?: return history
         val fromDiary = entries.groupBy { it.itemId }.map { (_, plays) ->

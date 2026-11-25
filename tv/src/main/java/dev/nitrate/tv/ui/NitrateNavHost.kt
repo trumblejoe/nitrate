@@ -391,8 +391,14 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<LicensesRoute> { dev.nitrate.tv.ui.settings.LicensesScreen() }
         composable<SpeedCheckRoute> { dev.nitrate.tv.ui.settings.SpeedCheckScreen(container) }
         composable<QueryAnalyzerRoute> { dev.nitrate.tv.ui.settings.QueryAnalyzerScreen(container) }
-        composable<StatsRoute> { dev.nitrate.tv.ui.settings.StatsScreen(container.server) }
-        composable<DiaryRoute> { dev.nitrate.tv.ui.settings.DiaryScreen(container.server) }
+        composable<StatsRoute> {
+            val groups by container.partners.collectAsState()
+            dev.nitrate.tv.ui.settings.StatsScreen(container.server, groups)
+        }
+        composable<DiaryRoute> {
+            val groups by container.partners.collectAsState()
+            dev.nitrate.tv.ui.settings.DiaryScreen(container.server, groups)
+        }
         composable<ServerSettingsRoute> { dev.nitrate.tv.ui.settings.ServerSettingsScreen(container) }
         composable<DisplayProfilesRoute> { dev.nitrate.tv.ui.settings.DisplayProfilesScreen(container) }
         composable<DeviceBackupRoute> { dev.nitrate.tv.ui.settings.DeviceBackupScreen(container.backups) }

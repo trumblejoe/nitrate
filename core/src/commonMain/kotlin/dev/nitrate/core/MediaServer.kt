@@ -1024,6 +1024,13 @@ interface MediaServer {
      */
     suspend fun changeCheck(since: String?): dev.nitrate.core.rows.ChangeCheck? = null
 
+    /**
+     * [itemId] is being watched for [groupIds] (empty: the user's own after all); [before] is the user's
+     * own state for it from before it played, which the server (the Companion) puts back when the
+     * playback stops, so a group watch stays out of the user's own history. Nothing without it.
+     */
+    suspend fun groupPlay(itemId: String, groupIds: List<String>, before: dev.nitrate.core.model.UserState) {}
+
     /** [rows] with each card's watched marks and progress as the server has them now (one light request). */
     suspend fun withFreshMarks(rows: List<dev.nitrate.core.rows.MediaRow>): List<dev.nitrate.core.rows.MediaRow> = rows
 

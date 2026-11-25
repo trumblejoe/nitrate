@@ -48,7 +48,8 @@ import java.util.Locale
  * the user's rating and note. OK on one rates it, adds a note or removes it.
  */
 @Composable
-fun DiaryScreen(server: MediaServer) {
+fun DiaryScreen(server: MediaServer, groups: dev.nitrate.core.partners.PartnersInfo? = null) {
+    fun groupName(id: String) = groups?.groups?.firstOrNull { it.id == id }?.let(dev.nitrate.core.partners.WithChip::nameOf)
     var reload by remember { mutableIntStateOf(0) }
     val entries by produceState<Result<List<DiaryEntry>>?>(null, reload) { value = runCatching { server.diary() } }
     var editing by remember { mutableStateOf<DiaryEntry?>(null) }
@@ -77,7 +78,8 @@ fun DiaryScreen(server: MediaServer) {
                     overlineContent = { Text(date.format(Date(e.watchedAtMs))) },
                     headlineContent = { Text(e.title + (e.year?.takeIf { e.episodeLabel == null }?.let { " ($it)" } ?: "")) },
                     supportingContent = {
-                        val sub = listOfNotNull(e.episodeLabel, "Rewatch".takeIf { e.id in rewatches }, e.note)
+                        // A group watch says who with: it's kept apart from the user's own watching.
+                        val sub = listOfNotNull(e.episodeLabel, Diary.withLabel(e, ::groupName), "Rewatch".takeIf { e.id in rewatches }, e.note)
                         if (sub.isNotEmpty()) Text(sub.joinToString(" · "), maxLines = 1)
                     },
                     trailingContent = { Text(Diary.stars(e.rating), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) },

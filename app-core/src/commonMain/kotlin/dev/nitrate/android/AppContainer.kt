@@ -686,6 +686,10 @@ class AppContainer(
                 }
             },
             ask = { if (companion.value?.features?.contains("groupwatch") == true) asked(it) },
+            // Watched for groups: the server puts the user's own state back when it stops (a group watch isn't theirs).
+            forGroups = { item, groups, before ->
+                networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch groups")) { runCatching { server.groupPlay(item, groups, before) } }
+            },
             // Left part-way for a group: the group's own resume point; Home then shows it on the group's card, not in Continue Watching.
             resume = { group, item, at ->
                 if (companion.value?.features?.contains(dev.nitrate.core.partners.WatchPartners.RESUME_FEATURE) == true) networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch groups")) {

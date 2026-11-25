@@ -5,7 +5,10 @@ namespace Nitrate.Companion.Diary;
 /// <summary>What was watched (filled in from the library when it's recorded).</summary>
 public record DiaryTitle(Guid ItemId, string Kind, string Name, Guid? SeriesId, string? SeriesName, int? Season, int? Episode, int? Year, long? RuntimeMs, IReadOnlyList<string> Genres);
 
-/// <summary>One watch: a title, when it was finished, and the person's own rating (1–10, half stars) and note.</summary>
+/// <summary>
+/// One watch: a title, when it was finished, and the person's own rating (1–10, half stars) and note.
+/// [GroupIds]: watched for those groups (kept apart from the person's own watching), else null.
+/// </summary>
 public record DiaryEntry(
     Guid Id,
     Guid ItemId,
@@ -21,7 +24,8 @@ public record DiaryEntry(
     long WatchedAt,
     int? Rating,
     string? Note,
-    bool Logged);
+    bool Logged,
+    IReadOnlyList<Guid>? GroupIds = null);
 
 /// <summary>A change to an entry: a rating (null keeps it, 0 clears it), a note (null keeps it, "" clears it), or the date.</summary>
 public record DiaryEdit(int? Rating, string? Note, long? WatchedAt);
@@ -97,7 +101,7 @@ public class DiaryHub
     }
 
     /// <summary>Records that <paramref name="userId"/> finished <paramref name="title"/> just now (once per watch).</summary>
-    public DiaryEntry? Finished(Guid userId, DiaryTitle title)
+    public DiaryEntry? Finished(Guid userId, DiaryTitle title, IReadOnlyList<Guid>? groupIds = null)
     {
         var now = _time.GetUtcNow().ToUnixTimeMilliseconds();
         return Change(userId, list =>
@@ -107,7 +111,7 @@ public class DiaryHub
                 return null;
             }
 
-            var entry = Entry(title, now, null, null, logged: false);
+            var entry = Entry(title, now, null, null, logged: false) with { GroupIds = groupIds is { Count: > 0 } ? groupIds : null };
             list.Add(entry);
             return entry;
         });

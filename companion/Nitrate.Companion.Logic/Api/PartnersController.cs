@@ -62,6 +62,12 @@ public record PartyCantPost(bool Cant = true);
 /// <summary>The live session the starter of tonight's watch party made.</summary>
 public record PartySessionPut(string SessionId);
 
+/// <summary>A playback being watched for groups, as it starts: the caller's own state before it, to be put back when it stops.</summary>
+/// <param name="ItemId">The part playing.</param>
+/// <param name="GroupIds">The groups it's watched for (the caller must be in each); empty: it's the caller's own after all.</param>
+/// <param name="Before">The caller's own state for it before the playback.</param>
+public record GroupPlayPost(Guid ItemId, IReadOnlyList<Guid>? GroupIds, OwnState? Before);
+
 /// <summary>Watch partners and private accounts (see <see cref="PartnerHub"/>).</summary>
 [ApiController]
 [Authorize]
@@ -72,10 +78,12 @@ public class PartnersController : ControllerBase
     private const string UserIdClaim = "Jellyfin-UserId";
     private readonly PartnerHub _partners;
     private readonly IUserManager _users;
+    private readonly GroupPlays _groupPlays;
 
     /// <summary>Initializes a new instance of the <see cref="PartnersController"/> class.</summary>
-    public PartnersController(PartnerHub partners, IUserManager users)
+    public PartnersController(PartnerHub partners, IUserManager users, GroupPlays groupPlays)
     {
+        _groupPlays = groupPlays;
         _partners = partners;
         _users = users;
     }
@@ -118,6 +126,36 @@ public class PartnersController : ControllerBase
     /// <summary>Removes a title from the caller's group (any member may; a group keeps at least one).</summary>
     [HttpDelete("Partners/Groups/{id}/Titles/{titleId}")]
     public ActionResult RemoveTitle([FromRoute] Guid id, [FromRoute] Guid titleId) => Done(me => _partners.RemoveTitle(me, id, titleId));
+
+    /// <summary>
+    /// A playback the caller is watching for groups (said as it starts, or when they change who it counts
+    /// for): when it stops, their own watched state, resume point, play count and last-played date for it
+    /// are put back as they were, so a group watch never shows in their own history. No groups: it's
+    /// their own after all, and nothing is put back.
+    /// </summary>
+    [HttpPost("Partners/GroupPlay")]
+    public ActionResult GroupPlay([FromBody] GroupPlayPost body) => Done(me =>
+    {
+        var groups = (body.GroupIds ?? Array.Empty<Guid>()).Distinct().ToList();
+        if (groups.Count == 0)
+        {
+            _groupPlays.NotForGroups(me, body.ItemId);
+            return;
+        }
+
+        var mine = _partners.Groups(me).Select(g => g.Id).ToHashSet();
+        if (groups.Any(g => !mine.Contains(g)))
+        {
+            throw new PartnerException(PartnerError.NotFound, "Not one of your groups");
+        }
+
+        if (body.Before is null)
+        {
+            throw new PartnerException(PartnerError.Invalid, "Your own state before the playback is needed");
+        }
+
+        _groupPlays.Playing(me, body.ItemId, groups, body.Before);
+    });
 
     /// <summary>The caller's resume point in a group (a part stopped part-way while watching it for the group).</summary>
     [HttpPut("Partners/Groups/{id}/Resume")]

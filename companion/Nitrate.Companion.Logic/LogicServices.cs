@@ -62,6 +62,9 @@ public static class LogicServices
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Diary.DiaryHub(
             new Nitrate.Companion.Storage.DbDiaryStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "diary")),
             sp.GetRequiredService<TimeProvider>()));
+        // A group watch kept out of the person's own history (their state put back when it stops).
+        serviceCollection.AddSingleton<GroupPlays>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<GroupPlays>());
         serviceCollection.AddHostedService<Nitrate.Companion.Diary.DiaryRecorder>();
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Lines.LineIndex(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "lines.db")));

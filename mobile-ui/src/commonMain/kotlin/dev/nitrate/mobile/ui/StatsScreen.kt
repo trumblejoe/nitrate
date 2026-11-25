@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,19 +49,28 @@ private val MONTHS = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N
 fun StatsScreen(actions: AppActions) {
     // With the watch diary (Companion plugin), every watch counts on its own date.
     var fromDiary by remember { mutableStateOf<Long?>(null) }
-    val history by produceState<Result<List<MediaItem>>?>(null) {
+    // The server's record and the diary (whose entries say which were watched with a group).
+    val history by produceState<Result<Pair<List<MediaItem>, List<dev.nitrate.core.diary.DiaryEntry>?>>?>(null) {
         value = runCatching {
             val record = actions.server.watchHistory()
             val diary = if (actions.server.companion()?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) runCatching { actions.server.diary() }.getOrNull() else null
             fromDiary = diary?.minOfOrNull { it.watchedAtMs }
-            diary?.takeIf { it.isNotEmpty() }?.let { dev.nitrate.core.diary.Diary.asHistory(it, record) } ?: record
+            record to diary?.takeIf { it.isNotEmpty() }
         }
     }
     val offset = remember { dev.nitrate.mobile.platform.timeZoneOffsetMs() }
-    val list = history?.getOrNull()
+    val groupsInfo by actions.container.partners.collectAsState()
+    val loaded = history?.getOrNull()
+    // Years with any watching, the user's own or with groups.
+    val list = remember(loaded) { loaded?.let { (record, diary) -> if (diary == null) record else dev.nitrate.core.diary.Diary.asHistory(diary, record) } }
     val years = remember(list) { list?.let { WatchStatsBuilder.years(it, offset) }.orEmpty() }
     var year by remember(years) { mutableStateOf(years.firstOrNull()) }
-    val stats = remember(list, year) { list?.let { WatchStatsBuilder.build(it, year, offset) } }
+    val split = remember(loaded, year, groupsInfo) {
+        loaded?.let { (record, diary) ->
+            dev.nitrate.core.stats.SplitStatsBuilder.build(diary, record, year, offset) { id -> groupsInfo?.groups?.firstOrNull { it.id == id }?.let(dev.nitrate.core.partners.WithChip::nameOf) }
+        }
+    }
+    val stats = split?.own
     // Real watch time (Companion `watching`): every sitting, pauses left out.
     val sittings by produceState(emptyList<dev.nitrate.core.companion.Sitting>()) {
         value = runCatching { actions.server.sittings(0, dev.nitrate.android.nowMs()) }.getOrDefault(emptyList())
@@ -85,6 +95,7 @@ fun StatsScreen(actions: AppActions) {
                     FilterChip(selected = year == null, onClick = { year = null }, label = { Text("All time") })
                 }
                 StatsBody(stats)
+                split?.takeIf { it.groups.isNotEmpty() || !it.withGroups.isEmpty }?.let { GroupsBody(it) }
                 watchTime?.let { w ->
                     Column {
                         Text("Time in front of the screen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -117,6 +128,20 @@ private fun StatsBody(s: WatchStats) {
     Tallies("Top genres", s.topGenres) { WatchStatsBuilder.duration(it.minutes) }
     Tallies("Watched again", s.rewatched) { "${it.count} times" }
     Tallies("Top artists", s.topArtists) { "${it.count} play${if (it.count == 1) "" else "s"}" }
+}
+
+/** Watching with groups, kept apart from the user's own: the total, then each group's share. */
+@Composable
+private fun GroupsBody(s: dev.nitrate.core.stats.SplitStats) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("With your watch groups", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("Watched with a group: counted here, not in your own figures above.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BigNumber(WatchStatsBuilder.duration(s.withGroups.watchMinutes), "with groups", Modifier.weight(1f))
+            BigNumber("${s.withGroups.films + s.withGroups.episodes}", "films and episodes", Modifier.weight(1f))
+        }
+        Tallies("By group", s.groups.map { Tally(it.name, it.count, it.minutes, it.groupId) }) { "${it.count} watched · ${WatchStatsBuilder.duration(it.minutes)}" }
+    }
 }
 
 @Composable

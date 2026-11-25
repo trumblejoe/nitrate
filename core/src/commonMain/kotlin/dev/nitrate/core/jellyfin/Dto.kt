@@ -367,6 +367,13 @@ internal data class QueryFiltersLegacyDto(
 @Serializable
 internal data class QueryTimeDto(val tag: String, val ms: Long)
 
+/** A playback watched for groups (POST /Nitrate/Partners/GroupPlay). */
+@Serializable
+internal data class GroupPlayDto(val itemId: String, val groupIds: List<String>, val before: OwnStateDto)
+
+@Serializable
+internal data class OwnStateDto(val played: Boolean, val positionMs: Long, val playCount: Int, val lastPlayedMs: Long?)
+
 /** One playlist's facts from the Companion (GET /Nitrate/Playlists/Watching). */
 @Serializable
 internal data class PlaylistFactsDto(val id: String, val entries: List<EntryFactsDto> = emptyList()) {
