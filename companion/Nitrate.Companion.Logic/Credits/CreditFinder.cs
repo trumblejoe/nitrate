@@ -23,6 +23,12 @@ public static class CreditFinder
     public const double CreditsFrom = 0.7;
 
     /// <summary>
+    /// A scene in or after the credits is short: more pictures than this after a dark stretch means
+    /// the film went on (a night or smoke-filled scene read as credits). Core's MAX_SCENE_MS.
+    /// </summary>
+    public const long MaxSceneMs = 6 * 60_000;
+
+    /// <summary>
     /// The skips in [frames] (greyscale bytes, one every [intervalMs] from [startMs]) of a title
     /// [runtimeMs] long.
     /// </summary>
@@ -36,6 +42,7 @@ public static class CreditFinder
         var credits = frames.Select(LooksLikeCredits).ToArray();
         var minCredits = Math.Max(3, (int)(MinCreditsMs / intervalMs));
         var minScene = Math.Max(1, (int)(MinSceneMs / intervalMs)) + 1;
+        var maxScene = (int)(MaxSceneMs / intervalMs);
         var from = (long)(runtimeMs * CreditsFrom);
         long At(int i) => startMs + (i * intervalMs);
 
@@ -57,7 +64,7 @@ public static class CreditFinder
             var run = creditRuns[k];
             var next = k + 1 < creditRuns.Count ? creditRuns[k + 1].Start : credits.Length;
             var scene = Enumerable.Range(run.End, Math.Max(0, next - run.End)).Count(i => !credits[i]);
-            if (scene >= minScene)
+            if (scene >= minScene && scene <= maxScene)
             {
                 skips.Add(new CreditSkip(At(run.Start), At(run.End), k == creditRuns.Count - 1));
             }

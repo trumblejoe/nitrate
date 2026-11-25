@@ -78,6 +78,15 @@ object CreditScenes {
     const val MIN_CREDITS_MS = 60_000L
     const val CREDITS_FROM = 0.7
 
+    /**
+     * A scene in or after the credits is short: more pictures than this after a dark stretch means
+     * the film went on (a night or smoke-filled scene read as credits), not a scene in the credits.
+     */
+    const val MAX_SCENE_MS = 6 * 60_000L
+
+    /** A scene read from the pictures (not marked) starts within this of the end; earlier, it's the film itself. */
+    const val SCENE_NEAR_END_MS = 20 * 60_000L
+
     private val SCENE_CHAPTERS = listOf("post-credit", "post credit", "postcredit", "after credits", "after the credits", "mid-credit", "mid credit", "midcredit", "stinger", "bonus scene", "end scene", "credits scene")
     private val CREDIT_CHAPTERS = listOf("credit", "end titles", "closing")
 
@@ -98,7 +107,10 @@ object CreditScenes {
             ?: chapters.firstOrNull { c -> c.startMs > runtimeMs / 2 && CREDIT_CHAPTERS.any { c.name.contains(it, ignoreCase = true) } }?.startMs
         val marked = fromMarkers(runtimeMs, segments, chapters)
         if (marked.isNotEmpty()) return CreditScenesInfo(marked, CreditCertainty.MARKED, during, after, creditsStart ?: marked.first().creditsStartMs)
-        val read = fromServer ?: frames?.let { fromFrames(runtimeMs, it, frameIntervalMs) }.orEmpty()
+        // Read from the pictures (here or by the server, results kept from before this rule too):
+        // only scenes near the end count.
+        val read = (fromServer ?: frames?.let { fromFrames(runtimeMs, it, frameIntervalMs) }.orEmpty())
+            .filter { runtimeMs - it.sceneStartMs <= SCENE_NEAR_END_MS }
         if (read.isNotEmpty()) {
             val certainty = if ((after && read.any { it.afterCredits }) || (during && read.any { !it.afterCredits })) CreditCertainty.CONFIRMED else CreditCertainty.GUESSED
             // An Outro may be only the final credits, after the scene (the Companion's never holds one):
@@ -137,6 +149,7 @@ object CreditScenes {
         val credits = frames.map(::looksLikeCredits)
         val minCredits = (MIN_CREDITS_MS / intervalMs).toInt().coerceAtLeast(3)
         val minScene = (MIN_SCENE_MS / intervalMs).toInt().coerceAtLeast(1) + 1
+        val maxScene = (MAX_SCENE_MS / intervalMs).toInt()
         val from = (runtimeMs * CREDITS_FROM / intervalMs).toInt()
         // Runs of the same kind, as (start, end exclusive, isCredits).
         val runs = mutableListOf<Triple<Int, Int, Boolean>>()
@@ -151,7 +164,7 @@ object CreditScenes {
             // The pictures after this stretch of credits: up to the next stretch, or the end.
             val nextCredits = creditRuns.getOrNull(k + 1)?.first ?: credits.size
             val scene = (run.second until nextCredits).count { !credits[it] }
-            if (scene >= minScene) skips += CreditSkip(run.first * intervalMs, run.second * intervalMs, afterCredits = k == creditRuns.lastIndex)
+            if (scene in minScene..maxScene) skips += CreditSkip(run.first * intervalMs, run.second * intervalMs, afterCredits = k == creditRuns.lastIndex)
         }
         return skips
     }

@@ -31,6 +31,18 @@ public class CreditTests
     }
 
     [Fact]
+    public void ADarkSceneWithTheFilmGoingOnIsNotCredits()
+    {
+        // A 140-minute film read from 98 min, a frame every 5 s: 2 min of a near-black scene (a smoke-filled
+        // escape), 25 min more of the film, then 10 min of credits to the end: no scene in the credits.
+        const long interval = 5_000;
+        var start = 98 * 60_000L;
+        var frames = Enumerable.Repeat(Picture(), 12).Concat(Enumerable.Repeat(Credits(), 24)).Concat(Enumerable.Repeat(Picture(), 300))
+            .Concat(Enumerable.Repeat(Credits(), 120)).ToList();
+        Assert.Empty(CreditFinder.Find(140 * 60_000L, start, frames, interval));
+    }
+
+    [Fact]
     public void ShortCreditsOrNoSceneAfterAreNotSkips()
     {
         const long interval = 5_000;

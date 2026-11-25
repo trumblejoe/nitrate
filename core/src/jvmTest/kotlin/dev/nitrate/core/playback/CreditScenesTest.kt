@@ -111,6 +111,18 @@ class CreditScenesTest {
         assertTrue(CreditScenes.fromFrames(runtime, frames(660, 719, 720), 10_000).isEmpty())
     }
 
+    @Test fun aDarkSceneWithTheFilmGoingOnIsNotCredits() {
+        // 85:00 to 87:00 near-black (a smoke-filled escape), the film to 110:00, then credits to the end.
+        val f = List(720) { if (it in 510 until 522 || it >= 660) credits() else picture() }
+        assertTrue(CreditScenes.fromFrames(runtime, f, 10_000).isEmpty())
+        // Kept from before this rule (by the server): a "scene" 33 minutes before the end isn't offered.
+        val kept = CreditScenes.info(runtime, emptyList(), emptyList(), emptyList(), fromServer = listOf(CreditSkip(85 * min, 87 * min, true)))
+        assertTrue(kept.skips.isEmpty())
+        // A real one near the end still is.
+        val real = CreditScenes.info(runtime, emptyList(), emptyList(), emptyList(), fromServer = listOf(CreditSkip(110 * min, 118 * min, true)))
+        assertEquals(1, real.skips.size)
+    }
+
     @Test fun skipperSkipsOnceAtTheCredits() {
         val info = CreditScenes.info(runtime, emptyList(), listOf(MediaSegment(SegmentKind.OUTRO, 110 * min, 118 * min)), emptyList())
         val s = CreditSkipper(info, autoSkip = true)
