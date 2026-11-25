@@ -2597,6 +2597,17 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.partners.SessionJoinDialog(prompt, onDismiss = {}, onChoose = {})
     }
 
+    /** In the player too: someone starts a Group Watch Session and the question takes focus over the video (Join first), not just a note. */
+    @Test fun sessionJoinPromptInPlayer() = shoot("tv-session-join-in-player", setup = { c -> c.refreshCompanionForTests() }, act = {
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedHasText("Join")) { "Join is focused over the player; focused: ${focusedNodes()}" }
+    }) { c ->
+        androidx.compose.runtime.LaunchedEffect(Unit) { c.groupSessions.offer((c.server as FakeServer).sampleSession()) }
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+            dev.nitrate.tv.ui.partners.SessionJoinPrompt(c, inPlayer = true, easy = false)
+        }
+    }
+
     /** The countdown over the video, and (for whoever started it) the wait before it while the group gathers. */
     @Test fun sessionCountdown() = shoot("tv-session-countdown") {
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF203040))) {

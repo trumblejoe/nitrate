@@ -73,9 +73,9 @@ fun PartyTimePicker(schedule: GroupSchedule, onChange: (GroupSchedule) -> Unit, 
 /**
  * What the Companion says about the user's groups' watch parties, as it happens (reminders,
  * postponements, requests to agree to, the start-without question), or tonight's party opened by
- * hand. Off the player: a dialog (Join first). In the player ([inPlayer]): a quiet note at the top
- * that never takes focus from the controls, More, Info or a dialog; the question waits for the
- * player to close. Easy mode keeps Join and Not tonight.
+ * hand: a dialog (Join first, focused), in the player too ([inPlayer]), which plays on meanwhile;
+ * starting the party there closes it (its place kept) for the party's part. Easy mode keeps Join
+ * and Not tonight.
  */
 @Composable
 fun WatchPartyPrompt(container: AppContainer, inPlayer: Boolean, easy: Boolean, onPlay: (MediaItem) -> Unit) {
@@ -83,21 +83,16 @@ fun WatchPartyPrompt(container: AppContainer, inPlayer: Boolean, easy: Boolean, 
     val scope = rememberCoroutineScope()
     var note by remember { mutableStateOf<String?>(null) }
     note?.let { text ->
-        if (!inPlayer) {
-            val ok = remember { FocusRequester() }
-            TvDialog({ note = null }, width = 560) {
-                Text(text)
-                Button(onClick = { note = null }, modifier = Modifier.focusRequester(ok)) { Text("OK") }
-            }
-            LaunchedEffect(text) { delay(50); runCatching { ok.requestFocus() }; delay(6_000); note = null }
-        } else LaunchedEffect(text) { delay(6_000); note = null }
+        val ok = remember { FocusRequester() }
+        TvDialog({ note = null }, width = 560) {
+            Text(text)
+            Button(onClick = { note = null }, modifier = Modifier.focusRequester(ok)) { Text("OK") }
+        }
+        LaunchedEffect(text) { delay(50); runCatching { ok.requestFocus() }; delay(6_000); note = null }
     }
     val n = news ?: return
+    // Over the player too ([inPlayer]), taking focus: it plays on meanwhile, and closing the prompt gives focus back to the player.
     val prompt = PartyPrompt.of(n, easy) ?: return
-    if (inPlayer) {
-        PartyNote(prompt) { container.parties.dismiss() }
-        return
-    }
     WatchPartyDialog(prompt, onDismiss = { container.parties.dismiss() }) { choice ->
         scope.launch {
             when (val out = container.parties.choose(n, choice)) {
@@ -135,18 +130,12 @@ fun WatchPartyDialog(prompt: PartyPrompt, onDismiss: () -> Unit, onChoose: (Part
     LaunchedEffect(prompt) { delay(60); runCatching { first.requestFocus() } }
 }
 
-/** In the player: the news at the top, never focusable; the question itself waits until the player closes. */
-@Composable
-private fun PartyNote(prompt: PartyPrompt, onGone: () -> Unit) =
-    QuietNote(prompt.text.lines().first(), asks = prompt.choices != listOf(PartyChoice.Ok), onGone = onGone)
-
 /**
  * A schedule change someone in one of the user's groups asked for ("Sam asks to change the
  * schedule of The Bear to Thursdays 7pm. Agree?": Yes focused, No, Later), or a note when one
  * passes, fails or lapses (OK). Back (or Later) puts the question away: it stays first in the
- * card's choices and in Settings → Watch groups. In the player ([inPlayer]) only a quiet note at
- * the top that never takes focus; the question waits for the player to close. Waits while a
- * watch party prompt shows.
+ * card's choices and in Settings → Watch groups. In the player too ([inPlayer]), which plays on.
+ * Waits while a watch party prompt shows.
  */
 @Composable
 fun ScheduleChangePrompt(container: AppContainer, inPlayer: Boolean) {
@@ -156,10 +145,7 @@ fun ScheduleChangePrompt(container: AppContainer, inPlayer: Boolean) {
     var error by remember { mutableStateOf<String?>(null) }
     val n = news ?: return
     val prompt = dev.nitrate.core.partners.SchedulePrompt.of(n) ?: return
-    if (inPlayer) {
-        QuietNote(prompt.text, asks = prompt.asks) { if (!prompt.asks) container.scheduleAsks.dismiss(n) }
-        return
-    }
+    // Over the player too (it plays on); after a watch party's prompt.
     if (party != null) return
     ScheduleAskDialog(prompt, error, onLater = { error = null; container.scheduleAsks.dismiss(n) }) { yes ->
         scope.launch { error = container.scheduleAsks.answer(n, yes) }
@@ -190,26 +176,12 @@ fun ScheduleAskDialog(prompt: dev.nitrate.core.partners.SchedulePrompt, error: S
     LaunchedEffect(prompt) { delay(60); runCatching { first.requestFocus() } }
 }
 
-/** A note at the top of the player, never focusable: [asks] says the question waits until the player closes; news alone goes by itself. */
-@Composable
-private fun QuietNote(text: String, asks: Boolean, onGone: () -> Unit) {
-    if (!asks) LaunchedEffect(text) { delay(8_000); onGone() }
-    Box(Modifier.fillMaxSize().padding(top = 24.dp), contentAlignment = Alignment.TopCenter) {
-        Column(
-            Modifier.widthIn(max = 640.dp).background(Color(0xCC101418), RoundedCornerShape(12.dp)).padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(text, color = Color.White, style = MaterialTheme.typography.titleSmall)
-            if (asks) Text("It'll ask when you stop playing.", color = Color(0xFFB8C0CC), style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
 
 /**
  * "Tommy started a Group Watch Session · S1:E4 of The Bear": someone in a group started a Group Watch Session.
  * Off the player a dialog with Join focused (late: "Join at 12:30", "Start from the beginning");
- * Join opens the player, which waits for the countdown. In a player only a quiet note at the top
- * that never takes focus; the question waits until the player closes.
+ * Join opens the player, which waits for the countdown. In a player too, taking focus while it plays
+ * on; Join there closes it (its place kept) for the session's part.
  */
 @Composable
 fun SessionJoinPrompt(container: AppContainer, inPlayer: Boolean, easy: Boolean) {
@@ -217,11 +189,8 @@ fun SessionJoinPrompt(container: AppContainer, inPlayer: Boolean, easy: Boolean)
     val scope = rememberCoroutineScope()
     var problem by remember { mutableStateOf<String?>(null) }
     val s = asking ?: return
+    // Over the player too, taking focus: it plays on meanwhile; Join closes it (its place kept) for the session's part.
     val prompt = dev.nitrate.core.partners.SessionPrompt.of(s, container.groupSessions.serverNow(), easy) ?: return
-    if (inPlayer) {
-        QuietNote(prompt.text, asks = true) {}
-        return
-    }
     SessionJoinDialog(prompt, problem, onDismiss = { container.groupSessions.dismiss() }) { c ->
         scope.launch { problem = container.groupSessions.choose(s, c) }
     }

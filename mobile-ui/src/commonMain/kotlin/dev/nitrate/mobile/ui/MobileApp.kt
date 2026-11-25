@@ -551,6 +551,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         LaunchedEffect(Unit) {
             container.groupSessions.openRequests.collect { open ->
                 val item = runCatching { container.server.getItem(open.itemId) }.getOrNull() ?: return@collect
+                // Joined from inside a player: it closes (its place kept) for the session's part.
+                if (nav.currentBackStackEntry?.destination?.hasRoute(PlayerRoute::class) == true) nav.popBackStack()
                 val groupId = container.groupSessions.current.value?.groupId
                 guarded(item.copy(watchGroupId = groupId ?: item.watchGroupId), false, open.startMs, groupId?.let { dev.nitrate.core.partners.PlayOrigin.GroupCard(it) })
             }

@@ -63,7 +63,8 @@ fun PartyTimePicker(schedule: GroupSchedule, onChange: (GroupSchedule) -> Unit) 
  * What the Companion says about the user's groups' watch parties as it happens (the reminder,
  * postponements, requests to agree to, the start-without question), or tonight's party opened by
  * hand: an in-app sheet. Join starts the watch party when the user is first (through the guards);
- * easy mode keeps Join and Not tonight. Not over the player (it waits until the player closes).
+ * easy mode keeps Join and Not tonight. Over the player too ([inPlayer]): it plays on meanwhile, and
+ * starting the party closes it (its place kept) for the party's part.
  */
 @Composable
 fun WatchPartyPrompt(actions: AppActions, inPlayer: Boolean) {
@@ -73,14 +74,17 @@ fun WatchPartyPrompt(actions: AppActions, inPlayer: Boolean) {
     val platform = dev.nitrate.mobile.platform.rememberPlatformActions()
     val scope = rememberCoroutineScope()
     val n = news ?: return
-    if (inPlayer) return
     val prompt = PartyPrompt.of(n, easy) ?: return
     WatchPartySheet(prompt, onDismiss = { container.parties.dismiss() }) { choice ->
         scope.launch {
             when (val out = container.parties.choose(n, choice)) {
                 is PartyOutcome.Start -> {
                     val error = container.startParty(out)
-                    if (error != null) platform.toast(error) else actions.play(out.choice.episode, false)
+                    if (error != null) platform.toast(error) else {
+                        // In place of what's playing (its place kept as the player closes).
+                        if (inPlayer) actions.nav.popBackStack()
+                        actions.play(out.choice.episode, false)
+                    }
                 }
                 is PartyOutcome.Done -> out.message?.let(platform.toast)
                 is PartyOutcome.Failed -> platform.toast(out.message)
@@ -121,8 +125,8 @@ fun WatchPartyChoices(prompt: PartyPrompt, onDismiss: () -> Unit, onChoose: (Par
  * A schedule change someone in one of the user's groups asked for, as the Companion tells it ("Sam
  * asks to change the schedule of The Bear to Thursdays 7pm. Agree?": Yes / No / Later), or how one
  * went (OK): an in-app sheet. Dismissing it is Later: the vote stays first in the title's group
- * choices and in Settings → Watch groups. Not over the player (it waits until the player closes),
- * nor while a watch party prompt shows.
+ * choices and in Settings → Watch groups. Over the player too (it plays on); not while a watch
+ * party prompt shows.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -133,7 +137,8 @@ fun ScheduleChangePrompt(actions: AppActions, inPlayer: Boolean) {
     val platform = dev.nitrate.mobile.platform.rememberPlatformActions()
     val scope = rememberCoroutineScope()
     val n = news ?: return
-    if (inPlayer || party != null) return
+    // Over the player too (it plays on); after a watch party's prompt.
+    if (party != null) return
     val prompt = dev.nitrate.core.partners.SchedulePrompt.of(n) ?: return
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = { container.scheduleAsks.dismiss(n) }) {
         ScheduleChangeChoices(prompt, onLater = { container.scheduleAsks.dismiss(n) }) { yes ->

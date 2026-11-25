@@ -40,7 +40,8 @@ import kotlinx.coroutines.launch
 /**
  * "Tommy started a Group Watch Session · S1:E4 of The Bear": someone in a group started a Group Watch
  * Session. Join (late: "Join at 12:30", "Start from the beginning") opens the player, which waits
- * for the countdown; Not now. Waits while the player is open ([inPlayer]).
+ * for the countdown; Not now. Over the player too ([inPlayer]): it plays on meanwhile, and Join
+ * closes it (its place kept) for the session's part.
  */
 @Composable
 fun SessionJoinPrompt(actions: AppActions, inPlayer: Boolean) {
@@ -49,7 +50,6 @@ fun SessionJoinPrompt(actions: AppActions, inPlayer: Boolean) {
     val scope = rememberCoroutineScope()
     var problem by remember { mutableStateOf<String?>(null) }
     val s = asking ?: return
-    if (inPlayer) return
     val prompt = SessionPrompt.of(s, container.groupSessions.serverNow(), LocalDisplayPrefs.current.easyMode) ?: return
     SessionJoinDialog(prompt, problem, onDismiss = { container.groupSessions.dismiss() }) { c ->
         scope.launch { problem = container.groupSessions.choose(s, c) }

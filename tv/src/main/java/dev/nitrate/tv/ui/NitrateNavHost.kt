@@ -630,7 +630,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     // Watch parties: what the Companion sends as it happens; in the player only a quiet note, never taking focus.
     if (companion?.features?.contains("party") == true) {
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
-        dev.nitrate.tv.ui.partners.WatchPartyPrompt(container, inPlayer, displayPrefs.easyMode) { item -> gate.play(item) }
+        // Starting the party from inside a player: it closes (its place kept) for the party's part.
+        dev.nitrate.tv.ui.partners.WatchPartyPrompt(container, inPlayer, displayPrefs.easyMode) { item -> if (inPlayer) nav.popBackStack(); gate.play(item) }
     }
     // Group Watch Sessions someone in a group started ("Tommy started a Group Watch Session · Join"); in the player only a quiet note.
     if (companion?.features?.contains(dev.nitrate.core.partners.GroupWatchSession.FEATURE) == true) {
@@ -711,6 +712,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     LaunchedEffect(Unit) {
         container.groupSessions.openRequests.collect { open ->
             val item = runCatching { container.server.getItem(open.itemId) }.getOrNull() ?: return@collect
+            // Joined from inside a player: it closes (its place kept) for the session's part.
+            if (nav.currentBackStackEntry?.destination?.hasRoute(PlayerRoute::class) == true) nav.popBackStack()
             val groupId = container.groupSessions.current.value?.groupId
             gate.play(item.copy(watchGroupId = groupId ?: item.watchGroupId), startMs = open.startMs, origin = groupId?.let { dev.nitrate.core.partners.PlayOrigin.GroupCard(it) })
         }
