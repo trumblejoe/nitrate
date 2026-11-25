@@ -159,6 +159,15 @@ private fun MetadataTab(repository: MediaServer, item: MediaItem, themePreview: 
         m = meta.copy(lockedFields = (if (f in locked) locked - f else locked + f).sortedBy { it.ordinal }.map { it.wire })
     }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+        // Where the file is on the server: folder and file names often say which film or edition it is.
+        meta.path?.let { path ->
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("File", style = MaterialTheme.typography.titleSmall)
+                    Text(path, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         item {
             // Whether the title has theme music: its own, or its series'.
             val t = theme?.getOrNull()

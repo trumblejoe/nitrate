@@ -24,7 +24,9 @@ namespace Nitrate.Companion.Api;
 public record EditorMe(bool IsEditor, bool AllLibraries, IReadOnlyList<Guid> LibraryIds);
 
 /// <summary>Whether the caller may edit one title.</summary>
-public record EditAccess(bool CanEdit);
+/// <param name="CanEdit">Whether the caller may edit the title.</param>
+/// <param name="Path">The title's file path, only when they may (it names the file, which helps tell a wrong match).</param>
+public record EditAccess(bool CanEdit, string? Path = null);
 
 /// <summary>One metadata editor (admins).</summary>
 public record EditorView(Guid UserId, string UserName, bool AllLibraries, IReadOnlyList<Guid> LibraryIds);
@@ -100,10 +102,10 @@ public class MetadataEditorController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public ActionResult<EditAccess> Access([FromRoute] string id)
     {
-        var (_, refused) = Check(id);
+        var (item, refused) = Check(id);
         return refused switch
         {
-            null => new EditAccess(true),
+            null => new EditAccess(true, item?.Path),
             ObjectResult { StatusCode: StatusCodes.Status403Forbidden } => new EditAccess(false),
             _ => (ActionResult)refused,
         };

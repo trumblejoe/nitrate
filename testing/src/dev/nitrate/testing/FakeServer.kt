@@ -291,6 +291,7 @@ class FakeServer : MediaServer {
             communityRating = i.communityRating, genres = i.genres, tags = listOf("cult"), studios = listOf("Reel House"),
             people = i.people.map { dev.nitrate.core.admin.PersonCredit(it.name, it.role) }, premiereDate = "2023-10-13",
             providerIds = mapOf("Tmdb" to "12345", "Imdb" to "tt0000001"), lockedFields = listOf("Overview"),
+            path = "/media/Movies/${i.name} (${i.productionYear})/${i.name} (${i.productionYear}) - Bluray-1080p.mkv",
         )
     }
     override suspend fun remoteSearch(item: MediaItem, name: String, year: Int?, providerIds: Map<String, String>) = listOf(

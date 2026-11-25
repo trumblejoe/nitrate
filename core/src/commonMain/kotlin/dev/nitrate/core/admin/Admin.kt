@@ -53,6 +53,8 @@ data class ItemMetadata(
     /** Locks the whole item against metadata refreshes. */
     val lockData: Boolean = false,
     val lockedFields: List<String> = emptyList(),
+    /** Where the file is on the server (read only): its folder and file names often say which film or edition it is. */
+    val path: String? = null,
 )
 
 /** A cast or crew credit: [type] is Actor, Director, Writer, Producer, GuestStar... */

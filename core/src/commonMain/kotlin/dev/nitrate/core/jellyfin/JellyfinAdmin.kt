@@ -123,6 +123,15 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
      */
     private suspend fun viaCompanion(): Boolean = !me().isAdmin && c.companionHas(MetadataEditors.FEATURE)
 
+    /** The file path for an editor who may edit [itemId] (asked straight; null for anyone else or without the Companion). */
+    private suspend fun editorPath(itemId: String): String? {
+        if (!viaCompanion() || !me().metadataEditor.isEditor) return null
+        return runCatching {
+            val o = JellyfinJson.parseToJsonElement(c.get("Nitrate", "Metadata", "Items", dashless(itemId), "Access").bodyAsText()).jsonObject
+            o.ci("path")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
     /** Admins: true without asking; editors: the Companion's answer for that title, kept briefly; anyone else false. */
     suspend fun canEditMetadata(itemId: String): Boolean {
         val account = me()
@@ -212,6 +221,8 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
             links = (o["ExternalUrls"] as? JsonArray).orEmpty().mapNotNull { e -> (e as? JsonObject)?.let { u -> (u.str("Name") ?: return@let null) to (u.str("Url") ?: return@let null) } },
             lockData = o.bool("LockData") == true,
             lockedFields = o["LockedFields"]?.strings().orEmpty(),
+            // Jellyfin gives the path to admins; an editor gets it from the Companion for titles they may edit.
+            path = o.str("Path")?.takeIf { it.isNotBlank() } ?: editorPath(itemId),
         )
     }
 

@@ -107,6 +107,24 @@ private fun LockButton(meta: ItemMetadata, field: dev.nitrate.core.admin.Lockabl
     }
 }
 
+/**
+ * Where the title's file is on the server, read only: folder and file names often say which film,
+ * year or edition it is, which helps when correcting a match. Copy puts it on the clipboard.
+ */
+@Composable
+private fun FilePathRow(path: String) {
+    val platform = dev.nitrate.mobile.platform.rememberPlatformActions()
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("File", style = MaterialTheme.typography.titleSmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.foundation.text.selection.SelectionContainer(Modifier.weight(1f)) {
+                Text(path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            androidx.compose.material3.TextButton(onClick = { platform.copy(path, "File path") }) { Text("Copy") }
+        }
+    }
+}
+
 /** A title's theme music (its own, or its series'), with a preview; how to add some when there's none. */
 @Composable
 private fun ThemeMusicInfoRow(actions: AppActions, item: MediaItem) {
@@ -202,6 +220,7 @@ private fun MetadataEditor(actions: AppActions, item: MediaItem, notify: (String
     val episodic = item.kind == ItemKind.EPISODE || item.kind == ItemKind.SEASON
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            meta.path?.let { FilePathRow(it) }
             ThemeMusicInfoRow(actions, item)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Field("Title", meta.name, Modifier.weight(1f)) { m = meta.copy(name = it) }

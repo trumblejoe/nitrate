@@ -127,7 +127,8 @@ class AppContainer(
         return runCatching { displaySettings.prefs(user).first().describedAudio }.getOrDefault(false)
     }
 
-    val searchHistory by lazy { SearchHistoryStore(platform.stores.search) }
+    /** Recent searches, per account: follows the account signed in (null while switching or signed out). */
+    val searchHistory by lazy { SearchHistoryStore(platform.stores.search, account.map { if (it == null) null else server.currentAccountKey }) }
 
     /** The server's live connection: remote control and live updates. */
     /** "Still watching?": episodes rolling on with nobody pressing anything (fed by the players). */
@@ -1138,7 +1139,7 @@ class AppContainer(
     /** Signs out of the current account and forgets it here. */
     suspend fun signOut() {
         leaveSession()
-        server.currentAccountKey?.let { profiles.forget(it); dataCache.forget(it) }
+        server.currentAccountKey?.let { profiles.forget(it); dataCache.forget(it); searchHistory.forget(it) }
         server.logout()
     }
 
@@ -1146,6 +1147,7 @@ class AppContainer(
     suspend fun forgetAccount(key: String) {
         profiles.forget(key)
         dataCache.forget(key)
+        searchHistory.forget(key)
         server.forgetAccount(key)
     }
 
