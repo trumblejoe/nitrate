@@ -159,7 +159,7 @@ internal enum class Edge { TOP, BOTTOM }
  * the menu keeps clear at each edge.
  *
  * The overlay (the default) and the side rail show nothing while you browse: moving off the page's
- * edge (the rail's side; for the overlay the arrow chosen in [opensWith], Left unless changed) or the
+ * edge (the rail's side; for the overlay, as for the dial, Up past the page's top) or the
  * Menu key opens them over the page, focus on the current page's stop, and Back or Menu close them
  * (the rail also towards the page), focus going back where it was on the page. The overlay is a
  * pop-up card in the middle ([MenuPopup]) with Search and the avatar in its top row and More's
@@ -182,8 +182,8 @@ fun TvMenu(
     corner: CornerActions? = null,
     /** The overlay pop-up's "More" section: the stops kept in More (other styles reach them through the More page). */
     more: List<NavEntry> = emptyList(),
-    /** The overlay: which arrow at the page's edge opens it (Left, Right or Up). */
-    opensWith: Key = Key.DirectionLeft,
+    /** The overlay: the arrow that opens it past the page's edge (Up past the top, as the dial). */
+    opensWith: Key = Key.DirectionUp,
     content: @Composable (MenuInsets) -> Unit,
 ) {
     // A hidden menu takes no room of its own: it fades in over the page on every page, not only
@@ -475,14 +475,9 @@ fun MainMenu(current: String, overlay: Boolean, content: @Composable (MenuInsets
             onSignOut = marked.signOut,
         )
     }
-    val opensWith = when (prefs.tvPopupKey) {
-        dev.nitrate.core.pages.PopupKey.LEFT -> Key.DirectionLeft
-        dev.nitrate.core.pages.PopupKey.RIGHT -> Key.DirectionRight
-        dev.nitrate.core.pages.PopupKey.UP -> Key.DirectionUp
-    }
     TvMenu(
         style, stops, marked.dial(prefs), overlay, autoHide = prefs.tvMenuAutoHide || prefs.tvMenu == TvMenuStyle.FADE, corner = corner,
-        more = more, opensWith = opensWith,
+        more = more,
     ) { insets ->
         ThemedPage(pageKey, insets, customize) { content(insets) }
     }

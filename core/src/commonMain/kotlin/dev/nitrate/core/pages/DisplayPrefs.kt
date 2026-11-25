@@ -320,7 +320,11 @@ enum class TvMenuStyle(val label: String, val detail: String) {
     val cornerStops: Boolean get() = this == OVERLAY || rail
 }
 
-/** Which arrow at the page's edge opens the overlay pop-up (`DisplayPrefs.tvPopupKey`); stored by name. */
+/**
+ * Which arrow at the page's edge opened the overlay pop-up (`DisplayPrefs.tvPopupKey`); stored by name.
+ * No longer read: the overlay opens as the dial does (Menu, or Up past the page's top). Kept so saved
+ * settings still read.
+ */
 @Serializable
 enum class PopupKey(val label: String) { LEFT("Left"), RIGHT("Right"), UP("Up") }
 

@@ -546,7 +546,7 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
     }
 
-    /** Left from the first title in the All view goes to the menu, not nowhere. */
+    /** Left from the first title in the All view stays on it (focus never lost; the overlay opens with Menu or Up past the top). */
     @Test fun libraryLeftToMenu() = libraryShot("tv-library-left-to-menu", rowsLibrary) {
         press("right", "ok")
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
@@ -556,8 +556,7 @@ class TvScreenshotTest {
         repeat(6) { if (!focusedHasText("Arclight")) press("left") }
         check(focusedHasText("Arclight")) { "Left within the grid should move to the first title" }
         press("left")
-        check(!focusedHasText("Arclight")) { "Left from the first title should reach the menu" }
-        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "something should have focus" }
+        check(focusedHasText("Arclight")) { "Left from the first title stays on it; focused: ${focusedNodes()}" }
     }
 
     /** The All tab: Back deep in the grid goes to the first title, and ▲ from the options bar to the chosen tab. */
@@ -807,9 +806,12 @@ class TvScreenshotTest {
         // Left card by card to the menu, remembering the last card on the way.
         var card = name()
         var place = at()
-        // (The overlay is a pop-up in the middle: Left off the first card opens it, Back comes back.)
-        repeat(10) { if (!menuOpen()) { card = name(); place = at(); press("left") } }
-        check(menuOpen()) { "Left from the first card should open the menu, got ${at()}" }
+        // (The overlay is a pop-up in the middle: Left at the row's start leaves it shut; Menu opens it, Back comes back.)
+        repeat(10) { press("left") }
+        check(!menuOpen()) { "Left at the row's start doesn't open the menu" }
+        card = name(); place = at()
+        press("menu")
+        check(menuOpen()) { "Menu should open the menu, got ${at()}" }
         press("back")
         check(!menuOpen()) { "Back closes the menu" }
         check(name() == card) { "Back from the menu should return to the card left, got ${at()} / was $place\n${name()}\n$card" }
@@ -2336,14 +2338,12 @@ class TvScreenshotTest {
         DisplaySettingsScreen(c)
     }
 
-    /** Display → Menu with the overlay: "Opens with" (Left by default) steps Left → Right → Up; the rail has no such line. */
+    /** Display → Menu with the overlay: no "Opens with" line (the overlay opens as the dial does: Menu, or Up past the top). */
     @Test fun menuOpensWithSetting() = shoot("tv-display-opens-with", act = {
-        repeat(40) { if (!focusedHasText("Opens with")) press("down") }
-        check(focusedHasText("Opens with") && focusedHasText("Left")) { "the overlay's Opens with line, Left by default; focused: ${focusedNodes()}" }
-        press("ok")
-        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
-        repeat(10) { if (!focusedHasText("Right")) { Thread.sleep(50); compose.mainClock.advanceTimeBy(200); compose.waitForIdle() } }
-        check(focusedHasText("Opens with") && focusedHasText("Right")) { "OK steps it to Right; focused: ${focusedNodes()}" }
+        repeat(40) {
+            check(!shows("Opens with")) { "there's no Opens with line any more" }
+            press("down")
+        }
     }) { c -> DisplaySettingsScreen(c) }
 
     @Test fun railHasNoOpensWith() = shoot("tv-display-rail-no-opens-with", { c -> c.displaySettings.savePrefs("user-1", DisplayPrefs(tvMenu = dev.nitrate.core.pages.TvMenuStyle.LEFT)) }, act = {
@@ -2919,8 +2919,10 @@ class TvScreenshotTest {
         check(avatars() == 0) { "the overlay has no profile corner on the page" }
         press("down")
         val card = focusedName()
-        repeat(8) { if (!menuOpen()) press("left") }
-        check(focusedHasText("Home")) { "Left from the page should open the pop-up on its own stop; focused: ${focusedNodes()}" }
+        repeat(8) { press("left") }
+        check(!menuOpen()) { "Left at the page's edge doesn't open it" }
+        press("menu")
+        check(focusedHasText("Home")) { "Menu should open the pop-up on its own stop; focused: ${focusedNodes()}" }
         val home = focusedBounds()
         check(home.left > 120f && home.top > 200f) { "the pop-up sits in the middle, not down the edge: $home" }
         check(shows("Movies") && shows("Search")) { "the pop-up has the libraries and Search in words" }
@@ -2955,9 +2957,8 @@ class TvScreenshotTest {
         compose.onNode(androidx.compose.ui.test.hasContentDescription("Menu")).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); compose.waitForIdle()
         check(!menuOpen()) { "the pop-up opened with no key pressed; focused: ${focusedNodes()}" }
-        press("down")
-        repeat(8) { if (!menuOpen()) press("left") }
-        check(focusedHasText("Home")) { "Left off the page still opens it; focused: ${focusedNodes()}" }
+        repeat(8) { if (!menuOpen()) press("up") }
+        check(focusedHasText("Home")) { "Up past the page's top still opens it; focused: ${focusedNodes()}" }
     }
 
     /** Menu opens the pop-up from mid-page and closes it again; Back closes it too, focus back on the card left. */
@@ -2993,7 +2994,7 @@ class TvScreenshotTest {
     /** A page kept in More (Your pages): the pop-up opens on its tile in the More section, marked. */
     @Test fun overlayOpensOnMoreStop() = shoot("tv-overlay-more-current", act = {
         check(focusedHasText("New page")) { "Your pages should open on its first tile" }
-        press("left")
+        press("menu")
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); compose.waitForIdle()
         check(focusedHasText("Your pages")) { "the pop-up opens on Your pages, in More; focused: ${focusedNodes()}" }
     }) { c ->
@@ -3009,7 +3010,7 @@ class TvScreenshotTest {
     @Test fun overlayGroupOpens() = shoot("tv-overlay-group", { c ->
         c.displaySettings.savePrefs("user-1", dev.nitrate.core.pages.DisplayPrefs(tvMenuGroups = listOf(animeGroup)))
     }, act = {
-        press("left")
+        press("menu")
         check(focusedHasText("Movies")) { "the pop-up opens on the page's stop: ${focusedNodes()}" }
         press("right", "right")
         check(focusedHasText("Anime")) { "Right twice from Movies reaches the Anime group; focused: ${focusedNodes()}" }
@@ -3058,29 +3059,16 @@ class TvScreenshotTest {
         }
     }
 
-    /** "Opens with: Up": Up off the page's top opens the pop-up; Left at the edge no longer does. */
-    @Test fun overlayOpensWithUp() = menuHome("tv-overlay-up", rowsHome.copy(tvPopupKey = dev.nitrate.core.pages.PopupKey.UP)) {
+    /** As the dial: Up off the page's top opens the pop-up; Left at the edge doesn't. */
+    @Test fun overlayOpensWithUp() = menuHome("tv-overlay-up", rowsHome) {
         repeat(6) { press("left") }
-        check(!menuOpen()) { "Left doesn't open it with Up chosen" }
+        check(!menuOpen()) { "Left doesn't open it" }
         var card = focusedName()
         repeat(4) { if (!menuOpen()) { card = focusedName(); press("up") } }
         check(menuOpen() && focusedHasText("Home")) { "Up from the top opens the pop-up on Home; focused: ${focusedNodes()}" }
         press("back")
         check(!menuOpen()) { "Back closes it" }
         check(focusedName() == card) { "focus goes back where it was: ${focusedName()} vs $card" }
-    }
-
-    /** "Opens with: Right": Right off the row's end opens the pop-up; Left at the start doesn't. */
-    @Test fun overlayOpensWithRight() = menuHome("tv-overlay-right", rowsHome.copy(tvPopupKey = dev.nitrate.core.pages.PopupKey.RIGHT)) {
-        press("down")
-        repeat(4) { press("left") }
-        check(!menuOpen()) { "Left doesn't open it with Right chosen" }
-        var card = focusedName()
-        repeat(12) { if (!menuOpen()) { card = focusedName(); press("right") } }
-        check(menuOpen() && focusedHasText("Home")) { "Right past the row's end opens the pop-up on Home; focused: ${focusedNodes()}" }
-        press("menu")
-        check(!menuOpen()) { "Menu closes it" }
-        check(focusedName() == card) { "focus goes back to the card left: ${focusedName()} vs $card" }
     }
 
     /** The side rail: hidden until called, then at once a column of icons and words; Right and Back close it. */
