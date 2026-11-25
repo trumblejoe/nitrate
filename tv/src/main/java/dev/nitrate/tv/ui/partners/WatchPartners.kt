@@ -1,5 +1,8 @@
 package dev.nitrate.tv.ui.partners
 
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -134,6 +137,7 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
     var error by remember { mutableStateOf<String?>(null) }
     var schedule by remember { mutableStateOf(dev.nitrate.core.partners.GroupSchedule()) }
     val focus = remember { FocusRequester() }
+    var resultFocused by remember { mutableStateOf(false) }
     val inGroup = groups.firstOrNull { it.id == target }?.others?.map { it.id }.orEmpty().toSet()
     val everyone = (info?.groups.orEmpty().flatMap { it.others } + people).distinctBy { it.id }.filter { it.id !in inGroup }
     fun send() {
@@ -149,7 +153,9 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
         Text("Watch ${groups.firstOrNull { it.id == target }?.titleNames ?: series.name} with…", style = MaterialTheme.typography.headlineSmall)
         if (result != null) {
             Text(result!!)
-            Button(onClick = onDismiss, modifier = Modifier.focusRequester(focus)) { Text("Done") }
+            Box(Modifier.padding(vertical = 8.dp, horizontal = 4.dp)) {
+                Button(onClick = onDismiss, modifier = Modifier.focusRequester(focus).onFocusChanged { resultFocused = it.isFocused }) { Text("Done") }
+            }
         } else {
             if (groups.isNotEmpty()) {
                 Text("Invite into", style = MaterialTheme.typography.titleSmall)
@@ -173,7 +179,14 @@ fun WatchWithDialog(container: AppContainer, series: MediaItem, groupId: String?
             }
         }
     }
-    LaunchedEffect(result) { delay(50); runCatching { focus.requestFocus() } }
+    // After sending, Done takes focus, asked until it has it (the Send button it replaces had it).
+    LaunchedEffect(result) {
+        repeat(20) {
+            delay(50)
+            runCatching { focus.requestFocus() }
+            if (result == null || resultFocused) return@LaunchedEffect
+        }
+    }
 }
 
 /**
@@ -266,12 +279,33 @@ fun ScheduleChangeDialog(container: AppContainer, group: dev.nitrate.core.partne
     LaunchedEffect(Unit) { delay(60); runCatching { focus.requestFocus() } }
 }
 
-/** What an invite means, including exactly who learns the user's name and progress by accepting. */
-fun inviteText(r: dev.nitrate.core.partners.IncomingRequest): String {
-    val others = r.willSee.filter { it != r.fromName }
-    val into = if (others.isEmpty()) "${r.fromName} would like to watch ${r.titleNames} with you."
-    else "${r.fromName} invites you to watch ${r.titleNames} with ${WatchPartners.names(others)}."
-    return "$into If you accept, ${WatchPartners.names(r.willSee)} will see your name and your progress in it.${r.schedule?.terms.orEmpty()}"
+/**
+ * What an invite means ([dev.nitrate.core.partners.InviteSummary]): what, with whom and exactly who
+ * learns the user's name and progress, as labelled lines; then the group's schedule as short points.
+ */
+@Composable
+fun InviteDetails(summary: dev.nitrate.core.partners.InviteSummary, note: String?) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        summary.lines.forEach { (label, value) ->
+            Column {
+                Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(value, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        if (summary.rules.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("The group's schedule", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                summary.rules.forEach { rule ->
+                    Row {
+                        Text("•", Modifier.width(20.dp), style = MaterialTheme.typography.bodyLarge)
+                        Text(rule, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        }
+        summary.agrees?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        note?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary) }
+    }
 }
 
 /** Settings → Watch partners: privacy, requests, partners and their shows. */
@@ -286,6 +320,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (id: String, groupI
     var inviting by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var starting by remember { mutableStateOf(false) }
     var changingSchedule by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
+    var answeringInvite by remember { mutableStateOf<dev.nitrate.core.partners.IncomingRequest?>(null) }
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         container.refreshPartners()
@@ -296,6 +331,7 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (id: String, groupI
         runCatching { block() }.onFailure { error = it.message }
         container.refreshPartners()
     }
+    answeringInvite?.let { r -> InviteAnswerDialog(container, r) { answeringInvite = null; act { } } }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 58.dp, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -328,12 +364,12 @@ fun WatchPartnersScreen(container: AppContainer, onOpenShow: (id: String, groupI
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.width(560.dp)) {
                             Text("${r.fromName}: ${r.titleNames}")
-                            Text("Would see you: ${WatchPartners.names(r.willSee)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Would see you: ${WatchPartners.names(r.willSee)}" + (r.schedule?.takeIf { it.kept }?.let { " · ${it.label}" } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             val note by androidx.compose.runtime.produceState<String?>(null, r.id) { value = WatchPartners.unopenableNote(WatchPartners.unopenable(container.server, r.titles)) }
                             note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
                         }
-                        Button(onClick = { act { container.server.acceptPartner(r.id) } }) { Text("Accept") }
-                        OutlinedButton(onClick = { act { container.server.declinePartner(r.id) } }) { Text("Decline") }
+                        // Answered in the invite's own prompt, which shows what accepting agrees to (the schedule too).
+                        Button(onClick = { answeringInvite = r }) { Text("Answer") }
                     }
                 }
             }
@@ -431,14 +467,15 @@ fun InviteAnswerDialog(container: AppContainer, r: dev.nitrate.core.partners.Inc
     val focus = remember { FocusRequester() }
     fun answer(choice: dev.nitrate.core.partners.TogetherChoice) = scope.launch { container.runTogether(choice); onDismiss() }
     TvDialog(onDismiss, width = 720) {
-        Text("Watch ${r.titleNames} together?", style = MaterialTheme.typography.headlineSmall)
-        Text(inviteText(r))
+        val summary = remember(r) { dev.nitrate.core.partners.InviteSummary.of(r) }
+        Text(summary.heading, style = MaterialTheme.typography.headlineSmall)
         val note by androidx.compose.runtime.produceState<String?>(null, r.id) { value = WatchPartners.unopenableNote(WatchPartners.unopenable(container.server, r.titles)) }
-        note?.let { Text(it, color = MaterialTheme.colorScheme.tertiary) }
+        InviteDetails(summary, note)
+        // Accept first (focused), Not now, and Decline last in the error colour (it can't be undone).
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Accept(r)) }, modifier = Modifier.focusRequester(focus)) { Text("Accept") }
-            OutlinedButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Decline(r)) }) { Text("Decline") }
             OutlinedButton(onClick = onDismiss) { Text("Not now") }
+            OutlinedButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Decline(r)) }) { Text("Decline", color = MaterialTheme.colorScheme.error) }
         }
     }
     LaunchedEffect(Unit) { delay(50); runCatching { focus.requestFocus() } }
@@ -586,6 +623,7 @@ fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.G
     var setup by remember { mutableStateOf(start) }
     if (setup.several != several) setup = setup.copy(several = several)
     var sent by remember { mutableStateOf(false) }
+    var doneFocused by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val first = remember(setup.step, sent) { FocusRequester() }
@@ -614,7 +652,10 @@ fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.G
             Text("Watch something with someone", style = MaterialTheme.typography.headlineSmall)
             if (sent) {
                 Text(dev.nitrate.core.partners.GroupSetup.SENT)
-                Button(onClick = onDismiss, modifier = Modifier.focusRequester(first)) { Text("Done") }
+                // Room around it so its focused (larger) look isn't cut off at the dialog's edge.
+                Box(Modifier.padding(vertical = 8.dp, horizontal = 4.dp)) {
+                    Button(onClick = onDismiss, modifier = Modifier.focusRequester(first).onFocusChanged { doneFocused = it.isFocused }) { Text("Done") }
+                }
                 return@Column
             }
             Text(setup.heading, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
@@ -651,12 +692,21 @@ fun GroupSetupDialog(container: AppContainer, start: dev.nitrate.core.partners.G
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = ::go, enabled = setup.canGoOn && !sending) { Text(if (setup.last) "Send the invite" else "Next") }
+                // Kept focusable while sending (a disabled button lets focus fall out of the dialog); a second press does nothing.
+                Button(onClick = { if (!sending) go() }, enabled = setup.canGoOn) { Text(if (setup.last) (if (sending) "Sending…" else "Send the invite") else "Next") }
                 OutlinedButton(onClick = back) { Text(if (setup.back() == null) "Cancel" else "Back") }
             }
         }
     }
-    LaunchedEffect(setup.step, sent) { delay(60); runCatching { first.requestFocus() } }
+    // Each page's first thing takes focus, asked until it has it (after sending, Done: the Send button it
+    // replaces had focus, and one early ask could land before Done was placed, leaving focus nowhere clear).
+    LaunchedEffect(setup.step, sent) {
+        repeat(20) {
+            delay(60)
+            runCatching { first.requestFocus() }
+            if (!sent || doneFocused) return@LaunchedEffect
+        }
+    }
 }
 
 /** "Add a title to the group": pick one or more, then they're added (any member may). */

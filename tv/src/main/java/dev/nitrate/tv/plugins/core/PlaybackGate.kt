@@ -41,6 +41,8 @@ class PlaybackGate(
     private val start: (item: MediaItem, fromStart: Boolean, startMs: Long?) -> Unit,
     /** Where a play from a group's card starts: that group's own resume point, or 0 for the start; null otherwise (`AppContainer.groupStartMs`). */
     private val groupStart: (dev.nitrate.core.partners.PlayOrigin?, MediaItem) -> Long? = { _, _ -> null },
+    /** A play turned down or that couldn't start (`AppContainer.playTurnedDown`). */
+    private val turnedDown: (MediaItem) -> Unit = {},
 ) {
     internal var pending by mutableStateOf<Pair<GuardDecision.Ask, CompletableDeferred<GuardAction>>?>(null)
         private set
@@ -76,14 +78,23 @@ class PlaybackGate(
             @Suppress("NAME_SHADOWING") val startMs = startMs ?: fromGroup?.takeIf { it > 0 }
             when (action) {
                 GuardAction.PlayAnyway -> start(item, fromStart, startMs)
-                GuardAction.Cancel -> Unit
+                GuardAction.Cancel -> turnedDown(item)
                 is GuardAction.PlayInstead -> start(action.item, false, null)
                 is GuardAction.MarkWatchedThenPlay -> {
                     action.itemIds.forEach { id -> runCatching { registry.host.server.setPlayed(id, true) } }
                     start(item, fromStart, startMs)
                 }
                 is GuardAction.RunThenPlay -> {
-                    if (runCatching { action.run() }.isSuccess || action.playIfFailed) start(item, fromStart, startMs)
+                    val failed = runCatching { action.run() }.exceptionOrNull()
+                    if (failed == null || action.playIfFailed) start(item, fromStart, startMs)
+                    else {
+                        // Said, not just closed: why it couldn't start.
+                        turnedDown(item)
+                        val ok = CompletableDeferred<GuardAction>()
+                        pending = GuardDecision.Ask("Couldn't start", failed.message ?: "Something went wrong. Try again in a moment.",
+                            listOf(dev.nitrate.core.plugins.GuardChoice("OK", GuardAction.Cancel))) to ok
+                        ok.await().also { pending = null }
+                    }
                 }
             }
         }
@@ -98,10 +109,11 @@ class PlaybackGate(
 fun rememberPlaybackGate(
     registry: PluginRegistry,
     groupStart: (dev.nitrate.core.partners.PlayOrigin?, MediaItem) -> Long? = { _, _ -> null },
+    turnedDown: (MediaItem) -> Unit = {},
     start: (MediaItem, Boolean, Long?) -> Unit,
 ): PlaybackGate {
     val scope = rememberCoroutineScope()
-    return remember(registry) { PlaybackGate(registry, scope, start, groupStart) }
+    return remember(registry) { PlaybackGate(registry, scope, start, groupStart, turnedDown) }
 }
 
 /** Shows a guard's question when there is one. Place once, near the root. */

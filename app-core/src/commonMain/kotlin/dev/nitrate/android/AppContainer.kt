@@ -427,6 +427,14 @@ class AppContainer(
         networkScope.launch { remote.partyNews.collect { parties.heard(it) } }
         networkScope.launch { remote.scheduleNews.collect { scheduleAsks.heard(it) } }
         networkScope.launch { remote.sessionNews.collect { groupSessions.heard(it) } }
+        // A new invite: the card shows on Home, and the device notifies at once (not at its next 15-minute look).
+        networkScope.launch {
+            remote.inviteNews.collect {
+                runCatching { refreshPartners() }
+                pagesChanged()
+                runCatching { newEpisodes.checkInvites() }
+            }
+        }
     }
 
     /** The groups' parties changed: a phone moves its own reminders (TVs show the prompts only while open). */
@@ -624,10 +632,40 @@ class AppContainer(
     private suspend fun startWatchingNow(choice: dev.nitrate.core.partners.TogetherChoice.WatchNow, startMs: Long = 0) {
         if (!sessionsAvailable()) error("Group Watch Sessions need a newer Nitrate Companion on the server")
         if (choice.groupId.isEmpty()) error("Pick a watch group to watch with")
+        // A part the group's schedule hasn't let out: said before anyone is asked to join.
+        watchPartners.refusedInSession(plugins.host, choice.groupId, choice.episode)?.let { error(it) }
+        val wasIn = groupSessions.current.value?.id
         val joined = groupSessions.start(choice.groupId, choice.episode.id, startMs)
+        // The group's live session is on something else: that one's to join, not this part.
+        if (joined.session.itemId != choice.episode.id) {
+            if (wasIn != joined.session.id) groupSessions.leave()
+            error("Your group already has a Group Watch Session going on something else: join it from the group's card, or end it first")
+        }
         // While this device stays in it, what the group hasn't watched plays as watching together (a schedule that doesn't allow playing ahead).
         watchPartners.watchingNow(plugins.host, choice.groupId, joined.session.id)
     }
+
+    /**
+     * A play the guards turned down (or that couldn't start): a Group Watch Session on it this device
+     * is in, started or joined to play it, is left, since nothing here will play it; staying in it
+     * left everyone waiting on a part nobody could open.
+     */
+    fun playTurnedDown(item: dev.nitrate.core.model.MediaItem) {
+        if (groupSessions.current.value?.itemId == item.id) groupSessions.leave()
+    }
+
+    /** What went wrong when the app last closed on an error (written on the device only, Android's `CrashNote`), if it did. */
+    fun lastCrash(): String? = runCatching {
+        dev.nitrate.android.files.File("${platform.filesDir}/last-crash.txt").takeIf { it.exists() }?.readText()
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    /** [lastCrash] saved in the user's own server's logs (Jellyfin Dashboard → Logs), for a bug report: the file's name. */
+    suspend fun sendLastCrash(): Result<String> = runCatching {
+        server.sendClientLog("Nitrate closed unexpectedly\n\n" + (lastCrash() ?: error("Nothing to send")))
+    }
+
+    /** Forgets [lastCrash] (after it's been copied or put away). */
+    fun clearLastCrash() { runCatching { dev.nitrate.android.files.File("${platform.filesDir}/last-crash.txt").delete() } }
 
     /** This device's Group Watch Session as the playback guards see it (a group that watches together only asks for it). */
     private val togetherSession = object : dev.nitrate.core.plugins.TogetherSession {

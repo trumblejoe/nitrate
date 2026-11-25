@@ -14,6 +14,7 @@ class NitrateApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        dev.nitrate.android.CrashNote.install(this, BuildConfig.VERSION_NAME)
         container = AppContainer(this, clientName = "Nitrate", version = BuildConfig.VERSION_NAME)
     }
 

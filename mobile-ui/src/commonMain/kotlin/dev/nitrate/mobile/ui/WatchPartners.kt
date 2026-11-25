@@ -1,5 +1,6 @@
 package dev.nitrate.mobile.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.WindowInsets
@@ -300,12 +301,33 @@ fun ScheduleChangeDialog(actions: AppActions, group: dev.nitrate.core.partners.W
     )
 }
 
-/** What an invite means, including exactly who learns the user's name and progress by accepting. */
-fun inviteText(r: dev.nitrate.core.partners.IncomingRequest): String {
-    val others = r.willSee.filter { it != r.fromName }
-    val into = if (others.isEmpty()) "${r.fromName} would like to watch ${r.titleNames} with you."
-    else "${r.fromName} invites you to watch ${r.titleNames} with ${WatchPartners.names(others)}."
-    return "$into If you accept, ${WatchPartners.names(r.willSee)} will see your name and your progress in it.${r.schedule?.terms.orEmpty()}"
+/**
+ * What an invite means ([dev.nitrate.core.partners.InviteSummary]): what, with whom and exactly who
+ * learns the user's name and progress, as labelled lines; then the group's schedule as short points.
+ */
+@Composable
+fun InviteDetails(summary: dev.nitrate.core.partners.InviteSummary, note: String?) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        summary.lines.forEach { (label, value) ->
+            Column {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text(value, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        if (summary.rules.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("The group's schedule", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                summary.rules.forEach { rule ->
+                    Row {
+                        Text("•", Modifier.padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(rule, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+        summary.agrees?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
+    }
 }
 
 /** Settings → Watch partners: privacy, invites, and the user's groups. */
@@ -321,6 +343,7 @@ fun WatchPartnersScreen(actions: AppActions) {
     var inviting by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var starting by remember { mutableStateOf(false) }
     var changingSchedule by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
+    var answeringInvite by remember { mutableStateOf<dev.nitrate.core.partners.IncomingRequest?>(null) }
     LaunchedEffect(Unit) {
         container.refreshPartners()
         privacy = runCatching { container.server.privacy() }.getOrNull()
@@ -355,18 +378,18 @@ fun WatchPartnersScreen(actions: AppActions) {
         val incoming = info?.incoming.orEmpty()
         if (incoming.isNotEmpty()) {
             SectionTitleSmall("Asking you")
+            // Each opens the invite's own prompt (what it agrees to, the schedule included) to answer there.
             incoming.forEach { r ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("${r.fromName}: ${r.titleNames}")
-                        Text("Would see you: ${WatchPartners.names(r.willSee)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        val note by androidx.compose.runtime.produceState<String?>(null, r.id) { value = WatchPartners.unopenableNote(WatchPartners.unopenable(container.server, r.titles)) }
-                        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
-                    }
-                    TextButton(onClick = { act { container.server.acceptPartner(r.id) } }) { Text("Accept") }
-                    TextButton(onClick = { act { container.server.declinePartner(r.id) } }) { Text("Decline") }
-                }
+                androidx.compose.material3.ListItem(
+                    modifier = Modifier.clickable(onClick = { answeringInvite = r }),
+                    headlineContent = { Text("${r.fromName}: ${r.titleNames}") },
+                    supportingContent = {
+                        Text("Would see you: ${WatchPartners.names(r.willSee)}" + (r.schedule?.takeIf { it.kept }?.let { " · ${it.label}" } ?: ""))
+                    },
+                    trailingContent = { Text("Answer ›", color = MaterialTheme.colorScheme.primary) },
+                )
             }
+            answeringInvite?.let { r -> InviteAnswerDialog(actions, r) { answeringInvite = null; act { } } }
         }
 
         SectionTitleSmall("Your groups")
@@ -466,21 +489,22 @@ fun TogetherHost(actions: AppActions, enabled: Boolean, content: @Composable () 
 fun InviteAnswerDialog(actions: AppActions, r: dev.nitrate.core.partners.IncomingRequest, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     fun answer(choice: dev.nitrate.core.partners.TogetherChoice) = scope.launch { actions.container.runTogether(choice); onDismiss() }
+    val summary = remember(r) { dev.nitrate.core.partners.InviteSummary.of(r) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Watch ${r.titleNames} together?") },
+        title = { Text(summary.heading) },
         text = {
             val note by androidx.compose.runtime.produceState<String?>(null, r.id) { value = WatchPartners.unopenableNote(WatchPartners.unopenable(actions.container.server, r.titles)) }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(inviteText(r))
-                note?.let { Text(it, color = MaterialTheme.colorScheme.tertiary) }
-            }
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { InviteDetails(summary, note) }
         },
-        confirmButton = { TextButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Accept(r)) }) { Text("Accept") } },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onDismiss) { Text("Not now") }
-                TextButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Decline(r)) }) { Text("Decline") }
+        // Accept, and on its own line Not now beside Decline (in the error colour: it can't be undone).
+        confirmButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                androidx.compose.material3.Button(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Accept(r)) }) { Text("Accept") }
+                Row {
+                    TextButton(onClick = { answer(dev.nitrate.core.partners.TogetherChoice.Decline(r)) }) { Text("Decline", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = onDismiss) { Text("Not now") }
+                }
             }
         },
     )

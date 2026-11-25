@@ -76,7 +76,8 @@ fun RowsOrTitles(
     if (look.rows) {
         rowsContent(header)
     } else {
-        val items = remember(rows) { rows.flatMap { it.items }.distinctBy { it.id } }
+        // Spoiler-safe as the rows themselves show them.
+        val items = dev.nitrate.tv.ui.partners.spoilerSafe(remember(rows) { rows.flatMap { it.items }.distinctBy { it.id } })
         TitlesInView(items, look.view, columns, repository, header, onOpen, onPlay, music, upTo = upTo, label = label)
     }
 }

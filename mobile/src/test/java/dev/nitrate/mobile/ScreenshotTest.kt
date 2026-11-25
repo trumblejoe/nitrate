@@ -373,6 +373,13 @@ class ScreenshotTest {
         }
     }
 
+    /** An invite into a group with a full schedule: labelled lines, the schedule as points, Decline apart from Not now. */
+    @Test fun partnerRequestScheduled() = shoot("phone-partner-request-scheduled", setup = { c -> c.refreshCompanionForTests() }) { actions ->
+        val r = (actions.container.server as dev.nitrate.testing.FakeServer).partnerInfo.incoming.first()
+        dev.nitrate.mobile.ui.InviteAnswerDialog(actions, r.copy(schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, day = 4, hour = 19, together = true, locked = true,
+                party = dev.nitrate.core.partners.PartyTime(listOf(5), 21, 0)))) {}
+    }
+
     @Test fun watchPartners() = shoot("phone-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { dev.nitrate.mobile.ui.WatchPartnersScreen(it) }
 
     /** The guided setup's first step: titles picked from what was watched lately, Next, and Cancel (Back on the first page). */

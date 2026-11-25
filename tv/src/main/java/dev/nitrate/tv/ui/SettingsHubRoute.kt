@@ -88,6 +88,8 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
             }
         }
         var reportMessage by remember { mutableStateOf<String?>(null) }
+        // Only after Nitrate closed on an error: what went wrong (kept on this TV), to save in the server's logs.
+        var crashKept by remember { mutableStateOf(container.lastCrash() != null) }
         dev.nitrate.tv.ui.settings.SettingsHubScreen(
             listOfNotNull(
                 companionUpdates?.takeIf { it.restartNeeded }?.let { u ->
@@ -137,7 +139,17 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
                             )
                         }
                     },
-                ) + (if (account?.isAdmin == true) listOf(
+                ) + (if (crashKept) listOf(
+                    dev.nitrate.tv.ui.settings.SettingsLink("Nitrate closed unexpectedly", "Save what went wrong last time in your server's logs, for a bug report") {
+                        reportMessage = "Sending…"
+                        scope.launch {
+                            reportMessage = container.sendLastCrash().fold(
+                                { name -> container.clearLastCrash(); crashKept = false; "What went wrong is saved on your server as $name (Jellyfin Dashboard → Logs)" },
+                                { e -> "Couldn't send it: ${e.message ?: e::class.simpleName}" },
+                            )
+                        }
+                    },
+                ) else emptyList()) + (if (account?.isAdmin == true) listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Household devices", "How every device in the house plays the library, its tests and what its users saw at their TVs") { nav.navigate(HouseholdDevicesRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Library health", "Missing artwork and details, duplicates, missing episodes, what this TV always converts") { nav.navigate(LibraryHealthRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) },

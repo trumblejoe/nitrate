@@ -102,6 +102,15 @@ class GroupSessions(
     suspend fun choose(session: GroupWatchSession, choice: SessionChoice): String? {
         askingState.value = null
         if (choice == SessionChoice.NotNow) return null
+        // A second tap while the first is joining: one join, one player (two stacked players
+        // left the session as the first one closed).
+        if (!joining.tryLock()) return null
+        return try { joinNow(session, choice) } finally { joining.unlock() }
+    }
+
+    private val joining = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun joinNow(session: GroupWatchSession, choice: SessionChoice): String? {
         return runCatching {
             val j = timed { server.joinWatchSession(session.id, fromStart = choice == SessionChoice.FromStart) }
             took(j)
@@ -245,9 +254,13 @@ class SessionPlayback(
     /** Whether this player belongs to this device's session. */
     val active: Boolean get() = sessions.current.value?.itemId == itemId
 
+    /** The session this player began in: closing leaves only that one, never one joined since. */
+    private var joinedId: String? = null
+
     /** Starts following the session (call once the player is ready). */
     fun begin() {
         if (!active) return
+        joinedId = sessions.current.value?.id
         jobs += scope.launch { gate() }
         jobs += scope.launch { watch() }
         jobs += scope.launch { reports() }
@@ -258,7 +271,7 @@ class SessionPlayback(
     fun close() {
         jobs.forEach { it.cancel() }
         jobs.clear()
-        if (active) sessions.leave()
+        if (active && sessions.current.value?.id == joinedId) sessions.leave()
     }
 
     /** The user picked the notice's action ("Pause too", "Jump too", "Catch up"…). */

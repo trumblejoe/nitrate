@@ -36,6 +36,8 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -186,5 +188,51 @@ internal fun DeviceReportRow(actions: AppActions) {
         headlineContent = { Text("Send device report") },
         supportingContent = { Text(message ?: "What this device can play, saved to your Jellyfin server's logs. During playback, Info → Send log adds the file and what happened.") },
         trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+    )
+}
+
+/**
+ * "Nitrate closed unexpectedly", only after it did: what went wrong (kept on this device, written as
+ * it closed), to copy or save in the server's logs for a bug report, or forget.
+ */
+@Composable
+internal fun LastCrashRow(actions: AppActions) {
+    var crash by remember { mutableStateOf(actions.container.lastCrash()) }
+    val text = crash ?: return
+    var open by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val platform = dev.nitrate.mobile.platform.rememberPlatformActions()
+    ListItem(
+        modifier = Modifier.clickable { open = true },
+        headlineContent = { Text("Nitrate closed unexpectedly") },
+        supportingContent = { Text(message ?: "What went wrong last time, to copy or save in your server's logs for a bug report") },
+        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+    )
+    if (open) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text("Nitrate closed unexpectedly") },
+        text = {
+            androidx.compose.foundation.layout.Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                Text("Kept on this phone only. Copy it, or save it in your server's logs, to report it.", style = MaterialTheme.typography.bodyMedium)
+                Text(text, style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    modifier = Modifier.padding(top = 12.dp))
+            }
+        },
+        confirmButton = {
+            androidx.compose.foundation.layout.Row {
+                TextButton(onClick = { platform.copy(text, "Nitrate crash") }) { Text("Copy") }
+                TextButton(onClick = {
+                    message = "Sending…"; open = false
+                    scope.launch {
+                        message = actions.container.sendLastCrash().fold(
+                            { name -> "Saved on your server as $name (Jellyfin Dashboard → Logs)" },
+                            { e -> "Couldn't send: ${e.message ?: e::class.simpleName}" },
+                        )
+                    }
+                }) { Text("Save in server logs") }
+            }
+        },
+        dismissButton = { TextButton(onClick = { actions.container.clearLastCrash(); crash = null; open = false }) { Text("Forget") } },
     )
 }

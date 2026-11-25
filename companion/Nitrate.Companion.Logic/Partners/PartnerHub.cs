@@ -363,7 +363,35 @@ public partial class PartnerHub
     /// </summary>
     public OutgoingView Request(Guid from, Guid? toId, string? toName, Guid seriesId, string seriesName, Guid? groupId = null, GroupSchedule? schedule = null, IReadOnlyList<GroupTitle>? titles = null, Guid? batch = null)
     {
+        Guid? told = null;
+        OutgoingView view;
         lock (_lock)
+        {
+            view = RequestLocked(from, toId, toName, seriesId, seriesName, groupId, schedule, titles, batch, out told);
+        }
+
+        // Only the invitee's own apps hear of it, so they can notify at once; the inviter learns nothing.
+        if (told is { } to)
+        {
+            try
+            {
+                RequestMade?.Invoke(to);
+            }
+            catch (Exception)
+            {
+                // Never in the way of the invite itself.
+            }
+        }
+
+        return view;
+    }
+
+    /// <summary>Raised (with the invitee) when a new invite is made to an account that exists.</summary>
+    public event Action<Guid>? RequestMade;
+
+    private OutgoingView RequestLocked(Guid from, Guid? toId, string? toName, Guid seriesId, string seriesName, Guid? groupId, GroupSchedule? schedule, IReadOnlyList<GroupTitle>? titles, Guid? batch, out Guid? told)
+    {
+        told = null;
         {
             Prune();
             WatchGroup? group = null;
@@ -435,6 +463,10 @@ public partial class PartnerHub
                 };
                 _state.Requests.Add(existing);
                 _storage.Save(_state);
+                if (to != Guid.Empty)
+                {
+                    told = to;
+                }
             }
 
             return Outgoing(existing);

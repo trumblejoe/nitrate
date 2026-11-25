@@ -61,6 +61,14 @@ expect fun PlatformBackHandler(enabled: Boolean = true, onBack: () -> Unit)
 @Composable
 expect fun rememberNotificationPermission(onGranted: () -> Unit): (proceed: () -> Unit) -> Unit
 
+/** Asks whether the system lets the app notify now (Android 13+'s permission; elsewhere always yes). */
+@Composable
+expect fun rememberNotificationsAllowed(): () -> Boolean
+
+/** Opens the system's notification settings for the app (where a refused permission is turned back on). */
+@Composable
+expect fun rememberOpenNotificationSettings(): () -> Unit
+
 /** Opens the system's photo picker; [onPicked] gets the image and its type. */
 @Composable
 expect fun rememberImagePicker(onPicked: (bytes: ByteArray, mime: String) -> Unit): () -> Unit

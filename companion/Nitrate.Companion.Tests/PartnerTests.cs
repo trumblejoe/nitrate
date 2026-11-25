@@ -119,6 +119,30 @@ public class PartnerTests
     }
 
     [Fact]
+    public void ANewInviteTellsOnlyTheInviteesApps()
+    {
+        var hub = Hub();
+        var told = new List<Guid>();
+        hub.RequestMade += told.Add;
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        Assert.Equal(new[] { Sam }, told);
+        // Said again (the same invite): nobody is told twice.
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        Assert.Single(told);
+        // A private account by its exact name is told too (only them); a name nobody has tells nobody.
+        hub.Request(Joe, null, "quiet", Bear, "The Bear");
+        Assert.Equal(new[] { Sam, Hidden }, told);
+        hub.Request(Joe, null, "nobody-here", Bear, "The Bear");
+        Assert.Equal(2, told.Count);
+        // The message itself carries nothing about who asked or what.
+        var m = PartyPush.RequestMessage();
+        Assert.Equal(PartyPush.RequestKind, m.Kind);
+        Assert.Equal(string.Empty, m.SeriesName);
+        Assert.Empty(m.Others);
+        Assert.Null(m.ByName);
+    }
+
+    [Fact]
     public void ARequestToAPrivateNameLooksTheSameAsToNobody()
     {
         var hub = Hub();

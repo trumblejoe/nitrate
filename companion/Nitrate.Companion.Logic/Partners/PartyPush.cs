@@ -48,6 +48,12 @@ public class PartyPush : IHostedService, IDisposable
     /// <summary>The message header the apps listen for.</summary>
     public const string Header = "Nitrate.Party";
 
+    /// <summary>
+    /// The kind of "you have a new invite into a watch group": nothing else in it (the app reads its
+    /// invites as usual and notifies); older apps read it as party news that changes nothing.
+    /// </summary>
+    public const string RequestKind = "request";
+
     /// <summary>The kind of a Group Watch Session's news.</summary>
     public const string SessionKind = "session";
 
@@ -180,6 +186,7 @@ public class PartyPush : IHostedService, IDisposable
     {
         _partners.PartyAnnounced += OnAnnounced;
         _partners.ScheduleAnnounced += OnScheduleAnnounced;
+        _partners.RequestMade += OnRequestMade;
         _timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30));
         if (_watchSessions is not null)
         {
@@ -196,6 +203,7 @@ public class PartyPush : IHostedService, IDisposable
     {
         _partners.PartyAnnounced -= OnAnnounced;
         _partners.ScheduleAnnounced -= OnScheduleAnnounced;
+        _partners.RequestMade -= OnRequestMade;
         _timer?.Change(Timeout.Infinite, Timeout.Infinite);
         if (_watchSessions is not null)
         {
@@ -258,6 +266,12 @@ public class PartyPush : IHostedService, IDisposable
 
     private void OnScheduleAnnounced(ScheduleAnnouncement a) => _ = Task.Run(() =>
         SendAsync(Targets(a, _partners.MembersOf(a.GroupId), Live()), member => MessageFor(a, member, _partners, _names)));
+
+    private void OnRequestMade(Guid to) => _ = Task.Run(() =>
+        SendAsync(Targets(new[] { to }, Live()), _ => RequestMessage()));
+
+    /// <summary>The whole of a "new invite" message (no names, no titles: the app asks for its invites).</summary>
+    public static PartyMessage RequestMessage() => new(RequestKind, Guid.Empty, string.Empty, Array.Empty<string>(), null, false, 0, null);
 
     private List<LiveApp> Live() => _sessions.Sessions.Where(s => s.IsActive).Select(s => new LiveApp(s.Id, s.UserId, s.Client)).ToList();
 

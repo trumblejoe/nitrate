@@ -447,6 +447,13 @@ class FakeServer : MediaServer {
     )
     override suspend fun partners() = partnerInfo
 
+    /** Invites sent ("waiting", as the server always says). */
+    val asked = mutableListOf<dev.nitrate.core.partners.OutgoingRequest>()
+    override suspend fun askPartner(
+        toUserId: String?, toName: String?, seriesId: String, seriesName: String, groupId: String?,
+        schedule: dev.nitrate.core.partners.GroupSchedule?, titles: List<dev.nitrate.core.partners.GroupTitle>?, batch: String?,
+    ) = dev.nitrate.core.partners.OutgoingRequest("rq-${asked.size + 10}", toName ?: toUserId.orEmpty(), seriesId, seriesName, groupId, 0).also { asked += it }
+
     /** The Group Watch Session the session calls answer with (null: none going). */
     var watchSessionState: dev.nitrate.core.partners.GroupWatchSession? = null
     override suspend fun watchSessions() = listOfNotNull(watchSessionState)

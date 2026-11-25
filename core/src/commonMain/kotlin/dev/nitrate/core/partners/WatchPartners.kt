@@ -176,12 +176,31 @@ data class GroupSchedule(
      * "Binge", "Every 2 days, 7pm", "Thursdays 7pm", with ", together" when Together is on,
      * ", locked" when playing ahead isn't allowed, and the Group Watch Session's time.
      */
-    val label: String get() = when (cadence) {
+    val label: String get() = paceLabel + (if (together) ", together" else "") + (if (locked && active) ", locked" else "") + (party?.let { ", Group Watch Session ${it.label}" } ?: "")
+
+    /** The pace alone: "Thursdays 7pm", "Every 2 days, 7pm", "Binge". */
+    val paceLabel: String get() = when (cadence) {
         DAYS2 -> "Every 2 days, $clock"
         DAYS3 -> "Every 3 days, $clock"
         WEEKLY -> "${DAYS[day.coerceIn(0, 6)]}s $clock"
         else -> "Binge"
-    } + (if (together) ", together" else "") + (if (locked && active) ", locked" else "") + (party?.let { ", Group Watch Session ${it.label}" } ?: "")
+    }
+
+    /**
+     * What accepting an invite agrees to, one short point each (the invite's prompt lists them):
+     * the pace, playing ahead, Together, the Group Watch Session's time. Empty when nothing's kept.
+     */
+    val termLines: List<String> get() = buildList {
+        if (limits) {
+            add("Pace: $paceLabel")
+            add(if (locked) "Playing ahead: not allowed. Each part opens on the schedule" else "Playing ahead: allowed, with a note saying when it opens")
+        }
+        if (together) add(
+            "Together: spoilers are hidden by the group's progress, and " +
+                if (locked) "what the group hasn't watched plays only when you watch it together" else "playing what the group hasn't watched asks first",
+        )
+        party?.let { add("Group Watch Session: ${it.label}, to watch the next part together") }
+    }
 
     /** "Ask first" / "Don't allow". */
     val playAhead: String get() = playAheadLabel(locked)
@@ -322,6 +341,28 @@ data class IncomingRequest(
 ) {
     /** "Severance and The Bear". */
     val titleNames: String get() = WatchPartners.names(titles.map { it.name })
+}
+
+/**
+ * An invite laid out for its prompt (both apps): who and what as labelled lines, then what the
+ * group's schedule asks as short points ([GroupSchedule.termLines]), and what accepting agrees to.
+ */
+data class InviteSummary(val heading: String, val lines: List<Pair<String, String>>, val rules: List<String>, val agrees: String?) {
+    companion object {
+        fun of(r: IncomingRequest): InviteSummary {
+            val others = r.willSee.filter { it != r.fromName }
+            val lines = listOf(
+                "What" to r.titleNames,
+                "With" to WatchPartners.names(listOf(r.fromName) + others),
+                "Who'll see you" to "${WatchPartners.names(r.willSee)}: your name, and how far you are in what the group watches",
+            )
+            val rules = r.schedule?.termLines.orEmpty()
+            return InviteSummary(
+                "Watch with ${r.fromName}?", lines, rules,
+                if (rules.isEmpty()) null else "Accepting agrees to this schedule. Most of the group can agree to change it later.",
+            )
+        }
+    }
 }
 
 /** An invite the user sent: always just "waiting" until accepted or lapsed (nothing says whether the account exists). */
@@ -822,6 +863,25 @@ class WatchPartnersPlugin : PlaybackGuard {
      */
     fun watchingNow(host: PluginHost, groupId: String, sessionId: String) {
         liveFor.update { it + (key(host, "live:$groupId") to sessionId) }
+    }
+
+    /**
+     * Why [item] can't be watched in a Group Watch Session of [groupId], or null when it can: the
+     * group doesn't allow playing ahead and its schedule hasn't let the part out yet, which no
+     * session changes. Asked before a session starts, so nobody is left in one nobody can play.
+     */
+    suspend fun refusedInSession(host: PluginHost, groupId: String, item: MediaItem): String? {
+        if (item.user.played) return null
+        if (host.server.companion()?.features?.contains(WatchPartners.FEATURE) != true) return null
+        val g = runCatching { host.server.partners() }.getOrNull()?.groups?.firstOrNull { it.id == groupId } ?: return null
+        if (!g.locked || g.schedule?.limits != true) return null
+        for (title in g.titles.map { it.id }.distinct()) {
+            val items = runCatching { host.server.titleItems(title) }.getOrNull() ?: continue
+            val order = WatchPartners.countable(items).map { it.id }
+            if (item.id !in order) continue
+            if (g.locks(item.id, order)) return refused(item, g, order).message
+        }
+        return null
     }
 
     /** How strict one group is about a playback, strictest last. */

@@ -91,6 +91,12 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 @Composable
 actual fun rememberNotificationPermission(onGranted: () -> Unit): (proceed: () -> Unit) -> Unit = remember { { proceed -> proceed() } }
 
+@Composable
+actual fun rememberNotificationsAllowed(): () -> Boolean = remember { { true } }
+
+@Composable
+actual fun rememberOpenNotificationSettings(): () -> Unit = remember { {} }
+
 /** The window the app runs in (set by :desktop): file dialogs open over it, the player makes it full screen. */
 object DesktopWindow {
     @Volatile var frame: java.awt.Frame? = null

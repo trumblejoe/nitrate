@@ -85,6 +85,20 @@ actual fun rememberPlatformActions(): PlatformActions = remember {
 actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) = Unit
 
 /** Asks iOS for permission to show alerts (it asks the person once; later answers come straight back). */
+// iOS asks when a switch is turned on; whether it was refused isn't read here (the switch shows the setting).
+@Composable
+actual fun rememberNotificationsAllowed(): () -> Boolean = remember { { true } }
+
+@Composable
+actual fun rememberOpenNotificationSettings(): () -> Unit = remember {
+    {
+        platform.Foundation.NSURL.URLWithString(platform.UIKit.UIApplicationOpenSettingsURLString)?.let {
+            platform.UIKit.UIApplication.sharedApplication.openURL(it, emptyMap<Any?, Any>(), null)
+        }
+        Unit
+    }
+}
+
 @Composable
 actual fun rememberNotificationPermission(onGranted: () -> Unit): (proceed: () -> Unit) -> Unit {
     val granted = androidx.compose.runtime.rememberUpdatedState(onGranted)

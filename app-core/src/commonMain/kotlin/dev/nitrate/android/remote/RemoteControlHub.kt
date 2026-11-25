@@ -61,6 +61,8 @@ class RemoteControlHub(
                     // Watch party news from the Companion: never shown as a message.
                     is ServerEvent.General if e.name == "DisplayMessage" && e.arguments["Header"] == dev.nitrate.core.partners.PartyNews.HEADER -> {
                         val text = e.arguments["Text"].orEmpty()
+                        // A new invite into a watch group: the invites are read again (and notified).
+                        if (dev.nitrate.core.jellyfin.isInviteNews(text)) { _inviteNews.tryEmit(Unit); return@collect }
                         // Schedule changes and Group Watch Sessions come the same way, told apart by their kind.
                         dev.nitrate.core.partners.SessionNews.decode(text)?.let { _sessionNews.tryEmit(it) }
                             ?: dev.nitrate.core.partners.ScheduleNews.decode(text)?.let { _scheduleNews.tryEmit(it) }
@@ -83,6 +85,11 @@ class RemoteControlHub(
             }
         }
     }
+
+    private val _inviteNews = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+
+    /** The Companion says the user has a new invite into a watch group (nothing more: their invites are read again). */
+    val inviteNews: SharedFlow<Unit> = _inviteNews
 
     private val _partyNews = MutableSharedFlow<dev.nitrate.core.partners.PartyNews>(extraBufferCapacity = 16)
 

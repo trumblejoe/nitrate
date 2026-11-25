@@ -104,7 +104,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             nav.navigate(NowPlayingRoute) { launchSingleTop = true }
         } else nav.playQueue((if (shuffle) items.drop(start).shuffled() else items.drop(start)).map { it.id })
     }
-    val gate = rememberPlaybackGate(container.plugins, container::groupStartMs) { item, fromStart, startMs ->
+    val gate = rememberPlaybackGate(container.plugins, container::groupStartMs, container::playTurnedDown) { item, fromStart, startMs ->
         scope.launch {
             // A book opens in the reader, from wherever Play was pressed.
             if (item.kind == dev.nitrate.core.model.ItemKind.BOOK) nav.navigate(ComicRoute(item.id))

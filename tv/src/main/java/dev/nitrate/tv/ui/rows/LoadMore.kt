@@ -31,7 +31,9 @@ fun rememberLoadMore(row: MediaRow, on: Boolean, repository: MediaServer): Loade
     var loading by remember(row.key, first) { mutableStateOf(false) }
     var ended by remember(row.key, first) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val all = if (extra.isEmpty()) row else row.copy(items = row.items + extra)
+    // What's read later shows spoiler-safe like the row it joins (the row's own titles already are).
+    val safeExtra = dev.nitrate.tv.ui.partners.spoilerSafe(extra.toList())
+    val all = if (safeExtra.isEmpty()) row else row.copy(items = row.items + safeExtra)
     val onFocus: (MediaItem) -> Unit = { item ->
         val at = all.items.indexOfFirst { it.id == item.id }
         if (at >= 0 && at >= all.items.size - MORE_AHEAD && !loading && !ended) {

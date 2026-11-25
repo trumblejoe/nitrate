@@ -216,7 +216,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         scheduleInvites()
     }
 
-    /** Every 15 minutes (Android's shortest) while either is on; the open app checks every 30 s itself. */
+    /** Every 15 minutes (Android's shortest) while any is on; an app still open in the background hears a new invite at once (the Companion's push, `AppContainer`). */
     private suspend fun scheduleInvites() {
         val work = runCatching { WorkManager.getInstance(context) }.getOrNull() ?: return
         if (!invitesEnabled.first() && !partnerRequestsEnabled.first() && !partyRemindersEnabled.first()) {

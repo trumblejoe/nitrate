@@ -66,3 +66,15 @@ internal fun decodeScheduleNews(text: String): dev.nitrate.core.partners.Schedul
     if (kind != dev.nitrate.core.partners.ScheduleNews.ASK && kind != dev.nitrate.core.partners.ScheduleNews.DONE) null
     else JellyfinJson.decodeFromString(ScheduleNewsDto.serializer(), text).toModel()
 }.getOrNull()
+
+/**
+ * Whether a "Nitrate.Party" message only says "you have a new invite into a watch group" (kind
+ * `request`; nothing else in it: the app reads its invites as usual).
+ */
+fun isInviteNews(text: String): Boolean = runCatching {
+    val o = JellyfinJson.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject
+    (o?.get("Kind") as? kotlinx.serialization.json.JsonPrimitive)?.content == INVITE_NEWS_KIND
+}.getOrDefault(false)
+
+/** The kind of the Companion's "new invite" message (`PartyPush.RequestKind`). */
+const val INVITE_NEWS_KIND = "request"

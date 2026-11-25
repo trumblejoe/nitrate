@@ -96,6 +96,31 @@ actual fun rememberNotificationPermission(onGranted: () -> Unit): (proceed: () -
 }
 
 @Composable
+actual fun rememberNotificationsAllowed(): () -> Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        {
+            android.os.Build.VERSION.SDK_INT < 33 ||
+                androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
+}
+
+@Composable
+actual fun rememberOpenNotificationSettings(): () -> Unit {
+    val context = LocalContext.current
+    return remember(context) {
+        {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(intent) }
+            Unit
+        }
+    }
+}
+
+@Composable
 actual fun rememberImagePicker(onPicked: (bytes: ByteArray, mime: String) -> Unit): () -> Unit {
     val context = LocalContext.current
     val picked by rememberUpdatedState(onPicked)

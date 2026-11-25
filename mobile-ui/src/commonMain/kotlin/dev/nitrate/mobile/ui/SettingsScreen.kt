@@ -178,6 +178,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         item { SpeedCheckRow(actions) }
         item { Link("Query analyzer", "Every request Nitrate makes to your server: which page asked, what it cost, what was shared, and hints for making pages lighter") { actions.nav.navigate(QueryAnalyzerRoute) } }
         item { DeviceReportRow(actions) }
+        item { LastCrashRow(actions) }
         if (account?.isAdmin == true) {
             item { Link("Household devices", "How every device in the house plays the library, its tests and what its users saw at their TVs") { actions.nav.navigate(HouseholdDevicesRoute) } }
             item { Link("Library health", "Missing artwork and details, duplicates, missing episodes, what this phone always converts") { actions.nav.navigate(LibraryHealthRoute) } }

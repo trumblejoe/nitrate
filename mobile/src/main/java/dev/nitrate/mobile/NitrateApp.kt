@@ -15,6 +15,7 @@ class NitrateApp : Application(), SingletonImageLoader.Factory, AppContainer.Own
 
     override fun onCreate() {
         super.onCreate()
+        dev.nitrate.android.CrashNote.install(this, BuildConfig.VERSION_NAME)
         container = AppContainer(this, clientName = "Nitrate Mobile", version = BuildConfig.VERSION_NAME)
         // Music keeps playing out of the app, with a media notification and lock-screen controls.
         (container.listening as? dev.nitrate.android.playback.AndroidListening)?.onPlayer = { player ->

@@ -493,64 +493,69 @@ internal fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, up
 }
 
 /** Other devices that can be remote-controlled. */
-/** New episodes of followed shows; asks for notification permission (Android 13+) when switched on. */
+/**
+ * A notification switch. Turned on, it asks for the system's permission (Android 13+). On while the
+ * system doesn't let Nitrate notify, it says so ("Blocked") and a tap opens the system's settings
+ * for Nitrate (a refused permission can only be turned back on there); looked at again on return.
+ */
+@Composable
+internal fun NotifyToggle(label: String, detail: String, on: Boolean, set: suspend (Boolean) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val allowedNow = dev.nitrate.mobile.platform.rememberNotificationsAllowed()
+    var allowed by remember { mutableStateOf(allowedNow()) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) { allowed = allowedNow(); onPauseOrDispose { } }
+    val openSettings = dev.nitrate.mobile.platform.rememberOpenNotificationSettings()
+    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { allowed = true; scope.launch { set(true) } }
+    val blocked = on && !allowed
+    Toggle(label, if (blocked) "Blocked: your phone isn't letting Nitrate notify. Tap to allow it in the phone's settings." else detail, on && allowed) { want ->
+        when {
+            blocked -> openSettings()
+            want -> askPermission { scope.launch { set(true) } }
+            else -> scope.launch { set(false) }
+        }
+    }
+}
+
+/** New episodes of followed shows. */
 @Composable
 internal fun NewEpisodesToggle(actions: AppActions) {
     val notifier = actions.container.newEpisodes
-    val scope = rememberCoroutineScope()
     val on by notifier.enabled.collectAsState(false)
-    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setEnabled(true) } }
-    Toggle("New episodes", "When shows you follow (favourites, or ones you're watching) get new episodes", on) { want ->
-        if (want) askPermission { scope.launch { notifier.setEnabled(true) } } else scope.launch { notifier.setEnabled(false) }
-    }
+    NotifyToggle("New episodes", "When shows you follow (favourites, or ones you're watching) get new episodes", on) { notifier.setEnabled(it) }
 }
 
-/** New seasons of shows followed or watched before; asks for notification permission like [NewEpisodesToggle]. */
+/** New seasons of shows followed or watched before. */
 @Composable
 internal fun NewSeasonsToggle(actions: AppActions) {
     val notifier = actions.container.newEpisodes
-    val scope = rememberCoroutineScope()
     val on by notifier.seasonsEnabled.collectAsState(false)
-    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setSeasonsEnabled(true) } }
-    Toggle("New seasons", "When a show you follow or have watched before starts a new season", on) { want ->
-        if (want) askPermission { scope.launch { notifier.setSeasonsEnabled(true) } } else scope.launch { notifier.setSeasonsEnabled(false) }
-    }
+    NotifyToggle("New seasons", "When a show you follow or have watched before starts a new season", on) { notifier.setSeasonsEnabled(it) }
 }
 
-/** Watch-together invites (on until switched off; asks for permission like the others). */
+/** Watch-together invites from older apps (on until switched off). */
 @Composable
 internal fun InvitesToggle(actions: AppActions) {
     val notifier = actions.container.newEpisodes
-    val scope = rememberCoroutineScope()
     val on by notifier.invitesEnabled.collectAsState(false)
-    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setInvitesEnabled(true) } }
-    Toggle("Invites to watch", "When someone using an older Nitrate invites you to watch with them (checked every 15 minutes in the background)", on) { want ->
-        if (want) askPermission { scope.launch { notifier.setInvitesEnabled(true) } } else scope.launch { notifier.setInvitesEnabled(false) }
-    }
+    NotifyToggle("Invites to watch", "When someone using an older Nitrate invites you to watch with them (checked every 15 minutes in the background)", on) { notifier.setInvitesEnabled(it) }
 }
 
 /** Watch group requests: invites into a group and schedule changes to answer (on until switched off). */
 @Composable
 internal fun PartnerRequestsToggle(actions: AppActions) {
     val notifier = actions.container.newEpisodes
-    val scope = rememberCoroutineScope()
     val on by notifier.partnerRequestsEnabled.collectAsState(false)
-    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { scope.launch { notifier.setPartnerRequestsEnabled(true) } }
-    Toggle("Watch group requests", "When someone asks to watch something with you, or to change a group's schedule", on) { want ->
-        if (want) askPermission { scope.launch { notifier.setPartnerRequestsEnabled(true) } } else scope.launch { notifier.setPartnerRequestsEnabled(false) }
-    }
+    NotifyToggle("Watch group requests", "When someone asks to watch something with you, or to change a group's schedule. At once while Nitrate is open in the background, else within about 15 minutes", on) { notifier.setPartnerRequestsEnabled(it) }
 }
 
 /** Watch party reminders, 15 minutes before each group's party (on until switched off). */
 @Composable
 internal fun PartyRemindersToggle(actions: AppActions) {
     val notifier = actions.container.newEpisodes
-    val scope = rememberCoroutineScope()
     val on by notifier.partyRemindersEnabled.collectAsState(false)
-    fun turnOn() = scope.launch { notifier.setPartyRemindersEnabled(true); actions.container.refreshPartners() }
-    val askPermission = dev.nitrate.mobile.platform.rememberNotificationPermission { turnOn() }
-    Toggle("Group Watch Session reminders", "15 minutes before your watch groups' Group Watch Sessions, set by this phone itself; postponing and \"Not tonight\" from the notification", on) { want ->
-        if (want) askPermission { turnOn() } else scope.launch { notifier.setPartyRemindersEnabled(false) }
+    NotifyToggle("Group Watch Session reminders", "15 minutes before your watch groups' Group Watch Sessions, set by this phone itself; postponing and \"Not tonight\" from the notification", on) { want ->
+        notifier.setPartyRemindersEnabled(want)
+        if (want) actions.container.refreshPartners()
     }
 }
 

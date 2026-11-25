@@ -2715,6 +2715,16 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.partners.InviteAnswerDialog(c, (c.server as dev.nitrate.testing.FakeServer).partnerInfo.incoming.first()) {}
     }
 
+    /** An invite into a group with a full schedule: labelled lines, the schedule as points, Accept focused. */
+    @Test fun partnerRequestScheduled() = shoot("tv-partner-request-scheduled", setup = { c -> c.refreshCompanionForTests() }, act = {
+        compose.onNode(androidx.compose.ui.test.hasText("Accept") and androidx.compose.ui.test.hasClickAction()).assertIsFocusedOrHasFocusedChild()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The group's schedule")).fetchSemanticsNodes().isNotEmpty())
+    }) { c ->
+        val r = (c.server as dev.nitrate.testing.FakeServer).partnerInfo.incoming.first()
+        dev.nitrate.tv.ui.partners.InviteAnswerDialog(c, r.copy(schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, day = 4, hour = 19, together = true, locked = true,
+                party = dev.nitrate.core.partners.PartyTime(listOf(5), 21, 0)))) {}
+    }
+
     /** A watch party's reminder: Join first and focused; the postponements and Not tonight beside it. */
     @Test fun watchParty() = shoot("tv-watch-party", act = {
         compose.onNode(androidx.compose.ui.test.hasText("Join") and androidx.compose.ui.test.hasClickAction()).assertIsFocusedOrHasFocusedChild()
@@ -2760,6 +2770,23 @@ class TvScreenshotTest {
             dev.nitrate.core.partners.GroupSetup.Step.TOGETHER,
             listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel"), dev.nitrate.core.partners.GroupTitle("m1", "Nitrate")), people = listOf("user-2"),
             schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY, party = dev.nitrate.core.partners.PartyTime(listOf(5), 21)),
+        )
+        dev.nitrate.tv.ui.partners.GroupSetupDialog(c, start) {}
+    }
+
+    /** Sending the invite: Done takes focus (the Send button it replaces had it), plainly focused. */
+    @Test fun groupSetupSentFocusesDone() = shoot("tv-group-setup-sent", setup = { c -> c.refreshCompanionForTests() }, act = {
+        compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText("Send the invite"))
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
+        compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasText("Send the invite"))
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        runCatching { compose.waitUntil(timeoutMillis = 10_000) { compose.mainClock.advanceTimeBy(100); focusedHasText("Done") } }
+        check(focusedHasText("Done")) { "Done should have focus after sending; focused: ${focusedNodes()}" }
+    }) { c ->
+        val start = dev.nitrate.core.partners.GroupSetup(
+            dev.nitrate.core.partners.GroupSetup.Step.TOGETHER,
+            listOf(dev.nitrate.core.partners.GroupTitle("series-1", "The Night Reel")), people = listOf("user-2"),
+            schedule = dev.nitrate.core.partners.GroupSchedule(dev.nitrate.core.partners.GroupSchedule.WEEKLY),
         )
         dev.nitrate.tv.ui.partners.GroupSetupDialog(c, start) {}
     }

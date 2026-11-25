@@ -2,6 +2,7 @@
 
 package dev.nitrate.mobile.ui
 
+import kotlinx.coroutines.flow.first
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
@@ -313,14 +314,25 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     @Suppress("NAME_SHADOWING") val startMs = startMs ?: groupStart?.takeIf { it > 0 }
                     when (action) {
                         GuardAction.PlayAnyway -> if (startMs != null) nav.navigate(playerRoute(item.id, false).copy(startMs = startMs)) else go(item, fromStart)
-                        GuardAction.Cancel -> Unit
+                        GuardAction.Cancel -> container.playTurnedDown(item)
                         is GuardAction.PlayInstead -> nav.navigate(playerRoute(action.item.id, false))
                         is GuardAction.MarkWatchedThenPlay -> {
                             action.itemIds.forEach { runCatching { container.server.setPlayed(it, true) } }
                             nav.navigate(playerRoute(item.id, fromStart))
                         }
                         is GuardAction.RunThenPlay -> {
-                            if (runCatching { action.run() }.isFailure && !action.playIfFailed) return@launch
+                            val failed = runCatching { action.run() }.exceptionOrNull()
+                            if (failed != null && !action.playIfFailed) {
+                                // Said, not just closed: why it couldn't start.
+                                container.playTurnedDown(item)
+                                val ok = CompletableDeferred<GuardAction>()
+                                pending = dev.nitrate.core.plugins.GuardDecision.Ask(
+                                    "Couldn't start", failed.message ?: "Something went wrong. Try again in a moment.",
+                                    listOf(dev.nitrate.core.plugins.GuardChoice("OK", GuardAction.Cancel)),
+                                ) to ok
+                                ok.await().also { pending = null }
+                                return@launch
+                            }
                             if (startMs != null) nav.navigate(playerRoute(item.id, false).copy(startMs = startMs)) else go(item, fromStart)
                         }
                     }
@@ -486,6 +498,21 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         // What other apps ask of this one: play something here, show a message, change volume.
         var message by remember { mutableStateOf<Pair<String, String>?>(null) }
         val platformActions = dev.nitrate.mobile.platform.rememberPlatformActions()
+        // In a watch group, or invited into one: ask once whether Nitrate may notify (Android 13+ notifies
+        // nothing until allowed, and the switches for these are on from the start).
+        val partnersNow by container.partners.collectAsState()
+        val notifyAllowed = dev.nitrate.mobile.platform.rememberNotificationsAllowed()
+        val askNotify = dev.nitrate.mobile.platform.rememberNotificationPermission { }
+        LaunchedEffect(partnersNow != null && (partnersNow!!.groups.isNotEmpty() || partnersNow!!.incoming.isNotEmpty())) {
+            val p = partnersNow ?: return@LaunchedEffect
+            if (p.groups.isEmpty() && p.incoming.isEmpty()) return@LaunchedEffect
+            val keys = container.platform.libraryKeyValues
+            if (notifyAllowed() || keys.get(ASKED_NOTIFY_KEY) != null) return@LaunchedEffect
+            if (!container.newEpisodes.partnerRequestsEnabled.first()) return@LaunchedEffect
+            keys.put(ASKED_NOTIFY_KEY, "1")
+            askNotify { }
+        }
+
         // A tapped notification: open its item once signed in (not over the profile picker or sign-in).
         val pendingOpen by openItem.collectAsState()
         val currentEntry by nav.currentBackStackEntryAsState()
@@ -599,3 +626,6 @@ fun GuardDialog(ask: GuardDecision.Ask, onAnswer: (GuardAction) -> Unit) {
 }
 
 
+
+/** Asked once whether Nitrate may notify about watch groups (kept on the device). */
+private const val ASKED_NOTIFY_KEY = "notify.asked.watchgroups"

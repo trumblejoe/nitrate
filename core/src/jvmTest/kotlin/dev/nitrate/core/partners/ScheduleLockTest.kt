@@ -95,6 +95,19 @@ class ScheduleLockTest {
         assertEquals(listOf("Watch for myself", "Not now"), ask(plugin.beforePlay(eps[2].copy(user = UserState(played = true)), host)).choices.map { it.label })
     }
 
+    /** A session can't be started on what the lock refuses (everyone was left in one nobody could play). */
+    @Test fun aSessionIsNotStartedOnWhatTheLockRefuses() = runBlocking {
+        val plugin = WatchPartnersPlugin()
+        val host = PluginHost(server(group("g1", sam, weekly.copy(locked = true))), noStore, Session(emptyList()))
+        assertTrue(plugin.refusedInSession(host, "g1", eps[2])!!.contains("doesn't allow playing ahead"))
+        assertNull(plugin.refusedInSession(host, "g1", eps[1]))
+        // Seen already, another group, or Ask first: nothing stops the session.
+        assertNull(plugin.refusedInSession(host, "g1", eps[2].copy(user = UserState(played = true))))
+        assertNull(plugin.refusedInSession(host, "other", eps[2]))
+        val askFirst = PluginHost(server(group("g1", sam, weekly)), noStore, Session(emptyList()))
+        assertNull(plugin.refusedInSession(askFirst, "g1", eps[2]))
+    }
+
     @Test fun togetherAndLockedPlaysOnlyTogether() = runBlocking {
         val plugin = WatchPartnersPlugin()
         val g = group("g1", sam, GroupSchedule(together = true, locked = true))
