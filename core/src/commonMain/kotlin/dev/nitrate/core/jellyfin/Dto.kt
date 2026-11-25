@@ -48,6 +48,7 @@ internal data class ItemDto(
     val name: String? = null,
     val sortName: String? = null,
     val dateCreated: String? = null,
+    val etag: String? = null,
     val playlistItemId: String? = null,
     val album: String? = null,
     val albumId: String? = null,
@@ -366,6 +367,17 @@ internal data class QueryFiltersLegacyDto(
 @Serializable
 internal data class QueryTimeDto(val tag: String, val ms: Long)
 
+/** The Companion plugin's change counters (GET /Nitrate/Changes). */
+@Serializable
+internal data class ChangesDto(
+    val epoch: String = "",
+    val library: Long = 0,
+    val views: Long = 0,
+    val playlists: Long = 0,
+    val watch: Long = 0,
+    val because: Long = 0,
+)
+
 /** The Companion plugin's Home in one answer. */
 @Serializable
 internal data class HomeBundleDto(
@@ -373,6 +385,9 @@ internal data class HomeBundleDto(
     val nextUp: List<ItemDto>? = null,
     val latest: List<LatestBundleDto> = emptyList(),
     val because: List<BecauseBundleDto>? = null,
+    val reading: List<ItemDto>? = null,
+    val readingDone: List<ItemDto>? = null,
+    val listening: List<ItemDto>? = null,
 )
 
 @Serializable

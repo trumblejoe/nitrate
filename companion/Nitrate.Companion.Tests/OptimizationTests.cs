@@ -96,4 +96,52 @@ public class OptimizationTests
         time.Advance(QueryTimeStore.Keep + TimeSpan.FromMinutes(1));
         Assert.Empty(store.Household());
     }
+
+    [Fact]
+    public void PlaylistsCarryOnFromWhereTheyWereLeft()
+    {
+        var now = new DateTime(2026, 11, 25, 0, 0, 0, DateTimeKind.Utc);
+        PlaylistEntry E(int n, bool played = false, int? daysAgo = null) => new(G(n), played, daysAgo is { } d ? now.AddDays(-d) : null);
+        // Left at 2 (played 1 day ago), 3 watched since elsewhere: carries on with 4.
+        var marvel = new[] { E(1, true, 9), E(2, true, 1), E(3, true), E(4), E(5) };
+        // Left part-way through 11 (played 3 days ago, not finished): carries on with 11 itself.
+        var bond = new[] { E(10, true, 4), E(11, false, 3), E(12) };
+        // Finished: nothing to carry on with.
+        var done = new[] { E(20, true, 2), E(21, true, 2) };
+        // Last played 90 days ago: no longer being watched through.
+        var old = new[] { E(30, true, 90), E(31) };
+        // Never played from.
+        var fresh = new[] { E(40), E(41) };
+        // The same title next in two playlists: shown once.
+        var twice = new[] { E(50, true, 5), E(4) };
+        Assert.Equal(new[] { G(4), G(11) }, PlaylistPlaces.Continue(new[] { bond, marvel, done, old, fresh, twice }, now, 12));
+        Assert.Equal(new[] { G(4) }, PlaylistPlaces.Continue(new[] { bond, marvel }, now, 1));
+        Assert.Null(PlaylistPlaces.LastPlayed(fresh));
+        Assert.Equal(1, PlaylistPlaces.LastPlayed(marvel));
+    }
+
+    [Fact]
+    public void ChangeCountersSayWhatChanged()
+    {
+        var counters = new Nitrate.Companion.Changes.ChangeCounters();
+        var before = counters.For(G(1), null);
+        counters.ItemChanged(Nitrate.Companion.Changes.ChangeCounters.Kind.Title);
+        counters.WatchChanged(G(2));
+        var after = counters.For(G(1), null);
+        Assert.Equal(before.Epoch, after.Epoch);
+        Assert.Equal(before.Library + 1, after.Library);
+        // Someone else's watching isn't this person's change.
+        Assert.Equal(before.Watch, after.Watch);
+        Assert.Equal(before.Views, after.Views);
+        counters.ItemChanged(Nitrate.Companion.Changes.ChangeCounters.Kind.Playlist);
+        Assert.Equal(after.Library, counters.For(G(1), null).Library);
+        Assert.Equal(after.Playlists + 1, counters.For(G(1), null).Playlists);
+        counters.ItemChanged(Nitrate.Companion.Changes.ChangeCounters.Kind.Library);
+        Assert.Equal(after.Views + 1, counters.For(G(1), null).Views);
+        counters.WatchChanged(G(1));
+        Assert.Equal(1, counters.For(G(1), null).Watch);
+        Assert.Equal(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).UtcTicks, counters.For(G(1), new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)).Because);
+        // A new run of the logic: a new epoch, so apps load everything once.
+        Assert.NotEqual(counters.Epoch, new Nitrate.Companion.Changes.ChangeCounters().Epoch);
+    }
 }

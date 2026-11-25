@@ -112,6 +112,10 @@ public class CompanionController : ControllerBase
         // Metadata editors: chosen accounts edit titles in chosen libraries (/Nitrate/Metadata; docs/features/admin.md).
         features.Add("metadata");
         features.Add("home");
+        // Home's "Continue your playlists" worked out here (GET /Nitrate/Home/Playlists).
+        features.Add("homeplaylists");
+        // Change counters for the apps' kept rows (GET /Nitrate/Changes).
+        features.Add("changes");
         features.Add("formats");
         // Only once the timing middleware is known to be in the server's pipeline.
         if (_queryTimes.Active)

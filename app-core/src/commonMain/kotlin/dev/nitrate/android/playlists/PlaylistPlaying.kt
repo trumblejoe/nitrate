@@ -25,9 +25,10 @@ data class PlaylistContext(val playlistId: String, val index: Int, val total: In
  *
  * Kept light for the server, since Home asks on every reload: which playlists are being watched comes
  * from one small "played lately" list (`MediaServer.recentlyPlayed`) checked against each playlist's
- * members (ids only, kept [STRUCTURE_MS]); only those being watched have their whole contents read
+ * members (ids only, kept on the device until the playlist's etag changes); only those being watched have their whole contents read
  * (shows put in whole as their episodes, also kept [STRUCTURE_MS], in memory and on disk), with the
- * watch state laid over them from the played-lately list, which is always fresh.
+ * watch state laid over them from the played-lately list, which is always fresh. With the Companion
+ * (`MediaServer.continuePlaylists`), Home's row is worked out by the server and none of this is asked.
  */
 class PlaylistPlaying(
     private val server: MediaServer,
@@ -41,7 +42,12 @@ class PlaylistPlaying(
 
     private val lock = Mutex()
     private val kept = HashMap<String, Kept>()
-    private val members = HashMap<String, Kept>()
+    private class KeptIds(val atMs: Long, val version: String?, val ids: Set<String>)
+
+    @kotlinx.serialization.Serializable
+    private data class MembersOnDisk(val version: String, val ids: List<String>)
+
+    private val members = HashMap<String, KeptIds>()
     private var playlistList: Kept? = null
 
     /** What was shown last time (this device), for opening at once while it's fetched again. */
@@ -79,13 +85,33 @@ class PlaylistPlaying(
         PlaylistPlaces.entries(items, (shows + seasons).awaitAll().toMap())
     }
 
-    /** The ids a playlist holds (titles, and shows or seasons put in whole), kept [STRUCTURE_MS]. */
-    private suspend fun membersOf(playlistId: String): Set<String> {
-        lock.withLock { members[playlistId]?.takeIf { nowMs() - it.atMs < STRUCTURE_MS }?.let { k -> return k.entries.mapTo(HashSet()) { it.id } } }
-        val list = server.playlistMembers(playlistId)
-        lock.withLock { members[playlistId] = Kept(nowMs(), list) }
-        return list.mapTo(HashSet()) { it.id }
+    /**
+     * The ids a playlist holds (titles, and shows or seasons put in whole). Kept, in memory and on the
+     * device, for as long as the server's etag for the playlist stays the same (made from when it was
+     * last saved, and any change to its entries saves it), so a start or an account switch reads nothing for playlists that haven't
+     * changed; without an etag, kept [STRUCTURE_MS] in memory.
+     */
+    private suspend fun membersOf(playlist: MediaItem): Set<String> {
+        val saved = playlist.version
+        lock.withLock {
+            members[playlist.id]?.takeIf { k -> if (saved != null && k.version != null) k.version == saved else nowMs() - k.atMs < STRUCTURE_MS }
+                ?.let { return it.ids }
+        }
+        val account = server.currentAccountKey.takeIf { saved != null }
+        if (account != null) {
+            runCatching { cache?.read(account, membersKey(playlist.id), MembersOnDisk.serializer()) }.getOrNull()?.takeIf { it.version == saved }?.let { d ->
+                val ids = d.ids.toSet()
+                lock.withLock { members[playlist.id] = KeptIds(nowMs(), saved, ids) }
+                return ids
+            }
+        }
+        val ids = server.playlistMembers(playlist.id).mapTo(LinkedHashSet()) { it.id }
+        lock.withLock { members[playlist.id] = KeptIds(nowMs(), saved, ids) }
+        if (account != null && saved != null) runCatching { cache?.write(account, membersKey(playlist.id), MembersOnDisk(saved, ids.toList()), MembersOnDisk.serializer()) }
+        return ids
     }
+
+    private fun membersKey(playlistId: String) = "playlist-members/$playlistId"
 
     // Set when this app changed a playlist (the server's change hook): the next ask reads them all again.
     private var listsChanged = false
@@ -138,7 +164,7 @@ class PlaylistPlaying(
         if (recent.isEmpty()) return@coroutineScope emptyList()
         val watched = playlists.map { pl ->
             async {
-                val ids = runCatching { membersOf(pl.id) }.getOrNull() ?: return@async null
+                val ids = runCatching { membersOf(pl) }.getOrNull() ?: return@async null
                 // A title in it, or an episode of a show (or season) put in whole.
                 val latest = recent.filter { it.id in ids || it.seriesId in ids || it.seasonId in ids }.maxOfOrNull { it.user.lastPlayedMs ?: 0 }
                 latest?.let { pl.id to it }
@@ -182,6 +208,10 @@ class PlaylistPlaying(
      * on from its last-played entry; finished ones drop out.
      */
     suspend fun continueRow(max: Int = 12): MediaRow? {
+        // Worked out by the server (the Companion): no playlist is read here at all.
+        server.continuePlaylists(max)?.let { items ->
+            return if (items.isEmpty()) null else MediaRow(ROW_KEY, "Continue your playlists", items.distinctBy { it.id }, RowDisplay())
+        }
         val next = runCatching { active(LOOK_IN) }.getOrDefault(emptyList()).take(max)
             .mapNotNull { (_, entries) -> PlaylistPlaces.lastPlayed(entries)?.let { PlaylistPlaces.continueFrom(entries, it) } }
             .distinctBy { it.id }

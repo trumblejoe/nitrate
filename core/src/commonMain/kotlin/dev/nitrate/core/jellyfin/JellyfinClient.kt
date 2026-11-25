@@ -205,7 +205,7 @@ class JellyfinClient(
     }
 
     @OptIn(ExperimentalTime::class)
-    private fun nowEpochMs() = Clock.System.now().toEpochMilliseconds()
+    internal fun nowEpochMs() = Clock.System.now().toEpochMilliseconds()
 
     /** Answers kept a little while and shared between pages and rows ([items]). */
     /** The clock kept answers are timed by (a test can move it on). */
@@ -219,6 +219,7 @@ class JellyfinClient(
      * nothing is asked again. Without the states (an older server), every list showing marks goes.
      */
     internal suspend fun watchStateChanged(states: Map<String, dev.nitrate.core.model.UserState>) {
+        quietLock.withLock { quietRows.clear() }
         if (states.isEmpty()) { answers.userDataChanged(); return }
         answers.forget { key, kind -> dependsOnWatchState(key, kind) }
         answers.patch { value -> patchUserData(value, states) }
@@ -753,6 +754,7 @@ class JellyfinClient(
     /** Lets go of what this client remembered on the device for [key] (its library list, "Because you watched"). */
     private suspend fun forgetRemembered(key: String) {
         runCatching { textCache?.remove("views/$key") }
+        runCatching { textCache?.remove("views-at/$key") }
         runCatching { textCache?.remove("because/$key") }
         answers.clear()
     }
@@ -1088,9 +1090,43 @@ class JellyfinClient(
     override suspend fun views(): List<MediaItem> = items("UserViews", query = emptyMap()).also { v ->
         knownViews = viewsKey() to v
         runCatching { textCache?.put(viewsKey(), JellyfinJson.encodeToString(ListSerializer(MediaItem.serializer()), v)) }
+        val at = nowEpochMs()
+        viewsReadAt = viewsKey() to at
+        runCatching { textCache?.put("views-at/${viewsKey().removePrefix("views/")}", at.toString()) }
+    }
+
+    /** When the library list was last read from the server (this account), this run or kept from an earlier one. */
+    internal var viewsReadAt: Pair<String, Long>? = null
+
+    /**
+     * Whether the library list kept on the device is recent enough to use without asking: read within
+     * [VIEWS_KEEP_MS], with no library change heard since. Libraries are added or renamed rarely, and
+     * asking costs seconds on a busy server.
+     */
+    internal suspend fun viewsRecent(): Boolean {
+        val key = viewsKey()
+        val at = viewsReadAt?.takeIf { it.first == key }?.second
+            ?: textCache?.get("views-at/${key.removePrefix("views/")}")?.toLongOrNull()?.also { viewsReadAt = key to it }
+            ?: return false
+        return nowEpochMs() - at in 0 until VIEWS_KEEP_MS
+    }
+
+    /** A library changed: the kept library list is read again next time it's needed. */
+    private suspend fun viewsStale() {
+        val key = viewsKey()
+        viewsReadAt = key to 0L
+        runCatching { textCache?.put("views-at/${key.removePrefix("views/")}", "0") }
     }
 
     internal var knownViews: Pair<String, List<MediaItem>>? = null
+
+    /**
+     * Rows that came back empty and are costly to ask (Continue Reading and Listening sort the whole
+     * library by date played): "account|row key" → until when they're taken as still empty. Any change in
+     * watch state (reading or listening progress included, from any app) lets them all go.
+     */
+    internal val quietRows = HashMap<String, Long>()
+    internal val quietLock = kotlinx.coroutines.sync.Mutex()
 
     @kotlinx.serialization.Serializable
     internal data class SavedRows(val savedAtMs: Long, val rows: List<MediaRow>)
@@ -1294,6 +1330,20 @@ class JellyfinClient(
             throw e
         }
     }
+
+    override suspend fun continuePlaylists(max: Int): List<MediaItem>? = companionContinuePlaylists(max)
+
+    override suspend fun changeCheck(since: String?): dev.nitrate.core.rows.ChangeCheck? {
+        if (!companionHas("changes")) return null
+        return runCatching {
+            // Never shared or kept: the point is what's true this moment.
+            val c = get("Nitrate", "Changes").decode<ChangesDto>()
+            val token = dev.nitrate.core.rows.RowChanges.token(c.epoch, c.library, c.views, c.playlists, c.watch, c.because)
+            dev.nitrate.core.rows.ChangeCheck(token, dev.nitrate.core.rows.RowChanges.compare(since, token))
+        }.getOrNull()
+    }
+
+    override suspend fun withFreshMarks(rows: List<MediaRow>): List<MediaRow> = runCatching { withFreshUserData(rows) }.getOrDefault(rows)
 
     override suspend fun playlistMembers(playlistId: String) =
         items("Playlists", playlistId, "Items", query = mapOf("enableImages" to false, "enableUserData" to false))
@@ -1589,7 +1639,7 @@ class JellyfinClient(
 
     override fun events(): Flow<ServerEvent> = socketEvents { token != null }.onEach {
         when (it) {
-            is ServerEvent.LibraryChanged -> answers.clear()
+            is ServerEvent.LibraryChanged -> { answers.clear(); viewsStale() }
             is ServerEvent.UserDataChanged -> { watchStateChanged(it.states); watchFlow.tryEmit(it) }
             else -> Unit
         }
@@ -1917,16 +1967,17 @@ class JellyfinClient(
 
     override suspend fun collections(): List<MediaItem> = listOfType("BoxSet")
 
-    override suspend fun playlists(): List<MediaItem> = listOfType("Playlist")
+    // With each one's etag (made from when it was last saved): its contents kept on the device stay good until it changes.
+    override suspend fun playlists(): List<MediaItem> = listOfType("Playlist", "PrimaryImageAspectRatio,Etag")
 
-    private suspend fun listOfType(type: String) =
+    private suspend fun listOfType(type: String, fields: String = "PrimaryImageAspectRatio") =
         // Names and pictures only: no total count and no watch data, which the server would
         // otherwise work out for every list.
         items(
             "Items",
             query = mapOf(
                 "includeItemTypes" to type, "recursive" to true, "sortBy" to "SortName", "sortOrder" to "Ascending",
-                "fields" to "PrimaryImageAspectRatio", "limit" to 500,
+                "fields" to fields, "limit" to 500,
                 "enableTotalRecordCount" to false, "enableUserData" to false, "imageTypeLimit" to 1, "enableImageTypes" to "Primary",
             ),
         )
@@ -2403,6 +2454,9 @@ class JellyfinClient(
         /** How long "Because you watched" is reused before it's worked out again. */
         /** "Because you watched" is kept a day: it barely changes, and finding it is costly for the server. */
         const val BECAUSE_TTL_MS = 24 * 60 * 60 * 1000L
+
+        /** How long the library list kept on the device is used without asking (unless a library change is heard). */
+        const val VIEWS_KEEP_MS = 30 * 60_000L
 
         /** The job that makes every library's "Latest in…" row on Home. */
         internal const val LATEST_JOB = "Latest in each library"

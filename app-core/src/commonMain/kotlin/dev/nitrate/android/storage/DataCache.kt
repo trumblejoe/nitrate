@@ -14,7 +14,12 @@ import okio.ByteString.Companion.encodeUtf8
 
 /** A page's rows as last loaded, shown at once next time while fresh ones load. */
 @Serializable
-data class CachedPage(val builtIn: List<MediaRow>, val custom: Map<String, MediaRow> = emptyMap())
+data class CachedPage(
+    val builtIn: List<MediaRow>,
+    val custom: Map<String, MediaRow> = emptyMap(),
+    /** The server's change counters when [builtIn] was loaded (`MediaServer.changeCheck`), if it has them. */
+    val stamps: String? = null,
+)
 
 /**
  * What screens showed last time (a page's rows, a title's details, the user's playlists...), per

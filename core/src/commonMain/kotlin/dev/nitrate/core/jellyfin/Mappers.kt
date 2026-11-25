@@ -38,6 +38,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
         name = name.orEmpty(),
         sortName = sortName,
         dateAddedMs = dateCreated?.let(::parseDateMs),
+        version = etag,
         playlistEntryId = playlistItemId,
         album = album,
         albumId = albumId?.let(::normalizeId),

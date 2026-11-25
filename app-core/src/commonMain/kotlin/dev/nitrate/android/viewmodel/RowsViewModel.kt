@@ -100,7 +100,7 @@ class RowsViewModel(
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun watchChanges() = viewModelScope.launch {
         // A library scan sends many changes in a row: reload once things settle.
-        changes.debounce(LIVE_REFRESH_DEBOUNCE_MS).collect { refresh() }
+        changes.debounce(LIVE_REFRESH_DEBOUNCE_MS).collect { refresh(checked = true) }
     }
 
     init {
@@ -110,8 +110,9 @@ class RowsViewModel(
             cache?.read(account, pageKey)?.let { cached ->
                 if (builtIn.value == null && cached.builtIn.isNotEmpty()) builtIn.value = Result.success(cached.builtIn.map { it.copy(defaultDisplay = defaults(it).normalized()) })
                 if (custom.value.isEmpty()) custom.value = cached.custom
+                if (lastRows == null) { lastRows = cached.builtIn; stamps = cached.stamps }
             }
-            refresh()
+            refresh(checked = true)
         }
         watchChanges()
         // Load custom rows whenever the page's custom entries change.
@@ -126,60 +127,99 @@ class RowsViewModel(
         return saved.entries.filter { it.hidden && !it.isCustom }.map { it.rowKey }.toSet()
     }
 
-    fun refresh() {
+    /** The built-in rows as last loaded whole (or kept from last time), and the server's change counters then. */
+    private var lastRows: List<MediaRow>? = null
+    private var stamps: String? = null
+
+    /** Loads the page again, every row (pull to refresh, a setting changed). */
+    fun refresh() = refresh(checked = false)
+
+    /**
+     * Loads the page. [checked] (opening it, or the server saying something changed): first asks the
+     * server what changed since the rows on screen were loaded (`MediaServer.changeCheck`, one tiny
+     * request with the Companion), and keeps the rows nothing has changed for, only their watched
+     * marks read afresh when the user's watch state changed (`RowChanges`).
+     */
+    private fun refresh(checked: Boolean) {
         val skipping = loadProgressSkipping
-        val progressive: (suspend () -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)? = when {
-            skipping != null -> { { skipping(hiddenBuiltIn()) } }
-            loadProgress != null -> { { loadProgress.invoke() } }
-            else -> null
-        }
-        if (progressive != null) {
+        if (skipping != null) {
             viewModelScope.launch {
                 _refreshing.value = true
-                var finished: List<MediaRow>? = null
-                // Rows aren't shown one by one as they answer (the page would keep jumping): the
-                // whole page swaps in at the end, or once at the patience mark if that's long.
-                val reveal = dev.nitrate.core.rows.PageReveal
-                var latest: dev.nitrate.core.rows.RowsProgress? = null
-                var partialShown = false
-                fun showPartial(p: dev.nitrate.core.rows.RowsProgress) {
-                    builtIn.value = Result.success(reveal.partial(builtIn.value?.getOrNull(), p))
-                    partialShown = true
+                val check = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { server.changeCheck(stamps) } }.getOrNull()
+                val before = lastRows.orEmpty()
+                val kept = if (!checked || check == null || stamps == null) emptyList() else {
+                    val keep = dev.nitrate.core.rows.RowChanges.keepable(before, check.changed)
+                    if (keep.isNotEmpty() && dev.nitrate.core.rows.ChangeArea.WATCH in check.changed)
+                        dev.nitrate.core.diagnostics.withQueryOrigin(origin) { server.withFreshMarks(keep) } else keep
                 }
-                val outcome = runCatching {
-                    kotlinx.coroutines.coroutineScope {
-                        val patience = launch {
-                            kotlinx.coroutines.delay(reveal.patienceMs(builtIn.value?.getOrNull()))
-                            latest?.let(::showPartial)
-                        }
-                        dev.nitrate.core.diagnostics.withQueryOrigin(origin) { progressive().collect { raw ->
-                            val fresh = raw.rows.map { it.copy(defaultDisplay = defaults(it).normalized()) }
-                            fresh.forEach { knownTitles[it.key] = it.title }
-                            raw.skipped.forEach { (key, title) -> knownTitles.getOrPut(key) { title } }
-                            val p = raw.copy(rows = fresh)
-                            latest = p
-                            when {
-                                p.complete -> {
-                                    patience.cancel()
-                                    builtIn.value = Result.success(fresh)
-                                    finished = fresh
-                                }
-                                // Nothing had answered by the patience mark: show the first answer.
-                                patience.isCompleted && !partialShown -> showPartial(p)
-                            }
-                        } }
-                        patience.cancel()
+                val keptKeys = kept.map { it.key }.toSet()
+                load(check?.token) {
+                    skipping(hiddenBuiltIn() + keptKeys).map { p ->
+                        if (kept.isEmpty()) p else p.copy(rows = dev.nitrate.core.rows.RowChanges.merge(before, kept, p.rows), skipped = p.skipped - keptKeys)
                     }
                 }
-                // Keep showing old rows if a background refresh fails.
-                outcome.exceptionOrNull()?.let { e -> if (builtIn.value?.isSuccess != true) builtIn.value = Result.failure(e) }
-                loadCustom(layout.value.entries.filter { it.isCustom })
-                val rows = finished
-                _refreshing.value = false
-                if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value))
             }
             return
         }
+        val progressive: (suspend () -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>)? =
+            loadProgress?.let { lp -> { lp.invoke() } }
+        if (progressive != null) {
+            viewModelScope.launch {
+                _refreshing.value = true
+                load(null, progressive)
+            }
+            return
+        }
+        refreshAll()
+    }
+
+    /** One load of the page's built-in rows as they arrive; [token] is saved with them once they're whole. */
+    private suspend fun load(token: String?, progressive: suspend () -> kotlinx.coroutines.flow.Flow<dev.nitrate.core.rows.RowsProgress>) {
+        var finished: List<MediaRow>? = null
+        // Rows aren't shown one by one as they answer (the page would keep jumping): the
+        // whole page swaps in at the end, or once at the patience mark if that's long.
+        val reveal = dev.nitrate.core.rows.PageReveal
+        var latest: dev.nitrate.core.rows.RowsProgress? = null
+        var partialShown = false
+        fun showPartial(p: dev.nitrate.core.rows.RowsProgress) {
+            builtIn.value = Result.success(reveal.partial(builtIn.value?.getOrNull(), p))
+            partialShown = true
+        }
+        val outcome = runCatching {
+            kotlinx.coroutines.coroutineScope {
+                val patience = launch {
+                    kotlinx.coroutines.delay(reveal.patienceMs(builtIn.value?.getOrNull()))
+                    latest?.let(::showPartial)
+                }
+                dev.nitrate.core.diagnostics.withQueryOrigin(origin) { progressive().collect { raw ->
+                    val fresh = raw.rows.map { it.copy(defaultDisplay = defaults(it).normalized()) }
+                    fresh.forEach { knownTitles[it.key] = it.title }
+                    raw.skipped.forEach { (key, title) -> knownTitles.getOrPut(key) { title } }
+                    val p = raw.copy(rows = fresh)
+                    latest = p
+                    when {
+                        p.complete -> {
+                            patience.cancel()
+                            builtIn.value = Result.success(fresh)
+                            finished = fresh
+                        }
+                        // Nothing had answered by the patience mark: show the first answer.
+                        patience.isCompleted && !partialShown -> showPartial(p)
+                    }
+                } }
+                patience.cancel()
+            }
+        }
+        // Keep showing old rows if a background refresh fails.
+        outcome.exceptionOrNull()?.let { e -> if (builtIn.value?.isSuccess != true) builtIn.value = Result.failure(e) }
+        loadCustom(layout.value.entries.filter { it.isCustom })
+        val rows = finished
+        _refreshing.value = false
+        if (rows != null) { lastRows = rows; stamps = token }
+        if (cache != null && rows != null) cache.write(account, pageKey, dev.nitrate.android.storage.CachedPage(rows, custom.value, token))
+    }
+
+    private fun refreshAll() {
         viewModelScope.launch {
             _refreshing.value = true
             val result = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { loadBuiltIn() }.map { it.copy(defaultDisplay = defaults(it).normalized()) } }

@@ -4,6 +4,7 @@ using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.TV;
 using MediaBrowser.Model.Dto;
@@ -32,7 +33,17 @@ public record LatestOut(Guid LibraryId, IReadOnlyList<BaseItemDto> Items);
 /// <param name="NextUp">Next Up.</param>
 /// <param name="Latest">"Latest in…" for each library asked for.</param>
 /// <param name="Because">"Because you watched" (made overnight).</param>
-public record HomeOut(IReadOnlyList<BaseItemDto>? Resume, IReadOnlyList<BaseItemDto>? NextUp, IReadOnlyList<LatestOut> Latest, IReadOnlyList<BecauseOut>? Because);
+/// <param name="Reading">Books under way (Continue Reading), with [reading].</param>
+/// <param name="ReadingDone">Books finished lately (Continue Reading carries on a series from them), with [reading].</param>
+/// <param name="Listening">Audiobooks under way (Continue Listening), with [listening].</param>
+public record HomeOut(
+    IReadOnlyList<BaseItemDto>? Resume,
+    IReadOnlyList<BaseItemDto>? NextUp,
+    IReadOnlyList<LatestOut> Latest,
+    IReadOnlyList<BecauseOut>? Because,
+    IReadOnlyList<BaseItemDto>? Reading = null,
+    IReadOnlyList<BaseItemDto>? ReadingDone = null,
+    IReadOnlyList<BaseItemDto>? Listening = null);
 
 /// <summary>
 /// Home in one request, "Because you watched" made overnight, and what each title is made of for
@@ -56,10 +67,16 @@ public class HomeController : ControllerBase
     private readonly ITVSeriesManager _tv;
     private readonly BecauseRowsBuilder _because;
     private readonly FormatIndex _formats;
+    private readonly IUserDataManager _userData;
+    private readonly Nitrate.Companion.Changes.ChangeCounters _changes;
+    private readonly BecauseStore _becauseStore;
 
     /// <summary>Initializes a new instance of the <see cref="HomeController"/> class.</summary>
-    public HomeController(ILibraryManager library, IUserManager users, IDtoService dto, ITVSeriesManager tv, BecauseRowsBuilder because, FormatIndex formats)
+    public HomeController(ILibraryManager library, IUserManager users, IDtoService dto, ITVSeriesManager tv, BecauseRowsBuilder because, FormatIndex formats, IUserDataManager userData, Nitrate.Companion.Changes.ChangeCounters changes, BecauseStore becauseStore)
     {
+        _changes = changes;
+        _becauseStore = becauseStore;
+        _userData = userData;
         _library = library;
         _users = users;
         _dto = dto;
@@ -86,6 +103,8 @@ public class HomeController : ControllerBase
         [FromQuery] bool because = true,
         [FromQuery] string? latest = null,
         [FromQuery] int limit = 24,
+        [FromQuery] bool reading = false,
+        [FromQuery] bool listening = false,
         CancellationToken cancellationToken = default)
     {
         if (Me() is not { } user)
@@ -139,7 +158,103 @@ public class HomeController : ControllerBase
         }
 
         var becauseOut = because ? await BecauseFor(user, 16, cancellationToken).ConfigureAwait(false) : null;
-        return Ok(new HomeOut(resumeOut, nextOut, latestOut, becauseOut));
+        // Continue Reading and Listening, as the apps' own requests would have them (books sorted by date played).
+        IReadOnlyList<BaseItemDto>? Played(BaseItemKind kind, bool? resumable, bool? played, int count) => Dtos(
+            _library.GetItemsResult(new InternalItemsQuery(user)
+            {
+                IncludeItemTypes = new[] { kind },
+                Recursive = true,
+                IsResumable = resumable,
+                IsPlayed = played,
+                OrderBy = new[] { (ItemSortBy.DatePlayed, SortOrder.Descending) },
+                Limit = count,
+                DtoOptions = options,
+                EnableTotalRecordCount = false,
+            }).Items,
+            options,
+            user);
+        return Ok(new HomeOut(
+            resumeOut,
+            nextOut,
+            latestOut,
+            becauseOut,
+            reading ? Played(BaseItemKind.Book, true, null, limit) : null,
+            reading ? Played(BaseItemKind.Book, null, true, 10) : null,
+            listening ? Played(BaseItemKind.AudioBook, true, null, limit) : null));
+    }
+
+    /// <summary>
+    /// What changed, as counters: an app keeps the rows it has (on the device, across runs) while the
+    /// counters its rows depend on are the same as when it loaded them. One tiny answer, nothing read.
+    /// </summary>
+    [HttpGet("Changes")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<Nitrate.Companion.Changes.ChangesOut> Changes() =>
+        Me() is { } user ? Ok(_changes.For(user.Id, _becauseStore.Get(user.Id)?.Built)) : Unauthorized();
+
+    /// <summary>
+    /// Home's "Continue your playlists": for each video playlist the caller watched from in the last 60
+    /// days (most recent first), what carries on from the entry played last. Worked out here from each
+    /// playlist's own list and the caller's play dates, so the apps never download whole playlists.
+    /// </summary>
+    [HttpGet("Home/Playlists")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<BaseItemDto>> Playlists([FromQuery] int limit = 12)
+    {
+        if (Me() is not { } user)
+        {
+            return Unauthorized();
+        }
+
+        var seen = new Dictionary<Guid, BaseItem>();
+        var lists = new List<IReadOnlyList<PlaylistEntry>>();
+        var playlists = _library.GetItemList(new InternalItemsQuery(user) { IncludeItemTypes = new[] { BaseItemKind.Playlist }, Recursive = true })
+            .OfType<MediaBrowser.Controller.Playlists.Playlist>()
+            .Where(p => p.MediaType != MediaType.Audio)
+            .Take(200);
+        foreach (var playlist in playlists)
+        {
+            var entries = new List<PlaylistEntry>();
+            var inIt = new HashSet<Guid>();
+            foreach (var item in playlist.GetChildren(user, true, new InternalItemsQuery(user)).SelectMany(Expand))
+            {
+                if (!inIt.Add(item.Id))
+                {
+                    continue;
+                }
+
+                var data = _userData.GetUserData(user, item);
+                seen[item.Id] = item;
+                entries.Add(new PlaylistEntry(item.Id, data?.Played == true, data?.LastPlayedDate));
+            }
+
+            lists.Add(entries);
+        }
+
+        var ids = PlaylistPlaces.Continue(lists, DateTime.UtcNow, Math.Clamp(limit, 1, 50));
+        var options = Options();
+        return Ok(Dtos(ids.Select(id => seen[id]).ToList(), options, user));
+    }
+
+    /// <summary>
+    /// A playlist entry as what's watched: a show or season put in whole is its episodes (specials and
+    /// missing ones left out), films, episodes and videos are themselves, anything else is left out.
+    /// </summary>
+    private IEnumerable<BaseItem> Expand(BaseItem item)
+    {
+        if (item is Series or Season)
+        {
+            return _library.GetItemList(new InternalItemsQuery
+            {
+                AncestorIds = new[] { item.Id },
+                IncludeItemTypes = new[] { BaseItemKind.Episode },
+                Recursive = true,
+                IsVirtualItem = false,
+                OrderBy = new[] { (ItemSortBy.ParentIndexNumber, SortOrder.Ascending), (ItemSortBy.IndexNumber, SortOrder.Ascending) },
+            }).OfType<Episode>().Where(e => (e.ParentIndexNumber ?? 1) > 0);
+        }
+
+        return item.GetBaseItemKind() is BaseItemKind.Movie or BaseItemKind.Episode or BaseItemKind.Video ? new[] { item } : Array.Empty<BaseItem>();
     }
 
     /// <summary>

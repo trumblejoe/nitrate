@@ -999,6 +999,23 @@ interface MediaServer {
     /** What a playlist holds, ids and kinds only (no pictures, watch state or extra fields): for telling what's in it. */
     suspend fun playlistMembers(playlistId: String): List<MediaItem> = playlistItems(playlistId)
 
+    /**
+     * Home's "Continue your playlists" worked out by the server (the Companion): what carries on from
+     * where each video playlist was left, most recent first. Null when the server can't, and the app
+     * works it out itself.
+     */
+    suspend fun continuePlaylists(max: Int): List<MediaItem>? = null
+
+    /**
+     * The server's change counters (the Companion) and what changed since [since] (a token from an
+     * earlier check): pages keep the rows nothing has changed for. Null when the server can't say, and
+     * pages load everything as before.
+     */
+    suspend fun changeCheck(since: String?): dev.nitrate.core.rows.ChangeCheck? = null
+
+    /** [rows] with each card's watched marks and progress as the server has them now (one light request). */
+    suspend fun withFreshMarks(rows: List<dev.nitrate.core.rows.MediaRow>): List<dev.nitrate.core.rows.MediaRow> = rows
+
     suspend fun search(query: String): SearchResults = unsupported()
 
     /** Movies and shows [personId] appears in, newest first. */

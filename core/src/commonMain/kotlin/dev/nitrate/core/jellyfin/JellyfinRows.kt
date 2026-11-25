@@ -145,6 +145,10 @@ internal suspend fun JellyfinClient.homeBundle(skip: Set<String>, combine: Boole
     val wantsResume = combine || "home/continue_watching" !in skip
     val wantsNextUp = combine || "home/next_up" !in skip
     val wantsBecause = dev.nitrate.core.rows.BecauseYouWatched.slots().keys.any { it !in skip }
+    // Continue Reading and Listening come along (each a second's sort by date played when asked alone).
+    val books = ("home/continue_reading" !in skip || "home/continue_listening" !in skip) && mayHoldBooks()
+    val wantsReading = books && "home/continue_reading" !in skip
+    val wantsListening = books && "home/continue_listening" !in skip
     val libraries = lastViews().orEmpty().filter { "home/latest/${it.id}" !in skip }.mapNotNull { v ->
         when (v.collection) {
             CollectionKind.MOVIES -> v to "Movie"
@@ -158,6 +162,7 @@ internal suspend fun JellyfinClient.homeBundle(skip: Set<String>, combine: Boole
                 "Nitrate", "Home",
                 query = mapOf(
                     "resume" to wantsResume, "nextUp" to wantsNextUp, "because" to wantsBecause, "limit" to ROW_LIMIT,
+                    "reading" to wantsReading.takeIf { it }, "listening" to wantsListening.takeIf { it },
                     "latest" to libraries.joinToString(",") { (v, kind) -> "${dashless(listOf(v.id))}:$kind" }.ifEmpty { null },
                 ),
             ).decode<HomeBundleDto>()
@@ -169,8 +174,24 @@ internal suspend fun JellyfinClient.homeBundle(skip: Set<String>, combine: Boole
             val (view, kind) = libraries.firstOrNull { it.first.id == id } ?: return@forEach
             keepList(arrayOf("Items"), queryParams(view.id, kind, if (kind == "Movie") "DateCreated" else "DateLastContentAdded", "Descending", null, null), l.items.map { d -> d.toMediaItem() })
         }
+        // An older Companion leaves these out: the rows then ask as usual.
+        bundle.reading?.let { keepList(arrayOf("Items"), booksQuery(null, "IsResumable", ROW_LIMIT), it.map { d -> d.toMediaItem() }) }
+        bundle.readingDone?.let { keepList(arrayOf("Items"), booksQuery(null, "IsPlayed", 10), it.map { d -> d.toMediaItem() }) }
+        bundle.listening?.let { keepList(arrayOf("UserItems", "Resume"), LISTENING_QUERY, it.map { d -> d.toMediaItem() }) }
         bundle.because?.takeIf { it.isNotEmpty() }?.let { answers.put(becauseKey(), dev.nitrate.core.cache.AnswerKind.SIMILAR, it.toBecauseRows() to false) }
     }
+}
+
+/** "Continue your playlists" from the plugin, shared like any row's answer; null without it (or if it fails). */
+internal suspend fun JellyfinClient.companionContinuePlaylists(max: Int): List<MediaItem>? {
+    if (!companionHas("homeplaylists")) return null
+    val segments = arrayOf("Nitrate", "Home", "Playlists")
+    val query = mapOf("limit" to max)
+    return runCatching {
+        shared(dev.nitrate.core.cache.AnswerKind.WATCHING, segments, query) {
+            get(*segments, query = query).decode<List<ItemDto>>().map { it.toMediaItem() }
+        }
+    }.getOrNull()
 }
 
 internal fun JellyfinClient.becauseKey() = "because|${accountKey ?: "$baseUrl|$userId"}"
@@ -213,6 +234,15 @@ internal suspend fun JellyfinClient.mayHoldBooks(): Boolean {
     return views.any { it.collection == null || it.collection == CollectionKind.BOOKS || it.collection == CollectionKind.MIXED }
 }
 
+/** How long an empty Continue Reading or Listening is taken as still empty, unless watch state changes first. */
+internal const val QUIET_ROW_MS = 10 * 60_000L
+
+private fun JellyfinClient.quietKey(row: String) = "${accountKey ?: "$baseUrl|$userId"}|$row"
+
+internal suspend fun JellyfinClient.stillQuiet(row: String): Boolean = quietLock.withLock { (quietRows[quietKey(row)] ?: 0L) > nowEpochMs() }
+
+internal suspend fun JellyfinClient.keepQuiet(row: String) = quietLock.withLock { quietRows[quietKey(row)] = nowEpochMs() + QUIET_ROW_MS }
+
 internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combine: Boolean): List<dev.nitrate.core.rows.RowJob> {
     suspend fun nextUp() = items("Shows", "NextUp", query = NEXT_UP_QUERY)
     // What's half-watched with a group lives on the group's card when Watching together is shown, never twice.
@@ -244,15 +274,12 @@ internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combi
     )
     return watching + listOf(
         dev.nitrate.core.rows.RowJob("Continue Listening", "home/continue_listening") {
-            if (!mayHoldBooks()) return@RowJob emptyList()
-            items(
-                "UserItems", "Resume",
-                query = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook"),
-            ).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_listening", "Continue Listening", it, RowDisplay())) }
+            if (!mayHoldBooks() || stillQuiet("home/continue_listening")) return@RowJob emptyList()
+            items("UserItems", "Resume", query = LISTENING_QUERY).also { if (it.isEmpty()) keepQuiet("home/continue_listening") }.let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_listening", "Continue Listening", it, RowDisplay())) }
         },
         dev.nitrate.core.rows.RowJob("Continue Reading", "home/continue_reading") {
-            if (!mayHoldBooks()) return@RowJob emptyList()
-            continueReading(null).let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
+            if (!mayHoldBooks() || stillQuiet("home/continue_reading")) return@RowJob emptyList()
+            continueReading(null).also { if (it.isEmpty()) keepQuiet("home/continue_reading") }.let { if (it.isEmpty()) emptyList() else listOf(MediaRow("home/continue_reading", "Continue Reading", it, RowDisplay())) }
         },
         dev.nitrate.core.rows.RowJob(dev.nitrate.core.partners.TogetherRow.TITLE, dev.nitrate.core.partners.TogetherRow.KEY) {
             watchingTogether().let { if (it.isEmpty()) emptyList() else listOf(MediaRow(dev.nitrate.core.partners.TogetherRow.KEY, dev.nitrate.core.partners.TogetherRow.TITLE, it, WIDE_DEFAULT)) }
@@ -271,6 +298,8 @@ internal fun JellyfinClient.homeJobList(fresh: Boolean, skip: Set<String>, combi
                 }
                 val known = lastViews()?.filter(::wanted)
                 known?.forEach { start(it) }
+                // Read lately (and no library changed since): the kept list serves, nothing asked.
+                if (known != null && viewsRecent()) return@coroutineScope rowsFor(known)
                 val fresh = async { try { views() } catch (e: Exception) { if (e is CancellationException || known == null) throw e; known } }
                 if (known != null && !fresh.isCompleted) runCatching { show(rowsFor(known)) }
                 val list = fresh.await().filter(::wanted)
@@ -420,13 +449,15 @@ internal fun JellyfinClient.libraryJobs(library: MediaItem): List<dev.nitrate.co
     return jobs
 }
 
-internal suspend fun JellyfinClient.books(parentId: String?, filters: String, limit: Int) = items(
-    "Items",
-    query = mapOf(
-        "userId" to userId, "parentId" to parentId, "includeItemTypes" to "Book", "recursive" to true,
-        "filters" to filters, "sortBy" to "DatePlayed", "sortOrder" to "Descending", "limit" to limit, "fields" to ROW_FIELDS,
-    ),
+internal suspend fun JellyfinClient.books(parentId: String?, filters: String, limit: Int) = items("Items", query = booksQuery(parentId, filters, limit))
+
+internal fun JellyfinClient.booksQuery(parentId: String?, filters: String, limit: Int) = mapOf(
+    "userId" to userId, "parentId" to parentId, "includeItemTypes" to "Book", "recursive" to true,
+    "filters" to filters, "sortBy" to "DatePlayed", "sortOrder" to "Descending", "limit" to limit, "fields" to ROW_FIELDS,
 )
+
+/** Continue Listening's request: audiobooks under way. */
+internal val LISTENING_QUERY: Map<String, Any?> = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Audio", "includeItemTypes" to "AudioBook")
 
 internal fun JellyfinClient.resumeQuery(parentId: String?, types: String?) =
     mapOf("parentId" to parentId, "limit" to ROW_LIMIT, "fields" to ROW_FIELDS, "mediaTypes" to "Video", "includeItemTypes" to types)

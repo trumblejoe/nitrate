@@ -97,4 +97,34 @@ class PlaylistPlayingTest {
         // The list is read again rather than kept for half an hour.
         assertEquals(1, asked.count { it == "playlists" })
     }
+
+    @Test
+    fun theCompanionsRowReadsNoPlaylist() = runBlocking {
+        val companion = object : MediaServer by server {
+            override suspend fun continuePlaylists(max: Int): List<MediaItem> { asked += "companion"; return listOf(episode(1, 3, null)) }
+        }
+        val row = PlaylistPlaying(companion, null, nowMs = { now }).continueRow()
+        assertEquals(listOf("s1e3"), row!!.items.map { it.id })
+        assertEquals(listOf("companion"), asked)
+    }
+
+    @Test
+    fun membersAreKeptOnTheDeviceUntilAPlaylistChanges() = runBlocking {
+        val cache = DataCache(ApplicationProvider.getApplicationContext<Context>())
+        var saved = "a"
+        val dated = object : MediaServer by server {
+            override suspend fun playlists(): List<MediaItem> =
+                (1..20).map { MediaItem("p$it", "Playlist $it", ItemKind.PLAYLIST, version = if (it == 3) saved else "a") }
+        }
+        PlaylistPlaying(dated, cache, nowMs = { now }).continueRow()
+        assertEquals(20, asked.count { it.startsWith("members:") })
+        asked.clear()
+        // A new run (or coming back to this account): nothing that hasn't changed is read again.
+        PlaylistPlaying(dated, cache, nowMs = { now }).continueRow()
+        assertEquals(0, asked.count { it.startsWith("members:") })
+        // One playlist saved since: only it is read.
+        saved = "b"
+        PlaylistPlaying(dated, cache, nowMs = { now }).continueRow()
+        assertEquals(listOf("members:p3"), asked.filter { it.startsWith("members:") })
+    }
 }

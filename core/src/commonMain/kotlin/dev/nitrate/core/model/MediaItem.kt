@@ -60,6 +60,8 @@ data class MediaItem(
     val playlistEntryId: String? = null,
     /** When the server added it (epoch ms), where known. */
     val dateAddedMs: Long? = null,
+    /** The server's etag for it, where asked for: it changes whenever the item is saved (a playlist: its entries). */
+    val version: String? = null,
     /** First air or release date (epoch ms), where known. */
     val premiereDateMs: Long? = null,
     /** Copies of this title the server has (4K, 1080p...), when there's more than one. */

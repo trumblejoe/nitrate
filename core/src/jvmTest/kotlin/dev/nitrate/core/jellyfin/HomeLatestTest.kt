@@ -23,9 +23,11 @@ class HomeLatestTest {
     private val server = "http://jf.example:8096"
     private var libraries = """[{"Id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","Name":"Movies","Type":"CollectionFolder","CollectionType":"movies"}]"""
 
+    private var listsAsked = 0
+
     private val engine = MockEngine { request ->
         val body = when (request.url.encodedPath) {
-            "/UserViews" -> { delay(2_000); """{"Items":$libraries}""" }
+            "/UserViews" -> { listsAsked++; delay(2_000); """{"Items":$libraries}""" }
             "/Items" -> if (request.url.parameters["parentId"] != null)
                 """{"Items":[{"Id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Name":"New film","Type":"Movie"}]}""" else """{"Items":[]}"""
             else -> """{"Items":[]}"""
@@ -69,10 +71,21 @@ class HomeLatestTest {
         assertTrue("took $ms ms", ms < 1_000)
     }
 
+    @Test fun aListReadLatelyIsntAskedAgain() = runBlocking {
+        latestAfter(client().also { it.restoreSession() })
+        assertEquals(1, listsAsked)
+        // The next run within half an hour: the kept list serves and the row is whole without asking.
+        val rows = client().also { it.restoreSession() }.homeRowsProgress().first { it.complete }.rows
+        assertEquals(1, rows.count { it.key.startsWith("home/latest/") })
+        assertEquals(1, listsAsked)
+    }
+
     @Test fun aLibraryGoneSinceLastTimeIsDropped() = runBlocking {
         val first = client().also { it.restoreSession() }
         latestAfter(first)
         libraries = "[]"
+        // The kept list is older than half an hour (or a library change was heard): it's read again.
+        cache.map.keys.filter { it.startsWith("views-at/") }.forEach { cache.map[it] = "0" }
         val rows = client().also { it.restoreSession() }.homeRowsProgress().first { it.complete }.rows
         assertEquals(emptyList<String>(), rows.filter { it.key.startsWith("home/latest/") }.map { it.key })
     }
