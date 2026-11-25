@@ -1521,6 +1521,11 @@ class JellyfinClient(
     override suspend fun createUser(name: String, password: String): UserAccount = admin.createUser(name, password)
     override suspend fun deleteUser(userId: String) = admin.deleteUser(userId)
     override suspend fun setPassword(userId: String, newPassword: String) = admin.setPassword(userId, newPassword)
+    override suspend fun canEditMetadata(itemId: String): Boolean = admin.canEditMetadata(itemId)
+    override suspend fun metadataEditors() = admin.metadataEditors()
+    override suspend fun setMetadataEditor(userId: String, scope: dev.nitrate.core.admin.MetadataEditorScope) = admin.setMetadataEditor(userId, scope)
+    override suspend fun metadataEdits(limit: Int, before: String?) = admin.metadataEdits(limit, before)
+    override suspend fun undoMetadataEdit(editId: String) = admin.undoMetadataEdit(editId)
 
     private val admin = JellyfinAdmin(this)
 

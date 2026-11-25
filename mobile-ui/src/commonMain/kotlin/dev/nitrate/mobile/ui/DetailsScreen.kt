@@ -55,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -217,7 +218,9 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                         if (playingOn && sendable != null) PlayOnDialog(actions, sendable, sendable.user.positionMs, onDismiss = { playingOn = false })
                         var more by remember { mutableStateOf(false) }
                         RoundAction(Icons.Default.MoreVert, "More", onClick = { more = true })
-                        if (more) DetailsMoreSheet(actions, item, isAdmin = account?.isAdmin == true, music = music) { more = false }
+                        // Manage: admins, and metadata editors for titles in their libraries (the Companion says).
+                        val canManage by produceState(account?.isAdmin == true, item.id, account) { value = actions.container.canManageMetadata(item.id) }
+                        if (more) DetailsMoreSheet(actions, item, canManage = canManage, music = music) { more = false }
                     }
                     // A change the server refused, and why (the marks stay as the server has them).
                     state.actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
@@ -615,7 +618,7 @@ private fun WhereItBelongs(actions: AppActions, item: MediaItem, seasonName: Str
 
 /** Everything the action row leaves out: how it plays, moments, chat, lists, more like it, managing. */
 @Composable
-private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Boolean, music: Boolean, onDismiss: () -> Unit) {
+private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, canManage: Boolean, music: Boolean, onDismiss: () -> Unit) {
     var open by remember { mutableStateOf<String?>(null) }
     val container = actions.container
     val video = item.isPlayable && !music
@@ -633,7 +636,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, isAdmin: Bool
         if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) entry("Add to a playlist or collection", null) { open = "add" }
         studio?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", it, studio = it)) } }
         year?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", "From $it", year = it)) } }
-        if (isAdmin) entry("Manage", "Details, images, identify") { onDismiss(); actions.nav.navigate(ManageItemRoute(item.id)) }
+        if (canManage) entry("Manage", "Details, images, identify") { onDismiss(); actions.nav.navigate(ManageItemRoute(item.id)) }
     }
     when (open) {
         "plays" -> CheckPlaybackDialog(actions, item, onDismiss)

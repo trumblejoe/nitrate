@@ -19,12 +19,21 @@ import dev.nitrate.core.admin.UserAccount
 import dev.nitrate.core.admin.UserPermissions
 import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
+import dev.nitrate.core.admin.MetadataEdit
+import dev.nitrate.core.admin.MetadataEditKind
+import dev.nitrate.core.admin.MetadataEditRefused
+import dev.nitrate.core.admin.MetadataEditor
+import dev.nitrate.core.admin.MetadataEditorScope
+import dev.nitrate.core.admin.MetadataEditors
+import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.content.TextContent
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -71,17 +80,105 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
 
     // ---- Account ----
 
+    /** The account last read, with the account it belongs to: metadata calls choose their route by it. */
+    private var known: Pair<String, AccountInfo>? = null
+
+    private fun accountKey() = c.accountKey ?: "${c.baseUrl}|${c.userId}"
+
     suspend fun account(): AccountInfo {
+        val key = accountKey()
         val me = json("Users", "Me").jsonObject
         val policy = me["Policy"]?.jsonObject
+        val admin = policy?.bool("IsAdministrator") == true
         return AccountInfo(
             id = normalizeId(me.str("Id").orEmpty()),
             name = me.str("Name").orEmpty(),
-            isAdmin = policy?.bool("IsAdministrator") == true,
-            canDelete = policy?.bool("EnableContentDeletion") == true || policy?.bool("IsAdministrator") == true,
-            canManageCollections = policy?.bool("EnableCollectionManagement") == true || policy?.bool("IsAdministrator") == true,
-        )
+            isAdmin = admin,
+            canDelete = policy?.bool("EnableContentDeletion") == true || admin,
+            canManageCollections = policy?.bool("EnableCollectionManagement") == true || admin,
+            // Admins edit everything through Jellyfin itself: nothing to ask.
+            metadataEditor = if (admin) MetadataEditorScope.NONE else editorScope(),
+        ).also { known = key to it }
     }
+
+    /** The account's metadata editor scope from the Companion; none without it (or when it can't say). */
+    private suspend fun editorScope(): MetadataEditorScope {
+        if (!c.companionHas(MetadataEditors.FEATURE)) return MetadataEditorScope.NONE
+        return runCatching {
+            val o = JellyfinJson.parseToJsonElement(c.get("Nitrate", "Metadata", "Me").bodyAsText()).jsonObject
+            MetadataEditorScope(
+                isEditor = o.ci("isEditor")?.jsonPrimitive?.booleanOrNull == true,
+                allLibraries = o.ci("allLibraries")?.jsonPrimitive?.booleanOrNull == true,
+                libraryIds = o.ci("libraryIds")?.strings().orEmpty().map(::normalizeId),
+            )
+        }.getOrDefault(MetadataEditorScope.NONE)
+    }
+
+    /** The signed-in account, as last read (asked when not yet known for this account). */
+    private suspend fun me(): AccountInfo = known?.takeIf { it.first == accountKey() }?.second ?: account()
+
+    /**
+     * Whether metadata changes go through the Companion: every account that isn't an admin, where
+     * the Companion offers metadata editors (it checks the scope itself and says why not).
+     */
+    private suspend fun viaCompanion(): Boolean = !me().isAdmin && c.companionHas(MetadataEditors.FEATURE)
+
+    /** Admins: true without asking; editors: the Companion's answer for that title, kept briefly; anyone else false. */
+    suspend fun canEditMetadata(itemId: String): Boolean {
+        val account = me()
+        if (account.isAdmin) return true
+        if (!account.metadataEditor.isEditor || !c.companionHas(MetadataEditors.FEATURE)) return false
+        val segments = arrayOf("Nitrate", "Metadata", "Items", dashless(itemId), "Access")
+        return c.shared(dev.nitrate.core.cache.AnswerKind.COMPANION, segments) {
+            try {
+                val o = JellyfinJson.parseToJsonElement(c.get(*segments).bodyAsText()).jsonObject
+                o.ci("canEdit")?.jsonPrimitive?.booleanOrNull == true
+            } catch (e: ClientRequestException) {
+                // Not visible to the caller (404) or refused: not editable.
+                if (e.response.status.value in 400..499) false else throw e
+            }
+        }
+    }
+
+    /**
+     * A call to the Companion's metadata editor routes (`/Nitrate/Metadata/…`); a refusal becomes
+     * [MetadataEditRefused] with the server's own message.
+     */
+    private suspend fun editor(method: String, vararg segments: String, body: OutgoingContent? = null, query: Map<String, Any?> = emptyMap()): HttpResponse {
+        val url = c.url("Nitrate", "Metadata", *segments, query = query)
+        return try {
+            with(c) {
+                when (method) {
+                    "GET" -> http.get(url) { auth() }
+                    "DELETE" -> http.delete(url) { auth() }
+                    else -> http.post(url) {
+                        auth()
+                        if (body != null) setBody(body)
+                    }
+                }
+            }
+        } catch (e: ClientRequestException) {
+            throw refusal(e.response)
+        }
+    }
+
+    private suspend fun refusal(response: HttpResponse): MetadataEditRefused {
+        val status = response.status.value
+        val text = runCatching { response.bodyAsText() }.getOrNull().orEmpty().trim()
+        val said = runCatching {
+            when (val e = JellyfinJson.parseToJsonElement(text)) {
+                is JsonObject -> (e.ci("message") ?: e.ci("detail") ?: e.ci("title"))?.jsonPrimitive?.contentOrNull
+                is JsonPrimitive -> e.contentOrNull
+                else -> null
+            }
+        }.getOrNull() ?: text.takeIf { it.isNotEmpty() && it.length < 200 && !it.startsWith("<") && !it.startsWith("{") }
+        return MetadataEditRefused(said?.takeIf { it.isNotBlank() } ?: MetadataEditRefused.defaultMessage(status), status)
+    }
+
+    private fun jsonBody(e: JsonElement) = TextContent(e.toString(), ContentType.Application.Json)
+
+    /** Item paths: the Companion's for editors, Jellyfin's own for admins. */
+    private fun item(itemId: String) = dashless(itemId)
 
     // ---- Metadata ----
 
@@ -154,7 +251,8 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
                 "LockedFields" to JsonArray(m.lockedFields.mapNotNull { dev.nitrate.core.admin.LockableField.of(it)?.wire }.distinct().map(::JsonPrimitive)),
             ),
         )
-        post("Items", m.id, body = updated)
+        if (viaCompanion()) editor("POST", "Items", item(m.id), body = jsonBody(updated))
+        else post("Items", m.id, body = updated)
     }
 
     // ---- Identify and refresh ----
@@ -193,27 +291,29 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
     }
 
     suspend fun externalIdFields(itemId: String): List<dev.nitrate.core.admin.ExternalIdField> =
-        json("Items", itemId, "ExternalIdInfos").jsonArray.mapNotNull { e ->
+        (if (viaCompanion()) JellyfinJson.parseToJsonElement(editor("GET", "Items", item(itemId), "ExternalIdInfos").bodyAsText()) else json("Items", itemId, "ExternalIdInfos")).jsonArray.mapNotNull { e ->
             val o = e as? JsonObject ?: return@mapNotNull null
             dev.nitrate.core.admin.ExternalIdField(o.str("Key") ?: return@mapNotNull null, o.str("Name") ?: o.str("Key")!!, o.str("Type"))
         }
 
     suspend fun applyMatch(itemId: String, match: RemoteMatch, replaceImages: Boolean) {
-        post("Items", "RemoteSearch", "Apply", itemId, body = JellyfinJson.parseToJsonElement(match.raw), query = mapOf("replaceAllImages" to replaceImages))
+        val body = JellyfinJson.parseToJsonElement(match.raw)
+        val query = mapOf("replaceAllImages" to replaceImages)
+        if (viaCompanion()) editor("POST", "Items", item(itemId), "Apply", body = jsonBody(body), query = query)
+        else post("Items", "RemoteSearch", "Apply", itemId, body = body, query = query)
     }
 
     suspend fun refreshItem(itemId: String, mode: RefreshMode, replaceImages: Boolean, regenerateTrickplay: Boolean) {
         val full = if (mode == RefreshMode.NEW_FILES) "Default" else "FullRefresh"
-        post(
-            "Items", itemId, "Refresh",
-            query = mapOf(
-                "metadataRefreshMode" to full,
-                "imageRefreshMode" to if (replaceImages) "FullRefresh" else full,
-                "replaceAllMetadata" to (mode == RefreshMode.REPLACE_ALL),
-                "replaceAllImages" to replaceImages,
-                "regenerateTrickplay" to regenerateTrickplay,
-            ),
+        val query = mapOf(
+            "metadataRefreshMode" to full,
+            "imageRefreshMode" to if (replaceImages) "FullRefresh" else full,
+            "replaceAllMetadata" to (mode == RefreshMode.REPLACE_ALL),
+            "replaceAllImages" to replaceImages,
+            "regenerateTrickplay" to regenerateTrickplay,
         )
+        if (viaCompanion()) editor("POST", "Items", item(itemId), "Refresh", query = query)
+        else post("Items", itemId, "Refresh", query = query)
     }
 
     // ---- Images ----
@@ -326,27 +426,77 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
         }.distinctBy { it.code }.sortedBy { it.name }
 
     suspend fun moveImage(itemId: String, type: ImageType, index: Int, newIndex: Int) {
-        post("Items", itemId, "Images", type.wire, index.toString(), "Index", query = mapOf("newIndex" to newIndex))
+        val query = mapOf("newIndex" to newIndex)
+        if (viaCompanion()) editor("POST", "Items", item(itemId), "Images", type.wire, index.toString(), "Index", query = query)
+        else post("Items", itemId, "Images", type.wire, index.toString(), "Index", query = query)
     }
 
     suspend fun downloadRemoteImage(itemId: String, type: ImageType, url: String) {
-        post("Items", itemId, "RemoteImages", "Download", query = mapOf("type" to type.wire, "imageUrl" to url))
+        val query = mapOf("type" to type.wire, "imageUrl" to url)
+        if (viaCompanion()) editor("POST", "Items", item(itemId), "RemoteImages", "Download", query = query)
+        else post("Items", itemId, "RemoteImages", "Download", query = query)
     }
 
     suspend fun deleteImage(itemId: String, type: ImageType, index: Int?) {
-        if (index != null) delete("Items", itemId, "Images", type.wire, index.toString()) else delete("Items", itemId, "Images", type.wire)
+        val path = listOfNotNull("Images", type.wire, index?.toString()).toTypedArray()
+        if (viaCompanion()) editor("DELETE", "Items", item(itemId), *path)
+        else delete("Items", itemId, *path)
     }
 
-    /** Jellyfin takes uploaded images as base64 text with the image's own content type. */
+    /** Jellyfin (and the Companion) take uploaded images as base64 text with the image's own content type. */
     @OptIn(ExperimentalEncodingApi::class)
     suspend fun uploadImage(itemId: String, type: ImageType, bytes: ByteArray, mimeType: String) {
+        val body = TextContent(Base64.encode(bytes), ContentType.parse(mimeType))
+        if (viaCompanion()) { editor("POST", "Items", item(itemId), "Images", type.wire, body = body); return }
         val url = c.url("Items", itemId, "Images", type.wire)
         with(c) {
             http.post(url) {
                 auth()
-                setBody(TextContent(Base64.encode(bytes), ContentType.parse(mimeType)))
+                setBody(body)
             }
         }
+    }
+
+    // ---- Metadata editors (admins) ----
+
+    suspend fun metadataEditors(): List<MetadataEditor> =
+        JellyfinJson.parseToJsonElement(editor("GET", "Editors").bodyAsText()).jsonArray.mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            MetadataEditor(
+                userId = normalizeId(o.ci("userId")?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null),
+                userName = o.ci("userName")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                allLibraries = o.ci("allLibraries")?.jsonPrimitive?.booleanOrNull == true,
+                libraryIds = o.ci("libraryIds")?.strings().orEmpty().map(::normalizeId),
+            )
+        }
+
+    suspend fun setMetadataEditor(userId: String, scope: MetadataEditorScope) {
+        editor("POST", "Editors", dashless(userId), body = jsonBody(buildJsonObject {
+            put("isEditor", scope.isEditor)
+            put("allLibraries", scope.isEditor && scope.allLibraries)
+            put("libraryIds", JsonArray(if (scope.isEditor && !scope.allLibraries) scope.libraryIds.map { JsonPrimitive(dashless(it)) } else emptyList()))
+        }))
+    }
+
+    suspend fun metadataEdits(limit: Int, before: String?): List<MetadataEdit> =
+        JellyfinJson.parseToJsonElement(editor("GET", "Edits", query = mapOf("limit" to limit, "before" to before)).bodyAsText()).jsonArray.mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            fun s(key: String) = o.ci(key)?.jsonPrimitive?.contentOrNull
+            MetadataEdit(
+                id = s("id") ?: return@mapNotNull null,
+                atMs = o.ci("atMs")?.jsonPrimitive?.longOrNull ?: 0L,
+                userId = s("userId")?.let(::normalizeId).orEmpty(),
+                userName = s("userName").orEmpty(),
+                itemId = s("itemId")?.let(::normalizeId).orEmpty(),
+                itemName = s("itemName").orEmpty(),
+                kind = MetadataEditKind.of(s("kind")),
+                summary = s("summary").orEmpty(),
+                canUndo = o.ci("canUndo")?.jsonPrimitive?.booleanOrNull == true,
+            )
+        }
+
+    suspend fun undoMetadataEdit(editId: String) {
+        editor("POST", "Edits", editId, "Undo")
     }
 
     // ---- Server ----
@@ -511,6 +661,10 @@ internal class JellyfinAdmin(private val c: JellyfinClient) {
         }, query = mapOf("userId" to userId))
     }
 }
+
+/** The Companion answers in either casing (Jellyfin's PascalCase when asked for it): a key whatever its case. */
+private fun JsonObject.ci(key: String): JsonElement? = this[key] ?: entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value
+private fun dashless(id: String) = id.replace("-", "")
 
 private val READ_ONLY_ITEM_FIELDS = setOf("Trickplay", "MediaSources", "MediaStreams", "Chapters", "UserData", "ImageBlurHashes", "MediaSegments")
 

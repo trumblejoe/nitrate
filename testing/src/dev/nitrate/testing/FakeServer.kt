@@ -233,7 +233,58 @@ class FakeServer : MediaServer {
     override suspend fun playlists() = listOf(MediaItem("p1", "Rainy day", ItemKind.PLAYLIST), MediaItem("p2", "Road trip", ItemKind.PLAYLIST))
     override suspend fun extras(itemId: String) =
         if (itemId == "m1") listOf(MediaItem("m1-trailer", "Trailer", ItemKind.VIDEO, extraType = "Trailer")) else emptyList()
-    override suspend fun account() = dev.nitrate.core.admin.AccountInfo("user-1", "Joe", isAdmin = true)
+    /** The signed-in account: an admin unless a test makes it a metadata editor ([signInAsEditor]). */
+    var accountInfo = dev.nitrate.core.admin.AccountInfo("user-1", "Joe", isAdmin = true)
+    override suspend fun account() = accountInfo
+
+    /** Makes the account a metadata editor (Companion feature `metadata`) in the Movies library, not an admin. */
+    fun signInAsEditor() {
+        companionFeatures = companionFeatures + dev.nitrate.core.admin.MetadataEditors.FEATURE
+        accountInfo = dev.nitrate.core.admin.AccountInfo(
+            "user-1", "Joe", isAdmin = false,
+            metadataEditor = dev.nitrate.core.admin.MetadataEditorScope(true, allLibraries = false, libraryIds = listOf("lib-movies")),
+        )
+    }
+
+    /** Titles a metadata editor may edit (the Companion's Access answer): the films. */
+    var editableIds: Set<String> = setOf("m1", "m2", "m3", "m4")
+    override suspend fun canEditMetadata(itemId: String) =
+        accountInfo.isAdmin || (accountInfo.metadataEditor.isEditor && dev.nitrate.core.admin.MetadataEditors.FEATURE in companionFeatures && itemId in editableIds)
+
+    /** Set: saving metadata is refused with this reason (as the Companion's 403/429). */
+    var metadataRefusal: String? = null
+    val savedMetadata = mutableListOf<dev.nitrate.core.admin.ItemMetadata>()
+    override suspend fun saveMetadata(metadata: dev.nitrate.core.admin.ItemMetadata) {
+        metadataRefusal?.let { throw dev.nitrate.core.admin.MetadataEditRefused(it, 403) }
+        savedMetadata += metadata
+    }
+
+    /** Metadata editors (admins' Users page): Sam in Movies. */
+    val metadataEditorList = mutableListOf(dev.nitrate.core.admin.MetadataEditor("user-2", "Sam", allLibraries = false, libraryIds = listOf("lib-movies")))
+    override suspend fun metadataEditors() = metadataEditorList.toList()
+    override suspend fun setMetadataEditor(userId: String, scope: dev.nitrate.core.admin.MetadataEditorScope) {
+        metadataEditorList.removeAll { it.userId == userId }
+        if (scope.isEditor) metadataEditorList += dev.nitrate.core.admin.MetadataEditor(userId, users().firstOrNull { it.id == userId }?.name.orEmpty(), scope.allLibraries, scope.libraryIds)
+    }
+
+    /** The log of editors' changes, newest first, timed from now so "ago" reads the same every day. */
+    val metadataEditLog: MutableList<dev.nitrate.core.admin.MetadataEdit> by lazy {
+        val now = System.currentTimeMillis()
+        mutableListOf(
+            dev.nitrate.core.admin.MetadataEdit("e4", now - 5 * 60_000L, "user-2", "Sam", "m1", "Nitrate", dev.nitrate.core.admin.MetadataEditKind.DETAILS, "Overview, Genres", canUndo = true),
+            dev.nitrate.core.admin.MetadataEdit("e3", now - 2 * 3_600_000L, "user-2", "Sam", "m2", "Silver Screen", dev.nitrate.core.admin.MetadataEditKind.IMAGE, "New poster from TheMovieDb", canUndo = false),
+            dev.nitrate.core.admin.MetadataEdit("e2", now - 26 * 3_600_000L, "user-2", "Sam", "m3", "Gate Weave", dev.nitrate.core.admin.MetadataEditKind.MATCH, "Identified as Gate Weave (2024)", canUndo = false),
+            dev.nitrate.core.admin.MetadataEdit("e1", now - 3 * 86_400_000L, "user-2", "Sam", "m4", "Persistence", dev.nitrate.core.admin.MetadataEditKind.DETAILS, "Title, Locked fields", canUndo = true),
+        )
+    }
+    override suspend fun metadataEdits(limit: Int, before: String?) = metadataEditLog.take(limit)
+
+    /** Set: undoing is refused with this reason. */
+    var undoRefusal: String? = null
+    override suspend fun undoMetadataEdit(editId: String) {
+        undoRefusal?.let { throw dev.nitrate.core.admin.MetadataEditRefused(it, 409) }
+        metadataEditLog.removeAll { it.id == editId }
+    }
     override suspend fun metadata(itemId: String) = getItem(itemId).let { i ->
         dev.nitrate.core.admin.ItemMetadata(
             id = i.id, name = i.name, overview = i.overview, productionYear = i.productionYear, officialRating = i.officialRating,

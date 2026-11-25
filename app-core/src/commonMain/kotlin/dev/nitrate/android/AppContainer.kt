@@ -733,6 +733,25 @@ class AppContainer(
         accountState.value = runCatching { server.account() }.getOrNull()
     }
 
+    /**
+     * Whether Manage (details, locks, IDs, Identify, refresh, images) shows on a title: admins
+     * always; metadata editors (Companion feature `metadata`) when the title's library is in their
+     * scope (the server says, kept briefly); nobody else, with nothing asked.
+     */
+    suspend fun canManageMetadata(itemId: String): Boolean {
+        val a = accountState.value ?: return false
+        if (a.isAdmin) return true
+        if (!a.metadataEditor.isEditor) return false
+        return runCatching { server.canEditMetadata(itemId) }.getOrDefault(false)
+    }
+
+    /** Bulk editing on a library's list: admins, or metadata editors whose scope covers [libraryId]. */
+    fun canBulkEditMetadata(libraryId: String?): Boolean = accountState.value?.canEditMetadataIn(libraryId) == true
+
+    /** Admins' Users switch and the log of edits ("Metadata edits"): only with the Companion's metadata editors. */
+    fun offersMetadataEditors(): Boolean =
+        accountState.value?.isAdmin == true && companionOffers(dev.nitrate.core.admin.MetadataEditors.FEATURE)
+
     private val companionUpdatesState = MutableStateFlow<dev.nitrate.core.companion.CompanionUpdates?>(null)
 
     /**

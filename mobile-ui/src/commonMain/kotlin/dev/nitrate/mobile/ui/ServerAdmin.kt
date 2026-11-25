@@ -50,6 +50,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material3.FilterChip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -69,7 +73,7 @@ import dev.nitrate.core.model.formatClock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class AdminTab(val label: String) { OVERVIEW("Overview"), TASKS("Tasks"), ACTIVITY("Activity"), DEVICES("Devices"), USERS("Users"), LIBRARIES("Libraries") }
+private enum class AdminTab(val label: String) { OVERVIEW("Overview"), TASKS("Tasks"), ACTIVITY("Activity"), DEVICES("Devices"), USERS("Users"), LIBRARIES("Libraries"), EDITS("Metadata edits") }
 
 /** Keeps a server list fresh while shown: loaded now, then every [everyMs]. */
 @Composable
@@ -81,10 +85,17 @@ private fun <T> polled(everyMs: Long, key: Any? = null, load: suspend () -> T): 
         }
     }.value
 
-/** Admin tools for the whole server. */
+/**
+ * Admin tools for the whole server. With the Companion's metadata editors (feature `metadata`),
+ * Users gains the "Metadata editor" switch and "Metadata edits" reads and undoes their changes.
+ */
 @Composable
 fun ServerAdminScreen(actions: AppActions) {
     var tab by rememberSaveable { mutableStateOf(AdminTab.OVERVIEW) }
+    val account by actions.container.account.collectAsState()
+    val companion by actions.container.companion.collectAsState()
+    val editors = account?.isAdmin == true && companion?.features?.contains(dev.nitrate.core.admin.MetadataEditors.FEATURE) == true
+    val tabs = AdminTab.entries.filter { it != AdminTab.EDITS || editors }
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     fun notify(message: String) = scope.launch { snack.showSnackbar(message) }
@@ -97,16 +108,17 @@ fun ServerAdminScreen(actions: AppActions) {
                     Text(actions.server.serverUrl.orEmpty(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            PrimaryScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = ScreenPadding) {
-                AdminTab.entries.forEach { t -> Tab(tab == t, onClick = { tab = t }, text = { Text(t.label) }) }
+            PrimaryScrollableTabRow(selectedTabIndex = tabs.indexOf(tab).coerceAtLeast(0), edgePadding = ScreenPadding) {
+                tabs.forEach { t -> Tab(tab == t, onClick = { tab = t }, text = { Text(t.label) }) }
             }
             when (tab) {
                 AdminTab.OVERVIEW -> Overview(actions, ::notify) { tab = it }
                 AdminTab.TASKS -> TasksPane(actions, ::notify)
                 AdminTab.ACTIVITY -> ActivityPane(actions)
                 AdminTab.DEVICES -> DevicesPane(actions, ::notify)
-                AdminTab.USERS -> UsersPane(actions, ::notify)
+                AdminTab.USERS -> UsersPane(actions, editors, ::notify)
                 AdminTab.LIBRARIES -> LibrariesPane(actions) { notify(it) }
+                AdminTab.EDITS -> if (editors) MetadataEditsPane(actions, ::notify) else Overview(actions, ::notify) { tab = it }
             }
         }
         SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).padding(16.dp))
@@ -294,10 +306,17 @@ private fun DevicesPane(actions: AppActions, notify: (String) -> Unit) {
 }
 
 @Composable
-private fun UsersPane(actions: AppActions, notify: (String) -> Unit) {
+private fun UsersPane(actions: AppActions, metadataEditors: Boolean, notify: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var tick by remember { mutableIntStateOf(0) }
     val result = produceState<Result<List<UserAccount>>?>(null, tick) { value = runCatching { actions.server.users() } }.value
+    // Metadata editors (Companion): who has the role, in which libraries.
+    val editors = produceState(emptyList<dev.nitrate.core.admin.MetadataEditor>(), tick, metadataEditors) {
+        value = if (metadataEditors) runCatching { actions.server.metadataEditors() }.getOrDefault(emptyList()) else emptyList()
+    }.value
+    val libraries = produceState(emptyList<dev.nitrate.core.model.MediaItem>(), metadataEditors) {
+        value = if (metadataEditors) runCatching { actions.server.views() }.getOrDefault(emptyList()) else emptyList()
+    }.value
     var editing by remember { mutableStateOf<UserAccount?>(null) }
     var adding by remember { mutableStateOf(false) }
     val list = result?.getOrNull()
@@ -312,6 +331,7 @@ private fun UsersPane(actions: AppActions, notify: (String) -> Unit) {
                 Text(
                     listOfNotNull(
                         "Administrator".takeIf { u.permissions.isAdministrator },
+                        "Metadata editor".takeIf { !u.permissions.isAdministrator && editors.any { it.userId == u.id } },
                         "Disabled".takeIf { u.permissions.isDisabled },
                         "No password".takeIf { !u.hasPassword },
                         "No downloads".takeIf { !u.permissions.enableContentDownloading },
@@ -328,7 +348,13 @@ private fun UsersPane(actions: AppActions, notify: (String) -> Unit) {
         }
     }
     editing?.let { u ->
-        UserDialog(actions, u, isSelf = u.id == actions.server.userId, onDone = { message -> editing = null; message?.let(notify); tick++ })
+        UserDialog(
+            actions, u, isSelf = u.id == actions.server.userId,
+            // Administrators edit everything anyway: the role is for everyone else.
+            editor = if (metadataEditors && !u.permissions.isAdministrator) (editors.firstOrNull { it.userId == u.id }?.scope ?: dev.nitrate.core.admin.MetadataEditorScope.NONE) else null,
+            libraries = libraries,
+            onDone = { message -> editing = null; message?.let(notify); tick++ },
+        )
     }
     if (adding) {
         var name by remember { mutableStateOf("") }
@@ -372,9 +398,18 @@ private val PERMISSIONS: List<Triple<String, (UserPermissions) -> Boolean, (User
 )
 
 @Composable
-private fun UserDialog(actions: AppActions, user: UserAccount, isSelf: Boolean, onDone: (String?) -> Unit) {
+private fun UserDialog(
+    actions: AppActions,
+    user: UserAccount,
+    isSelf: Boolean,
+    /** The account's metadata editor scope, when the Companion offers the role (null: no switch). */
+    editor: dev.nitrate.core.admin.MetadataEditorScope? = null,
+    libraries: List<dev.nitrate.core.model.MediaItem> = emptyList(),
+    onDone: (String?) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var perms by remember { mutableStateOf(user.permissions) }
+    var editorScope by remember(editor) { mutableStateOf(editor) }
     var password by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
     AlertDialog(
@@ -390,6 +425,38 @@ private fun UserDialog(actions: AppActions, user: UserAccount, isSelf: Boolean, 
                         Switch(checked = get(perms), onCheckedChange = null, enabled = !locked)
                     }
                 }
+                editorScope?.let { e ->
+                    item(key = "editor") {
+                        // The whole line is the switch (its words are its name).
+                        Row(
+                            Modifier.fillMaxWidth().toggleable(e.isEditor, role = Role.Switch) { on ->
+                                editorScope = if (on) dev.nitrate.core.admin.MetadataEditorScope(true, allLibraries = true) else dev.nitrate.core.admin.MetadataEditorScope.NONE
+                            }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Metadata editor", color = MaterialTheme.colorScheme.onSurface)
+                                Text("May change titles' details, images and matches; every change is logged", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = e.isEditor, onCheckedChange = null)
+                        }
+                    }
+                    if (e.isEditor) item(key = "editor-libraries") {
+                        Column(Modifier.padding(top = 4.dp)) {
+                            Text("In these libraries", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FilterChip(selected = e.allLibraries, onClick = { editorScope = e.copy(allLibraries = true, libraryIds = emptyList()) }, label = { Text("All") })
+                                libraries.forEach { lib ->
+                                    FilterChip(
+                                        selected = !e.allLibraries && lib.id in e.libraryIds,
+                                        onClick = { editorScope = dev.nitrate.core.admin.MetadataEditors.toggle(e, lib.id) },
+                                        label = { Text(lib.name) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                         OutlinedTextField(password, { password = it }, label = { Text("New password") }, singleLine = true, modifier = Modifier.weight(1f))
@@ -403,7 +470,12 @@ private fun UserDialog(actions: AppActions, user: UserAccount, isSelf: Boolean, 
         },
         confirmButton = {
             TextButton(onClick = {
-                scope.launch { runCatching { actions.server.setPermissions(user.id, perms) }.onSuccess { onDone("Saved") }.onFailure { onDone("Couldn't save: ${it.message}") } }
+                scope.launch {
+                    runCatching {
+                        actions.server.setPermissions(user.id, perms)
+                        editorScope?.takeIf { it != editor }?.let { actions.server.setMetadataEditor(user.id, it) }
+                    }.onSuccess { onDone("Saved") }.onFailure { onDone("Couldn't save: ${it.message}") }
+                }
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Cancel") } },
@@ -420,4 +492,67 @@ private fun UserDialog(actions: AppActions, user: UserAccount, isSelf: Boolean, 
         },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
     )
+}
+
+/**
+ * The metadata editors' changes, newest first (Companion feature `metadata`): when, who, the title
+ * and what changed; Undo (asked first) puts a details edit back, or says why the server wouldn't.
+ */
+@Composable
+private fun MetadataEditsPane(actions: AppActions, notify: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var tick by remember { mutableIntStateOf(0) }
+    val result = produceState<Result<List<dev.nitrate.core.admin.MetadataEdit>>?>(null, tick) { value = runCatching { actions.server.metadataEdits(100) } }.value
+    var undoing by remember { mutableStateOf<dev.nitrate.core.admin.MetadataEdit?>(null) }
+    val list = result?.getOrNull()
+    if (list == null) {
+        if (result?.isFailure == true) ErrorMessage("Couldn't load the edits: ${result.exceptionOrNull()?.message}") else Loading()
+        return
+    }
+    if (list.isEmpty()) {
+        Text(
+            "No changes yet. Turn on Metadata editor for someone in Users; what they change shows here.",
+            Modifier.padding(ScreenPadding), color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    val now = dev.nitrate.android.nowMs()
+    LazyColumn(contentPadding = PaddingValues(ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        items(list, key = { it.id }) { e ->
+            Card {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(e.itemName.ifBlank { "A title" }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            listOf(e.kind.label, e.summary).filter { it.isNotBlank() }.joinToString(": "),
+                            style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            listOf(dev.nitrate.core.playback.agoLabel(e.atMs, now), e.userName).filter { it.isNotBlank() }.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (e.canUndo) TextButton(onClick = { undoing = e }) { Text("Undo") }
+                }
+            }
+        }
+    }
+    undoing?.let { e ->
+        AlertDialog(
+            onDismissRequest = { undoing = null },
+            title = { Text("Undo this change?") },
+            text = { Text("${e.userName}'s change to ${e.itemName} (${e.summary}) is put back as it was.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    undoing = null
+                    scope.launch {
+                        runCatching { actions.server.undoMetadataEdit(e.id) }
+                            .onSuccess { notify("Undone: ${e.itemName}"); tick++ }
+                            .onFailure { notify("Couldn't undo: ${it.message}") }
+                    }
+                }) { Text("Undo") }
+            },
+            dismissButton = { TextButton(onClick = { undoing = null }) { Text("Cancel") } },
+        )
+    }
 }

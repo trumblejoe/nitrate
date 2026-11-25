@@ -67,6 +67,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -138,10 +139,15 @@ private fun ThemeMusicInfoRow(actions: AppActions, item: MediaItem) {
     }
 }
 
-/** Admin: edit an item's metadata, identify it, manage its images, refresh it. */
+/**
+ * Admins and metadata editors (Companion feature `metadata`, which checks and logs each change and
+ * says why when it refuses one): edit an item's metadata, identify it, manage its images, refresh
+ * it. Nothing here deletes the title or touches library settings.
+ */
 @Composable
 fun ManageItemScreen(actions: AppActions, itemId: String) {
     val server = actions.server
+    val account by actions.container.account.collectAsState()
     val item by produceState<MediaItem?>(null, itemId) { value = runCatching { server.getItem(itemId) }.getOrNull() }
     var tab by rememberSaveable { mutableStateOf(ManageTab.DETAILS) }
     val snack = remember { SnackbarHostState() }
@@ -155,6 +161,10 @@ fun ManageItemScreen(actions: AppActions, itemId: String) {
                 Column(Modifier.weight(1f)) {
                     Text("Manage", style = MaterialTheme.typography.labelLarge, color = accentColor())
                     Text(item?.let { it.episodeLabel ?: it.name }.orEmpty(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (account?.let { !it.isAdmin && it.metadataEditor.isEditor } == true) Text(
+                        "As a metadata editor: the server's admins can see and undo your changes",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             PrimaryScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = ScreenPadding) {

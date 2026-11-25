@@ -449,6 +449,26 @@ interface MediaServer {
     suspend fun deleteUser(userId: String): Unit = unsupported()
     suspend fun setPassword(userId: String, newPassword: String): Unit = unsupported()
 
+    // ---- Metadata editors (Companion feature `metadata`) ----
+    /**
+     * Whether the signed-in account may edit [itemId]'s metadata: admins always (nothing asked);
+     * a metadata editor when the title's library is in their scope (asked, kept briefly); anyone
+     * else, or without the Companion, never.
+     */
+    suspend fun canEditMetadata(itemId: String): Boolean = false
+
+    /** The accounts with the metadata editor role (admins). */
+    suspend fun metadataEditors(): List<dev.nitrate.core.admin.MetadataEditor> = unsupported()
+
+    /** Gives [userId] the role in [scope]'s libraries, or takes it away (`isEditor = false`) (admins). */
+    suspend fun setMetadataEditor(userId: String, scope: dev.nitrate.core.admin.MetadataEditorScope): Unit = unsupported()
+
+    /** The log of editors' changes, newest first; [before] an entry's id for the page after it (admins). */
+    suspend fun metadataEdits(limit: Int = 50, before: String? = null): List<dev.nitrate.core.admin.MetadataEdit> = unsupported()
+
+    /** Puts a details edit back as it was; refused with the server's reason ([dev.nitrate.core.admin.MetadataEditRefused]). */
+    suspend fun undoMetadataEdit(editId: String): Unit = unsupported()
+
     // ---- Subtitles from providers ----
     /** Subtitles the server can download for [itemId] in [language] (ISO 639-2, e.g. "eng"). */
     suspend fun searchSubtitles(itemId: String, language: String): List<RemoteSubtitle> = unsupported()

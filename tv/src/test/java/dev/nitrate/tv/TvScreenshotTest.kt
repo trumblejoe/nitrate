@@ -1,6 +1,7 @@
 package dev.nitrate.tv
 
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
@@ -2842,6 +2843,60 @@ class TvScreenshotTest {
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 
     @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }
+
+    /** Signs the test account in as a metadata editor (Companion feature `metadata`) in the Movies library. */
+    private suspend fun asEditor(c: AppContainer) {
+        (c.server as dev.nitrate.testing.FakeServer).signInAsEditor()
+        c.refreshCompanionForTests()
+        c.refreshAccount()
+    }
+
+    /** A metadata editor's More on a film in their library: Manage is there (and not on a show outside it). */
+    @Test fun editorDetailsMore() {
+        var canManageShow = true
+        shoot("tv-editor-details", setup = { c -> asEditor(c); canManageShow = c.canManageMetadata("s1e2") }, act = {
+            compose.onNode(androidx.compose.ui.test.hasClickAction() and androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasContentDescription("More")), useUnmergedTree = true)
+                .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        }) { c ->
+            val canManage = androidx.compose.runtime.produceState(false) { value = c.canManageMetadata("m1") }.value
+            DetailsScreen(c.server, "m1", null, onPlay = { _, _ -> }, onOpen = {}, onManage = if (canManage) { _ -> } else null)
+        }
+        compose.onAllNodesWithText("Manage").onFirst().assertExists()
+        check(!canManageShow) { "an episode outside the editor's libraries offered Manage" }
+        compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/tv-editor-details-more.png")
+    }
+
+    /** An editor's Manage: the same tabs with the note that admins see their changes; a refused save says why. */
+    @Test fun editorManageRefused() = shoot("tv-editor-manage-refused", setup = { c ->
+        asEditor(c)
+        (c.server as dev.nitrate.testing.FakeServer).metadataRefusal = "You can't edit this title"
+    }, act = {
+        compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction()).onFirst().performScrollToNode(androidx.compose.ui.test.hasText("Save changes"))
+        compose.onAllNodesWithText("Save changes").onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Couldn't save: You can't edit this title").onFirst().assertExists()
+    }) { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1", asEditor = true) }
+
+    /** Users with the Companion's metadata editors: Sam's "Metadata editor" switch and the libraries it covers. */
+    @Test fun serverAdminEditors() = shoot("tv-server-admin-editors", setup = { c -> c.refreshCompanionForTests() }, act = {
+        compose.onAllNodesWithText("Sam").onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction())[1].performScrollToNode(androidx.compose.ui.test.hasText("In these libraries"))
+        compose.onAllNodesWithText("Metadata editor").onFirst().assertExists()
+    }) { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server, metadataEditors = true, startTab = 3) }
+
+    /** Manage server → Metadata edits: newest first, Undo where it can be undone, asked first. */
+    @Test fun metadataEdits() {
+        shoot("tv-metadata-edits") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server, metadataEditors = true, startTab = 5) }
+        compose.onAllNodesWithText("Undo").assertCountEquals(2)
+        compose.onAllNodesWithText("Nitrate · Details").onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Undo this change?").onFirst().assertExists()
+        compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/tv-metadata-undo.png")
+    }
 
     @Test fun seriesNoRatings() = shoot("tv-series-trimmed", { c ->
         c.displaySettings.savePrefs("user-1", DisplayPrefs(communityRating = false, overview = false, officialRating = false))

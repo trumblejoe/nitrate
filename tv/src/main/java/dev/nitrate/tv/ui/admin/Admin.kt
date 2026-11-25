@@ -89,13 +89,18 @@ private fun Status(message: String?) {
 
 // ---- One item ----
 
-/** Admin tools for one item, with the remote: details, identify, images and refresh. */
+/**
+ * Metadata tools for one item, with the remote: details, identify, images and refresh. Admins and
+ * metadata editors ([asEditor]: the Companion checks and logs each change, and its refusals show
+ * in the status line) get the same tabs; nothing here deletes the title or touches library settings.
+ */
 @Composable
 fun ManageItemScreen(
     repository: MediaServer,
     itemId: String,
     /** Plays (true) or stops (false) an item's theme music, for the preview on Details. */
     themePreview: ((String, Boolean) -> Unit)? = null,
+    asEditor: Boolean = false,
 ) {
     val item by produceState<MediaItem?>(null, itemId) { value = runCatching { repository.getItem(itemId) }.getOrNull() }
     var tab by remember { mutableIntStateOf(0) }
@@ -106,6 +111,10 @@ fun ManageItemScreen(
             Column(Modifier.weight(1f)) {
                 Text("Manage", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                 Text(item?.let { it.episodeLabel ?: it.name }.orEmpty(), style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (asEditor) Text(
+                    "As a metadata editor: the server's admins can see and undo your changes",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
+                )
             }
             Tabs(listOf("Details", "Identify", "Images", "Refresh"), tab, { tab = it; status = null }, first)
         }
@@ -466,20 +475,25 @@ private fun RefreshTab(repository: MediaServer, item: MediaItem, notify: (String
 
 // ---- Whole server ----
 
-/** Admin tools for the server: scan, tasks, activity, devices, users. */
+/**
+ * Admin tools for the server: scan, tasks, activity, devices, users. With [metadataEditors] (the
+ * Companion's feature `metadata`), Users gains the "Metadata editor" switch and a "Metadata edits"
+ * tab reads and undoes the editors' changes.
+ */
 @Composable
-fun ServerAdminScreen(repository: MediaServer) {
-    var tab by remember { mutableIntStateOf(0) }
+fun ServerAdminScreen(repository: MediaServer, metadataEditors: Boolean = false, startTab: Int = 0) {
+    var tab by remember { mutableIntStateOf(startTab) }
     var status by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    val tabs = listOf("Tasks", "Activity", "Devices", "Users", "Libraries") + listOfNotNull("Metadata edits".takeIf { metadataEditors })
     Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, top = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("Server", style = MaterialTheme.typography.headlineMedium)
                 Text(repository.serverUrl.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
-            Tabs(listOf("Tasks", "Activity", "Devices", "Users", "Libraries"), tab, { tab = it; status = null }, first)
+            Tabs(tabs, tab, { tab = it; status = null }, first)
             Button(onClick = { scope.launch { runCatching { repository.scanAllLibraries() }.onSuccess { status = "Library scan started" }.onFailure { status = "${it.message}" } } }) { Text("Scan libraries") }
         }
         Status(status)
@@ -487,8 +501,9 @@ fun ServerAdminScreen(repository: MediaServer) {
             0 -> TasksTab(repository) { status = it }
             1 -> ActivityTab(repository)
             2 -> DevicesTab(repository) { status = it }
-            3 -> UsersTab(repository) { status = it }
-            else -> LibrariesTab(repository) { status = it }
+            3 -> UsersTab(repository, metadataEditors) { status = it }
+            4 -> LibrariesTab(repository) { status = it }
+            else -> MetadataEditsTab(repository) { status = it }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
@@ -605,10 +620,18 @@ private val PERMISSIONS: List<Triple<String, (UserPermissions) -> Boolean, (User
     Triple("All libraries", { p -> p.enableAllFolders }, { p, v -> p.copy(enableAllFolders = v) }),
 )
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun UsersTab(repository: MediaServer, notify: (String) -> Unit) {
+private fun UsersTab(repository: MediaServer, metadataEditors: Boolean, notify: (String) -> Unit) {
     var tick by remember { mutableIntStateOf(0) }
     val users by produceState<List<UserAccount>?>(null, tick) { value = runCatching { repository.users() }.getOrNull() }
+    // Metadata editors (Companion): who has the role, in which libraries.
+    val editors by produceState<List<dev.nitrate.core.admin.MetadataEditor>>(emptyList(), tick, metadataEditors) {
+        value = if (metadataEditors) runCatching { repository.metadataEditors() }.getOrDefault(emptyList()) else emptyList()
+    }
+    val libraries by produceState<List<MediaItem>>(emptyList(), metadataEditors) {
+        value = if (metadataEditors) runCatching { repository.views() }.getOrDefault(emptyList()) else emptyList()
+    }
     var selected by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val list = users ?: run { Text("Loading…"); return }
@@ -616,7 +639,16 @@ private fun UsersTab(repository: MediaServer, notify: (String) -> Unit) {
         LazyColumn(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             items(list, key = { it.id }) { u ->
                 ListItem(selected = selected == u.id, onClick = { selected = u.id }, headlineContent = { Text(u.name) },
-                    supportingContent = { Text(if (u.permissions.isAdministrator) "Administrator" else if (u.permissions.isDisabled) "Disabled" else "User") })
+                    supportingContent = {
+                        Text(
+                            when {
+                                u.permissions.isAdministrator -> "Administrator"
+                                u.permissions.isDisabled -> "Disabled"
+                                editors.any { it.userId == u.id } -> "Metadata editor"
+                                else -> "User"
+                            },
+                        )
+                    })
             }
         }
         val u = list.firstOrNull { it.id == selected }
@@ -635,7 +667,92 @@ private fun UsersTab(repository: MediaServer, notify: (String) -> Unit) {
                         trailingContent = { Switch(checked = get(u.permissions), onCheckedChange = null) },
                     )
                 }
+                // Administrators edit everything anyway: the role is for everyone else.
+                if (metadataEditors && !u.permissions.isAdministrator) {
+                    val scope0 = editors.firstOrNull { it.userId == u.id }?.scope ?: dev.nitrate.core.admin.MetadataEditorScope.NONE
+                    fun set(next: dev.nitrate.core.admin.MetadataEditorScope) {
+                        scope.launch { runCatching { repository.setMetadataEditor(u.id, next) }.onFailure { notify("${it.message}") }; tick++ }
+                    }
+                    item(key = "editor") {
+                        ListItem(
+                            selected = false,
+                            onClick = { set(if (scope0.isEditor) dev.nitrate.core.admin.MetadataEditorScope.NONE else dev.nitrate.core.admin.MetadataEditorScope(true, allLibraries = true)) },
+                            headlineContent = { Text("Metadata editor") },
+                            supportingContent = { Text("May change titles' details, images and matches; every change is logged", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            trailingContent = { Switch(checked = scope0.isEditor, onCheckedChange = null) },
+                        )
+                    }
+                    if (scope0.isEditor) item(key = "editor-libraries") {
+                        Column(Modifier.padding(start = 16.dp, top = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("In these libraries", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(selected = scope0.allLibraries, onClick = { set(scope0.copy(allLibraries = true, libraryIds = emptyList())) }) { Text("All") }
+                                libraries.forEach { lib ->
+                                    FilterChip(
+                                        selected = !scope0.allLibraries && lib.id in scope0.libraryIds,
+                                        onClick = { set(dev.nitrate.core.admin.MetadataEditors.toggle(scope0, lib.id)) },
+                                    ) { Text(lib.name) }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/**
+ * The metadata editors' changes, newest first (Companion feature `metadata`): when, who, the title
+ * and what changed; OK on one that can be undone asks first, then puts it back (or says why not).
+ */
+@Composable
+private fun MetadataEditsTab(repository: MediaServer, notify: (String) -> Unit) {
+    var tick by remember { mutableIntStateOf(0) }
+    val result by produceState<Result<List<dev.nitrate.core.admin.MetadataEdit>>?>(null, tick) { value = runCatching { repository.metadataEdits(100) } }
+    var undoing by remember { mutableStateOf<dev.nitrate.core.admin.MetadataEdit?>(null) }
+    val scope = rememberCoroutineScope()
+    val list = result?.getOrNull() ?: run {
+        Text(result?.exceptionOrNull()?.let { "Couldn't load the edits: ${it.message}" } ?: "Loading…")
+        return
+    }
+    if (list.isEmpty()) {
+        Text("No changes yet. Give someone the Metadata editor switch in Users; what they change shows here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    val now = System.currentTimeMillis()
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 48.dp)) {
+        items(list, key = { it.id }) { e ->
+            ListItem(
+                selected = false,
+                onClick = { if (e.canUndo) undoing = e },
+                headlineContent = { Text("${e.itemName.ifBlank { "A title" }} · ${e.kind.label}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = {
+                    Text(listOf(dev.nitrate.core.playback.agoLabel(e.atMs, now), e.userName, e.summary).filter { it.isNotBlank() }.joinToString(" · "), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                },
+                trailingContent = { if (e.canUndo) Text("Undo", color = MaterialTheme.colorScheme.primary) },
+            )
+        }
+    }
+    undoing?.let { e ->
+        val confirm = remember { FocusRequester() }
+        dev.nitrate.tv.ui.lists.TvDialog({ undoing = null }, width = 560) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Undo this change?", style = MaterialTheme.typography.headlineSmall)
+                Text("${e.userName}'s change to ${e.itemName} (${e.summary}) is put back as it was.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = {
+                        undoing = null
+                        scope.launch {
+                            runCatching { repository.undoMetadataEdit(e.id) }
+                                .onSuccess { notify("Undone: ${e.itemName}"); tick++ }
+                                .onFailure { notify("Couldn't undo: ${it.message}") }
+                        }
+                    }, modifier = Modifier.focusRequester(confirm)) { Text("Undo") }
+                    OutlinedButton(onClick = { undoing = null }) { Text("Cancel") }
+                }
+            }
+        }
+        LaunchedEffect(e.id) { runCatching { confirm.requestFocus() } }
     }
 }

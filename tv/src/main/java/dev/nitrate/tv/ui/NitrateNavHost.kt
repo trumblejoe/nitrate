@@ -290,6 +290,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onDispose { container.themeMusic.hide(themeId) }
             }
             val route = entry.toRoute<DetailsRoute>()
+            // Manage: admins, and metadata editors for titles in their libraries (the Companion says).
+            val canManage by androidx.compose.runtime.produceState(account?.isAdmin == true, route.itemId, account) {
+                value = container.canManageMetadata(route.itemId)
+            }
             // Entered from a watch group: the page has the group's own marks (GroupMarks).
             dev.nitrate.tv.ui.partners.ProvideGroupMarks(container, route.group) {
             DetailsScreen(
@@ -300,7 +304,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 onPlay = { item, fromStart -> gate.play(item, fromStart, origin = container.detailsOrigin(route.group, item)) },
                 onPlayFrom = { item, at -> gate.play(item, startMs = at, origin = container.detailsOrigin(route.group, item)) },
                 onOpen = { item -> nav.openItem(item, (container.detailsOrigin(route.group, item) as? dev.nitrate.core.partners.PlayOrigin.GroupCard)?.groupId) },
-                onManage = if (account?.isAdmin == true) { id -> nav.navigate(ManageItemRoute(id)) } else null,
+                onManage = if (canManage) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
                 onPlayQueue = { items -> listen(items) },
                 onBrowse = { title, studio, year -> nav.navigate(PersonRoute("", title, studio, year)) },
@@ -411,9 +415,15 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<MenuStopsRoute> { dev.nitrate.tv.ui.settings.MenuStopsScreen(container) }
         composable<ManageItemRoute> { entry ->
-            ManageItemScreen(container.server, entry.toRoute<ManageItemRoute>().itemId, themePreview = { id, on -> if (on) container.themeMusic.show(id) else container.themeMusic.stop() })
+            ManageItemScreen(
+                container.server, entry.toRoute<ManageItemRoute>().itemId,
+                themePreview = { id, on -> if (on) container.themeMusic.show(id) else container.themeMusic.stop() },
+                asEditor = account?.isAdmin != true,
+            )
         }
-        composable<ServerAdminRoute> { ServerAdminScreen(container.server) }
+        composable<ServerAdminRoute> {
+            ServerAdminScreen(container.server, metadataEditors = account?.isAdmin == true && companion?.features?.contains(dev.nitrate.core.admin.MetadataEditors.FEATURE) == true)
+        }
         composable<HouseholdDevicesRoute> { dev.nitrate.tv.ui.settings.HouseholdDevicesScreen(container, onOpen = { nav.navigate(DetailsRoute(it)) }) }
         composable<GuideRoute> { dev.nitrate.tv.ui.settings.GuideScreen(admin = account?.isAdmin == true) }
         composable<TvCheckRoute> { dev.nitrate.tv.ui.settings.TvCheckScreen(container) }
@@ -506,7 +516,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     dataCache = container.dataCache,
                     onOpen = nav::openItem,
                     onPlay = { item -> gate.play(item) },
-                    admin = account?.isAdmin == true,
+                    // Bulk editing: admins, and metadata editors whose libraries include this one.
+                    admin = account?.canEditMetadataIn(libraryId) == true,
                 )
             }
         }

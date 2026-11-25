@@ -117,7 +117,8 @@ internal fun MorePanel(
                 studio?.let { add(Triple("More from $it", null, { onDismiss(); onBrowse(it, it, null) })) }
                 year?.let { add(Triple("More from $it", null, { onDismiss(); onBrowse("From $it", null, it) })) }
                 if (onManage != null) add(Triple("Manage", "Details, images, identify", { onDismiss(); onManage(item.id) }))
-                if (onManage != null && item.kind == ItemKind.BOOK) add(Triple("Comic details", null, { open = "comic" }))
+                // Comic details (the Companion's ComicInfo editing) stays with admins; metadata editors get Manage only.
+                if (onManage != null && item.kind == ItemKind.BOOK && container?.account?.value?.isAdmin == true) add(Triple("Comic details", null, { open = "comic" }))
             }
             entries.forEachIndexed { i, (label, note, action) ->
                 ListItem(

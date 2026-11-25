@@ -10,7 +10,18 @@ data class AccountInfo(
     val canDelete: Boolean = isAdmin,
     /** May create and edit collections (playlists are anyone's). */
     val canManageCollections: Boolean = isAdmin,
-)
+    /**
+     * A metadata editor's libraries (Companion feature `metadata`, `GET /Nitrate/Metadata/Me`);
+     * [MetadataEditorScope.NONE] without the Companion, for admins too (they edit everything anyway).
+     */
+    val metadataEditor: MetadataEditorScope = MetadataEditorScope.NONE,
+) {
+    /** May edit metadata somewhere: an admin, or a metadata editor. */
+    val editsMetadata: Boolean get() = isAdmin || metadataEditor.isEditor
+
+    /** May edit the metadata of titles in [libraryId] (bulk editing on a library's list). */
+    fun canEditMetadataIn(libraryId: String?): Boolean = isAdmin || metadataEditor.covers(libraryId)
+}
 
 /** Editable metadata of one item. Dates are "YYYY-MM-DD". [lockedFields] use Jellyfin's names (Name, Overview, Genres...). */
 data class ItemMetadata(

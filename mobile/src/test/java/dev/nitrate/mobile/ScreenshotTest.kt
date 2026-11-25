@@ -1,6 +1,7 @@
 package dev.nitrate.mobile
 
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollToNode
@@ -1081,6 +1082,64 @@ class ScreenshotTest {
     @Test fun manageDetails() = shoot("phone-manage-details") { ManageItemScreen(it, "m1") }
 
     @Test fun serverAdmin() = shoot("phone-server-admin") { ServerAdminScreen(it) }
+
+    /** Signs the test account in as a metadata editor (Companion feature `metadata`) in the Movies library. */
+    private suspend fun asEditor(c: AppContainer) {
+        (c.server as FakeServer).signInAsEditor()
+        c.refreshCompanionForTests()
+        c.refreshAccount()
+    }
+
+    /** An admin on a server whose Companion offers metadata editors. */
+    private suspend fun withEditors(c: AppContainer) {
+        (c.server as FakeServer).companionFeatures += dev.nitrate.core.admin.MetadataEditors.FEATURE
+        c.refreshCompanionForTests()
+        c.refreshAccount()
+    }
+
+    /** A metadata editor's More on a film in their library: Manage is there (and not on an episode outside it). */
+    @Test fun editorDetailsMore() {
+        var canManageEpisode = true
+        shoot("phone-editor-details", setup = { c -> asEditor(c); canManageEpisode = c.canManageMetadata("s1e2") }, act = {
+            compose.onNodeWithText("More").performClick()
+            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(1_000)
+        }, wholeScreen = true) { DetailsScreen(it, "m1", null) }
+        compose.onAllNodesWithText("Manage").onFirst().assertExists()
+        check(!canManageEpisode) { "an episode outside the editor's libraries offered Manage" }
+    }
+
+    /** An editor's Manage: the note that admins see their changes, and a refused save saying why. */
+    @Test fun editorManageRefused() = shoot("phone-editor-manage-refused", setup = { c ->
+        asEditor(c)
+        (c.server as FakeServer).metadataRefusal = "You can't edit this title"
+    }, act = {
+        compose.onNodeWithText("Save changes").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onAllNodesWithText("Couldn't save: You can't edit this title").onFirst().assertExists()
+    }) { ManageItemScreen(it, "m1") }
+
+    /** Users with the Companion's metadata editors: Sam's "Metadata editor" switch and the libraries it covers. */
+    @Test fun serverAdminEditors() = shoot("phone-server-admin-editors", setup = { c -> withEditors(c) }, act = {
+        compose.onNodeWithText("Users").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onAllNodesWithText("Sam").onFirst().performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction() and androidx.compose.ui.test.hasAnyDescendant(androidx.compose.ui.test.hasText("Delete media")))
+            .onFirst().performScrollToNode(androidx.compose.ui.test.hasText("In these libraries"))
+        compose.waitForIdle()
+    }, wholeScreen = true) { ServerAdminScreen(it) }
+
+    /** Manage server → Metadata edits: newest first, Undo where it can be undone. */
+    @Test fun metadataEdits() = shoot("phone-metadata-edits", setup = { c -> withEditors(c) }, act = {
+        compose.onNodeWithText("Metadata edits").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onAllNodesWithText("Undo").assertCountEquals(2)
+    }) { ServerAdminScreen(it) }
 
     /** Writing beside the video: side by side when wide, stacked when upright. */
     @Test

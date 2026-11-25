@@ -124,9 +124,9 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
         scope.launch { runCatching { grid.scrollToItem(0) }; runCatching { list.scrollToItem(0) } }
     }
     var filtering by remember { mutableStateOf(false) }
-    // Admins: pick titles to edit together.
+    // Admins, and metadata editors whose libraries include this one: pick titles to edit together.
     val account by actions.container.account.collectAsState()
-    val canBulkEdit = account?.isAdmin == true && library.collection != dev.nitrate.core.model.CollectionKind.MUSIC
+    val canBulkEdit = account?.canEditMetadataIn(library.id) == true && library.collection != dev.nitrate.core.model.CollectionKind.MUSIC
     var selecting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
     var editing by remember { mutableStateOf(false) }
