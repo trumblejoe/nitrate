@@ -1083,6 +1083,21 @@ class ScreenshotTest {
 
     @Test fun serverAdmin() = shoot("phone-server-admin") { ServerAdminScreen(it) }
 
+    /** Manage → Refresh for an admin whose Companion has the credits report: the Credits check in a few words, and Copy report. */
+    @Test fun manageCreditsCheck() = shoot("phone-manage-credits-check", setup = { c ->
+        (c.server as FakeServer).companionFeatures += dev.nitrate.core.playback.CreditsReport.FEATURE
+        c.refreshCompanionForTests()
+        c.refreshAccount()
+    }, act = {
+        compose.onNodeWithText("Refresh").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Check now").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.onNodeWithText("Copy report").performScrollTo().assertExists()
+        compose.onAllNodesWithText("Credits start at 1:50:00.", substring = true).onFirst().assertExists()
+    }) { ManageItemScreen(it, "m1") }
+
     /** Signs the test account in as a metadata editor (Companion feature `metadata`) in the Movies library. */
     private suspend fun asEditor(c: AppContainer) {
         (c.server as FakeServer).signInAsEditor()

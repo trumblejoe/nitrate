@@ -1,6 +1,7 @@
 package dev.nitrate.tv
 
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
@@ -2369,6 +2370,19 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities)
     }
 
+    /** Drift: "Line up drifting sound" (on by default), and a format chosen to decode here can go back to the receiver. */
+    @Test fun driftSettings() = shoot("tv-drift-settings", setup = { c ->
+        c.playbackSettings.update { it.copy(decodeHere = setOf("dts")) }
+    }, act = {
+        repeat(30) { if (!focusedHasText("Line up drifting sound")) press("down") }
+        check(focusedHasText("Line up drifting sound")) { "the drift line is in Picture & sound; focused: ${focusedNodes()}" }
+        press("down")
+        check(focusedHasText("DTS decoded here")) { "the DTS choice can be undone; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(!shows("DTS decoded here")) { "OK sends DTS to the receiver again" }
+    }) { c -> dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities) }
+
     @Test fun advancedPlayback() = shoot("tv-picture-and-sound-advanced") { c ->
         dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities, dev.nitrate.tv.ui.settings.PlaybackPage.ADVANCED)
     }
@@ -2843,6 +2857,19 @@ class TvScreenshotTest {
     @Test fun manageItem() = shoot("tv-manage-item") { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1") }
 
     @Test fun serverAdmin() = shoot("tv-server-admin") { c -> dev.nitrate.tv.ui.admin.ServerAdminScreen(c.server) }
+
+    /** Manage → Refresh for an admin with the Companion's credits report: the Credits check in a few words (Copy is on the phone). */
+    @Test fun manageCreditsCheck() = shoot("tv-manage-credits-check", act = {
+        compose.onAllNodesWithText("Refresh").onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(300)
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Credits check").onFirst().performScrollTo()
+        compose.onAllNodesWithText("Credits check").onFirst().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Copy report", substring = true).onFirst().performScrollTo()
+        compose.onAllNodesWithText("Credits start at 1:50:00.", substring = true).onFirst().assertExists()
+    }) { c -> dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1", creditsCheck = true) }
 
     /** Signs the test account in as a metadata editor (Companion feature `metadata`) in the Movies library. */
     private suspend fun asEditor(c: AppContainer) {

@@ -30,10 +30,11 @@ public static partial class SubtitleText
                 body.Add(lines[++i]);
             }
 
-            var text = Clean(string.Join(' ', body));
+            var raw = string.Join(' ', body);
+            var text = Clean(raw);
             if (start is not null && end is not null && text.Length > 0)
             {
-                cues.Add(new LineCue(start.Value, end.Value, text));
+                cues.Add(new LineCue(start.Value, end.Value, text, MarksOf(raw)));
             }
         }
 
@@ -49,6 +50,25 @@ public static partial class SubtitleText
         t = Speaker().Replace(t, string.Empty);
         t = t.Replace(" - ", " ", StringComparison.Ordinal).TrimStart('-', ' ');
         return Spaces().Replace(t, " ").Trim();
+    }
+
+    /// <summary>How a cue is marked: ♪/♫ anywhere = sung; every word inside &lt;i&gt; = italic.</summary>
+    public static CueMarks MarksOf(string raw)
+    {
+        var marks = CueMarks.None;
+        if (raw.Contains('♪', StringComparison.Ordinal) || raw.Contains('♫', StringComparison.Ordinal))
+        {
+            marks |= CueMarks.Sung;
+        }
+
+        // Italic: nothing said outside <i>…</i> (or {\i1}…).
+        var outside = Italics().Replace(raw, " ");
+        if (Italics().IsMatch(raw) && Clean(outside).Length == 0)
+        {
+            marks |= CueMarks.Italic;
+        }
+
+        return marks;
     }
 
     private static long? Ms(string s)
@@ -74,6 +94,9 @@ public static partial class SubtitleText
 
     [GeneratedRegex(@"(^|\s)[A-Z][A-Z .'-]{1,24}:\s")]
     private static partial Regex Speaker();
+
+    [GeneratedRegex(@"<i>.*?</i>|\{\\i1\}.*?(\{\\i0?\}|$)", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    private static partial Regex Italics();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex Spaces();

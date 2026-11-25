@@ -655,7 +655,7 @@ private fun RefreshPane(actions: AppActions, item: MediaItem, notify: (String) -
     var mode by remember { mutableStateOf(RefreshMode.MISSING) }
     var replaceImages by remember { mutableStateOf(false) }
     var trickplay by remember { mutableStateOf(false) }
-    Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RefreshMode.entries.forEach { r ->
             Row(Modifier.fillMaxWidth().selectable(mode == r) { mode = r }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(selected = mode == r, onClick = null)
@@ -680,5 +680,46 @@ private fun RefreshPane(actions: AppActions, item: MediaItem, notify: (String) -
                     .onFailure { notify("Couldn't refresh: ${it.message}") }
             }
         })
+        val account by actions.container.account.collectAsState()
+        val companion by actions.container.companion.collectAsState()
+        if (account?.isAdmin == true && companion?.features?.contains(dev.nitrate.core.playback.CreditsReport.FEATURE) == true &&
+            (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE)
+        ) CreditsCheck(actions, item)
+    }
+}
+
+/**
+ * Admins: the Companion's credits reader on this title (where the credits start, any scene during
+ * or after them, and why), with the whole frame-by-frame report to copy for tuning. While the
+ * server reads the title it asks again every [CreditsReport.RECHECK_MS].
+ */
+@Composable
+private fun CreditsCheck(actions: AppActions, item: MediaItem) {
+    val platform = dev.nitrate.mobile.platform.rememberPlatformActions()
+    val scope = rememberCoroutineScope()
+    var report by remember(item.id) { mutableStateOf<dev.nitrate.core.playback.CreditsReport?>(null) }
+    var error by remember(item.id) { mutableStateOf<String?>(null) }
+    var asking by remember(item.id) { mutableStateOf(false) }
+    fun ask() {
+        asking = true
+        scope.launch {
+            runCatching { actions.server.creditsReport(item.id) }
+                .onSuccess { report = it; error = null }
+                .onFailure { error = "Couldn't check: ${it.message}" }
+            asking = false
+        }
+    }
+    LaunchedEffect(report) {
+        if (report?.reading == true) { kotlinx.coroutines.delay(dev.nitrate.core.playback.CreditsReport.RECHECK_MS); ask() }
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Credits check", style = MaterialTheme.typography.titleSmall)
+        Text("How the server's credits reader sees the end of this title", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        PillButton(if (asking) "Checking…" else "Check now", null, primary = false, modifier = Modifier.fillMaxWidth(), onClick = { if (!asking) ask() })
+        report?.let { r ->
+            Text(r.summary(), style = MaterialTheme.typography.bodyMedium)
+            if (r.rows > 0) PillButton("Copy report", null, primary = false, modifier = Modifier.fillMaxWidth(), onClick = { platform.copy(r.json, "Credits report") })
+        }
+        error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 }

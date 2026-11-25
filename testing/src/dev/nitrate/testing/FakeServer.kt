@@ -578,6 +578,17 @@ class FakeServer : MediaServer {
     override suspend fun checkCompanionUpdates() = companionUpdatesAnswer
     override suspend fun restartForCompanionUpdate() { restartedForUpdate = true }
 
+    /** The admins' Credits check (feature `creditsreport`): credits, a scene after them, a dark stretch not counted. */
+    var creditsReportAnswer = dev.nitrate.core.playback.CreditsReport(
+        runtimeMs = 7_200_000, startMs = 5_040_000,
+        skips = listOf(dev.nitrate.core.playback.CreditSkip(6_600_000, 7_020_000, afterCredits = true, spoken = true)),
+        outroStartMs = null, outroRejected = false, dialogueLines = 412,
+        vetoed = listOf(dev.nitrate.core.playback.VetoedStretch(5_700_000, 5_820_000, "15 lines of dialogue over 1:54")),
+        rows = 2160, reading = false, note = null,
+        json = "{\"RuntimeMs\":7200000,\"Rows\":[[5040,0.91,0.02,0.03,0.012,1.2,0.83,3,0.9,0.8,0.95,0.9,2.1,3,0,0,1.1,\"C\"]]}",
+    )
+    override suspend fun creditsReport(itemId: String) = creditsReportAnswer
+
     /** Group chat pinned along each title (feature `notes`): the group's, at points through the episode. */
     val notes = mutableListOf(
         dev.nitrate.core.companion.TimelineNote("n1", "user-2", "Will", "s1e2", 4_000, dev.nitrate.core.companion.ChatKind.TEXT, "The opening shot!", listOf("g1"), 1, chatId = "c-tue"),

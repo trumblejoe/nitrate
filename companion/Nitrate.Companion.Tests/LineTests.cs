@@ -93,4 +93,59 @@ public class LineTests
         Assert.Equal((0, 0L), index.Count());
         Assert.Empty(index.Search("fresh", 10, _ => true));
     }
+
+    [Fact]
+    public void SongsAndItalicsAreMarked()
+    {
+        var cues = SubtitleText.Parse("""
+            1
+            00:00:01,000 --> 00:00:03,000
+            ♪ Hold me closer ♪
+
+            2
+            00:00:04,000 --> 00:00:06,000
+            <i>Somewhere far away</i>
+
+            3
+            00:00:07,000 --> 00:00:09,000
+            <i>He said</i> stop.
+            """);
+        Assert.Equal(new[] { CueMarks.Sung, CueMarks.Italic, CueMarks.None }, cues.Select(c => c.Marks));
+        Assert.Equal("Hold me closer", cues[0].Text);
+    }
+
+    [Fact]
+    public void ALanguagesLinesBetweenTimesWithTheirMarks()
+    {
+        using var index = new LineIndex(":memory:");
+        Assert.False(index.Indexed(Film));
+        IReadOnlyList<LineCue> en = new[] { new LineCue(1_000, 2_000, "One"), new LineCue(5_000, 6_000, "Two", CueMarks.Sung), new LineCue(9_000, 9_500, "Three") };
+        IReadOnlyList<LineCue> fr = new[] { new LineCue(1_000, 2_000, "Un") };
+        index.Replace(Film, "v1", new (string?, IReadOnlyList<LineCue>)[] { ("fre", fr), ("eng", en) });
+        Assert.True(index.Indexed(Film));
+        var cues = index.Cues(Film, 1_000, 9_000);
+        Assert.Equal(new[] { "One", "Two" }, cues.Select(c => c.Cue.Text));
+        Assert.All(cues, c => Assert.Equal("eng", c.Language));
+        Assert.Equal(CueMarks.Sung, cues[1].Cue.Marks);
+    }
+
+    [Fact]
+    public void AnIndexFromBeforeMarksGainsTheColumn()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "nitrate-lines-" + Guid.NewGuid().ToString("N") + ".db");
+        using (var old = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + path + ";Pooling=False"))
+        {
+            old.Open();
+            using var cmd = old.CreateCommand();
+            cmd.CommandText = "CREATE TABLE cues(id INTEGER PRIMARY KEY, item TEXT NOT NULL, seq INTEGER NOT NULL, start INTEGER NOT NULL, finish INTEGER NOT NULL, lang TEXT, text TEXT NOT NULL);"
+                + "CREATE TABLE items(item TEXT PRIMARY KEY, version TEXT NOT NULL, lines INTEGER NOT NULL);"
+                + $"INSERT INTO cues(item, seq, start, finish, lang, text) VALUES ('{Film:N}', 1, 1000, 2000, 'eng', 'Old line');"
+                + $"INSERT INTO items VALUES ('{Film:N}', 'v1', 1);";
+            cmd.ExecuteNonQuery();
+        }
+
+        using var index = new LineIndex(path);
+        var cue = Assert.Single(index.Cues(Film, 0, 10_000)).Cue;
+        Assert.Equal(CueMarks.None, cue.Marks);
+    }
 }

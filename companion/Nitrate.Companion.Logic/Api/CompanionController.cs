@@ -80,6 +80,8 @@ public class CompanionController : ControllerBase
         features.Add("updates");
         features.Add("together");
         features.Add("credits");
+        // Admins' Credits check: GET /Nitrate/Credits/{itemId}/Report (frame by frame, for tuning).
+        features.Add("creditsreport");
         features.Add("timing");
         features.Add("intros");
         features.Add("because");

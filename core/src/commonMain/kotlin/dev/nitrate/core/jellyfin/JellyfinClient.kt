@@ -1751,6 +1751,7 @@ class JellyfinClient(
     override suspend fun saveComicInfo(itemId: String, changes: Map<String, String?>) = companionApi.saveComicInfo(itemId, changes)
     override suspend fun checkClips() = companionApi.checkClips()
     override suspend fun serverCreditScenes(itemId: String) = companionApi.creditScenes(itemId)
+    override suspend fun creditsReport(itemId: String) = companionApi.creditsReport(itemId)
     override suspend fun fileTimingIssues() = companionApi.fileTiming()
     override suspend fun sendDeviceSummary(summary: dev.nitrate.core.playback.DeviceSummary) = companionApi.sendDeviceSummary(identity.deviceId, identity.deviceName, summary)
     override suspend fun householdDevices() = companionApi.householdDevices()

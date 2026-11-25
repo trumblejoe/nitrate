@@ -797,6 +797,12 @@ interface MediaServer {
      */
     suspend fun serverCreditScenes(itemId: String): List<dev.nitrate.core.playback.CreditSkip>? = null
 
+    /**
+     * The Companion's Credits check for [itemId] (feature `creditsreport`, admins): what its credits
+     * reader decided and the features of every frame it read; `reading` while it reads the title.
+     */
+    suspend fun creditsReport(itemId: String): dev.nitrate.core.playback.CreditsReport = unsupported()
+
     /** Files whose timing can put sound and picture out of step (Companion feature `timing`, admins; empty without it). */
     suspend fun fileTimingIssues(): List<dev.nitrate.core.diagnostics.FileTiming> = emptyList()
 

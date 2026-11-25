@@ -155,8 +155,21 @@ internal data class SsoPollDto(val state: String = "Failed", val message: String
  * Calls to the Nitrate Companion server plugin (companion/ in this repository): not Jellyfin's
  * own API, so it isn't in the OpenAPI contract test; its README lists the calls.
  */
-@kotlinx.serialization.Serializable internal data class CreditSkipDto(val creditsStartMs: Long, val sceneStartMs: Long, val afterCredits: Boolean)
+@kotlinx.serialization.Serializable internal data class CreditSkipDto(val creditsStartMs: Long, val sceneStartMs: Long, val afterCredits: Boolean, val spoken: Boolean = false)
 @kotlinx.serialization.Serializable internal data class CreditsDto(val skips: List<CreditSkipDto> = emptyList())
+@kotlinx.serialization.Serializable internal data class VetoedStretchDto(val startMs: Long, val endMs: Long, val why: String = "")
+@kotlinx.serialization.Serializable internal data class CreditReportDto(
+    val runtimeMs: Long = 0,
+    val startMs: Long = 0,
+    val skips: List<CreditSkipDto> = emptyList(),
+    val outroStartMs: Long? = null,
+    val outroRejected: Boolean = false,
+    val dialogue: List<List<Long>>? = null,
+    val vetoed: List<VetoedStretchDto> = emptyList(),
+    val rows: List<kotlinx.serialization.json.JsonArray> = emptyList(),
+    val reading: Boolean = false,
+    val note: String? = null,
+)
 
 internal class JellyfinCompanion(private val client: JellyfinClient) {
 
@@ -207,9 +220,28 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
     /** What the server found in [itemId]'s credits (feature `credits`); null when not checked yet (or no plugin). */
     suspend fun creditScenes(itemId: String): List<dev.nitrate.core.playback.CreditSkip>? = try {
         JellyfinJson.decodeFromString<CreditsDto>(client.get("Nitrate", "Credits", itemId).bodyAsText())
-            .skips.map { dev.nitrate.core.playback.CreditSkip(it.creditsStartMs, it.sceneStartMs, it.afterCredits) }
+            .skips.map { dev.nitrate.core.playback.CreditSkip(it.creditsStartMs, it.sceneStartMs, it.afterCredits, it.spoken) }
     } catch (e: ClientRequestException) {
         if (e.response.status == HttpStatusCode.NotFound) null else throw e
+    }
+
+    /** The admins' Credits check (feature `creditsreport`); `reading` while the server reads the title (202). */
+    suspend fun creditsReport(itemId: String): dev.nitrate.core.playback.CreditsReport {
+        val text = client.get("Nitrate", "Credits", itemId, "Report").bodyAsText()
+        val dto = JellyfinJson.decodeFromString<CreditReportDto>(text)
+        return dev.nitrate.core.playback.CreditsReport(
+            runtimeMs = dto.runtimeMs,
+            startMs = dto.startMs,
+            skips = dto.skips.map { dev.nitrate.core.playback.CreditSkip(it.creditsStartMs, it.sceneStartMs, it.afterCredits, it.spoken) },
+            outroStartMs = dto.outroStartMs,
+            outroRejected = dto.outroRejected,
+            dialogueLines = dto.dialogue?.size,
+            vetoed = dto.vetoed.map { dev.nitrate.core.playback.VetoedStretch(it.startMs, it.endMs, it.why) },
+            rows = dto.rows.size,
+            reading = dto.reading,
+            note = dto.note,
+            json = text,
+        )
     }
 
     /** Files whose timing the plugin found wrong; empty without the feature or for non-admins. */

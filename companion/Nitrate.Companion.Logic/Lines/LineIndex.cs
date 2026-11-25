@@ -5,11 +5,26 @@ using Microsoft.Data.Sqlite;
 
 namespace Nitrate.Companion.Lines;
 
+/// <summary>How a subtitle line was marked (for the credits reader's dialogue vote).</summary>
+[Flags]
+public enum CueMarks
+{
+    /// <summary>Plain (or indexed before marks were kept).</summary>
+    None = 0,
+
+    /// <summary>Marked as music (♪ or ♫): lyrics.</summary>
+    Sung = 1,
+
+    /// <summary>All in italics (lyrics, or a voice off screen).</summary>
+    Italic = 2,
+}
+
 /// <summary>One subtitle line of a title.</summary>
 /// <param name="StartMs">When it's said.</param>
 /// <param name="EndMs">When it ends.</param>
 /// <param name="Text">What's said.</param>
-public record LineCue(long StartMs, long EndMs, string Text);
+/// <param name="Marks">How it was marked.</param>
+public record LineCue(long StartMs, long EndMs, string Text, CueMarks Marks = CueMarks.None);
 
 /// <summary>A line found by a search, with the lines either side.</summary>
 /// <param name="ItemId">The title it's in.</param>
@@ -50,6 +65,13 @@ public sealed class LineIndex : IDisposable
             CREATE TRIGGER IF NOT EXISTS cues_ai AFTER INSERT ON cues BEGIN INSERT INTO cues_fts(rowid, text) VALUES (new.id, new.text); END;
             CREATE TRIGGER IF NOT EXISTS cues_ad AFTER DELETE ON cues BEGIN INSERT INTO cues_fts(cues_fts, rowid, text) VALUES ('delete', old.id, old.text); END;
             """);
+        // Marks (♪, italics), kept from when they were added: lines indexed before read as plain.
+        using var columns = _db.CreateCommand();
+        columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('cues') WHERE name = 'marks'";
+        if (Convert.ToInt64(columns.ExecuteScalar(), CultureInfo.InvariantCulture) == 0)
+        {
+            Exec("ALTER TABLE cues ADD COLUMN marks INTEGER NOT NULL DEFAULT 0");
+        }
     }
 
     /// <summary>Whether <paramref name="itemId"/> needs (re)indexing: never indexed, or its subtitles changed (<paramref name="version"/>).</summary>
@@ -73,13 +95,14 @@ public sealed class LineIndex : IDisposable
             DeleteItem(itemId, tx);
             using var insert = _db.CreateCommand();
             insert.Transaction = tx;
-            insert.CommandText = "INSERT INTO cues(item, seq, start, finish, lang, text) VALUES ($i, $s, $a, $b, $l, $t)";
+            insert.CommandText = "INSERT INTO cues(item, seq, start, finish, lang, text, marks) VALUES ($i, $s, $a, $b, $l, $t, $m)";
             var pi = insert.Parameters.Add("$i", SqliteType.Text);
             var ps = insert.Parameters.Add("$s", SqliteType.Integer);
             var pa = insert.Parameters.Add("$a", SqliteType.Integer);
             var pb = insert.Parameters.Add("$b", SqliteType.Integer);
             var pl = insert.Parameters.Add("$l", SqliteType.Text);
             var pt = insert.Parameters.Add("$t", SqliteType.Text);
+            var pm = insert.Parameters.Add("$m", SqliteType.Integer);
             var seq = 0;
             var count = 0;
             foreach (var (language, cues) in tracks)
@@ -94,6 +117,7 @@ public sealed class LineIndex : IDisposable
                     pb.Value = c.EndMs;
                     pl.Value = (object?)language ?? DBNull.Value;
                     pt.Value = c.Text;
+                    pm.Value = (int)c.Marks;
                     insert.ExecuteNonQuery();
                     count++;
                 }
@@ -107,6 +131,43 @@ public sealed class LineIndex : IDisposable
             item.Parameters.AddWithValue("$n", count);
             item.ExecuteNonQuery();
             tx.Commit();
+        }
+    }
+
+    /// <summary>
+    /// A title's lines starting in [fromMs, toMs) in one language: the one with the most lines
+    /// there (two languages would count every line twice). Empty when it has none indexed.
+    /// </summary>
+    public IReadOnlyList<(string? Language, LineCue Cue)> Cues(Guid itemId, long fromMs, long toMs)
+    {
+        var all = new List<(string? Language, LineCue Cue)>();
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT lang, start, finish, text, marks FROM cues WHERE item = $i AND start >= $a AND start < $b ORDER BY start";
+            cmd.Parameters.AddWithValue("$i", Key(itemId));
+            cmd.Parameters.AddWithValue("$a", fromMs);
+            cmd.Parameters.AddWithValue("$b", toMs);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                all.Add((r.IsDBNull(0) ? null : r.GetString(0), new LineCue(r.GetInt64(1), r.GetInt64(2), r.GetString(3), (CueMarks)r.GetInt32(4))));
+            }
+        }
+
+        var language = all.GroupBy(c => c.Language).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key;
+        return all.Where(c => c.Language == language).ToList();
+    }
+
+    /// <summary>Whether [itemId]'s subtitles are indexed at all.</summary>
+    public bool Indexed(Guid itemId)
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT 1 FROM items WHERE item = $i";
+            cmd.Parameters.AddWithValue("$i", Key(itemId));
+            return cmd.ExecuteScalar() != null;
         }
     }
 

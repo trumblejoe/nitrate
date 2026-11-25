@@ -179,6 +179,10 @@ class PlaybackSession(
 
     /** Watches for sound and picture falling out of step ([dev.nitrate.core.playback.SyncWatch]); fed on the player's thread. */
     private val syncWatch = dev.nitrate.core.playback.SyncWatch()
+    @Volatile private var autoResync = true
+    @Volatile private var decodeHere: Set<String> = emptySet()
+    /** The encoded format going out untouched to a receiver now (server codec name), if any. */
+    @Volatile private var passedThrough: String? = null
     private val _syncWarning = MutableStateFlow<dev.nitrate.core.playback.SyncWarning?>(null)
     /** What knocked sound and picture out of step in this playback, if anything. */
     val syncWarning: StateFlow<dev.nitrate.core.playback.SyncWarning?> = _syncWarning
@@ -424,6 +428,8 @@ class PlaybackSession(
                     // device can decode aren't passed through, so the player decodes them instead.
                     override fun getFormatSupport(format: androidx.media3.common.Format): Int {
                         if (nightMode.active && NightModeDecoding.decodeInstead(format)) return androidx.media3.exoplayer.audio.AudioSink.SINK_FORMAT_UNSUPPORTED
+                        // Formats the user chose to decode here (they drifted when passed through).
+                        if (NightModeDecoding.codecOf(format) in decodeHere && NightModeDecoding.decodeInstead(format)) return androidx.media3.exoplayer.audio.AudioSink.SINK_FORMAT_UNSUPPORTED
                         return super.getFormatSupport(format)
                     }
 
@@ -629,6 +635,8 @@ class PlaybackSession(
         scope.launch {
             settings.settings.collect { s ->
                 threeDMode = s.threeD
+                autoResync = s.autoResync
+                decodeHere = s.decodeHere
                 val upmixChanged = s.upmixStereo != upmixOn || s.speakerLayouts != speakerLayouts
                 upmixOn = s.upmixStereo
                 speakerLayouts = s.speakerLayouts
@@ -658,6 +666,22 @@ class PlaybackSession(
             while (isActive) {
                 _progress.value = Progress(exo.currentPosition, exo.duration.coerceAtLeast(0))
                 delay(500)
+            }
+        }
+        // Drift: the player's idea of where the sound is against real time, while playing smoothly.
+        scope.launch {
+            while (isActive) {
+                delay(dev.nitrate.core.playback.SyncWatch.CLOCK_EVERY_MS)
+                val steady = exo.isPlaying && exo.playbackState == Player.STATE_READY && exo.playbackParameters.speed == 1f && !quiet && group == null
+                val drift = syncWatch.clock(exo.currentPosition, System.currentTimeMillis(), steady) ?: continue
+                if (autoResync) {
+                    log("Sound and picture drifted ${drift} ms apart; lined up again")
+                    // A seek to where it is sets the sound output up afresh, as stopping and playing again does.
+                    exo.seekTo(exo.currentPosition)
+                } else {
+                    log("Sound and picture drifted ${drift} ms apart")
+                }
+                syncChanged()
             }
         }
         exo.addListener(listener)
@@ -722,6 +746,9 @@ class PlaybackSession(
                         ?.also { log("Decoded rather than passed through: $it") }
                 }
                 _audioPath.value = _audioPath.value.copy(decodedWhy = why)
+                // What drift warnings name, and what "decode it here" would apply to.
+                passedThrough = if (decoded) null else audioInFormat?.let { NightModeDecoding.codecOf(it) }
+                syncWatch.soundPath(passedThrough?.let { "${dev.nitrate.core.playback.codecLabel(it)} passed through to the receiver" } ?: "")
                 log("Audio out: ${encodingName(config.encoding)} ${Integer.bitCount(config.channelConfig)}ch ${config.sampleRate}Hz${if (config.tunneling) " tunneled" else ""}${if (config.offload) " offloaded" else ""}; mixer ${mixer ?: "?"}Hz")
             }
 
@@ -913,9 +940,9 @@ class PlaybackSession(
             return
         }
         val info = server.trickplay(itemId, _plan.value?.mediaSourceId) ?: return
-        val frames = withContext(Dispatchers.IO) { CreditFrames.read(server, itemId, info, runtime) } ?: return
+        val features = withContext(Dispatchers.IO) { CreditFrames.read(server, itemId, info, runtime) } ?: return
         if (_item.value?.id != itemId) return
-        val read = dev.nitrate.core.playback.CreditScenes.info(runtime, item.tags, _segments.value, item.chapters, frames, info.intervalMs)
+        val read = dev.nitrate.core.playback.CreditScenes.info(runtime, item.tags, _segments.value, item.chapters, frameIntervalMs = info.intervalMs, features = features)
         log("Credit scenes from thumbnails: ${read.skips} (${read.certainty})")
         _creditScenes.value = read
     }
@@ -1051,6 +1078,14 @@ class PlaybackSession(
             dev.nitrate.core.playback.PlaybackFinding(
                 w.trouble.title, w.text,
                 fixes = listOfNotNull(
+                    // Drifting with sound passed through: decoding it here stops it for good.
+                    passedThrough?.takeIf { w.trouble == dev.nitrate.core.playback.SyncTrouble.DRIFT }?.let { codec ->
+                        dev.nitrate.core.playback.PlaybackFix.Change(
+                            dev.nitrate.core.playback.SettingsChange.DecodeHere(codec),
+                            "Decode ${dev.nitrate.core.playback.codecLabel(codec)} on this device",
+                            "Sent to the receiver as PCM from now on; it keeps time, but the receiver no longer shows ${dev.nitrate.core.playback.codecLabel(codec)}",
+                        )
+                    },
                     dev.nitrate.core.playback.PlaybackFix.Resync("Line them up again", "Reloads from this moment"),
                     dev.nitrate.core.playback.PlaybackFix.Convert("Have the server convert it", "From this moment, for this playback; smoother on this device, a little softer picture")
                         .takeIf { w.convertHelps && p.method != PlayMethod.TRANSCODE && localProgress == null },
@@ -1670,6 +1705,15 @@ class PlaybackSession(
 /** Which encoded audio night mode decodes on the device instead of passing it through. */
 internal object NightModeDecoding {
     private val known = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    /** The server's codec name for an encoded sound format ("dts" for DTS and DTS-HD alike). */
+    fun codecOf(format: androidx.media3.common.Format): String? = when (format.sampleMimeType) {
+        MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_EXPRESS, MimeTypes.AUDIO_DTS_X -> "dts"
+        MimeTypes.AUDIO_AC3 -> "ac3"
+        MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC -> "eac3"
+        MimeTypes.AUDIO_TRUEHD -> "truehd"
+        else -> null
+    }
 
     /** An encoded (not PCM) format this device can decode itself, with its own decoder or FFmpeg. */
     fun decodeInstead(format: androidx.media3.common.Format): Boolean {

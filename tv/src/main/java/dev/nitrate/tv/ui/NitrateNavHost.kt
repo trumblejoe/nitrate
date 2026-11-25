@@ -419,6 +419,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 container.server, entry.toRoute<ManageItemRoute>().itemId,
                 themePreview = { id, on -> if (on) container.themeMusic.show(id) else container.themeMusic.stop() },
                 asEditor = account?.isAdmin != true,
+                creditsCheck = account?.isAdmin == true && companion?.features?.contains(dev.nitrate.core.playback.CreditsReport.FEATURE) == true,
             )
         }
         composable<ServerAdminRoute> {

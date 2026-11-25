@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -101,6 +103,8 @@ fun ManageItemScreen(
     /** Plays (true) or stops (false) an item's theme music, for the preview on Details. */
     themePreview: ((String, Boolean) -> Unit)? = null,
     asEditor: Boolean = false,
+    /** Admins with the Companion's `creditsreport`: Refresh has a "Credits check" line. */
+    creditsCheck: Boolean = false,
 ) {
     val item by produceState<MediaItem?>(null, itemId) { value = runCatching { repository.getItem(itemId) }.getOrNull() }
     var tab by remember { mutableIntStateOf(0) }
@@ -124,7 +128,7 @@ fun ManageItemScreen(
             0 -> MetadataTab(repository, i, themePreview) { status = it }
             1 -> IdentifyTab(repository, i) { status = it }
             2 -> ImagesTab(repository, i) { status = it }
-            else -> RefreshTab(repository, i) { status = it }
+            else -> RefreshTab(repository, i, creditsCheck && (i.kind == ItemKind.MOVIE || i.kind == ItemKind.EPISODE)) { status = it }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
@@ -456,12 +460,12 @@ private fun ImagesTab(repository: MediaServer, item: MediaItem, notify: (String)
 }
 
 @Composable
-private fun RefreshTab(repository: MediaServer, item: MediaItem, notify: (String) -> Unit) {
+private fun RefreshTab(repository: MediaServer, item: MediaItem, creditsCheck: Boolean, notify: (String) -> Unit) {
     var mode by remember { mutableStateOf(RefreshMode.MISSING) }
     var images by remember { mutableStateOf(false) }
     var trickplay by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    Column(Modifier.width(640.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.width(640.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         RefreshMode.entries.forEach { r ->
             ListItem(selected = mode == r, onClick = { mode = r }, headlineContent = { Text(r.label) }, trailingContent = { if (mode == r) Text("✓", color = MaterialTheme.colorScheme.primary) })
         }
@@ -470,7 +474,46 @@ private fun RefreshTab(repository: MediaServer, item: MediaItem, notify: (String
         Button(onClick = {
             scope.launch { runCatching { repository.refreshItem(item.id, mode, images, trickplay) }.onSuccess { notify("Refresh started on the server") }.onFailure { notify("Couldn't refresh: ${it.message}") } }
         }, modifier = Modifier.padding(top = 8.dp)) { Text("Refresh") }
+        if (creditsCheck) CreditsCheck(repository, item)
     }
+}
+
+/**
+ * Admins: the Companion's credits reader on this title, in a few words (where the credits start,
+ * any scene during or after them, and why). The TV has no clipboard to hand the frame-by-frame
+ * report on, and it's too long for a QR code, so the phone app's Manage → Refresh copies it.
+ */
+@Composable
+private fun CreditsCheck(repository: MediaServer, item: MediaItem) {
+    val scope = rememberCoroutineScope()
+    var report by remember(item.id) { mutableStateOf<dev.nitrate.core.playback.CreditsReport?>(null) }
+    var error by remember(item.id) { mutableStateOf<String?>(null) }
+    var asking by remember(item.id) { mutableStateOf(false) }
+    fun ask() {
+        asking = true
+        scope.launch {
+            runCatching { repository.creditsReport(item.id) }.onSuccess { report = it; error = null }.onFailure { error = "Couldn't check: ${it.message}" }
+            asking = false
+        }
+    }
+    LaunchedEffect(report) {
+        if (report?.reading == true) { delay(dev.nitrate.core.playback.CreditsReport.RECHECK_MS); ask() }
+    }
+    ListItem(
+        selected = false,
+        onClick = { if (!asking) ask() },
+        modifier = Modifier.padding(top = 12.dp),
+        headlineContent = { Text(if (asking) "Checking…" else "Credits check") },
+        supportingContent = { Text("How the server's credits reader sees the end of this title") },
+    )
+    report?.let { r ->
+        Text(r.summary(), style = MaterialTheme.typography.bodyMedium)
+        if (r.rows > 0) Text(
+            "For the full report, frame by frame, open Manage → Refresh on this title in Nitrate on your phone and choose Copy report.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
 }
 
 // ---- Whole server ----

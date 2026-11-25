@@ -73,6 +73,20 @@ public sealed class CompanionDb : IDisposable
         }
     }
 
+    /// <summary>One title's result of one kind, if kept (for kinds too large to hold all in memory).</summary>
+    public T? Result<T>(string kind, Guid item)
+        where T : class
+    {
+        lock (_lock)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT json FROM results WHERE kind = $k AND item = $i";
+            cmd.Parameters.AddWithValue("$k", kind);
+            cmd.Parameters.AddWithValue("$i", item.ToString("N"));
+            return cmd.ExecuteScalar() is string json ? Read<T>(json) : null;
+        }
+    }
+
     /// <summary>Forgets results of one kind for [items].</summary>
     public void DeleteResults(string kind, IEnumerable<Guid> items) => DeleteKeys("results", "kind", kind, "item", items.Select(i => i.ToString("N")));
 

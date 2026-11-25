@@ -1075,14 +1075,20 @@ class JellyfinLiveTest {
             }.getInputStream())
             val x0 = (i % perSheet % info.tileColumns) * info.width
             val y0 = (i % perSheet / info.tileColumns) * info.height
-            val luma = IntArray(48 * 27) { k ->
-                val p = sheet.getRGB(x0 + ((k % 48) * info.width + info.width / 2) / 48, y0 + ((k / 48) * info.height + info.height / 2) / 27)
-                (299 * ((p shr 16) and 0xFF) + 587 * ((p shr 8) and 0xFF) + 114 * (p and 0xFF)) / 1000
+            val w = info.width
+            val h = info.height
+            val luma = IntArray(w * h)
+            val sat = IntArray(w * h)
+            for (k in 0 until w * h) {
+                val p = sheet.getRGB(x0 + k % w, y0 + k / w)
+                val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val b = p and 0xFF
+                luma[k] = dev.nitrate.core.playback.CreditFeatureReader.lumaOf(r, g, b)
+                sat[k] = dev.nitrate.core.playback.CreditFeatureReader.saturationOf(r, g, b)
             }
-            dev.nitrate.core.playback.FrameLuma(48, 27, luma)
+            dev.nitrate.core.playback.FrameLuma(w, h, luma, sat)
         }
         val scenes = dev.nitrate.core.playback.CreditScenes.info(film.runtimeMs!!, film.tags, client.mediaSegments(film.id), film.chapters, frames, info.intervalMs)
-        println("Credit scenes: ${scenes.skips} ${scenes.certainty}; credits frames: " + frames.map { if (dev.nitrate.core.playback.CreditScenes.looksLikeCredits(it)) 'C' else '.' }.joinToString(""))
+        println("Credit scenes: ${scenes.skips} ${scenes.certainty}; credits frames: " + String(dev.nitrate.core.playback.CreditScenes.verdicts(dev.nitrate.core.playback.CreditScenes.features(frames), info.intervalMs)))
         assertEquals(dev.nitrate.core.playback.CreditCertainty.CONFIRMED, scenes.certainty)
         val skip = scenes.skips.single()
         assertEquals(360_000L, skip.creditsStartMs)
