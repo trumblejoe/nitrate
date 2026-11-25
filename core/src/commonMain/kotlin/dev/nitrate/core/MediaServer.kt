@@ -377,8 +377,18 @@ interface MediaServer {
     suspend fun reportStart(plan: PlaybackPlan, positionMs: Long)
     suspend fun reportProgress(plan: PlaybackPlan, positionMs: Long, isPaused: Boolean)
 
-    /** Fire-and-forget: the server also stops any transcode tied to this play session. */
+    /**
+     * Fire-and-forget: the server also stops any transcode tied to this play session. Once it's in,
+     * the title's watch state as the server now has it comes through [watchChanges].
+     */
     fun reportStopped(plan: PlaybackPlan, positionMs: Long)
+
+    /**
+     * Waits (a few seconds at most) for "stopped" reports still on their way, and their watch state,
+     * so a page reloading as the player closes reads what the playback did rather than what was true
+     * before it.
+     */
+    suspend fun stopsSettled() {}
 
     /** Files titled "Nitrate Test …" for the audio channel test, always as the original file. */
     suspend fun channelTestClips(): List<ChannelClip>

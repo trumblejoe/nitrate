@@ -158,9 +158,18 @@ class AppContainer(
         RemoteControlHub(server, syncPlay, onItemsAdded = { newEpisodes.checkSoon() })
     }
 
-    /** Library or watch-state changes pushed by the server, for pages to reload. */
+    /**
+     * Library or watch-state changes, for pages to reload. A library scan sends many changes in a
+     * row, so those wait until it settles; watch state (the server's push, or its own answer just
+     * after a playback stopped or Watched was pressed here) goes through at once.
+     */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
     val serverChanges: kotlinx.coroutines.flow.Flow<Unit>
-        get() = kotlinx.coroutines.flow.merge(remote.events.filter { it is ServerEvent.LibraryChanged || it is ServerEvent.UserDataChanged }.map { }, localChanges)
+        get() = kotlinx.coroutines.flow.merge(
+            remote.events.filter { it is ServerEvent.LibraryChanged }.map { }.debounce(LIBRARY_SETTLE_MS),
+            server.watchChanges().map { },
+            localChanges,
+        )
 
     private val localChanges = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -1238,3 +1247,6 @@ class AppContainer(
         const val QUERY_TIMES_FEATURE = "querytimes"
     }
 }
+
+/** How long a library scan's changes are let settle before pages reload (`AppContainer.serverChanges`). */
+private const val LIBRARY_SETTLE_MS = 1_700L

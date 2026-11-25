@@ -104,6 +104,8 @@ class DetailsViewModel(
     fun refresh() {
         if (_state.value.item == null) { load(); return }
         viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
+            // Back from the player: what the playback did, not what was true before it.
+            repository.stopsSettled()
             val item = runCatching { repository.getItem(itemId) }.getOrNull() ?: return@launch
             val shown = _state.value
             val ids = (shown.episodes + shown.collection + shown.contents + shown.issues + shown.similar).map { it.id }.distinct()

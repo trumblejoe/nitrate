@@ -103,6 +103,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.onEach
 import io.ktor.client.call.save
 import io.ktor.client.plugins.plugin
@@ -1343,6 +1345,7 @@ class JellyfinClient(
 
     override suspend fun groupPlay(itemId: String, groupIds: List<String>, before: dev.nitrate.core.model.UserState) {
         if (!companionHas("groupplay")) return
+        groupPlays.update { it + (itemId to before) }
         post<GroupPlayDto>(
             "Nitrate", "Partners", "GroupPlay",
             body = GroupPlayDto(
@@ -1389,8 +1392,9 @@ class JellyfinClient(
         ),
     ).filter { it.user.lastPlayedMs != null }
 
-    override suspend fun setPlayed(itemId: String, played: Boolean) = saying {
-        if (played) post<Unit>("UserPlayedItems", itemId) else http.delete(url("UserPlayedItems", itemId)) { auth() }
+    override suspend fun setPlayed(itemId: String, played: Boolean) {
+        saying { if (played) post<Unit>("UserPlayedItems", itemId) else http.delete(url("UserPlayedItems", itemId)) { auth() } }
+        watchStateFromServer(listOf(itemId))
     }
 
     override suspend fun setFavorite(itemId: String, favorite: Boolean) = saying {
@@ -1667,7 +1671,10 @@ class JellyfinClient(
     override fun events(): Flow<ServerEvent> = socketEvents { token != null }.onEach {
         when (it) {
             is ServerEvent.LibraryChanged -> { answers.clear(); viewsStale() }
-            is ServerEvent.UserDataChanged -> { watchStateChanged(it.states); watchFlow.tryEmit(it) }
+            is ServerEvent.UserDataChanged -> {
+                pushed.tryEmit(it)
+                withoutRestoring(it)?.let { e -> watchStateChanged(e.states); if (!alreadySaid(e)) watchFlow.tryEmit(e) }
+            }
             else -> Unit
         }
     }
@@ -2443,12 +2450,84 @@ class JellyfinClient(
     }
 
     override fun reportStopped(plan: PlaybackPlan, positionMs: Long) {
-        appScope.launch {
-            runCatching {
-                post<PlaybackStopDto>("Sessions", "Playing", "Stopped", body = PlaybackStopDto(plan.itemId, plan.playSessionId, plan.mediaSourceId, positionMs.msToTicks()))
+        val id = plan.itemId
+        val group = groupPlays.value[id]
+        val job = appScope.launch {
+            // A group play's own state is put back by the Companion just after the server has
+            // marked it: listen for that before saying the stop is done.
+            // Meanwhile the server's pushes for it (watched, then put back) aren't passed on.
+            if (group != null) restoring.update { it + id }
+            try {
+                val restored = group?.let { before ->
+                    async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                        kotlinx.coroutines.withTimeoutOrNull(GROUP_RESTORE_WAIT_MS) {
+                            pushed.first { e -> e.states[id]?.let { it.played == before.played && it.positionMs == before.positionMs } == true }
+                        }
+                    }
+                }
+                val sent = runCatching {
+                    post<PlaybackStopDto>("Sessions", "Playing", "Stopped", body = PlaybackStopDto(id, plan.playSessionId, plan.mediaSourceId, positionMs.msToTicks()))
+                }.isSuccess
+                if (!sent) { restored?.cancel(); return@launch }
+                groupPlays.update { it - id }
+                restored?.await()
+            } finally {
+                if (group != null) restoring.update { it - id }
             }
+            watchStateFromServer(listOf(id))
         }
+        stops.update { it + job }
+        job.invokeOnCompletion { stops.update { s -> s - job } }
     }
+
+    override suspend fun stopsSettled() {
+        kotlinx.coroutines.withTimeoutOrNull(STOPS_SETTLE_MS) { stops.value.forEach { it.join() } }
+    }
+
+    /** Every watch-state push from the server, as it came (a group play's stop listens for its state put back). */
+    private val pushed = kotlinx.coroutines.flow.MutableSharedFlow<ServerEvent.UserDataChanged>(extraBufferCapacity = 16)
+
+    /** Titles whose group play just stopped, their own state not yet put back: the server's pushes for them wait. */
+    private val restoring = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
+
+    /** [e] without the titles whose own state is being put back; null when nothing's left of it. */
+    private fun withoutRestoring(e: ServerEvent.UserDataChanged): ServerEvent.UserDataChanged? {
+        val held = restoring.value
+        if (held.isEmpty() || e.itemIds.none { it in held }) return e
+        val ids = e.itemIds.filterNot { it in held }
+        return if (ids.isEmpty()) null else ServerEvent.UserDataChanged(ids, e.states - held)
+    }
+
+    /** "Stopped" reports on their way. */
+    private val stops = kotlinx.coroutines.flow.MutableStateFlow<Set<kotlinx.coroutines.Job>>(emptySet())
+
+    /** Titles playing for a group, with the user's own state from before (put back when they stop). */
+    private val groupPlays = kotlinx.coroutines.flow.MutableStateFlow<Map<String, dev.nitrate.core.model.UserState>>(emptyMap())
+
+    /** Watch states said here from the server's own answer, and when: the server's push repeating one isn't said twice. */
+    private val saidStates = mutableMapOf<String, Pair<dev.nitrate.core.model.UserState, Long>>()
+    private val saidLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * [ids]' watch state read from the server and said as a change, at once (its push comes a
+     * moment later): marks and rows follow what the server now has, never what the app expects.
+     */
+    private suspend fun watchStateFromServer(ids: List<String>) {
+        val states = runCatching { userStates(ids) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return
+        saidLock.withLock { val now = clock(); states.forEach { (k, v) -> saidStates[k] = v to now } }
+        watchStateChanged(states)
+        watchFlow.emit(ServerEvent.UserDataChanged(states.keys.toList(), states))
+    }
+
+    /** Whether the server's push [e] only repeats states said here a moment ago. */
+    private suspend fun alreadySaid(e: ServerEvent.UserDataChanged): Boolean = saidLock.withLock {
+        val now = clock()
+        saidStates.entries.removeAll { now - it.value.second > SAID_KEPT_MS }
+        e.itemIds.isNotEmpty() && e.itemIds.all { id -> saidStates[id]?.first?.let { s -> e.states[id]?.let { sameMarks(it, s) } } == true }
+    }
+
+    private fun sameMarks(a: dev.nitrate.core.model.UserState, b: dev.nitrate.core.model.UserState) =
+        a.played == b.played && a.positionMs == b.positionMs && a.isFavorite == b.isFavorite && a.unplayedCount == b.unplayedCount
 
     internal companion object {
         const val PREFS_CLIENT = "nitrate"
@@ -2457,6 +2536,15 @@ class JellyfinClient(
 
         /** Home's Next Up request (the plugin's bundle is kept under it too). */
         val NEXT_UP_QUERY: Map<String, Any?> = mapOf("limit" to ROW_LIMIT, "fields" to ROW_FIELDS)
+
+        /** The longest a page reloading waits for "stopped" reports on their way (`stopsSettled`). */
+        const val STOPS_SETTLE_MS = 3_000L
+
+        /** How long a group play's stop waits for the Companion to put the user's own state back. */
+        const val GROUP_RESTORE_WAIT_MS = 2_500L
+
+        /** How long a state said here stops the server's push of the same one being said again. */
+        const val SAID_KEPT_MS = 5_000L
 
         /** How long the rows reuse the latest read of the user's groups (`featuresAndPartners`). */
         const val TOGETHER_KEPT_MS = 30_000L

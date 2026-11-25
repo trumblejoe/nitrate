@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -115,8 +116,9 @@ class RowsViewModel(
     // (Declared before `init`, which already uses them.)
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun watchChanges() = viewModelScope.launch {
-        // A library scan sends many changes in a row: reload once things settle.
-        changes.debounce(LIVE_REFRESH_DEBOUNCE_MS).collect { refresh(checked = true) }
+        // Changes close together reload once (a library scan's are let settle before they get here).
+        // The server's counters read before a change are no use after it.
+        changes.onEach { lastToken = null }.debounce(LIVE_REFRESH_DEBOUNCE_MS).collect { refresh(checked = true) }
     }
 
     init {
@@ -158,6 +160,8 @@ class RowsViewModel(
         if (skipping != null) {
             viewModelScope.launch {
                 _refreshing.value = true
+                // Back from the player: what the playback did, not what was true before it.
+                server.stopsSettled()
                 val check = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { server.changeCheck(stamps) } }.getOrNull()
                 check?.let { checked(it.token) }
                 val before = lastRows.orEmpty()
@@ -180,6 +184,7 @@ class RowsViewModel(
         if (progressive != null) {
             viewModelScope.launch {
                 _refreshing.value = true
+                server.stopsSettled()
                 load(null, progressive)
             }
             return
@@ -236,6 +241,7 @@ class RowsViewModel(
     private fun refreshAll() {
         viewModelScope.launch {
             _refreshing.value = true
+            server.stopsSettled()
             val result = runCatching { dev.nitrate.core.diagnostics.withQueryOrigin(origin) { loadBuiltIn() }.map { it.copy(defaultDisplay = defaults(it).normalized()) } }
             result.getOrNull()?.forEach { knownTitles[it.key] = it.title }
             // Keep showing old rows if a background refresh fails.
@@ -358,7 +364,7 @@ class RowsViewModel(
     suspend fun loadedRows(): List<MediaRow> = (state.first { it !is RowsState.Loading } as? RowsState.Loaded)?.rows.orEmpty()
 }
 
-private const val LIVE_REFRESH_DEBOUNCE_MS = 2_000L
+private const val LIVE_REFRESH_DEBOUNCE_MS = 300L
 
 /** How long the server's change counters, once asked, serve a page's custom rows without asking again. */
 private const val TOKEN_REUSE_MS = 5_000L
