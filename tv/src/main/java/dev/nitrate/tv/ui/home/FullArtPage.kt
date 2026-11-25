@@ -85,7 +85,10 @@ fun FullArtPage(
     // Where you are, by row key (rows can come and go on a refresh), kept when you come back
     // from a title or the player.
     var rowKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
-    val rowIndex = shown.indexOfFirst { it.key == rowKey }.takeIf { it >= 0 } ?: 0
+    // A row gone on a refresh (its last episode finished): the row now in its place, not the first.
+    var rowAt by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(0) }
+    val rowIndex = shown.indexOfFirst { it.key == rowKey }.takeIf { it >= 0 } ?: rowAt.coerceIn(0, shown.lastIndex)
+    SideEffect { rowAt = rowIndex }
     val itemIndex = androidx.compose.runtime.saveable.rememberSaveable(saver = PositionsSaver) { mutableStateMapOf<String, Int>() }
     var editing by remember { mutableStateOf<MediaRow?>(null) }
     val customize = dev.nitrate.tv.ui.pages.LocalCustomizeHost.current

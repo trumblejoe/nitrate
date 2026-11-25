@@ -148,6 +148,32 @@ fun RowsPage(
         }
         return true
     }
+    // The card with focus gone as the rows changed (an episode finished drops out of Continue
+    // Watching, Next Up moves on, a row empties): focus goes to what's now in its place, never
+    // nowhere (FocusKeep). Only when the page had focus just then, so the menu keeps what it took.
+    var shownRows by remember { mutableStateOf(rows) }
+    var focusLeftAt by remember { mutableStateOf(0L) }
+    LaunchedEffect(pageFocused) { if (!pageFocused) focusLeftAt = System.currentTimeMillis() }
+    LaunchedEffect(rows) {
+        val before = shownRows
+        shownRows = rows
+        val card = lastCard ?: return@LaunchedEffect
+        val (index, id) = FocusKeep.replacement(before, rows, card.first, card.second) ?: return@LaunchedEffect
+        // Give the lost focus a moment to land (or not) before deciding it was the page's.
+        kotlinx.coroutines.delay(50)
+        if (!pageFocused && System.currentTimeMillis() - focusLeftAt > 1_000) return@LaunchedEffect
+        if (pageFocused && focused?.id != card.second) return@LaunchedEffect
+        lastCard = index to id
+        val key = rows.getOrNull(index)?.key ?: return@LaunchedEffect
+        rowLast[key] = id
+        // The row may need scrolling into view (and composing) first; then its card is asked until it has focus.
+        if (oneAtATime) listState.scrollToItem(index, roomAbove) else listState.scrollToItem(index)
+        repeat(30) {
+            kotlinx.coroutines.delay(32)
+            if (pageFocused && focused?.id == id) return@LaunchedEffect
+            runCatching { returnRequester.requestFocus() }.onFailure { runCatching { rowEntry[key]?.requestFocus() } }
+        }
+    }
     // Back on the page (from a details page): focus to the card left, once its row is composed.
     val cameBackTo = remember { lastCard }
     LaunchedEffect(cameBackTo, rows.isNotEmpty()) {

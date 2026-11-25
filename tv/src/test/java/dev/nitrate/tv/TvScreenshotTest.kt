@@ -1335,6 +1335,39 @@ class TvScreenshotTest {
         }
     }
 
+    /**
+     * The focused card going away as the rows reload (an episode finished drops out of Continue
+     * Watching; then the row empties and goes): focus moves to what's in its place, never nowhere.
+     */
+    @Test fun focusKeptWhenCardGoes() {
+        fun ep(n: Int) = MediaItem("e$n", "Ep $n", ItemKind.EPISODE, seriesId = "s", seriesName = "Show", seasonNumber = 1, indexNumber = n)
+        fun row(key: String, title: String, vararg n: Int) = dev.nitrate.core.rows.MediaRow(key, title, n.map(::ep), dev.nitrate.core.rows.RowDisplay())
+        var rows by androidx.compose.runtime.mutableStateOf(listOf(
+            row("library/x/continue_watching", "Continue Watching", 1, 3),
+            row("library/x/next_up", "Next Up", 5),
+        ))
+        fun focusedOn(n: Int) = compose.onAllNodes(androidx.compose.ui.test.isFocused() and
+            androidx.compose.ui.test.hasContentDescription("Ep $n")).fetchSemanticsNodes().isNotEmpty()
+        fun settle(on: Int) {
+            runCatching { compose.waitUntil(timeoutMillis = 10_000) { compose.mainClock.advanceTimeBy(100); focusedOn(on) } }
+        }
+        shoot("tv-focus-kept-when-card-goes", act = {
+            compose.onRoot().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.DirectionDown) }
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            check(focusedOn(1)) { "should start on episode 1; focused: ${focusedNodes()}" }
+            // Episode 1 finished: the card now first in the row takes focus.
+            compose.runOnIdle { rows = listOf(row("library/x/continue_watching", "Continue Watching", 3), row("library/x/next_up", "Next Up", 2)) }
+            settle(3)
+            check(focusedOn(3)) { "focus should move to episode 3; focused: ${focusedNodes()}" }
+            // Continue Watching empties and goes: the row now in its place.
+            compose.runOnIdle { rows = listOf(row("library/x/next_up", "Next Up", 4)) }
+            settle(4)
+            check(focusedOn(4)) { "focus should move to Next Up's episode 4; focused: ${focusedNodes()}" }
+        }) { c ->
+            dev.nitrate.tv.ui.rows.RowsPage(rows, emptyMap(), c.server, onOpen = {}, onPlay = {}, onSaveDisplay = { _, _ -> })
+        }
+    }
+
     /** A library's title, its details page and Back: focus back on that title, not the tabs. */
     @Test fun libraryBackFromDetailsKeepsPlace() {
         var onDetails by androidx.compose.runtime.mutableStateOf(false)
