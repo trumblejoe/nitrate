@@ -97,11 +97,149 @@ public class ReadFailures
 }
 
 /// <summary>
-/// One nightly task reading media files at a time: Jellyfin may start several at once (two share
-/// 3am), and reading two films' worth of disk side by side is slower for both and harder on the disks.
+/// One media file read at a time across the file-reading tasks: Jellyfin may start several at once
+/// (two share 3am), and reading two films' worth of disk side by side is slower for both and harder
+/// on the disks. Each task takes the gate around each file it reads (never for a whole run), so two
+/// tasks interleave file by file, and an admin's requested read goes next.
 /// </summary>
 public static class FileReading
 {
-    /// <summary>Held for the whole of a file-reading task.</summary>
-    public static readonly SemaphoreSlim Gate = new(1, 1);
+    /// <summary>Taken around each file read (<see cref="ReadGate.EnterAsync"/>).</summary>
+    public static readonly ReadGate Gate = new();
+}
+
+/// <summary>
+/// A lock for one file read at a time, where requested reads (an admin waiting on a Credits check)
+/// go before the nightly tasks' next file: whoever holds it hands it to the longest-waiting
+/// priority waiter, else the longest-waiting normal one. A waiter that's cancelled leaves the queue.
+/// </summary>
+public sealed class ReadGate
+{
+    private readonly object _lock = new();
+    private readonly LinkedList<TaskCompletionSource<IDisposable>> _priority = new();
+    private readonly LinkedList<TaskCompletionSource<IDisposable>> _normal = new();
+    private bool _busy;
+
+    /// <summary>Whether a read holds the gate now.</summary>
+    public bool Busy
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _busy;
+            }
+        }
+    }
+
+    /// <summary>Requested reads waiting.</summary>
+    public int PriorityWaiting
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _priority.Count;
+            }
+        }
+    }
+
+    /// <summary>Scheduled reads waiting.</summary>
+    public int Waiting
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _normal.Count;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Waits for the gate ([priority]: ahead of every normal waiter); dispose what it gives to
+    /// let the next one in. Cancelling [cancellationToken] while waiting leaves the queue.
+    /// </summary>
+    public Task<IDisposable> EnterAsync(CancellationToken cancellationToken = default, bool priority = false)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        TaskCompletionSource<IDisposable> waiter;
+        LinkedListNode<TaskCompletionSource<IDisposable>> node;
+        lock (_lock)
+        {
+            if (!_busy)
+            {
+                _busy = true;
+                return Task.FromResult<IDisposable>(new Lease(this));
+            }
+
+            waiter = new TaskCompletionSource<IDisposable>(TaskCreationOptions.RunContinuationsAsynchronously);
+            node = (priority ? _priority : _normal).AddLast(waiter);
+        }
+
+        if (cancellationToken.CanBeCanceled)
+        {
+            var registration = cancellationToken.Register(() =>
+            {
+                lock (_lock)
+                {
+                    // Only while still queued: once handed the gate, the lease is the waiter's to give back.
+                    if (node.List == null)
+                    {
+                        return;
+                    }
+
+                    node.List.Remove(node);
+                }
+
+                waiter.TrySetCanceled(cancellationToken);
+            });
+            _ = waiter.Task.ContinueWith(_ => registration.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
+        return waiter.Task;
+    }
+
+    /// <summary>Runs [read] holding the gate.</summary>
+    public async Task<T> RunAsync<T>(Func<Task<T>> read, CancellationToken cancellationToken = default, bool priority = false)
+    {
+        using var lease = await EnterAsync(cancellationToken, priority).ConfigureAwait(false);
+        return await read().ConfigureAwait(false);
+    }
+
+    /// <summary>Runs [read] holding the gate.</summary>
+    public async Task RunAsync(Func<Task> read, CancellationToken cancellationToken = default, bool priority = false)
+    {
+        using var lease = await EnterAsync(cancellationToken, priority).ConfigureAwait(false);
+        await read().ConfigureAwait(false);
+    }
+
+    private void Release()
+    {
+        TaskCompletionSource<IDisposable>? next;
+        lock (_lock)
+        {
+            var list = _priority.Count > 0 ? _priority : _normal;
+            next = list.First?.Value;
+            if (next == null)
+            {
+                _busy = false;
+                return;
+            }
+
+            list.RemoveFirst();
+        }
+
+        // Still busy: handed straight to the next waiter.
+        next.TrySetResult(new Lease(this));
+    }
+
+    private sealed class Lease : IDisposable
+    {
+        private ReadGate? _gate;
+
+        public Lease(ReadGate gate) => _gate = gate;
+
+        public void Dispose() => Interlocked.Exchange(ref _gate, null)?.Release();
+    }
 }

@@ -379,7 +379,8 @@ public class CreditTests
         Assert.Equal(720, report.Rows.Count);
         Assert.Equal(report.Columns.Count, report.Rows[0].Count);
         Assert.Equal("C", report.Rows[450][^1]);
-        Assert.Equal(Start / 1000, report.Rows[0][0]);
+        Assert.Equal(Start / 1000.0, report.Rows[0][0]);
+        Assert.Null(report.ReadMs);
         var skip = Assert.Single(report.Skips);
         Assert.True(skip.Spoken);
         Assert.Equal(new long[] { Start + 650_000, Start + 653_000, 2 }, Assert.Single(report.Dialogue!));
@@ -402,9 +403,11 @@ public class CreditTests
         var frames = await CreditScanJob.ReadFramesAsync(stream, Synth.W, Synth.H, 0.25, CancellationToken.None);
         Assert.Equal(2, frames.Count);
         Assert.Equal(12, frames[1].ScrollDy);
-        var args = CreditScanJob.Arguments("/films/a.mkv", 4_200_500);
-        Assert.Contains("fps=1,scale=320:180:flags=area,format=yuv420p", args);
-        Assert.Equal("4200.5", args[args.ToList().IndexOf("-ss") + 1]);
+        var args = CreditScanJob.Arguments("/films/a.mkv", new CreditDecodeRequest(4_200_500, null, 0, 0.75)).ToList();
+        Assert.Contains("showinfo,scale=320:180:flags=area,format=yuv420p", args);
+        Assert.Equal("nokey", args[args.IndexOf("-skip_frame") + 1]);
+        Assert.Equal("4200.5", args[args.IndexOf("-ss") + 1]);
+        Assert.DoesNotContain("-t", args);
     }
 
     [Fact]

@@ -16,24 +16,100 @@ public record CreditResult(string Version, IReadOnlyList<CreditSkip> Skips, Date
     public CreditResult Effective() => OutroRejected ? this with { OutroStartMs = null, OutroEndMs = null } : this;
 
     /// <summary>
-    /// What results are read as now: 3 = 320×180 colour frames once a second with text, scroll and
-    /// colour features and the dialogue vote (every title is read again once).
+    /// What results are read as now: 3 = 320×180 colour frames with text, scroll and colour
+    /// features and the dialogue vote (every title is read again once). Reading one frame per
+    /// keyframe, backwards from the end, with the boundaries looked at closely, is still format 3:
+    /// a result from the one-a-second reading is as good (it read every second of the same part),
+    /// so titles already read aren't read again for it.
     /// </summary>
     public const int CurrentFormat = 3;
 }
 
 /// <summary>
 /// The features of every frame read of a title's last part (never the pictures), for the admins'
-/// report: 16 bytes a frame (<see cref="CreditFrameCodec"/>), base64.
+/// report: 16 bytes a frame (<see cref="CreditFrameCodec"/>), base64. Read one per keyframe, each
+/// frame carries its own time (<see cref="Times"/>); sets kept from before (one a second) have none
+/// and are read as one every <see cref="IntervalMs"/> from <see cref="StartMs"/>.
 /// </summary>
 /// <param name="Version">The file version they were read from.</param>
-/// <param name="StartMs">The first frame's time.</param>
-/// <param name="IntervalMs">Time between frames.</param>
+/// <param name="StartMs">Where the reading started (the first frame is at or after it).</param>
+/// <param name="IntervalMs">Time between frames in sets from before; 0 when the frames carry their own times.</param>
 /// <param name="Data">The packed features.</param>
-public record CreditFrameSet(string Version, long StartMs, long IntervalMs, string Data)
+/// <param name="Times">Each frame's time and scroll gap (<see cref="CreditTimeCodec"/>), base64; null in sets from before.</param>
+/// <param name="EndMs">Where the last frame stops counting (with <see cref="Times"/>).</param>
+/// <param name="ReadMs">How long reading took (decoding and measuring).</param>
+/// <param name="Decoded">Frames decoded and measured, the boundaries' closer looks included.</param>
+/// <param name="Hardware">The hardware decoding used (ffmpeg's <c>-hwaccel</c> name), null for software.</param>
+public record CreditFrameSet(string Version, long StartMs, long IntervalMs, string Data, string? Times = null, long? EndMs = null, long? ReadMs = null, int? Decoded = null, string? Hardware = null)
 {
     /// <summary>The features, unpacked.</summary>
     public IReadOnlyList<CreditFeatures> Frames() => CreditFrameCodec.Unpack(Convert.FromBase64String(Data));
+
+    /// <summary>When each frame was shown: their own times, or one every <see cref="IntervalMs"/> for sets from before.</summary>
+    public CreditTimeline Timeline()
+    {
+        var count = Convert.FromBase64String(Data).Length / CreditFrameCodec.Size;
+        if (Times == null)
+        {
+            return CreditTimeline.Regular(StartMs, count, Math.Max(1, IntervalMs));
+        }
+
+        var (times, gaps) = CreditTimeCodec.Unpack(StartMs, Convert.FromBase64String(Times));
+        if (times.Count != count)
+        {
+            return CreditTimeline.Regular(StartMs, count, Math.Max(1, IntervalMs));
+        }
+
+        return new CreditTimeline(times, EndMs ?? CreditTimeline.EndOf(times, long.MaxValue), gaps);
+    }
+
+    /// <summary>A set of frames at their own times.</summary>
+    public static CreditFrameSet Of(string version, long startMs, IReadOnlyList<CreditFeatures> frames, CreditTimeline timeline, long? readMs = null, int? decoded = null, string? hardware = null) => new(
+        version,
+        startMs,
+        0,
+        Convert.ToBase64String(CreditFrameCodec.Pack(frames)),
+        Convert.ToBase64String(CreditTimeCodec.Pack(startMs, timeline)),
+        timeline.EndMs,
+        readMs,
+        decoded,
+        hardware);
+}
+
+/// <summary>Frames' times as 6 bytes each: ms after the reading's start (32 bits) and the scroll gap in ms (16 bits, at most 65.5 s).</summary>
+public static class CreditTimeCodec
+{
+    /// <summary>Bytes per frame.</summary>
+    public const int Size = 6;
+
+    /// <summary>[timeline]'s times (from [startMs]) and gaps as bytes.</summary>
+    public static byte[] Pack(long startMs, CreditTimeline timeline)
+    {
+        var bytes = new byte[timeline.Count * Size];
+        for (var i = 0; i < timeline.Count; i++)
+        {
+            var offset = (uint)Math.Clamp(timeline.Times[i] - startMs, 0, uint.MaxValue);
+            var gap = (ushort)Math.Clamp(i < timeline.ScrollGaps.Count ? timeline.ScrollGaps[i] : 0, 0, ushort.MaxValue);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(i * Size), offset);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan((i * Size) + 4), gap);
+        }
+
+        return bytes;
+    }
+
+    /// <summary>Bytes back into times and gaps.</summary>
+    public static (IReadOnlyList<long> Times, IReadOnlyList<long> Gaps) Unpack(long startMs, byte[] bytes)
+    {
+        var times = new List<long>(bytes.Length / Size);
+        var gaps = new List<long>(bytes.Length / Size);
+        for (var o = 0; o + Size <= bytes.Length; o += Size)
+        {
+            times.Add(startMs + System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(o)));
+            gaps.Add(System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(o + 4)));
+        }
+
+        return (times, gaps);
+    }
 }
 
 /// <summary>Packs features into 16 bytes a frame, rounded the way the report shows them.</summary>

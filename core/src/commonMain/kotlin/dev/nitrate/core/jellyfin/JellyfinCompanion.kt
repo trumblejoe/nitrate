@@ -169,6 +169,10 @@ internal data class SsoPollDto(val state: String = "Failed", val message: String
     val rows: List<kotlinx.serialization.json.JsonArray> = emptyList(),
     val reading: Boolean = false,
     val note: String? = null,
+    val readMs: Long? = null,
+    val frames: Int? = null,
+    val readFromMs: Long? = null,
+    val hardware: String? = null,
 )
 
 internal class JellyfinCompanion(private val client: JellyfinClient) {
@@ -241,6 +245,10 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
             reading = dto.reading,
             note = dto.note,
             json = text,
+            readMs = dto.readMs,
+            framesDecoded = dto.frames,
+            readFromMs = dto.readFromMs,
+            hardware = dto.hardware,
         )
     }
 

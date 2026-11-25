@@ -53,19 +53,9 @@ public class TimingScanJob : IScheduledTask
     };
 
     /// <inheritdoc />
-    public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
-    {
-        // One file-reading task at a time (FileReading.Gate).
-        await Nitrate.Companion.Scanning.FileReading.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await RunAsync(progress, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Nitrate.Companion.Scanning.FileReading.Gate.Release();
-        }
-    }
+    public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken) =>
+        // One file read at a time across the file-reading tasks: the gate is taken per file (FileReading.Gate).
+        RunAsync(progress, cancellationToken);
 
     private async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
@@ -95,7 +85,8 @@ public class TimingScanJob : IScheduledTask
 
             try
             {
-                var (streams, packets) = TimingFinder.Parse(await ProbeAsync(item.Path, cancellationToken).ConfigureAwait(false));
+                var probe = await Nitrate.Companion.Scanning.FileReading.Gate.RunAsync(() => ProbeAsync(item.Path, cancellationToken), cancellationToken).ConfigureAwait(false);
+                var (streams, packets) = TimingFinder.Parse(probe);
                 _store.Put(item.Id, new TimingResult(version, TimingFinder.Find(streams, packets), DateTimeOffset.UtcNow));
             }
             catch (OperationCanceledException)

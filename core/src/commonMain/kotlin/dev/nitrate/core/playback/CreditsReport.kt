@@ -29,6 +29,14 @@ data class CreditsReport(
     /** Why there are no rows, when there aren't. */
     val note: String?,
     val json: String,
+    /** How long the server took to read it (null: read before it kept this). */
+    val readMs: Long? = null,
+    /** Frames it decoded. */
+    val framesDecoded: Int? = null,
+    /** How far back it read: where decoding started. */
+    val readFromMs: Long? = null,
+    /** The hardware decoding it used (ffmpeg's `-hwaccel` name); null: software. */
+    val hardware: String? = null,
 ) {
     /** In a few words: where the credits start, any scene during or after them, and why. */
     fun summary(): String {
@@ -49,7 +57,18 @@ data class CreditsReport(
             0 -> "No subtitle lines in this part."
             else -> "$dialogueLines subtitle lines voted."
         }
+        readLine()?.let { parts += it }
         return parts.joinToString(" ")
+    }
+
+    /** How the server read it, in a few words to paste: "Read 11 min back in 9 s, hardware (vaapi)." */
+    fun readLine(): String? {
+        val ms = readMs ?: return null
+        val back = readFromMs?.let { ((runtimeMs - it) / 60_000.0).let { m -> kotlin.math.round(m).toLong() } }
+        val seconds = kotlin.math.round(ms / 1000.0).toLong()
+        val how = hardware?.let { "hardware ($it)" } ?: "software"
+        val frames = framesDecoded?.let { ", $it frames" }.orEmpty()
+        return (if (back != null) "Read $back min back in $seconds s" else "Read in $seconds s") + "$frames, $how."
     }
 
     companion object {

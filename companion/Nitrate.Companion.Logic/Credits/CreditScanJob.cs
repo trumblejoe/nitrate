@@ -10,12 +10,15 @@ using Microsoft.Extensions.Logging;
 namespace Nitrate.Companion.Credits;
 
 /// <summary>
-/// "Find scenes in the credits" (Dashboard → Scheduled tasks, nightly): reads the last part of
-/// every film, and of episodes tagged as having a scene in the credits, through the server's own
-/// ffmpeg as 320×180 frames with colour, one a second, measuring each frame as it arrives
-/// (<see cref="CreditFeatureReader"/>: only the features are kept, never the pictures), and keeps
-/// what <see cref="CreditFinder"/> decides, with the title's subtitle lines (the spoken-line index)
-/// voting when it has them. Titles are checked once (again when their file changes), one at a time.
+/// "Find scenes in the credits" (Dashboard → Scheduled tasks, nightly): reads the end of every
+/// film, and of episodes tagged as having a scene in the credits, through the server's own ffmpeg
+/// as 320×180 frames with colour, one per keyframe, backwards from the end until it's clearly back
+/// in the film, then each boundary closer (<see cref="CreditReader"/>), in hardware when Jellyfin
+/// decodes that codec in hardware (<see cref="HardwareDecoding"/>), measuring each frame as it
+/// arrives (<see cref="CreditFeatureReader"/>: only the features are kept, never the pictures), and
+/// keeps what <see cref="CreditFinder"/> decides, with the title's subtitle lines (the spoken-line
+/// index) voting when it has them. Titles are checked once (again when their file changes), one file
+/// read at a time across the file-reading tasks (<see cref="Nitrate.Companion.Scanning.FileReading"/>).
 /// </summary>
 public class CreditScanJob : IScheduledTask
 {
@@ -25,7 +28,7 @@ public class CreditScanJob : IScheduledTask
     /// <summary>The frames' height.</summary>
     public const int Height = 180;
 
-    /// <summary>One frame every this long.</summary>
+    /// <summary>One frame every this long in readings kept from before keyframes (and in reports with nothing read yet).</summary>
     public const long IntervalMs = 1_000;
 
     /// <summary>Titles shorter than this have no credits worth reading.</summary>
@@ -37,6 +40,8 @@ public class CreditScanJob : IScheduledTask
     private readonly CreditStore _store;
     private readonly ILibraryManager _library;
     private readonly IMediaEncoder _encoder;
+    private readonly IMediaSourceManager? _sources;
+    private readonly MediaBrowser.Controller.Configuration.IServerConfigurationManager? _config;
     private readonly MediaBrowser.Controller.MediaSegments.IMediaSegmentManager _segments;
     private readonly Nitrate.Companion.Lines.LineIndex _lines;
     private readonly ILogger<CreditScanJob> _log;
@@ -44,8 +49,10 @@ public class CreditScanJob : IScheduledTask
     private readonly Nitrate.Companion.Scanning.ReadFailures _failures;
 
     /// <summary>Initializes a new instance of the <see cref="CreditScanJob"/> class.</summary>
-    public CreditScanJob(CreditStore store, ILibraryManager library, IMediaEncoder encoder, MediaBrowser.Controller.MediaSegments.IMediaSegmentManager segments, Nitrate.Companion.Lines.LineIndex lines, ILogger<CreditScanJob> log, Nitrate.Companion.Storage.CompanionDb db)
+    public CreditScanJob(CreditStore store, ILibraryManager library, IMediaEncoder encoder, MediaBrowser.Controller.MediaSegments.IMediaSegmentManager segments, Nitrate.Companion.Lines.LineIndex lines, ILogger<CreditScanJob> log, Nitrate.Companion.Storage.CompanionDb db, IMediaSourceManager? sources = null, MediaBrowser.Controller.Configuration.IServerConfigurationManager? config = null)
     {
+        _sources = sources;
+        _config = config;
         _failures = new Nitrate.Companion.Scanning.ReadFailures(db, "credits");
         _store = store;
         _library = library;
@@ -89,23 +96,14 @@ public class CreditScanJob : IScheduledTask
         Failed.TryGetValue(itemId, out var f) && DateTimeOffset.UtcNow - f.At < TimeSpan.FromMinutes(10) ? f.Why : null;
 
     /// <inheritdoc />
-    public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
-    {
-        // One file-reading task at a time (FileReading.Gate).
-        await Nitrate.Companion.Scanning.FileReading.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await RunAsync(progress, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Nitrate.Companion.Scanning.FileReading.Gate.Release();
-        }
-    }
+    public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken) =>
+        // One file read at a time across the file-reading tasks: the gate is taken per file (FileReading.Gate).
+        RunAsync(progress, cancellationToken);
 
     /// <summary>
     /// Reads one title now, in the background (an admin's Credits check when its features aren't
-    /// kept yet), after whatever file reading is running; false when it's already being read.
+    /// kept yet), as soon as the file being read now is done: it goes before the nightly tasks'
+    /// next file; false when it's already being read.
     /// </summary>
     public bool ReadSoon(BaseItem item)
     {
@@ -116,10 +114,9 @@ public class CreditScanJob : IScheduledTask
 
         _ = Task.Run(async () =>
         {
-            await Nitrate.Companion.Scanning.FileReading.Gate.WaitAsync().ConfigureAwait(false);
             try
             {
-                await ReadOneAsync(item, VersionOf(item), CancellationToken.None).ConfigureAwait(false);
+                await ReadOneAsync(item, VersionOf(item), CancellationToken.None, priority: true).ConfigureAwait(false);
                 Failed.TryRemove(item.Id, out _);
             }
             catch (Exception e)
@@ -129,7 +126,6 @@ public class CreditScanJob : IScheduledTask
             }
             finally
             {
-                Nitrate.Companion.Scanning.FileReading.Gate.Release();
                 Reading.TryRemove(item.Id, out _);
             }
         });
@@ -191,10 +187,11 @@ public class CreditScanJob : IScheduledTask
         progress.Report(100);
     }
 
-    private async Task ReadOneAsync(BaseItem item, string version, CancellationToken cancellationToken)
+    private async Task ReadOneAsync(BaseItem item, string version, CancellationToken cancellationToken, bool priority = false)
     {
         var before = _store.Get(item.Id)?.OutroStartMs;
-        var result = await FindAsync(item, version, cancellationToken).ConfigureAwait(false);
+        // One file read at a time; a requested read goes next.
+        var result = await Nitrate.Companion.Scanning.FileReading.Gate.RunAsync(() => FindAsync(item, version, cancellationToken), cancellationToken, priority).ConfigureAwait(false);
         // Rejected final credits stay rejected until the file itself changes.
         if (_store.Get(item.Id) is { OutroRejected: true } old && old.Version == version)
         {
@@ -217,19 +214,68 @@ public class CreditScanJob : IScheduledTask
             return new CreditResult(version, Array.Empty<CreditSkip>(), DateTimeOffset.UtcNow, Format: CreditResult.CurrentFormat);
         }
 
-        var startMs = (long)(runtimeMs * CreditFinder.CreditsFrom);
-        // Decided on the features as kept, so the admins' report shows exactly what was decided on.
-        var frames = CreditFrameCodec.Round(await SampleAsync(item.Path, startMs, cancellationToken).ConfigureAwait(false));
-        _store.PutFrames(item.Id, new CreditFrameSet(version, startMs, IntervalMs, Convert.ToBase64String(CreditFrameCodec.Pack(frames))));
-        var decision = CreditFinder.Decide(runtimeMs, startMs, frames, IntervalMs, Dialogue(item.Id, startMs, runtimeMs));
+        var hardware = HardwareFor(item);
+        var clock = Stopwatch.StartNew();
+        var runs = 0;
+        var inHardware = 0;
+        var read = await CreditReader.ReadAsync(
+            runtimeMs,
+            async (request, ct) =>
+            {
+                var (run, used) = await HardwareDecoding.RunAsync(
+                    hardware,
+                    hw => DecodeAsync(item.Path, request, hw, ct),
+                    r => r.Count,
+                    why => _log.LogWarning("Credit scenes: {Name}: {Why}", item.Name, why)).ConfigureAwait(false);
+                runs++;
+                inHardware += used == null ? 0 : 1;
+                return run;
+            },
+            from => Dialogue(item.Id, from, runtimeMs),
+            cancellationToken).ConfigureAwait(false);
+        clock.Stop();
+        var usedHardware = runs > 0 && inHardware == runs ? hardware?.Name : null;
+        _log.LogInformation(
+            "Credit scenes: {Name}: read {Back:0.0} min back in {Seconds:0.0} s, {Frames} frames decoded, {How}",
+            item.Name,
+            (runtimeMs - read.ReadFromMs) / 60_000.0,
+            clock.Elapsed.TotalSeconds,
+            read.Decoded,
+            usedHardware ?? (hardware != null ? "software (" + hardware.Name + " failed)" : "software"));
+        _store.PutFrames(item.Id, CreditFrameSet.Of(version, read.ReadFromMs, read.Frames, read.Timeline, clock.ElapsedMilliseconds, read.Decoded, usedHardware));
+        var decision = read.Decision;
         return new CreditResult(version, decision.Skips, DateTimeOffset.UtcNow, decision.OutroStartMs, decision.OutroStartMs == null ? null : runtimeMs, CreditResult.CurrentFormat);
     }
 
+    /// <summary>How [item]'s video is decoded in hardware, by Jellyfin's settings; null for software.</summary>
+    private HardwareChoice? HardwareFor(BaseItem item)
+    {
+        try
+        {
+            if (_config == null || _sources == null)
+            {
+                return null;
+            }
+
+            var options = MediaBrowser.Common.Configuration.EncodingConfigurationExtensions.GetEncodingOptions(_config);
+            var video = _sources.GetMediaStreams(item.Id).FirstOrDefault(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Video);
+            return options == null || video == null
+                ? null
+                : HardwareDecoding.From(options).For(video.Codec, video.BitDepth, video.PixelFormat, OperatingSystem.IsWindows(), _encoder.SupportsHwaccel);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _log.LogDebug("Credit scenes: no hardware decoding for {Name}: {Message}", item.Name, e.Message);
+            return null;
+        }
+    }
+
     /// <summary>
-    /// The file's frames from [startMs] to its end, one a second, measured as ffmpeg hands them
-    /// over (320×180 yuv420p, one frame's bytes held at a time): only the features are kept.
+    /// Decodes [request] of the file at [path] with the server's ffmpeg ([hardware] or software) and
+    /// measures the frames as they arrive (320×180 yuv420p, one frame's bytes held at a time), each
+    /// at its time from ffmpeg's <c>showinfo</c>.
     /// </summary>
-    private async Task<IReadOnlyList<CreditFeatures>> SampleAsync(string path, long startMs, CancellationToken cancellationToken)
+    private async Task<CreditRun> DecodeAsync(string path, CreditDecodeRequest request, HardwareChoice? hardware, CancellationToken cancellationToken)
     {
         var info = new ProcessStartInfo(_encoder.EncoderPath)
         {
@@ -238,7 +284,7 @@ public class CreditScanJob : IScheduledTask
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        foreach (var arg in Arguments(path, startMs))
+        foreach (var arg in Arguments(path, request, hardware))
         {
             info.ArgumentList.Add(arg);
         }
@@ -254,32 +300,136 @@ public class CreditScanJob : IScheduledTask
             {
             }
         });
-        var errors = process.StandardError.ReadToEndAsync(cancellationToken);
-        var frames = await ReadFramesAsync(process.StandardOutput.BaseStream, Width, Height, 0.25, cancellationToken).ConfigureAwait(false);
+        var times = System.Threading.Channels.Channel.CreateUnbounded<double>();
+        var errors = new List<string>();
+        var stderr = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    while (await process.StandardError.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+                    {
+                        if (ShowInfoTime(line) is { } t)
+                        {
+                            times.Writer.TryWrite(t);
+                        }
+                        else if (!line.Contains("Parsed_showinfo", StringComparison.Ordinal) && line.Length > 0)
+                        {
+                            lock (errors)
+                            {
+                                errors.Add(line);
+                                if (errors.Count > 20)
+                                {
+                                    errors.RemoveAt(0);
+                                }
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    times.Writer.TryComplete();
+                }
+            },
+            CancellationToken.None);
+        var builder = new CreditRunBuilder(Width, Height, request.FromMs, request.ToMs, request.MaxShift);
+        await ReadFramesAsync(process.StandardOutput.BaseStream, Width, Height, async ct =>
+        {
+            // Frame k's time is showinfo's k-th line (written before the frame leaves the filters).
+            return await times.Reader.WaitToReadAsync(ct).ConfigureAwait(false) && times.Reader.TryRead(out var t) ? request.FromMs + (long)Math.Round(t * 1000) : null;
+        }, builder.Add, cancellationToken).ConfigureAwait(false);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        var log = await errors.ConfigureAwait(false);
+        await stderr.ConfigureAwait(false);
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException("ffmpeg: " + log.Trim().Split('\n').LastOrDefault());
+            lock (errors)
+            {
+                throw new InvalidOperationException("ffmpeg: " + (errors.LastOrDefault() ?? "exit code " + process.ExitCode.ToString(CultureInfo.InvariantCulture)).Trim());
+            }
         }
 
-        return frames;
+        return builder.Build();
+    }
+
+    /// <summary>The time (s, from where decoding started) in one line of ffmpeg's <c>showinfo</c>; null for other lines.</summary>
+    public static double? ShowInfoTime(string line)
+    {
+        var at = line.IndexOf(" pts_time:", StringComparison.Ordinal);
+        if (at < 0 || !line.Contains("n:", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var start = at + " pts_time:".Length;
+        var end = start;
+        while (end < line.Length && !char.IsWhiteSpace(line[end]))
+        {
+            end++;
+        }
+
+        return double.TryParse(line.AsSpan(start, end - start), NumberStyles.Float, CultureInfo.InvariantCulture, out var t) ? t : null;
     }
 
     /// <summary>
-    /// ffmpeg's arguments: decode from [startMs] (references only, no deblocking: cheaper, and
-    /// nothing a 320×180 frame shows), one frame a second, scaled by area averaging, as yuv420p.
+    /// ffmpeg's arguments for [request] of [path]: [hardware]'s input arguments (frames come back
+    /// in system memory), then either only keyframes (<c>-skip_frame nokey</c>, each frame passed
+    /// through as decoded) or every frame (references only) thinned to <see cref="CreditDecodeRequest.Fps"/>;
+    /// no deblocking (nothing a 320×180 frame shows); from <see cref="CreditDecodeRequest.FromMs"/>
+    /// for as long as asked (to the end without <see cref="CreditDecodeRequest.ToMs"/>); each frame's
+    /// time logged by <c>showinfo</c>; scaled by area averaging, as yuv420p.
     /// </summary>
-    public static IReadOnlyList<string> Arguments(string path, long startMs) => new[]
+    public static IReadOnlyList<string> Arguments(string path, CreditDecodeRequest request, HardwareChoice? hardware = null)
     {
-        "-hide_banner", "-nostdin", "-nostats", "-loglevel", "error",
-        "-skip_frame", "noref", "-skip_loop_filter", "all",
-        "-ss", (startMs / 1000.0).ToString("0.###", CultureInfo.InvariantCulture),
-        "-i", path,
-        "-an", "-sn", "-dn",
-        "-vf", $"fps=1,scale={Width}:{Height}:flags=area,format=yuv420p",
-        "-f", "rawvideo", "-pix_fmt", "yuv420p", "-",
-    };
+        var args = new List<string> { "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info" };
+        if (hardware != null)
+        {
+            args.AddRange(hardware.Arguments);
+        }
+
+        args.AddRange(new[] { "-skip_frame", request.Fps <= 0 ? "nokey" : "noref", "-skip_loop_filter", "all" });
+        args.AddRange(new[] { "-ss", Seconds(request.FromMs) });
+        if (request.ToMs is { } to)
+        {
+            // A little past the end: keyframes are cut by their own times here, not by ffmpeg.
+            args.AddRange(new[] { "-t", Seconds(Math.Max(1, to - request.FromMs) + 1_000) });
+        }
+
+        args.AddRange(new[] { "-i", path, "-an", "-sn", "-dn", "-fps_mode", "passthrough" });
+        var thin = request.Fps > 0 ? $"fps={request.Fps.ToString(CultureInfo.InvariantCulture)}," : string.Empty;
+        args.AddRange(new[] { "-vf", $"{thin}showinfo,scale={Width}:{Height}:flags=area,format=yuv420p", "-f", "rawvideo", "-pix_fmt", "yuv420p", "-" });
+        return args;
+    }
+
+    private static string Seconds(long ms) => (ms / 1000.0).ToString("0.###", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Hands each yuv420p frame [width]×[height] read from [stream] to [frame] with its time from
+    /// [timeOf] (asked as each frame arrives; null: no time for it, so it's left out), until the
+    /// stream ends. One frame's bytes are held at a time.
+    /// </summary>
+    public static async Task ReadFramesAsync(Stream stream, int width, int height, Func<CancellationToken, Task<long?>> timeOf, CreditFrameSink frame, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[(width * height) + (2 * (width / 2) * (height / 2))];
+        while (true)
+        {
+            var read = 0;
+            while (read < buffer.Length)
+            {
+                var n = await stream.ReadAsync(buffer.AsMemory(read), cancellationToken).ConfigureAwait(false);
+                if (n == 0)
+                {
+                    return;
+                }
+
+                read += n;
+            }
+
+            if (await timeOf(cancellationToken).ConfigureAwait(false) is { } at)
+            {
+                frame(at, buffer);
+            }
+        }
+    }
 
     /// <summary>Measures yuv420p frames [width]×[height] read from [stream] until it ends.</summary>
     public static async Task<IReadOnlyList<CreditFeatures>> ReadFramesAsync(Stream stream, int width, int height, double maxShift, CancellationToken cancellationToken)
@@ -307,3 +457,6 @@ public class CreditScanJob : IScheduledTask
         }
     }
 }
+
+/// <summary>Takes one frame (its time, its yuv420p bytes, valid only during the call).</summary>
+public delegate void CreditFrameSink(long atMs, ReadOnlySpan<byte> frame);

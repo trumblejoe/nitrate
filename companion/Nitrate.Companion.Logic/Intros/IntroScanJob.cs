@@ -63,19 +63,9 @@ public class IntroScanJob : IScheduledTask
     public static string VersionOf(BaseItem item) => item.Path + "|" + item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture);
 
     /// <inheritdoc />
-    public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
-    {
-        // One file-reading task at a time (FileReading.Gate).
-        await Nitrate.Companion.Scanning.FileReading.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await RunAsync(progress, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Nitrate.Companion.Scanning.FileReading.Gate.Release();
-        }
-    }
+    public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken) =>
+        // One file read at a time across the file-reading tasks: the gate is taken per file (FileReading.Gate).
+        RunAsync(progress, cancellationToken);
 
     private async Task RunAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
@@ -149,7 +139,7 @@ public class IntroScanJob : IScheduledTask
 
                 try
                 {
-                    print = await ReadAsync(e, opening: true, cancellationToken).ConfigureAwait(false);
+                    print = await Nitrate.Companion.Scanning.FileReading.Gate.RunAsync(() => ReadAsync(e, opening: true, cancellationToken), cancellationToken).ConfigureAwait(false);
                     _store.SavePrint(e.Id, version, print);
                     _failures.Succeeded(e.Id);
                 }
@@ -207,7 +197,7 @@ public class IntroScanJob : IScheduledTask
                     print = _store.Print(e.Id, VersionOf(e), whole: true);
                     if (print == null && _failures.MayRead(e.Id, VersionOf(e), "whole"))
                     {
-                        print = await ReadAsync(e, opening: false, cancellationToken).ConfigureAwait(false);
+                        print = await Nitrate.Companion.Scanning.FileReading.Gate.RunAsync(() => ReadAsync(e, opening: false, cancellationToken), cancellationToken).ConfigureAwait(false);
                         // Kept only for the show's last few episodes, the ones a new episode is compared with.
                         if (show.IndexOf(e) >= show.Count - RecapFrom)
                         {

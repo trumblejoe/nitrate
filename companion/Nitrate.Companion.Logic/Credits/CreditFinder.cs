@@ -98,6 +98,12 @@ public static class CreditFinder
     /// <summary>Gaps up to this long between credits frames (a fade between cards) count as credits.</summary>
     public const long GapMs = 3_000;
 
+    /// <summary>
+    /// One frame between credits frames counts as a gap when it lasts up to this long: read one
+    /// per keyframe, a fade between cards is a single frame a few seconds long.
+    /// </summary>
+    public const long SingleGapMs = 6_000;
+
     /// <summary>A stretch of credits is at least this share text or scroll (not just black and gaps).</summary>
     public const double MinTextShare = 0.5;
 
@@ -164,19 +170,22 @@ public static class CreditFinder
     public static bool LooksLikeCredits(CreditFeatures f) => Verdict(f) is 'C' or 'b';
 
     /// <summary>Every frame's verdict ([frames] one every [intervalMs]), with the sequence rules: steady scroll, black after credits, short gaps.</summary>
-    public static char[] Classify(IReadOnlyList<CreditFeatures> frames, long intervalMs)
+    public static char[] Classify(IReadOnlyList<CreditFeatures> frames, long intervalMs) =>
+        Classify(frames, CreditTimeline.Regular(0, frames.Count, Math.Max(1, intervalMs)));
+
+    /// <summary>Every frame's verdict ([frames] at the times in [timeline]), with the sequence rules: steady scroll, black after credits, short gaps.</summary>
+    public static char[] Classify(IReadOnlyList<CreditFeatures> frames, CreditTimeline timeline)
     {
         var v = frames.Select(Verdict).ToArray();
         for (var i = 0; i < v.Length; i++)
         {
             if (v[i] == 's' || (v[i] == 'w' && frames[i].Scrolled))
             {
-                v[i] = Steady(frames, i) ? 'S' : '.';
+                v[i] = Steady(frames, timeline, i) ? 'S' : '.';
             }
         }
 
         BlackAfterCredits(v);
-        var gap = (int)(GapMs / Math.Max(1, intervalMs));
         for (var i = 0; i < v.Length;)
         {
             if (Counts(v[i]))
@@ -191,7 +200,8 @@ public static class CreditFinder
                 i++;
             }
 
-            if (start > 0 && i < v.Length && i - start <= gap)
+            var lasting = timeline.At(i) - timeline.At(start);
+            if (start > 0 && i < v.Length && (lasting <= GapMs || (i - start == 1 && lasting <= SingleGapMs)))
             {
                 for (var k = start; k < i; k++)
                 {
@@ -209,26 +219,34 @@ public static class CreditFinder
     /// [startMs] of a title [runtimeMs] long, and [dialogue] (its subtitle lines, one language; null
     /// when it has none indexed: the pictures decide alone).
     /// </summary>
-    public static CreditDecision Decide(long runtimeMs, long startMs, IReadOnlyList<CreditFeatures> frames, long intervalMs, IReadOnlyList<DialogueLine>? dialogue)
+    public static CreditDecision Decide(long runtimeMs, long startMs, IReadOnlyList<CreditFeatures> frames, long intervalMs, IReadOnlyList<DialogueLine>? dialogue) =>
+        intervalMs <= 0
+            ? new CreditDecision(string.Empty, Array.Empty<CreditSkip>(), null, Array.Empty<VetoedStretch>())
+            : Decide(runtimeMs, frames, CreditTimeline.Regular(startMs, frames.Count, intervalMs), dialogue);
+
+    /// <summary>The same, for [frames] at the times in [timeline] (one per keyframe, denser at the boundaries).</summary>
+    public static CreditDecision Decide(long runtimeMs, IReadOnlyList<CreditFeatures> frames, CreditTimeline timeline, IReadOnlyList<DialogueLine>? dialogue)
     {
-        if (runtimeMs <= 0 || intervalMs <= 0 || frames.Count == 0)
+        if (runtimeMs <= 0 || frames.Count == 0 || timeline.Count != frames.Count)
         {
             return new CreditDecision(string.Empty, Array.Empty<CreditSkip>(), null, Array.Empty<VetoedStretch>());
         }
 
-        var v = Classify(frames, intervalMs);
-        long At(int i) => startMs + (i * intervalMs);
+        var v = Classify(frames, timeline);
+        long At(int i) => timeline.At(i);
         var vetoed = new List<VetoedStretch>();
         foreach (var (start, end) in Runs(v))
         {
-            var text = Enumerable.Range(start, end - start).Count(i => v[i] is 'C' or 'S');
+            // Shares by time, not by frames: frames are irregular.
+            var length = At(end) - At(start);
+            var text = Enumerable.Range(start, end - start).Where(i => v[i] is 'C' or 'S').Sum(timeline.Span);
             string? why = null;
             char code = 'f';
-            if (text < (end - start) * MinTextShare)
+            if (text < length * MinTextShare)
             {
                 why = "too little text in it";
             }
-            else if (dialogue != null && Enumerable.Range(start, end - start).Count(i => frames[i].Scrolled) < (end - start) * ScrollSure)
+            else if (dialogue != null && Enumerable.Range(start, end - start).Where(i => frames[i].Scrolled).Sum(timeline.Span) < length * ScrollSure)
             {
                 var vote = DialogueVote(dialogue, At(start), At(end));
                 if (vote.Veto)
@@ -245,7 +263,7 @@ public static class CreditFinder
                     v[i] = code;
                 }
 
-                if ((end - start) * intervalMs >= MinCreditsMs / 2)
+                if (length >= MinCreditsMs / 2)
                 {
                     vetoed.Add(new VetoedStretch(At(start), At(end), why));
                 }
@@ -253,7 +271,7 @@ public static class CreditFinder
         }
 
         var credits = v.Select(Counts).ToArray();
-        var skips = Find(runtimeMs, startMs, credits, intervalMs);
+        var skips = Find(runtimeMs, credits, timeline);
         if (dialogue != null)
         {
             var runStarts = Runs(v).Select(r => At(r.Start)).ToList();
@@ -264,7 +282,7 @@ public static class CreditFinder
             }).ToList();
         }
 
-        return new CreditDecision(new string(v), skips, FinalCredits(runtimeMs, startMs, credits, intervalMs), vetoed);
+        return new CreditDecision(new string(v), skips, FinalCredits(runtimeMs, credits, timeline), vetoed);
     }
 
     /// <summary>
@@ -301,18 +319,19 @@ public static class CreditFinder
     /// [runtimeMs] long: a run of credits at least <see cref="MinCreditsMs"/> long in the last part,
     /// with a scene of <see cref="MinSceneMs"/> to <see cref="MaxSceneMs"/> after it.
     /// </summary>
-    public static IReadOnlyList<CreditSkip> Find(long runtimeMs, long startMs, IReadOnlyList<bool> credits, long intervalMs)
+    public static IReadOnlyList<CreditSkip> Find(long runtimeMs, long startMs, IReadOnlyList<bool> credits, long intervalMs) =>
+        intervalMs <= 0 ? Array.Empty<CreditSkip>() : Find(runtimeMs, credits, CreditTimeline.Regular(startMs, credits.Count, intervalMs));
+
+    /// <summary>The same, for verdicts at the times in [timeline]: every length in milliseconds.</summary>
+    public static IReadOnlyList<CreditSkip> Find(long runtimeMs, IReadOnlyList<bool> credits, CreditTimeline timeline)
     {
-        if (runtimeMs <= 0 || intervalMs <= 0 || credits.Count == 0)
+        if (runtimeMs <= 0 || credits.Count == 0)
         {
             return Array.Empty<CreditSkip>();
         }
 
-        var minCredits = Math.Max(3, (int)(MinCreditsMs / intervalMs));
-        var minScene = Math.Max(1, (int)(MinSceneMs / intervalMs)) + 1;
-        var maxScene = (int)(MaxSceneMs / intervalMs);
         var from = (long)(runtimeMs * CreditsFrom);
-        long At(int i) => startMs + (i * intervalMs);
+        long At(int i) => timeline.At(i);
 
         var runs = new List<(int Start, int End, bool Credits)>();
         var start = 0;
@@ -325,14 +344,15 @@ public static class CreditFinder
             }
         }
 
-        var creditRuns = runs.Where(r => r.Credits && r.End - r.Start >= minCredits && At(r.Start) >= from).ToList();
+        var creditRuns = runs.Where(r => r.Credits && r.End - r.Start >= 3 && At(r.End) - At(r.Start) >= MinCreditsMs && At(r.Start) >= from).ToList();
         var skips = new List<CreditSkip>();
         for (var k = 0; k < creditRuns.Count; k++)
         {
             var run = creditRuns[k];
             var next = k + 1 < creditRuns.Count ? creditRuns[k + 1].Start : credits.Count;
-            var scene = Enumerable.Range(run.End, Math.Max(0, next - run.End)).Count(i => !credits[i]);
-            if (scene >= minScene && scene <= maxScene)
+            // The scene: the pictures (not credits) until the next long run of credits, or the end.
+            var scene = Enumerable.Range(run.End, Math.Max(0, next - run.End)).Where(i => !credits[i]).Sum(timeline.Span);
+            if (scene > MinSceneMs && scene <= MaxSceneMs)
             {
                 skips.Add(new CreditSkip(At(run.Start), At(run.End), k == creditRuns.Count - 1));
             }
@@ -347,33 +367,36 @@ public static class CreditFinder
     /// <see cref="Find"/>. Breaks shorter than a scene (a picture card) don't end it; a scene does,
     /// so a mid- or post-credits scene is never inside it. Null when the title doesn't end on credits.
     /// </summary>
-    public static long? FinalCredits(long runtimeMs, long startMs, IReadOnlyList<bool> credits, long intervalMs)
+    public static long? FinalCredits(long runtimeMs, long startMs, IReadOnlyList<bool> credits, long intervalMs) =>
+        intervalMs <= 0 ? null : FinalCredits(runtimeMs, credits, CreditTimeline.Regular(startMs, credits.Count, intervalMs));
+
+    /// <summary>The same, for verdicts at the times in [timeline].</summary>
+    public static long? FinalCredits(long runtimeMs, IReadOnlyList<bool> credits, CreditTimeline timeline)
     {
-        if (runtimeMs <= 0 || intervalMs <= 0 || credits.Count == 0)
+        if (runtimeMs <= 0 || credits.Count == 0)
         {
             return null;
         }
 
-        var minScene = Math.Max(1, (int)(MinSceneMs / intervalMs)) + 1;
         var from = (long)(runtimeMs * CreditsFrom);
-        long At(int i) => startMs + (i * intervalMs);
 
         // Back from the end: past a short tail that isn't credits, then over credits and short breaks.
         var i = credits.Count - 1;
-        var tail = 0;
+        long tail = 0;
         while (i >= 0 && !credits[i])
         {
+            tail += timeline.Span(i);
             i--;
-            tail++;
         }
 
-        if (i < 0 || tail >= minScene)
+        if (i < 0 || tail > MinSceneMs)
         {
             return null;
         }
 
+        var tailStart = i + 1;
         var first = i;
-        var gap = 0;
+        long gap = 0;
         for (; i >= 0; i--)
         {
             if (credits[i])
@@ -381,23 +404,42 @@ public static class CreditFinder
                 first = i;
                 gap = 0;
             }
-            else if (++gap >= minScene)
+            else if ((gap += timeline.Span(i)) > MinSceneMs)
             {
                 break;
             }
         }
 
-        var startAt = At(first);
-        var length = At(credits.Count - tail) - startAt;
+        var startAt = timeline.At(first);
+        var length = timeline.At(tailStart) - startAt;
         return startAt >= from && length >= MinFinalCreditsMs ? startAt : null;
     }
 
-    // Rolling credits move the same way frame after frame: a neighbour scrolled by about as much.
-    private static bool Steady(IReadOnlyList<CreditFeatures> frames, int i)
+    // Rolling credits move at the same speed frame after frame: a neighbour scrolled about as fast
+    // (rows a second, since frames are irregular: within 2 rows over the shorter of the two gaps, or
+    // a quarter). One a second, that's within max(2, dy/4) rows as before.
+    private static bool Steady(IReadOnlyList<CreditFeatures> frames, CreditTimeline timeline, int i)
     {
         var dy = frames[i].ScrollDy;
-        bool Near(int k) => k >= 0 && k < frames.Count && frames[k].ScrollDy > 0 && Math.Abs(frames[k].ScrollDy - dy) <= Math.Max(2, dy / 4);
-        return dy > 0 && (Near(i - 1) || Near(i + 1));
+        var gap = timeline.ScrollGapSeconds(i);
+        if (dy <= 0 || gap <= 0)
+        {
+            return false;
+        }
+
+        var speed = dy / gap;
+        bool Near(int k)
+        {
+            if (k < 0 || k >= frames.Count || frames[k].ScrollDy <= 0 || timeline.ScrollGapSeconds(k) <= 0)
+            {
+                return false;
+            }
+
+            var other = frames[k].ScrollDy / timeline.ScrollGapSeconds(k);
+            return Math.Abs(other - speed) <= Math.Max(2 / Math.Min(gap, timeline.ScrollGapSeconds(k)), speed / 4) + 1e-9;
+        }
+
+        return Near(i - 1) || Near(i + 1);
     }
 
     // Black right after credits frames (between cards, or to the end) counts with them.

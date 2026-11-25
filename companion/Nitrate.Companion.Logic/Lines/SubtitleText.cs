@@ -41,6 +41,86 @@ public static partial class SubtitleText
         return cues.OrderBy(c => c.StartMs).ToList();
     }
 
+    /// <summary>The extensions the server's extracted copies of text subtitles are kept with.</summary>
+    public static readonly IReadOnlyList<string> CachedExtensions = new[] { "srt", "ass", "ssa", "vtt" };
+
+    /// <summary>A subtitle file's lines by its extension: ASS/SSA, else SRT (WebVTT reads the same way).</summary>
+    public static IReadOnlyList<LineCue> ParseAny(string text, string extension) =>
+        extension.TrimStart('.').ToLowerInvariant() is "ass" or "ssa" ? ParseAss(text) : Parse(text);
+
+    /// <summary>
+    /// An ASS/SSA script's Dialogue lines, read like SRT cues: override tags dropped (italics,
+    /// <c>{\i1}</c>, still mark a cue italic), <c>\N</c> line breaks as spaces, drawings left out.
+    /// </summary>
+    public static IReadOnlyList<LineCue> ParseAss(string script)
+    {
+        var cues = new List<LineCue>();
+        int start = 1, end = 2, text = 9;
+        var inEvents = false;
+        foreach (var rawLine in script.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.StartsWith('['))
+            {
+                inEvents = line.Equals("[Events]", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (!inEvents)
+            {
+                continue;
+            }
+
+            if (line.StartsWith("Format:", StringComparison.OrdinalIgnoreCase))
+            {
+                var names = line["Format:".Length..].Split(',').Select(n => n.Trim().ToLowerInvariant()).ToList();
+                start = names.IndexOf("start");
+                end = names.IndexOf("end");
+                text = names.IndexOf("text");
+                continue;
+            }
+
+            if (!line.StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase) || start < 0 || end < 0 || text < 0)
+            {
+                continue;
+            }
+
+            // The text is the last field and may hold commas.
+            var fields = line["Dialogue:".Length..].Split(',', text + 1);
+            if (fields.Length <= Math.Max(text, Math.Max(start, end)) || fields[text].Contains("{\\p1", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var raw = fields[text].Replace("\\N", " ", StringComparison.Ordinal).Replace("\\n", " ", StringComparison.Ordinal).Replace("\\h", " ", StringComparison.Ordinal);
+            var cleaned = Clean(raw);
+            if (AssMs(fields[start]) is { } s && AssMs(fields[end]) is { } e && cleaned.Length > 0)
+            {
+                cues.Add(new LineCue(s, e, cleaned, MarksOf(raw)));
+            }
+        }
+
+        return cues.OrderBy(c => c.StartMs).ToList();
+    }
+
+    // h:mm:ss.cc
+    private static long? AssMs(string s)
+    {
+        var m = AssTime().Match(s.Trim());
+        if (!m.Success)
+        {
+            return null;
+        }
+
+        long Part(int g) => long.Parse(m.Groups[g].Value, CultureInfo.InvariantCulture);
+        var fraction = m.Groups[4].Value;
+        var ms = long.Parse(fraction, CultureInfo.InvariantCulture) * (fraction.Length switch { 1 => 100, 2 => 10, _ => 1 });
+        return (Part(1) * 3_600_000) + (Part(2) * 60_000) + (Part(3) * 1000) + ms;
+    }
+
+    [GeneratedRegex(@"^(\d+):(\d{2}):(\d{2})[.,](\d{1,3})$")]
+    private static partial Regex AssTime();
+
     /// <summary>What's said in one cue, without tags, sound descriptions or a speaker label.</summary>
     public static string Clean(string text)
     {

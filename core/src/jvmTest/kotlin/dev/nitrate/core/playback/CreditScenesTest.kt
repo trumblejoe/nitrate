@@ -230,6 +230,10 @@ class CreditScenesTest {
         assertEquals("No credits found after 1:24:00. No subtitles indexed: the pictures decided alone.", r.copy(skips = emptyList(), vetoed = emptyList(), dialogueLines = null).summary())
         assertTrue(r.copy(reading = true, rows = 0).summary().startsWith("Reading the end of the title"))
         assertEquals("Too short", r.copy(rows = 0, note = "Too short").summary())
+        // How it was read, when the server says.
+        val read = r.copy(skips = emptyList(), vetoed = emptyList(), dialogueLines = null, readMs = 9_400, framesDecoded = 312, readFromMs = runtime - 11 * min, hardware = "vaapi")
+        assertEquals("No credits found after 1:24:00. No subtitles indexed: the pictures decided alone. Read 11 min back in 9 s, 312 frames, hardware (vaapi).", read.summary())
+        assertEquals("Read 11 min back in 9 s, 312 frames, software.", read.copy(hardware = null).readLine())
     }
 
     @Test fun skipperSkipsOnceAtTheCredits() {

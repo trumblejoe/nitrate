@@ -149,3 +149,57 @@ public class LineTests
         Assert.Equal(CueMarks.None, cue.Marks);
     }
 }
+
+public class CachedSubtitleTests
+{
+    [Fact]
+    public void AssScriptsReadLikeSrt()
+    {
+        const string script = """
+            [Script Info]
+            Title: x
+
+            [V4+ Styles]
+            Format: Name, Fontname, Fontsize
+            Style: Default,Arial,20
+
+            [Events]
+            Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+            Dialogue: 0,0:00:01.50,0:00:03.00,Default,,0,0,0,,Hello, there.\NHow are you?
+            Dialogue: 0,0:01:02.25,0:01:04.00,Default,,0,0,0,,{\i1}A voice off screen{\i0}
+            Dialogue: 0,0:01:05.00,0:01:06.00,Default,,0,0,0,,{\p1}m 0 0 l 10 0 10 10{\p0}
+            Comment: 0,0:01:07.00,0:01:08.00,Default,,0,0,0,,not said
+            """;
+        var cues = Nitrate.Companion.Lines.SubtitleText.ParseAny(script, ".ass");
+        Assert.Equal(2, cues.Count);
+        Assert.Equal((1_500L, 3_000L, "Hello, there. How are you?"), (cues[0].StartMs, cues[0].EndMs, cues[0].Text));
+        Assert.Equal(62_250, cues[1].StartMs);
+        Assert.True(cues[1].Marks.HasFlag(Nitrate.Companion.Lines.CueMarks.Italic));
+        // SRT and WebVTT read as SRT.
+        Assert.Single(Nitrate.Companion.Lines.SubtitleText.ParseAny("WEBVTT\n\n00:01.000 --> 00:02.000\nHi there\n", ".vtt"));
+    }
+
+    [Fact]
+    public void OnlyAFreshCachedCopyIsUsed()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "nitrate-subs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            IEnumerable<string> Candidates(int index) => new[] { "srt", "ass" }.Select(e => Path.Combine(dir, $"{index}.{e}"));
+            var modified = DateTime.UtcNow.AddHours(-1);
+            Assert.Null(Nitrate.Companion.Lines.LineIndexJob.CachedCopy(Candidates, 3, modified));
+            File.WriteAllText(Path.Combine(dir, "3.ass"), string.Empty);
+            Assert.Null(Nitrate.Companion.Lines.LineIndexJob.CachedCopy(Candidates, 3, modified));
+            File.WriteAllText(Path.Combine(dir, "3.ass"), "[Events]");
+            Assert.Equal(Path.Combine(dir, "3.ass"), Nitrate.Companion.Lines.LineIndexJob.CachedCopy(Candidates, 3, modified));
+            // Older than the media file: extracted from an earlier version of it.
+            File.SetLastWriteTimeUtc(Path.Combine(dir, "3.ass"), modified.AddMinutes(-5));
+            Assert.Null(Nitrate.Companion.Lines.LineIndexJob.CachedCopy(Candidates, 3, modified));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+}
