@@ -189,6 +189,13 @@ object PlaybackPredictor {
         }
     }
 
+    /** Why profile 7 plays the way it does here, when the playback test chose it. */
+    private fun profile7Because(caps: DeviceCapabilities, settings: PlaybackSettings, layers: DolbyVisionLayers?): String? {
+        val dolbyVision = CapabilityRules.hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
+        if (!(dolbyVision && 8 in caps.dolbyVisionProfiles && caps.dolbyVisionConverter && settings.convertProfile7) || 7 in caps.dolbyVisionProfiles) return null
+        return Profile7Choice.of(Profile7Playback.AS_PROFILE_8, settings.deviceCheck, layers).because
+    }
+
     private fun hdrPath(v: MediaStream, verdict: DeliveryVerdict, caps: DeviceCapabilities, settings: PlaybackSettings, dvLayers: DolbyVisionLayers? = null): String? {
         val range = v.rangeType ?: return null
         if (range == "SDR" || range == "Unknown") return null
@@ -197,7 +204,8 @@ object PlaybackPredictor {
         val dv = CapabilityRules.hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
         return when {
             range.startsWith("DOVIWithEL") || v.dvProfile == 7 ->
-                "Dolby Vision profile 7 (" + (dvLayers?.short ?: "MEL or FEL: known once played") + ") " + CapabilityRules.profile7(caps, settings).label
+                "Dolby Vision profile 7 (" + (dvLayers?.short ?: "MEL or FEL: known once played") + ") " + CapabilityRules.profile7(caps, settings, dvLayers).label +
+                    (profile7Because(caps, settings, dvLayers)?.let { ": $it" } ?: "")
             range.startsWith("DOVI") && dv -> "Dolby Vision" + (v.dvProfile?.let { " (profile $it)" } ?: "") +
                 (if ("DOVI" !in caps.hdr) " as it is from the server. " + VideoPath.hdrUnreported(
                     caps.hdr, settings.deviceCheck?.seen?.let(TvCheck::showedHdr) == true, caps.model.startsWith("Amazon", ignoreCase = true)) else "")

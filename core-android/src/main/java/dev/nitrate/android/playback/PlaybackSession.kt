@@ -81,6 +81,8 @@ class PlaybackSession(
     private val capabilities: () -> dev.nitrate.core.playback.DeviceCapabilities = { DeviceProbe.cached(context) },
     /** Remembers a profile 7 file's kind (MEL or FEL) once seen, for How it plays (`AppContainer.rememberDvLayers`). */
     private val onDvLayers: (itemId: String, dev.nitrate.core.playback.DolbyVisionLayers) -> Unit = { _, _ -> },
+    /** A file's profile 7 kind as found when it played here before (`AppContainer.dvLayersOf`): with the playback test, it decides how profile 7 plays. */
+    private val layersOf: (itemId: String) -> dev.nitrate.core.playback.DolbyVisionLayers? = { null },
     /** Keeps this playback's log on the device as it plays and when it closes (`AppContainer.keepPlaybackLog`). */
     private val keepLog: (dev.nitrate.android.PlayerReport) -> Unit = {},
 ) : dev.nitrate.android.remote.RemotePlayer {
@@ -257,7 +259,7 @@ class PlaybackSession(
             inFps = f?.frameRate?.takeIf { it > 0 } ?: stream?.frameRate,
             inRange = shownRange,
             fileRange = fileRange?.takeIf { it != shownRange },
-            profile7 = profile7.takeIf { type.startsWith("DOVIWithEL", ignoreCase = true) },
+            profile7 = profile7Now().takeIf { type.startsWith("DOVIWithEL", ignoreCase = true) },
             dvLayers = dvLayers.takeIf { type.startsWith("DOVIWithEL", ignoreCase = true) },
             software = _videoDecoder.value?.startsWith(dev.nitrate.core.playback.DeviceCapabilities.SOFTWARE_VIDEO_DECODER) == true,
             tunneled = runCatching { exo.isTunnelingEnabled }.getOrDefault(false),
@@ -475,7 +477,7 @@ class PlaybackSession(
             // base layer, by what this device decodes.
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(context, DolbyVisionProfile7(
-                    { profile7 },
+                    { profile7Now() },
                     onFailures = { n -> log("Dolby Vision: $n frames' metadata couldn't be converted (shown as HDR10)") },
                     onLayers = { layers ->
                         dvLayers = layers
@@ -671,6 +673,7 @@ class PlaybackSession(
                 speakerLayouts = s.speakerLayouts
                 if (upmixChanged) recheckUpmix("settings")
                 profile7 = runCatching { dev.nitrate.core.playback.CapabilityRules.profile7(capabilities(), s) }.getOrDefault(dev.nitrate.core.playback.Profile7Playback.BASE_LAYER)
+                profile7Settings = s
                 val mode = s.subtitleStyle.styled
                 if (mode != styledMode) {
                     styledMode = mode
@@ -1548,6 +1551,19 @@ class PlaybackSession(
 
     /** Read when each file is opened: how dual-layer Dolby Vision (profile 7) plays. */
     @Volatile private var profile7 = dev.nitrate.core.playback.Profile7Playback.BASE_LAYER
+
+    /** The settings profile 7's way was worked out from (the device check included). */
+    @Volatile private var profile7Settings: dev.nitrate.core.playback.PlaybackSettings? = null
+
+    /**
+     * How this file's profile 7 plays: as the settings and device say, unless the playback test
+     * found its kind (MEL or FEL, when known from playing it here before) shows no picture that way.
+     */
+    private fun profile7Now(): dev.nitrate.core.playback.Profile7Playback {
+        val s = profile7Settings ?: return profile7
+        val layers = _item.value?.id?.let { runCatching { layersOf(it) }.getOrNull() }
+        return runCatching { dev.nitrate.core.playback.CapabilityRules.profile7(capabilities(), s, layers) }.getOrDefault(profile7)
+    }
 
     @Volatile private var styledMode = dev.nitrate.core.playback.StyledSubtitles.FILE
     private var assJob: Job? = null

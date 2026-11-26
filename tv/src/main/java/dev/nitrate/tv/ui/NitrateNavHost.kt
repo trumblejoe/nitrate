@@ -505,7 +505,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         }
         composable<AudioChannelTestRoute> { AudioChannelTestScreen(container.server) }
         composable<PlaybackTestRoute> {
-            PlaybackTestScreen(store = container.playbackSettings, capabilities = container.capabilities)
+            PlaybackTestScreen(store = container.playbackSettings, capabilities = container.capabilities, server = container.server)
         }
         composable<LibraryRoute> { entry ->
             val libraryId = entry.toRoute<LibraryRoute>().libraryId

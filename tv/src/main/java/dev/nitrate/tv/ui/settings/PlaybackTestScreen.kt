@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -65,6 +66,9 @@ import kotlin.coroutines.resume
 private val PagePadding = 58.dp
 private const val CLIP_TIMEOUT_MS = 12_000L
 
+/** The Companion's heavy clip (about 28 MB) is fetched as it plays. */
+private const val SERVER_CLIP_TIMEOUT_MS = 60_000L
+
 /** More than this share of frames dropped means the decoder can't keep up in real time. */
 private const val MAX_DROPPED_SHARE = 0.3
 
@@ -77,15 +81,28 @@ private const val MAX_DROPPED_SHARE = 0.3
 fun PlaybackTestScreen(
     store: PlaybackSettingsStore,
     capabilities: DeviceCapabilities,
+    /** The server, for the Companion's heavy profile 7 clip (null: bundled clips only). */
+    server: dev.nitrate.core.MediaServer? = null,
 ) {
     val context = LocalContext.current
+    // Profile 7 clips are opened the way real files are (DolbyVisionProfile7), converted or as their base layer.
+    val profile7Way = remember { java.util.concurrent.atomic.AtomicReference(dev.nitrate.core.playback.Profile7Playback.AS_PROFILE_8) }
     var decoder by remember { mutableStateOf<String?>(null) }
     // How the last clip's sound went out: untouched (bitstream) or decoded.
     var audioEncoding by remember { mutableStateOf<Int?>(null) }
     val player = remember {
+        // Bundled clips from the app, the heavy one from the Companion (signed in, like playback).
+        val http = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(server?.let { mapOf("Authorization" to it.authorizationHeader()) }.orEmpty())
         ExoPlayer.Builder(context)
             // Same fallback as real playback, so results match what playback would do.
             .setRenderersFactory(DefaultRenderersFactory(context).setEnableDecoderFallback(true).setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON))
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    androidx.media3.datasource.DefaultDataSource.Factory(context, http),
+                    dev.nitrate.android.playback.DolbyVisionProfile7({ profile7Way.get() }),
+                ),
+            )
             .build()
             .apply {
                 volume = 0.3f
@@ -105,6 +122,8 @@ fun PlaybackTestScreen(
     DisposableEffect(player) { onDispose { player.release() } }
 
     val results = remember { mutableStateListOf<ClipResult>() }
+    // The profile 7 clips this run (with the Companion's heavy one when it has it).
+    var profile7List by remember { mutableStateOf(PlaybackTest.profile7Clips(heavy = false)) }
     val passthrough = remember { mutableMapOf<String, Boolean>() }
     var refresh by remember { mutableStateOf<dev.nitrate.core.playback.RefreshCheck?>(null) }
     var testingRefresh by remember { mutableStateOf(false) }
@@ -115,7 +134,15 @@ fun PlaybackTestScreen(
     var applied by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val startFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { startFocus.requestFocus() } }
+    // Start takes focus once it's placed (asked a few times: the list lays out a beat later).
+    var startFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        repeat(10) {
+            kotlinx.coroutines.delay(60)
+            runCatching { startFocus.requestFocus() }
+            if (startFocused) return@LaunchedEffect
+        }
+    }
 
     fun runAll() {
         job?.cancel()
@@ -123,11 +150,16 @@ fun PlaybackTestScreen(
         job = scope.launch {
             passthrough.clear()
             refresh = null
-            for (clip in PlaybackTest.CLIPS) {
+            // The profile 7 clips after the rest; the heavy one only when the Companion has it.
+            val heavy = runCatching { server?.checkClips().orEmpty().any { it.id == PlaybackTest.HEAVY_FEL_CLIP } }.getOrDefault(false)
+            profile7List = PlaybackTest.profile7Clips(heavy)
+            for (clip in PlaybackTest.CLIPS + profile7List) {
                 running = clip
                 decoder = null
                 audioEncoding = null
-                val result = player.runClip(clip) { decoder }
+                clip.profile7?.let(profile7Way::set)
+                val uri = clip.fromServer?.let { id -> server?.checkClipUrl(id) } ?: clip.uri
+                val result = player.runClip(clip, uri) { decoder }
                 results += result
                 if (clip.kind == ClipKind.AUDIO && result.ok) audioEncoding?.let { passthrough[clip.asset] = it !in PCM_ENCODINGS }
             }
@@ -144,7 +176,7 @@ fun PlaybackTestScreen(
                 s.copy(deviceCheck = dev.nitrate.core.playback.DeviceCheck(
                     atMs = System.currentTimeMillis(),
                     model = capabilities.model,
-                    clips = results.associate { r -> r.clip.asset to dev.nitrate.core.playback.CheckedClip(r.outcome, r.decoder, passthrough[r.clip.asset], r.framesRendered, r.framesDropped) },
+                    clips = results.associate { r -> r.clip.key to dev.nitrate.core.playback.CheckedClip(r.outcome, r.decoder, passthrough[r.clip.asset], r.framesRendered, r.framesDropped) },
                     refresh = refresh,
                 ))
             }
@@ -173,7 +205,7 @@ fun PlaybackTestScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onClick = ::runAll, enabled = running == null, modifier = Modifier.focusRequester(startFocus)) {
+                        Button(onClick = ::runAll, enabled = running == null, modifier = Modifier.focusRequester(startFocus).onFocusChanged { startFocused = it.isFocused }) {
                             Text(if (results.isEmpty()) "Start test" else "Run again")
                         }
                         if (running != null) OutlinedButton(onClick = { job?.cancel(); running = null; player.stop() }) { Text("Stop") }
@@ -228,7 +260,22 @@ fun PlaybackTestScreen(
                     )
                 }
             }
-            items(PlaybackTest.CLIPS, key = { it.asset }) { clip ->
+            items(PlaybackTest.CLIPS, key = { it.key }) { clip ->
+                ResultRow(clip, results.firstOrNull { it.clip == clip }, clip.claimed(capabilities), clip == running)
+            }
+            // Profile 7: each kind both ways; what they find chooses how profile 7 plays here, by itself.
+            item(key = "profile7") {
+                Column(Modifier.padding(top = 16.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Dolby Vision profile 7", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "MEL and FEL (a minimal or a full enhancement layer), each converted to 8.1 and as its HDR10 base layer. " +
+                            "If a kind shows no picture converted but plays as its base layer, films of that kind play that way on this TV from now on." +
+                            (if (server == null) "" else " The disc-like FEL clip comes from the Nitrate Companion, when your server has it."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            items(profile7List, key = { it.key }) { clip ->
                 ResultRow(clip, results.firstOrNull { it.clip == clip }, clip.claimed(capabilities), clip == running)
             }
         }
@@ -315,15 +362,16 @@ private fun ResultRow(clip: TestClip, result: ClipResult?, claimed: Boolean, act
 
 /** Plays one clip to the end (or failure/timeout) and grades it. */
 @OptIn(UnstableApi::class)
-private suspend fun ExoPlayer.runClip(clip: TestClip, decoderName: () -> String?): ClipResult {
+private suspend fun ExoPlayer.runClip(clip: TestClip, uri: String, decoderName: () -> String?): ClipResult {
     stop()
     clearMediaItems()
-    setMediaItem(MediaItem.fromUri(clip.uri))
+    setMediaItem(MediaItem.fromUri(uri))
     prepare()
     play()
 
-    // Ended normally -> success; player error -> failure carrying it; null -> timed out.
-    val finished: Result<Unit>? = withTimeoutOrNull(CLIP_TIMEOUT_MS) {
+    // Ended normally -> success; player error -> failure carrying it; null -> timed out (the
+    // Companion's clip is downloaded as it plays, so it's given longer).
+    val finished: Result<Unit>? = withTimeoutOrNull(if (clip.fromServer != null) SERVER_CLIP_TIMEOUT_MS else CLIP_TIMEOUT_MS) {
         suspendCancellableCoroutine { cont ->
             val listener = object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
@@ -347,7 +395,9 @@ private suspend fun ExoPlayer.runClip(clip: TestClip, decoderName: () -> String?
 
     val counters = videoDecoderCounters?.also { it.ensureUpdated() }
     // Profile 8.1 falls back to plain HEVC without a Dolby Vision decoder; that isn't Dolby Vision.
-    val dvFallback = clip.dolbyVisionProfile != null && !DeviceProbe.isDolbyVisionDecoder(decoderName())
+    // Profile 7 as its base layer is HDR10 by design: no Dolby Vision decoder is expected.
+    val dvFallback = clip.dolbyVisionProfile != null && clip.profile7 != dev.nitrate.core.playback.Profile7Playback.BASE_LAYER &&
+        !DeviceProbe.isDolbyVisionDecoder(decoderName())
     val rendered = counters?.renderedOutputBufferCount ?: 0
     val dropped = (counters?.droppedBufferCount ?: 0) + (counters?.skippedOutputBufferCount ?: 0)
     val total = rendered + dropped

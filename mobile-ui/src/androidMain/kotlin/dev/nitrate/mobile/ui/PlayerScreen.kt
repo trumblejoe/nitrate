@@ -155,6 +155,7 @@ actual fun PlayerScreen(
             trackMemory = actions.container.trackMemory, describedAudio = actions.container::prefersDescribedAudio,
             // A profile 7 file's kind remembered for How it plays; this playback's log kept on the phone.
             onDvLayers = actions.container::rememberDvLayers,
+            layersOf = actions.container::dvLayersOf,
             keepLog = { report -> if (testPlay == null) actions.container.keepPlaybackLog(report) },
         )
             .also {

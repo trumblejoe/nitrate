@@ -74,7 +74,10 @@ private val PCM = setOf(C.ENCODING_PCM_16BIT, C.ENCODING_PCM_FLOAT, C.ENCODING_P
 fun TvCheckScreen(container: AppContainer) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val clips by produceState<List<CheckClip>?>(null) { value = runCatching { container.server.checkClips() }.getOrDefault(emptyList()) }
+    val clips by produceState<List<CheckClip>?>(null) {
+        // Clips for the playback test (kind "Playback") aren't for looking at the TV or receiver.
+        value = runCatching { container.server.checkClips().filterNot { it.kind.equals("Playback", ignoreCase = true) } }.getOrDefault(emptyList())
+    }
     val settings by container.playbackSettings.settings.collectAsState(null)
     val seen = settings?.deviceCheck?.seen.orEmpty()
     // The clips still to play when checking them all, and the one playing or being asked about.

@@ -13,15 +13,31 @@ data class TestClip(
     val tenBit: Boolean = false,
     /** HDR format as a Jellyfin range name (HDR10, HLG, DOVI), or null for SDR. */
     val hdr: String? = null,
-    /** Dolby Vision profile for DOVI clips (5 or 8). */
+    /** Dolby Vision profile for DOVI clips (5, 7 or 8). */
     val dolbyVisionProfile: Int? = null,
+    /** Profile 7: the way it's played in this run (converted to 8.1, or its HDR10 base layer), as real files are. */
+    val profile7: Profile7Playback? = null,
+    /** Profile 7: which kind the clip is. */
+    val layers: DolbyVisionLayers? = null,
+    /** Served by the Companion (its test clip id) rather than bundled: too big to ship in the app. */
+    val fromServer: String? = null,
 ) {
     val uri get() = "asset:///testclips/$asset"
+
+    /** What its result is kept under: the file, and for profile 7 the way it was played. */
+    val key: String get() = asset + (profile7?.let { "#${it.name}" } ?: "")
 
     /** Whether the device's reported capabilities say this clip should play. */
     fun claimed(caps: DeviceCapabilities): Boolean = when (kind) {
         ClipKind.AUDIO -> caps.audio[codec]?.supported == true
-        ClipKind.VIDEO -> {
+        ClipKind.VIDEO -> if (profile7 != null) {
+            val v = caps.video[codec]
+            val decodes = v != null && v.maxHeight >= height && (!tenBit || v.tenBit)
+            decodes && when (profile7) {
+                Profile7Playback.AS_PROFILE_8 -> 8 in caps.dolbyVisionProfiles && caps.dolbyVisionConverter
+                else -> "HDR10" in caps.hdr
+            }
+        } else {
             val v = caps.video[codec]
             val dv = dolbyVisionProfile == null || dolbyVisionProfile in caps.dolbyVisionProfiles
             v != null && v.maxHeight >= height && (!tenBit || v.tenBit) && (hdr == null || hdr in caps.hdr) && dv
@@ -83,12 +99,32 @@ object PlaybackTest {
         TestClip("flac_stereo.flac", "FLAC stereo", ClipKind.AUDIO, "flac"),
     )
 
+    /** The heavy FEL clip's id on the Companion (disc-like bitrate and frame sizes, too big for the app). */
+    const val HEAVY_FEL_CLIP = "dolby_vision_7_fel_heavy"
+
+    /**
+     * Dual-layer Dolby Vision (profile 7), each kind played both ways real files can be: converted to
+     * 8.1 and as its HDR10 base layer. Their results decide how profile 7 plays here
+     * ([Profile7Choice]). [heavy]: with the Companion's disc-like FEL clip too.
+     */
+    fun profile7Clips(heavy: Boolean): List<TestClip> = buildList {
+        val ways = listOf(Profile7Playback.AS_PROFILE_8 to "converted", Profile7Playback.BASE_LAYER to "base layer")
+        fun both(asset: String, name: String, layers: DolbyVisionLayers, server: String? = null) = ways.forEach { (way, word) ->
+            add(TestClip(asset, "$name ($word)", ClipKind.VIDEO, "hevc", 2160, tenBit = true, hdr = "DOVI", dolbyVisionProfile = 7, profile7 = way, layers = layers, fromServer = server))
+        }
+        both("dv_p7_mel_2160p.mkv", "Dolby Vision 7 MEL 4K", DolbyVisionLayers.MEL)
+        both("dv_p7_fel_2160p.mkv", "Dolby Vision 7 FEL 4K", DolbyVisionLayers.FEL)
+        if (heavy) both("$HEAVY_FEL_CLIP.mkv", "Dolby Vision 7 FEL 4K, disc-like", DolbyVisionLayers.FEL, HEAVY_FEL_CLIP)
+    }
+
     /**
      * Turns test results into settings changes, attributing each failure to the narrowest cause:
      * a resolution limit, a bit-depth limit, an HDR format, or the codec as a whole. Only proposes
      * changes that differ from [current].
      */
-    fun suggestions(results: List<ClipResult>, caps: DeviceCapabilities, current: PlaybackSettings): List<Suggestion> {
+    fun suggestions(all: List<ClipResult>, caps: DeviceCapabilities, current: PlaybackSettings): List<Suggestion> {
+        // Profile 7 clips aren't for settings: their results choose how profile 7 plays by themselves (Profile7Choice).
+        val results = all.filter { it.clip.profile7 == null }
         val out = mutableListOf<Suggestion>()
 
         for ((codec, codecResults) in results.filter { it.clip.kind == ClipKind.VIDEO }.groupBy { it.clip.codec }) {

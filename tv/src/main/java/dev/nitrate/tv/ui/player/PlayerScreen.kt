@@ -193,6 +193,7 @@ fun PlayerScreen(
             context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory, describedAudio = describedAudio,
             // A profile 7 file's kind remembered for How it plays; this playback's log kept on the TV.
             onDvLayers = { id, layers -> watchGroups?.rememberDvLayers(id, layers) },
+            layersOf = { id -> watchGroups?.dvLayersOf(id) },
             keepLog = { report -> if (testPlay == null) watchGroups?.keepPlaybackLog(report) },
         )
             .also {

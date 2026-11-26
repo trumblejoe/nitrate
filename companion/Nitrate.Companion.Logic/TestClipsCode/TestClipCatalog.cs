@@ -10,6 +10,9 @@ public enum TestClipKind
 
     /// <summary>A sound format: does the receiver show it, and does every speaker play?</summary>
     Sound,
+
+    /// <summary>For Nitrate's playback test, played by the app itself (not offered in the TV and receiver check).</summary>
+    Playback,
 }
 
 /// <summary>One check clip shipped inside the plugin.</summary>
@@ -42,6 +45,8 @@ public static class TestClipCatalog
         ("dolby_truehd_51.mkv", "Dolby TrueHD 5.1", TestClipKind.Sound, "truehd", "The receiver shows Dolby TrueHD, and each speaker plays when it's named."),
         ("dts_51.mkv", "DTS 5.1", TestClipKind.Sound, "dts", "The receiver shows DTS, and each speaker plays when it's named."),
         ("pcm_71.mkv", "7.1 lossless (PCM)", TestClipKind.Sound, "pcm", "The receiver shows multichannel PCM, and all eight speakers play when named."),
+        ("dolby_vision_7_fel_heavy.mkv", "Dolby Vision 7 FEL · 4K, disc-like", TestClipKind.Playback, "DOVI",
+            "Played by Nitrate's playback test: dual-layer Dolby Vision at disc-like bitrate, converted and as its base layer."),
     ];
 
     // The clips are embedded in the shell (they never change, so logic updates stay small).

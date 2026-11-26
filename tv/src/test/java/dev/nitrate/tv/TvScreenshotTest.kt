@@ -1,5 +1,6 @@
 package dev.nitrate.tv
 
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -2715,6 +2716,16 @@ class TvScreenshotTest {
             trackSetup = { c.trackSetup(it) }, pickTrack = { item, setup, kind, index -> c.pickTrack(item, setup, kind, index) },
         )
     }
+
+    /** The playback test before running: the clips, then Dolby Vision profile 7 with each kind both ways (MEL and FEL). */
+    @Test fun playbackTest() = shoot("tv-playback-test", act = {
+        runCatching { compose.waitUntil(timeoutMillis = 5_000) { compose.mainClock.advanceTimeBy(100); focusedHasText("Start test") } }
+        check(focusedHasText("Start test")) { "Start test is focused; focused: ${focusedNodes()}" }
+        compose.onNode(androidx.compose.ui.test.hasScrollToKeyAction()).performScrollToKey("profile7")
+        compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Dolby Vision 7 FEL 4K (base layer)")).fetchSemanticsNodes().isNotEmpty() ||
+            compose.onAllNodes(androidx.compose.ui.test.hasText("Dolby Vision 7 MEL 4K (converted)")).fetchSemanticsNodes().isNotEmpty()) { "the profile 7 clips are listed" }
+    }) { c -> dev.nitrate.tv.ui.settings.PlaybackTestScreen(c.playbackSettings, c.capabilities, c.server) }
 
     @Test fun serverSettings() = shoot("tv-server-settings") { c -> dev.nitrate.tv.ui.settings.ServerSettingsScreen(c) }
 

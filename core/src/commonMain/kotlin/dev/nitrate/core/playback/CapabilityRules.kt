@@ -51,13 +51,15 @@ object CapabilityRules {
      * else rewritten as profile 8.1 where a decoder takes profile 8 (and the setting allows), else
      * its HDR10 base layer. Dolby Vision must be allowed for either of the first two.
      */
-    fun profile7(caps: DeviceCapabilities, settings: PlaybackSettings): Profile7Playback {
+    fun profile7(caps: DeviceCapabilities, settings: PlaybackSettings, layers: DolbyVisionLayers? = null): Profile7Playback {
         val dolbyVision = hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
-        return when {
+        val way = when {
             dolbyVision && 7 in caps.dolbyVisionProfiles -> Profile7Playback.DOLBY_VISION
             dolbyVision && 8 in caps.dolbyVisionProfiles && caps.dolbyVisionConverter && settings.convertProfile7 -> Profile7Playback.AS_PROFILE_8
             else -> Profile7Playback.BASE_LAYER
         }
+        // What the playback test found on this device decides, not a setting (Profile7Choice).
+        return Profile7Choice.of(way, settings.deviceCheck, layers).way
     }
 
     /** The tallest video a software-only decoder is trusted with. */
@@ -159,4 +161,34 @@ enum class Profile7Playback(val label: String) {
     DOLBY_VISION("as Dolby Vision (profile 7)"),
     AS_PROFILE_8("as Dolby Vision, converted to profile 8.1 while playing"),
     BASE_LAYER("as HDR10 (its base layer)"),
+}
+
+/**
+ * How profile 7 plays on this device after the playback test (its profile 7 clips, each kind tried
+ * converted to 8.1 and as its HDR10 base layer): converting stays unless the test showed no
+ * picture converted for that kind while its base layer played, and then that kind plays as its
+ * base layer. A file whose kind isn't known yet (not played here) goes the safe way when either
+ * kind needed it. Without a test, or with nothing to choose, [way] stays. Never a setting.
+ */
+data class Profile7Choice(val way: Profile7Playback, val because: String? = null) {
+    companion object {
+        fun of(way: Profile7Playback, check: DeviceCheck?, layers: DolbyVisionLayers?): Profile7Choice {
+            if (way != Profile7Playback.AS_PROFILE_8 || check == null) return Profile7Choice(way)
+            val kinds = layers?.let(::listOf) ?: DolbyVisionLayers.entries
+            val needs = kinds.filter { needsBaseLayer(it, check) }
+            if (needs.isEmpty()) return Profile7Choice(way)
+            val which = needs.joinToString(" and ") { it.short }
+            return Profile7Choice(Profile7Playback.BASE_LAYER, "the playback test found $which showed no picture converted here, and played as its base layer")
+        }
+
+        /** Whether the test found [kind] fails converted but plays as its base layer (any of its clips). */
+        fun needsBaseLayer(kind: DolbyVisionLayers, check: DeviceCheck): Boolean {
+            val clips = PlaybackTest.profile7Clips(heavy = true).filter { it.layers == kind }
+            fun results(way: Profile7Playback) = clips.filter { it.profile7 == way }.mapNotNull { check.clips[it.key] }
+            val converted = results(Profile7Playback.AS_PROFILE_8)
+            val base = results(Profile7Playback.BASE_LAYER)
+            val plays = { c: CheckedClip -> c.outcome == Outcome.PASSED || c.outcome == Outcome.FALLBACK }
+            return converted.any { !plays(it) } && base.isNotEmpty() && base.all(plays)
+        }
+    }
 }
