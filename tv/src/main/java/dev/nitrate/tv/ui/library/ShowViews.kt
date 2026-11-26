@@ -270,6 +270,7 @@ private fun CoverFlow(args: ShowArgs, modifier: Modifier) {
         val first = (floor(pos).toInt() - 6).coerceAtLeast(0)
         val last = (floor(pos).toInt() + 7).coerceAtMost(items.lastIndex)
         for (i in first..last) {
+            androidx.compose.runtime.key(i) {
             val item = items[i]
             val d = i - pos
             val near = d.coerceIn(-1f, 1f)
@@ -288,6 +289,7 @@ private fun CoverFlow(args: ShowArgs, modifier: Modifier) {
                 // The floor's reflection: the cover upside down, fading away.
                 Poster(item, args, Modifier.fillMaxWidth().height(h * 0.22f).graphicsLayer { scaleY = -1f; alpha = 0.22f }
                     .drawWithContent { drawContent(); drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF0D0F14)))) })
+            }
             }
         }
         current?.let { Details(it, args, Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.6f).padding(bottom = 4.dp), lines = 2) }
@@ -331,6 +333,7 @@ private fun Rolodex(args: ShowArgs, modifier: Modifier) {
             val item = items[i]
             val d = i - pos
             if (abs(d) > 3f) continue
+            androidx.compose.runtime.key(i) {
             Row(
                 Modifier.width(cardW).height(cardH).zIndex(-abs(d))
                     .graphicsLayer {
@@ -359,6 +362,7 @@ private fun Rolodex(args: ShowArgs, modifier: Modifier) {
                         Text(it, color = Color(0xFF3A362E), fontSize = 15.sp, fontFamily = FontFamily.Serif, maxLines = 5, overflow = TextOverflow.Ellipsis)
                     }
                 }
+            }
             }
         }
     }
@@ -409,6 +413,7 @@ private fun Deck(args: ShowArgs, modifier: Modifier) {
         val firstDealt = (floor(pos).toInt() - DISCARDS).coerceAtLeast(0)
         val last = (floor(pos).toInt() + 6).coerceAtMost(items.lastIndex)
         for (i in last downTo firstDealt) {
+            androidx.compose.runtime.key(i) {
             val d = i - pos
             // Where a dealt card comes to rest: anywhere on the table, at its own angle, half size.
             // (The left of the table: the details take the right.)
@@ -443,6 +448,7 @@ private fun Deck(args: ShowArgs, modifier: Modifier) {
                     .drawWithContent { drawContent(); if (d <= -0.5f) drawRect(Color.Black.copy(alpha = 0.35f)) }
                     .padding(8.dp),
             ) { Poster(items[i], args, Modifier.fillMaxSize()) }
+            }
         }
         current?.let {
             Column(
@@ -498,6 +504,7 @@ private fun Starfield(args: ShowArgs, modifier: Modifier) {
         for (k in 1..10) {
             val i = index.intValue + k
             val item = items.getOrNull(i) ?: break
+            androidx.compose.runtime.key(index.intValue + k) {
             val z = ((rnd(i, 3) + t * 0.05f) % 1f)
             val a = rnd(i, 4) * 6.283f
             val reach = 0.15f + z * 0.55f
@@ -506,6 +513,7 @@ private fun Starfield(args: ShowArgs, modifier: Modifier) {
             val y = hPx * 0.42f + sin(a) * hPx * 0.4f * reach
             Poster(item, args, Modifier.offset { IntOffset(x.roundToInt(), y.roundToInt()) }.width(if (args.music) small else small * 2f / 3f).height(small)
                 .graphicsLayer { val s = 0.2f + z * 0.7f; scaleX = s; scaleY = s; alpha = (z * 1.6f).coerceAtMost(1f) * (1f - ((z - 0.85f) / 0.15f).coerceIn(0f, 1f)) * 0.85f }, height = 240)
+            }
         }
         current?.let {
             val big = maxHeight * 0.78f
@@ -561,6 +569,7 @@ private fun Timeline(args: ShowArgs, modifier: Modifier) {
                 modifier = Modifier.offset { IntOffset((x - 18f).roundToInt(), (line + 16f).roundToInt()) })
         }
         for (i in first..last) {
+            androidx.compose.runtime.key(i) {
             val above = i % 2 == 0
             val x = shift + i * spacing
             val chosen = i == index.intValue
@@ -570,6 +579,7 @@ private fun Timeline(args: ShowArgs, modifier: Modifier) {
                 .zIndex(if (chosen) 1f else 0f)
                 .graphicsLayer { val s = if (chosen) 1.18f else 0.9f; scaleX = s; scaleY = s; alpha = if (chosen) 1f else 0.7f }
                 .then(if (chosen && focused) Modifier.border(3.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier), height = 240)
+            }
         }
         current?.let { Details(it, args, Modifier.align(Alignment.TopStart).fillMaxWidth(0.5f), lines = 2) }
     }

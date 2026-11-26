@@ -140,6 +140,7 @@ internal fun Pavement(source: ShowSource, style: ShowStyle, host: ShowHost, modi
             for (i in last downTo first) {
                 val d = i - pos
                 if (d < -1.4f) continue
+                androidx.compose.runtime.key(items[i].id) {
                 val chosen = i == index.intValue
                 // Depth along the street: the chosen one at your feet's edge, the rest further on.
                 val z = (d * 1.1f + 0.55f).coerceAtLeast(0.05f)
@@ -170,12 +171,17 @@ internal fun Pavement(source: ShowSource, style: ShowStyle, host: ShowHost, modi
                         .graphicsLayer { alpha = 0.35f * up * fade; rotationZ = -8f }
                         .background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0xFF1E1A16))), RoundedCornerShape(50)),
                 )
+                // A fixed-size poster scaled on screen about its foot: its picture is asked for once.
+                val baseW = standW
+                val baseH = standW * 1.5f
                 Box(
-                    Modifier.offset { IntOffset((sx - sw / 2).roundToInt(), (sy - sh).roundToInt()) }
-                        .size(with(density) { sw.toDp() }, with(density) { sh.toDp() })
+                    Modifier.offset { IntOffset((sx - baseW / 2).roundToInt(), (sy - baseH).roundToInt()) }
+                        .size(with(density) { baseW.toDp() }, with(density) { baseH.toDp() })
                         .zIndex(if (chosen) 50f else -z)
                         .graphicsLayer {
                             transformOrigin = TransformOrigin(0.5f, 1f)
+                            scaleX = sw / baseW
+                            scaleY = sw / baseW
                             // Lying flat (tipped away from you), standing, or tumbling off in the wind.
                             rotationX = lerp(74f, 0f, up) - blow * 40f
                             rotationZ = lerp(scatter * 26f, 0f, up) + blow * 140f
@@ -188,6 +194,7 @@ internal fun Pavement(source: ShowSource, style: ShowStyle, host: ShowHost, modi
                         .then(if (chosen && (focused || !source.tv)) Modifier.border(3.dp, Color.White, RoundedCornerShape(2.dp)) else Modifier), corner = 2)
                     // Paper catching the low sun.
                     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Sun.copy(alpha = 0.18f), Color.Transparent, Color.Black.copy(alpha = 0.12f)))))
+                }
                 }
             }
             // The words of the one standing.

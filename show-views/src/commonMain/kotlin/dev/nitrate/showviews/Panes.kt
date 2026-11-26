@@ -101,6 +101,7 @@ internal fun Panes(source: ShowSource, style: ShowStyle, host: ShowHost, modifie
                 val item = items[i]
                 val d = i - pos
                 if (d < -0.6f || d > 6.5f) continue
+                androidx.compose.runtime.key(items[i].id) {
                 // Further panes smaller and higher; a passing one swells past you and fades.
                 val s = if (d >= 0) 1f / (1f + 0.42f * d) else 1f - d * 2.4f
                 val fade = if (d < 0) (1f + d / 0.6f).coerceIn(0f, 1f) else (1.15f - d * 0.16f).coerceIn(0f, 1f)
@@ -112,15 +113,16 @@ internal fun Panes(source: ShowSource, style: ShowStyle, host: ShowHost, modifie
                 val y = hPx * 0.52f - hPx * 0.08f * dd * s - paneH * s / 2
                 val front = abs(d) < 0.5f
                 Box(
-                    Modifier.offset { IntOffset(x.roundToInt(), y.roundToInt()) }
-                        .size(with(density) { (paneW * s).toDp() }, with(density) { (paneH * s).toDp() })
+                    // A fixed-size pane scaled on screen: its picture is asked for once, never again as it moves.
+                    Modifier.offset { IntOffset((x + paneW * s / 2 - paneW / 2).roundToInt(), (y + paneH * s / 2 - paneH / 2).roundToInt()) }
+                        .size(with(density) { paneW.toDp() }, with(density) { paneH.toDp() })
                         .zIndex(-d)
-                        .graphicsLayer { alpha = fade; rotationY = side * 8f * d.coerceIn(0f, 3f); cameraDistance = 16f * density.density }
+                        .graphicsLayer { scaleX = s; scaleY = s; alpha = fade; rotationY = side * 8f * d.coerceIn(0f, 3f); cameraDistance = 16f * density.density }
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color.White.copy(alpha = 0.25f))
                         .border(if (front && (focused || !source.tv)) 2.5.dp else 1.dp, if (front && (focused || !source.tv)) style.accent else Color.White.copy(alpha = 0.85f), RoundedCornerShape(6.dp)),
                 ) {
-                    Picture(item, source.server, style, Modifier.fillMaxSize().graphicsLayer { alpha = 0.92f }, kind = ImageKind.BACKDROP, heightPx = (paneH * s).roundToInt().coerceIn(240, 1080), corner = 0)
+                    Picture(item, source.server, style, Modifier.fillMaxSize().graphicsLayer { alpha = 0.92f }, kind = ImageKind.BACKDROP, heightPx = paneH.roundToInt().coerceIn(240, 1080), corner = 0)
                     // The glass: a pale frost deepening with distance, and a sheen across it.
                     Box(Modifier.fillMaxSize().background(Color(0xFFEFF3F7).copy(alpha = 0.18f + frost)))
                     Box(Modifier.fillMaxSize().background(Brush.linearGradient(
@@ -138,6 +140,7 @@ internal fun Panes(source: ShowSource, style: ShowStyle, host: ShowHost, modifie
                         BasicText(facts(item), style = style.label.copy(color = Color.White.copy(alpha = 0.8f)))
                         source.overviewOf(item)?.let { BasicText(it, style = style.body.copy(color = Color.White.copy(alpha = 0.88f)), maxLines = 3, overflow = TextOverflow.Ellipsis) }
                     }
+                }
                 }
             }
             BasicText(

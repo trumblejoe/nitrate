@@ -157,10 +157,15 @@ internal fun Vortex(source: ShowSource, style: ShowStyle, host: ShowHost, modifi
             }
             val first = (floor(pos).toInt() - 1).coerceAtLeast(0)
             val last = (floor(pos).toInt() + 16).coerceAtMost(items.lastIndex)
+            // Each card keeps its picture as it moves (keyed by title, fixed size, scaled on screen): no reloads.
+            val baseScale = if (wide) 1.5f else 1.1f
+            val baseH = cardHPx * baseScale
+            val baseW = baseH * 2f / 3f
             for (i in last downTo first) {
                 val item = items[i]
                 val d = i - pos
                 if (d < -1.05f) continue
+                androidx.compose.runtime.key(items[i].id) {
                 val chosen = i == index.intValue
                 val (tx, ty, ts) = place(d)
                 val theta = 2.45f + d * TURN
@@ -174,10 +179,12 @@ internal fun Vortex(source: ShowSource, style: ShowStyle, host: ShowHost, modifi
                 val depthShade = (d.coerceAtLeast(0f) * 0.07f).coerceAtMost(0.8f)
                 val fade = if (d < 0) (1f + d).coerceIn(0f, 1f) else 1f
                 Box(
-                    Modifier.offset { IntOffset((x - w / 2).roundToInt(), (y - h / 2).roundToInt()) }
-                        .size(with(density) { w.toDp() }, with(density) { h.toDp() })
+                    Modifier.offset { IntOffset((x - baseW / 2).roundToInt(), (y - baseH / 2).roundToInt()) }
+                        .size(with(density) { baseW.toDp() }, with(density) { baseH.toDp() })
                         .zIndex(if (chosen && p > 0f) 100f else -d)
                         .graphicsLayer {
+                            scaleX = h / baseH
+                            scaleY = h / baseH
                             // Turned to face the middle of the tunnel, a little twisted along it.
                             rotationY = lerp(cos(theta) * -34f, 0f, k)
                             rotationX = lerp(sin(theta) * 26f, 0f, k)
@@ -190,6 +197,7 @@ internal fun Vortex(source: ShowSource, style: ShowStyle, host: ShowHost, modifi
                         .then(if (chosen && (focused || !source.tv)) Modifier.border(3.dp, if (p > 0.5f) style.accent else Color.White, RoundedCornerShape(10.dp)) else Modifier),
                         heightPx = 600, corner = 10)
                     if (depthShade > 0.01f) Box(Modifier.fillMaxSize().background(Color(0xFF07080C).copy(alpha = depthShade), RoundedCornerShape(10.dp)))
+                }
                 }
             }
             if (current != null && p > 0.02f) {

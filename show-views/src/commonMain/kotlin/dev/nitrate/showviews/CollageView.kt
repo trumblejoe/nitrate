@@ -261,7 +261,7 @@ internal fun CollageView(source: ShowSource, style: ShowStyle, host: ShowHost, m
                 }
             }
             // The pictures: prints with a white margin; the chosen one lifted.
-            inSight.forEach { p ->
+            inSight.forEach { p -> androidx.compose.runtime.key(p.tile.index, p.bx.roundToInt(), p.by.roundToInt()) {
                 val item = items[p.tile.index]
                 val isChosen = p.tile.index == chosen
                 Box(
@@ -279,7 +279,7 @@ internal fun CollageView(source: ShowSource, style: ShowStyle, host: ShowHost, m
                 ) {
                     Picture(item, source.server, style, Modifier.fillMaxSize(), kind = if (p.tile.wide) ImageKind.BACKDROP else ImageKind.PRIMARY, heightPx = (p.h * 1.1f).roundToInt().coerceIn(200, 900), corner = 0)
                 }
-            }
+            } }
             // What the lines mean, and how to move.
             Row(
                 Modifier.align(Alignment.TopStart).zIndex(5f).padding(14.dp).background(Board.copy(alpha = 0.92f), RoundedCornerShape(50))

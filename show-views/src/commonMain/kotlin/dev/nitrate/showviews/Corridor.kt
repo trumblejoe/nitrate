@@ -169,6 +169,7 @@ internal fun Corridor(source: ShowSource, style: ShowStyle, host: ShowHost, modi
             for (i in last downTo first) {
                 val z = (i - pos) * STEP + STEP
                 if (z < -0.3f) continue
+                androidx.compose.runtime.key(items[i].id) {
                 val chosen = i == index.intValue
                 val sl = slice(z)
                 val leftWall = i % 2 == 0
@@ -182,11 +183,18 @@ internal fun Corridor(source: ShowSource, style: ShowStyle, host: ShowHost, modi
                 val x = lerp(wallX, if (wide) wPx * 0.26f else wPx * 0.5f, k)
                 val y = lerp((sl.top + sl.bottom) / 2 - h * 0.05f, if (wide) hPx * 0.5f else hPx * 0.32f, k)
                 val fade = if (z < 0) (1f + z / 0.3f).coerceIn(0f, 1f) else (sl.s * 2.2f).coerceIn(0.15f, 1f)
+                // A fixed-size card scaled on screen (its picture never asked for again); scaled about its wall edge.
+                val baseH = fh
+                val baseW = fh * 2f / 3f
+                val sc = hh / baseH
+                val left = if (leftWall) x - ww / 2 else x + ww / 2 - baseW
                 Box(
-                    Modifier.offset { IntOffset((x - ww / 2).roundToInt(), (y - hh / 2).roundToInt()) }
-                        .size(with(density) { ww.toDp() }, with(density) { hh.toDp() })
+                    Modifier.offset { IntOffset(left.roundToInt(), (y - baseH / 2).roundToInt()) }
+                        .size(with(density) { baseW.toDp() }, with(density) { baseH.toDp() })
                         .zIndex(if (chosen && p > 0f) 100f else -z)
                         .graphicsLayer {
+                            scaleX = sc
+                            scaleY = sc
                             // Flat on the wall, turned towards the corridor; peeled, square to you.
                             rotationY = lerp(if (leftWall) 62f else -62f, 0f, k)
                             transformOrigin = TransformOrigin(if (leftWall) 0f else 1f, 0.5f)
@@ -196,6 +204,7 @@ internal fun Corridor(source: ShowSource, style: ShowStyle, host: ShowHost, modi
                 ) {
                     Picture(items[i], source.server, style, Modifier.fillMaxSize()
                         .then(if (chosen && (focused || !source.tv)) Modifier.border(3.dp, style.accent, RoundedCornerShape(4.dp)) else Modifier), corner = 4)
+                }
                 }
             }
             if (current != null && p > 0.02f) {

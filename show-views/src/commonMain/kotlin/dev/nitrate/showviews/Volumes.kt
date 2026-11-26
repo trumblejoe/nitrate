@@ -153,19 +153,24 @@ internal fun Volumes(source: ShowSource, style: ShowStyle, host: ShowHost, modif
                 if (i == index.intValue) continue
                 val d = i - pos
                 if (abs(d) > 3.2f) continue
+                androidx.compose.runtime.key(items[i].id) {
                 val s = 0.5f - 0.04f * abs(d)
                 val x = mid + d * pageWPx * 0.95f + sign(d) * pageWPx * 0.55f
+                // Full size, scaled on screen: the cover is asked for once, never again as it drifts.
                 ClosedBook(
-                    items[i], source, style, pageW * s, pageH * s,
-                    Modifier.offset { IntOffset((x - pageWPx * s / 2).roundToInt(), (top + pageHPx * (1 - s) / 2 + d * 10f).roundToInt()) }
+                    items[i], source, style, pageW, pageH,
+                    Modifier.offset { IntOffset((x - pageWPx * 1.1f / 2).roundToInt(), (top + d * 10f).roundToInt()) }
                         .zIndex(-abs(d))
                         .graphicsLayer {
+                            scaleX = s
+                            scaleY = s
                             rotationY = -d * 16f
                             rotationZ = d * 3.5f
                             cameraDistance = 14f * density.density
                             alpha = (1.2f - abs(d) * 0.3f).coerceIn(0f, 1f)
                         },
                 )
+                }
             }
             val item = current ?: return@BoxWithConstraints
             val d = index.intValue - pos
