@@ -35,6 +35,17 @@ public record SessionMessage(
     string Event, long PositionMs, SessionView Session);
 
 /// <summary>
+/// What one member's apps are sent about an ask to watch together (<see cref="WatchAsks"/>), also
+/// under <see cref="PartyPush.Header"/> with the kind <see cref="PartyPush.AskKind"/>: the first
+/// fields are a <see cref="PartyMessage"/>'s, so older apps read it as party news that changes
+/// nothing. <paramref name="Event"/> says what happened (asked, taken, declined, cancelled, expired,
+/// due), <paramref name="Ask"/> is the ask as that member sees it.
+/// </summary>
+public record AskMessage(
+    string Kind, Guid GroupId, string SeriesName, IReadOnlyList<string> Others, string? ByName, bool ByMe, int Minutes, PartyView? Party,
+    string Event, AskView Ask);
+
+/// <summary>
 /// Tells the members' open Nitrate apps about their groups' watch parties at once, over Jellyfin's
 /// own session connection (a DisplayMessage with the header <see cref="Header"/>, which the apps
 /// never show as a message): the reminder 15 minutes before, postponements, requests to agree to,
@@ -57,19 +68,24 @@ public class PartyPush : IHostedService, IDisposable
     /// <summary>The kind of a Group Watch Session's news.</summary>
     public const string SessionKind = "session";
 
+    /// <summary>The kind of an ask to watch together's news.</summary>
+    public const string AskKind = "ask";
+
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = null };
     private readonly ISessionManager _sessions;
     private readonly PartnerHub _partners;
     private readonly Func<Guid, string?> _names;
     private readonly WatchSessions? _watchSessions;
+    private readonly WatchAsks? _asks;
     private Timer? _timer;
     private Timer? _sessionTimer;
 
     /// <summary>Initializes a new instance of the <see cref="PartyPush"/> class.</summary>
-    public PartyPush(ISessionManager sessions, PartnerHub partners, MediaBrowser.Controller.Library.IUserManager users, WatchSessions? watchSessions = null)
+    public PartyPush(ISessionManager sessions, PartnerHub partners, MediaBrowser.Controller.Library.IUserManager users, WatchSessions? watchSessions = null, WatchAsks? asks = null)
     {
         _sessions = sessions;
         _watchSessions = watchSessions;
+        _asks = asks;
         _partners = partners;
         _names = id => users.GetUserById(id)?.Username;
     }
@@ -181,6 +197,36 @@ public class PartyPush : IHostedService, IDisposable
         return new SessionMessage(SessionKind, a.GroupId, g.Title, g.Others, a.By is { } by ? names(by) : null, a.By == member, 0, party, a.Event, a.PositionMs, view);
     }
 
+    /// <summary>Who an ask's news goes to: its own list when it names one, else everyone in the group but who did it.</summary>
+    public static IReadOnlyList<LiveApp> Targets(AskAnnouncement a, IReadOnlyCollection<Guid> members, IEnumerable<LiveApp> sessions) =>
+        Targets((a.To ?? members.Where(m => m != a.By).ToList()).Where(members.Contains).ToList(), sessions);
+
+    /// <summary>The message for [member] about ask news [a] (null when they can't see it any more).</summary>
+    public static AskMessage? MessageFor(AskAnnouncement a, Guid member, PartnerHub partners, WatchAsks asks, Func<Guid, string?> names)
+    {
+        var view = asks.Mine(member).FirstOrDefault(x => x.Id == a.AskId);
+        (string Title, IReadOnlyList<string> Others)? group;
+        try
+        {
+            group = partners.Names(member, a.GroupId);
+        }
+        catch (PartnerException)
+        {
+            return null;
+        }
+
+        // A taken or called-off ask the member was never shown (they'd said Not now) still clears their copy.
+        view ??= a.Event is WatchAsks.EventTaken or WatchAsks.EventCancelled
+            ? new AskView(a.AskId, a.GroupId, Guid.Empty, null, group?.Title ?? string.Empty, string.Empty, false, DateTimeOffset.MinValue, a.Event, null, false, Array.Empty<string>(), DateTimeOffset.MinValue)
+            : null;
+        if (view is null || group is not { } g)
+        {
+            return null;
+        }
+
+        return new AskMessage(AskKind, a.GroupId, g.Title, g.Others, a.By is { } by ? names(by) : null, a.By == member, 0, null, a.Event, view);
+    }
+
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -193,6 +239,11 @@ public class PartyPush : IHostedService, IDisposable
             _watchSessions.Announced += OnSessionAnnounced;
             // Gatherings that are up start within a couple of seconds; nothing to do while no session is live.
             _sessionTimer = new Timer(_ => SessionTick(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        }
+
+        if (_asks is not null)
+        {
+            _asks.Announced += OnAskAnnounced;
         }
 
         return Task.CompletedTask;
@@ -208,6 +259,11 @@ public class PartyPush : IHostedService, IDisposable
         if (_watchSessions is not null)
         {
             _watchSessions.Announced -= OnSessionAnnounced;
+        }
+
+        if (_asks is not null)
+        {
+            _asks.Announced -= OnAskAnnounced;
         }
 
         _sessionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
@@ -254,11 +310,23 @@ public class PartyPush : IHostedService, IDisposable
 
             // Raises ScheduleAnnounced for changes that lapsed.
             _partners.DueChanges();
+
+            // Asks whose time came (the one who took it starts it), or that nobody took.
+            if (_asks is { AnyWaiting: true } asks)
+            {
+                asks.Due();
+            }
         }
         catch (Exception)
         {
             // Try again next time.
         }
+    }
+
+    private void OnAskAnnounced(AskAnnouncement a)
+    {
+        var asks = _asks!;
+        _ = Task.Run(() => SendAsync(Targets(a, _partners.MembersOf(a.GroupId), Live()), member => MessageFor(a, member, _partners, asks, _names)));
     }
 
     private void OnAnnounced(PartyAnnouncement a) => _ = Task.Run(() =>

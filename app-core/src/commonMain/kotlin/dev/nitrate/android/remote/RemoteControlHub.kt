@@ -63,8 +63,9 @@ class RemoteControlHub(
                         val text = e.arguments["Text"].orEmpty()
                         // A new invite into a watch group: the invites are read again (and notified).
                         if (dev.nitrate.core.jellyfin.isInviteNews(text)) { _inviteNews.tryEmit(Unit); return@collect }
-                        // Schedule changes and Group Watch Sessions come the same way, told apart by their kind.
-                        dev.nitrate.core.partners.SessionNews.decode(text)?.let { _sessionNews.tryEmit(it) }
+                        // Schedule changes, Group Watch Sessions and asks to watch together come the same way, told apart by their kind.
+                        dev.nitrate.core.partners.AskNews.decode(text)?.let { _askNews.tryEmit(it) }
+                            ?: dev.nitrate.core.partners.SessionNews.decode(text)?.let { _sessionNews.tryEmit(it) }
                             ?: dev.nitrate.core.partners.ScheduleNews.decode(text)?.let { _scheduleNews.tryEmit(it) }
                             ?: dev.nitrate.core.partners.PartyNews.decode(text)?.let { _partyNews.tryEmit(it) }
                         return@collect
@@ -100,6 +101,11 @@ class RemoteControlHub(
 
     /** What the Companion tells this app about Group Watch Sessions in the user's groups (started, countdown, pauses, jumps…), as it happens. */
     val sessionNews: SharedFlow<dev.nitrate.core.partners.SessionNews> = _sessionNews
+
+    private val _askNews = MutableSharedFlow<dev.nitrate.core.partners.AskNews>(extraBufferCapacity = 16)
+
+    /** What the Companion tells this app about asks to watch together in the user's groups, as it happens. */
+    val askNews: SharedFlow<dev.nitrate.core.partners.AskNews> = _askNews
 
     private val _scheduleNews = MutableSharedFlow<dev.nitrate.core.partners.ScheduleNews>(extraBufferCapacity = 16)
 

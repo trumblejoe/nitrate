@@ -566,7 +566,9 @@ fun TogetherChoicesDialog(
         value = if (series == null || dev.nitrate.core.partners.TogetherRow.isStart(item)) emptyList()
         else runCatching { container.server.titleItems(series) }.getOrDefault(emptyList())
     }
-    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.sessionsAvailable(), prefs.ownSpoilerShows, System.currentTimeMillis())
+    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.sessionsAvailable(), prefs.ownSpoilerShows, System.currentTimeMillis(), canAsk = container.asksAvailable())
+    var askingWhen by remember { mutableStateOf<dev.nitrate.core.partners.TogetherChoice.AskToWatch?>(null) }
+    var asked by remember { mutableStateOf<String?>(null) }
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<String?>(null) }
     var changing by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
@@ -588,6 +590,7 @@ fun TogetherChoicesDialog(
             is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); onOpenShow(c.seriesId, c.groupId) }
             is dev.nitrate.core.partners.TogetherChoice.Invite -> inviting = c.groupId
             is dev.nitrate.core.partners.TogetherChoice.Leave -> leaving = c.group
+            is dev.nitrate.core.partners.TogetherChoice.AskToWatch -> askingWhen = c
             is dev.nitrate.core.partners.TogetherChoice.WatchNow -> scope.launch {
                 val e = container.runTogether(c)
                 // Played for the group the live session was started for (no question about watching together).
@@ -597,6 +600,24 @@ fun TogetherChoicesDialog(
         }
     }
     changing?.let { g -> ScheduleChangeDialog(container, g) { changing = null; onDismiss() }; return }
+    asked?.let { text ->
+        TvDialog(onDismiss, width = 640) {
+            Text(text)
+            val ok = remember { FocusRequester() }
+            Button(onClick = onDismiss, modifier = Modifier.focusRequester(ok)) { Text("OK") }
+            LaunchedEffect(text) { delay(60); runCatching { ok.requestFocus() } }
+        }
+        return
+    }
+    askingWhen?.let { ask ->
+        AskWhenDialog(ask, error, onBack = { askingWhen = null }) { minutes ->
+            scope.launch {
+                val e = container.groupAsks.ask(ask.groupId, ask.episode.id, minutes)
+                if (e != null) error = e else asked = "Asked ${ask.names}. You'll hear when someone starts it."
+            }
+        }
+        return
+    }
     adding?.let { g -> AddTitlesDialog(container, g) { adding = null; onDismiss() }; return }
     if (leaving == null && inviting == null) TvDialog(onDismiss, width = 720) {
         Text(item.seriesName ?: item.name, style = MaterialTheme.typography.headlineSmall)
@@ -818,4 +839,24 @@ fun CountingDialog(ask: dev.nitrate.core.partners.CountAsk, onAnswer: (all: Bool
         OutlinedButton(onClick = { onAnswer(true) }) { Text(dev.nitrate.core.partners.CountAsk.ALL) }
     }
     LaunchedEffect(ask) { delay(60); runCatching { focus.requestFocus() } }
+}
+
+
+/** "Ask … to watch together": when (Now focused, then the postpone steps); Back steps back to the choices. */
+@Composable
+fun AskWhenDialog(ask: dev.nitrate.core.partners.TogetherChoice.AskToWatch, error: String?, onBack: () -> Unit, onWhen: (Int) -> Unit) {
+    val first = remember { FocusRequester() }
+    TvDialog(onBack, width = 720) {
+        Text("Ask ${ask.names} to watch together", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "${ask.what}. Whoever says yes first starts the Group Watch Session on their device, and you join it.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Text("When?", style = MaterialTheme.typography.titleMedium)
+        dev.nitrate.core.partners.WatchAsk.WHEN.forEachIndexed { i, m ->
+            Button(onClick = { onWhen(m) }, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier) { Text(dev.nitrate.core.partners.WatchAsk.whenLabel(m)) }
+        }
+    }
+    LaunchedEffect(Unit) { delay(60); runCatching { first.requestFocus() } }
 }

@@ -757,6 +757,18 @@ interface MediaServer {
     /** The live Group Watch Sessions of the user's groups. */
     suspend fun watchSessions(): List<dev.nitrate.core.partners.GroupWatchSession> = emptyList()
 
+    /** Asks to watch together the user should see: open ones in their groups, and their own lately (Companion feature `asks`). */
+    suspend fun watchAsks(): List<dev.nitrate.core.partners.WatchAsk> = emptyList()
+
+    /** Asks [groupId] to start a Group Watch Session of [itemId], now (0) or 15, 30 or 60 minutes later. */
+    suspend fun askToWatch(groupId: String, itemId: String, laterMinutes: Int): dev.nitrate.core.partners.WatchAsk = unsupported()
+
+    /** "Start it" ([take]: the user hosts it; the first one wins) or Not now. */
+    suspend fun answerAsk(askId: String, take: Boolean): dev.nitrate.core.partners.WatchAsk = unsupported()
+
+    /** The asker calls it off. */
+    suspend fun cancelAsk(askId: String): Unit = unsupported()
+
     /** Starts a Group Watch Session of [groupId] on [itemId] (or joins the group's live one); the group's open apps are told at once. */
     suspend fun startWatchSession(groupId: String, itemId: String, startMs: Long = 0): dev.nitrate.core.partners.SessionJoin = unsupported()
 

@@ -637,6 +637,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     if (companion?.features?.contains(dev.nitrate.core.partners.GroupWatchSession.FEATURE) == true) {
         val inPlayer = nav.currentBackStackEntryAsState().value?.destination?.hasRoute(PlayerRoute::class) == true
         dev.nitrate.tv.ui.partners.SessionJoinPrompt(container, inPlayer, displayPrefs.easyMode)
+        // Asks to watch together: over the player too, taking focus; "Start it" hosts it here (in place of a player open).
+        dev.nitrate.tv.ui.partners.WatchAskPrompt(container) { item -> if (inPlayer) nav.popBackStack(); gate.play(item) }
     }
     // Schedule changes someone in a group asked for (Yes/No), and how they went; never over the player.
     if (companion?.features?.contains("partners") == true) {

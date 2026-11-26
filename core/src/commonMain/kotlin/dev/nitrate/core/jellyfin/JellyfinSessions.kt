@@ -44,6 +44,28 @@ import kotlin.time.Instant
     val byName: String? = null, val byMe: Boolean = false, val event: String = "", val positionMs: Long = 0, val session: SessionDto? = null,
 )
 
+@Serializable internal data class WatchAskDto(
+    val id: String, val groupId: String, val itemId: String = "", val partLabel: String? = null, val title: String = "",
+    val fromName: String = "", val fromMe: Boolean = false, val at: String? = null, val state: String = dev.nitrate.core.partners.WatchAsk.OPEN,
+    val takenBy: String? = null, val takenByMe: Boolean = false, val declined: List<String> = emptyList(), val serverTime: String? = null,
+) {
+    fun toModel() = dev.nitrate.core.partners.WatchAsk(
+        normalizeId(id), normalizeId(groupId), itemId.takeIf { it.isNotEmpty() }?.let(::normalizeId).orEmpty(), partLabel, title, fromName, fromMe,
+        at?.let(::sessionMs) ?: 0L, state, takenBy, takenByMe, declined, serverTime?.let(::sessionMs) ?: 0L,
+    )
+}
+@Serializable internal data class WatchAskPostDto(val groupId: String, val itemId: String, val laterMinutes: Int = 0)
+@Serializable internal data class WatchAskNewsDto(val kind: String, val groupId: String, val byName: String? = null, val event: String = "", val ask: WatchAskDto? = null)
+
+/** A "Nitrate.Party" message's ask news (null when it's other news). */
+internal fun decodeAskNews(text: String): dev.nitrate.core.partners.AskNews? = runCatching {
+    val kind = JellyfinJson.parseToJsonElement(text).let { (it as? kotlinx.serialization.json.JsonObject)?.get("Kind") as? kotlinx.serialization.json.JsonPrimitive }?.content
+    if (kind != dev.nitrate.core.partners.AskNews.KIND) null
+    else JellyfinJson.decodeFromString(WatchAskNewsDto.serializer(), text).let { d ->
+        dev.nitrate.core.partners.AskNews(d.event, (d.ask ?: return@let null).toModel(), d.byName)
+    }
+}.getOrNull()
+
 private fun sessionMs(iso: String): Long = runCatching { Instant.parse(iso).toEpochMilliseconds() }.getOrDefault(0L)
 
 /** A "Nitrate.Party" message's session news (null when it's party or schedule news, or not a message at all). */
@@ -80,6 +102,18 @@ internal class JellyfinSessions(private val client: JellyfinClient) {
 
     suspend fun end(id: String) {
         call { client.http.post(client.url("Nitrate", "Sessions", id, "End")) { json(SessionEmptyDto()) } }
+    }
+
+    suspend fun asks(): List<dev.nitrate.core.partners.WatchAsk> = call { client.get("Nitrate", "Sessions", "Asks") }.decode<List<WatchAskDto>>().map { it.toModel() }
+
+    suspend fun ask(groupId: String, itemId: String, laterMinutes: Int): dev.nitrate.core.partners.WatchAsk =
+        call { client.http.post(client.url("Nitrate", "Sessions", "Asks")) { json(WatchAskPostDto(groupId, itemId, laterMinutes)) } }.decode<WatchAskDto>().toModel()
+
+    suspend fun answerAsk(id: String, take: Boolean): dev.nitrate.core.partners.WatchAsk =
+        call { client.http.post(client.url("Nitrate", "Sessions", "Asks", id, if (take) "Take" else "Decline")) { json(SessionEmptyDto()) } }.decode<WatchAskDto>().toModel()
+
+    suspend fun cancelAsk(id: String) {
+        call { client.http.post(client.url("Nitrate", "Sessions", "Asks", id, "Cancel")) { json(SessionEmptyDto()) } }
     }
 
     private fun SessionJoinDto.toModel() = SessionJoin(session.toModel(), startMs, together)

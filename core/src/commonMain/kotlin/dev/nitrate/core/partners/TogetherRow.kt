@@ -71,6 +71,14 @@ sealed interface TogetherChoice {
         override val label = "Start a Group Watch Session with $names"
     }
 
+    /** "Ask to watch together": ask the group to start a Group Watch Session of [episode] (someone else hosts it), now or later. */
+    data class AskToWatch(val episode: MediaItem, val groupId: String, val names: String) : TogetherChoice {
+        override val label = "Ask $names to watch together"
+
+        /** What it plays, spoiler-safe: "S1:E4 of The Bear" (never an episode's name), or a film's title. */
+        val what: String get() = if (episode.kind == ItemKind.EPISODE) listOfNotNull(TogetherRow.shortLabel(episode), episode.seriesName).joinToString(" of ") else episode.name
+    }
+
     /** Invite someone else into group [groupId]. */
     data class Invite(val groupId: String, val names: String) : TogetherChoice {
         override val label = "Invite someone to watch with $names"
@@ -220,6 +228,8 @@ object TogetherRow {
         ownSpoilers: Set<String>,
         /** Now, for the Group Watch Session's "Tonight's Group Watch Session: 8:15". */
         nowMs: Long = 0L,
+        /** The server takes asks to watch together (Companion feature `asks`). */
+        canAsk: Boolean = false,
     ): List<TogetherChoice> {
         if (isStart(item)) return listOf(TogetherChoice.Start)
         val series = titleOf(item, standings) ?: return emptyList()
@@ -277,6 +287,7 @@ object TogetherRow {
         groups.forEach { g ->
             val part = partOf(g)?.takeIf { it.isPlayable } ?: return@forEach
             if (canWatchNow) out += TogetherChoice.WatchNow(part, g.id, g.others.map { it.id }, g.label)
+            if (canWatchNow && canAsk) out += TogetherChoice.AskToWatch(part, g.id, g.label)
             out += TogetherChoice.InTheRoom(g.id, series, part, g.others.map { it.id }, "We're in the same room${tag(g)}")
         }
         groups.forEach { g -> out += TogetherChoice.Invite(g.id, g.label) }

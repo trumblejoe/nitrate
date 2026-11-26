@@ -1057,6 +1057,17 @@ class ScreenshotTest {
         compose.onNodeWithText("End it for everyone?").assertExists()
     }
 
+    /** Someone's ask to watch together, for later: who, what, when, and "Start it at …" (this user hosts it). */
+    @Test fun watchAskQuestion() = shoot("phone-watch-ask", wholeScreen = true) {
+        dev.nitrate.mobile.ui.WatchAskDialog(dev.nitrate.core.partners.WatchAsk("a1", "g1", "s1e2", "S1:E2", "The Night Reel", "Will", false, 1_000_000L + 30 * 60_000L, dev.nitrate.core.partners.WatchAsk.OPEN, null, false, emptyList(), 1_000_000L), onStart = {}, onNotNow = {})
+    }
+
+    /** "Ask Will to watch together": when (now, or the postpone steps). */
+    @Test fun watchAskWhen() = shoot("phone-watch-ask-when") {
+        val episode = dev.nitrate.core.model.MediaItem("s1e2", "Episode 2", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 1, indexNumber = 2)
+        dev.nitrate.mobile.ui.AskWhenList(dev.nitrate.core.partners.TogetherChoice.AskToWatch(episode, "g1", "Will"), onBack = {}, onWhen = {})
+    }
+
     /** Type on the TV: what's typed here goes into the TV's box in use (else its search). */
     @Test
     fun typeOnTheTv() {

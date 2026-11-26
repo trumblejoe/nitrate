@@ -215,3 +215,66 @@ fun SessionJoinDialog(prompt: dev.nitrate.core.partners.SessionPrompt, problem: 
     }
     LaunchedEffect(prompt.sessionId) { delay(60); runCatching { first.requestFocus() } }
 }
+
+/**
+ * Asks to watch together on the TV: someone's ask ("Grandma would like to watch together · S1:E4 of
+ * The Bear · now"; "Start it" focused, then Not now), over the player too, taking focus while it plays
+ * on; the reminder when a later one this user took is due; what the user's own asks came to (a short
+ * message); and starting one here as host ([onPlay] plays its part, in place of a player open).
+ */
+@Composable
+fun WatchAskPrompt(container: AppContainer, onPlay: (dev.nitrate.core.model.MediaItem) -> Unit) {
+    val asks = container.groupAsks
+    val asking by asks.asking.collectAsState()
+    val due by asks.due.collectAsState()
+    val scope = rememberCoroutineScope()
+    var problem by remember { mutableStateOf<String?>(null) }
+    var said by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(asks) { asks.toAsker.collect { said = it } }
+    LaunchedEffect(asks) {
+        asks.starts.collect { a ->
+            val (item, error) = container.startAsked(a)
+            if (item != null) onPlay(item) else problem = error
+        }
+    }
+    said?.let { text ->
+        TvDialog({ said = null }, width = 640) {
+            Text("Watch together", style = MaterialTheme.typography.headlineSmall)
+            Text(text)
+            val ok = remember { FocusRequester() }
+            Button(onClick = { said = null }, modifier = Modifier.focusRequester(ok)) { Text("OK") }
+            LaunchedEffect(text) { delay(60); runCatching { ok.requestFocus() } }
+        }
+        LaunchedEffect(text) { delay(8_000); said = null }
+        return
+    }
+    due?.let { a ->
+        val (title, text) = dev.nitrate.core.partners.AskPrompt.due(a)
+        AskDialog(a.id + "due", title, text, problem, "Start it now", onYes = { asks.startDue(true) }, onNo = { asks.startDue(false) })
+        return
+    }
+    val a = asking ?: run {
+        problem?.let { p -> AskDialog("problem", "Couldn't start the Group Watch Session", p, null, "OK", onYes = { problem = null }, onNo = null) }
+        return
+    }
+    val clock = { ms: Long -> java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(ms)) }
+    val (title, text) = dev.nitrate.core.partners.AskPrompt.question(a, clock)
+    AskDialog(a.id, title, text, problem, dev.nitrate.core.partners.AskPrompt.startLabel(a, clock), onYes = { scope.launch { problem = asks.take(a) } }, onNo = { asks.decline(a) })
+}
+
+/** An ask's dialog: the question, its yes (focused at once), and Not now (Back too) when there's one. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AskDialog(key: String, title: String, text: String, problem: String?, yes: String, onYes: () -> Unit, onNo: (() -> Unit)?) {
+    val first = remember(key) { FocusRequester() }
+    TvDialog(onNo ?: onYes, width = 760) {
+        Text(title, style = MaterialTheme.typography.headlineSmall)
+        Text(text)
+        problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = onYes, modifier = Modifier.focusRequester(first)) { Text(yes) }
+            if (onNo != null) OutlinedButton(onClick = onNo) { Text("Not now") }
+        }
+    }
+    LaunchedEffect(key) { delay(60); runCatching { first.requestFocus() } }
+}

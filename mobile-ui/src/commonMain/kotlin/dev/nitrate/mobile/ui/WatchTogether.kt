@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -193,5 +194,70 @@ fun WatchInvitePrompt(actions: AppActions) {
         text = { Text(invite.text + ". Joining puts you in their session: what they play, plays for you.") },
         confirmButton = { TextButton(onClick = { scope.launch { runCatching { container.joinInvite(invite) } } }) { Text("Join") } },
         dismissButton = { TextButton(onClick = { scope.launch { container.dismissInvite(invite) } }) { Text("Not now") } },
+    )
+}
+
+/**
+ * Asks to watch together on the phone: someone's ask ("Grandma would like to watch together ·
+ * S1:E4 of The Bear · now", Start it / Not now), the reminder when a later one this user took is due,
+ * what the user's own asks came to (said in passing), and starting one here as host (the session,
+ * then its part plays through the guards). Questions wait while the player is open.
+ */
+@Composable
+fun WatchAskPrompt(actions: AppActions, inPlayer: Boolean) {
+    val container = actions.container
+    val asks = container.groupAsks
+    val asking by asks.asking.collectAsState()
+    val due by asks.due.collectAsState()
+    val scope = rememberCoroutineScope()
+    var problem by remember { mutableStateOf<String?>(null) }
+    val platform = dev.nitrate.mobile.platform.rememberPlatformActions()
+    LaunchedEffect(asks) { asks.toAsker.collect { platform.toast(it) } }
+    LaunchedEffect(asks) {
+        asks.starts.collect { a ->
+            val (item, error) = container.startAsked(a)
+            if (item != null) actions.play(item, false) else problem = error
+        }
+    }
+    problem?.takeIf { asking == null && due == null }?.let { p ->
+        AlertDialog(
+            onDismissRequest = { problem = null },
+            title = { Text("Couldn't start the Group Watch Session") },
+            text = { Text(p) },
+            confirmButton = { TextButton(onClick = { problem = null }) { Text("OK") } },
+        )
+    }
+    if (inPlayer) return
+    due?.let { a ->
+        val (title, text) = dev.nitrate.core.partners.AskPrompt.due(a)
+        AlertDialog(
+            onDismissRequest = { asks.startDue(false) },
+            title = { Text(title) },
+            text = { Text(text) },
+            confirmButton = { TextButton(onClick = { asks.startDue(true) }) { Text("Start it now") } },
+            dismissButton = { TextButton(onClick = { asks.startDue(false) }) { Text("Not now") } },
+        )
+        return
+    }
+    val a = asking ?: return
+    WatchAskDialog(a, problem, onStart = { scope.launch { problem = asks.take(a) } }, onNotNow = { asks.decline(a) })
+}
+
+/** Someone's ask to watch together: who, what and when, then "Start it" (this user hosts it) or Not now. */
+@Composable
+fun WatchAskDialog(ask: dev.nitrate.core.partners.WatchAsk, problem: String? = null, onStart: () -> Unit, onNotNow: () -> Unit) {
+    val clock = { ms: Long -> dev.nitrate.mobile.platform.formatTime(ms) }
+    val (title, text) = dev.nitrate.core.partners.AskPrompt.question(ask, clock)
+    AlertDialog(
+        onDismissRequest = onNotNow,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text)
+                problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onStart) { Text(dev.nitrate.core.partners.AskPrompt.startLabel(ask, clock)) } },
+        dismissButton = { TextButton(onClick = onNotNow) { Text("Not now") } },
     )
 }

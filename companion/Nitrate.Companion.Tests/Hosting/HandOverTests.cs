@@ -42,7 +42,7 @@ public sealed class HandOverTests : IDisposable
         var state = first.ExportState();
         await first.DisposeAsync();
         Assert.Equal(
-            [HandOver.Because, HandOver.Brought, HandOver.Chat, HandOver.GroupPlays, HandOver.GroupSessions, HandOver.Invites, HandOver.QueryTimes, HandOver.SessionChats, HandOver.Sittings, HandOver.Sso, HandOver.Together, HandOver.WatchSessions],
+            [HandOver.Because, HandOver.Brought, HandOver.Chat, HandOver.GroupPlays, HandOver.GroupSessions, HandOver.Invites, HandOver.QueryTimes, HandOver.SessionChats, HandOver.Sittings, HandOver.Sso, HandOver.Together, HandOver.WatchAsks, HandOver.WatchSessions],
             state.Keys.Order().ToArray());
 
         var next = new CompanionLogic(Context(state, stopping.Token));

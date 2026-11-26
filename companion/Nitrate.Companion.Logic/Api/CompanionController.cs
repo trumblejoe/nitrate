@@ -75,6 +75,10 @@ public class CompanionController : ControllerBase
         features.Add("schedulelock");
         // Group Watch Sessions (/Nitrate/Sessions): start together at a countdown, each player its own, pause/jump/drift told to the others.
         features.Add("sessions");
+        // Asks to watch together (/Nitrate/Sessions/Asks): the group asked to start a session, now or a postpone step later; the first to take it hosts.
+        features.Add("asks");
+        // A session's gathering can be longer than the minute (SessionPost.GatherMinutes, a phone's remote).
+        features.Add("longgather");
         // Groups' own resume points (PUT /Nitrate/Partners/Groups/{id}/Resume, GroupView.Resume).
         features.Add("groupresume");
         features.Add("updates");

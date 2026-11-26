@@ -2737,6 +2737,23 @@ class TvScreenshotTest {
         }
     }
 
+    /** Someone's ask to watch together, over whatever is on: "Start it" focused (this TV hosts it), Not now. */
+    @Test fun watchAskQuestion() = shoot("tv-watch-ask", act = {
+        runCatching { compose.waitUntil(timeoutMillis = 3_000) { compose.mainClock.advanceTimeBy(100); focusedHasText("Start it") } }
+        check(focusedHasText("Start it")) { "Start it is focused; focused: ${focusedNodes()}" }
+    }) { _ ->
+        dev.nitrate.tv.ui.partners.AskDialog("a1", "Will would like to watch together", "S1:E2 of The Night Reel · now. You'd host it: your device starts it and they join.", null, "Start it", onYes = {}, onNo = {})
+    }
+
+    /** "Ask Will to watch together": when, Now focused. */
+    @Test fun watchAskWhen() = shoot("tv-watch-ask-when", act = {
+        runCatching { compose.waitUntil(timeoutMillis = 3_000) { compose.mainClock.advanceTimeBy(100); focusedHasText("Now") } }
+        check(focusedHasText("Now")) { "Now is focused; focused: ${focusedNodes()}" }
+    }) { _ ->
+        val episode = dev.nitrate.core.model.MediaItem("s1e2", "Episode 2", dev.nitrate.core.model.ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 1, indexNumber = 2)
+        dev.nitrate.tv.ui.partners.AskWhenDialog(dev.nitrate.core.partners.TogetherChoice.AskToWatch(episode, "g1", "Will"), null, onBack = {}, onWhen = {})
+    }
+
     @Test fun serverSettings() = shoot("tv-server-settings") { c -> dev.nitrate.tv.ui.settings.ServerSettingsScreen(c) }
 
     @Test fun watchPartners() = shoot("tv-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { c ->

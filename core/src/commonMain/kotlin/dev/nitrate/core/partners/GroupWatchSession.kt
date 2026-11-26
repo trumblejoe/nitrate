@@ -396,3 +396,102 @@ object SessionStatus {
     /** The starter can end it for everyone. */
     fun canEnd(s: GroupWatchSession) = s.startedByMe && s.live
 }
+
+/**
+ * "Ask to watch together" (Companion feature [FEATURE]): a member asks their group to start a
+ * Group Watch Session of one part, now or a postpone step later; the first to take it hosts it
+ * (their app starts the session and plays it), and the asker joins as usual.
+ */
+data class WatchAsk(
+    val id: String,
+    val groupId: String,
+    val itemId: String,
+    /** "S1:E4", or a film's name. */
+    val partLabel: String?,
+    /** The group's titles' names. */
+    val title: String,
+    val fromName: String,
+    val fromMe: Boolean,
+    /** When they'd like to start (server clock). */
+    val atMs: Long,
+    val state: String,
+    /** Who said "Start it". */
+    val takenBy: String?,
+    val takenByMe: Boolean,
+    /** Who said Not now. */
+    val declined: List<String>,
+    val serverTimeMs: Long,
+) {
+    /** What it plays: "S1:E4 of The Bear", or the title. */
+    val what: String get() = listOfNotNull(partLabel, title.takeIf { it.isNotBlank() }).joinToString(" of ").ifEmpty { "something" }
+
+    /** Still to be answered. */
+    val open: Boolean get() = state == OPEN
+
+    /** It's for later (not now). */
+    val later: Boolean get() = atMs > serverTimeMs + 60_000
+
+    companion object {
+        const val OPEN = "open"
+        const val TAKEN = "taken"
+        const val DECLINED = "declined"
+        const val CANCELLED = "cancelled"
+        const val EXPIRED = "expired"
+
+        /** The Companion feature. */
+        const val FEATURE = "asks"
+
+        /** When an ask may be for: now, or the postpone steps (minutes). */
+        val WHEN = listOf(0, 15, 30, 60)
+
+        /** How each [WHEN] reads on its button. */
+        fun whenLabel(minutes: Int) = when (minutes) {
+            0 -> "Now"
+            60 -> "In an hour"
+            else -> "In $minutes minutes"
+        }
+    }
+}
+
+/** What the Companion tells an app about an ask (on the "Nitrate.Party" messages, kind [KIND]). */
+data class AskNews(val event: String, val ask: WatchAsk, val byName: String?) {
+    companion object {
+        const val KIND = "ask"
+        const val ASKED = "asked"
+        const val TAKEN = "taken"
+        const val DECLINED = "declined"
+        const val CANCELLED = "cancelled"
+        const val EXPIRED = "expired"
+        /** A later ask's time came: whoever took it starts it now. */
+        const val DUE = "due"
+
+        fun decode(text: String): AskNews? = dev.nitrate.core.jellyfin.decodeAskNews(text)
+    }
+}
+
+/**
+ * The words around asks: the question to the group ("Grandma would like to watch S1:E4 of The Bear
+ * together · now"), the reminder at its time for whoever took it, and what the asker hears back.
+ */
+object AskPrompt {
+    /** The question to someone in the group. */
+    fun question(a: WatchAsk, clock: (Long) -> String): Pair<String, String> =
+        "${a.fromName} would like to watch together" to
+            (a.what + if (a.later) " · at ${clock(a.atMs)}, in ${minutesUntil(a)} min. You'd host it: your device starts it then." else " · now. You'd host it: your device starts it and they join.")
+
+    /** "Start it" (now), or "Start it at 9:30". */
+    fun startLabel(a: WatchAsk, clock: (Long) -> String) = if (a.later) "Start it at ${clock(a.atMs)}" else "Start it"
+
+    /** For whoever took a later ask, when its time comes. */
+    fun due(a: WatchAsk): Pair<String, String> = "Time to watch together" to "${a.fromName} asked for ${a.what}. Start the Group Watch Session now?"
+
+    /** What the asker hears ([news] about their own ask), or null when it needs no word. */
+    fun toAsker(news: AskNews): String? = when (news.event) {
+        AskNews.TAKEN -> "${news.byName ?: "Someone"} is starting ${news.ask.what}" + if (news.ask.later) " at the time you asked" else ": you'll be asked to join"
+        AskNews.DECLINED -> if (news.ask.state == WatchAsk.DECLINED) "Nobody can watch ${news.ask.what} with you right now" else "${news.byName ?: "Someone"} can't right now"
+        AskNews.EXPIRED -> "Nobody took your ask to watch ${news.ask.what} together"
+        else -> null
+    }
+
+    private fun minutesUntil(a: WatchAsk) = ((a.atMs - a.serverTimeMs + 59_999) / 60_000).coerceAtLeast(1)
+}

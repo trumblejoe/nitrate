@@ -583,9 +583,11 @@ fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Un
         value = if (series == null || dev.nitrate.core.partners.TogetherRow.isStart(item)) emptyList()
         else runCatching { container.server.titleItems(series) }.getOrDefault(emptyList())
     }
-    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.sessionsAvailable(), prefs.ownSpoilerShows, dev.nitrate.android.nowMs())
+    val choices = dev.nitrate.core.partners.TogetherRow.choices(item, info, standings, episodes, container.sessionsAvailable(), prefs.ownSpoilerShows, dev.nitrate.android.nowMs(), canAsk = container.asksAvailable())
     var leaving by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var inviting by remember { mutableStateOf<String?>(null) }
+    var askingWhen by remember { mutableStateOf<dev.nitrate.core.partners.TogetherChoice.AskToWatch?>(null) }
+    val platform = dev.nitrate.mobile.platform.rememberPlatformActions()
     var changing by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var adding by remember { mutableStateOf<dev.nitrate.core.partners.WatchGroup?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -604,6 +606,7 @@ fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Un
             is dev.nitrate.core.partners.TogetherChoice.OpenShow -> { onDismiss(); actions.nav.navigate(DetailsRoute(c.seriesId, group = c.groupId)) }
             is dev.nitrate.core.partners.TogetherChoice.Invite -> inviting = c.groupId
             is dev.nitrate.core.partners.TogetherChoice.Leave -> leaving = c.group
+            is dev.nitrate.core.partners.TogetherChoice.AskToWatch -> askingWhen = c
             is dev.nitrate.core.partners.TogetherChoice.WatchNow -> scope.launch {
                 val e = container.runTogether(c)
                 // Played for the group the live session was started for (no question about watching together).
@@ -615,7 +618,13 @@ fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Un
     changing?.let { g -> ScheduleChangeDialog(actions, g) { changing = null; onDismiss() }; return }
     adding?.let { g -> AddTitlesDialog(actions, g) { adding = null; onDismiss() }; return }
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
-        TogetherChoicesList(item, info, standings, choices, error, ::run)
+        val ask = askingWhen
+        if (ask != null) AskWhenList(ask, error, onBack = { askingWhen = null }) { minutes ->
+            scope.launch {
+                val e = container.groupAsks.ask(ask.groupId, ask.episode.id, minutes)
+                if (e != null) error = e else { onDismiss(); platform.toast("Asked ${ask.names}. You'll hear when someone starts it.") }
+            }
+        } else TogetherChoicesList(item, info, standings, choices, error, ::run)
     }
     leaving?.let { g ->
         AlertDialog(
@@ -629,6 +638,24 @@ fun TogetherChoicesSheet(actions: AppActions, item: MediaItem, onStart: () -> Un
     inviting?.let { groupId ->
         val name = info?.groups?.firstOrNull { it.id == groupId }?.seriesName ?: item.seriesName ?: item.name
         WatchWithDialog(actions, MediaItem(info?.groups?.firstOrNull { it.id == groupId }?.seriesId ?: series ?: item.id, name, dev.nitrate.core.model.ItemKind.SERIES), groupId) { inviting = null; onDismiss() }
+    }
+}
+
+/** "Ask … to watch together": when (now, or the postpone steps). Someone in the group hosts it. */
+@Composable
+fun AskWhenList(ask: dev.nitrate.core.partners.TogetherChoice.AskToWatch, error: String? = null, onBack: () -> Unit, onWhen: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Ask ${ask.names} to watch together", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "${ask.what}. Whoever says yes first starts the Group Watch Session on their device, and you join it.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        Text("When?", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+        dev.nitrate.core.partners.WatchAsk.WHEN.forEach { m ->
+            TextButton(onClick = { onWhen(m) }) { Text(dev.nitrate.core.partners.WatchAsk.whenLabel(m)) }
+        }
+        TextButton(onClick = onBack) { Text("Back") }
     }
 }
 

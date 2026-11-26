@@ -248,6 +248,12 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
             fresh += "r:" + r.id
             if ("r:" + r.id !in notified) postSocial("r:" + r.id, "Watch ${r.titleNames} together?", "${r.fromName} would like to watch ${r.titleNames} with you. Tap to accept or decline.", REQUESTS_CHANNEL, REQUESTS_NAME, openInvites = true)
         }
+        // Asks to watch together from someone in a group (never the user's own), with the watch group requests.
+        if (requestsOn) runCatching { server.watchAsks() }.getOrDefault(emptyList()).filter { it.open && !it.fromMe }.forEach { a ->
+            fresh += "a:" + a.id
+            val (title, text) = dev.nitrate.core.partners.AskPrompt.question(a) { ms -> java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(ms)) }
+            if ("a:" + a.id !in notified) postSocial("a:" + a.id, title, "$text Tap to answer.", REQUESTS_CHANNEL, REQUESTS_NAME, openInvites = true)
+        }
         // Schedule changes waiting for the user's yes or no (never their own: the asker counts as a yes).
         if (requestsOn) partners?.groups.orEmpty().forEach { g ->
             val ask = dev.nitrate.core.partners.ScheduleNews.askOf(g) ?: return@forEach

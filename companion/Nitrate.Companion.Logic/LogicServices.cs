@@ -81,6 +81,8 @@ public static class LogicServices
             sp.GetRequiredService<TimeProvider>()));
         // Group Watch Sessions: a group watching one part at the same moment, each on their own player.
         serviceCollection.AddSingleton(sp => new WatchSessions(sp.GetRequiredService<PartnerHub>(), sp.GetRequiredService<TimeProvider>()));
+        // Asks to watch together: a member asks the group to start a session, someone else hosts it.
+        serviceCollection.AddSingleton(sp => new WatchAsks(sp.GetRequiredService<PartnerHub>(), sp.GetRequiredService<TimeProvider>()));
         // Groups' own watched records, from the server's playback reports of live sessions.
         serviceCollection.AddSingleton<TogetherRecorder>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<TogetherRecorder>());

@@ -194,6 +194,23 @@ class AppContainer(
     /** Group Watch Sessions (Companion feature `sessions`): this device's, the join prompt, the players' notices. */
     val groupSessions by lazy { dev.nitrate.android.partners.GroupSessions(server, networkScope, ::nowMs) }
 
+    /** Asks to watch together: the group asked to start a Group Watch Session, someone else hosting it. */
+    val groupAsks by lazy { dev.nitrate.android.partners.GroupAsks(server, networkScope) }
+
+    /** The server takes asks to watch together (Companion feature `asks`). */
+    fun asksAvailable(): Boolean = companion.value?.features?.contains(dev.nitrate.core.partners.WatchAsk.FEATURE) == true
+
+    /**
+     * Starts the Group Watch Session [ask] asked for, hosted here (the user took it): its part and
+     * group, as "Start a Group Watch Session" does. The part to play, or an error.
+     */
+    suspend fun startAsked(ask: dev.nitrate.core.partners.WatchAsk): Pair<dev.nitrate.core.model.MediaItem?, String?> {
+        val item = runCatching { server.getItem(ask.itemId) }.getOrNull() ?: return null to "That title isn't on the server"
+        val group = partners.value?.groups?.firstOrNull { it.id == ask.groupId } ?: run { refreshPartners(); partners.value?.groups?.firstOrNull { it.id == ask.groupId } }
+        val error = startWatchingNow(item, group)
+        return (if (error == null) item.copy(watchGroupId = ask.groupId) else null) to error
+    }
+
     /** Whether the server has Group Watch Sessions ("Start a Group Watch Session"; older plugins: hidden). */
     fun sessionsAvailable(): Boolean = companion.value?.features?.contains(dev.nitrate.core.partners.GroupWatchSession.FEATURE) == true
 
@@ -303,6 +320,8 @@ class AppContainer(
             refreshPartners()
             followStandings()
             followParties()
+            // Asks sent while the app was closed are asked now.
+            if (asksAvailable()) groupAsks.refresh()
         }
         chat
     }
@@ -429,6 +448,7 @@ class AppContainer(
         networkScope.launch { remote.partyNews.collect { parties.heard(it) } }
         networkScope.launch { remote.scheduleNews.collect { scheduleAsks.heard(it) } }
         networkScope.launch { remote.sessionNews.collect { groupSessions.heard(it) } }
+        networkScope.launch { remote.askNews.collect { groupAsks.heard(it) } }
         // A new invite: the card shows on Home, and the device notifies at once (not at its next 15-minute look).
         networkScope.launch {
             remote.inviteNews.collect {
@@ -1256,6 +1276,7 @@ class AppContainer(
     private suspend fun leaveSession() {
         if (syncPlay.inGroup) syncPlay.leave()
         groupSessions.clear()
+        groupAsks.clear()
         remote.stop()
         // The music belongs to the account that's leaving (its reports, its library).
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { listening?.stop() }

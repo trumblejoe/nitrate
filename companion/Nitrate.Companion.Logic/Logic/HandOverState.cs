@@ -145,5 +145,8 @@ namespace Nitrate.Companion.Logic
 
         /// <summary>Group Watch Sessions (<see cref="Partners.WatchSessions"/>).</summary>
         public const string WatchSessions = "watchsessions.v1";
+
+        /// <summary>Asks to watch together (<see cref="Partners.WatchAsks"/>).</summary>
+        public const string WatchAsks = "watchasks.v1";
     }
 }
