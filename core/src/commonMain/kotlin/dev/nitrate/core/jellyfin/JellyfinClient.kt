@@ -1668,6 +1668,21 @@ class JellyfinClient(
         post<Unit>("Sessions", sessionId, "Command", command.wire)
     }
 
+    override suspend fun showOn(sessionId: String, item: MediaItem) {
+        val type = when (item.kind) {
+            ItemKind.LIBRARY -> "CollectionFolder"
+            ItemKind.SEASON -> "Season"
+            else -> itemTypeName(item.kind) ?: "Folder"
+        }
+        post<GeneralCommandDto>("Sessions", sessionId, "Command", body = GeneralCommandDto(
+            GeneralCommand.DISPLAY_CONTENT, mapOf("ItemId" to item.id.replace("-", ""), "ItemType" to type, "ItemName" to item.name),
+        ))
+    }
+
+    override suspend fun typeOn(sessionId: String, text: String) {
+        post<GeneralCommandDto>("Sessions", sessionId, "Command", body = GeneralCommandDto(GeneralCommand.SEND_STRING, mapOf("String" to text)))
+    }
+
     override fun events(): Flow<ServerEvent> = socketEvents { token != null }.onEach {
         when (it) {
             is ServerEvent.LibraryChanged -> { answers.clear(); viewsStale() }

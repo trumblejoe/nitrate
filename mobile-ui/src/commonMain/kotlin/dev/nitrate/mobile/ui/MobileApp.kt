@@ -294,6 +294,14 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             if (recap != null) nav.navigate(RecapRoute) else nav.navigate(playerRoute(target.id, fromStart))
         }
 
+        // Telling another device to play (Play on…, the remote): the same guards, asked on the phone first.
+        suspend fun checkedForSending(item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.model.MediaItem? =
+            container.plugins.checkBeforeSending(item, { ask ->
+                val answer = CompletableDeferred<GuardAction>()
+                pending = ask to answer
+                answer.await().also { pending = null }
+            }, dev.nitrate.core.partners.PlayOrigin.of(item).takeIf { it is dev.nitrate.core.partners.PlayOrigin.GroupCard }) { container.server.setPlayed(it, true) }
+
         // A plugin's checks, then play: from the start, resuming, or from [startMs]. [origin]: where it's
         // played from (null: a watch group's card by its item's group, else elsewhere), handed on to the player.
         fun guarded(picked: dev.nitrate.core.model.MediaItem, fromStart: Boolean, startMs: Long?, origin: dev.nitrate.core.partners.PlayOrigin? = null) {
@@ -303,6 +311,19 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     val item = if (dev.nitrate.core.playback.PlayTargets.needsEpisode(picked)) {
                         dev.nitrate.core.playback.PlayTargets.episodeFor(container.server, picked) ?: return@launch
                     } else picked
+                    // Choosing for a TV from its remote: it goes there (the guards asked here, as for Play on…).
+                    ChooseForTv.target.value?.takeIf { item.kind != dev.nitrate.core.model.ItemKind.BOOK }?.let { t ->
+                        val sent = sendToChosenTv(container, { nav.navigate(RemoteRoute(t.sessionId)) { popUpTo<RemoteRoute> { inclusive = true } } }, t, item, fromStart, startMs, ::checkedForSending)
+                        if (!sent) {
+                            val ok = CompletableDeferred<GuardAction>()
+                            pending = dev.nitrate.core.plugins.GuardDecision.Ask(
+                                "Couldn't play on ${t.deviceName}", "Check that Nitrate is open on it, then try again.",
+                                listOf(dev.nitrate.core.plugins.GuardChoice("OK", GuardAction.Cancel)),
+                            ) to ok
+                            ok.await().also { pending = null }
+                        }
+                        return@launch
+                    }
                     val action = container.plugins.checkBeforePlay(item, from) { ask ->
                         val answer = CompletableDeferred<GuardAction>()
                         pending = ask to answer
@@ -338,14 +359,6 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     }
                 }
         }
-
-        // Telling another device to play (Play on…, the remote): the same guards, asked on the phone first.
-        suspend fun checkedForSending(item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.model.MediaItem? =
-            container.plugins.checkBeforeSending(item, { ask ->
-                val answer = CompletableDeferred<GuardAction>()
-                pending = ask to answer
-                answer.await().also { pending = null }
-            }, dev.nitrate.core.partners.PlayOrigin.of(item).takeIf { it is dev.nitrate.core.partners.PlayOrigin.GroupCard }) { container.server.setPlayed(it, true) }
 
         val actions = remember(nav) {
             AppActions(
@@ -585,6 +598,15 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             AlertDialog(onDismissRequest = { message = null }, title = { Text(header) }, text = { Text(text) },
                 confirmButton = { TextButton(onClick = { message = null }) { Text("OK") } })
             LaunchedEffect(header, text) { kotlinx.coroutines.delay(10_000); message = null }
+        }
+
+        // Choosing for a TV from its remote: whom for, Show on TV on a title's page, Done (not over the remote or a player).
+        run {
+            val dest = currentEntry?.destination
+            if (dest != null && !dest.hasRoute(RemoteRoute::class) && !dest.hasRoute(PlayerRoute::class)) {
+                val itemId = if (dest.hasRoute(DetailsRoute::class)) currentEntry?.toRoute<DetailsRoute>()?.itemId else null
+                Box(Modifier.fillMaxSize()) { ChoosingBanner(actions, itemId, Modifier.align(Alignment.TopCenter)) }
+            }
         }
 
         // The first-run setup; while it shows, the prompts it replaces wait.

@@ -22,6 +22,8 @@ data class RemoteView(
     val navigable: Boolean = false,
     /** A question it's asking on screen, answerable from here. */
     val prompt: RemotePrompt? = null,
+    /** Nitrate on a TV: pages and titles can be opened there, and text typed, from here. */
+    val choosable: Boolean = false,
 )
 
 /**
@@ -43,6 +45,10 @@ interface RemoteTarget {
     suspend fun volume(command: GeneralCommand)
     /** Arrows, OK, Back and Home ([RemoteView.navigable] only). */
     suspend fun navigate(command: GeneralCommand) = Unit
+    /** Opens a library's page or a title's details there ([RemoteView.choosable] only). */
+    suspend fun show(item: MediaItem) = Unit
+    /** Types [text] into the field in use there, else searches for it ([RemoteView.choosable] only). */
+    suspend fun type(text: String) = Unit
     /** Plays [item] there from [startMs]. */
     suspend fun play(item: MediaItem, startMs: Long)
     suspend fun answer(prompt: RemotePrompt, choiceId: String) = Unit
@@ -71,6 +77,7 @@ class SessionTarget(
             subtitleIndex = s.subtitleIndex,
             navigable = s.navigable,
             prompt = container.remote.promptFrom(s.deviceId, nowMs()),
+            choosable = s.choosable,
         )
     }
 
@@ -82,6 +89,8 @@ class SessionTarget(
     override suspend fun track(kind: StreamKind, index: Int) = server.setSessionTrack(sessionId, kind, index)
     override suspend fun volume(command: GeneralCommand) = server.sendGeneralCommand(sessionId, command)
     override suspend fun navigate(command: GeneralCommand) = server.sendGeneralCommand(sessionId, command)
+    override suspend fun show(item: MediaItem) = server.showOn(sessionId, item)
+    override suspend fun type(text: String) = server.typeOn(sessionId, text)
     override suspend fun answer(prompt: RemotePrompt, choiceId: String) = container.remote.answer(sessionId, prompt, choiceId)
 
     override suspend fun play(item: MediaItem, startMs: Long) {

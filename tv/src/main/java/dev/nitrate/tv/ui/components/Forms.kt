@@ -38,6 +38,22 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 /**
+ * Text typed on a phone remote (Jellyfin's SendString) for the text field in use here: it replaces
+ * what the field holds. With no field in use, [type] says so (the TV then searches for it).
+ */
+object RemoteTyping {
+    internal val fields = kotlinx.coroutines.flow.MutableStateFlow(0)
+    internal val typed = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /** Puts [text] in the field in use; false when none is. */
+    fun type(text: String): Boolean {
+        if (fields.value == 0) return false
+        typed.tryEmit(text)
+        return true
+    }
+}
+
+/**
  * D-pad friendly text field. Focusing it doesn't open the keyboard: it waits as a button until
  * OK is pressed. While typing, Up or Down (or the keyboard's own Done/Search) puts the keyboard
  * away and moves on, so the field never holds the D-pad hostage.
@@ -62,6 +78,15 @@ fun TvTextField(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val transformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None
+    // While it's the field in use, what a phone remote types goes into it.
+    val change = androidx.compose.runtime.rememberUpdatedState(onValueChange)
+    if (focused) {
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            RemoteTyping.fields.value++
+            onDispose { RemoteTyping.fields.value-- }
+        }
+        LaunchedEffect(Unit) { RemoteTyping.typed.collect { change.value(it) } }
+    }
     fun stop(then: (() -> Unit)? = null) {
         // The next edit starts fresh: its field's first "not focused" report mustn't end it.
         hadFocus = false

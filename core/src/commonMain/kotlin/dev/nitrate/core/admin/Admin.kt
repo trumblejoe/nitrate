@@ -229,6 +229,9 @@ data class ServerSession(
 ) {
     /** It can be steered round its menus with arrows, OK, Back and Home. */
     val navigable: Boolean get() = GeneralCommand.NAVIGATION.all { it.wire in supportedCommands }
+
+    /** The phone can open pages and titles there, and type into it (Nitrate on TV). */
+    val choosable: Boolean get() = navigable && GeneralCommand.CHOOSING.all { it in supportedCommands }
 }
 
 /** An account on the server, with the permissions admins usually change. */
@@ -301,10 +304,24 @@ enum class SessionCommand(val wire: String, val label: String) {
 enum class GeneralCommand(val wire: String) {
     VOLUME_UP("VolumeUp"), VOLUME_DOWN("VolumeDown"), TOGGLE_MUTE("ToggleMute"), GO_HOME("GoHome"),
     // Moving around another app's menus (Nitrate on TV takes these as remote keys).
-    MOVE_UP("MoveUp"), MOVE_DOWN("MoveDown"), MOVE_LEFT("MoveLeft"), MOVE_RIGHT("MoveRight"), SELECT("Select"), BACK("Back");
+    MOVE_UP("MoveUp"), MOVE_DOWN("MoveDown"), MOVE_LEFT("MoveLeft"), MOVE_RIGHT("MoveRight"), SELECT("Select"), BACK("Back"),
+    // Straight to a page (Nitrate on TV).
+    GO_TO_SEARCH("GoToSearch");
 
     companion object {
         /** What a device must say it takes to be steered round its menus. */
         val NAVIGATION = listOf(MOVE_UP, MOVE_DOWN, MOVE_LEFT, MOVE_RIGHT, SELECT, BACK, GO_HOME)
+
+        /** Jellyfin's commands for opening a library or title (with arguments: `MediaServer.showOn`). */
+        const val DISPLAY_CONTENT = "DisplayContent"
+
+        /** Jellyfin's command for typing text into the field in use (`MediaServer.typeOn`). */
+        const val SEND_STRING = "SendString"
+
+        /**
+         * What a device must say it takes for the phone to choose for it: go to a page, show a
+         * title, type (Nitrate on TV reports these; other apps' TVs mostly ignore them).
+         */
+        val CHOOSING = listOf(GO_TO_SEARCH.wire, DISPLAY_CONTENT, SEND_STRING)
     }
 }

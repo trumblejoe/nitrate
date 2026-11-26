@@ -767,6 +767,19 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                         }
                     }
                     "GoHome" -> nav.navigate(HomeRoute) { popUpTo(HomeRoute) { inclusive = true }; launchSingleTop = true }
+                    // The phone remote's Go to, Show on TV and Type.
+                    "GoToSearch" -> nav.navigate(SearchRoute()) { launchSingleTop = true }
+                    "DisplayContent" -> e.arguments["ItemId"]?.let { id ->
+                        when (e.arguments["ItemType"]) {
+                            "CollectionFolder", "UserView" -> nav.navigate(LibraryRoute(id))
+                            "Playlist" -> nav.navigate(PlaylistRoute(id))
+                            else -> nav.navigate(DetailsRoute(id))
+                        }
+                    }
+                    "SendString" -> e.arguments["String"]?.let { text ->
+                        // No field in use: a search for it (in place of a search already open, so its words change).
+                        if (!dev.nitrate.tv.ui.components.RemoteTyping.type(text)) nav.navigate(SearchRoute(text)) { popUpTo<SearchRoute> { inclusive = true } }
+                    }
                     else -> Unit
                 }
                 else -> Unit

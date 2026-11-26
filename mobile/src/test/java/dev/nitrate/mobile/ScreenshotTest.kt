@@ -1011,6 +1011,58 @@ class ScreenshotTest {
 
     @Test fun remote() = shoot("phone-remote") { dev.nitrate.mobile.ui.RemoteScreen(it, "s1") }
 
+    /**
+     * Nitrate on a TV: Choose for it and Type at the top; with the arrows (or nothing playing) Go to
+     * Home, Search or a library. Each sends its command to that TV.
+     */
+    @Test
+    fun remoteChoosesForTheTv() {
+        lateinit var server: FakeServer
+        shoot("phone-remote-choose") { a -> server = a.server as FakeServer; dev.nitrate.mobile.ui.RemoteScreen(a, "s1") }
+        compose.onNodeWithText("Choose for Living room TV").assertExists()
+        compose.onNodeWithText("Arrows").performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/phone-remote-goto.png")
+        compose.onNodeWithText("Search").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        check("s1:GoToSearch" in server.commandsSent) { server.commandsSent.toString() }
+        compose.onNodeWithText("Choose for Living room TV").performClick()
+        compose.waitForIdle()
+        check(dev.nitrate.mobile.ui.ChooseForTv.target.value?.sessionId == "s1")
+        dev.nitrate.mobile.ui.ChooseForTv.done()
+    }
+
+    /** Type on the TV: what's typed here goes into the TV's box in use (else its search). */
+    @Test
+    fun typeOnTheTv() {
+        var typed: String? = null
+        shoot("phone-type-on-tv", act = {
+            compose.onNodeWithText("Type").performClick()
+            compose.waitForIdle()
+            compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextInput("arrival")
+            compose.waitForIdle()
+        }) { dev.nitrate.mobile.ui.ChooseActions("Living room TV", onChoose = {}, onType = { typed = it }) }
+        compose.onNodeWithText("Send").performClick()
+        compose.waitForIdle()
+        check(typed == "arrival") { typed.toString() }
+    }
+
+    /** Choosing for a TV: over every page, whom for, Show on TV on a title's page, and Done. */
+    @Test
+    fun choosingBanner() {
+        dev.nitrate.mobile.ui.ChooseForTv.start("s1", "Living room TV")
+        try {
+            shoot("phone-choosing-banner") { a -> androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) { dev.nitrate.mobile.ui.ChoosingBanner(a, "m1") } }
+            compose.onNodeWithText("Show on TV").assertExists()
+            compose.onNodeWithText("Done").performClick()
+            compose.waitForIdle()
+            check(dev.nitrate.mobile.ui.ChooseForTv.target.value == null)
+        } finally {
+            dev.nitrate.mobile.ui.ChooseForTv.done()
+        }
+    }
+
     /** A TV playing an episode asks "Still watching?": answered from the phone; then its arrow pad. */
     @Test
     fun remoteAnswersAndSteers() {

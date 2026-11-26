@@ -102,7 +102,10 @@ internal fun parseEvent(type: String?, data: kotlinx.serialization.json.JsonElem
         "GeneralCommand" -> o?.let { g ->
             ServerEvent.General(
                 g.s("Name") ?: return null,
-                (g["Arguments"] as? JsonObject).orEmpty().mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }.toMap(),
+                // An item's id (DisplayContent) in Nitrate's dashed form, like every other id.
+                (g["Arguments"] as? JsonObject).orEmpty().mapNotNull { (k, v) ->
+                    (v as? JsonPrimitive)?.contentOrNull?.let { k to if (k == "ItemId") normalizeId(it) else it }
+                }.toMap(),
             )
         }
         "LibraryChanged" -> o?.let { ServerEvent.LibraryChanged(it.list("ItemsAdded").map(::normalizeId), it.list("ItemsUpdated").map(::normalizeId), it.list("ItemsRemoved").map(::normalizeId)) }

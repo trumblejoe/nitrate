@@ -505,6 +505,12 @@ interface MediaServer {
     suspend fun seekSession(sessionId: String, positionMs: Long): Unit = unsupported()
     suspend fun sendGeneralCommand(sessionId: String, command: GeneralCommand): Unit = unsupported()
 
+    /** Opens [item] there: a library's page, else its details page (Jellyfin's DisplayContent). */
+    suspend fun showOn(sessionId: String, item: MediaItem): Unit = unsupported()
+
+    /** Types [text] into the text field in use there (Jellyfin's SendString). */
+    suspend fun typeOn(sessionId: String, text: String): Unit = unsupported()
+
     /** The signed-in user's sessions on other devices that can be controlled from here (any account type). */
     suspend fun controllableSessions(): List<ServerSession> = unsupported()
 

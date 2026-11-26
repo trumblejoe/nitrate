@@ -27,6 +27,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -120,6 +125,16 @@ fun RemoteScreen(actions: AppActions, sessionId: String, target: RemoteTarget? =
                 if (view?.navigable == true) Chip(if (arrows) "Playback" else "Arrows", selected = arrows) { arrows = !arrows }
             }
             view?.prompt?.takeIf { it.id !in answered }?.let { p -> PromptCard(p) { choice -> answered = answered + p.id; send { answer(p, choice) } } }
+            // Nitrate on a TV: choose on the phone, type, and go straight to a page (not over something playing).
+            if (view?.choosable == true) {
+                val name = view?.deviceName ?: "the TV"
+                ChooseActions(
+                    deviceName = name,
+                    onChoose = { ChooseForTv.start(sessionId, name); actions.nav.popBackStack() },
+                    onType = { text -> send { type(text) } },
+                )
+                if (arrows || np == null) GoToRow(actions, onGo = { item -> send { if (item == null) navigate(GeneralCommand.GO_HOME) else show(item) } }, onSearch = { send { navigate(GeneralCommand.GO_TO_SEARCH) } })
+            }
             if (arrows) {
                 ArrowPad { command -> send { navigate(command) } }
                 return@Column
@@ -336,6 +351,54 @@ private fun StillCard(picture: String?, blur: Boolean, title: String, line: Stri
         }
         Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
         line?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+/** Choose for the TV (the phone's own pages, Play sending there) and Type (into the TV's field in use, else its search). */
+@Composable
+fun ChooseActions(deviceName: String, onChoose: () -> Unit, onType: (String) -> Unit) {
+    var typing by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Button(onClick = onChoose, modifier = Modifier.weight(1f)) {
+            Text("Choose for $deviceName", maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        OutlinedButton(onClick = { typing = true }) { Text("Type") }
+    }
+    if (typing) {
+        var text by remember { mutableStateOf("") }
+        fun go() { if (text.isNotBlank()) onType(text.trim()); typing = false }
+        Column(Modifier.fillMaxWidth().padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Goes into the box in use on $deviceName, or searches for it there.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    text, { text = it }, singleLine = true, placeholder = { Text("A title, a name…") },
+                    label = { Text("Type on $deviceName") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { go() }),
+                    modifier = Modifier.weight(1f),
+                )
+                Button(onClick = ::go, enabled = text.isNotBlank()) { Text("Send") }
+            }
+            TextButton(onClick = { typing = false }) { Text("Cancel") }
+        }
+    }
+    }
+}
+
+/** Straight to a page on the TV: Home ([onGo] with null), Search, or a library. */
+@Composable
+internal fun GoToRow(actions: AppActions, onGo: (MediaItem?) -> Unit, onSearch: () -> Unit) {
+    val libraries by produceState(runCatching { actions.container.libraryCache.cached(actions.server) }.getOrDefault(emptyList())) {
+        runCatching { actions.server.views() }.getOrNull()?.let { value = it }
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionLabel("Go to")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("Home", selected = false) { onGo(null) }
+            Chip("Search", selected = false, onClick = onSearch)
+            libraries.forEach { lib -> Chip(lib.name, selected = false) { onGo(lib) } }
+        }
     }
 }
 

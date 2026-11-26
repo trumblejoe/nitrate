@@ -154,7 +154,9 @@ class AppContainer(
 
     val remote by lazy {
         // A TV can be steered round its menus from a phone (arrows, OK, Back, Home).
-        if (deviceKind == dev.nitrate.core.pages.DeviceKind.TV) server.acceptCommands(dev.nitrate.core.admin.GeneralCommand.NAVIGATION.map { it.wire })
+        if (deviceKind == dev.nitrate.core.pages.DeviceKind.TV) server.acceptCommands(
+            dev.nitrate.core.admin.GeneralCommand.NAVIGATION.map { it.wire } + dev.nitrate.core.admin.GeneralCommand.CHOOSING,
+        )
         RemoteControlHub(server, syncPlay, onItemsAdded = { newEpisodes.checkSoon() })
     }
 

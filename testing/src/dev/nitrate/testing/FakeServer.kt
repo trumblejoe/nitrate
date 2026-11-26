@@ -329,9 +329,17 @@ class FakeServer : MediaServer {
     )
     /** The user's own controllable devices: the living-room TV, playing a film. */
     override suspend fun controllableSessions() = listOf(
-        dev.nitrate.core.admin.ServerSession("s1", "Joe", "Nitrate TV", "Living room TV", "d1", films[0], 2_100_000, false, "DirectPlay", "192.168.1.30", null, true, true, audioIndex = 1, subtitleIndex = -1, volume = 60),
+        dev.nitrate.core.admin.ServerSession("s1", "Joe", "Nitrate TV", "Living room TV", "d1", films[0], 2_100_000, false, "DirectPlay", "192.168.1.30", null, true, true, audioIndex = 1, subtitleIndex = -1, volume = 60,
+            supportedCommands = dev.nitrate.core.admin.GeneralCommand.NAVIGATION.map { it.wire } + dev.nitrate.core.admin.GeneralCommand.CHOOSING),
         dev.nitrate.core.admin.ServerSession("s3", "Joe", "Nitrate TV", "Bedroom TV", "d3", null, null, false, null, "192.168.1.31", null, true, true),
     )
+    /** What the phone opened and typed on other devices, as "session:itemId" and "session:text". */
+    val shownOn = mutableListOf<String>()
+    val typedOn = mutableListOf<String>()
+    val commandsSent = mutableListOf<String>()
+    override suspend fun showOn(sessionId: String, item: MediaItem) { shownOn += "$sessionId:${item.id}" }
+    override suspend fun typeOn(sessionId: String, text: String) { typedOn += "$sessionId:$text" }
+    override suspend fun sendGeneralCommand(sessionId: String, command: dev.nitrate.core.admin.GeneralCommand) { commandsSent += "$sessionId:${command.wire}" }
     override val deviceId: String? get() = "fake-phone"
 
     /** A year of watching, for the stats screens. */
