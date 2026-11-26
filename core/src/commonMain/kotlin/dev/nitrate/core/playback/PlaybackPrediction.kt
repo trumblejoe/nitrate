@@ -191,9 +191,7 @@ object PlaybackPredictor {
 
     /** Why profile 7 plays the way it does here, when the playback test chose it. */
     private fun profile7Because(caps: DeviceCapabilities, settings: PlaybackSettings, layers: DolbyVisionLayers?): String? {
-        val dolbyVision = CapabilityRules.hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
-        if (!(dolbyVision && 8 in caps.dolbyVisionProfiles && caps.dolbyVisionConverter && settings.convertProfile7) || 7 in caps.dolbyVisionProfiles) return null
-        return Profile7Choice.of(Profile7Playback.AS_PROFILE_8, settings.deviceCheck, layers).because
+        return CapabilityRules.profile7Choice(caps, settings, layers).because
     }
 
     private fun hdrPath(v: MediaStream, verdict: DeliveryVerdict, caps: DeviceCapabilities, settings: PlaybackSettings, dvLayers: DolbyVisionLayers? = null): String? {

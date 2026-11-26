@@ -123,7 +123,14 @@ fun PlaybackTestScreen(
 
     val results = remember { mutableStateListOf<ClipResult>() }
     // The profile 7 clips this run (with the Companion's heavy one when it has it).
-    var profile7List by remember { mutableStateOf(PlaybackTest.profile7Clips(heavy = false)) }
+    // A device that reports a profile 7 decoder also plays each clip as Dolby Vision 7.
+    val native = 7 in capabilities.dolbyVisionProfiles
+    var profile7List by remember { mutableStateOf(PlaybackTest.profile7Clips(heavy = false, native = native)) }
+    // A profile 7 clip that showed frames, looping in the preview while the user says whether there's a picture
+    // (frames can be decoded and still be black, as a FEL film was on a MediaTek box).
+    var asking by remember { mutableStateOf<TestClip?>(null) }
+    var answer by remember { mutableStateOf<kotlinx.coroutines.CompletableDeferred<dev.nitrate.core.playback.Answer>?>(null) }
+    val stopFocus = remember { FocusRequester() }
     val passthrough = remember { mutableMapOf<String, Boolean>() }
     var refresh by remember { mutableStateOf<dev.nitrate.core.playback.RefreshCheck?>(null) }
     var testingRefresh by remember { mutableStateOf(false) }
@@ -152,14 +159,29 @@ fun PlaybackTestScreen(
             refresh = null
             // The profile 7 clips after the rest; the heavy one only when the Companion has it.
             val heavy = runCatching { server?.checkClips().orEmpty().any { it.id == PlaybackTest.HEAVY_FEL_CLIP } }.getOrDefault(false)
-            profile7List = PlaybackTest.profile7Clips(heavy)
+            profile7List = PlaybackTest.profile7Clips(heavy, native)
             for (clip in PlaybackTest.CLIPS + profile7List) {
                 running = clip
                 decoder = null
                 audioEncoding = null
                 clip.profile7?.let(profile7Way::set)
                 val uri = clip.fromServer?.let { id -> server?.checkClipUrl(id) } ?: clip.uri
-                val result = player.runClip(clip, uri) { decoder }
+                var result = player.runClip(clip, uri) { decoder }
+                if (clip.profile7 != null && result.outcome != Outcome.FAILED) {
+                    val waiting = kotlinx.coroutines.CompletableDeferred<dev.nitrate.core.playback.Answer>()
+                    answer = waiting
+                    player.repeatMode = Player.REPEAT_MODE_ONE
+                    player.seekTo(0)
+                    player.play()
+                    asking = clip
+                    val said = try { waiting.await() } finally {
+                        asking = null
+                        answer = null
+                        player.repeatMode = Player.REPEAT_MODE_OFF
+                    }
+                    result = sawPicture(result, said)
+                    runCatching { stopFocus.requestFocus() }
+                }
                 results += result
                 if (clip.kind == ClipKind.AUDIO && result.ok) audioEncoding?.let { passthrough[clip.asset] = it !in PCM_ENCODINGS }
             }
@@ -208,7 +230,7 @@ fun PlaybackTestScreen(
                         Button(onClick = ::runAll, enabled = running == null, modifier = Modifier.focusRequester(startFocus).onFocusChanged { startFocused = it.isFocused }) {
                             Text(if (results.isEmpty()) "Start test" else "Run again")
                         }
-                        if (running != null) OutlinedButton(onClick = { job?.cancel(); running = null; player.stop() }) { Text("Stop") }
+                        if (running != null) OutlinedButton(onClick = { job?.cancel(); running = null; player.stop() }, modifier = Modifier.focusRequester(stopFocus)) { Text("Stop") }
                     }
                 }
             }
@@ -268,8 +290,9 @@ fun PlaybackTestScreen(
                 Column(Modifier.padding(top = 16.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Dolby Vision profile 7", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "MEL and FEL (a minimal or a full enhancement layer), each converted to 8.1 and as its HDR10 base layer. " +
-                            "If a kind shows no picture converted but plays as its base layer, films of that kind play that way on this TV from now on." +
+                        "MEL and FEL (a minimal or a full enhancement layer), each " + (if (native) "as Dolby Vision 7, " else "") +
+                            "converted to 8.1 and as its HDR10 base layer. After each one you're asked whether the preview shows a picture. " +
+                            "If a kind shows none one way but plays a safer way, films of that kind play the safer way on this TV from now on." +
                             (if (server == null) "" else " The disc-like FEL clip comes from the Nitrate Companion, when your server has it."),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -294,6 +317,41 @@ fun PlaybackTestScreen(
             decoder?.let {
                 Text("Decoder: $it", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }
+            asking?.let { clip -> PictureQuestion(clip) { said -> answer?.complete(said) } }
+        }
+    }
+}
+
+/** A profile 7 clip's result after the user said whether the preview showed a picture. */
+internal fun sawPicture(result: ClipResult, said: dev.nitrate.core.playback.Answer): ClipResult = when (said) {
+    dev.nitrate.core.playback.Answer.NO -> result.copy(outcome = Outcome.FAILED, detail = "No picture: you saw it stay black (${result.detail.replaceFirstChar { it.lowercase() }})")
+    dev.nitrate.core.playback.Answer.YES -> result.copy(detail = result.detail + "; you saw a picture")
+    dev.nitrate.core.playback.Answer.UNSURE -> result.copy(detail = result.detail + "; you weren't sure of the picture")
+}
+
+/**
+ * Asked after a profile 7 clip that showed frames, while it loops in the preview: decoders can turn
+ * out frames that are all black, which only someone looking can tell. Takes focus as it appears.
+ */
+@Composable
+internal fun PictureQuestion(clip: TestClip, onAnswer: (dev.nitrate.core.playback.Answer) -> Unit) {
+    val yes = remember { FocusRequester() }
+    LaunchedEffect(clip) {
+        repeat(10) {
+            runCatching { yes.requestFocus() }
+            kotlinx.coroutines.delay(60)
+        }
+    }
+    Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Is the preview showing a picture?", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "${clip.label} is playing again above. Say whether you can see moving colours, or only black.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { onAnswer(dev.nitrate.core.playback.Answer.YES) }, modifier = Modifier.focusRequester(yes)) { Text("Yes, a picture") }
+            OutlinedButton(onClick = { onAnswer(dev.nitrate.core.playback.Answer.NO) }) { Text("No, it's black") }
+            OutlinedButton(onClick = { onAnswer(dev.nitrate.core.playback.Answer.UNSURE) }) { Text("Not sure") }
         }
     }
 }

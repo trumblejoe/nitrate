@@ -2727,6 +2727,16 @@ class TvScreenshotTest {
             compose.onAllNodes(androidx.compose.ui.test.hasText("Dolby Vision 7 MEL 4K (converted)")).fetchSemanticsNodes().isNotEmpty()) { "the profile 7 clips are listed" }
     }) { c -> dev.nitrate.tv.ui.settings.PlaybackTestScreen(c.playbackSettings, c.capabilities, c.server) }
 
+    /** After a profile 7 clip that showed frames: is there really a picture? (Frames can be black.) Yes takes focus. */
+    @Test fun playbackTestPictureQuestion() = shoot("tv-playback-test-picture", act = {
+        runCatching { compose.waitUntil(timeoutMillis = 3_000) { compose.mainClock.advanceTimeBy(100); focusedHasText("Yes, a picture") } }
+        check(focusedHasText("Yes, a picture")) { "Yes is focused; focused: ${focusedNodes()}" }
+    }) { _ ->
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.padding(48.dp).width(420.dp)) {
+            dev.nitrate.tv.ui.settings.PictureQuestion(dev.nitrate.core.playback.PlaybackTest.profile7Clips(heavy = false).first { it.label.contains("FEL") }) {}
+        }
+    }
+
     @Test fun serverSettings() = shoot("tv-server-settings") { c -> dev.nitrate.tv.ui.settings.ServerSettingsScreen(c) }
 
     @Test fun watchPartners() = shoot("tv-watch-partners", setup = { c -> c.refreshCompanionForTests() }) { c ->

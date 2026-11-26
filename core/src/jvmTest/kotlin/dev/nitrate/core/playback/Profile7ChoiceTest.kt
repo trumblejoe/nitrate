@@ -55,9 +55,37 @@ class Profile7ChoiceTest {
         // Converted fails but so does the base layer: nothing better to choose.
         val both = check(felC to Outcome.FAILED, felB to Outcome.FAILED)
         assertEquals(Profile7Playback.AS_PROFILE_8, Profile7Choice.of(Profile7Playback.AS_PROFILE_8, both, DolbyVisionLayers.FEL).way)
-        // A device that plays profile 7 itself is never changed.
+        // A device that plays profile 7 itself isn't changed by the other ways' results alone.
         val failing = check(felC to Outcome.FAILED, felB to Outcome.PASSED)
         assertEquals(Profile7Playback.DOLBY_VISION, Profile7Choice.of(Profile7Playback.DOLBY_VISION, failing, DolbyVisionLayers.FEL).way)
+    }
+
+    private val natives = PlaybackTest.profile7Clips(heavy = true, native = true)
+    private fun nativeKey(asset: String) = natives.first { it.asset == asset && it.profile7 == Profile7Playback.DOLBY_VISION }.key
+    private val melN = nativeKey("dv_p7_mel_2160p.mkv")
+    private val felN = nativeKey("dv_p7_fel_2160p.mkv")
+
+    @Test fun aDeviceThatClaimsProfile7AlsoPlaysEachClipAsDolbyVision7() {
+        assertEquals(9, natives.size)
+        assertEquals(6, PlaybackTest.profile7Clips(heavy = false, native = true).size)
+        assertEquals("dv_p7_fel_2160p.mkv#DOLBY_VISION", felN)
+    }
+
+    @Test fun aKindThatShowsNoPictureAsDolbyVision7StepsDown() {
+        // FEL is black as Dolby Vision 7 but plays converted: converted, where the device can convert.
+        val c = check(melN to Outcome.PASSED, felN to Outcome.FAILED, felC to Outcome.PASSED, felB to Outcome.PASSED)
+        val fel = Profile7Choice.of(Profile7Playback.DOLBY_VISION, c, DolbyVisionLayers.FEL, canConvert = true)
+        assertEquals(Profile7Playback.AS_PROFILE_8, fel.way)
+        assertTrue(fel.because!!.contains("as Dolby Vision 7"))
+        assertEquals(Profile7Playback.DOLBY_VISION, Profile7Choice.of(Profile7Playback.DOLBY_VISION, c, DolbyVisionLayers.MEL).way)
+        // It can't convert: its base layer.
+        assertEquals(Profile7Playback.BASE_LAYER, Profile7Choice.of(Profile7Playback.DOLBY_VISION, c, DolbyVisionLayers.FEL, canConvert = false).way)
+        // Converted is black too: straight to its base layer.
+        val worse = check(felN to Outcome.FAILED, felC to Outcome.FAILED, felB to Outcome.PASSED)
+        assertEquals(Profile7Playback.BASE_LAYER, Profile7Choice.of(Profile7Playback.DOLBY_VISION, worse, DolbyVisionLayers.FEL).way)
+        // Nothing else played: it stays.
+        val nothing = check(felN to Outcome.FAILED, felC to Outcome.FAILED, felB to Outcome.FAILED)
+        assertEquals(Profile7Playback.DOLBY_VISION, Profile7Choice.of(Profile7Playback.DOLBY_VISION, nothing, DolbyVisionLayers.FEL).way)
     }
 
     @Test fun profile7ClipsNeverBecomeSuggestedSettings() {

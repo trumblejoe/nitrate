@@ -15,7 +15,7 @@ data class TestClip(
     val hdr: String? = null,
     /** Dolby Vision profile for DOVI clips (5, 7 or 8). */
     val dolbyVisionProfile: Int? = null,
-    /** Profile 7: the way it's played in this run (converted to 8.1, or its HDR10 base layer), as real files are. */
+    /** Profile 7: the way it's played in this run (as Dolby Vision 7, converted to 8.1, or its HDR10 base layer), as real files are. */
     val profile7: Profile7Playback? = null,
     /** Profile 7: which kind the clip is. */
     val layers: DolbyVisionLayers? = null,
@@ -34,8 +34,9 @@ data class TestClip(
             val v = caps.video[codec]
             val decodes = v != null && v.maxHeight >= height && (!tenBit || v.tenBit)
             decodes && when (profile7) {
+                Profile7Playback.DOLBY_VISION -> 7 in caps.dolbyVisionProfiles
                 Profile7Playback.AS_PROFILE_8 -> 8 in caps.dolbyVisionProfiles && caps.dolbyVisionConverter
-                else -> "HDR10" in caps.hdr
+                Profile7Playback.BASE_LAYER -> "HDR10" in caps.hdr
             }
         } else {
             val v = caps.video[codec]
@@ -103,12 +104,17 @@ object PlaybackTest {
     const val HEAVY_FEL_CLIP = "dolby_vision_7_fel_heavy"
 
     /**
-     * Dual-layer Dolby Vision (profile 7), each kind played both ways real files can be: converted to
-     * 8.1 and as its HDR10 base layer. Their results decide how profile 7 plays here
+     * Dual-layer Dolby Vision (profile 7), each kind played the ways real files can be: converted to
+     * 8.1 and as its HDR10 base layer, and as Dolby Vision 7 itself on a device that reports a
+     * profile 7 decoder ([native]). Their results decide how profile 7 plays here
      * ([Profile7Choice]). [heavy]: with the Companion's disc-like FEL clip too.
      */
-    fun profile7Clips(heavy: Boolean): List<TestClip> = buildList {
-        val ways = listOf(Profile7Playback.AS_PROFILE_8 to "converted", Profile7Playback.BASE_LAYER to "base layer")
+    fun profile7Clips(heavy: Boolean, native: Boolean = false): List<TestClip> = buildList {
+        val ways = listOfNotNull(
+            (Profile7Playback.DOLBY_VISION to "as Dolby Vision 7").takeIf { native },
+            Profile7Playback.AS_PROFILE_8 to "converted",
+            Profile7Playback.BASE_LAYER to "base layer",
+        )
         fun both(asset: String, name: String, layers: DolbyVisionLayers, server: String? = null) = ways.forEach { (way, word) ->
             add(TestClip(asset, "$name ($word)", ClipKind.VIDEO, "hevc", 2160, tenBit = true, hdr = "DOVI", dolbyVisionProfile = 7, profile7 = way, layers = layers, fromServer = server))
         }
