@@ -219,7 +219,7 @@ class ScreenshotTest {
      * A playback's chat with chat histories (and favourites), started from a group's card: the chat
      * sheet on a new chat (nothing earlier loaded), with the title's quick replies; with [chats], on Chats.
      */
-    private fun chatsPanel(name: String, chats: Boolean = false) = shoot(name, setup = { c ->
+    private fun chatsPanel(name: String, chats: Boolean = false, emojis: Boolean = false) = shoot(name, setup = { c ->
         (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions", "chatfavourites")
         c.refreshCompanionForTests()
     }) { actions ->
@@ -233,7 +233,7 @@ class ScreenshotTest {
             chat.focus(listOf("g1"))
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.ChatPanelSheet(chat, "Will", positionMs = { 1_000_000 }, picks = picks.value, onDismiss = {}, showChats = chats)
+            dev.nitrate.mobile.ui.ChatPanelSheet(chat, "Will", positionMs = { 1_000_000 }, picks = picks.value, onDismiss = {}, showChats = chats, showEmojis = emojis)
         }
     }
 
@@ -255,6 +255,9 @@ class ScreenshotTest {
      * title's own emojis first and its characters' names and short lines under them, the message box.
      */
     @Test fun chatSheet() = chatsPanel("phone-chat-sheet")
+
+    /** The one emoji button's full list under the message box: the title's own and the usual ones first, then the rest by kind. */
+    @Test fun chatEmojis() = chatsPanel("phone-chat-emojis", emojis = true)
 
     /** Chats: Group chat on or off, New chat, and this group's earlier chats newest first (dated 2026/11/22), one building on another, each with a heart (Tuesday's a favourite). */
     @Test fun groupChats() = chatsPanel("phone-group-chats", chats = true)

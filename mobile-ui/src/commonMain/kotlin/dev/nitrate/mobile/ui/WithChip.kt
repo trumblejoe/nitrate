@@ -175,14 +175,14 @@ val ChatBubbleIcon: androidx.compose.ui.graphics.vector.ImageVector =
 
 /**
  * The player's Chat button (where there's a group to chat with; not in easy mode): a speech bubble
- * with how many messages popped up since the chat was last open. Opens the chat sheet.
+ * with a small dot when something popped up since the chat was last open. Opens the chat sheet.
  */
 @Composable
 fun ChatButton(chat: dev.nitrate.core.companion.TimelineChat, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val unread by chat.unread.collectAsState()
     androidx.compose.material3.IconButton(onClick = onOpen, modifier = modifier) {
-        androidx.compose.material3.BadgedBox(badge = { if (unread > 0) androidx.compose.material3.Badge { Text(if (unread > 9) "9+" else "$unread") } }) {
-            androidx.compose.material3.Icon(ChatBubbleIcon, if (unread > 0) "Chat, $unread new" else "Chat", tint = Color.White)
+        androidx.compose.material3.BadgedBox(badge = { if (unread > 0) androidx.compose.material3.Badge(containerColor = accentColor()) }) {
+            androidx.compose.material3.Icon(ChatBubbleIcon, if (unread > 0) "Chat, new messages" else "Chat", tint = Color.White)
         }
     }
 }

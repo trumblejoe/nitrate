@@ -1,6 +1,10 @@
 package dev.nitrate.mobile.ui
 
 import androidx.compose.foundation.clickable
+import dev.nitrate.core.companion.Emojis
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -231,6 +235,8 @@ fun ChatPanelSheet(
     onDismiss: () -> Unit,
     /** Opens on Chats (screenshots). */
     showChats: Boolean = false,
+    /** Opens with the emoji list showing (screenshots). */
+    showEmojis: Boolean = false,
     /** The device's offset from UTC (minutes) at a moment, for the chats' dates. */
     offsetAt: (Long) -> Int = { (timeZoneOffsetMsAt(it) / 60_000).toInt() },
 ) {
@@ -242,7 +248,7 @@ fun ChatPanelSheet(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (chats) ChatsList(chat, inSession, pickedBy, offsetAt, onTurn, onPick = { id -> onPlayChat(id); chats = false }, onBack = { chats = false })
-            else Conversation(chat, who, positionMs, picks, pickedBy, problem, offsetAt, onTurn) { chats = true }
+            else Conversation(chat, who, positionMs, picks, pickedBy, problem, offsetAt, onTurn, showEmojis) { chats = true }
         }
     }
 }
@@ -258,6 +264,7 @@ private fun Conversation(
     problem: String?,
     offsetAt: (Long) -> Int,
     onTurn: (Boolean) -> Unit,
+    showEmojis: Boolean,
     onChats: () -> Unit,
 ) {
     val on by chat.on.collectAsState()
@@ -270,6 +277,7 @@ private fun Conversation(
     val scope = rememberCoroutineScope()
     var draft by remember { mutableStateOf("") }
     var sendProblem by remember { mutableStateOf<String?>(null) }
+    var picking by remember { mutableStateOf(showEmojis) }
     val list = rememberLazyListState()
     LaunchedEffect(Unit) { chat.opened() }
     // Open: what pops up meanwhile is seen.
@@ -295,7 +303,7 @@ private fun Conversation(
     )
     if (!on) {
         Text("Group chat is off: nothing pops up, and nothing is sent.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        androidx.compose.material3.Button(onClick = { onTurn(true) }) { Text("Turn it on") }
+        androidx.compose.material3.Button(onClick = { onTurn(true) }) { Text("Turn on") }
         return
     }
     if (missed.isNotEmpty()) TextButton(onClick = { chat.showMissed() }) { Text("Show what I missed (${missed.size})") }
@@ -317,14 +325,13 @@ private fun Conversation(
             }
         }
     }
-    // The title's own emojis first, then the usual ones; under them its characters' names and short lines: one tap sends.
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        items(picks.emojis) { emoji -> TextButton(onClick = { send(emoji, ChatKind.REACTION) }) { Text(emoji, fontSize = 22.sp) } }
-    }
+    // Its characters' names and short lines: one tap sends.
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items(picks.lines) { line -> SuggestionChip(onClick = { send(line, ChatKind.TEXT) }, label = { Text(line) }) }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
+        // One emoji button opens the whole list (the title's own and the usual ones first), as chat apps do.
+        IconButton(onClick = { picking = !picking }) { Text(if (picking) "⌨️" else "🙂", fontSize = 24.sp, modifier = Modifier.semantics { contentDescription = if (picking) "Close the emoji list" else "Emoji" }) }
         OutlinedTextField(
             draft, { draft = it.take(500) },
             placeholder = { Text("Message") },
@@ -337,7 +344,30 @@ private fun Conversation(
             Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = accentColor())
         }
     }
+    if (picking) EmojiList(Emojis.groupsFor(picks)) { emoji -> send(emoji, ChatKind.REACTION); picking = false }
     (problem ?: sendProblem)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+}
+
+/** The full emoji list under the message box, by heading ("For this" first); a tap sends one. */
+@Composable
+private fun EmojiList(groups: List<dev.nitrate.core.companion.EmojiGroup>, onPick: (String) -> Unit) {
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        androidx.compose.foundation.lazy.grid.GridCells.Adaptive(44.dp),
+        Modifier.fillMaxWidth().heightIn(max = 280.dp),
+    ) {
+        groups.forEach { group ->
+            item(key = "h-${group.name}", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Text(group.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+            }
+            items(group.emojis.size, key = { "e-${group.emojis[it]}" }) { i ->
+                val emoji = group.emojis[i]
+                Box(
+                    Modifier.size(44.dp).clickable(role = Role.Button, onClickLabel = "Send") { onPick(emoji) },
+                    contentAlignment = Alignment.Center,
+                ) { Text(emoji, fontSize = 24.sp) }
+            }
+        }
+    }
 }
 
 /** Chats: Group chat on or off, then New chat and the earlier chats for this group and part, newest first. */

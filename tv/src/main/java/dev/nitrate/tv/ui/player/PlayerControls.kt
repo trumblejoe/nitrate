@@ -130,7 +130,7 @@ internal fun PlayerControls(
         ) {
             PlayPauseButton(playing, onPlayPause, Modifier.remembered(focus, ControlFocus.PLAY_PAUSE))
             for (b in buttons) {
-                PlayerButton(b.label, b.onClick, Modifier.remembered(focus, b.key), enabled = b.enabled)
+                PlayerButton(b.label, b.onClick, Modifier.remembered(focus, b.key), enabled = b.enabled, mark = b.mark, markWords = b.markWords)
             }
             note?.let {
                 Text(it, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(start = 12.dp))
@@ -298,7 +298,15 @@ internal val CONTROLS_HEIGHT = 220.dp
 
 /** One button in the player's row. */
 /** A button under the seek bar; [key] keeps its place for focus when its label changes ("Group chat: On"/"Off"). */
-internal class PlayerAction(val label: String, val enabled: Boolean = true, val key: String = label, val onClick: () -> Unit)
+/** A button in the controls; [mark]: a small dot after its words (something new, e.g. the chat), said as [markWords]. */
+internal class PlayerAction(
+    val label: String,
+    val enabled: Boolean = true,
+    val key: String = label,
+    val mark: Boolean = false,
+    val markWords: String? = null,
+    val onClick: () -> Unit,
+)
 
 private fun Modifier.remembered(focus: ControlFocus, key: String) =
     focusRequester(focus.of(key)).onFocusChanged { if (it.isFocused) focus.last = key }
@@ -319,16 +327,20 @@ private fun playerButtonColors() = ButtonDefaults.colors(
 
 /** A player button: quiet until focused, then white with an outline and a little larger. */
 @Composable
-internal fun PlayerButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+internal fun PlayerButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, mark: Boolean = false, markWords: String? = null) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier,
+        modifier = if (mark && markWords != null) modifier.semantics { stateDescription = markWords } else modifier,
         colors = playerButtonColors(),
         // Not ready yet (still loading) still shows plainly where focus is: outlined and larger.
         scale = ButtonDefaults.scale(focusedScale = 1.12f, focusedDisabledScale = 1.12f),
         border = ButtonDefaults.border(focusedBorder = focusBorder, focusedDisabledBorder = focusBorder),
-    ) { Text(label) }
+    ) {
+        Text(label)
+        // Something new: a small dot in the accent colour after the words.
+        if (mark) Box(Modifier.padding(start = 8.dp).size(9.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+    }
 }
 
 /** Play/pause as a round button with its symbol, so it reads as the main control. */

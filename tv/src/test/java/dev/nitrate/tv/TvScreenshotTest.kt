@@ -1638,25 +1638,22 @@ class TvScreenshotTest {
         check(focusedHasText("Chat")) { "should reach the Chat button; focused: ${focusedNodes()}" }
     }
 
-    private fun focusedOnAReaction() =
-        (dev.nitrate.core.companion.QUICK_REACTIONS + "👻").any { focusedExact(it) }
-
     /**
      * The Chat button opens the chat strip across the bottom (the video above, the controls out of
-     * the way) on the first reaction; ▼ reaches the quick lines and ▶ along them the text field;
-     * focus stays in the strip, and Back closes it with focus back on the button.
+     * the way) on its one emoji button; ▶ reaches the quick lines and ▼ the text field; focus stays
+     * in the strip, and Back closes it with focus back on the button.
      */
     @Test fun playerChatStrip() = groupChatPlayer("tv-player-chat-strip") {
         reachChatButton()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(focusedOnAReaction()) { "the strip opens on the first reaction; focused: ${focusedNodes()}" }
+        check(focusedHasDescription("Emoji")) { "the strip opens on the emoji button; focused: ${focusedNodes()}" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Audio")).fetchSemanticsNodes().isEmpty()) { "the controls make way for it" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("The chat so far")).fetchSemanticsNodes().isEmpty()) { "the chat so far waits to be asked for" }
+        press("right")
+        check(focusedHasText("No way!")) { "▶ from the emoji button reaches the quick lines; focused: ${focusedNodes()}" }
         press("down")
-        check(focusedHasText("No way!")) { "▼ from the reactions reaches the quick lines; focused: ${focusedNodes()}" }
-        repeat(12) { if (!focusedHasText("Type a message")) press("right") }
-        check(focusedHasText("Type a message")) { "▶ along the lines reaches the text field; focused: ${focusedNodes()}" }
+        check(focusedHasText("Type a message")) { "▼ reaches the text field; focused: ${focusedNodes()}" }
         // Further down and sideways: still inside the strip.
         press("down", "down", "right", "left")
         check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "focus must stay in the strip" }
@@ -1676,7 +1673,7 @@ class TvScreenshotTest {
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         repeat(16) { if (!focusedHasDescription("Show the chat so far")) press("right") }
-        check(focusedHasDescription("Show the chat so far")) { "▶ along the reactions reaches the chat line and the page button; focused: ${focusedNodes()}" }
+        check(focusedHasDescription("Show the chat so far")) { "▶ along the lines reaches the chat line and the page button; focused: ${focusedNodes()}" }
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("The chat so far")).fetchSemanticsNodes().isNotEmpty()) { "it shows above the strip" }
@@ -1770,7 +1767,7 @@ class TvScreenshotTest {
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         repeat(16) { if (!focusedHasText("New chat · Will ›")) press("right") }
-        check(focusedHasText("New chat · Will ›")) { "▶ along the reactions reaches the chat line, which says it's a new chat with Will; focused: ${focusedNodes()}" }
+        check(focusedHasText("New chat · Will ›")) { "▶ along the lines reaches the chat line, which says it's a new chat with Will; focused: ${focusedNodes()}" }
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
     }
@@ -1811,15 +1808,23 @@ class TvScreenshotTest {
     }
 
     /**
-     * The strip's quick replies: the title's own emojis first (its tags), then the usual ones; under
-     * them its main characters' names and short lines, one press sending a line as a message.
+     * The strip's one emoji button opens the full list, the title's own emojis first (its tags), then
+     * the usual ones and the rest by kind; OK on one sends it and closes the list, focus back on the
+     * button. Beside it the title's characters' names and short lines, one press sending a line.
      */
     @Test fun playerGroupQuickReplies() = withPlayer("tv-player-group-quick-replies", chats = true) {
         reachChatButton()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(focusedExact("👻")) { "the title's own emoji (haunted) comes first; focused: ${focusedNodes()}" }
-        press("down")
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedExact("👻")) { "the list opens on the title's own emoji (haunted); focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("For this")).fetchSemanticsNodes().isNotEmpty()) { "under its heading" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("For this")).fetchSemanticsNodes().isEmpty()) { "sending closes the list" }
+        check(focusedHasDescription("Emoji")) { "focus back on the emoji button; focused: ${focusedNodes()}" }
+        press("right")
         check(focusedHasText("Iris!")) { "the lead character's name comes first among the lines; focused: ${focusedNodes()}" }
         press("right")
         check(focusedHasText("The Projectionist!")) { "◀▶ along the lines; focused: ${focusedNodes()}" }
@@ -1828,6 +1833,22 @@ class TvScreenshotTest {
         compose.onNode(androidx.compose.ui.test.hasContentDescription("Show the chat so far")).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Iris!")).fetchSemanticsNodes().size >= 2) { "one press sent it: it's in the chat so far" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("👻")).fetchSemanticsNodes().isNotEmpty()) { "and the reaction" }
+    }
+
+    /** The full emoji list, open above the strip. */
+    @Test fun playerChatEmojiList() = withPlayer("tv-player-chat-emoji-list", chats = true) {
+        reachChatButton()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        press("down", "right")
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Faces")).fetchSemanticsNodes().isNotEmpty()) { "the rest by kind" }
+        press("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("For this")).fetchSemanticsNodes().isEmpty()) { "Back closes the list" }
+        check(focusedHasDescription("Emoji")) { "focus back on the emoji button; focused: ${focusedNodes()}" }
     }
 
     @Test fun playerGroupChatsPicked() = withPlayer("tv-player-group-chat-picked", chats = true) {

@@ -281,9 +281,9 @@ fun PlayerScreen(
     val withChip = company?.chip?.collectAsState()?.value
     // The group button (counting for, Group Watch Session): only where a group is involved.
     val groupLabel = groupButtonLabel(withChip).takeIf { !easy }
-    // The Chat button (its strip across the bottom), with how many popped up since it was last open.
-    val chatUnread = groupChat?.unread?.collectAsState()?.value ?: 0
-    val chatLabel = chatButtonLabel(chatUnread).takeIf { chatAvailable && !easy }
+    // The Chat button (its strip across the bottom), with a dot when something popped up since it was last open.
+    val chatNew = (groupChat?.unread?.collectAsState()?.value ?: 0) > 0
+    val chatLabel = "Chat".takeIf { chatAvailable && !easy }
     var chatLog by remember { mutableStateOf(false) }
     // A Group Watch Session on this part: the countdown, reports, and the others' pauses and jumps offered.
     val sessionPlayback = rememberSessionPlayback(watchGroups, item?.id, player, enabled = clipEndMs == null && testPlay == null)
@@ -656,7 +656,7 @@ fun PlayerScreen(
                     // The group button (who it counts for, Group Watch Sessions); in easy mode only who it counts for, said beside the buttons.
                     groupLabel?.let { PlayerAction(it, key = WITH_KEY) { toggle(Panel.GROUP) } },
                     // The chat: a strip across the bottom, the video above.
-                    chatLabel?.let { PlayerAction(it, key = CHAT_KEY) { panel = Panel.CHAT } },
+                    chatLabel?.let { PlayerAction(it, key = CHAT_KEY, mark = chatNew, markWords = "New messages") { panel = Panel.CHAT } },
                     PlayerAction("Info", ready) { panel = Panel.INFO }.takeIf { !easy },
                     PlayerAction("More", ready) { panel = Panel.MORE }.takeIf { !easy },
                     PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },

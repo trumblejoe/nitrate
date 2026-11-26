@@ -47,6 +47,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Button
@@ -60,6 +62,8 @@ import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import dev.nitrate.android.AppContainer
 import dev.nitrate.core.companion.ChatKind
+import dev.nitrate.core.companion.EmojiGroup
+import dev.nitrate.core.companion.Emojis
 import dev.nitrate.core.companion.NoteChat
 import dev.nitrate.core.companion.NoteChats
 import dev.nitrate.core.companion.QuickPicks
@@ -71,9 +75,6 @@ import dev.nitrate.tv.ui.components.TvTextField
 import dev.nitrate.tv.ui.together.NoteLine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-/** The player's Chat button: "Chat", or "Chat · 3 new" when messages popped up since it was last opened. */
-internal fun chatButtonLabel(unread: Int): String = if (unread > 0) "Chat · $unread new" else "Chat"
 
 /** A page with written lines: the strip's button for the chat so far. */
 internal val ChatSoFarIcon: ImageVector = ImageVector.Builder("ChatSoFar", 24.dp, 24.dp, 24f, 24f).addPath(
@@ -124,11 +125,12 @@ internal fun PlayerChatStrip(
 
 /**
  * The player's chat, a strip across the bottom with the video above (the Chat button opens it, and
- * it stays until Back): the title's reactions (focus starts on the first), its quick lines and a text
- * field, each sending with one press; beside them which chat this is ("New chat · Will ›": OK opens
- * **Chats**, Group chat on or off, New chat and the earlier chats to play along, each with a heart),
- * and the page button that shows the chat so far above the strip (hidden at first: what's said
- * pops up anyway). Back closes Chats, then the chat so far, then (left to the player) the strip.
+ * it stays until Back): the emoji button (focus starts there; OK opens the full emoji list above
+ * the strip, [Emojis.groupsFor], and picking one sends it and closes the list), the title's quick
+ * lines, which chat this is ("New chat · Will ›": OK opens **Chats**, Group chat on or off, New chat
+ * and the earlier chats to play along, each with a heart) and the page button that shows the chat
+ * so far above the strip (hidden at first: what's said pops up anyway); under them the text field.
+ * Back closes Chats or the emoji list, then the chat so far, then (left to the player) the strip.
  */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
@@ -158,12 +160,14 @@ fun ChatStrip(
     val all by chat.allChats.collectAsState()
     val scope = rememberCoroutineScope()
     var choosing by remember { mutableStateOf(false) }
-    var chose by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
+    var returnTo by remember { mutableStateOf<FocusRequester?>(null) }
     var draft by remember { mutableStateOf("") }
     var sendProblem by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
     val chatsButton = remember { FocusRequester() }
     val chooserFirst = remember { FocusRequester() }
+    val pickerFirst = remember { FocusRequester() }
     LaunchedEffect(Unit) { chat.opened() }
     // Open: what pops up meanwhile is seen.
     LaunchedEffect(unread) { if (unread > 0) chat.read() }
@@ -179,6 +183,7 @@ fun ChatStrip(
             if (e.key != Key.Back && e.key != Key.Escape) return@onKeyEvent false
             when {
                 choosing -> { if (e.type == KeyEventType.KeyUp) choosing = false; true }
+                picking -> { if (e.type == KeyEventType.KeyUp) picking = false; true }
                 log -> { if (e.type == KeyEventType.KeyUp) onLog(false); true }
                 else -> false
             }
@@ -188,20 +193,25 @@ fun ChatStrip(
             // Focus stays in the strip, except to go to Chats while it opens.
             Modifier.align(Alignment.BottomStart).fillMaxWidth().focusProperties { exit = { if (choosing) FocusRequester.Default else FocusRequester.Cancel } }.focusGroup(),
         ) {
-            if (log && on) ChatSoFar(chat, Modifier.align(Alignment.End).padding(end = 48.dp, bottom = 12.dp))
+            if (on && (picking || log)) Row(Modifier.fillMaxWidth().padding(horizontal = 48.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.Bottom) {
+                if (picking) EmojiList(Emojis.groupsFor(picks), pickerFirst) { emoji -> send(emoji, ChatKind.REACTION); picking = false }
+                androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                if (log) ChatSoFar(chat, Modifier)
+            }
             Column(
                 Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)).padding(horizontal = 48.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (on) {
-                        // The title's own emojis first, then the usual ones: one press each.
+                        // One emoji button opens the whole list, as chat apps do.
+                        OutlinedButton(
+                            onClick = { returnTo = first; picking = !picking },
+                            modifier = Modifier.focusRequester(first).semantics(mergeDescendants = true) { contentDescription = "Emoji" },
+                        ) { Text("🙂", fontSize = 22.sp) }
+                        // Its characters' names and short lines, one press sending each as a message.
                         Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).focusGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            picks.emojis.forEachIndexed { i, emoji ->
-                                OutlinedButton(onClick = { send(emoji, ChatKind.REACTION) }, modifier = if (i == 0) Modifier.focusRequester(first) else Modifier) {
-                                    Text(emoji, fontSize = 22.sp)
-                                }
-                            }
+                            picks.lines.forEach { line -> OutlinedButton(onClick = { send(line, ChatKind.TEXT) }) { Text(line, maxLines = 1) } }
                         }
                     } else {
                         Text(
@@ -209,21 +219,17 @@ fun ChatStrip(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f),
                         )
-                        Button(onClick = { onTurn(true) }, modifier = Modifier.focusRequester(first)) { Text("Turn it on") }
+                        Button(onClick = { onTurn(true) }, modifier = Modifier.focusRequester(first)) { Text("Turn on") }
                     }
-                    OutlinedButton(onClick = { chose = true; choosing = true }, modifier = Modifier.focusRequester(chatsButton)) { Text(chatLine, maxLines = 1) }
+                    OutlinedButton(onClick = { returnTo = chatsButton; picking = false; choosing = true }, modifier = Modifier.focusRequester(chatsButton)) { Text(chatLine, maxLines = 1) }
                     if (on) IconButton(onClick = { onLog(!log) }) {
                         Icon(ChatSoFarIcon, contentDescription = if (log) "Hide the chat so far" else "Show the chat so far", tint = LocalContentColor.current)
                     }
                 }
                 if (on) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Its characters' names and short lines, one press sending each as a message.
-                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).focusGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        picks.lines.forEach { line -> OutlinedButton(onClick = { send(line, ChatKind.TEXT) }) { Text(line, maxLines = 1) } }
-                    }
                     TvTextField(
                         draft, { draft = it.take(500) }, "Type a message",
-                        modifier = Modifier.width(340.dp),
+                        modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { if (draft.isNotBlank()) send(draft, ChatKind.TEXT) }),
                     )
@@ -236,14 +242,41 @@ fun ChatStrip(
             ChatChooser(chat, inSession, pickedBy, chooserFirst, offsetAt, onTurn, onPick = { id -> onPlayChat(id); choosing = false }, Modifier.align(Alignment.TopEnd))
         }
     }
-    // Opens on the first reaction (once more a moment later: focus may still be on its way from the
-    // button); Chats opens on its first line, and closing it returns focus to the line that opened it.
-    LaunchedEffect(choosing) {
+    // Opens on the emoji button (once more a moment later: focus may still be on its way from the
+    // button); Chats and the emoji list open on their first choice, and closing either returns
+    // focus to the button that opened it.
+    LaunchedEffect(choosing, picking) {
         delay(50)
-        runCatching { (if (choosing) chooserFirst else if (chose) chatsButton else first).requestFocus() }
-        if (choosing || chose) return@LaunchedEffect
+        runCatching { (if (choosing) chooserFirst else if (picking) pickerFirst else returnTo ?: first).requestFocus() }
+        if (choosing || picking || returnTo != null) return@LaunchedEffect
         delay(300)
         runCatching { first.requestFocus() }
+    }
+}
+
+/** The full emoji list above the strip, by heading ("For this" first); OK sends one. */
+@Composable
+private fun EmojiList(groups: List<EmojiGroup>, first: FocusRequester, onPick: (String) -> Unit) {
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        androidx.compose.foundation.lazy.grid.GridCells.Fixed(10),
+        Modifier.width(640.dp).heightIn(max = 300.dp).background(Color(0xE6101014), RoundedCornerShape(16.dp)).padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        groups.forEachIndexed { g, group ->
+            item(key = "h-${group.name}", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Text(group.name, style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.75f), modifier = Modifier.padding(top = 4.dp, start = 4.dp))
+            }
+            group.emojis.forEachIndexed { i, emoji ->
+                item(key = "e-$emoji") {
+                    OutlinedButton(
+                        onClick = { onPick(emoji) },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
+                        modifier = if (g == 0 && i == 0) Modifier.focusRequester(first) else Modifier,
+                    ) { Text(emoji, fontSize = 22.sp) }
+                }
+            }
+        }
     }
 }
 
