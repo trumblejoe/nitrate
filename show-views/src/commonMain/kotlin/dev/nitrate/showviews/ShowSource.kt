@@ -61,6 +61,8 @@ class ShowSource(
     val lines: CollageLines = CollageLines.GENRE,
     /** On a TV (bigger type, D-pad hints); else touch hints. */
     val tv: Boolean = false,
+    /** The chosen title, held by the page (its jump bar and view changes move it and keep it); null: the view keeps its own. */
+    val chosen: MutableIntState? = null,
 )
 
 /** The app's type and accent, so the views read like the rest of it. */
@@ -81,6 +83,8 @@ class ShowHost(
     val backHandler: @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit,
     val letters: (@Composable (Modifier, (Int) -> Unit) -> Unit)? = null,
     val focus: FocusRequester? = null,
+    /** How many times a held key has repeated (Android's count), so holding a direction speeds up; 0 where unknown. */
+    val repeats: (androidx.compose.ui.input.key.KeyEvent) -> Int = { 0 },
 )
 
 /** The library All views drawn here: everything [BrowseView.shared]. */
@@ -105,7 +109,7 @@ internal enum class ShowKey { LEFT, RIGHT, UP, DOWN, OK, BACK, PLAY }
  * Up to the bar), OK and Play as they're let go, Back (and Escape) only while [catchBack] (something
  * is open). Read out as [label]: the chosen title.
  */
-internal fun Modifier.showInput(label: String?, catchBack: Boolean, focus: FocusRequester?, onKey: (ShowKey) -> Boolean): Modifier =
+internal fun Modifier.showInput(label: String?, catchBack: Boolean, focus: FocusRequester?, repeats: (androidx.compose.ui.input.key.KeyEvent) -> Int = { 0 }, onKey: (ShowKey) -> Boolean): Modifier =
     this.onPreviewKeyEvent { e ->
         val ok = e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter
         val arrow = when (e.key) {
@@ -116,7 +120,12 @@ internal fun Modifier.showInput(label: String?, catchBack: Boolean, focus: Focus
             else -> null
         }
         when {
-            arrow != null -> if (e.type == KeyEventType.KeyDown) onKey(arrow) else false
+            // Held: a few titles at a time after a moment.
+            arrow != null -> if (e.type == KeyEventType.KeyDown) {
+                val moved = onKey(arrow)
+                if (moved && repeats(e) > 6) repeat(2) { onKey(arrow) }
+                moved
+            } else false
             ok -> { if (e.type == KeyEventType.KeyUp) onKey(ShowKey.OK); true }
             (e.key == Key.Back || e.key == Key.Escape) && catchBack -> { if (e.type == KeyEventType.KeyUp) onKey(ShowKey.BACK); true }
             e.key == Key.MediaPlay || e.key == Key.MediaPlayPause -> { if (e.type == KeyEventType.KeyUp) onKey(ShowKey.PLAY); true }
@@ -131,7 +140,8 @@ internal fun Modifier.showInput(label: String?, catchBack: Boolean, focus: Focus
 @Composable
 internal fun rememberChoice(source: ShowSource): MutableIntState {
     val count = source.items.size
-    val index = rememberSaveable { mutableIntStateOf(0) }
+    val own = rememberSaveable { mutableIntStateOf(0) }
+    val index = source.chosen ?: own
     if (index.intValue > count - 1) index.intValue = (count - 1).coerceAtLeast(0)
     LaunchedEffect(index.intValue, count) { if (index.intValue >= count - 10) source.onNeedMore() }
     return index

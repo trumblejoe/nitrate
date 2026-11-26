@@ -80,7 +80,7 @@ internal fun Corridor(source: ShowSource, style: ShowStyle, host: ShowHost, modi
             Modifier.weight(1f).fillMaxHeight().clipToBounds()
                 .background(Brush.verticalGradient(listOf(Color(0xFF05070C), Color(0xFF0C1220), Color(0xFF05070C))))
                 .onFocusChanged { focused = it.hasFocus }
-                .showInput(current?.let { source.titleOf(it) + if (peeled) ", details open" else "" }, peeled, host.focus) { k ->
+                .showInput(current?.let { source.titleOf(it) + if (peeled) ", details open" else "" }, peeled, host.focus, host.repeats) { k ->
                     when (k) {
                         ShowKey.RIGHT -> if (peeled) { button = 1; true } else step(1)
                         ShowKey.LEFT -> if (peeled) { button = 0; true } else step(-1)

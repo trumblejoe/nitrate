@@ -728,6 +728,33 @@ class TvScreenshotTest {
     @Test fun libraryCollage() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE)
     @Test fun libraryCollageDirectors() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE, name = "collage-directors", lines = dev.nitrate.core.pages.CollageLines.DIRECTOR)
     @Test fun libraryCollageLightbox() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE, then = listOf("ok"), name = "collage-lightbox")
+    /** Back from inside Vortex: onto the jump bar, at the chosen title's letter. */
+    @Test fun libraryBackToJumpBar() = showViewShot(dev.nitrate.core.pages.BrowseView.VORTEX, then = listOf("back"), name = "vortex-jump-bar")
+
+    /** ⏩ in the grid: the next view (Artwork), at the same title, and a note saying so. */
+    @Test fun libraryFastForwardChangesView() = shoot("tv-library-ff-view", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL)))
+    }, act = {
+        repeat(2) { press("down") }
+        press("right")
+        press("ff")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("View: Artwork", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "⏩ should say the new view" }
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
+    /** Sorted by release date: the jump bar is decades. */
+    @Test fun libraryJumpBarDecades() = shoot("tv-library-jump-decades", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL)))
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.COVERFLOW, sort = dev.nitrate.core.pages.QuerySort.RELEASE_DATE, descending = true))
+    }, act = {
+        repeat(2) { press("down") }
+        press("back")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("2010s")).fetchSemanticsNodes().isNotEmpty()) { "the jump bar should be decades" }
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
     /** Corridor: two posters along, the grid round the chosen one lit; then OK peels it off the wall. */
     @Test fun libraryCorridor() = showViewShot(dev.nitrate.core.pages.BrowseView.CORRIDOR)
     @Test fun libraryCorridorPeeled() = showViewShot(dev.nitrate.core.pages.BrowseView.CORRIDOR, then = listOf("ok"), name = "corridor-peeled")
@@ -747,7 +774,8 @@ class TvScreenshotTest {
             c.displaySettings.savePrefs("user-1", rowsLibrary)
             c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL)))
         }, act = {
-            check(!shows("View:")) { "the bar has no View button any more" }
+            // The View button is back: the on-screen way to what ⏪ ⏩ do.
+            check(shows("View:")) { "the bar has a View button (⏪ ⏩ on screen)" }
             openCustomize()
             check(focusedHasText("Posters")) { "Customize → View should open on Posters; focused: ${focusedNodes()}" }
             repeat(3) { press("right") }

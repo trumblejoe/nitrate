@@ -110,7 +110,7 @@ internal fun Volumes(source: ShowSource, style: ShowStyle, host: ShowHost, modif
             Modifier.weight(1f).fillMaxHeight().clipToBounds()
                 .background(Brush.linearGradient(listOf(Color(0xFFF2EBDD), Color(0xFFD9CCB3)), start = Offset.Zero, end = Offset(1600f, 1100f)))
                 .onFocusChanged { focused = it.hasFocus }
-                .showInput(current?.let { source.titleOf(it) + ", page ${page + 1} of $PAGES" }, false, host.focus) { k ->
+                .showInput(current?.let { source.titleOf(it) + ", page ${page + 1} of $PAGES" }, false, host.focus, host.repeats) { k ->
                     when (k) {
                         ShowKey.RIGHT -> book(1)
                         ShowKey.LEFT -> book(-1)

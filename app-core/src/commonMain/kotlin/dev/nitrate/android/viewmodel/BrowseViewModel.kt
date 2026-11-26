@@ -136,6 +136,26 @@ class BrowseViewModel(
         return index.takeIf { it < _state.value.items.size }
     }
 
+    /**
+     * Where the jump bar's [stop] starts in the list (loading up to there), or null if nothing
+     * does: by name as [positionOf]; otherwise from the server's count where it can count it
+     * (decades, rating bands), else by reading the list (how recently added).
+     */
+    suspend fun positionOfStop(stop: String): Int? {
+        val options = _state.value.options
+        if (options.alphabetical) return positionOf(stop)
+        val now = dev.nitrate.android.nowMs()
+        val query = options.query(library.id, library.collection)
+        val estimate = dev.nitrate.core.pages.JumpBar.before(query, options, stop)?.let { runCatching { server.queryPage(it, 0, 0).second }.getOrNull() } ?: 0
+        loadThrough(estimate)
+        var index = dev.nitrate.core.pages.JumpBar.firstOf(_state.value.items, options, stop, estimate, now)
+        while (index >= _state.value.items.size && !_state.value.complete && _state.value.error == null) {
+            loadThrough(index)
+            index = dev.nitrate.core.pages.JumpBar.firstOf(_state.value.items, options, stop, index, now)
+        }
+        return index.takeIf { it < _state.value.items.size }
+    }
+
     /** Loads pages until the list holds [index] (or there's no more). */
     private suspend fun loadThrough(index: Int) {
         while (_state.value.items.size <= index && !_state.value.complete && _state.value.error == null) {

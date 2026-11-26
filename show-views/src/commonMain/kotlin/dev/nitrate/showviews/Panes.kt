@@ -68,7 +68,7 @@ internal fun Panes(source: ShowSource, style: ShowStyle, host: ShowHost, modifie
             Modifier.weight(1f).fillMaxHeight().clipToBounds()
                 .background(Brush.linearGradient(listOf(Color(0xFFF1F4F7), Color(0xFFD3DCE5), Color(0xFFE7ECF1)), start = Offset.Zero, end = Offset(1400f, 1200f)))
                 .onFocusChanged { focused = it.hasFocus }
-                .showInput(current?.let { source.titleOf(it) }, false, host.focus) { k ->
+                .showInput(current?.let { source.titleOf(it) }, false, host.focus, host.repeats) { k ->
                     when (k) {
                         ShowKey.RIGHT, ShowKey.DOWN -> step(1) || k == ShowKey.DOWN
                         ShowKey.LEFT, ShowKey.UP -> step(-1)

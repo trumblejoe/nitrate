@@ -51,6 +51,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +71,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.font.FontWeight
@@ -151,12 +158,23 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
     // after the previous letter's last titles.
     var jumpedTo by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(jumpedTo) { if (jumpedTo != null) { kotlinx.coroutines.delay(1_800); jumpedTo = null } }
-    fun jump(letter: String) {
+    // The chosen title in a drawn view, held here so the jump bar can move it.
+    val chosen = rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
+    // The jump bar follows the sort: letters, decades, rating bands, how recently added.
+    val stops = remember(options.sort, options.descending) { dev.nitrate.core.pages.JumpBar.stops(options) }
+    fun jump(stop: String) {
         scope.launch {
-            val index = vm.positionOf(letter) ?: return@launch
+            val index = vm.positionOfStop(stop) ?: return@launch
+            if (options.view.shared) { chosen.intValue = index; return@launch }
             if (options.view != BrowseView.LIST) grid.scrollToItem(index) else list.scrollToItem(index)
             jumpedTo = vm.state.value.items.getOrNull(index)?.id
         }
+    }
+    // [ ] (and a keyboard's ⏪ ⏩): the previous or next view, as the TV's remote does.
+    fun cycleView(by: Int) {
+        val all = BrowseView.entries.filterNot { it.tvOnly }
+        val next = all[(all.indexOf(options.view).coerceAtLeast(0) + by).mod(all.size)]
+        vm.update { it.copy(view = next) }
     }
 
     // Fixed grid: the tabs and the bar stay at the top; Scrolling grid: they scroll away with the posters.
@@ -165,7 +183,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
     val top: @Composable () -> Unit = {
         Column(Modifier.fillMaxWidth()) {
             header?.invoke()
-            BrowseBar(options, state.total, onChange = update, onFilters = { filtering = true })
+            BrowseBar(options, state.total, onChange = update, onFilters = { filtering = true }, onView = { v -> vm.update { it.copy(view = v) } })
             if (canBulkEdit) Row(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding), verticalAlignment = Alignment.CenterVertically) {
                 if (!selecting) {
                     TextButton(onClick = { selecting = true }) { Text("Select to edit") }
@@ -182,12 +200,23 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
     var topHeight by remember { mutableStateOf(0) }
     val density = androidx.compose.ui.platform.LocalDensity.current
     // In the grid or list, the top spans the whole width (the cards keep their side padding).
-    val endPad = if (options.alphabetical) 34.dp else ScreenPadding
+    val endPad = if (stops.isNotEmpty()) (if (stops.all { it.label.length <= 2 }) 34.dp else 70.dp) else ScreenPadding
     val scrollingTop: @Composable () -> Unit = {
         Box(Modifier.fullBleed(ScreenPadding, endPad).onSizeChanged { topHeight = it.height }) { top() }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    // The page holds focus itself (nothing else may have it before a tap), so a keyboard's [ ] always reach it.
+    val pageFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { pageFocus.requestFocus() } }
+    Column(Modifier.fillMaxSize().focusRequester(pageFocus).focusable().onPreviewKeyEvent { e ->
+        val by = when (e.key) {
+            androidx.compose.ui.input.key.Key.LeftBracket, androidx.compose.ui.input.key.Key.MediaRewind -> -1
+            androidx.compose.ui.input.key.Key.RightBracket, androidx.compose.ui.input.key.Key.MediaFastForward -> 1
+            else -> 0
+        }
+        if (by != 0 && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) cycleView(by)
+        by != 0
+    }) {
         if (pinned) top()
         Box(Modifier.fillMaxSize()) {
             val padding = PaddingValues(start = ScreenPadding, end = endPad, top = 4.dp, bottom = bottomInset(24.dp))
@@ -200,7 +229,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
                 state.loading -> withTop { GridPlaceholder(minWidth = if (artwork) 240.dp else if (square) 140.dp else 110.dp, aspect = if (artwork) 16f / 9f else if (square) 1f else 2f / 3f) }
                 state.items.isEmpty() -> withTop { EmptyResults(options) { update { it.clearFilters() } } }
                 // Vortex, Volumes, Collage: drawn by :show-views, filling the page under the bar.
-                options.view.shared -> withTop { SharedView(actions, options.view, state, vm::loadMore, ::tap, Modifier.fillMaxSize()) }
+                options.view.shared -> withTop { SharedView(actions, options.view, state, vm::loadMore, ::tap, Modifier.fillMaxSize().padding(end = if (stops.isNotEmpty()) endPad else 0.dp), chosen) }
                 options.view != BrowseView.LIST -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = if (artwork) 240.dp else if (square) 140.dp else 110.dp),
                     state = grid,
@@ -242,10 +271,10 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
                     if (state.error != null) item { LoadMoreFailed(state.error.orEmpty(), vm::retry) }
                 }
             }
-            if (options.alphabetical && state.items.isNotEmpty() && !options.view.shared) {
-                // Scrolling grid: the strip starts where the posters do, below the tabs and the bar.
-                val below = if (pinned) 0.dp else with(density) { topHeight.toDp() }
-                AlphabetStrip(Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(top = below + 8.dp, bottom = 8.dp), ::jump)
+            if (stops.isNotEmpty() && state.items.isNotEmpty()) {
+                // Scrolling grid: the strip starts where the posters do, below the tabs and the bar. Every view has it.
+                val below = if (pinned || options.view.shared) 0.dp else with(density) { topHeight.toDp() }
+                JumpStrip(stops, Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(top = below + 8.dp, bottom = 8.dp), ::jump)
             }
         }
     }
@@ -257,8 +286,9 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
 }
 
 @Composable
-private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onFilters: () -> Unit) {
+private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onFilters: () -> Unit, onView: (BrowseView) -> Unit = {}) {
     var sortMenu by remember { mutableStateOf(false) }
+    var viewMenu by remember { mutableStateOf(false) }
     // Compact, like Home's top: small glass pills and the count as small text.
     Row(Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box {
@@ -284,6 +314,16 @@ private fun BrowseBar(options: BrowseOptions, total: Int, onChange: ((BrowseOpti
             }
         }
         BarPill(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters", onClick = onFilters, active = options.filterCount > 0)
+        // The view (Posters, Vortex…), as the TV's ⏪ ⏩ and a keyboard's [ ] change it.
+        Box {
+            val view = options.view.let { if (it.tvOnly) BrowseView.GRID else it }
+            BarPill(view.label, onClick = { viewMenu = true }, trailing = Icons.Default.KeyboardArrowDown, state = "View: ${view.label}")
+            DropdownMenu(viewMenu, onDismissRequest = { viewMenu = false }) {
+                BrowseView.entries.filterNot { it.tvOnly }.forEach { v ->
+                    DropdownMenuItem(text = { Text(v.label) }, trailingIcon = { if (v == view) Icon(Icons.Default.Check, null) }, onClick = { onView(v); viewMenu = false })
+                }
+            }
+        }
         Spacer(Modifier.weight(1f))
         if (total >= 0) Text(if (total == 1) "1 title" else "$total titles", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
@@ -360,27 +400,36 @@ private fun SelectMark(on: Boolean, modifier: Modifier) {
  * sits in the middle of it, so the slice a touch falls in is always the letter drawn there.
  */
 @Composable
-fun AlphabetStrip(modifier: Modifier, onLetter: (String) -> Unit) {
+fun AlphabetStrip(modifier: Modifier, onLetter: (String) -> Unit) =
+    JumpStrip(Browse.LETTERS.map { dev.nitrate.core.pages.JumpStop(it, it, it) }, modifier, onLetter)
+
+/**
+ * The jump bar down the right of every library view (phone, iPad, desktop): its stops follow the
+ * sort (A–Z, decades, rating bands, how recently added); drag along it or tap a stop.
+ */
+@Composable
+fun JumpStrip(stops: List<dev.nitrate.core.pages.JumpStop>, modifier: Modifier, onStop: (String) -> Unit) {
     var height by remember { mutableStateOf(1) }
     var last by remember { mutableStateOf<String?>(null) }
     fun at(y: Float) {
-        val i = (y / height * Browse.LETTERS.size).toInt().coerceIn(0, Browse.LETTERS.lastIndex)
-        val letter = Browse.LETTERS[i]
-        if (letter != last) {
-            last = letter
-            onLetter(letter)
+        val i = (y / height * stops.size).toInt().coerceIn(0, stops.lastIndex)
+        val stop = stops[i].key
+        if (stop != last) {
+            last = stop
+            onStop(stop)
         }
     }
+    val narrow = stops.all { it.label.length <= 2 }
     Column(
-        modifier.width(30.dp)
+        modifier.width(if (narrow) 30.dp else 66.dp)
             .onSizeChanged { height = it.height.coerceAtLeast(1) }
             .pointerInput(Unit) { detectVerticalDragGestures(onDragEnd = { last = null }) { change, _ -> at(change.position.y) } }
             .pointerInput(Unit) { detectTapGestures { at(it.y); last = null } },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Browse.LETTERS.forEach {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(it, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor())
+        stops.forEach {
+            Box(Modifier.weight(1f).fillMaxWidth().semantics { contentDescription = it.spoken }, contentAlignment = Alignment.Center) {
+                Text(it.label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor(), maxLines = 1)
             }
         }
     }
@@ -512,14 +561,14 @@ private val FADE = 28.dp
 
 /** A view every app draws the same way (`:show-views`): the phone's type, accent, Back and display settings handed in. */
 @Composable
-internal fun SharedView(actions: AppActions, view: BrowseView, state: dev.nitrate.android.viewmodel.BrowseState, more: () -> Unit, open: (MediaItem) -> Unit, modifier: Modifier) {
+internal fun SharedView(actions: AppActions, view: BrowseView, state: dev.nitrate.android.viewmodel.BrowseState, more: () -> Unit, open: (MediaItem) -> Unit, modifier: Modifier, chosen: androidx.compose.runtime.MutableIntState? = null) {
     val prefs = LocalDisplayPrefs.current
     val type = MaterialTheme.typography
     val source = dev.nitrate.showviews.ShowSource(
         items = state.items, server = actions.server, titleOf = { it.name },
         overviewOf = @Composable { item: MediaItem -> item.overview?.takeIf { prefs.overview && !descriptionHidden(item) } },
         onOpen = open, onPlay = { actions.play(it, false) }, onNeedMore = more,
-        complete = state.complete, lines = prefs.collageLines, tv = false,
+        complete = state.complete, lines = prefs.collageLines, tv = false, chosen = chosen,
     )
     val style = dev.nitrate.showviews.ShowStyle(
         display = type.headlineSmall, title = type.titleMedium, body = type.bodyMedium, label = type.labelMedium, accent = accentColor(),

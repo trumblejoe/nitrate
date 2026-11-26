@@ -99,6 +99,13 @@ class ShowArgs(
     val letterAt: (suspend (String) -> Int?)? = null,
     /** How many titles there are in all (-1 until known). */
     val total: Int = -1,
+    /**
+     * The chosen title, held by the page (so its jump bar and ⏪ ⏩ can move it and keep it across
+     * views); null: the view keeps its own.
+     */
+    val chosen: androidx.compose.runtime.MutableIntState? = null,
+    /** Counts the page's jumps (the jump bar, number keys): views that move by focus (the wall) follow them. */
+    val jumped: Int = 0,
 )
 
 /**
@@ -148,7 +155,7 @@ private fun SharedOnTv(view: BrowseView, args: ShowArgs, modifier: Modifier) {
     val type = MaterialTheme.typography
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
     val source = dev.nitrate.showviews.ShowSource(
-        items = args.items, server = args.repository, titleOf = args.titleOf,
+        items = args.items, server = args.repository, titleOf = args.titleOf, chosen = args.chosen,
         overviewOf = @Composable { item: MediaItem -> item.overview?.takeIf { prefs.overview && !dev.nitrate.tv.ui.partners.descriptionHidden(item) } },
         onOpen = args.onOpen, onPlay = { if (it.isPlayable) args.onPlay(it) else args.onOpen(it) }, onNeedMore = args.onNeedMore,
         complete = args.total >= 0 && args.items.size >= args.total,
@@ -162,6 +169,7 @@ private fun SharedOnTv(view: BrowseView, args: ShowArgs, modifier: Modifier) {
         backHandler = @Composable { on: Boolean, back: () -> Unit -> androidx.activity.compose.BackHandler(on, back) },
         letters = if (args.letterAt != null) { m, jump -> ShowLetters(args, vertical = true, onJump = jump, modifier = m) } else null,
         focus = focus,
+        repeats = { it.nativeKeyEvent.repeatCount },
     )
     dev.nitrate.showviews.SharedShowView(view, source, style, host, modifier)
 }
@@ -209,8 +217,13 @@ private fun Modifier.showKeys(args: ShowArgs, current: MediaItem?, onKey: (Key) 
                 e.key == Key.MediaPlay || e.key == Key.MediaPlayPause -> {
                     if (e.type == KeyEventType.KeyUp) current?.let { if (it.isPlayable) args.onPlay(it) else args.onOpen(it) }; true
                 }
+                // Held: a few titles at a time after a moment.
                 e.key in setOf(Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown) ->
-                    if (e.type == KeyEventType.KeyDown) onKey(e.key) else false
+                    if (e.type == KeyEventType.KeyDown) {
+                        val moved = onKey(e.key)
+                        if (moved && e.nativeKeyEvent.repeatCount > 6) repeat(2) { onKey(e.key) }
+                        moved
+                    } else false
                 else -> false
             }
         }
@@ -221,7 +234,8 @@ private fun Modifier.showKeys(args: ShowArgs, current: MediaItem?, onKey: (Key) 
 /** The view's chosen title, kept across visits, and more titles asked for near the end. */
 @Composable
 private fun rememberChoice(args: ShowArgs, count: Int = args.items.size): androidx.compose.runtime.MutableIntState {
-    val index = rememberSaveable { mutableIntStateOf(0) }
+    val own = rememberSaveable { mutableIntStateOf(0) }
+    val index = args.chosen ?: own
     if (index.intValue > count - 1) index.intValue = (count - 1).coerceAtLeast(0)
     LaunchedEffect(index.intValue, count) { if (index.intValue >= count - 8) args.onNeedMore() }
     return index
@@ -379,7 +393,10 @@ private fun Deck(args: ShowArgs, modifier: Modifier) {
     var order by rememberSaveable { androidx.compose.runtime.mutableStateOf<List<String>?>(null) }
     val byId = remember(args.items) { args.items.associateBy { it.id } }
     val items = order?.mapNotNull { byId[it] } ?: args.items
-    val index = rememberChoice(ShowArgs(items, args.repository, args.music, args.titleOf, args.onOpen, args.onPlay, onNeedMore = { if (order == null) args.onNeedMore() }))
+    // In order, the page's chosen title is the deck's; shuffled, the deck keeps its own place.
+    val index = rememberChoice(ShowArgs(items, args.repository, args.music, args.titleOf, args.onOpen, args.onPlay, onNeedMore = { if (order == null) args.onNeedMore() }, chosen = if (order == null) args.chosen else null))
+    // A jump from the page's bar: back in order, at that title.
+    LaunchedEffect(args.jumped) { if (args.jumped > 0) order = null }
     val pos by animateFloatAsState(index.intValue.toFloat(), tween(420), label = "deal")
     var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val current = items.getOrNull(index.intValue)
@@ -681,6 +698,14 @@ private fun WallOfArt(args: ShowArgs, modifier: Modifier) {
     LaunchedEffect(state, items.size) {
         snapshotFlow { state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { if (it >= items.size - 12) args.onNeedMore() }
     }
+    // A jump from the page's bar: to that picture, focus on it.
+    val jumpFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(args.jumped) {
+        val to = args.chosen?.intValue ?: return@LaunchedEffect
+        if (args.jumped == 0) return@LaunchedEffect
+        runCatching { state.scrollToItem(to) }
+        repeat(10) { if (runCatching { jumpFocus.requestFocus() }.getOrDefault(false)) return@LaunchedEffect; kotlinx.coroutines.delay(32) }
+    }
     BoxWithConstraints(modifier.onFocusChanged { focused = it.hasFocus }) {
         val rowH = (maxHeight - 24.dp) / 3
         LazyHorizontalStaggeredGrid(
@@ -701,6 +726,8 @@ private fun WallOfArt(args: ShowArgs, modifier: Modifier) {
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
                     modifier = Modifier.width(rowH * (if (wide) 2.4f else 16f / 9f)).fillMaxHeight()
+                        .then(if (i == args.chosen?.intValue) Modifier.focusRequester(jumpFocus) else Modifier)
+                        .onFocusChanged { if (it.isFocused) args.chosen?.intValue = i }
                         .onPreviewKeyEvent { e ->
                             if ((e.key == Key.MediaPlay || e.key == Key.MediaPlayPause) && e.type == KeyEventType.KeyUp) { if (item.isPlayable) args.onPlay(item) else args.onOpen(item); true } else false
                         },

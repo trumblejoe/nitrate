@@ -83,7 +83,7 @@ internal fun Vortex(source: ShowSource, style: ShowStyle, host: ShowHost, modifi
             Modifier.weight(1f).fillMaxHeight().clipToBounds()
                 .background(Brush.radialGradient(listOf(Color(0xFF1B2238), Color(0xFF07080C)), radius = 1400f))
                 .onFocusChanged { focused = it.hasFocus }
-                .showInput(current?.let { source.titleOf(it) + if (peeled) ", details open" else "" }, peeled, host.focus) { k ->
+                .showInput(current?.let { source.titleOf(it) + if (peeled) ", details open" else "" }, peeled, host.focus, host.repeats) { k ->
                     when (k) {
                         ShowKey.RIGHT -> if (peeled) { button = 1; true } else step(1)
                         ShowKey.LEFT -> if (peeled) { button = 0; true } else step(-1)

@@ -82,7 +82,7 @@ internal fun Pavement(source: ShowSource, style: ShowStyle, host: ShowHost, modi
         BoxWithConstraints(
             Modifier.weight(1f).fillMaxHeight().clipToBounds()
                 .onFocusChanged { focused = it.hasFocus }
-                .showInput(current?.let { source.titleOf(it) }, false, host.focus) { k ->
+                .showInput(current?.let { source.titleOf(it) }, false, host.focus, host.repeats) { k ->
                     when (k) {
                         ShowKey.RIGHT, ShowKey.DOWN -> step(1) || k == ShowKey.DOWN
                         ShowKey.LEFT, ShowKey.UP -> step(-1)

@@ -47,6 +47,10 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -144,6 +148,17 @@ fun BrowseLibrary(
     var jumpedTo by remember { mutableStateOf(-1) }
     // Counts jumps, so jumping to the same letter again still moves focus.
     var jumps by remember { mutableStateOf(0) }
+    // The chosen title, shared by every view (the grid's last focused, a drawn view's chosen): the jump
+    // bar and ⏪ ⏩ move it and keep it when the view changes.
+    val chosen = androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
+    // The jump bar's place for the chosen title (Back from a view lands here), and a drawn view's focus.
+    val stripFocus = remember { FocusRequester() }
+    var stripFocused by remember { mutableStateOf(false) }
+    val viewFocus = remember { FocusRequester() }
+    // "View: Vortex · 7 of 17" for a moment after ⏪ ⏩ (or a number key's letter).
+    var note by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    // Number keys: which digit, how many presses running, when.
+    var keypad by remember { mutableStateOf(Triple(-1, 0, 0L)) }
 
     LaunchedEffect(grid) {
         snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { last -> if (last >= state.items.size - 30) vm.loadMore() }
@@ -159,17 +174,56 @@ fun BrowseLibrary(
     // Fixed: the focused title's details held at the top (as on Home), the posters scrolling beneath.
     // Scrolling: the posters fill the page, the tabs bar scrolling away with them.
     val fixed = prefs.tvGridLayout == dev.nitrate.core.pages.GridLayout.FIXED
-    val letterPlace = if (options.alphabetical) prefs.tvLetterBar.resolve(prefs.tvMenu) else null
+    // The jump bar follows the sort (letters, decades, rating bands, how recently added); the Bouncing box keeps its own A–Z.
+    val stops = remember(options.sort, options.descending) { dev.nitrate.core.pages.JumpBar.stops(options) }
+    val letterPlace = if (stops.isNotEmpty() && options.view != BrowseView.BOUNCE) prefs.tvLetterBar.resolve(prefs.tvMenu) else null
     val lettersOnTop = letterPlace == dev.nitrate.core.pages.LetterBarPlace.TOP
     // The grid's items before the titles: the bar (scrolling only) and the A–Z row (above).
     val leading = (if (fixed) 0 else 1) + (if (lettersOnTop) 1 else 0)
-    val jumpTo: (String) -> Unit = { letter ->
+    val jumpTo: (String) -> Unit = { stop ->
         scope.launch {
-            val index = vm.positionOf(letter) ?: return@launch
-            grid.scrollToItem(index + leading)
-            jumpedTo = index
+            val index = vm.positionOfStop(stop) ?: return@launch
+            chosen.intValue = index
             jumps++
+            if (options.view.isShow) {
+                repeat(10) { if (runCatching { viewFocus.requestFocus() }.getOrDefault(false)) return@launch; kotlinx.coroutines.delay(32) }
+            } else {
+                grid.scrollToItem(index + leading)
+                jumpedTo = index
+            }
         }
+    }
+    // The stop the chosen title is under: lit on the bar, where Back lands.
+    val currentStop = state.items.getOrNull(if (options.view.isShow) chosen.intValue else maxOf(lastFocused, 0))?.let { dev.nitrate.core.pages.JumpBar.stopOf(options, it, dev.nitrate.android.nowMs()) }
+    // ⏪ ⏩: the next or previous view (as Home's rows change style), at the same title.
+    fun cycleView(by: Int) {
+        val all = BrowseView.entries
+        val next = all[(all.indexOf(options.view) + by).mod(all.size)]
+        if (!options.view.isShow && lastFocused >= 0) chosen.intValue = lastFocused
+        vm.update { it.copy(view = next) }
+        note = "View: ${next.label}  ·  ${all.indexOf(next) + 1} of ${all.size}  ·  ⏪ ⏩" to System.nanoTime()
+        scope.launch {
+            kotlinx.coroutines.delay(150)
+            if (next.isShow) {
+                jumps++
+                repeat(12) { if (runCatching { viewFocus.requestFocus() }.getOrDefault(false)) return@launch; kotlinx.coroutines.delay(40) }
+            } else {
+                runCatching { grid.scrollToItem(chosen.intValue + leading) }
+                jumpedTo = chosen.intValue
+                jumps++
+            }
+        }
+    }
+    // A number key (2 = ABC…; again for the next letter): straight to that letter, when sorted by name.
+    fun keyed(digit: Int) {
+        if (!options.alphabetical) return
+        val now = System.currentTimeMillis()
+        val (last, presses, at) = keypad
+        val n = if (last == digit && now - at < 1_200) presses + 1 else 1
+        keypad = Triple(digit, n, now)
+        val letter = dev.nitrate.core.pages.JumpBar.keypad(digit, n) ?: return
+        note = "Jump: $letter" to System.nanoTime()
+        jumpTo(letter)
     }
     // ▲ from the first titles: to Sort, at the end of the tabs bar (scrolled back into sight first).
     val sortButton = remember { FocusRequester() }
@@ -196,6 +250,8 @@ fun BrowseLibrary(
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
         ) {
             if (state.total >= 0) Text("${state.total} items", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
+            // The view, as ⏪ ⏩ change it: here for remotes without those keys.
+            BarButton("View: ${options.view.label}") { dialog = "view" }
             BarButton("Sort: ${options.sort.label}${if (options.descending) " ↓" else " ↑"}", Modifier.focusRequester(sortButton)) { dialog = "sort" }
             BarButton(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters") { dialog = "filters" }
             if (options.filterCount > 0) BarButton("Clear filters") { update { it.clearFilters() } }
@@ -227,11 +283,37 @@ fun BrowseLibrary(
             Box(Modifier.padding(end = PagePadding + dev.nitrate.tv.ui.components.LocalClockRoom.current)) { buttons() }
         }
     }
+    // The same keys in every view: ⏪ ⏩ the view, number keys a letter; Back (nothing open in the view) to the jump bar.
+    Box(Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+        val digit = when (e.key) {
+            Key.Zero -> 0; Key.One -> 1; Key.Two -> 2; Key.Three -> 3; Key.Four -> 4
+            Key.Five -> 5; Key.Six -> 6; Key.Seven -> 7; Key.Eight -> 8; Key.Nine -> 9; else -> -1
+        }
+        when {
+            e.key == Key.MediaFastForward || e.key == Key.MediaRewind -> {
+                if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) cycleView(if (e.key == Key.MediaFastForward) 1 else -1)
+                true
+            }
+            digit >= 0 && options.alphabetical -> { if (e.type == KeyEventType.KeyDown) keyed(digit); true }
+            else -> false
+        }
+    }.onKeyEvent { e ->
+        // After the view: a peeled card or lightbox takes Back first. The bar itself lets Back go on (out).
+        if (e.key != Key.Back || letterPlace == null || stripFocused || state.items.isEmpty()) return@onKeyEvent false
+        if (e.type == KeyEventType.KeyUp) scope.launch {
+            repeat(10) { if (runCatching { stripFocus.requestFocus() }.getOrDefault(false)) return@launch; kotlinx.coroutines.delay(32) }
+        }
+        true
+    }) {
     if (options.view.isShow) {
-        // A show view fills the page under the tabs bar; no A–Z (nothing to scroll through).
+        // A show view fills the page under the tabs bar, the jump bar beside or above it as on the grids.
         Column(Modifier.fillMaxSize().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             bar()
-            Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = PagePadding)) {
+            Row(Modifier.weight(1f).fillMaxWidth().padding(horizontal = PagePadding)) {
+            if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) JumpColumn(stops, currentStop, stripFocus, { stripFocused = it }, jumpTo, Modifier.padding(end = 10.dp))
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (lettersOnTop) JumpRow(stops, currentStop, stripFocus, { stripFocused = it }, jumpTo)
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().focusRequester(viewFocus)) {
             when {
                 state.error != null && state.items.isEmpty() -> Column { Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error); Button(onClick = vm::retry) { Text("Try again") } }
                 state.loading -> dev.nitrate.tv.ui.components.GridPlaceholder()
@@ -241,14 +323,18 @@ fun BrowseLibrary(
                         state.items, repository, music,
                         titleOf = { item -> if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else item.name },
                         onOpen = ::tap, onPlay = onPlay, onNeedMore = vm::loadMore,
-                        // A–Z: where a letter's first title is (loading up to it), when sorted by name.
-                        letterAt = if (options.alphabetical) vm::positionOf else null,
+                        // The Bouncing box fills itself by letter; every other view uses the page's jump bar.
+                        letterAt = if (options.alphabetical && options.view == BrowseView.BOUNCE) vm::positionOf else null,
                         total = state.total,
+                        chosen = chosen, jumped = jumps,
                     )
-                    if (options.view == BrowseView.BOUNCE) BounceBox(args, Modifier.weight(1f).fillMaxWidth())
-                    else ShowView(options.view, args, Modifier.weight(1f).fillMaxWidth())
+                    if (options.view == BrowseView.BOUNCE) BounceBox(args, Modifier.fillMaxSize())
+                    else ShowView(options.view, args, Modifier.fillMaxSize())
                 }
             }
+            }
+            }
+            if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.RIGHT) JumpColumn(stops, currentStop, stripFocus, { stripFocused = it }, jumpTo, Modifier.padding(start = 10.dp))
             }
         }
     } else Box(Modifier.fillMaxSize()) {
@@ -265,7 +351,7 @@ fun BrowseLibrary(
         val deep = focusedIndex >= columns
         when {
             // Back deep in the grid: to the first title (taken as a key: left to Compose, Back only moved focus about).
-            e.key == Key.Back && deep -> { if (e.type == KeyEventType.KeyUp) toFirstTitle(); true }
+            e.key == Key.Back && deep && letterPlace == null -> { if (e.type == KeyEventType.KeyUp) toFirstTitle(); true }
             // Holding ▲ in the grid: straight to the first title (the first press has moved up one row).
             e.key == Key.DirectionUp && e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount > 0 && deep -> {
                 if (e.nativeKeyEvent.repeatCount == 1) toFirstTitle()
@@ -282,7 +368,7 @@ fun BrowseLibrary(
             else -> false
         }
     }) {
-    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) LetterColumn(jumpTo, Modifier.padding(start = 10.dp))
+    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.LEFT) JumpColumn(stops, currentStop, stripFocus, { stripFocused = it }, jumpTo, Modifier.padding(start = 10.dp))
     Column(Modifier.weight(1f).fillMaxHeight()) {
     if (fixed) {
         bar()
@@ -311,9 +397,7 @@ fun BrowseLibrary(
         if (!fixed) item(key = "bar", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleed(PagePadding)) { bar() } }
         if (lettersOnTop) {
             item(key = "letters", span = { GridItemSpan(maxLineSpan) }) {
-                Row(Modifier.focusProperties { up = sortButton }, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Browse.LETTERS.forEach { letter -> LetterKey(letter, Modifier.size(width = 28.dp, height = 34.dp)) { jumpTo(letter) } }
-                }
+                Box(Modifier.focusProperties { up = sortButton }) { JumpRow(stops, currentStop, stripFocus, { stripFocused = it }, jumpTo) }
             }
         }
         when {
@@ -329,7 +413,7 @@ fun BrowseLibrary(
                 val focus = (if (i == jumpedTo) Modifier.focusRequester(jumpFocus) else Modifier)
                     .then(if (i == entryIndex) Modifier.focusRequester(gridEntry) else Modifier)
                     .then(if (i == 0) Modifier.focusRequester(firstTitle) else Modifier)
-                    .onFocusChanged { if (it.hasFocus) { focusedIndex = i; lastFocused = i } else if (focusedIndex == i) focusedIndex = -1 }
+                    .onFocusChanged { if (it.hasFocus) { focusedIndex = i; lastFocused = i; chosen.intValue = i } else if (focusedIndex == i) focusedIndex = -1 }
                 // Selected titles carry a tick in their name while picking.
                 val ticked = if (selecting) (if (item.id in selected) "✓ " else "○ ") + item.name else null
                 if (options.view != BrowseView.LIST) {
@@ -365,7 +449,16 @@ fun BrowseLibrary(
     }
     }
 
-    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.RIGHT) LetterColumn(jumpTo, Modifier.padding(end = 10.dp))
+    if (letterPlace == dev.nitrate.core.pages.LetterBarPlace.RIGHT) JumpColumn(stops, currentStop, stripFocus, { stripFocused = it }, jumpTo, Modifier.padding(end = 10.dp))
+    }
+    }
+    // What ⏪ ⏩ (or a number key) just did, for a moment.
+    note?.let { (text, at) ->
+        LaunchedEffect(at) { kotlinx.coroutines.delay(1_800); if (note?.second == at) note = null }
+        Text(
+            text, style = MaterialTheme.typography.titleMedium, color = Color.White,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp).background(Color(0xE0101114), RoundedCornerShape(50)).padding(horizontal = 22.dp, vertical = 10.dp),
+        )
     }
     }
 
@@ -375,36 +468,78 @@ fun BrowseLibrary(
             if (changed) { selecting = false; selected = emptySet(); vm.reload() }
         }
         "sort" -> SortDialog(options, onPick = { change -> update(change); dialog = null }, onDismiss = { dialog = null })
+        "view" -> ViewDialog(options.view, onPick = { v ->
+            dialog = null
+            val all = BrowseView.entries
+            cycleView(all.indexOf(v) - all.indexOf(options.view))
+        }, onDismiss = { dialog = null })
         "filters" -> FilterDialog(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
     }
 }
 
 /**
- * The A–Z bar down one side: slim, and dimmed until it has focus; every letter in the screen's
- * height, ▲▼ through them, OK jumps.
+ * The jump bar down one side, the same for every view: its stops follow the sort (A–Z, decades,
+ * rating bands, how recently added); slim and dimmed until it has focus, the chosen title's stop lit;
+ * ▲▼ through them, OK jumps. Back from a view lands on the lit stop ([focus]).
  */
 @Composable
-private fun LetterColumn(onLetter: (String) -> Unit, modifier: Modifier) {
+internal fun JumpColumn(stops: List<dev.nitrate.core.pages.JumpStop>, current: String?, focus: FocusRequester, onFocused: (Boolean) -> Unit, onStop: (String) -> Unit, modifier: Modifier) {
     var inUse by remember { mutableStateOf(false) }
-    val alpha by androidx.compose.animation.core.animateFloatAsState(if (inUse) 1f else 0.45f, label = "letters")
+    val alpha by androidx.compose.animation.core.animateFloatAsState(if (inUse) 1f else 0.5f, label = "jump")
+    val narrow = stops.all { it.label.length <= 2 }
     Column(
-        modifier.fillMaxHeight().padding(vertical = 12.dp).width(22.dp)
-            .onFocusChanged { inUse = it.hasFocus }.graphicsLayer { this.alpha = alpha },
-        verticalArrangement = Arrangement.spacedBy(1.dp),
+        modifier.fillMaxHeight().padding(vertical = 12.dp).width(if (narrow) 22.dp else 104.dp)
+            .onFocusChanged { inUse = it.hasFocus; onFocused(it.hasFocus) }.graphicsLayer { this.alpha = alpha },
+        verticalArrangement = Arrangement.spacedBy(if (narrow) 1.dp else 6.dp),
     ) {
-        Browse.LETTERS.forEach { letter -> LetterKey(letter, Modifier.weight(1f).fillMaxWidth(), small = true) { onLetter(letter) } }
+        val landing = current?.takeIf { c -> stops.any { it.key == c } } ?: stops.firstOrNull()?.key
+        stops.forEach { stop ->
+            val m = (if (narrow) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().height(40.dp))
+                .then(if (stop.key == landing) Modifier.focusRequester(focus) else Modifier)
+            LetterKey(stop, lit = stop.key == current, m, small = true) { onStop(stop.key) }
+        }
+    }
+}
+
+/** The jump bar above the titles: the same stops in a row. */
+@Composable
+internal fun JumpRow(stops: List<dev.nitrate.core.pages.JumpStop>, current: String?, focus: FocusRequester, onFocused: (Boolean) -> Unit, onStop: (String) -> Unit) {
+    val landing = current?.takeIf { c -> stops.any { it.key == c } } ?: stops.firstOrNull()?.key
+    Row(Modifier.onFocusChanged { onFocused(it.hasFocus) }, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        stops.forEach { stop ->
+            val narrow = stop.label.length <= 2
+            LetterKey(stop, lit = stop.key == current, Modifier.size(width = if (narrow) 28.dp else 104.dp, height = 34.dp).then(if (stop.key == landing) Modifier.focusRequester(focus) else Modifier)) { onStop(stop.key) }
+        }
     }
 }
 
 @Composable
-private fun LetterKey(letter: String, modifier: Modifier, small: Boolean = false, onClick: () -> Unit) {
+private fun LetterKey(stop: dev.nitrate.core.pages.JumpStop, lit: Boolean, modifier: Modifier, small: Boolean = false, onClick: () -> Unit) {
     Surface(
         onClick = onClick, shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(6.dp)),
-        // No box round each letter until it's focused: a quiet strip of letters.
-        colors = if (small) ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, contentColor = Color.White) else ClickableSurfaceDefaults.colors(),
-        modifier = modifier,
+        // No box round each stop until it's focused: a quiet strip; the chosen title's stop in the accent.
+        colors = if (small) ClickableSurfaceDefaults.colors(containerColor = Color.Transparent, contentColor = if (lit) MaterialTheme.colorScheme.primary else Color.White) else ClickableSurfaceDefaults.colors(),
+        modifier = modifier.semantics { contentDescription = stop.spoken },
     ) {
-        Box(Modifier.fillMaxSize(), Alignment.Center) { Text(letter, style = MaterialTheme.typography.labelSmall.let { if (small) it.copy(fontSize = it.fontSize * 0.9f) else MaterialTheme.typography.labelLarge }) }
+        Box(Modifier.fillMaxSize(), Alignment.Center) {
+            Text(stop.label, style = MaterialTheme.typography.labelSmall.let { if (small) it.copy(fontSize = it.fontSize * 0.9f) else MaterialTheme.typography.labelLarge }, maxLines = 1)
+        }
+    }
+}
+
+/** The view, as ⏪ ⏩ change it: every one in a list, the one showing chosen. */
+@Composable
+private fun ViewDialog(current: BrowseView, onPick: (BrowseView) -> Unit, onDismiss: () -> Unit) {
+    val first = remember { FocusRequester() }
+    dev.nitrate.tv.ui.lists.TvDialog(onDismiss, width = 460) {
+        Text("View", style = MaterialTheme.typography.headlineSmall)
+        Text("⏪ ⏩ on the remote change it from anywhere on the page.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            BrowseView.entries.forEach { v ->
+                FilterChip(selected = v == current, onClick = { onPick(v) }, modifier = if (v == current) Modifier.focusRequester(first) else Modifier) { Text(v.label) }
+            }
+        }
+        LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     }
 }
 

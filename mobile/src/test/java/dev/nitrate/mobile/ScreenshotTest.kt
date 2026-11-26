@@ -15,6 +15,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -1002,6 +1004,24 @@ class ScreenshotTest {
     @Test fun browsePavement() = shoot("phone-browse-pavement", setup = { c ->
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.PAVEMENT))
     }, act = { compose.mainClock.advanceTimeBy(1_800) }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
+    /** Sorted by release: the strip down the side is decades; the bar's View pill names the view. */
+    @Test fun browseJumpDecades() = shoot("phone-browse-decades", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.VORTEX, sort = dev.nitrate.core.pages.QuerySort.RELEASE_DATE, descending = true))
+    }, act = {
+        compose.mainClock.advanceTimeBy(1_500)
+        assert(compose.onAllNodes(androidx.compose.ui.test.hasText("2010s"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) { "decades on the strip" }
+        assert(compose.onAllNodes(androidx.compose.ui.test.hasText("Vortex"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) { "View pill" }
+    }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
+    /** A keyboard's ] moves to the next view (iPad, desktop). */
+    @Test fun browseBracketChangesView() = shoot("phone-browse-bracket", act = {
+        compose.mainClock.advanceTimeBy(800)
+        compose.onRoot().performKeyInput { pressKey(androidx.compose.ui.input.key.Key.RightBracket) }
+        compose.mainClock.advanceTimeBy(800)
+        val next = dev.nitrate.core.pages.BrowseView.entries.filterNot { it.tvOnly }.let { it[(it.indexOf(dev.nitrate.core.pages.BrowseView.GRID) + 1) % it.size] }
+        assert(compose.onAllNodes(androidx.compose.ui.test.hasText(next.label), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) { "now ${next.label}" }
+    }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
 
     @Test fun browseArtwork() = shoot("phone-browse-artwork", setup = { c ->
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.ARTWORK))

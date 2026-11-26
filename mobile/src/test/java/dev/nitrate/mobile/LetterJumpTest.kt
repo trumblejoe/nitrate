@@ -83,6 +83,30 @@ class LetterJumpTest {
     @Test fun tList() = jump("T", dev.nitrate.core.pages.BrowseView.LIST)
     @Test fun mGrid() = jump("M", dev.nitrate.core.pages.BrowseView.GRID)
     @Test fun sList() = jump("S", dev.nitrate.core.pages.BrowseView.LIST)
+
+    /** The strip is on the drawn views too: T in Vortex brings T's first title to the front. */
+    @Test fun tVortex() {
+        val container = AppContainer(compose.activity, "test", "0", serverOverride = server)
+        kotlinx.coroutines.runBlocking {
+            container.displaySettings.import("user-1", emptyMap())
+            container.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.VORTEX))
+        }
+        val library = MediaItem("lib-movies", "Movies", ItemKind.LIBRARY, collection = CollectionKind.MOVIES)
+        compose.setContent {
+            ProvideDisplayPrefs(container, "user-1") { NitrateTheme { Surface(color = MaterialTheme.colorScheme.background) {
+                BrowseLibrary(AppActions(container, rememberNavController(), play = { _, _ -> }), library)
+            } } }
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        val first = titles.first { dev.nitrate.core.pages.Browse.letterOf(it) == "T" }.name
+        assertEquals(0, compose.onAllNodes(hasText(first)).fetchSemanticsNodes().size)
+        val strip = compose.onAllNodes(hasText("T"), useUnmergedTree = true).fetchSemanticsNodes().maxBy { it.boundsInRoot.left }
+        compose.onRoot().performTouchInput { click(strip.boundsInRoot.center) }
+        repeat(10) { compose.mainClock.advanceTimeBy(300); compose.waitForIdle() }
+        assert(compose.onAllNodes(hasText(first)).fetchSemanticsNodes().isNotEmpty()) { "$first is shown" }
+    }
 }
 
 /** Wherever a letter is touched on the strip, top or bottom of it, that's the letter jumped to. */

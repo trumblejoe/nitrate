@@ -113,6 +113,11 @@ internal fun CollageView(source: ShowSource, style: ShowStyle, host: ShowHost, m
         return true
     }
     host.backHandler(lightbox) { lightbox = false }
+    // Chosen from outside (the page's jump bar, a change of view): the board slides to it.
+    LaunchedEffect(index.intValue, board) {
+        val to = nearCopy(board, index.intValue) ?: return@LaunchedEffect
+        if ((cam.targetValue - to).getDistance() > 0.01f) cam.animateTo(to, spring(dampingRatio = 0.85f, stiffness = 160f))
+    }
     // The facts the lines need, for the titles in sight, asked once each (directors and writers in one request).
     LaunchedEffect(index.intValue, source.lines, items.size) {
         delay(300)
@@ -134,7 +139,7 @@ internal fun CollageView(source: ShowSource, style: ShowStyle, host: ShowHost, m
     Box(
         modifier.clipToBounds().background(Board)
             .onFocusChanged { focused = it.hasFocus }
-            .showInput(current?.let { source.titleOf(it) + if (lightbox) ", in the lightbox" else "" }, lightbox, host.focus) { k ->
+            .showInput(current?.let { source.titleOf(it) + if (lightbox) ", in the lightbox" else "" }, lightbox, host.focus, host.repeats) { k ->
                 when (k) {
                     ShowKey.LEFT -> if (lightbox) { if (index.intValue > 0) choose(index.intValue - 1); true } else move(CollageMove.LEFT)
                     ShowKey.RIGHT -> if (lightbox) { if (index.intValue < items.lastIndex) choose(index.intValue + 1); true } else move(CollageMove.RIGHT)

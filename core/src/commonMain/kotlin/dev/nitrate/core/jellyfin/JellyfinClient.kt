@@ -2736,7 +2736,7 @@ internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
         "sortOrder" to if (q.descending) "Descending,Ascending" else "Ascending,Ascending",
         "limit" to q.limit,
         // SortName lets A–Z jumps check where each letter really starts.
-        "fields" to "Overview,PrimaryImageAspectRatio,Genres,SortName",
+        "fields" to "Overview,PrimaryImageAspectRatio,Genres,SortName,DateCreated",
         "enableTotalRecordCount" to false,
     )
 }
