@@ -19,16 +19,18 @@ public class ImageSurveyTests
             new SizeRule("Primary", null, 1000, 2.0 / 3),
             new SizeRule("Primary", "Episode", 1280, 16.0 / 9),
             new SizeRule("Backdrop", null, 1920, 16.0 / 9),
-            new SizeRule("Logo", null, 800, null),
+            new SizeRule("Logo", null, 800, null, Transparent: true),
         });
 
     private static Guid G(int n) => new(n, 0, 0, new byte[8]);
 
     private static SurveyImage Img(string type, int w, int h, string path, int index = 0, bool local = true) => new(type, index, path, w, h, local, When);
 
-    private static ImageFile Files(SurveyImage i) => i.Path switch
+    private static ImageFile Files(SurveyImage i, bool see = false) => i.Path switch
     {
         "gone.jpg" => new ImageFile(null, null, null),
+        "flat.jpg" => new ImageFile(900, null, null, see ? false : null),
+        "clear.png" => new ImageFile(900, null, null, see ? true : null),
         "nosize.jpg" => new ImageFile(500, 400, 600),
         _ => new ImageFile(i.Path!.Length * 100L, null, null),
     };
@@ -119,7 +121,7 @@ public class ImageSurveyTests
         var read = 0;
         var items = new[] { new SurveyItem(G(1), "A", "Movie", null, null, null, new[] { Img("Primary", 2000, 3000, "https://example.org/p.jpg", local: false) }) };
 
-        var o = ImageSurvey.Run(items, Guide, i => { read++; return Files(i); });
+        var o = ImageSurvey.Run(items, Guide, (i, see) => { read++; return Files(i, see); });
 
         Assert.Equal(0, read);
         Assert.Equal(1, o.Types.Single().NotSaved);
@@ -150,5 +152,48 @@ public class ImageSurveyTests
         {
             dir.Delete(true);
         }
+    }
+
+    [Fact]
+    public void LogosThatArentSeeThroughAreOpaque()
+    {
+        var items = new[]
+        {
+            new SurveyItem(G(1), "A", "Movie", null, null, null, new[] { Img("Primary", 2000, 3000, "a.jpg"), Img("Backdrop", 3840, 2160, "b.jpg"), Img("Logo", 1600, 620, "flat.jpg") }),
+            new SurveyItem(G(2), "B", "Movie", null, null, null, new[] { Img("Primary", 2000, 3000, "c.jpg"), Img("Backdrop", 3840, 2160, "d.jpg"), Img("Logo", 1600, 620, "clear.png") }),
+        };
+
+        var o = ImageSurvey.Run(items, Guide with { Only = "opaque" }, Files);
+
+        Assert.Equal(1, o.Types.Single(t => t.Type == "Logo").Opaque);
+        Assert.Equal(0, o.Types.Single(t => t.Type == "Primary").Opaque);
+        var a = Assert.Single(o.Problems);
+        Assert.Equal("A", a.Name);
+        Assert.Contains(a.Flaws, f => f is { Type: "Logo", Flaw: "opaque" });
+    }
+
+    [Fact]
+    public void SeeThroughIsReadFromTheHeader()
+    {
+        static byte[] Png(byte colour, params string[] chunks)
+        {
+            var b = new List<byte> { 0x89, (byte)'P', (byte)'N', (byte)'G', 13, 10, 26, 10, 0, 0, 0, 13 };
+            b.AddRange("IHDR"u8.ToArray());
+            b.AddRange(new byte[] { 0, 0, 3, 32, 0, 0, 1, 54, 8, colour, 0, 0, 0, 0, 0, 0, 0 });
+            foreach (var c in chunks)
+            {
+                b.AddRange(new byte[] { 0, 0, 0, 6 });
+                b.AddRange(System.Text.Encoding.ASCII.GetBytes(c));
+                b.AddRange(new byte[10]);
+            }
+
+            return b.ToArray();
+        }
+
+        Assert.True(Nitrate.Companion.Comics.ImageHeader.Transparent(Png(6, "IDAT")));
+        Assert.True(Nitrate.Companion.Comics.ImageHeader.Transparent(Png(3, "PLTE", "tRNS", "IDAT")));
+        Assert.False(Nitrate.Companion.Comics.ImageHeader.Transparent(Png(2, "IDAT")));
+        Assert.Null(Nitrate.Companion.Comics.ImageHeader.Transparent(Png(2, "pHYs")));
+        Assert.False(Nitrate.Companion.Comics.ImageHeader.Transparent(new byte[] { 0xFF, 0xD8, 0xFF }));
     }
 }

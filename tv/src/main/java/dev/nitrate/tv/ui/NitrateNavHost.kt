@@ -431,7 +431,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<ManageItemRoute> { entry ->
             val route = entry.toRoute<ManageItemRoute>()
             ManageItemScreen(
-                container.server, route.itemId, images = route.images,
+                container.server, route.itemId, images = route.images, fixRun = if (route.run) container.imageFixRun else emptyList(),
                 themePreview = { id, on -> if (on) container.themeMusic.show(id) else container.themeMusic.stop() },
                 asEditor = account?.isAdmin != true,
                 creditsCheck = account?.isAdmin == true && companion?.features?.contains(dev.nitrate.core.playback.CreditsReport.FEATURE) == true,
@@ -444,7 +444,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
         composable<GuideRoute> { dev.nitrate.tv.ui.settings.GuideScreen(admin = account?.isAdmin == true) }
         composable<TvCheckRoute> { dev.nitrate.tv.ui.settings.TvCheckScreen(container) }
         composable<ImagesOverviewRoute> {
-            dev.nitrate.tv.ui.settings.ImagesOverviewScreen(container, onManage = { nav.navigate(ManageItemRoute(it, images = true)) })
+            dev.nitrate.tv.ui.settings.ImagesOverviewScreen(container, onManage = { nav.navigate(ManageItemRoute(it, images = true)) }, onFixRun = { nav.navigate(ManageItemRoute(it, images = true, run = true)) })
         }
         composable<PlaybackOverviewRoute> {
             dev.nitrate.tv.ui.settings.PlaybackOverviewScreen(

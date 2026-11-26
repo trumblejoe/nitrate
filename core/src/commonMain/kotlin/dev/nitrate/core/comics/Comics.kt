@@ -204,6 +204,45 @@ object ImageSize {
         }
     }
 
+    /**
+     * Whether the picture can be see-through, from the start of its file: PNG with an alpha
+     * channel or a tRNS chunk before the image data, WebP with its alpha flag, SVG (drawn on
+     * nothing) → true; JPEG, PNG without either, lossy WebP → false; null when [b] doesn't
+     * reach far enough to tell, or for formats it doesn't read. Keep in step with the
+     * Companion plugin's `Comics/ImageHeader.Transparent`.
+     */
+    fun transparent(b: ByteArray): Boolean? {
+        fun u8(i: Int) = b[i].toInt() and 0xFF
+        fun be32(i: Int) = (u8(i) shl 24) or (u8(i + 1) shl 16) or (u8(i + 2) shl 8) or u8(i + 3)
+        fun ascii(i: Int, s: String) = b.size >= i + s.length && s.indices.all { u8(i + it) == s[it].code }
+        return when {
+            b.size >= 26 && u8(0) == 0x89 && ascii(1, "PNG") -> {
+                val colour = u8(25)
+                if (colour == 4 || colour == 6) return true
+                var i = 8
+                while (i + 8 <= b.size) {
+                    val length = be32(i)
+                    if (ascii(i + 4, "tRNS")) return true
+                    if (ascii(i + 4, "IDAT") || ascii(i + 4, "IEND")) return false
+                    if (length < 0) return null
+                    i += 12 + length
+                }
+                null
+            }
+            b.size >= 30 && ascii(0, "RIFF") && ascii(8, "WEBP") -> when {
+                ascii(12, "VP8X") -> (u8(20) and 0x10) != 0
+                ascii(12, "VP8L") -> ((u8(24) shr 4) and 1) == 1
+                ascii(12, "VP8 ") -> false
+                else -> null
+            }
+            b.size >= 2 && u8(0) == 0xFF && u8(1) == 0xD8 -> false
+            else -> {
+                val head = b.copyOf(minOf(b.size, 512)).decodeToString().trimStart()
+                if (head.startsWith("<svg") || (head.startsWith("<?xml") && "<svg" in head)) true else null
+            }
+        }
+    }
+
     /** Wide enough to be a double-page spread on one picture. */
     fun isWide(size: Pair<Int, Int>?) = size != null && size.first > size.second * 1.1
 }

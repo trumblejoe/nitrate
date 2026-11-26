@@ -43,7 +43,7 @@ import kotlinx.serialization.Serializable
 @Serializable object StatsRoute
 @Serializable object DiaryRoute
 @Serializable object ServerSettingsRoute
-@Serializable data class ManageItemRoute(val itemId: String, val images: Boolean = false)
+@Serializable data class ManageItemRoute(val itemId: String, val images: Boolean = false, val run: Boolean = false)
 @Serializable object ServerAdminRoute
 @Serializable object LibraryHealthRoute
 @Serializable object PlaybackOverviewRoute

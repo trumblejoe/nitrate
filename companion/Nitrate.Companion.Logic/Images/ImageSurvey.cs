@@ -7,13 +7,14 @@ namespace Nitrate.Companion.Images;
 /// <param name="ItemKind">The kind of item it's for ("Episode"), or null for every other kind.</param>
 /// <param name="MinWidth">Narrower than this is small.</param>
 /// <param name="Ratio">Width over height it should be near (within 15%), or null when any shape will do (logos).</param>
-public record SizeRule(string Type, string? ItemKind, int MinWidth, double? Ratio);
+/// <param name="Transparent">Whether it should be see-through (logos, clear art, discs): one that isn't is "opaque".</param>
+public record SizeRule(string Type, string? ItemKind, int MinWidth, double? Ratio, bool Transparent = false);
 
 /// <summary>What the app asks the survey for. The rules are the app's (core <c>images/ImageGuide</c>).</summary>
 /// <param name="LibraryId">One library, or null for every library.</param>
 /// <param name="Expected">Per kind of item ("Movie"), the image types it should have.</param>
 /// <param name="Sizes">The size guide.</param>
-/// <param name="Only">Problems listed: "missing", "small", "shape", "gone", or null for any.</param>
+/// <param name="Only">Problems listed: "missing", "small", "shape", "gone", "opaque", or null for any.</param>
 /// <param name="OnlyType">Problems listed only for this image type, or null.</param>
 /// <param name="Limit">Most problems listed (the total is counted anyway).</param>
 public record ImageOverviewPost(
@@ -48,7 +49,8 @@ public record SurveyItem(Guid Id, string Name, string Kind, string? SeriesName, 
 /// <param name="Bytes">The file's size, or null when the file isn't there.</param>
 /// <param name="Width">Width read from the file when the database had none.</param>
 /// <param name="Height">Height read from the file when the database had none.</param>
-public record ImageFile(long? Bytes, int? Width, int? Height);
+/// <param name="Transparent">Whether it can be see-through, when it was read for that.</param>
+public record ImageFile(long? Bytes, int? Width, int? Height, bool? Transparent = null);
 
 /// <summary>Totals for one image type.</summary>
 /// <param name="Type">The type.</param>
@@ -59,7 +61,8 @@ public record ImageFile(long? Bytes, int? Width, int? Height);
 /// <param name="UnknownSize">How many have no known width and height.</param>
 /// <param name="NotSaved">How many are only an address (not a file on the server).</param>
 /// <param name="Gone">How many point at a file that isn't there.</param>
-public record TypeTotals(string Type, int Count, long Bytes, int Small, int Misshapen, int UnknownSize, int NotSaved, int Gone);
+/// <param name="Opaque">How many should be see-through but aren't.</param>
+public record TypeTotals(string Type, int Count, long Bytes, int Small, int Misshapen, int UnknownSize, int NotSaved, int Gone, int Opaque = 0);
 
 /// <summary>Totals for one kind of item.</summary>
 /// <param name="Kind">The kind.</param>
@@ -74,7 +77,7 @@ public record KindTotals(string Kind, int Items, int Complete, long Bytes, IRead
 /// <param name="Index">Its place among its type.</param>
 /// <param name="Width">Its width, when known.</param>
 /// <param name="Height">Its height, when known.</param>
-/// <param name="Flaw">"small", "shape" or "gone".</param>
+/// <param name="Flaw">"small", "shape", "gone" or "opaque".</param>
 public record ImageFlaw(string Type, int Index, int? Width, int? Height, string Flaw);
 
 /// <summary>An item with something missing or wrong.</summary>
@@ -128,7 +131,7 @@ public static class ImageSurvey
     public const int LargestCount = 20;
 
     /// <summary>The survey of [items] by [post]'s rules, files read through [file].</summary>
-    public static ImageOverview Run(IEnumerable<SurveyItem> items, ImageOverviewPost post, Func<SurveyImage, ImageFile> file)
+    public static ImageOverview Run(IEnumerable<SurveyItem> items, ImageOverviewPost post, Func<SurveyImage, bool, ImageFile> file)
     {
         var expected = post.Expected ?? new Dictionary<string, string[]>();
         var sizes = post.Sizes ?? Array.Empty<SizeRule>();
@@ -148,12 +151,13 @@ public static class ImageSurvey
             foreach (var image in item.Images)
             {
                 imageCount++;
-                var f = image.Local ? file(image) : new ImageFile(null, null, null);
+                var rule = sizes.FirstOrDefault(r => Same(r.Type, image.Type) && Same(r.ItemKind, item.Kind))
+                    ?? sizes.FirstOrDefault(r => Same(r.Type, image.Type) && r.ItemKind == null);
+                var f = image.Local ? file(image, rule?.Transparent == true) : new ImageFile(null, null, null);
                 var width = image.Width > 0 ? image.Width : f.Width;
                 var height = image.Height > 0 ? image.Height : f.Height;
                 var gone = image.Local && f.Bytes == null;
-                var rule = sizes.FirstOrDefault(r => Same(r.Type, image.Type) && Same(r.ItemKind, item.Kind))
-                    ?? sizes.FirstOrDefault(r => Same(r.Type, image.Type) && r.ItemKind == null);
+                var opaque = rule?.Transparent == true && f.Transparent == false;
                 var small = rule != null && width is > 0 && width < rule.MinWidth;
                 var shape = rule?.Ratio is { } ratio && width is > 0 && height is > 0 && Math.Abs(((double)width.Value / height.Value / ratio) - 1) > ShapeSlack;
                 if (gone)
@@ -171,6 +175,11 @@ public static class ImageSurvey
                     flaws.Add(new ImageFlaw(image.Type, image.Index, width, height, "shape"));
                 }
 
+                if (opaque)
+                {
+                    flaws.Add(new ImageFlaw(image.Type, image.Index, width, height, "opaque"));
+                }
+
                 var size = f.Bytes ?? 0;
                 itemBytes += size;
                 types.TryGetValue(image.Type, out var t);
@@ -184,6 +193,7 @@ public static class ImageSurvey
                     UnknownSize = t.UnknownSize + (width is > 0 && height is > 0 ? 0 : 1),
                     NotSaved = t.NotSaved + (image.Local ? 0 : 1),
                     Gone = t.Gone + (gone ? 1 : 0),
+                    Opaque = t.Opaque + (opaque ? 1 : 0),
                 };
                 if (size > 0)
                 {
@@ -214,7 +224,7 @@ public static class ImageSurvey
             var counts = post.Only?.ToLowerInvariant() switch
             {
                 "missing" => shownMissing.Count > 0,
-                "small" or "shape" or "gone" => shownFlaws.Any(f => f.Flaw == post.Only!.ToLowerInvariant()),
+                "small" or "shape" or "gone" or "opaque" => shownFlaws.Any(f => f.Flaw == post.Only!.ToLowerInvariant()),
                 _ => shownMissing.Count > 0 || shownFlaws.Count > 0,
             };
             if (!counts)
@@ -282,19 +292,26 @@ public class ImageFiles
     /// <summary>How many files are kept.</summary>
     public int Count => _known.Count;
 
-    /// <summary>What's known of [image]'s file, read once.</summary>
-    public ImageFile Of(SurveyImage image)
+    /// <summary>What's known of [image]'s file, read once ([seeThrough]: whether it should be see-through, so read for that too).</summary>
+    public ImageFile Of(SurveyImage image, bool seeThrough = false)
     {
         if (string.IsNullOrEmpty(image.Path))
         {
             return new ImageFile(null, null, null);
         }
 
-        return _known.GetOrAdd((image.Path, image.Modified), _ => Read(image));
+        var known = _known.GetOrAdd((image.Path, image.Modified), _ => Read(image, seeThrough));
+        if (seeThrough && known.Bytes != null && known.Transparent == null)
+        {
+            known = Read(image, true);
+            _known[(image.Path, image.Modified)] = known;
+        }
+
+        return known;
     }
 
-    /// <summary>Reads a file's size, and its header when its width or height isn't known.</summary>
-    public static ImageFile Read(SurveyImage image)
+    /// <summary>Reads a file's size, and its header when its width or height isn't known or [seeThrough] asks whether it's see-through.</summary>
+    public static ImageFile Read(SurveyImage image, bool seeThrough = false)
     {
         try
         {
@@ -304,7 +321,7 @@ public class ImageFiles
                 return new ImageFile(null, null, null);
             }
 
-            if (image.Width > 0 && image.Height > 0)
+            if (image.Width > 0 && image.Height > 0 && !seeThrough)
             {
                 return new ImageFile(info.Length, null, null);
             }
@@ -324,7 +341,8 @@ public class ImageFiles
             }
 
             var size = Nitrate.Companion.Comics.ImageHeader.Size(buffer.AsSpan(0, read));
-            return new ImageFile(info.Length, size?.Width, size?.Height);
+            var clear = seeThrough ? Nitrate.Companion.Comics.ImageHeader.Transparent(buffer.AsSpan(0, read)) : null;
+            return new ImageFile(info.Length, size?.Width, size?.Height, clear);
         }
         catch (IOException)
         {

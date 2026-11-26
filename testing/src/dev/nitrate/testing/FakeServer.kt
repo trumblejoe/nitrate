@@ -583,7 +583,7 @@ class FakeServer : MediaServer {
             dev.nitrate.core.admin.ImageTypeTotals(t, t.wire, count, mb * 1_000_000, small, shape, 0, 0, gone)
         return dev.nitrate.core.admin.ImageOverview(
             items = 412, images = 1186, bytes = 2_480_000_000,
-            types = listOf(type(b, 520, 1420, shape = 1), type(p, 404, 760, small = 1, gone = 1), type(l, 180, 210), type(dev.nitrate.core.admin.ImageType.THUMB, 82, 90)),
+            types = listOf(type(b, 520, 1420, shape = 1), type(p, 404, 760, small = 1, gone = 1), type(l, 180, 210).copy(opaque = 2), type(dev.nitrate.core.admin.ImageType.THUMB, 82, 90)),
             kinds = listOf(
                 dev.nitrate.core.admin.ImageKindTotals(dev.nitrate.core.model.ItemKind.EPISODE, "Episode", 320, 318, 520_000_000, mapOf(p to 1)),
                 dev.nitrate.core.admin.ImageKindTotals(dev.nitrate.core.model.ItemKind.MOVIE, "Movie", 62, 59, 1_640_000_000, mapOf(p to 0, b to 1, l to 2)),

@@ -1583,6 +1583,19 @@ class TvScreenshotTest {
         c.refreshCompanionForTests()
     }) { c -> dev.nitrate.tv.ui.settings.ImagesOverviewScreen(c, onManage = {}) }
 
+    /** The overview's "Fix these": Manage on the first title with its bar, the found pictures of the kind it needs already open. */
+    @Test fun manageFixRun() = shoot("tv-manage-fix-run") { c ->
+        val run = listOf(dev.nitrate.core.admin.FixStep("m1", dev.nitrate.core.admin.ImageType.LOGO, "Nitrate"), dev.nitrate.core.admin.FixStep("m2", dev.nitrate.core.admin.ImageType.PRIMARY, "Silver Screen"))
+        dev.nitrate.tv.ui.admin.ManageItemScreen(c.server, "m1", images = true, fixRun = run)
+    }
+
+    /** A logo seen before it's picked: over the title's backdrop, and on dark and light. */
+    @Test fun logoPreview() = shoot("tv-logo-preview") { c ->
+        val item = kotlinx.coroutines.runBlocking { c.server.getItem("m1") }
+        val logo = dev.nitrate.core.admin.RemoteImage(c.server.imageUrl(item, dev.nitrate.core.model.ImageKind.PRIMARY)!!, null, "Fanart", 800, 310, null, null, transparent = false)
+        dev.nitrate.tv.ui.admin.LogoPreview(c.server, item, dev.nitrate.core.admin.ImageType.LOGO, logo, false, onUse = {}, onBack = {})
+    }
+
     /** Further down: the list of titles to look at with Find missing beside those missing a picture. */
     @Test fun imagesOverviewProblems() = shoot("tv-images-overview-problems", setup = { c ->
         (c.server as dev.nitrate.testing.FakeServer).companionFeatures += dev.nitrate.core.admin.ImageGuide.FEATURE

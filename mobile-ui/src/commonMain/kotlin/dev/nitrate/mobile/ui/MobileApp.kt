@@ -70,7 +70,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class PersonRoute(val personId: String, val name: String, val studio: String? = null, val year: Int? = null)
 
 /** Admin: an item's metadata, identity, images and refresh. */
-@Serializable data class ManageItemRoute(val itemId: String, val images: Boolean = false)
+@Serializable data class ManageItemRoute(val itemId: String, val images: Boolean = false, val run: Boolean = false)
 
 /** Admin: the whole server (tasks, activity, devices, users). */
 @Serializable object ServerAdminRoute
@@ -444,7 +444,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 DetailsScreen(actions.fromGroup(route.group), route.itemId, route.seasonId, route.artKey)
             }
             screen<PlaylistRoute> { entry -> entry.toRoute<PlaylistRoute>().let { r -> PlaylistScreen(actions.fromGroup(r.group), r.playlistId) } }
-            screen<ManageItemRoute> { entry -> entry.toRoute<ManageItemRoute>().let { ManageItemScreen(actions, it.itemId, it.images) } }
+            screen<ManageItemRoute> { entry -> entry.toRoute<ManageItemRoute>().let { ManageItemScreen(actions, it.itemId, it.images, if (it.run) actions.container.imageFixRun else emptyList()) } }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }
             screen<HouseholdDevicesRoute> { HouseholdDevicesScreen(actions) }

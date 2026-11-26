@@ -1075,6 +1075,9 @@ class AppContainer(
     var lastImageOverview: Pair<dev.nitrate.core.admin.ImageOverviewAsk, dev.nitrate.core.admin.ImageOverview>? = null
         private set
 
+    /** The overview's "Fix these" run, read by Manage (opened with its route's `run`): kept here, too long for a route. */
+    var imageFixRun: List<dev.nitrate.core.admin.FixStep> = emptyList()
+
     /** The Library images overview for [ask] (kept as [lastImageOverview]). */
     suspend fun imageOverview(ask: dev.nitrate.core.admin.ImageOverviewAsk): dev.nitrate.core.admin.ImageOverview =
         server.imageOverview(ask).also { lastImageOverview = ask to it }

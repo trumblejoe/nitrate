@@ -88,4 +88,71 @@ public static class ImageHeader
 
         return null;
     }
+
+    /// <summary>
+    /// Whether the picture can be see-through, from the start of its file: PNG with an alpha
+    /// channel or a tRNS chunk before its image data, WebP with its alpha flag, SVG → true; JPEG,
+    /// PNG without either, lossy WebP → false; null when it doesn't tell. Keep in step with core
+    /// <c>comics/ImageSize.transparent</c>.
+    /// </summary>
+    public static bool? Transparent(ReadOnlySpan<byte> b)
+    {
+        if (b.Length >= 26 && b[0] == 0x89 && b[1] == (byte)'P' && b[2] == (byte)'N' && b[3] == (byte)'G')
+        {
+            var colour = b[25];
+            if (colour == 4 || colour == 6)
+            {
+                return true;
+            }
+
+            var i = 8;
+            while (i + 8 <= b.Length)
+            {
+                var length = BinaryPrimitives.ReadInt32BigEndian(b[i..]);
+                var type = b.Slice(i + 4, 4);
+                if (type.SequenceEqual("tRNS"u8))
+                {
+                    return true;
+                }
+
+                if (type.SequenceEqual("IDAT"u8) || type.SequenceEqual("IEND"u8))
+                {
+                    return false;
+                }
+
+                if (length < 0)
+                {
+                    return null;
+                }
+
+                i += 12 + length;
+            }
+
+            return null;
+        }
+
+        if (b.Length >= 30 && b[..4].SequenceEqual("RIFF"u8) && b[8..12].SequenceEqual("WEBP"u8))
+        {
+            var chunk = b[12..16];
+            if (chunk.SequenceEqual("VP8X"u8))
+            {
+                return (b[20] & 0x10) != 0;
+            }
+
+            if (chunk.SequenceEqual("VP8L"u8))
+            {
+                return ((b[24] >> 4) & 1) == 1;
+            }
+
+            return chunk.SequenceEqual("VP8 "u8) ? false : null;
+        }
+
+        if (b.Length >= 2 && b[0] == 0xFF && b[1] == 0xD8)
+        {
+            return false;
+        }
+
+        var head = System.Text.Encoding.UTF8.GetString(b[..Math.Min(b.Length, 512)]).TrimStart();
+        return head.StartsWith("<svg", StringComparison.Ordinal) || (head.StartsWith("<?xml", StringComparison.Ordinal) && head.Contains("<svg", StringComparison.Ordinal)) ? true : null;
+    }
 }

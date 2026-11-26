@@ -163,11 +163,15 @@ private fun ThemeMusicInfoRow(actions: AppActions, item: MediaItem) {
  * it. Nothing here deletes the title or touches library settings.
  */
 @Composable
-fun ManageItemScreen(actions: AppActions, itemId: String, images: Boolean = false) {
+fun ManageItemScreen(actions: AppActions, itemId: String, images: Boolean = false, fixRun: List<dev.nitrate.core.admin.FixStep> = emptyList()) {
     val server = actions.server
     val account by actions.container.account.collectAsState()
-    val item by produceState<MediaItem?>(null, itemId) { value = runCatching { server.getItem(itemId) }.getOrNull() }
-    var tab by rememberSaveable { mutableStateOf(if (images) ManageTab.IMAGES else ManageTab.DETAILS) }
+    // The overview's "Fix these": titles in turn, each on Images with the found pictures it needs; picking one moves on.
+    var at by rememberSaveable { mutableIntStateOf(0) }
+    val step = fixRun.getOrNull(at)
+    val shownId = step?.itemId ?: itemId
+    val item by produceState<MediaItem?>(null, shownId) { value = null; value = runCatching { server.getItem(shownId) }.getOrNull() }
+    var tab by rememberSaveable { mutableStateOf(if (images || fixRun.isNotEmpty()) ManageTab.IMAGES else ManageTab.DETAILS) }
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     fun notify(message: String) = scope.launch { snack.showSnackbar(message) }
@@ -188,11 +192,22 @@ fun ManageItemScreen(actions: AppActions, itemId: String, images: Boolean = fals
             PrimaryScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = ScreenPadding) {
                 ManageTab.entries.forEach { t -> Tab(tab == t, onClick = { tab = t }, text = { Text(t.label) }) }
             }
+            if (fixRun.isNotEmpty()) Row(
+                Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 6.dp).background(accentColor().copy(alpha = 0.14f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (step == null) "Fix run finished: ${fixRun.size} titles" else "Fixing ${at + 1} of ${fixRun.size} · ${step.title} · ${step.type.label.lowercase()}",
+                    style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+                if (step != null) TextButton(onClick = { at++ }) { Text("Skip ›") } else TextButton(onClick = { actions.nav.popBackStack() }) { Text("Done") }
+            }
             val i = item
-            if (i == null) Loading() else when (tab) {
+            if (fixRun.isNotEmpty() && step == null) Text("All done. Back returns to the overview.", modifier = Modifier.padding(ScreenPadding))
+            else if (i == null) Loading() else when (tab) {
                 ManageTab.DETAILS -> MetadataEditor(actions, i, ::notify)
                 ManageTab.IDENTIFY -> IdentifyPane(actions, i, ::notify)
-                ManageTab.IMAGES -> ImagesPane(actions, i, ::notify)
+                ManageTab.IMAGES -> androidx.compose.runtime.key(i.id) { ImagesPane(actions, i, openOn = step?.type, onPlaced = { if (step != null) at++ }, notify = ::notify) }
                 ManageTab.REFRESH -> RefreshPane(actions, i, ::notify)
             }
         }
@@ -503,20 +518,22 @@ private fun IdentifyPane(actions: AppActions, item: MediaItem, notify: (String) 
  * Sizes show on each, with small ones (blocky on a TV) marked.
  */
 @Composable
-private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) -> Unit) {
+private fun ImagesPane(actions: AppActions, item: MediaItem, openOn: ImageType? = null, onPlaced: () -> Unit = {}, notify: (String) -> Unit) {
     val server = actions.server
     val scope = rememberCoroutineScope()
     var reload by remember { mutableIntStateOf(0) }
     val images by produceState<Result<List<ItemImage>>?>(null, reload) { value = runCatching { server.itemImages(item.id) } }
     val providers by produceState(emptyList<dev.nitrate.core.admin.ImageProvider>(), item.id) { value = runCatching { server.imageProviders(item.id) }.getOrDefault(emptyList()) }
-    var browsing by remember { mutableStateOf<ImageType?>(null) }
+    // In a fix run: straight to the found pictures of the kind this title needs.
+    var browsing by remember { mutableStateOf(openOn) }
+    var linking by remember { mutableStateOf<ImageType?>(null) }
     var uploadType by remember { mutableStateOf(ImageType.PRIMARY) }
     // A backdrop waiting to be placed: replace the main one, add as main, or just add.
     var placing by remember { mutableStateOf<Pair<ImageType, suspend () -> Unit>?>(null) }
     fun place(type: ImageType, placement: dev.nitrate.core.admin.ImagePlacement, add: suspend () -> Unit) {
         scope.launch {
             runCatching { dev.nitrate.core.admin.ImagePlacing.place(server, item.id, type, placement, add) }
-                .onSuccess { notify(if (dev.nitrate.core.admin.ImagePlacing.holdsSeveral(type)) "${placement.label}: done" else "Image set"); reload++ }
+                .onSuccess { notify(if (dev.nitrate.core.admin.ImagePlacing.holdsSeveral(type)) "${placement.label}: done" else "Image set"); reload++; onPlaced() }
                 .onFailure { notify("Couldn't set the image: ${it.message}") }
         }
     }
@@ -543,6 +560,7 @@ private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(type.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton(onClick = { browsing = type }) { Text(if (several) "Add found" else "Find") }
+                    TextButton(onClick = { linking = type }) { Text("Link") }
                     TextButton(onClick = {
                         uploadType = type
                         picker()
@@ -594,6 +612,14 @@ private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) ->
             else { browsing = null; place(type, dev.nitrate.core.admin.ImagePlacement.REPLACE_MAIN, download) }
         }, onDismiss = { browsing = null })
     }
+    linking?.let { type ->
+        FromLink(actions, item, type, onUse = { url ->
+            linking = null
+            val download: suspend () -> Unit = { server.downloadRemoteImage(item.id, type, url) }
+            if (dev.nitrate.core.admin.ImagePlacing.holdsSeveral(type)) placing = type to download
+            else place(type, dev.nitrate.core.admin.ImagePlacement.REPLACE_MAIN, download)
+        }, onCancel = { linking = null })
+    }
     placing?.let { (type, add) ->
         AlertDialog(
             onDismissRequest = { placing = null },
@@ -623,12 +649,20 @@ private fun RemoteImagesDialog(actions: AppActions, item: MediaItem, type: Image
     var provider by remember { mutableStateOf<String?>(null) }
     var allLanguages by remember { mutableStateOf(false) }
     var textlessOnly by remember { mutableStateOf(false) }
+    var hideSmall by remember { mutableStateOf(false) }
+    var previewing by remember { mutableStateOf<RemoteImage?>(null) }
     val episode = item.kind == ItemKind.EPISODE
     val picked = remember { androidx.compose.runtime.mutableStateListOf<String>() }
     val found by produceState<Result<List<RemoteImage>>?>(null, type, provider, allLanguages) {
         value = null
-        value = runCatching { dev.nitrate.core.admin.RemoteImages.best(actions.server.remoteImages(item.id, type, provider, allLanguages)) }
+        val listed = runCatching { dev.nitrate.core.admin.RemoteImages.best(actions.server.remoteImages(item.id, type, provider, allLanguages)) }
+        value = listed
+        // Sizes the provider left out (Fanart.tv) and logos' transparency, read from the files, then sorted again.
+        listed.getOrNull()?.takeIf { l -> l.any { dev.nitrate.core.admin.RemoteImages.needsReading(type, it) } }?.let { l ->
+            value = Result.success(dev.nitrate.core.admin.RemoteImages.measured(type, l, actions.server::remoteImageFacts))
+        }
     }
+    fun pick(img: RemoteImage) { if (img.url !in picked) { picked += img.url; onPick(img.url) } }
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = dev.nitrate.mobile.platform.fullScreenDialog()) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -642,30 +676,29 @@ private fun RemoteImagesDialog(actions: AppActions, item: MediaItem, type: Image
                 providers.forEach { p -> androidx.compose.material3.FilterChip(provider == p, { provider = p }, label = { Text(p) }) }
                 androidx.compose.material3.FilterChip(allLanguages, { allLanguages = !allLanguages }, label = { Text("All languages") })
                 androidx.compose.material3.FilterChip(textlessOnly, { textlessOnly = !textlessOnly }, label = { Text("Textless only") })
+                androidx.compose.material3.FilterChip(hideSmall, { hideSmall = !hideSmall }, label = { Text("Hide small") })
             }
             Text("Best size: ${dev.nitrate.core.admin.RemoteImages.spec(type, episode).line}. Textless means the provider gave no language, which by convention marks art without words.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding, vertical = 4.dp))
             if (type == ImageType.BACKDROP) Text("Pick one to replace the main backdrop, add it as the main one, or just add it to the set Nitrate rotates through.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding, vertical = 4.dp))
-            val list = found?.getOrNull()?.let { all -> if (textlessOnly) all.filter(dev.nitrate.core.admin.RemoteImages::isTextless) else all }
+            val list = found?.getOrNull()?.filter {
+                (!textlessOnly || dev.nitrate.core.admin.RemoteImages.isTextless(it)) && !(hideSmall && dev.nitrate.core.admin.RemoteImages.isSmall(type, it.width, it.height, episode))
+            }
             when {
                 found == null -> Loading()
                 list == null -> ErrorMessage("Couldn't search: ${found?.exceptionOrNull()?.message}")
                 list.isEmpty() -> Text(
-                    if (textlessOnly) "None marked textless. Try without \"Textless only\"."
+                    if (textlessOnly || hideSmall) "None left with these filters. Try without \"Textless only\" or \"Hide small\"."
                     else if (allLanguages) "No ${type.label.lowercase()} found. The server may not have internet access or a matching provider ID."
                     else "None in the server's metadata language. Try \"All languages\".",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(ScreenPadding),
                 )
                 else -> LazyVerticalGrid(GridCells.Adaptive(if (type == ImageType.PRIMARY) 110.dp else 200.dp), contentPadding = PaddingValues(ScreenPadding),
                     horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(list, key = { it.url }) { found ->
-                        // Fanart.tv and others give no size: read it from the file's start.
-                        val measured by produceState<Pair<Int, Int>?>(null, found.url) {
-                            if (dev.nitrate.core.admin.RemoteImages.sizeMissing(found)) value = actions.server.remoteImageSize(found.url)
-                        }
-                        val img = dev.nitrate.core.admin.RemoteImages.sized(found, measured)
-                        val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height, episode)
-                        Column(Modifier.pressable({ if (img.url !in picked) { picked += img.url; onPick(img.url) } })) {
+                    items(list, key = { it.url }) { img ->
+                        val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height, episode) || dev.nitrate.core.admin.RemoteImages.isOpaque(type, img)
+                        // Logos and clear art are seen first over the title's own picture.
+                        Column(Modifier.pressable({ if (type in dev.nitrate.core.admin.RemoteImages.PREVIEWED && img.url !in picked) previewing = img else pick(img) })) {
                             Box(Modifier.fillMaxWidth().aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 1f).clip(RoundedCornerShape(10.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))) {
                                 AsyncImage(img.thumbnailUrl ?: img.url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -678,6 +711,85 @@ private fun RemoteImagesDialog(actions: AppActions, item: MediaItem, type: Image
                         }
                     }
                 }
+            }
+        }
+    }
+    previewing?.let { img -> LogoPreview(actions, item, type, img, episode, onUse = { previewing = null; pick(img) }, onBack = { previewing = null }) }
+}
+
+/**
+ * An image from a link (sites with no Jellyfin provider, such as MediUX or ThePosterDB): paste its
+ * address, see it with its size and band (read from the file, as found images are), then use it;
+ * the server downloads it like a found image.
+ */
+@Composable
+private fun FromLink(actions: AppActions, item: MediaItem, type: ImageType, onUse: (String) -> Unit, onCancel: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val url = text.trim()
+    val problem = dev.nitrate.core.admin.RemoteImages.linkProblem(url)
+    val facts by produceState<dev.nitrate.core.admin.ImageFacts?>(null, url, problem) {
+        value = null
+        if (problem == null) { kotlinx.coroutines.delay(400); value = actions.server.remoteImageFacts(url) }
+    }
+    val episode = item.kind == ItemKind.EPISODE
+    val shown = dev.nitrate.core.admin.RemoteImages.sized(RemoteImage(url, null, "Link", null, null, null, null), facts)
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("${type.label} from a link") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("For sites Jellyfin has no provider for, such as MediUX or ThePosterDB: copy the image's own address (it ends in .jpg, .png or .webp).", style = MaterialTheme.typography.bodySmall)
+                androidx.compose.material3.OutlinedTextField(text, { text = it }, singleLine = true, placeholder = { Text("https://…") }, modifier = Modifier.fillMaxWidth())
+                if (url.isNotEmpty() && problem != null) Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                if (problem == null) {
+                    Box(Modifier.fillMaxWidth().aspectRatio(shown.width?.let { w -> shown.height?.let { h -> (w.toFloat() / h).coerceIn(0.5f, 3f) } } ?: 1.5f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                        AsyncImage(url, "The ${type.label.lowercase()} at that address", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                    }
+                    Text(if (facts == null) "Reading it…" else dev.nitrate.core.admin.RemoteImages.band(type, shown, episode).removePrefix("Link · Textless · "), style = MaterialTheme.typography.bodySmall)
+                    Text("Best size: " + dev.nitrate.core.admin.RemoteImages.spec(type, episode).line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onUse(url) }, enabled = problem == null) { Text("Use it") } },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+/**
+ * A logo (or clear art) seen before it's picked: over the title's own backdrop as its pages show it,
+ * and on plain dark and light, so a white logo that vanishes on bright art shows up here.
+ */
+@Composable
+fun LogoPreview(actions: AppActions, item: MediaItem, type: ImageType, img: RemoteImage, episode: Boolean, onUse: () -> Unit, onBack: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onBack, properties = dev.nitrate.mobile.platform.fullScreenDialog()) {
+        Column(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Back") }
+                Text("How this ${type.label.lowercase()} looks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(Color.Black)) {
+                AsyncImage(actions.server.backdropUrl(item), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0x99000000), Color.Transparent))))
+                AsyncImage(img.url, "The ${type.label.lowercase()}", contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp).fillMaxWidth(0.5f).aspectRatio(2.6f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf("On dark" to Color(0xFF101114), "On light" to Color(0xFFE9E6E0)).forEach { (label, bg) ->
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(bg).padding(10.dp)) {
+                            AsyncImage(img.url, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                        }
+                    }
+                }
+            }
+            Text(dev.nitrate.core.admin.RemoteImages.band(type, img, episode), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                androidx.compose.material3.Button(onClick = onUse) { Text("Use this ${type.label.lowercase()}") }
+                androidx.compose.material3.OutlinedButton(onClick = onBack) { Text("Back") }
             }
         }
     }

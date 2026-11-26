@@ -65,6 +65,17 @@ fun ImagesOverviewScreen(actions: AppActions) {
     var reading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var asked by remember { mutableStateOf(setOf<String>()) }
+    // "Find missing for these": how far the asking has got.
+    var finding by remember { mutableStateOf<String?>(null) }
+    fun findMissing(ids: List<String>) {
+        scope.launch {
+            ids.forEachIndexed { n, id ->
+                finding = "Asking the server: ${n + 1} of ${ids.size}…"
+                runCatching { actions.server.refreshItem(id, RefreshMode.MISSING, replaceImages = false, regenerateTrickplay = false) }.onSuccess { asked = asked + id }
+            }
+            finding = "Asked for ${ids.size}. Missing pictures appear as the server finds them; Read again later."
+        }
+    }
     fun load() {
         val ask = ImageOverviewAsk(libraryId, only, onlyType)
         reading = true
@@ -110,7 +121,7 @@ fun ImagesOverviewScreen(actions: AppActions) {
         item { Summary(o) { load() } }
         item { Heading("By kind of picture") }
         items(o.types, key = { "t-${it.typeName}" }) { t ->
-            Line(t.label, t.detail, warn = t.small + t.misshapen + t.gone > 0)
+            Line(t.label, t.detail, warn = t.small + t.misshapen + t.gone + t.opaque > 0)
         }
         item { Heading("By kind of title") }
         items(o.kinds, key = { "k-${it.kindName}" }) { k ->
@@ -127,6 +138,19 @@ fun ImagesOverviewScreen(actions: AppActions) {
                     FilterChip(onlyType == null, { onlyType = null }, label = { Text("Every kind") })
                     ImageType.entries.forEach { t -> FilterChip(onlyType == t, { onlyType = t }, label = { Text(t.label) }) }
                 }
+                if (o.problems.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // One title after another on Manage → Images, the found pictures it needs open; picking one moves on.
+                    androidx.compose.material3.Button(onClick = {
+                        val steps = dev.nitrate.core.admin.ImageFixRun.steps(o.problems, onlyType)
+                        if (steps.isNotEmpty()) {
+                            container.imageFixRun = steps
+                            actions.nav.navigate(ManageItemRoute(steps.first().itemId, images = true, run = true))
+                        }
+                    }) { Text("Fix these") }
+                    val missing = dev.nitrate.core.admin.ImageFixRun.missingIds(o.problems).filter { it !in asked }
+                    if (missing.isNotEmpty()) OutlinedButton(onClick = { findMissing(missing) }, enabled = finding?.startsWith("Asking") != true) { Text("Find missing · ${missing.size}") }
+                }
+                finding?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = accentColor()) }
                 Text(
                     when {
                         o.problemsTotal == 0 -> "Nothing to look at here."
@@ -182,7 +206,7 @@ private fun Summary(o: ImageOverview, onReadAgain: () -> Unit) {
         Text(dev.nitrate.core.admin.bytesLabel(o.bytes), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
         Text(o.summary, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            "${o.complete} of ${o.items} complete · ${o.missing} missing · ${o.small} small · ${o.misshapen} wrong shape · ${o.gone} gone",
+            "${o.complete} of ${o.items} complete · ${o.missing} missing · ${o.small} small · ${o.misshapen} wrong shape · ${o.gone} gone" + (if (o.opaque > 0) " · ${o.opaque} with no transparency" else ""),
             style = MaterialTheme.typography.bodySmall, color = accentColor(),
         )
         OutlinedButton(onClick = onReadAgain) { Text("Read again") }

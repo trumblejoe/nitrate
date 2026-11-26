@@ -353,6 +353,18 @@ class ScreenshotTest {
         c.refreshCompanionForTests()
     }) { dev.nitrate.mobile.ui.ImagesOverviewScreen(it) }
 
+    /** The overview's "Fix these" on the phone: Manage's bar over the first title, its found pictures open. */
+    @Test fun manageFixRun() = shoot("phone-manage-fix-run") { actions ->
+        val run = listOf(dev.nitrate.core.admin.FixStep("m1", dev.nitrate.core.admin.ImageType.LOGO, "Nitrate"), dev.nitrate.core.admin.FixStep("m2", dev.nitrate.core.admin.ImageType.PRIMARY, "Silver Screen"))
+        dev.nitrate.mobile.ui.ManageItemScreen(actions, "m1", images = true, fixRun = run)
+    }
+
+    @Test fun logoPreview() = shoot("phone-logo-preview") { actions ->
+        val item = kotlinx.coroutines.runBlocking { actions.server.getItem("m1") }
+        val logo = dev.nitrate.core.admin.RemoteImage(actions.server.imageUrl(item, dev.nitrate.core.model.ImageKind.PRIMARY)!!, null, "Fanart", 800, 310, null, null, transparent = false)
+        dev.nitrate.mobile.ui.LogoPreview(actions, item, dev.nitrate.core.admin.ImageType.LOGO, logo, false, onUse = {}, onBack = {})
+    }
+
     /** Further down: what to look at (episodes by show and number only) with Images and Find missing, and the biggest files. */
     @Test fun imagesOverviewProblems() = shoot("phone-images-overview-problems", setup = { c ->
         (c.server as dev.nitrate.testing.FakeServer).companionFeatures += dev.nitrate.core.admin.ImageGuide.FEATURE

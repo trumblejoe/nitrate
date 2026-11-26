@@ -87,4 +87,19 @@ class ImageOverviewTest {
         assertEquals("Missing logo, backdrop · Poster small: 600×900", o.problems[1].line)
         assertEquals(4_000_000L, o.largest.single().bytes)
     }
+
+    @Test fun aFixRunOpensEachTitleOnTheKindItNeeds() {
+        fun flaw(t: ImageType, k: ImageFlawKind) = dev.nitrate.core.admin.ImageFlaw(t, t.wire, 0, 500, 750, k)
+        val problems = listOf(
+            dev.nitrate.core.admin.ImageProblem("a", "A", ItemKind.MOVIE, null, null, null, listOf(ImageType.LOGO, ImageType.BACKDROP), listOf(flaw(ImageType.PRIMARY, ImageFlawKind.SMALL))),
+            dev.nitrate.core.admin.ImageProblem("b", "B", ItemKind.MOVIE, null, null, null, emptyList(), listOf(flaw(ImageType.PRIMARY, ImageFlawKind.SMALL))),
+            dev.nitrate.core.admin.ImageProblem("e", "Pilot", ItemKind.EPISODE, "Show", 1, 1, listOf(ImageType.PRIMARY), emptyList()),
+        )
+        val run = dev.nitrate.core.admin.ImageFixRun.steps(problems)
+        assertEquals(listOf("a" to ImageType.LOGO, "b" to ImageType.PRIMARY, "e" to ImageType.PRIMARY), run.map { it.itemId to it.type })
+        assertEquals("Show · S1E1", run[2].title)
+        // Filtered by a kind: that kind where the title has a problem with it.
+        assertEquals(ImageType.PRIMARY, dev.nitrate.core.admin.ImageFixRun.steps(problems, ImageType.PRIMARY)[0].type)
+        assertEquals(listOf("a", "e"), dev.nitrate.core.admin.ImageFixRun.missingIds(problems))
+    }
 }

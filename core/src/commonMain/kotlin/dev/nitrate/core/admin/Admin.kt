@@ -1,6 +1,9 @@
 package dev.nitrate.core.admin
 
 import dev.nitrate.core.model.MediaItem
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.withPermit
 
 /** The signed-in account and what it may do on the server. */
 data class AccountInfo(
@@ -111,7 +114,7 @@ data class ImageProvider(val name: String, val types: Set<ImageType>)
  * are transparent PNGs of any height.
  */
 /** [ratio]: width over height it should be near (the overview's "wrong shape" beyond 15%), null for any shape. */
-data class ImageSpec(val shape: String, val goodWidth: Int, val goodHeight: Int, val bestWidth: Int, val bestHeight: Int, val ratio: Double? = null) {
+data class ImageSpec(val shape: String, val goodWidth: Int, val goodHeight: Int, val bestWidth: Int, val bestHeight: Int, val ratio: Double? = null, val transparent: Boolean = false) {
     /** "2:3 · good 1000×1500, best 2000×3000". */
     val line: String get() = "$shape · good ${goodWidth}×$goodHeight, best ${bestWidth}×$bestHeight"
 }
@@ -125,10 +128,10 @@ object RemoteImages {
         ImageType.PRIMARY -> if (episode) ImageSpec("16:9", 1280, 720, 1920, 1080, 16.0 / 9) else ImageSpec("2:3", 1000, 1500, 2000, 3000, 2.0 / 3)
         ImageType.BACKDROP -> ImageSpec("16:9", 1920, 1080, 3840, 2160, 16.0 / 9)
         ImageType.THUMB -> ImageSpec("16:9", 1280, 720, 1920, 1080, 16.0 / 9)
-        ImageType.LOGO -> ImageSpec("wide, transparent PNG", 800, 310, 1600, 620)
+        ImageType.LOGO -> ImageSpec("wide, transparent PNG", 800, 310, 1600, 620, transparent = true)
         ImageType.BANNER -> ImageSpec("about 5.4:1", 758, 140, 1000, 185, 758.0 / 140)
-        ImageType.ART -> ImageSpec("16:9, transparent PNG", 1000, 562, 2000, 1124, 16.0 / 9)
-        ImageType.DISC -> ImageSpec("1:1, transparent PNG", 1000, 1000, 1000, 1000, 1.0)
+        ImageType.ART -> ImageSpec("16:9, transparent PNG", 1000, 562, 2000, 1124, 16.0 / 9, transparent = true)
+        ImageType.DISC -> ImageSpec("1:1, transparent PNG", 1000, 1000, 1000, 1000, 1.0, transparent = true)
     }
 
     /** Small for its kind (narrower than the guide's "good" width): likely to look blocky on a TV. */
@@ -150,15 +153,57 @@ object RemoteImages {
         if (isTextless(image)) "Textless" else image.language?.uppercase(),
         size(image.width, image.height),
         shortfall(type, image.width, image.height, episode)?.let { "small: $it" },
+        "no transparency".takeIf { isOpaque(type, image) },
     ).joinToString(" · ")
 
-    /** [image] with the size read from its file ([measured]) where the provider gave none. */
-    fun sized(image: RemoteImage, measured: Pair<Int, Int>?): RemoteImage =
-        if (measured == null || (image.width != null && image.width > 0 && image.height != null && image.height > 0)) image
-        else image.copy(width = measured.first, height = measured.second)
+    /** [image] with what was read from its file ([facts]): its size where the provider gave none, and whether it's see-through. */
+    fun sized(image: RemoteImage, facts: ImageFacts?): RemoteImage {
+        if (facts == null) return image
+        val sized = if (!sizeMissing(image) || facts.width == null || facts.height == null) image else image.copy(width = facts.width, height = facts.height)
+        return sized.copy(transparent = facts.transparent ?: sized.transparent)
+    }
 
     /** Whether the provider left out [image]'s size (it's read from the file instead). */
     fun sizeMissing(image: RemoteImage): Boolean = image.width == null || image.width <= 0 || image.height == null || image.height <= 0
+
+    /** Whether [image]'s file needs reading: no size, or a kind that should be see-through (logos, clear art, discs). */
+    fun needsReading(type: ImageType, image: RemoteImage): Boolean = sizeMissing(image) || (spec(type).transparent && image.transparent == null)
+
+    /**
+     * Why [text] can't be used as an image's address ("From a link": sites with no Jellyfin
+     * provider, such as MediUX or ThePosterDB), or null when it can. The server downloads it, and
+     * the Companion refuses addresses inside the network for metadata editors.
+     */
+    fun linkProblem(text: String): String? {
+        val t = text.trim()
+        if (t.isEmpty()) return "Paste an image's address"
+        if (!t.startsWith("https://") && !t.startsWith("http://")) return "It needs to start with https://"
+        val host = t.substringAfter("://").substringBefore('/').substringBefore('?').substringBefore(':').lowercase()
+        if (host == "localhost" || host.endsWith(".local") || host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.")) return "Only addresses on the internet"
+        if (host.isBlank() || '.' !in host) return "That isn't a web address"
+        return null
+    }
+
+    /** Kinds seen over the title's picture before they're picked (they're drawn over it on its pages). */
+    val PREVIEWED = setOf(ImageType.LOGO, ImageType.ART)
+
+    /** A kind that should be see-through whose file isn't (a logo on a solid background). */
+    fun isOpaque(type: ImageType, image: RemoteImage): Boolean = spec(type).transparent && image.transparent == false
+
+    /**
+     * [images] with every file that needs it read ([needsReading]), [parallel] at a time, then
+     * biggest first again: so sizes the provider left out count in the order and the small filter.
+     */
+    suspend fun measured(type: ImageType, images: List<RemoteImage>, read: suspend (String) -> ImageFacts?, parallel: Int = 6): List<RemoteImage> = kotlinx.coroutines.coroutineScope {
+        val gate = kotlinx.coroutines.sync.Semaphore(parallel)
+        val out = images.map { img ->
+            async {
+                if (!needsReading(type, img)) img
+                else gate.withPermit { sized(img, runCatching { read(img.url) }.getOrNull()) }
+            }
+        }.awaitAll()
+        best(out)
+    }
 
     /** "2000×3000", or null when not known. */
     fun size(width: Int?, height: Int?): String? = if (width == null || height == null) null else "${width}×$height"
@@ -216,7 +261,12 @@ data class RemoteImage(
     val height: Int?,
     val language: String?,
     val rating: Double?,
+    /** Whether the file can be see-through, once read from it (providers don't say); null until then. */
+    val transparent: Boolean? = null,
 )
+
+/** What reading the start of an image's file told: its size, and whether it can be see-through. */
+data class ImageFacts(val width: Int?, val height: Int?, val transparent: Boolean?)
 
 /** A scheduled task (library scan, trickplay, cleanup...). */
 data class ServerTask(

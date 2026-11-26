@@ -51,7 +51,7 @@ private val Amber = Color(0xFFFFC266)
  * Manage on Images.
  */
 @Composable
-fun ImagesOverviewScreen(container: AppContainer, onManage: (String) -> Unit) {
+fun ImagesOverviewScreen(container: AppContainer, onManage: (String) -> Unit, onFixRun: (String) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val companion by container.companion.collectAsState()
     val available = companion?.features?.contains(ImageGuide.FEATURE) == true
@@ -66,6 +66,17 @@ fun ImagesOverviewScreen(container: AppContainer, onManage: (String) -> Unit) {
     var reading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var asked by remember { mutableStateOf(setOf<String>()) }
+    // "Find missing for these": how far the asking has got.
+    var finding by remember { mutableStateOf<String?>(null) }
+    fun findMissing(ids: List<String>) {
+        scope.launch {
+            ids.forEachIndexed { n, id ->
+                finding = "Asking the server: ${n + 1} of ${ids.size}…"
+                runCatching { container.server.refreshItem(id, RefreshMode.MISSING, replaceImages = false, regenerateTrickplay = false) }.onSuccess { asked = asked + id }
+            }
+            finding = "Asked for ${ids.size}. Missing pictures appear as the server finds them; Read again later."
+        }
+    }
     val first = remember { FocusRequester() }
     fun load() {
         val ask = ImageOverviewAsk(libraryId, only, onlyType)
@@ -115,7 +126,7 @@ fun ImagesOverviewScreen(container: AppContainer, onManage: (String) -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(o.summary)
                     Text(
-                        "${o.complete} of ${o.items} complete · ${o.missing} missing · ${o.small} small · ${o.misshapen} wrong shape · ${o.gone} gone",
+                        "${o.complete} of ${o.items} complete · ${o.missing} missing · ${o.small} small · ${o.misshapen} wrong shape · ${o.gone} gone" + (if (o.opaque > 0) " · ${o.opaque} with no transparency" else ""),
                         color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -128,7 +139,7 @@ fun ImagesOverviewScreen(container: AppContainer, onManage: (String) -> Unit) {
                 selected = onlyType != null && onlyType == t.type,
                 onClick = { t.type?.let { onlyType = if (onlyType == it) null else it } },
                 headlineContent = { Text(t.label) },
-                supportingContent = { Text(t.detail, color = if (t.small + t.misshapen + t.gone > 0) Amber else Color.Unspecified) },
+                supportingContent = { Text(t.detail, color = if (t.small + t.misshapen + t.gone + t.opaque > 0) Amber else Color.Unspecified) },
             )
         }
         item { Heading("By kind of title: select one to list what's missing") }
@@ -156,6 +167,16 @@ fun ImagesOverviewScreen(container: AppContainer, onManage: (String) -> Unit) {
                     item { FilterChip(onlyType == null, { onlyType = null }) { Text("Every kind") } }
                     items(ImageType.entries) { t -> FilterChip(onlyType == t, { onlyType = t }) { Text(t.label) } }
                 }
+                if (o.problems.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // One title after another on Manage → Images, the found pictures it needs open; picking one moves on.
+                    androidx.tv.material3.Button(onClick = {
+                        val steps = dev.nitrate.core.admin.ImageFixRun.steps(o.problems, onlyType)
+                        if (steps.isNotEmpty()) { container.imageFixRun = steps; onFixRun(steps.first().itemId) }
+                    }) { Text("Fix these") }
+                    val missing = dev.nitrate.core.admin.ImageFixRun.missingIds(o.problems).filter { it !in asked }
+                    if (missing.isNotEmpty()) OutlinedButton(onClick = { findMissing(missing) }, enabled = finding?.startsWith("Asking") != true) { Text("Find missing · ${missing.size}") }
+                }
+                finding?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
                 Text(
                     when {
                         o.problemsTotal == 0 -> "Nothing to look at here."

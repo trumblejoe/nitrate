@@ -8,6 +8,7 @@ enum class ImageFlawKind(val wire: String, val label: String) {
     SMALL("small", "Small"),
     SHAPE("shape", "Wrong shape"),
     GONE("gone", "File gone"),
+    OPAQUE("opaque", "No transparency"),
     ;
 
     companion object {
@@ -26,6 +27,8 @@ data class ImageTypeTotals(
     val unknownSize: Int,
     val notSaved: Int,
     val gone: Int,
+    /** Should be see-through (logos, clear art, discs) but isn't. */
+    val opaque: Int = 0,
 ) {
     val label: String get() = type?.label ?: typeName
 
@@ -36,6 +39,7 @@ data class ImageTypeTotals(
         "$small small".takeIf { small > 0 },
         "$misshapen wrong shape".takeIf { misshapen > 0 },
         "$gone file gone".takeIf { gone > 0 },
+        "$opaque with no transparency".takeIf { opaque > 0 },
         "$notSaved not saved on the server".takeIf { notSaved > 0 },
         "$unknownSize size unknown".takeIf { unknownSize > 0 },
     ).joinToString(" · ")
@@ -61,6 +65,7 @@ data class ImageFlaw(val type: ImageType?, val typeName: String, val index: Int,
         val size = RemoteImages.size(width, height)
         return when (kind) {
             ImageFlawKind.GONE -> "$name: file gone"
+            ImageFlawKind.OPAQUE -> "$name: no transparency"
             else -> "$name ${kind.label.lowercase()}" + (size?.let { ": $it" } ?: "")
         }
     }
@@ -106,6 +111,7 @@ data class ImageOverview(
     val small: Int get() = types.sumOf { it.small }
     val misshapen: Int get() = types.sumOf { it.misshapen }
     val gone: Int get() = types.sumOf { it.gone }
+    val opaque: Int get() = types.sumOf { it.opaque }
 
     /** "412 items · 1,186 images · 2.5 GB in all". */
     val summary: String get() = "$items items · $images images · ${bytesLabel(bytes)} in all"
@@ -175,8 +181,29 @@ object ImageGuide {
     }
 
     /** The size guide as rules: each type for any kind, and an episode's main image as a 16:9 still. */
-    data class Rule(val type: ImageType, val itemKind: ItemKind?, val minWidth: Int, val ratio: Double?)
+    data class Rule(val type: ImageType, val itemKind: ItemKind?, val minWidth: Int, val ratio: Double?, val transparent: Boolean = false)
 
-    val rules: List<Rule> = ImageType.entries.map { t -> RemoteImages.spec(t).let { Rule(t, null, it.goodWidth, it.ratio) } } +
+    val rules: List<Rule> = ImageType.entries.map { t -> RemoteImages.spec(t).let { Rule(t, null, it.goodWidth, it.ratio, it.transparent) } } +
         RemoteImages.spec(ImageType.PRIMARY, episode = true).let { Rule(ImageType.PRIMARY, ItemKind.EPISODE, it.goodWidth, it.ratio) }
+}
+
+/** One title in a fix run: which picture to find for it. */
+data class FixStep(val itemId: String, val type: ImageType, val title: String)
+
+/**
+ * The overview's "Fix these": the titles listed, one after another, each opened on Images with the
+ * found pictures of the kind it needs (the kind filtered by, else the first missing, else the
+ * first flawed); picking one moves on to the next.
+ */
+object ImageFixRun {
+    fun steps(problems: List<ImageProblem>, onlyType: ImageType? = null): List<FixStep> = problems.mapNotNull { p ->
+        val type = onlyType?.takeIf { t -> t in p.missing || p.flaws.any { it.type == t } }
+            ?: p.missing.firstOrNull()
+            ?: p.flaws.firstNotNullOfOrNull { it.type }
+            ?: return@mapNotNull null
+        FixStep(p.itemId, type, p.title)
+    }
+
+    /** "Find missing" asks only for titles missing something. */
+    fun missingIds(problems: List<ImageProblem>): List<String> = problems.filter { it.missing.isNotEmpty() }.map { it.itemId }
 }

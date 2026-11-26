@@ -158,10 +158,10 @@ class JellyfinClient(
             install(HttpTimeout) { connectTimeoutMillis = 6_000; requestTimeoutMillis = 15_000 }
         }
     }
-    private val remoteSizes = mutableMapOf<String, Pair<Int, Int>?>()
+    private val remoteSizes = mutableMapOf<String, dev.nitrate.core.admin.ImageFacts?>()
     private val remoteSizesLock = kotlinx.coroutines.sync.Mutex()
 
-    override suspend fun remoteImageSize(url: String): Pair<Int, Int>? {
+    override suspend fun remoteImageFacts(url: String): dev.nitrate.core.admin.ImageFacts? {
         if (!url.startsWith("https://") && !url.startsWith("http://")) return null
         remoteSizesLock.withLock { if (url in remoteSizes) return remoteSizes[url] }
         val size = runCatching {
@@ -173,17 +173,24 @@ class JellyfinClient(
                 val channel = response.bodyAsChannel()
                 val buf = ByteArray(dev.nitrate.core.comics.ImageSize.READ_BYTES)
                 var n = 0
-                var found: Pair<Int, Int>? = null
+                var size: Pair<Int, Int>? = null
+                var clear: Boolean? = null
+                // Until both the size and see-through-or-not are known (a PNG's tRNS can come a few KB in).
                 while (n < buf.size) {
                     val got = channel.readAvailable(buf, n, buf.size - n)
                     if (got <= 0) break
                     n += got
-                    found = dev.nitrate.core.comics.ImageSize.of(buf.copyOf(n))
-                    if (found != null) break
+                    val head = buf.copyOf(n)
+                    if (size == null) size = dev.nitrate.core.comics.ImageSize.of(head)
+                    if (clear == null) clear = dev.nitrate.core.comics.ImageSize.transparent(head)
+                    if (size != null && clear != null) break
                 }
-                found
+                val head = buf.copyOf(n)
+                if (clear == null) clear = dev.nitrate.core.comics.ImageSize.transparent(head)
+                val known = size?.takeIf { it.first > 0 && it.second > 0 }
+                if (known == null && clear == null) null else dev.nitrate.core.admin.ImageFacts(known?.first, known?.second, clear)
             }
-        }.getOrNull()?.takeIf { it.first > 0 && it.second > 0 }
+        }.getOrNull()
         remoteSizesLock.withLock { remoteSizes[url] = size }
         return size
     }
