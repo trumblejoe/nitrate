@@ -28,8 +28,10 @@ import dev.nitrate.core.playback.Profile7Playback
  * - [Profile7Playback.AS_PROFILE_8]: each frame's Dolby Vision metadata (RPU) is rewritten as
  *   profile 8.1 by libdovi and the enhancement layer is dropped, so the device's profile 8
  *   decoder shows it as Dolby Vision.
- * - [Profile7Playback.BASE_LAYER]: the track is announced as what its base layer is, HDR10 HEVC
- *   (decoders skip the enhancement layer and the metadata).
+ * - [Profile7Playback.BASE_LAYER]: the track is announced as what its base layer is, HDR10 HEVC,
+ *   and each frame's enhancement layer and metadata are dropped. A plain HEVC decoder can't use
+ *   them, so the picture is the same, but some (MediaTek's) show nothing at all when a full
+ *   enhancement layer (FEL) reaches them.
  * - [Profile7Playback.DOLBY_VISION]: untouched. Everything other than profile 7 passes through.
  */
 @OptIn(UnstableApi::class)
@@ -42,7 +44,7 @@ class DolbyVisionProfile7(
     /** Told how many frames' metadata couldn't be rewritten, now and then. */
     private val onFailures: (Int) -> Unit = {},
     /** Told once per file which kind of profile 7 it is (MEL or FEL), from its first frames' enhancement layer. */
-    private val onLayers: (dev.nitrate.core.playback.DolbyVisionLayers) -> Unit = {},
+    private val onLayers: (dev.nitrate.core.playback.DolbyVisionLayers, averageBytesPerFrame: Long) -> Unit = { _, _ -> },
 ) : ExtractorsFactory {
 
     override fun createExtractors(): Array<Extractor> = inner.createExtractors().map(::Wrapped).toTypedArray()
@@ -84,8 +86,9 @@ class DolbyVisionProfile7(
     }
 
     /**
-     * Passes everything through until the track turns out to be profile 7. Then, when rewriting,
-     * each frame is gathered whole and sent on rewritten.
+     * Passes everything through until the track turns out to be profile 7. Then, unless the device
+     * decodes profile 7 itself, each frame is gathered whole and sent on rewritten (converted, or
+     * as its base layer alone).
      */
     private inner class Profile7Track(private val track: TrackOutput, private val mode: Profile7Playback) : TrackOutput {
         private var rewrite = false
@@ -99,12 +102,13 @@ class DolbyVisionProfile7(
 
         override fun format(format: Format) {
             val profile7 = isProfile7(format)
-            rewrite = profile7 && mode == Profile7Playback.AS_PROFILE_8
+            rewrite = profile7 && mode != Profile7Playback.DOLBY_VISION
             track.format(
                 when {
                     !profile7 -> format
-                    rewrite -> asProfile8(format)
-                    else -> baseLayer(format)
+                    mode == Profile7Playback.AS_PROFILE_8 -> asProfile8(format)
+                    mode == Profile7Playback.BASE_LAYER -> baseLayer(format)
+                    else -> format
                 },
             )
         }
@@ -139,13 +143,14 @@ class DolbyVisionProfile7(
             val frame = pending.copyOfRange(start, end)
             // Encrypted or carrying extra data: sent on as it is.
             val out = if (cryptoData != null || flags and C.BUFFER_FLAG_HAS_SUPPLEMENTAL_DATA != 0) frame else {
-                rewriteFrame(frame, toProfile81, onFailure = { failures++ }, onEnhancementLayer = { bytes ->
+                val converting = mode == Profile7Playback.AS_PROFILE_8
+                rewriteFrame(frame, if (converting) toProfile81 else DROP, onFailure = { if (converting) failures++ }, onEnhancementLayer = { bytes ->
                     if (!layersSaid) {
                         layerFrames++
                         layerBytes += bytes
                         if (layerFrames >= dev.nitrate.core.playback.DolbyVisionLayers.FRAMES) {
                             layersSaid = true
-                            onLayers(dev.nitrate.core.playback.DolbyVisionLayers.of(layerBytes / layerFrames))
+                            onLayers(dev.nitrate.core.playback.DolbyVisionLayers.of(layerBytes / layerFrames), layerBytes / layerFrames)
                         }
                     }
                 })
@@ -165,6 +170,9 @@ class DolbyVisionProfile7(
 
     companion object {
         private val START_CODE = byteArrayOf(0, 0, 0, 1)
+
+        /** The base layer alone: the metadata goes with the enhancement layer. */
+        val DROP: (ByteArray) -> ByteArray? = { null }
         private const val NAL_RPU = 62
         private const val NAL_ENHANCEMENT_LAYER = 63
 
@@ -220,7 +228,7 @@ class DolbyVisionProfile7(
         }
 
         /** Where each NAL unit's bytes are (after its start code), or null when [b] isn't Annex B. */
-        internal fun nalUnits(b: ByteArray): List<Pair<Int, Int>>? {
+        fun nalUnits(b: ByteArray): List<Pair<Int, Int>>? {
             fun startCodeAt(i: Int) = i + 2 < b.size && b[i].toInt() == 0 && b[i + 1].toInt() == 0 && b[i + 2].toInt() == 1
             if (!(startCodeAt(0) || (b.size > 3 && b[0].toInt() == 0 && startCodeAt(1)))) return null
             val starts = mutableListOf<Int>()

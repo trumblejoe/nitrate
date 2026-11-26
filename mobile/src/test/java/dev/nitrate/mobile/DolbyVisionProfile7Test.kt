@@ -19,6 +19,7 @@ import androidx.media3.extractor.TrackOutput
 import dev.nitrate.core.playback.Profile7Playback
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertSame
 import org.junit.Test
 
@@ -155,10 +156,20 @@ class DolbyVisionProfile7Test {
     }
 
     @Test
-    fun `as the base layer or as Dolby Vision, frames pass through untouched`() {
+    fun `as the base layer, the enhancement layer and metadata are dropped and the base kept in order`() {
         val base = play(Profile7Playback.BASE_LAYER)
         assertEquals(MimeTypes.VIDEO_H265, base.formats.first().sampleMimeType)
-        base.samples.forEach { assertArrayEquals(frame, it.second) }
+        assertEquals(listOf(0L, 41_708L), base.samples.map { it.first })
+        val expected = DolbyVisionProfile7.rewriteFrame(frame, { null })
+        base.samples.forEach { (_, bytes) ->
+            assertArrayEquals(expected, bytes)
+            val types = DolbyVisionProfile7.nalUnits(bytes)!!.map { (from, _) -> (bytes[from].toInt() shr 1) and 0x3F }
+            assertTrue(types.isNotEmpty() && 62 !in types && 63 !in types)
+        }
+    }
+
+    @Test
+    fun `as Dolby Vision, frames pass through untouched`() {
         val dv = play(Profile7Playback.DOLBY_VISION)
         assertEquals("dvhe.07.06", dv.formats.first().codecs)
         dv.samples.forEach { assertArrayEquals(frame, it.second) }
