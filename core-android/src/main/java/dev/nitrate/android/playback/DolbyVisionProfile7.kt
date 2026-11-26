@@ -45,6 +45,8 @@ class DolbyVisionProfile7(
     private val onFailures: (Int) -> Unit = {},
     /** Told once per file which kind of profile 7 it is (MEL or FEL), from its first frames' enhancement layer. */
     private val onLayers: (dev.nitrate.core.playback.DolbyVisionLayers, averageBytesPerFrame: Long) -> Unit = { _, _ -> },
+    /** Told how a profile 7 track is played as it opens (for the playback log). */
+    private val onProfile7: (Profile7Playback) -> Unit = {},
 ) : ExtractorsFactory {
 
     override fun createExtractors(): Array<Extractor> = inner.createExtractors().map(::Wrapped).toTypedArray()
@@ -70,8 +72,8 @@ class DolbyVisionProfile7(
         override fun sniff(input: ExtractorInput) = extractor.sniff(input)
         override fun getSniffFailureDetails() = extractor.sniffFailureDetails
         override fun init(output: ExtractorOutput) {
-            val mode = playback()
-            extractor.init(if (mode == Profile7Playback.DOLBY_VISION) output else Profile7Output(output, mode))
+            // Wrapped in every mode (as Dolby Vision, frames pass untouched) so the log says the way.
+            extractor.init(Profile7Output(output, playback()))
         }
         override fun read(input: ExtractorInput, seekPosition: PositionHolder) = extractor.read(input, seekPosition)
         override fun seek(position: Long, timeUs: Long) = extractor.seek(position, timeUs)
@@ -102,6 +104,7 @@ class DolbyVisionProfile7(
 
         override fun format(format: Format) {
             val profile7 = isProfile7(format)
+            if (profile7) onProfile7(mode)
             rewrite = profile7 && mode != Profile7Playback.DOLBY_VISION
             track.format(
                 when {
@@ -141,10 +144,9 @@ class DolbyVisionProfile7(
             val end = pendingSize - offset
             val start = end - size
             val frame = pending.copyOfRange(start, end)
-            // Encrypted or carrying extra data: sent on as it is.
-            val out = if (cryptoData != null || flags and C.BUFFER_FLAG_HAS_SUPPLEMENTAL_DATA != 0) frame else {
-                val converting = mode == Profile7Playback.AS_PROFILE_8
-                rewriteFrame(frame, if (converting) toProfile81 else DROP, onFailure = { if (converting) failures++ }, onEnhancementLayer = { bytes ->
+            val converting = mode == Profile7Playback.AS_PROFILE_8
+            val rewrite: (ByteArray) -> ByteArray = { main ->
+                rewriteFrame(main, if (converting) toProfile81 else DROP, onFailure = { if (converting) failures++ }, onEnhancementLayer = { bytes ->
                     if (!layersSaid) {
                         layerFrames++
                         layerBytes += bytes
@@ -154,6 +156,14 @@ class DolbyVisionProfile7(
                         }
                     }
                 })
+            }
+            val out = when {
+                // Encrypted: sent on as it is.
+                cryptoData != null -> frame
+                // Every frame of a Matroska file that declares block additions (as Dolby Vision MKVs
+                // do, for their dvcC) comes as [main size][main][extra]: the main part is rewritten.
+                flags and C.BUFFER_FLAG_HAS_SUPPLEMENTAL_DATA != 0 -> withSupplemental(frame, rewrite)
+                else -> rewrite(frame)
             }
             track.sampleData(ParsableByteArray(out), out.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
             track.sampleMetadata(timeUs, flags, out.size, 0, cryptoData)
@@ -193,6 +203,22 @@ class DolbyVisionProfile7(
             if (!isProfile7(format)) return format
             val codecs = format.codecs!!.split('.').toMutableList().also { it[1] = "08" }.joinToString(".")
             return format.buildUpon().setCodecs(codecs).build()
+        }
+
+        /**
+         * A frame carrying extra data, as Media3 hands it over: its main part's size (4 bytes, big
+         * endian), the main part, then the extra data. The main part goes through [rewrite] and the
+         * size is set to match; a frame that doesn't add up is left as it is.
+         */
+        fun withSupplemental(frame: ByteArray, rewrite: (ByteArray) -> ByteArray): ByteArray {
+            if (frame.size < 4) return frame
+            val mainSize = ((frame[0].toInt() and 0xFF) shl 24) or ((frame[1].toInt() and 0xFF) shl 16) or
+                ((frame[2].toInt() and 0xFF) shl 8) or (frame[3].toInt() and 0xFF)
+            if (mainSize < 0 || 4 + mainSize > frame.size) return frame
+            val main = rewrite(frame.copyOfRange(4, 4 + mainSize))
+            val n = main.size
+            return byteArrayOf((n ushr 24).toByte(), (n ushr 16).toByte(), (n ushr 8).toByte(), n.toByte()) +
+                main + frame.copyOfRange(4 + mainSize, frame.size)
         }
 
         /**

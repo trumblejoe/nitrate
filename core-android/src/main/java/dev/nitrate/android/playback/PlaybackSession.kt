@@ -479,6 +479,7 @@ class PlaybackSession(
                 DefaultMediaSourceFactory(context, DolbyVisionProfile7(
                     { profile7Now() },
                     onFailures = { n -> log("Dolby Vision: $n frames' metadata couldn't be converted (shown as HDR10)") },
+                    onProfile7 = { way -> log("Dolby Vision profile 7 opened: plays ${way.label}") },
                     onLayers = { layers, bytes ->
                         dvLayers = layers
                         log("Dolby Vision profile 7: ${layers.label}, enhancement layer ${bytes / 1024} KB a frame, removed before the decoder")
