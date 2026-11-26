@@ -313,7 +313,16 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     } else picked
                     // Choosing for a TV from its remote: it goes there (the guards asked here, as for Play on…).
                     ChooseForTv.target.value?.takeIf { item.kind != dev.nitrate.core.model.ItemKind.BOOK }?.let { t ->
-                        val sent = sendToChosenTv(container, { nav.navigate(RemoteRoute(t.sessionId)) { popUpTo<RemoteRoute> { inclusive = true } } }, t, item, fromStart, startMs, ::checkedForSending)
+                        // A Group Watch Session to start: the TV hosts it (its own guards and the group's schedule checked there).
+                        if (t.groupId != null) {
+                            val asked = runCatching { container.remote.askToStartSession(t.sessionId, t.groupId, item.id) }.isSuccess
+                            if (asked) {
+                                ChooseForTv.done()
+                                nav.navigate(RemoteRoute(t.sessionId)) { popUpTo<RemoteRoute> { inclusive = true } }
+                                return@launch
+                            }
+                        }
+                        val sent = t.groupId == null && sendToChosenTv(container, { nav.navigate(RemoteRoute(t.sessionId)) { popUpTo<RemoteRoute> { inclusive = true } } }, t, item, fromStart, startMs, ::checkedForSending)
                         if (!sent) {
                             val ok = CompletableDeferred<GuardAction>()
                             pending = dev.nitrate.core.plugins.GuardDecision.Ask(

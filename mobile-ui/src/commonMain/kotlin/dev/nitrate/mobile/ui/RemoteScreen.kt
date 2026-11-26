@@ -133,6 +133,7 @@ fun RemoteScreen(actions: AppActions, sessionId: String, target: RemoteTarget? =
                     onChoose = { ChooseForTv.start(sessionId, name); actions.nav.popBackStack() },
                     onType = { text -> send { type(text) } },
                 )
+                if (!arrows) RemoteSessionCard(actions, sessionId, name)
                 if (arrows || np == null) GoToRow(actions, onGo = { item -> send { if (item == null) navigate(GeneralCommand.GO_HOME) else show(item) } }, onSearch = { send { navigate(GeneralCommand.GO_TO_SEARCH) } })
             }
             if (arrows) {

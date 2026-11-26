@@ -92,8 +92,8 @@ class GroupSessions(
     fun dismiss() { askingState.value = null }
 
     /** "Start a Group Watch Session": starts a Group Watch Session of [groupId] on [itemId] (or joins the group's live one). */
-    suspend fun start(groupId: String, itemId: String, startMs: Long = 0): SessionJoin {
-        val j = timed { server.startWatchSession(groupId, itemId, startMs) }
+    suspend fun start(groupId: String, itemId: String, startMs: Long = 0, gatherMinutes: Int = 0): SessionJoin {
+        val j = timed { if (gatherMinutes > 0) server.startWatchSession(groupId, itemId, startMs, gatherMinutes) else server.startWatchSession(groupId, itemId, startMs) }
         took(j)
         return j
     }

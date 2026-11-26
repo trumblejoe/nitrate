@@ -760,6 +760,10 @@ interface MediaServer {
     /** Starts a Group Watch Session of [groupId] on [itemId] (or joins the group's live one); the group's open apps are told at once. */
     suspend fun startWatchSession(groupId: String, itemId: String, startMs: Long = 0): dev.nitrate.core.partners.SessionJoin = unsupported()
 
+    /** [startWatchSession], gathering for [gatherMinutes] before it starts by itself (started from a phone's remote). */
+    suspend fun startWatchSession(groupId: String, itemId: String, startMs: Long, gatherMinutes: Int): dev.nitrate.core.partners.SessionJoin =
+        startWatchSession(groupId, itemId, startMs)
+
     /** One Group Watch Session as the user sees it. */
     suspend fun watchSession(sessionId: String): dev.nitrate.core.partners.GroupWatchSession = unsupported()
 

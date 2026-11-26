@@ -631,13 +631,13 @@ class AppContainer(
      * what it plays to the end counts for the group. The app then plays the part, which waits for
      * the countdown (everyone joining within the first minute starts together).
      */
-    private suspend fun startWatchingNow(choice: dev.nitrate.core.partners.TogetherChoice.WatchNow, startMs: Long = 0) {
+    private suspend fun startWatchingNow(choice: dev.nitrate.core.partners.TogetherChoice.WatchNow, startMs: Long = 0, gatherMinutes: Int = 0) {
         if (!sessionsAvailable()) error("Group Watch Sessions need a newer Nitrate Companion on the server")
         if (choice.groupId.isEmpty()) error("Pick a watch group to watch with")
         // A part the group's schedule hasn't let out: said before anyone is asked to join.
         watchPartners.refusedInSession(plugins.host, choice.groupId, choice.episode)?.let { error(it) }
         val wasIn = groupSessions.current.value?.id
-        val joined = groupSessions.start(choice.groupId, choice.episode.id, startMs)
+        val joined = groupSessions.start(choice.groupId, choice.episode.id, startMs, gatherMinutes)
         // The group's live session is on something else: that one's to join, not this part.
         if (joined.session.itemId != choice.episode.id) {
             if (wasIn != joined.session.id) groupSessions.leave()
@@ -789,9 +789,9 @@ class AppContainer(
      * [startMs] (where the player is), or the group's live one; the player already showing [item]
      * keeps pace with it (held there for the countdown). Returns an error message, if any.
      */
-    suspend fun startWatchingNow(item: dev.nitrate.core.model.MediaItem, group: dev.nitrate.core.partners.WatchGroup?, startMs: Long = 0): String? = runCatching {
+    suspend fun startWatchingNow(item: dev.nitrate.core.model.MediaItem, group: dev.nitrate.core.partners.WatchGroup?, startMs: Long = 0, gatherMinutes: Int = 0): String? = runCatching {
         val g = group ?: error("Pick a watch group to watch with")
-        startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, g.id, g.others.map { it.id }, dev.nitrate.core.partners.WithChip.nameOf(g)), startMs)
+        startWatchingNow(dev.nitrate.core.partners.TogetherChoice.WatchNow(item, g.id, g.others.map { it.id }, dev.nitrate.core.partners.WithChip.nameOf(g)), startMs, gatherMinutes)
     }.exceptionOrNull()?.let { it.message ?: "Couldn't start the Group Watch Session" }
 
     /** "Add them to the group too?": the usual watch-group invite of [userIds] into [group] (each reads "sent"). */

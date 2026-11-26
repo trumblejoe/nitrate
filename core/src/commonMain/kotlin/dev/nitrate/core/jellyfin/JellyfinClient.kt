@@ -1783,6 +1783,7 @@ class JellyfinClient(
     private val sessionsApi = JellyfinSessions(this)
     override suspend fun watchSessions() = sessionsApi.mine()
     override suspend fun startWatchSession(groupId: String, itemId: String, startMs: Long) = sessionsApi.start(groupId, itemId, startMs)
+    override suspend fun startWatchSession(groupId: String, itemId: String, startMs: Long, gatherMinutes: Int) = sessionsApi.start(groupId, itemId, startMs, gatherMinutes)
     override suspend fun watchSession(sessionId: String) = sessionsApi.get(sessionId)
     override suspend fun joinWatchSession(sessionId: String, fromStart: Boolean) = sessionsApi.join(sessionId, fromStart)
     override suspend fun startWatchSessionNow(sessionId: String) = sessionsApi.startNow(sessionId)

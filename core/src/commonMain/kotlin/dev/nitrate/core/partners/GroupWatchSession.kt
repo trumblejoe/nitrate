@@ -72,6 +72,9 @@ data class GroupWatchSession(
 
         /** The Companion feature. */
         const val FEATURE = "sessions"
+
+        /** How long one started from a phone's remote waits for the group (its starter says when with Start now). */
+        const val REMOTE_GATHER_MINUTES = 15
     }
 }
 
@@ -355,4 +358,41 @@ data class SessionPrompt(val sessionId: String, val title: String, val text: Str
             return if (missing.isEmpty()) "Starting together…" else "Waiting for " + WatchPartners.names(missing) + " to join"
         }
     }
+}
+
+/**
+ * A Group Watch Session as the phone's remote shows it (the TV hosting it): what it plays and
+ * where it stands, "Waiting for Suzy · Kim is in · starts by itself in 12 min", and what its
+ * starter may do from there.
+ */
+object SessionStatus {
+    /** Who in [group] hasn't joined [s] yet. */
+    fun waitingFor(s: GroupWatchSession, group: WatchGroup?): List<String> {
+        val inIt = s.members.map { it.id }.toSet()
+        return group?.others.orEmpty().filter { it.id !in inIt }.map { it.name }
+    }
+
+    fun line(s: GroupWatchSession, group: WatchGroup?): String {
+        val others = s.others.map { it.name }
+        return when (s.state) {
+            GroupWatchSession.WAITING -> {
+                val waiting = waitingFor(s, group)
+                val left = ((s.gatherUntilMs - s.serverTimeMs) / 60_000).coerceAtLeast(0)
+                listOfNotNull(
+                    waiting.takeIf { it.isNotEmpty() }?.let { "Waiting for ${WatchPartners.names(it)}" } ?: "Everyone's in",
+                    others.takeIf { it.isNotEmpty() && waiting.isNotEmpty() }?.let { "${WatchPartners.names(it)} ${if (it.size == 1) "is" else "are"} in" },
+                    if (left >= 1) "starts by itself in $left min" else "starts by itself in a moment",
+                ).joinToString(" · ")
+            }
+            GroupWatchSession.STARTING -> "Starting now"
+            GroupWatchSession.PLAYING -> if (others.isEmpty()) "Playing · nobody else has joined" else "Watching with ${WatchPartners.names(others)}"
+            else -> "Ended"
+        }
+    }
+
+    /** The starter can start it without waiting for the rest. */
+    fun canStartNow(s: GroupWatchSession) = s.startedByMe && s.state == GroupWatchSession.WAITING
+
+    /** The starter can end it for everyone. */
+    fun canEnd(s: GroupWatchSession) = s.startedByMe && s.live
 }

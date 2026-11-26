@@ -65,9 +65,11 @@ public record SessionAnnouncement(Guid SessionId, Guid GroupId, string Event, Gu
 /// <param name="Paused">Whether the group clock stands.</param>
 /// <param name="Ended">When it ended (null: live).</param>
 /// <param name="Members">Its members.</param>
+/// <param name="GatherFor">How long it gathers before starting by itself (null: <see cref="WatchSessions.Gather"/>; older logic didn't say).</param>
 public record WatchSessionState(
     Guid Id, Guid GroupId, Guid ItemId, Guid StartedBy, DateTimeOffset Created, DateTimeOffset? StartAt, long StartMs,
-    DateTimeOffset AnchorAt, long AnchorMs, bool Paused, DateTimeOffset? Ended, IReadOnlyList<SessionMemberState> Members);
+    DateTimeOffset AnchorAt, long AnchorMs, bool Paused, DateTimeOffset? Ended, IReadOnlyList<SessionMemberState> Members,
+    TimeSpan? GatherFor = null);
 
 /// <summary>One member as handed over.</summary>
 /// <param name="UserId">The member.</param>
@@ -134,6 +136,9 @@ public class WatchSessions
     /// <summary>How long after it starts joining still starts together.</summary>
     public static readonly TimeSpan Gather = TimeSpan.FromMinutes(1);
 
+    /// <summary>The longest a session may be asked to gather (started from a phone's remote, waiting on someone).</summary>
+    public static readonly TimeSpan MaxGather = TimeSpan.FromMinutes(30);
+
     /// <summary>How far ahead the start moment is set.</summary>
     public static readonly TimeSpan Countdown = TimeSpan.FromSeconds(5);
 
@@ -175,8 +180,10 @@ public class WatchSessions
     /// of its titles), the caller in it; the group's live session if it has one already (the
     /// caller joins that instead). The rest of the group is told at once.
     /// </summary>
-    public SessionJoinView Start(Guid user, Guid groupId, Guid itemId, long startMs = 0)
+    public SessionJoinView Start(Guid user, Guid groupId, Guid itemId, long startMs = 0, int gatherMinutes = 0)
     {
+        // Longer than the minute when asked (started from a phone's remote: the starter says when), never past MaxGather.
+        var gatherFor = gatherMinutes <= 0 ? Gather : TimeSpan.FromMinutes(Math.Min(gatherMinutes, MaxGather.TotalMinutes));
         var group = _partners.SessionGroup(user, groupId, itemId);
         Guid id;
         lock (_lock)
@@ -191,7 +198,7 @@ public class WatchSessions
                 var s = new Session
                 {
                     Id = Guid.NewGuid(), GroupId = groupId, ItemId = itemId, StartedBy = user, Created = now,
-                    StartMs = Math.Max(0, startMs), AnchorMs = Math.Max(0, startMs), AnchorAt = now,
+                    StartMs = Math.Max(0, startMs), AnchorMs = Math.Max(0, startMs), AnchorAt = now, GatherFor = gatherFor,
                 };
                 _sessions[s.Id] = s;
                 id = s.Id;
@@ -437,7 +444,8 @@ public class WatchSessions
         {
             return _sessions.Values.Select(s => new WatchSessionState(
                 s.Id, s.GroupId, s.ItemId, s.StartedBy, s.Created, s.StartAt, s.StartMs, s.AnchorAt, s.AnchorMs, s.Paused, s.Ended,
-                s.Members.Values.Select(m => new SessionMemberState(m.UserId, m.JoinedAt, m.PositionMs, m.Paused, m.ReportedAt, m.Left, m.Together)).ToList())).ToList();
+                s.Members.Values.Select(m => new SessionMemberState(m.UserId, m.JoinedAt, m.PositionMs, m.Paused, m.ReportedAt, m.Left, m.Together)).ToList(),
+                s.GatherFor)).ToList();
         }
     }
 
@@ -452,6 +460,7 @@ public class WatchSessions
                 {
                     Id = x.Id, GroupId = x.GroupId, ItemId = x.ItemId, StartedBy = x.StartedBy, Created = x.Created, StartAt = x.StartAt,
                     StartMs = x.StartMs, AnchorAt = x.AnchorAt, AnchorMs = x.AnchorMs, Paused = x.Paused, Ended = x.Ended,
+                    GatherFor = x.GatherFor ?? Gather,
                 };
                 foreach (var m in x.Members)
                 {
@@ -524,7 +533,7 @@ public class WatchSessions
             {
                 End(s, now, null);
             }
-            else if (s.StartAt is null && now - s.Created >= Gather)
+            else if (s.StartAt is null && now - s.Created >= s.GatherFor)
             {
                 SetStart(s, now, null);
             }
@@ -557,7 +566,7 @@ public class WatchSessions
         var title = _partners.Names(user, s.GroupId)?.Title ?? string.Empty;
         return new SessionView(
             s.Id, s.GroupId, s.ItemId, _partners.PartLabel(s.ItemId), title, _partners.NameOf(s.StartedBy) ?? "Former account", s.StartedBy == user, state,
-            s.StartAt, s.StartMs, Position(s, now), s.Paused, s.Created + Gather, members, In(s, user), now);
+            s.StartAt, s.StartMs, Position(s, now), s.Paused, s.Created + s.GatherFor, members, In(s, user), now);
     }
 
     private void Tell(SessionAnnouncement a)
@@ -588,6 +597,8 @@ public class WatchSessions
         public DateTimeOffset? StartAt { get; set; }
 
         public long StartMs { get; init; }
+
+        public TimeSpan GatherFor { get; init; } = Gather;
 
         public DateTimeOffset AnchorAt { get; set; }
 

@@ -1033,6 +1033,30 @@ class ScreenshotTest {
         dev.nitrate.mobile.ui.ChooseForTv.done()
     }
 
+    /** The remote's Group Watch Session card with none going: Start one hosted on the TV, who first (then what, by choosing). */
+    @Test fun remoteSessionStart() = shoot("phone-remote-session-start", setup = { c ->
+        (c.server as FakeServer).companionFeatures += "sessions"
+        c.refreshCompanionForTests()
+    }, act = {
+        compose.onNodeWithText("Start a Group Watch Session").performClick()
+        compose.waitForIdle()
+    }) { a -> androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) { dev.nitrate.mobile.ui.RemoteSessionCard(a, "s1", "Living room TV") } }
+
+    /** One the TV hosts, gathering: who it waits for, and the starter's Start now and End for everyone. */
+    @Test fun remoteSessionGathering() {
+        lateinit var server: FakeServer
+        shoot("phone-remote-session", setup = { c ->
+            server = c.server as FakeServer
+            server.companionFeatures += "sessions"
+            server.watchSessionState = server.sampleSession(state = dev.nitrate.core.partners.GroupWatchSession.WAITING, startedByMe = true)
+            c.refreshCompanionForTests()
+        }) { a -> androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) { dev.nitrate.mobile.ui.RemoteSessionCard(a, "s1", "Living room TV") } }
+        compose.onNodeWithText("Start now").assertExists()
+        compose.onNodeWithText("End for everyone").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("End it for everyone?").assertExists()
+    }
+
     /** Type on the TV: what's typed here goes into the TV's box in use (else its search). */
     @Test
     fun typeOnTheTv() {

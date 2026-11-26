@@ -35,7 +35,7 @@ import kotlin.time.Instant
     )
 }
 @Serializable internal data class SessionJoinDto(val session: SessionDto, val startMs: Long = 0, val together: Boolean = true)
-@Serializable internal data class SessionPostDto(val groupId: String, val itemId: String, val startMs: Long = 0)
+@Serializable internal data class SessionPostDto(val groupId: String, val itemId: String, val startMs: Long = 0, val gatherMinutes: Int = 0)
 @Serializable internal data class SessionJoinPostDto(val fromStart: Boolean = false)
 @Serializable internal data class SessionReportDto(val positionMs: Long, val paused: Boolean = false, val event: String? = null)
 @Serializable internal class SessionEmptyDto
@@ -60,8 +60,8 @@ internal fun decodeSessionNews(text: String): SessionNews? = runCatching {
 internal class JellyfinSessions(private val client: JellyfinClient) {
     suspend fun mine(): List<GroupWatchSession> = call { client.get("Nitrate", "Sessions") }.decode<List<SessionDto>>().map { it.toModel() }
 
-    suspend fun start(groupId: String, itemId: String, startMs: Long): SessionJoin =
-        call { client.http.post(client.url("Nitrate", "Sessions")) { json(SessionPostDto(groupId, itemId, startMs)) } }.decode<SessionJoinDto>().toModel()
+    suspend fun start(groupId: String, itemId: String, startMs: Long, gatherMinutes: Int = 0): SessionJoin =
+        call { client.http.post(client.url("Nitrate", "Sessions")) { json(SessionPostDto(groupId, itemId, startMs, gatherMinutes)) } }.decode<SessionJoinDto>().toModel()
 
     suspend fun get(id: String): GroupWatchSession = call { client.get("Nitrate", "Sessions", id) }.decode<SessionDto>().toModel()
 

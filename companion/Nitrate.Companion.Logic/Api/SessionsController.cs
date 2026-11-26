@@ -10,7 +10,8 @@ namespace Nitrate.Companion.Api;
 /// <param name="GroupId">The watch group.</param>
 /// <param name="ItemId">The episode or film.</param>
 /// <param name="StartMs">Where it starts (0: the beginning).</param>
-public record SessionPost(Guid GroupId, Guid ItemId, long StartMs = 0);
+/// <param name="GatherMinutes">How long it waits for the group before starting by itself (0: the usual minute; a phone's remote asks for longer).</param>
+public record SessionPost(Guid GroupId, Guid ItemId, long StartMs = 0, int GatherMinutes = 0);
 
 /// <summary>Join a session: at where the group is now, or (<paramref name="FromStart"/>) from the beginning, when it's already playing.</summary>
 /// <param name="FromStart">Start from the beginning.</param>
@@ -46,7 +47,7 @@ public class SessionsController : ControllerBase
 
     /// <summary>Starts a session (or joins the group's live one); the group's open apps are told at once.</summary>
     [HttpPost("Sessions")]
-    public ActionResult<SessionJoinView> Start([FromBody] SessionPost body) => Run(me => _sessions.Start(me, body.GroupId, body.ItemId, body.StartMs));
+    public ActionResult<SessionJoinView> Start([FromBody] SessionPost body) => Run(me => _sessions.Start(me, body.GroupId, body.ItemId, body.StartMs, body.GatherMinutes));
 
     /// <summary>One session, as the caller sees it.</summary>
     [HttpGet("Sessions/{id}")]

@@ -125,6 +125,7 @@ class RemoteControlHub(
             RemotePrompt.PROMPT -> RemotePrompt.decode(text)?.let { p -> _prompts.value = _prompts.value + (p.deviceId to (p to dev.nitrate.android.nowMs())) }
             RemotePrompt.PROMPT_GONE -> _prompts.value = _prompts.value.filterValues { it.first.id != text }
             RemotePrompt.ANSWER -> RemotePrompt.readAnswer(text)?.let { _answers.tryEmit(it) }
+            dev.nitrate.core.remote.RemoteSessionStart.HEADER -> dev.nitrate.core.remote.RemoteSessionStart.decode(text)?.let { _sessionStarts.tryEmit(it) }
         }
     }
 
@@ -146,6 +147,14 @@ class RemoteControlHub(
 
     /** TV: [withdraw] without waiting (a question leaving the screen). */
     fun withdrawSoon(promptId: String) { scope.launch { withdraw(promptId) } }
+
+    private val _sessionStarts = MutableSharedFlow<dev.nitrate.core.remote.RemoteSessionStart>(extraBufferCapacity = 2)
+    /** TV: a phone's remote asks it to start a Group Watch Session, hosted here. */
+    val sessionStarts: SharedFlow<dev.nitrate.core.remote.RemoteSessionStart> = _sessionStarts
+
+    /** Phone: asks the TV whose session is [sessionId] to start a Group Watch Session of [groupId] on [itemId] there. */
+    suspend fun askToStartSession(sessionId: String, groupId: String, itemId: String) =
+        server.sendMessage(sessionId, dev.nitrate.core.remote.RemoteSessionStart.HEADER, dev.nitrate.core.remote.RemoteSessionStart.encode(dev.nitrate.core.remote.RemoteSessionStart(groupId, itemId)))
 
     /** Phone: answers [prompt] on the device whose session is [sessionId]. */
     suspend fun answer(sessionId: String, prompt: RemotePrompt, choiceId: String) {

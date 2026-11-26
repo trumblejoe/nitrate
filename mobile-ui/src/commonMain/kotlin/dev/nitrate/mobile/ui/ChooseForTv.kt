@@ -35,12 +35,17 @@ import kotlinx.coroutines.launch
  * for the room to see).
  */
 object ChooseForTv {
-    /** The TV being chosen for. */
-    data class Target(val sessionId: String, val deviceName: String)
+    /**
+     * The TV being chosen for. With [groupId], what's chosen starts a Group Watch Session of that
+     * group ([groupLabel]: "Suzy & Kim") hosted on the TV, instead of just playing there.
+     */
+    data class Target(val sessionId: String, val deviceName: String, val groupId: String? = null, val groupLabel: String? = null)
 
     val target = MutableStateFlow<Target?>(null)
 
-    fun start(sessionId: String, deviceName: String) { target.value = Target(sessionId, deviceName) }
+    fun start(sessionId: String, deviceName: String, groupId: String? = null, groupLabel: String? = null) {
+        target.value = Target(sessionId, deviceName, groupId, groupLabel)
+    }
 
     fun done() { target.value = null }
 }
@@ -101,7 +106,7 @@ fun ChoosingBanner(actions: AppActions, itemId: String?, modifier: Modifier = Mo
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            "Choosing for ${t.deviceName}",
+            if (t.groupId != null) "Group Watch Session with ${t.groupLabel ?: "your group"} on ${t.deviceName}" else "Choosing for ${t.deviceName}",
             color = MaterialTheme.colorScheme.inverseOnSurface,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,

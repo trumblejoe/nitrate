@@ -786,6 +786,23 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             }
         }
     }
+    // A phone's remote: "Start a Group Watch Session" hosted here. It gathers longer than the usual minute
+    // (the phone's Start now says when) and plays here, counting for the group, through the guards.
+    LaunchedEffect(Unit) {
+        container.remote.sessionStarts.collect { ask ->
+            val group = container.partners.value?.groups?.firstOrNull { it.id == ask.groupId }
+            val item = runCatching { container.server.getItem(ask.itemId) }.getOrNull()
+            val error = if (item == null) "That title isn't on the server" else
+                container.startWatchingNow(item, group, gatherMinutes = dev.nitrate.core.partners.GroupWatchSession.REMOTE_GATHER_MINUTES)
+            if (error != null || item == null) {
+                message = "Couldn't start the Group Watch Session" to (error ?: "")
+            } else {
+                // In place of a player already open (Back doesn't return to it).
+                if (nav.currentBackStackEntry?.destination?.hasRoute(PlayerRoute::class) == true) nav.popBackStack()
+                gate.play(item.copy(watchGroupId = ask.groupId))
+            }
+        }
+    }
     message?.let { (header, text) ->
         dev.nitrate.tv.ui.lists.TvDialog({ message = null }, width = 560) {
             Column(

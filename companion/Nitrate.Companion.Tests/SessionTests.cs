@@ -132,6 +132,43 @@ public class SessionTests
     }
 
     [Fact]
+    public void StartedFromARemoteItGathersLongerAndKeepsThatAcrossLogicVersions()
+    {
+        var (hub, sessions, gid) = Setup(three: true);
+        var id = sessions.Start(Joe, gid, Ep1, gatherMinutes: 15).Session.Id;
+        Assert.Equal(_time.GetUtcNow() + TimeSpan.FromMinutes(15), sessions.Get(Joe, id).GatherUntil);
+
+        // A minute isn't up for it: still gathering.
+        Wait(61);
+        sessions.Due();
+        Assert.Null(sessions.Get(Joe, id).StartAt);
+
+        // Handed to the next logic, it keeps its length; an older hand-over (none said) gathers a minute.
+        var next = new WatchSessions(hub, _time);
+        next.ImportState(sessions.ExportState());
+        // The host's player reports while it waits (every 10 s; here every few minutes).
+        for (var i = 0; i < 13; i++)
+        {
+            Wait(60);
+            next.Report(Joe, id, 0, paused: true, null);
+        }
+
+        next.Due();
+        Assert.Null(next.Get(Joe, id).StartAt);
+        Wait(60 * 2);
+        next.Due();
+        Assert.NotNull(next.Get(Joe, id).StartAt);
+        var old = sessions.ExportState().Single() with { GatherFor = null, StartAt = null };
+        var older = new WatchSessions(hub, _time);
+        older.ImportState(new[] { old });
+        Assert.Equal(old.Created + WatchSessions.Gather, older.Get(Joe, id).GatherUntil);
+
+        // Never longer than half an hour, and 0 is the usual minute.
+        var (_, capped, cg) = Setup();
+        Assert.Equal(_time.GetUtcNow() + WatchSessions.MaxGather, capped.Get(Joe, capped.Start(Joe, cg, Ep1, gatherMinutes: 600).Session.Id).GatherUntil);
+    }
+
+    [Fact]
     public void PausesAndJumpsAreToldAndTheLeadersPaceIsTheGroups()
     {
         var (_, sessions, gid) = Setup();
