@@ -8,7 +8,9 @@ namespace Nitrate.Companion.Insights;
 /// <param name="Id">The group.</param>
 /// <param name="Title">The group's title (show, film, playlist, collection).</param>
 /// <param name="Members">Everyone in it now, the caller included.</param>
-public record GroupMembers(Guid Id, string Title, IReadOnlyList<Guid> Members);
+/// <param name="TitleId">The group's title holding the part (its conversation is per title: <see cref="ThreadBook"/>).</param>
+/// <param name="Creator">Who made the group (who may start a new thread).</param>
+public record GroupMembers(Guid Id, string Title, IReadOnlyList<Guid> Members, Guid TitleId = default, Guid Creator = default);
 
 /// <summary>Who a pinned note went to: one watch group and its members when it was written.</summary>
 /// <param name="GroupId">The group.</param>
@@ -34,7 +36,7 @@ public record NoteShare(Guid GroupId, IReadOnlyList<Guid> Members);
 /// people may read it. Null on notes kept before audiences (read by the older rule).
 /// </param>
 /// <param name="SessionId">The live (SyncPlay) session it was sent in, if any.</param>
-/// <param name="ChatId">The chat history it was written in (<see cref="NoteChat"/>); null on notes kept before them (read by <see cref="NoteChatBook.LegacyId"/>).</param>
+/// <param name="ChatId">The thread it was written in (<see cref="ChatThread"/>: its group's conversation on the title); null when it went to no group (a live session's guests only).</param>
 public record TimelineNote(Guid Id, Guid UserId, string UserName, Guid ItemId, long PositionMs, string Kind, string Text, IReadOnlyList<NoteShare> Shares, long At, IReadOnlyList<Guid>? Audience = null, Guid? SessionId = null, Guid? ChatId = null);
 
 /// <summary>A live (SyncPlay) session a message is sent in.</summary>
@@ -61,7 +63,7 @@ public record LiveSession(Guid Id, IReadOnlyList<Guid> Participants, bool Keep =
 /// Brought into a live session by someone who may read it ("Bring our earlier notes"): shown in
 /// that session only, never kept for the caller.
 /// </param>
-/// <param name="ChatId">The chat history it belongs to (older notes: the one they're read as).</param>
+/// <param name="ChatId">The thread it belongs to, if any.</param>
 public record NoteView(Guid Id, Guid UserId, string UserName, Guid ItemId, long PositionMs, string Kind, string Text, IReadOnlyList<Guid> GroupIds, long At, bool Moment = false, bool Brought = false, Guid? ChatId = null);
 
 /// <summary>One of the caller's groups on a title.</summary>
@@ -108,7 +110,7 @@ public class TimelineNoteBook
         _time = time;
     }
 
-    /// <summary>The database the notes are kept in (chat histories sit beside them).</summary>
+    /// <summary>The database the notes are kept in (the groups' threads sit beside them).</summary>
     internal CompanionDb Db => _db;
 
     /// <summary>How long a pin without a session that repeats one just sent in a live session is taken as that one (older apps sent both).</summary>
@@ -124,7 +126,7 @@ public class TimelineNoteBook
     public TimelineNote Pin(Guid user, string userName, Guid itemId, long positionMs, ChatKind kind, string? text, IReadOnlyList<GroupMembers> groups, LiveSession? session = null) =>
         Pin(user, userName, itemId, positionMs, kind, text, groups, session, null);
 
-    /// <summary>The same, written into a chat history: <paramref name="chat"/> is given the groups it goes to and returns the chat (null: none, as older apps write).</summary>
+    /// <summary>The same, written into a thread: <paramref name="chat"/> is given the groups it goes to and returns the thread (null: none).</summary>
     public TimelineNote Pin(Guid user, string userName, Guid itemId, long positionMs, ChatKind kind, string? text, IReadOnlyList<GroupMembers> groups, LiveSession? session, Func<IReadOnlyList<NoteShare>, Guid?>? chat)
     {
         var body = ChatHub.Check(kind, text);
@@ -225,7 +227,7 @@ public class TimelineNoteBook
             }
         }
 
-        return new NoteView(note.Id, note.UserId, note.UserName, note.ItemId, note.PositionMs, note.Kind, note.Text, groups, note.At, ChatId: NoteChatBook.ChatOf(note));
+        return new NoteView(note.Id, note.UserId, note.UserName, note.ItemId, note.PositionMs, note.Kind, note.Text, groups, note.At, ChatId: note.ChatId);
     }
 
     /// <summary>Whether <paramref name="caller"/> may read the note (see the class summary).</summary>

@@ -91,11 +91,17 @@ public static class LogicServices
         // Group chat pinned to the timeline: one note per message, live sessions getting each at once.
         serviceCollection.AddSingleton<Nitrate.Companion.Insights.ILiveSessions>(sp => new JellyfinLiveSessions(
             sp.GetRequiredService<MediaBrowser.Controller.SyncPlay.ISyncPlayManager>(), sp.GetRequiredService<ISessionManager>(), sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<WatchSessions>()));
-        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.NoteChatBook(
-            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), sp.GetRequiredService<Nitrate.Companion.Insights.TimelineNoteBook>(), sp.GetRequiredService<TimeProvider>()));
-        // Chats' time rules: the admin's "Delete chats after", favourites and kept people (daily).
+        // Each watch group's conversation per title (threads); the chat histories kept before them were test data, deleted once.
+        serviceCollection.AddSingleton(sp =>
+        {
+            var threads = new Nitrate.Companion.Insights.ThreadBook(
+                sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), sp.GetRequiredService<Nitrate.Companion.Insights.TimelineNoteBook>(), sp.GetRequiredService<TimeProvider>());
+            threads.ForgetChatHistoriesOnce();
+            return threads;
+        });
+        // Chats' time rules: the admin's "Delete chats after" (ten years unless set), favourites and kept people (daily).
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Insights.ChatKeeping(
-            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), sp.GetRequiredService<Nitrate.Companion.Insights.TimelineNoteBook>(), sp.GetRequiredService<Nitrate.Companion.Insights.NoteChatBook>()));
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), sp.GetRequiredService<Nitrate.Companion.Insights.TimelineNoteBook>(), sp.GetRequiredService<Nitrate.Companion.Insights.ThreadBook>()));
         serviceCollection.AddHostedService<Nitrate.Companion.Insights.ChatPruner>();
         serviceCollection.AddSingleton(sp =>
         {
@@ -108,7 +114,7 @@ public static class LogicServices
                 partners.IsPrivate,
                 () => Plugin.Instance?.Configuration.KeepChatHistory ?? true,
                 sp.GetRequiredService<TimeProvider>(),
-                sp.GetRequiredService<Nitrate.Companion.Insights.NoteChatBook>());
+                sp.GetRequiredService<Nitrate.Companion.Insights.ThreadBook>());
         });
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Devices.DeviceHub(
             new Nitrate.Companion.Storage.DbDeviceReportStorage(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(), Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "devices.json")),

@@ -115,12 +115,12 @@ public class SettingsController : ControllerBase
     public static LogicSettingsPage Page(ChatKeepingSettings chats, IReadOnlyList<Nitrate.Companion.Metadata.EditorScope> editors) => new(new[]
     {
         new LogicSettingsSection(
-            "Chat histories",
-            "Chats written while watching are kept for the people who were there. A chat someone there made a favourite (the heart in the apps' Chats list) is never deleted by these rules, nor are the chats it builds on.",
+            "Group chat",
+            "Each watch group has one conversation per title, kept for the people who were there. A conversation is deleted once its newest message is older than this; one someone there made a favourite (the heart in the apps) is never deleted.",
             new[]
             {
-                new LogicSetting(ChatDays, "Delete chats after (days)", "0 or empty: never deleted.", "number", JsonSerializer.SerializeToElement(chats.DeleteAfterDays)),
-                new LogicSetting(ChatKeepFrom, "Never delete chats from these users", "A chat with a message from anyone ticked here is kept.", "users", JsonSerializer.SerializeToElement(chats.Kept.Select(g => g.ToString("D")).ToList())),
+                new LogicSetting(ChatDays, "Delete conversations after (days)", "Counted from the newest message. 3650 (ten years) unless changed; 0: never deleted.", "number", JsonSerializer.SerializeToElement(chats.DeleteAfterDays)),
+                new LogicSetting(ChatKeepFrom, "Always keep conversations with these people", "To remember someone: a conversation with a message from anyone ticked here is never deleted.", "users", JsonSerializer.SerializeToElement(chats.Kept.Select(g => g.ToString("D")).ToList())),
             }),
         new LogicSettingsSection(
             "Metadata editors",

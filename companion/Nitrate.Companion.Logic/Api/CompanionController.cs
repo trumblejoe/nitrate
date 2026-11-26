@@ -102,11 +102,10 @@ public class CompanionController : ControllerBase
             features.Add("livenotes");
             // A note can go to just the watch group a playback counts for (NotePost.GroupIds).
             features.Add("notegroups");
-            // Chat histories: one per playback or session, made with its first message, building on an
-            // earlier one picked to play along (GET /Nitrate/Chats, NotePost.Chats, /Nitrate/Chats/Session).
-            features.Add("chats");
-            // A chat made a favourite (PUT /Nitrate/Chats/Favourites/{id}) is never deleted by the time rules.
-            features.Add("chatfavourites");
+            // One conversation per watch group and title (threads): GET /Nitrate/Threads, the group's
+            // creator starting a new one, older ones replayed (also for everyone in a live session,
+            // /Nitrate/Chats/Session), favourites kept from the time rules.
+            features.Add("threads");
         }
 
         if (ChatEnabled && (Plugin.Instance?.Configuration.KeepChatHistory ?? true))

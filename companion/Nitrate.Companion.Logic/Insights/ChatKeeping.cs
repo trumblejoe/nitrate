@@ -9,38 +9,42 @@ namespace Nitrate.Companion.Insights;
 /// How long chats are kept, as the admin set it on the dashboard page (through the logic's own
 /// settings, <c>/Nitrate/Settings</c>, so the shell's configuration stays as it is).
 /// </summary>
-/// <param name="DeleteAfterDays">Chats are deleted this many days after they were written (0: never).</param>
-/// <param name="KeepFrom">Chats with a message from any of these people are never deleted by the time rules.</param>
-public record ChatKeepingSettings(int DeleteAfterDays = 0, IReadOnlyList<Guid>? KeepFrom = null)
+/// <param name="DeleteAfterDays">A thread is deleted this many days after its newest message (0: never; never set: <see cref="ChatKeeping.DefaultDays"/>).</param>
+/// <param name="KeepFrom">Threads with a message from any of these people are never deleted (remembering someone).</param>
+public record ChatKeepingSettings(int DeleteAfterDays = ChatKeeping.DefaultDays, IReadOnlyList<Guid>? KeepFrom = null)
 {
-    /// <summary>The people whose chats are kept (never null).</summary>
+    /// <summary>The people whose threads are kept (never null).</summary>
     public IReadOnlyList<Guid> Kept => KeepFrom ?? Array.Empty<Guid>();
 }
 
 /// <summary>
-/// The time rules for chats (timeline notes and the chat histories over them): a message is deleted
-/// once it is older than the admin's "Delete chats after" (0, the default: never), unless its chat is kept: a
-/// chat someone in its audience made a favourite, or one with a message from someone the admin
-/// keeps chats from; a kept chat keeps the chats it builds on too. Favourites of chats that are
-/// gone are forgotten. Run once a day by <see cref="ChatPruner"/>.
+/// The time rules for chats: a group's thread is deleted, with its messages, once its newest message
+/// is older than the admin's "Delete chats after" (ten years unless set; 0: never), so a conversation
+/// still going is never cut short. A thread is kept while someone in the audience of its messages
+/// has it as a favourite, or when it holds a message from someone the admin keeps chats from.
+/// Messages that went to no group (a live session's guests only) go by their own age. Run once a
+/// day by <see cref="ChatPruner"/>.
 /// </summary>
 public class ChatKeeping
 {
+    /// <summary>How long chats are kept when the admin never set it: ten years.</summary>
+    public const int DefaultDays = 3650;
+
     private const string PairKind = "settings";
     private const string PairKey = "chats";
     private readonly CompanionDb _db;
     private readonly TimelineNoteBook _notes;
-    private readonly NoteChatBook _chats;
+    private readonly ThreadBook _threads;
 
     /// <summary>Initializes a new instance of the <see cref="ChatKeeping"/> class.</summary>
-    public ChatKeeping(CompanionDb db, TimelineNoteBook notes, NoteChatBook chats)
+    public ChatKeeping(CompanionDb db, TimelineNoteBook notes, ThreadBook threads)
     {
         _db = db;
         _notes = notes;
-        _chats = chats;
+        _threads = threads;
     }
 
-    /// <summary>Gets the admin's settings (the defaults when never set: nothing changes).</summary>
+    /// <summary>Gets the admin's settings (ten years when never set).</summary>
     public ChatKeepingSettings Settings =>
         _db.Pair(PairKind, PairKey) is { } json ? DbDiaryStorage.Read<ChatKeepingSettings>(json) ?? new ChatKeepingSettings() : new ChatKeepingSettings();
 
@@ -48,7 +52,7 @@ public class ChatKeeping
     public void Save(ChatKeepingSettings settings) =>
         _db.PutPair(PairKind, PairKey, JsonSerializer.Serialize(settings with { DeleteAfterDays = Math.Max(0, settings.DeleteAfterDays), KeepFrom = settings.Kept.Distinct().ToList() }));
 
-    /// <summary>How many days a message is kept now; null when chats are never deleted (0, the default).</summary>
+    /// <summary>How many days a thread is kept after its newest message; null when chats are never deleted (0).</summary>
     public int? Days(ChatKeepingSettings settings) =>
         settings.DeleteAfterDays > 0 ? settings.DeleteAfterDays : null;
 
@@ -62,73 +66,48 @@ public class ChatKeeping
         }
 
         var before = now.AddDays(-days).ToUnixTimeMilliseconds();
-        var kept = settings.Kept.ToHashSet();
-        var titles = _db.Rows("SELECT DISTINCT owner, kind FROM records WHERE (kind = $n OR kind = $c) AND at < $at", ("$n", TimelineNoteBook.Kind), ("$c", NoteChatBook.Kind), ("$at", before))
-            .Select(r => r.Key).Distinct().ToList();
+        var keptPeople = settings.Kept.ToHashSet();
+        var notes = _db.Records(TimelineNoteBook.Kind, null).Select(r => DbDiaryStorage.Read<TimelineNote>(r.Value)).OfType<TimelineNote>().ToList();
+        var byThread = notes.Where(n => n.ChatId is not null).GroupBy(n => n.ChatId!.Value).ToDictionary(g => g.Key, g => g.ToList());
         var deleted = 0;
-        foreach (var owner in titles)
+        foreach (var thread in _threads.All())
         {
-            if (Guid.TryParseExact(owner, "N", out var itemId))
+            var mine = byThread.GetValueOrDefault(thread.Id) ?? new List<TimelineNote>();
+            var newest = mine.Count == 0 ? thread.Started : mine.Max(n => n.At);
+            if (newest >= before || Kept(thread, mine, keptPeople))
             {
-                deleted += PruneTitle(itemId, before, kept);
+                continue;
             }
-        }
 
-        return deleted;
-    }
-
-    /// <summary>The chats on a title the time rules never delete: favourites (of someone in their audience), chats with a kept person's message, and what they build on.</summary>
-    public HashSet<Guid> Kept(Guid itemId, IReadOnlyCollection<Guid> keptPeople)
-    {
-        var notes = _notes.All(itemId);
-        var favourites = _chats.Favourites(itemId);
-        var keep = new HashSet<Guid>();
-        foreach (var chat in notes.GroupBy(NoteChatBook.ChatOf))
-        {
-            var audience = chat.SelectMany(n => (n.Audience ?? n.Shares.SelectMany(s => s.Members).ToList()).Append(n.UserId)).ToHashSet();
-            if (chat.Any(n => keptPeople.Contains(n.UserId)) || favourites.Any(f => f.ChatId == chat.Key && audience.Contains(f.UserId)))
+            foreach (var n in mine)
             {
-                keep.UnionWith(_chats.Chain(itemId, chat.Key));
-            }
-        }
-
-        return keep;
-    }
-
-    private int PruneTitle(Guid itemId, long before, IReadOnlyCollection<Guid> keptPeople)
-    {
-        var owner = itemId.ToString("N");
-        var keep = Kept(itemId, keptPeople);
-        var deleted = 0;
-        var left = new HashSet<Guid>();
-        foreach (var note in _notes.All(itemId))
-        {
-            var chat = NoteChatBook.ChatOf(note);
-            if (note.At < before && !keep.Contains(chat))
-            {
-                _db.DeleteRecord(TimelineNoteBook.Kind, owner, note.Id.ToString("N"));
+                _db.DeleteRecord(TimelineNoteBook.Kind, n.ItemId.ToString("N"), n.Id.ToString("N"));
                 deleted++;
             }
-            else
-            {
-                left.Add(chat);
-            }
+
+            _threads.Delete(thread);
         }
 
-        foreach (var chat in _chats.Stored(itemId))
+        // Messages in no thread (a live session's guests only): by their own age.
+        foreach (var n in notes.Where(n => n.ChatId is null && n.At < before && !keptPeople.Contains(n.UserId)))
         {
-            if (chat.Created < before && !keep.Contains(chat.Id) && !left.Contains(chat.Id))
-            {
-                _db.DeleteRecord(NoteChatBook.Kind, owner, chat.Id.ToString("N"));
-            }
-        }
-
-        foreach (var favourite in _chats.Favourites(itemId).Where(f => !left.Contains(f.ChatId)))
-        {
-            _db.DeleteRecord(NoteChatBook.FavouriteKind, owner, favourite.UserId.ToString("N") + "|" + favourite.ChatId.ToString("N"));
+            _db.DeleteRecord(TimelineNoteBook.Kind, n.ItemId.ToString("N"), n.Id.ToString("N"));
+            deleted++;
         }
 
         return deleted;
+    }
+
+    /// <summary>Whether the time rules keep a thread: a favourite of someone in its messages' audience, or a message from a kept person.</summary>
+    public bool Kept(ChatThread thread, IReadOnlyList<TimelineNote> notes, IReadOnlyCollection<Guid> keptPeople)
+    {
+        if (notes.Any(n => keptPeople.Contains(n.UserId)))
+        {
+            return true;
+        }
+
+        var audience = notes.SelectMany(n => (n.Audience ?? n.Shares.SelectMany(s => s.Members).ToList()).Append(n.UserId)).ToHashSet();
+        return _threads.Favourites(thread.Id).Any(f => audience.Contains(f.UserId));
     }
 }
 

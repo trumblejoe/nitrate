@@ -39,6 +39,12 @@ public class WatchGroup
     /// <summary>Gets or sets who's in it (two or more).</summary>
     public List<Guid> Members { get; set; } = new();
 
+    /// <summary>Gets or sets who made it (the inviter); empty for groups made before this was kept.</summary>
+    public Guid CreatedBy { get; set; }
+
+    /// <summary>Who made it, while they're in it; else (and for older groups) the longest-standing member (the first, who was the inviter).</summary>
+    public Guid Creator => CreatedBy != Guid.Empty && Members.Contains(CreatedBy) ? CreatedBy : Members.FirstOrDefault();
+
     /// <summary>Gets or sets since when.</summary>
     public DateTimeOffset Since { get; set; }
 

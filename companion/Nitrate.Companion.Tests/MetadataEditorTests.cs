@@ -434,7 +434,7 @@ public sealed class MetadataEditorTests : IDisposable
     public void TheDashboardListsEditorsAndTicksMakeThemEditorsOfEveryLibrary()
     {
         var book = new TimelineNoteBook(_db, _time);
-        var keeping = new ChatKeeping(_db, book, new NoteChatBook(_db, book, _time));
+        var keeping = new ChatKeeping(_db, book, new ThreadBook(_db, book, _time));
         var settings = new SettingsController(Users(), keeping, _store) { ControllerContext = Context(_admin) };
         var section = settings.Get().Value!.Sections.Single(s => s.Title == "Metadata editors");
         var field = Assert.Single(section.Fields);

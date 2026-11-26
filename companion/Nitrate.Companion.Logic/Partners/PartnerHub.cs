@@ -542,7 +542,7 @@ public partial class PartnerHub
                 group = new WatchGroup
                 {
                     Id = Guid.NewGuid(), Titles = r.Titles.Select(t => new GroupTitle { Id = t.Id, Name = t.Name }).ToList(),
-                    Members = new() { r.From, user }, Since = _time.GetUtcNow(), Schedule = schedule, RecordKept = true, FromBatch = r.Batch,
+                    Members = new() { r.From, user }, CreatedBy = r.From, Since = _time.GetUtcNow(), Schedule = schedule, RecordKept = true, FromBatch = r.Batch,
                 };
                 FirstTitle(group);
                 _state.Groups.Add(group);
@@ -1227,17 +1227,17 @@ public partial class PartnerHub
     /// </summary>
     public IReadOnlyList<Nitrate.Companion.Insights.GroupMembers> GroupsHolding(Guid user, Guid itemId)
     {
-        List<(Guid Id, List<Guid> Titles, string Name, List<Guid> Members)> mine;
+        List<(Guid Id, List<Guid> Titles, string Name, List<Guid> Members, Guid Creator)> mine;
         lock (_lock)
         {
-            mine = _state.Groups.Where(g => g.Members.Contains(user)).Select(g => (g.Id, g.Titles.Select(t => t.Id).ToList(), g.TitleNames, g.Members.ToList())).ToList();
+            mine = _state.Groups.Where(g => g.Members.Contains(user)).Select(g => (g.Id, g.Titles.Select(t => t.Id).ToList(), g.TitleNames, g.Members.ToList(), g.Creator)).ToList();
         }
 
         // Outside the lock: it reads the library (once per title).
         var holds = new Dictionary<Guid, bool>();
         bool Holds(Guid title) => title == itemId || (holds.TryGetValue(title, out var h) ? h : holds[title] = _watch.Belongs(title, itemId, user));
         return mine.Where(g => g.Titles.Any(Holds))
-            .Select(g => new Nitrate.Companion.Insights.GroupMembers(g.Id, g.Name, g.Members.Where(m => _directory.NameOf(m) is not null).ToList()))
+            .Select(g => new Nitrate.Companion.Insights.GroupMembers(g.Id, g.Name, g.Members.Where(m => _directory.NameOf(m) is not null).ToList(), g.Titles.First(Holds), g.Creator))
             .ToList();
     }
 

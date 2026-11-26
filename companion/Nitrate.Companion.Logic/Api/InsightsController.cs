@@ -26,20 +26,25 @@ public record ProblemPost(Guid ItemId, string DeviceId, string DeviceName, strin
 /// <param name="Kind">Text or a reaction.</param>
 /// <param name="SessionId">The live (SyncPlay) session it's sent in, if any: its participants get it at once and may read it later.</param>
 /// <param name="GroupIds">Only these of the caller's watch groups on the title (the group the playback counts for); null: all of them (feature <c>notegroups</c>).</param>
-/// <param name="Chats">Written by an app with chat histories (feature <c>chats</c>): it goes into <see cref="ChatId"/>, or a new chat made now.</param>
-/// <param name="ChatId">The chat this playback has written in so far (from the first message's answer), if any.</param>
-/// <param name="BuildsOn">The earlier chat playing along (outside a live session), if any: a new chat links to it.</param>
+/// <param name="Chats">Older apps (chat histories): ignored, every message goes into its group's current thread.</param>
+/// <param name="ChatId">Older apps: ignored.</param>
+/// <param name="BuildsOn">Older apps: ignored.</param>
 public record NotePost(Guid ItemId, long PositionMs, string? Text, Nitrate.Companion.Chat.ChatKind Kind = Nitrate.Companion.Chat.ChatKind.Text, Guid? SessionId = null, IReadOnlyList<Guid>? GroupIds = null, bool Chats = false, Guid? ChatId = null, Guid? BuildsOn = null);
 
-/// <summary>An earlier chat to play along for everyone in a live session (null: stop).</summary>
+/// <summary>An older thread to replay for everyone in a live session (null: stop).</summary>
 /// <param name="ItemId">The title it plays on.</param>
-/// <param name="ChatId">The chat.</param>
+/// <param name="ChatId">The thread.</param>
 public record AlongPost(Guid ItemId, Guid? ChatId);
 
-/// <summary>A chat made one of the caller's favourites, or not.</summary>
-/// <param name="ItemId">The title it's on.</param>
+/// <summary>A thread made one of the caller's favourites, or not.</summary>
+/// <param name="ItemId">A part of the title it's on.</param>
 /// <param name="Favourite">True: a favourite (never deleted by the time rules); false: not.</param>
 public record FavouritePost(Guid ItemId, bool Favourite);
+
+/// <summary>Starting a new thread: the group, on the title holding the item.</summary>
+/// <param name="ItemId">A part of the title.</param>
+/// <param name="GroupId">The group (the caller must be its creator).</param>
+public record ThreadPost(Guid ItemId, Guid GroupId);
 
 /// <summary>Which watch group's earlier notes to bring into a live session (null: stop).</summary>
 public record BringPost(Guid? GroupId);
@@ -247,7 +252,7 @@ public class InsightsController : ControllerBase
         // Only members of a watch group on this title, or someone in the live session, can write here.
         try
         {
-            return _groupNotes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, post.SessionId, post.GroupIds, post.Chats ? new ChatWrite(post.ChatId, post.BuildsOn) : null);
+            return _groupNotes.Pin(user.Id, user.Username, post.ItemId, post.PositionMs, post.Kind, post.Text, post.SessionId, post.GroupIds);
         }
         catch (NoteForbiddenException)
         {
@@ -323,38 +328,50 @@ public class InsightsController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// A title's chat histories the caller may see (at least one message they were in the audience
-    /// of; each counting only those), newest first, and their watch groups on it. Nothing of what
-    /// was said: that comes only when a chat is picked.
-    /// </summary>
+    /// <summary>Older apps' chat histories: their groups on the title, and no chats (conversations are threads now).</summary>
     [HttpGet("Chats")]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public ActionResult<ChatsPage> Chats([FromQuery] Guid itemId) =>
         !ChatEnabled || Me() is not { } user ? Forbid() : _groupNotes.Chats(user.Id, itemId);
 
-    /// <summary>A chat picked to play along: its notes and those of the chats it builds on that the caller may read (404 when none of it).</summary>
+    /// <summary>Older apps picking a chat history: there are none any more.</summary>
     [HttpGet("Chats/{chatId}")]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public ActionResult Chat([FromRoute] Guid chatId, [FromQuery] Guid itemId) => NotFound();
+
+    /// <summary>Older apps' chat favourites: answered, nothing kept (favourites are threads' now).</summary>
+    [HttpPut("Chats/Favourites/{chatId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public ActionResult Favourite([FromRoute] Guid chatId, [FromBody] FavouritePost post) => Me() is null ? Forbid() : NoContent();
+
+    /// <summary>
+    /// A part's conversations for the caller: each of their watch groups on it with its threads on
+    /// its title (the current one first; each counting the messages on this part they may read), and
+    /// the current threads' messages on the part they may read, for playback to pop up as it reaches them.
+    /// </summary>
+    [HttpGet("Threads")]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<ThreadsPage> Threads([FromQuery] Guid itemId) =>
+        !ChatEnabled || Me() is not { } user ? Forbid() : _groupNotes.Threads(user.Id, itemId);
+
+    /// <summary>One of the caller's groups' threads on a part, to replay an older one: its messages they may read (404 when it isn't theirs).</summary>
+    [HttpGet("Threads/{threadId}/Notes")]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public ActionResult<ChatNotes> Chat([FromRoute] Guid chatId, [FromQuery] Guid itemId)
+    public ActionResult<IReadOnlyList<NoteView>> ThreadNotes([FromRoute] Guid threadId, [FromQuery] Guid itemId)
     {
         if (!ChatEnabled || Me() is not { } user)
         {
             return Forbid();
         }
 
-        return _groupNotes.Chat(user.Id, itemId, chatId) is { } chat ? chat : NotFound();
+        return _groupNotes.ThreadNotes(user.Id, itemId, threadId) is { } notes ? Ok(notes) : NotFound();
     }
 
-    /// <summary>
-    /// Makes a chat the caller may see one of their favourites, or not (feature <c>chatfavourites</c>):
-    /// a chat stays, with the chats it builds on, while anyone in its audience has it as one.
-    /// </summary>
-    [HttpPut("Chats/Favourites/{chatId}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    /// <summary>The group's creator starts a new thread on the title holding the item (a rewatch): what's written from now goes into it.</summary>
+    [HttpPost("Threads/New")]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public ActionResult Favourite([FromRoute] Guid chatId, [FromBody] FavouritePost post)
+    public ActionResult<ThreadView> StartThread([FromBody] ThreadPost post)
     {
         if (!ChatEnabled || Me() is not { } user)
         {
@@ -363,7 +380,29 @@ public class InsightsController : ControllerBase
 
         try
         {
-            _groupNotes.Favourite(user.Id, post.ItemId, chatId, post.Favourite);
+            var t = _groupNotes.StartThread(user.Id, post.ItemId, post.GroupId);
+            return new ThreadView(t.Id, t.Started, 0, true);
+        }
+        catch (NoteForbiddenException)
+        {
+            return Forbid();
+        }
+    }
+
+    /// <summary>Makes one of the caller's groups' threads a favourite of theirs, or not: a favourite is never deleted by the time rules.</summary>
+    [HttpPut("Threads/{threadId}/Favourite")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult FavouriteThread([FromRoute] Guid threadId, [FromBody] FavouritePost post)
+    {
+        if (!ChatEnabled || Me() is not { } user)
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            _groupNotes.FavouriteThread(user.Id, post.ItemId, threadId, post.Favourite);
             return NoContent();
         }
         catch (NoteForbiddenException)
@@ -373,7 +412,7 @@ public class InsightsController : ControllerBase
     }
 
     /// <summary>
-    /// Someone in a live session picks an earlier chat (one they may see) to play along for
+    /// Someone in a live session picks an older thread (one of their groups') to replay for
     /// everyone there; <see cref="AlongPost.ChatId"/> null stops it. The others hear of it through
     /// the session's chat (its <c>Brought</c> moves on).
     /// </summary>

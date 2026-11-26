@@ -35,16 +35,11 @@ public record BroughtNotes(Guid? By, IReadOnlyList<NoteView> Notes);
 /// <param name="By">The participant who brought them.</param>
 public record BroughtFlag(Guid GroupId, Guid By);
 
-/// <summary>Which chat history a message goes into (apps with chat histories, feature <c>chats</c>).</summary>
-/// <param name="ChatId">The chat this playback has written in so far, if any.</param>
-/// <param name="BuildsOn">The earlier chat playing along, if any: a new chat links to it (outside a live session; in one, the session's choice counts).</param>
-public record ChatWrite(Guid? ChatId, Guid? BuildsOn);
-
-/// <summary>A live session's shared chat on one title.</summary>
-/// <param name="ChatId">The chat being written in the session (null until someone writes).</param>
-/// <param name="Along">The earlier chat playing along for everyone there, if someone picked one.</param>
+/// <summary>A live session's conversation on one title.</summary>
+/// <param name="ChatId">The thread being written in the session (its group's current thread; null until someone writes).</param>
+/// <param name="Along">The older thread replayed for everyone there, if someone picked one.</param>
 /// <param name="By">Who picked it.</param>
-/// <param name="Notes">The notes of that chat and those it builds on, as the caller gets them (never kept for them unless they were there for them).</param>
+/// <param name="Notes">That thread's messages, as the caller gets them (never kept for them unless they were there for them).</param>
 public record SessionChatView(Guid? ChatId, Guid? Along, Guid? By, IReadOnlyList<NoteView> Notes);
 
 /// <summary>
@@ -65,7 +60,7 @@ public class GroupNotes
     private readonly object _lock = new();
     private readonly Dictionary<Guid, (BroughtFlag Flag, DateTimeOffset At)> _brought = new();
     private readonly Dictionary<(Guid Session, Guid Item), (Guid ChatId, Guid By, DateTimeOffset At)> _along = new();
-    private readonly NoteChatBook _chats;
+    private readonly ThreadBook _threads;
 
     /// <summary>Initializes a new instance of the <see cref="GroupNotes"/> class.</summary>
     /// <param name="book">Where notes are kept.</param>
@@ -75,10 +70,10 @@ public class GroupNotes
     /// <param name="isPrivate">Whether an account is private.</param>
     /// <param name="keepLive">Whether watch-together chat is kept (the dashboard's "Keep watch-together chat").</param>
     /// <param name="time">The clock.</param>
-    /// <param name="chats">The chat histories (made over the same database when not given).</param>
-    public GroupNotes(TimelineNoteBook book, ChatHub hub, ILiveSessions live, Func<Guid, Guid, IReadOnlyList<GroupMembers>> groupsHolding, Func<Guid, bool> isPrivate, Func<bool> keepLive, TimeProvider time, NoteChatBook? chats = null)
+    /// <param name="threads">The groups' threads (made over the same database when not given).</param>
+    public GroupNotes(TimelineNoteBook book, ChatHub hub, ILiveSessions live, Func<Guid, Guid, IReadOnlyList<GroupMembers>> groupsHolding, Func<Guid, bool> isPrivate, Func<bool> keepLive, TimeProvider time, ThreadBook? threads = null)
     {
-        _chats = chats ?? new NoteChatBook(book.Db, book, time);
+        _threads = threads ?? new ThreadBook(book.Db, book, time);
         _book = book;
         _hub = hub;
         _live = live;
@@ -106,8 +101,7 @@ public class GroupNotes
     /// <param name="onlyGroups">The watch groups the viewer's playback counts for (the player's "Counts for"): the note goes to these of their groups on the title only; null: all of them.</param>
     /// <exception cref="NoteForbiddenException">Not in that session, or (without one) in no watch group on the title.</exception>
     /// <exception cref="ChatRejectedException">The message breaks the chat's rules.</exception>
-    /// <param name="write">Apps with chat histories: which chat it goes into (made with the first message); null: none, as older apps write.</param>
-    public NoteView Pin(Guid caller, string name, Guid itemId, long positionMs, ChatKind kind, string? text, Guid? sessionId, IReadOnlyCollection<Guid>? onlyGroups = null, ChatWrite? write = null)
+    public NoteView Pin(Guid caller, string name, Guid itemId, long positionMs, ChatKind kind, string? text, Guid? sessionId, IReadOnlyCollection<Guid>? onlyGroups = null)
     {
         var groups = _groupsHolding(caller, itemId);
         if (onlyGroups is not null)
@@ -125,23 +119,7 @@ public class GroupNotes
             throw new NoteForbiddenException();
         }
 
-        Func<IReadOnlyList<NoteShare>, Guid?>? chat = null;
-        if (write is not null)
-        {
-            chat = shares =>
-            {
-                var groupId = shares.Select(x => x.GroupId).Cast<Guid?>().FirstOrDefault();
-                if (session is not null)
-                {
-                    // Everyone in the session shares one chat, building on what plays along for all of them.
-                    return _chats.For(caller, itemId, groupId, null, AlongNow(session.Id, itemId), session.Id).Id;
-                }
-
-                var buildsOn = write.BuildsOn is { } b && _chats.Listed(caller, itemId, b, _groupsHolding(caller, itemId)) ? b : (Guid?)null;
-                return _chats.For(caller, itemId, groupId, write.ChatId, buildsOn, null).Id;
-            };
-        }
-
+        var chat = ThreadFor(caller, groups, session is null ? null : SessionGroup(session.Participants, caller, itemId));
         var note = _book.Pin(caller, name, itemId, positionMs, kind, text, groups, session, chat);
         if (session is not null)
         {
@@ -163,7 +141,8 @@ public class GroupNotes
         var session = new LiveSession(sessionId, participants, _keepLive());
         if (_live.Playing(sessionId, caller) is { } itemId)
         {
-            var note = _book.Pin(caller, name, itemId, positionMs ?? 0, kind, text, _groupsHolding(caller, itemId), session);
+            var groups = _groupsHolding(caller, itemId);
+            var note = _book.Pin(caller, name, itemId, positionMs ?? 0, kind, text, groups, session, ThreadFor(caller, groups, SessionGroup(participants, caller, itemId)));
             return Deliver(session, note);
         }
 
@@ -191,41 +170,70 @@ public class GroupNotes
     /// <exception cref="NoteForbiddenException">Not in that session.</exception>
     public void Bring(Guid caller, Guid sessionId, Guid? groupId) => BringNow(caller, sessionId, groupId);
 
-    /// <summary>The caller's groups on a title and its chat histories they may see (at least one message they were there for), newest first.</summary>
-    public ChatsPage Chats(Guid caller, Guid itemId)
+    /// <summary>
+    /// The thread a message goes into: the current one of the (first) group it goes to, on that
+    /// group's title; in a live session someone outside the group (a guest) writes into the
+    /// session's group's thread (<paramref name="sessionGroup"/>); none otherwise.
+    /// </summary>
+    private Func<IReadOnlyList<NoteShare>, Guid?> ThreadFor(Guid writer, IReadOnlyList<GroupMembers> groups, GroupMembers? sessionGroup) => shares =>
     {
-        var groups = _groupsHolding(caller, itemId);
-        return new ChatsPage(groups.Select(g => new NoteGroupView(g.Id, g.Title)).ToList(), _chats.Visible(caller, itemId, groups));
-    }
+        var group = shares.Select(x => groups.FirstOrDefault(g => g.Id == x.GroupId)).FirstOrDefault(g => g is not null && g.TitleId != Guid.Empty) ?? sessionGroup;
+        return group is null || group.TitleId == Guid.Empty ? null : _threads.CurrentOrNew(group.Id, group.TitleId, writer).Id;
+    };
 
-    /// <summary>A chat to play along with: its notes and those of the chats it builds on that the caller may read; null when they may see none of it.</summary>
-    public ChatNotes? Chat(Guid caller, Guid itemId, Guid chatId) => _chats.Read(caller, itemId, chatId, _groupsHolding(caller, itemId));
+    /// <summary>The watch group a live session is for: one of a participant's groups on the title with two or more of them there (the caller's own first).</summary>
+    private GroupMembers? SessionGroup(IReadOnlyList<Guid> participants, Guid caller, Guid itemId) =>
+        participants.Prepend(caller).Distinct().SelectMany(p => _groupsHolding(p, itemId))
+            .FirstOrDefault(g => g.TitleId != Guid.Empty && g.Members.Count(participants.Contains) >= 2);
+
+    /// <summary>Older apps' chat histories: their groups on the title, and no chats (they're threads now).</summary>
+    public ChatsPage Chats(Guid caller, Guid itemId) =>
+        new(_groupsHolding(caller, itemId).Select(g => new NoteGroupView(g.Id, g.Title)).ToList(), Array.Empty<object>());
+
+    /// <summary>A part's conversations for the caller: their groups' threads and the current threads' messages they may read.</summary>
+    public ThreadsPage Threads(Guid caller, Guid itemId) => _threads.Page(caller, itemId, _groupsHolding(caller, itemId));
+
+    /// <summary>One of the caller's groups' threads on a part (to replay an older one): its messages they may read; null when it isn't theirs.</summary>
+    public IReadOnlyList<NoteView>? ThreadNotes(Guid caller, Guid itemId, Guid threadId) => _threads.Read(caller, itemId, threadId, _groupsHolding(caller, itemId));
 
     /// <summary>
-    /// Makes a chat the caller may see one of their favourites, or not (kept from the time rules
-    /// while anyone in its audience has it as one, <see cref="ChatKeeping"/>).
+    /// Starts a new thread for a group on the title holding <paramref name="itemId"/>: only the
+    /// group's creator. What's written from now goes into it; the earlier ones stay to replay.
     /// </summary>
-    /// <exception cref="NoteForbiddenException">The caller may see none of it.</exception>
-    public void Favourite(Guid caller, Guid itemId, Guid chatId, bool favourite)
+    /// <exception cref="NoteForbiddenException">Not the creator of one of their groups on the title.</exception>
+    public ChatThread StartThread(Guid caller, Guid itemId, Guid groupId)
     {
-        if (!_chats.SetFavourite(caller, itemId, chatId, favourite, _groupsHolding(caller, itemId)))
+        var group = _groupsHolding(caller, itemId).FirstOrDefault(g => g.Id == groupId);
+        if (group is null || group.Creator != caller || group.TitleId == Guid.Empty)
+        {
+            throw new NoteForbiddenException();
+        }
+
+        return _threads.StartNew(group.Id, group.TitleId, caller);
+    }
+
+    /// <summary>Makes one of the caller's groups' threads a favourite of theirs, or not (kept from the time rules, <see cref="ChatKeeping"/>).</summary>
+    /// <exception cref="NoteForbiddenException">Not one of their groups' threads.</exception>
+    public void FavouriteThread(Guid caller, Guid itemId, Guid threadId, bool favourite)
+    {
+        if (!_threads.SetFavourite(caller, threadId, favourite, _groupsHolding(caller, itemId)))
         {
             throw new NoteForbiddenException();
         }
     }
 
-    /// <summary>The chat histories beside the notes.</summary>
-    public NoteChatBook ChatBook => _chats;
+    /// <summary>The groups' threads beside the notes.</summary>
+    public ThreadBook ThreadBook => _threads;
 
     /// <summary>
-    /// Someone in a live session picks an earlier chat to play along for everyone there (one they
-    /// may see; null stops it); the others are told through the session's chat room.
+    /// Someone in a live session picks an older thread (one of their groups') to replay for everyone
+    /// there (null stops it); the others are told through the session's chat room.
     /// </summary>
-    /// <exception cref="NoteForbiddenException">Not in that session, or a chat they may not see.</exception>
+    /// <exception cref="NoteForbiddenException">Not in that session, or a thread that isn't theirs.</exception>
     public void PlayAlong(Guid caller, Guid sessionId, Guid itemId, Guid? chatId)
     {
         _ = _live.Participants(sessionId, caller) ?? throw new NoteForbiddenException();
-        if (chatId is { } c && !_chats.Listed(caller, itemId, c, _groupsHolding(caller, itemId)))
+        if (chatId is { } c && _threads.Find(c, _groupsHolding(caller, itemId)) is null)
         {
             throw new NoteForbiddenException();
         }
@@ -252,15 +260,17 @@ public class GroupNotes
     }
 
     /// <summary>
-    /// A live session's chat on a title for the caller (someone in it now): the chat being written
-    /// there, and the earlier chat playing along with its notes as the one who picked it may read
-    /// them (while they're still there), never kept for the caller.
+    /// A live session's conversation on a title for the caller (someone in it now): the thread being
+    /// written there (the current thread of the caller's group someone else there is in), and the
+    /// older thread replayed for everyone with its messages as the one who picked it may read them
+    /// (while they're still there), never kept for the caller.
     /// </summary>
     /// <exception cref="NoteForbiddenException">Not in that session (or it's over).</exception>
     public SessionChatView SessionChat(Guid caller, Guid sessionId, Guid itemId)
     {
         var participants = _live.Participants(sessionId, caller) ?? throw new NoteForbiddenException();
-        var writing = _chats.OfSession(itemId, sessionId)?.Id;
+        var group = SessionGroup(participants, caller, itemId);
+        var writing = group is null ? null : _threads.Current(group.Id, group.TitleId)?.Id;
         (Guid ChatId, Guid By, DateTimeOffset At)? along;
         lock (_lock)
         {
@@ -272,15 +282,7 @@ public class GroupNotes
             return new SessionChatView(writing, null, null, Array.Empty<NoteView>());
         }
 
-        return new SessionChatView(writing, picked.ChatId, picked.By, _chats.ReadFor(picked.By, itemId, picked.ChatId, _groupsHolding(picked.By, itemId), caller, _isPrivate));
-    }
-
-    private Guid? AlongNow(Guid sessionId, Guid itemId)
-    {
-        lock (_lock)
-        {
-            return _along.TryGetValue((sessionId, itemId), out var a) && _time.GetUtcNow() - a.At <= ChatHub.RoomLifetime ? a.ChatId : null;
-        }
+        return new SessionChatView(writing, picked.ChatId, picked.By, _threads.ReadFor(picked.By, itemId, picked.ChatId, _groupsHolding(picked.By, itemId), caller, _isPrivate));
     }
 
     /// <summary>Which earlier chats play along in which sessions, for the next logic (never written anywhere).</summary>
