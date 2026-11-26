@@ -538,6 +538,7 @@ private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) ->
         items(kinds, key = { it.name }) { type ->
             val ofType = list.filter { it.type == type }.sortedBy { it.index ?: 0 }
             val several = type == ImageType.BACKDROP
+            val episode = item.kind == ItemKind.EPISODE
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(type.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -547,6 +548,7 @@ private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) ->
                         picker()
                     }) { Text(if (several) "Add yours" else "Upload") }
                 }
+                Text("Best size: ${dev.nitrate.core.admin.RemoteImages.spec(type, episode).line}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (several && ofType.size > 1) Text("Nitrate rotates through these; the main one comes first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (ofType.isEmpty()) {
                     Text("None", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -556,9 +558,10 @@ private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) ->
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Box(Modifier.height(140.dp).aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 1f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
                                     AsyncImage(img.url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                    val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height)
+                                    val short = dev.nitrate.core.admin.RemoteImages.shortfall(type, img.width, img.height, episode)
+                                    val small = short != null
                                     Text(
-                                        listOfNotNull(listOfNotNull(img.width, img.height).joinToString("×").ifBlank { null }, "small".takeIf { small }, "main".takeIf { several && (img.index ?: 0) == 0 }).joinToString(" · "),
+                                        listOfNotNull(dev.nitrate.core.admin.RemoteImages.size(img.width, img.height), short?.let { "small: $it" }, "main".takeIf { several && (img.index ?: 0) == 0 }).joinToString(" · "),
                                         style = MaterialTheme.typography.labelSmall, color = if (small) Color(0xFFFFC266) else Color.White,
                                         modifier = Modifier.align(Alignment.BottomStart).background(Color(0x99000000)).padding(horizontal = 6.dp, vertical = 2.dp),
                                     )
@@ -619,6 +622,8 @@ private fun ImagesPane(actions: AppActions, item: MediaItem, notify: (String) ->
 private fun RemoteImagesDialog(actions: AppActions, item: MediaItem, type: ImageType, providers: List<String>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     var provider by remember { mutableStateOf<String?>(null) }
     var allLanguages by remember { mutableStateOf(false) }
+    var textlessOnly by remember { mutableStateOf(false) }
+    val episode = item.kind == ItemKind.EPISODE
     val picked = remember { androidx.compose.runtime.mutableStateListOf<String>() }
     val found by produceState<Result<List<RemoteImage>>?>(null, type, provider, allLanguages) {
         value = null
@@ -636,30 +641,35 @@ private fun RemoteImagesDialog(actions: AppActions, item: MediaItem, type: Image
                 androidx.compose.material3.FilterChip(provider == null, { provider = null }, label = { Text("All providers") })
                 providers.forEach { p -> androidx.compose.material3.FilterChip(provider == p, { provider = p }, label = { Text(p) }) }
                 androidx.compose.material3.FilterChip(allLanguages, { allLanguages = !allLanguages }, label = { Text("All languages") })
+                androidx.compose.material3.FilterChip(textlessOnly, { textlessOnly = !textlessOnly }, label = { Text("Textless only") })
             }
+            Text("Best size: ${dev.nitrate.core.admin.RemoteImages.spec(type, episode).line}. Textless means the provider gave no language, which by convention marks art without words.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding, vertical = 4.dp))
             if (type == ImageType.BACKDROP) Text("Pick one to replace the main backdrop, add it as the main one, or just add it to the set Nitrate rotates through.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding, vertical = 4.dp))
-            val list = found?.getOrNull()
+            val list = found?.getOrNull()?.let { all -> if (textlessOnly) all.filter(dev.nitrate.core.admin.RemoteImages::isTextless) else all }
             when {
                 found == null -> Loading()
                 list == null -> ErrorMessage("Couldn't search: ${found?.exceptionOrNull()?.message}")
                 list.isEmpty() -> Text(
-                    if (allLanguages) "No ${type.label.lowercase()} found. The server may not have internet access or a matching provider ID."
+                    if (textlessOnly) "None marked textless. Try without \"Textless only\"."
+                    else if (allLanguages) "No ${type.label.lowercase()} found. The server may not have internet access or a matching provider ID."
                     else "None in the server's metadata language. Try \"All languages\".",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(ScreenPadding),
                 )
                 else -> LazyVerticalGrid(GridCells.Adaptive(if (type == ImageType.PRIMARY) 110.dp else 200.dp), contentPadding = PaddingValues(ScreenPadding),
                     horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(list, key = { it.url }) { img ->
-                        val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height)
+                        val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height, episode)
                         Column(Modifier.pressable({ if (img.url !in picked) { picked += img.url; onPick(img.url) } })) {
                             Box(Modifier.fillMaxWidth().aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 1f).clip(RoundedCornerShape(10.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))) {
                                 AsyncImage(img.thumbnailUrl ?: img.url, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                 if (img.url in picked) Text("Picked", style = MaterialTheme.typography.labelMedium, color = Color.White,
                                     modifier = Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
+                                Text(dev.nitrate.core.admin.RemoteImages.band(type, img, episode), style = MaterialTheme.typography.labelSmall,
+                                    color = if (small) Color(0xFFFFC266) else Color.White, maxLines = 2,
+                                    modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xCC000000)).padding(horizontal = 6.dp, vertical = 4.dp))
                             }
-                            Text(listOfNotNull(img.providerName, img.language?.uppercase(), listOfNotNull(img.width, img.height).joinToString("×").ifBlank { null }, "small".takeIf { small }).joinToString(" · "),
-                                style = MaterialTheme.typography.labelSmall, color = if (small) Color(0xFFFFC266) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                         }
                     }
                 }

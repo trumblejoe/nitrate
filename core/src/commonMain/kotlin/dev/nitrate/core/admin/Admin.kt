@@ -105,20 +105,54 @@ object ExternalIds {
 data class ImageProvider(val name: String, val types: Set<ImageType>)
 
 /** Found images in the order worth picking from: biggest first, then best rated. */
+/**
+ * What a kind of image should be: its shape, and the size that looks good ([goodWidth]×[goodHeight],
+ * below which it's "small": likely blocky on a TV) and the best worth having. Logos and clear art
+ * are transparent PNGs of any height.
+ */
+data class ImageSpec(val shape: String, val goodWidth: Int, val goodHeight: Int, val bestWidth: Int, val bestHeight: Int) {
+    /** "2:3 · good 1000×1500, best 2000×3000". */
+    val line: String get() = "$shape · good ${goodWidth}×$goodHeight, best ${bestWidth}×$bestHeight"
+}
+
 object RemoteImages {
     fun best(images: List<RemoteImage>): List<RemoteImage> =
         images.sortedWith(compareByDescending<RemoteImage> { (it.width ?: 0).toLong() * (it.height ?: 0) }.thenByDescending { it.rating ?: 0.0 })
 
-    /** Small for its kind: likely to look blocky on a TV (posters under 600 px wide, backdrops under 1280). */
-    fun isSmall(type: ImageType, width: Int?, height: Int?): Boolean {
-        val w = width ?: return false
-        return when (type) {
-            ImageType.PRIMARY -> w < 600
-            ImageType.BACKDROP, ImageType.THUMB -> w < 1280
-            ImageType.BANNER -> w < 758
-            else -> false
-        }
+    /** The size guide for [type]; an episode's main image ([episode]) is a 16:9 still, not a poster. */
+    fun spec(type: ImageType, episode: Boolean = false): ImageSpec = when (type) {
+        ImageType.PRIMARY -> if (episode) ImageSpec("16:9", 1280, 720, 1920, 1080) else ImageSpec("2:3", 1000, 1500, 2000, 3000)
+        ImageType.BACKDROP -> ImageSpec("16:9", 1920, 1080, 3840, 2160)
+        ImageType.THUMB -> ImageSpec("16:9", 1280, 720, 1920, 1080)
+        ImageType.LOGO -> ImageSpec("wide, transparent PNG", 800, 310, 1600, 620)
+        ImageType.BANNER -> ImageSpec("about 5.4:1", 758, 140, 1000, 185)
+        ImageType.ART -> ImageSpec("16:9, transparent PNG", 1000, 562, 2000, 1124)
+        ImageType.DISC -> ImageSpec("1:1, transparent PNG", 1000, 1000, 1000, 1000)
     }
+
+    /** Small for its kind (narrower than the guide's "good" width): likely to look blocky on a TV. */
+    fun isSmall(type: ImageType, width: Int?, height: Int?, episode: Boolean = false): Boolean {
+        val w = width ?: return false
+        return w < spec(type, episode).goodWidth
+    }
+
+    /** Why it's small: "under 1000×1500"; null when it isn't (or its size isn't known). */
+    fun shortfall(type: ImageType, width: Int?, height: Int?, episode: Boolean = false): String? =
+        if (!isSmall(type, width, height, episode)) null else spec(type, episode).let { "under ${it.goodWidth}×${it.goodHeight}" }
+
+    /** No language: on TMDb (and the others) an image with no words on it. */
+    fun isTextless(image: RemoteImage): Boolean = image.language.isNullOrBlank()
+
+    /** A found image's band: "TheMovieDb · Textless · 2000×3000", "Fanart · EN · 600×900 · small: under 1000×1500". */
+    fun band(type: ImageType, image: RemoteImage, episode: Boolean = false): String = listOfNotNull(
+        image.providerName,
+        if (isTextless(image)) "Textless" else image.language?.uppercase(),
+        size(image.width, image.height),
+        shortfall(type, image.width, image.height, episode)?.let { "small: $it" },
+    ).joinToString(" · ")
+
+    /** "2000×3000", or null when not known. */
+    fun size(width: Int?, height: Int?): String? = if (width == null || height == null) null else "${width}×$height"
 }
 
 /** Where a new image goes among a kind that holds several (backdrops). */

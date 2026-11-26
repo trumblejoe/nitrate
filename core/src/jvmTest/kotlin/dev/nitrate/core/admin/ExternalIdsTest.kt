@@ -27,6 +27,15 @@ class ExternalIdsTest {
         assertEquals(listOf("b", "a"), RemoteImages.best(listOf(small, big)).map { it.url })
         assertEquals(true, RemoteImages.isSmall(ImageType.BACKDROP, 400, 225))
         assertEquals(false, RemoteImages.isSmall(ImageType.BACKDROP, 1920, 1080))
+        // The size guide: posters 1000 wide, an episode's still 1280, and why it's small.
+        assertEquals(true, RemoteImages.isSmall(ImageType.PRIMARY, 680, 1000))
+        assertEquals(false, RemoteImages.isSmall(ImageType.PRIMARY, 1000, 1500))
+        assertEquals(true, RemoteImages.isSmall(ImageType.PRIMARY, 1000, 563, episode = true))
+        assertEquals("under 1000×1500", RemoteImages.shortfall(ImageType.PRIMARY, 680, 1000))
+        assertEquals("2:3 · good 1000×1500, best 2000×3000", RemoteImages.spec(ImageType.PRIMARY).line)
+        val textless = RemoteImage("u", null, "TheMovieDb", 2000, 3000, null, 5.0)
+        assertEquals("TheMovieDb · Textless · 2000×3000", RemoteImages.band(ImageType.PRIMARY, textless))
+        assertEquals("TheMovieDb · EN · 680×1000 · small: under 1000×1500", RemoteImages.band(ImageType.PRIMARY, textless.copy(language = "en", width = 680, height = 1000)))
     }
 }
 
