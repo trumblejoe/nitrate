@@ -174,6 +174,28 @@ public class PartnerTests
     }
 
     [Fact]
+    public void AskingAgainAfterANoReachesThem()
+    {
+        var hub = Hub();
+        var told = new List<Guid>();
+        hub.RequestMade += told.Add;
+        hub.Request(Joe, Sam, null, Bear, "The Bear");
+        hub.Decline(Sam, hub.Incoming(Sam).Single().Id);
+        Assert.Empty(hub.Incoming(Sam));
+
+        // Asked again (say, after leaving every group): a fresh invite, and Sam's apps are told.
+        var again = hub.Request(Joe, Sam, null, Bear, "The Bear");
+        Assert.Equal(again.Id, hub.Incoming(Sam).Single().Id);
+        Assert.Equal(new[] { Sam, Sam }, told);
+        Assert.Single(hub.Outgoing(Joe));
+
+        // Asked again while it waits: the same invite, nobody told twice.
+        Assert.Equal(again.Id, hub.Request(Joe, Sam, null, Bear, "The Bear").Id);
+        Assert.Equal(2, told.Count);
+        Assert.Single(hub.Incoming(Sam));
+    }
+
+    [Fact]
     public void AcceptingMakesAGroupAndAPrivatePersonCanSayYes()
     {
         var hub = Hub();

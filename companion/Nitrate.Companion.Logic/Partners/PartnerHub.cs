@@ -452,6 +452,14 @@ public partial class PartnerHub
             var batchOrEmpty = group is null ? batch ?? Guid.Empty : Guid.Empty;
             var existing = _state.Requests.FirstOrDefault(r => r.From == from && r.SeriesId == first && r.GroupId == gidOrEmpty && r.Batch == batchOrEmpty
                 && (to != Guid.Empty ? r.To == to : string.Equals(r.ToLabel, label, StringComparison.OrdinalIgnoreCase)));
+            // Asked again after they said no: a fresh invite in its place (a decline mustn't swallow every
+            // later one, silently; the inviter still learns nothing either way).
+            if (existing is { Declined: true })
+            {
+                _state.Requests.Remove(existing);
+                existing = null;
+            }
+
             if (existing is null)
             {
                 existing = new PartnerRequest

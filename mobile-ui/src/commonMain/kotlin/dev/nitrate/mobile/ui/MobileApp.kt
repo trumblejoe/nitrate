@@ -384,6 +384,9 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         SharedTransitionLayout {
         CompositionLocalProvider(LocalSharedScope provides this) {
+        // The Watching together row's taps (an invite's answer, the start card, a shared title's choices)
+        // on every page it can be on (Home, custom pages, library pages), not just Home.
+        TogetherHost(actions, partnersAvailable(actions)) {
         NavHost(
             navController = nav,
             startDestination = startRoute,
@@ -508,6 +511,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     testPlay = if (route.test) { result -> appScope.launch { actions.container.saveTestPlay(result) } } else null,
                 )
             }
+        }
         }
 
         }

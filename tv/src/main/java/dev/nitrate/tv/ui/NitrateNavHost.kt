@@ -378,7 +378,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             // Laid out like Home: its own layout (full art lays the menu over it).
             val pagePrefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, dev.nitrate.core.pages.PageKeys.custom(route.pageId))
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.page(route.pageId), overlay = pagePrefs.tvArrangement.fullArt) { insets ->
-                CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() }, insets = insets)
+                // The Watching together row works here too (its invites, start card and choices), as on Home.
+                dev.nitrate.tv.ui.partners.TogetherHost(container, partnersOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
+                    CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() }, insets = insets)
+                }
             }
         }
         composable<DisplaySettingsRoute> { DisplaySettingsScreen(container, onMenuStops = { nav.navigate(MenuStopsRoute) }, onShown = { nav.navigate(ShownSettingsRoute) }, onPages = { nav.navigate(PageSetupRoute) }, onEffects = { nav.navigate(EffectsSettingsRoute) }) }
@@ -513,6 +516,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             // Library pages are laid out like Home unless set otherwise; full art has the menu over it.
             val libraryFullArt = dev.nitrate.core.pages.PageLooks.forPage(prefs, dev.nitrate.core.pages.PageKeys.library(libraryId)).tvArrangement.fullArt
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library(libraryId), overlay = libraryFullArt) { insets ->
+                dev.nitrate.tv.ui.partners.TogetherHost(container, partnersOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
                 LibraryScreen(
                     fullArt = libraryFullArt,
                     insets = insets,
@@ -526,6 +530,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     // Bulk editing: admins, and metadata editors whose libraries include this one.
                     admin = account?.canEditMetadataIn(libraryId) == true,
                 )
+                }
             }
         }
         composable<PlaylistRoute> { entry ->

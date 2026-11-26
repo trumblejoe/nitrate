@@ -206,6 +206,8 @@ fun CinematicRow(row: MediaRow, shownAs: RowDisplay, rowActions: AppActions, onD
     // What's watched together sits in Continue Watching: invites answer a tap themselves, a long press
     // on a shared title offers its choices, and those cards say whose turn it is. Others are as anywhere.
     val cards = if (row.key in dev.nitrate.core.partners.TogetherRow.ROW_KEYS) LocalTogetherCards.current else null
+    // Watch groups switched off on this device: its row isn't shown (its cards would open nothing that works).
+    if (row.key in dev.nitrate.core.partners.TogetherRow.ROW_KEYS && cards == null) return
     val actions = if (cards != null) rowActions.withCards(cards) else rowActions
     val partnersInfo by rowActions.container.partners.collectAsState()
     val standings by rowActions.container.groupStandings.collectAsState()

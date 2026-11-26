@@ -98,8 +98,10 @@ fun RowsPage(
      */
     startOnRows: Boolean = false,
 ) {
-    // Every row style shows titles spoiler-safe (named "Episode 5", blurred, no description).
-    @Suppress("NAME_SHADOWING") val rows = dev.nitrate.tv.ui.partners.spoilerSafeRows(rows)
+    // Every row style shows titles spoiler-safe (named "Episode 5", blurred, no description). With Watch groups
+    // switched off on this device the Watching together row isn't shown (its cards would open nothing that works).
+    val togetherOn = dev.nitrate.tv.ui.partners.LocalTogetherCards.current != null
+    @Suppress("NAME_SHADOWING") val rows = dev.nitrate.tv.ui.partners.spoilerSafeRows(if (togetherOn) rows else rows.filter { it.key !in dev.nitrate.core.partners.TogetherRow.ROW_KEYS })
     var focused by remember { mutableStateOf<MediaItem?>(null) }
     var activeShowcase by remember { mutableStateOf<String?>(null) }
     // The row holding focus: a Full Showcase above it draws as its banner, not a screen-tall picture

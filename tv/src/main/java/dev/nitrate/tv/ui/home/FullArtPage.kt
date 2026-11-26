@@ -71,8 +71,10 @@ fun FullArtPage(
     /** Above the first row, top right (a library's tabs): Up from the first row, Down back. */
     header: (@Composable () -> Unit)? = null,
 ) {
-    // Every row style shows titles spoiler-safe (named "Episode 5", blurred, no description).
-    @Suppress("NAME_SHADOWING") val rows = dev.nitrate.tv.ui.partners.spoilerSafeRows(rows)
+    // Every row style shows titles spoiler-safe (named "Episode 5", blurred, no description). With Watch groups
+    // switched off on this device the Watching together row isn't shown (its cards would open nothing that works).
+    val togetherOn = dev.nitrate.tv.ui.partners.LocalTogetherCards.current != null
+    @Suppress("NAME_SHADOWING") val rows = dev.nitrate.tv.ui.partners.spoilerSafeRows(if (togetherOn) rows else rows.filter { it.key !in dev.nitrate.core.partners.TogetherRow.ROW_KEYS })
     val pageFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val headerFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     // The page sees keys before the tabs over it: while they have focus, the keys are theirs.
