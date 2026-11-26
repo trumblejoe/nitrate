@@ -163,11 +163,11 @@ private fun ThemeMusicInfoRow(actions: AppActions, item: MediaItem) {
  * it. Nothing here deletes the title or touches library settings.
  */
 @Composable
-fun ManageItemScreen(actions: AppActions, itemId: String) {
+fun ManageItemScreen(actions: AppActions, itemId: String, images: Boolean = false) {
     val server = actions.server
     val account by actions.container.account.collectAsState()
     val item by produceState<MediaItem?>(null, itemId) { value = runCatching { server.getItem(itemId) }.getOrNull() }
-    var tab by rememberSaveable { mutableStateOf(ManageTab.DETAILS) }
+    var tab by rememberSaveable { mutableStateOf(if (images) ManageTab.IMAGES else ManageTab.DETAILS) }
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     fun notify(message: String) = scope.launch { snack.showSnackbar(message) }

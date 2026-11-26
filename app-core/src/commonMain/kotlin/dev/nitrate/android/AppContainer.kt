@@ -1071,6 +1071,14 @@ class AppContainer(
      * Times typical requests from this device to the server (see [MediaServer.speedCheck]),
      * reporting each step as it finishes, and returns the whole report.
      */
+    /** The last Library images overview, kept while the app runs (admins; Companion feature `imagesurvey`). */
+    var lastImageOverview: Pair<dev.nitrate.core.admin.ImageOverviewAsk, dev.nitrate.core.admin.ImageOverview>? = null
+        private set
+
+    /** The Library images overview for [ask] (kept as [lastImageOverview]). */
+    suspend fun imageOverview(ask: dev.nitrate.core.admin.ImageOverviewAsk): dev.nitrate.core.admin.ImageOverview =
+        server.imageOverview(ask).also { lastImageOverview = ask to it }
+
     /** The last library health check, kept while the app runs: (library id or null for all, findings). */
     var lastHealth: Pair<String?, Map<dev.nitrate.core.diagnostics.HealthCheck, List<dev.nitrate.core.diagnostics.HealthFinding>>>? = null
         private set

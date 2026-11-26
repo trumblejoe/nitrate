@@ -1558,6 +1558,20 @@ class TvScreenshotTest {
 
     @Test fun householdDevices() = shoot("tv-household-devices") { c -> dev.nitrate.tv.ui.settings.HouseholdDevicesScreen(c, onOpen = {}) }
 
+    /** Library images overview: total space, per kind of picture and of title, what to look at (episodes by number only), biggest files. */
+    @Test fun imagesOverview() = shoot("tv-images-overview", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += dev.nitrate.core.admin.ImageGuide.FEATURE
+        c.refreshCompanionForTests()
+    }) { c -> dev.nitrate.tv.ui.settings.ImagesOverviewScreen(c, onManage = {}) }
+
+    /** Further down: the list of titles to look at with Find missing beside those missing a picture. */
+    @Test fun imagesOverviewProblems() = shoot("tv-images-overview-problems", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += dev.nitrate.core.admin.ImageGuide.FEATURE
+        c.refreshCompanionForTests()
+    }, act = {
+        compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction()).onFirst().performScrollToNode(androidx.compose.ui.test.hasText("Biggest files"))
+    }) { c -> dev.nitrate.tv.ui.settings.ImagesOverviewScreen(c, onManage = {}) }
+
     @Test fun tvCheck() = shoot("tv-tv-check", setup = { c ->
         c.playbackSettings.update { it.copy(deviceCheck = dev.nitrate.core.playback.DeviceCheck(0, "TV", seen = mapOf(
             "hdr10" to dev.nitrate.core.playback.SeenClip(dev.nitrate.core.playback.Answer.YES, "HDR10", "HDR10 · 4K", 1),

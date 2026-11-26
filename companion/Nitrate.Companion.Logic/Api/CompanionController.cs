@@ -123,6 +123,8 @@ public class CompanionController : ControllerBase
         // Change counters for the apps' kept rows (GET /Nitrate/Changes).
         features.Add("changes");
         features.Add("formats");
+        // Library images overview for admins (POST /Nitrate/Images/Overview): sizes, files, missing and small images.
+        features.Add("imagesurvey");
         // Only once the timing middleware is known to be in the server's pipeline.
         if (_queryTimes.Active)
         {

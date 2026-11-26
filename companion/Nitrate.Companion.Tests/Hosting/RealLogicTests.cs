@@ -54,6 +54,7 @@ public sealed class RealLogicTests : IDisposable
     [InlineData("GET", "/Nitrate/Threads/6f9619ff-8b86-d011-b42d-00cf4fc964ff/Notes", false)]
     [InlineData("POST", "/Nitrate/Threads/New", false)]
     [InlineData("PUT", "/Nitrate/Threads/6f9619ff-8b86-d011-b42d-00cf4fc964ff/Favourite", false)]
+    [InlineData("POST", "/Nitrate/Images/Overview", false)]
     [InlineData("GET", "/Nitrate/Settings", false)]
     [InlineData("POST", "/Nitrate/Settings", false)]
     [InlineData("GET", "/Nitrate/Sso", true)]

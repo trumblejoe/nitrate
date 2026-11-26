@@ -558,6 +558,41 @@ class FakeServer : MediaServer {
     }
     override suspend fun sendDeviceSummary(summary: dev.nitrate.core.playback.DeviceSummary) = Unit
     override suspend fun forgetHouseholdDevice(userId: String, deviceId: String) = Unit
+    override suspend fun imageOverview(ask: dev.nitrate.core.admin.ImageOverviewAsk): dev.nitrate.core.admin.ImageOverview {
+        val p = dev.nitrate.core.admin.ImageType.PRIMARY
+        val b = dev.nitrate.core.admin.ImageType.BACKDROP
+        val l = dev.nitrate.core.admin.ImageType.LOGO
+        fun flaw(t: dev.nitrate.core.admin.ImageType, w: Int?, h: Int?, k: dev.nitrate.core.admin.ImageFlawKind, index: Int = 0) = dev.nitrate.core.admin.ImageFlaw(t, t.wire, index, w, h, k)
+        val problems = listOf(
+            dev.nitrate.core.admin.ImageProblem("m4", "Persistence", dev.nitrate.core.model.ItemKind.MOVIE, null, null, null, listOf(l, b), listOf(flaw(p, 500, 750, dev.nitrate.core.admin.ImageFlawKind.SMALL))),
+            dev.nitrate.core.admin.ImageProblem("m2", "Silver Screen", dev.nitrate.core.model.ItemKind.MOVIE, null, null, null, listOf(l), emptyList()),
+            dev.nitrate.core.admin.ImageProblem("m3", "Gate Weave", dev.nitrate.core.model.ItemKind.MOVIE, null, null, null, emptyList(), listOf(flaw(b, 2000, 2000, dev.nitrate.core.admin.ImageFlawKind.SHAPE, 1))),
+            dev.nitrate.core.admin.ImageProblem("ep-3", "Episode 3", dev.nitrate.core.model.ItemKind.EPISODE, "The Night Reel", 1, 3, emptyList(), listOf(flaw(p, 1920, 1080, dev.nitrate.core.admin.ImageFlawKind.GONE))),
+            dev.nitrate.core.admin.ImageProblem("ep-4", "Episode 4", dev.nitrate.core.model.ItemKind.EPISODE, "The Night Reel", 1, 4, listOf(p), emptyList()),
+        ).filter { pr ->
+            val only = ask.only
+            (only == null || (if (only == dev.nitrate.core.admin.ImageFlawKind.MISSING) pr.missing.isNotEmpty() else pr.flaws.any { it.kind == only })) &&
+                (ask.onlyType == null || ask.onlyType in pr.missing || pr.flaws.any { it.type == ask.onlyType })
+        }
+        fun type(t: dev.nitrate.core.admin.ImageType, count: Int, mb: Long, small: Int = 0, shape: Int = 0, gone: Int = 0) =
+            dev.nitrate.core.admin.ImageTypeTotals(t, t.wire, count, mb * 1_000_000, small, shape, 0, 0, gone)
+        return dev.nitrate.core.admin.ImageOverview(
+            items = 412, images = 1186, bytes = 2_480_000_000,
+            types = listOf(type(b, 520, 1420, shape = 1), type(p, 404, 760, small = 1, gone = 1), type(l, 180, 210), type(dev.nitrate.core.admin.ImageType.THUMB, 82, 90)),
+            kinds = listOf(
+                dev.nitrate.core.admin.ImageKindTotals(dev.nitrate.core.model.ItemKind.EPISODE, "Episode", 320, 318, 520_000_000, mapOf(p to 1)),
+                dev.nitrate.core.admin.ImageKindTotals(dev.nitrate.core.model.ItemKind.MOVIE, "Movie", 62, 59, 1_640_000_000, mapOf(p to 0, b to 1, l to 2)),
+                dev.nitrate.core.admin.ImageKindTotals(dev.nitrate.core.model.ItemKind.SERIES, "Series", 12, 12, 280_000_000, mapOf(p to 0, b to 0, l to 0)),
+                dev.nitrate.core.admin.ImageKindTotals(dev.nitrate.core.model.ItemKind.SEASON, "Season", 18, 18, 40_000_000, mapOf(p to 0)),
+            ),
+            problems = problems, problemsTotal = problems.size,
+            largest = listOf(
+                dev.nitrate.core.admin.BigImageFile("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE, b, b.wire, 0, 14_200_000, 3840, 2160),
+                dev.nitrate.core.admin.BigImageFile("series-1", "The Night Reel", dev.nitrate.core.model.ItemKind.SERIES, b, b.wire, 2, 11_800_000, 3840, 2160),
+                dev.nitrate.core.admin.BigImageFile("m1", "Nitrate", dev.nitrate.core.model.ItemKind.MOVIE, p, p.wire, 0, 6_100_000, 2000, 3000),
+            ),
+        )
+    }
     override suspend fun householdDevices(): List<dev.nitrate.core.playback.HouseholdDevice> {
         val avatar = dev.nitrate.core.playback.SummaryTitle("m1", "Northern Lights (2021)", "Picture converted by the server", "Dolby Vision is tone-mapped to SDR by the server: the display doesn't report Dolby Vision")
         val reel = dev.nitrate.core.playback.SummaryTitle("m5", "Old Reel (1987)", "Picture converted by the server", "MPEG-4 video isn't something this device decodes")

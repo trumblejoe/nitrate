@@ -52,6 +52,7 @@ public static class LogicServices
         serviceCollection.AddSingleton<Nitrate.Companion.Recommendations.PlaylistFacts>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Recommendations.PlaylistFacts>());
         serviceCollection.AddSingleton<Nitrate.Companion.Formats.FormatIndex>();
+        serviceCollection.AddSingleton<Nitrate.Companion.Images.ImageFiles>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Formats.FormatIndex>());
         // The server's own time for each request Nitrate tags (the apps' query analyzer); the shell's middleware times them.
         serviceCollection.AddSingleton<Nitrate.Companion.QueryTimes.QueryTimeStore>();

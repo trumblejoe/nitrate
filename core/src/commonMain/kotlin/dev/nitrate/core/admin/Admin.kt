@@ -110,7 +110,8 @@ data class ImageProvider(val name: String, val types: Set<ImageType>)
  * below which it's "small": likely blocky on a TV) and the best worth having. Logos and clear art
  * are transparent PNGs of any height.
  */
-data class ImageSpec(val shape: String, val goodWidth: Int, val goodHeight: Int, val bestWidth: Int, val bestHeight: Int) {
+/** [ratio]: width over height it should be near (the overview's "wrong shape" beyond 15%), null for any shape. */
+data class ImageSpec(val shape: String, val goodWidth: Int, val goodHeight: Int, val bestWidth: Int, val bestHeight: Int, val ratio: Double? = null) {
     /** "2:3 · good 1000×1500, best 2000×3000". */
     val line: String get() = "$shape · good ${goodWidth}×$goodHeight, best ${bestWidth}×$bestHeight"
 }
@@ -121,13 +122,13 @@ object RemoteImages {
 
     /** The size guide for [type]; an episode's main image ([episode]) is a 16:9 still, not a poster. */
     fun spec(type: ImageType, episode: Boolean = false): ImageSpec = when (type) {
-        ImageType.PRIMARY -> if (episode) ImageSpec("16:9", 1280, 720, 1920, 1080) else ImageSpec("2:3", 1000, 1500, 2000, 3000)
-        ImageType.BACKDROP -> ImageSpec("16:9", 1920, 1080, 3840, 2160)
-        ImageType.THUMB -> ImageSpec("16:9", 1280, 720, 1920, 1080)
+        ImageType.PRIMARY -> if (episode) ImageSpec("16:9", 1280, 720, 1920, 1080, 16.0 / 9) else ImageSpec("2:3", 1000, 1500, 2000, 3000, 2.0 / 3)
+        ImageType.BACKDROP -> ImageSpec("16:9", 1920, 1080, 3840, 2160, 16.0 / 9)
+        ImageType.THUMB -> ImageSpec("16:9", 1280, 720, 1920, 1080, 16.0 / 9)
         ImageType.LOGO -> ImageSpec("wide, transparent PNG", 800, 310, 1600, 620)
-        ImageType.BANNER -> ImageSpec("about 5.4:1", 758, 140, 1000, 185)
-        ImageType.ART -> ImageSpec("16:9, transparent PNG", 1000, 562, 2000, 1124)
-        ImageType.DISC -> ImageSpec("1:1, transparent PNG", 1000, 1000, 1000, 1000)
+        ImageType.BANNER -> ImageSpec("about 5.4:1", 758, 140, 1000, 185, 758.0 / 140)
+        ImageType.ART -> ImageSpec("16:9, transparent PNG", 1000, 562, 2000, 1124, 16.0 / 9)
+        ImageType.DISC -> ImageSpec("1:1, transparent PNG", 1000, 1000, 1000, 1000, 1.0)
     }
 
     /** Small for its kind (narrower than the guide's "good" width): likely to look blocky on a TV. */

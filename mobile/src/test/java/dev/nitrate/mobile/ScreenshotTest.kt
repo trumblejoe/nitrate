@@ -347,6 +347,20 @@ class ScreenshotTest {
 
     @Test fun householdDevices() = shoot("phone-household-devices") { dev.nitrate.mobile.ui.HouseholdDevicesScreen(it) }
 
+    /** Library images overview: total space, per kind of picture and of title. */
+    @Test fun imagesOverview() = shoot("phone-images-overview", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += dev.nitrate.core.admin.ImageGuide.FEATURE
+        c.refreshCompanionForTests()
+    }) { dev.nitrate.mobile.ui.ImagesOverviewScreen(it) }
+
+    /** Further down: what to look at (episodes by show and number only) with Images and Find missing, and the biggest files. */
+    @Test fun imagesOverviewProblems() = shoot("phone-images-overview-problems", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += dev.nitrate.core.admin.ImageGuide.FEATURE
+        c.refreshCompanionForTests()
+    }, act = {
+        compose.onAllNodes(androidx.compose.ui.test.hasScrollToNodeAction()).onFirst().performScrollToNode(androidx.compose.ui.test.hasText("Biggest files"))
+    }) { dev.nitrate.mobile.ui.ImagesOverviewScreen(it) }
+
     @Test fun playbackTrail() = shoot("phone-playback-trail") {
         androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().padding(16.dp)) { dev.nitrate.mobile.ui.TrailView(dev.nitrate.testing.sampleTrail()) }
     }

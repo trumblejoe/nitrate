@@ -1861,6 +1861,7 @@ class JellyfinClient(
     override suspend fun fileTimingIssues() = companionApi.fileTiming()
     override suspend fun sendDeviceSummary(summary: dev.nitrate.core.playback.DeviceSummary) = companionApi.sendDeviceSummary(identity.deviceId, identity.deviceName, summary)
     override suspend fun householdDevices() = companionApi.householdDevices()
+    override suspend fun imageOverview(ask: dev.nitrate.core.admin.ImageOverviewAsk) = companionApi.imageOverview(ask)
     override suspend fun forgetHouseholdDevice(userId: String, deviceId: String) = companionApi.forgetHouseholdDevice(userId, deviceId)
     override fun checkClipUrl(id: String): String = url("Nitrate", "TestClips", id)
     override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int) = companionApi.messages(groupId, after, waitMs)

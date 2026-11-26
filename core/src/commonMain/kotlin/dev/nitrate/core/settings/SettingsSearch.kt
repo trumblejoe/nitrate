@@ -37,6 +37,7 @@ enum class SettingsPlace(val path: String) {
     QUERY_ANALYZER("Tools › Query analyzer"),
     HOUSEHOLD("Tools › Household devices"),
     HEALTH("Tools › Library health"),
+    IMAGES("Tools › Library images overview"),
     MANAGE_SERVER("Tools › Manage server"),
     UPDATES("About › Updates"),
     PLUGINS("About › Plugins"),
@@ -179,6 +180,7 @@ object SettingsSearch {
         SettingEntry("Query analyzer", SettingsPlace.QUERY_ANALYZER, "requests slow server load"),
         SettingEntry("Household devices", SettingsPlace.HOUSEHOLD, "admin devices reports", adminOnly = true),
         SettingEntry("Library health", SettingsPlace.HEALTH, "missing artwork duplicates metadata", adminOnly = true),
+        SettingEntry("Library images overview", SettingsPlace.IMAGES, "images pictures artwork posters backdrops logos missing small size space storage disk", adminOnly = true),
         SettingEntry("Manage server", SettingsPlace.MANAGE_SERVER, "libraries tasks users activity admin dashboard", adminOnly = true),
         // About
         SettingEntry("Updates", SettingsPlace.UPDATES, "version new release update"),

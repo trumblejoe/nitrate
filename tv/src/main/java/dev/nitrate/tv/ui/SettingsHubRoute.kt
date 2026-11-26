@@ -152,6 +152,9 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
                 ) else emptyList()) + (if (account?.isAdmin == true) listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Household devices", "How every device in the house plays the library, its tests and what its users saw at their TVs") { nav.navigate(HouseholdDevicesRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Library health", "Missing artwork and details, duplicates, missing episodes, what this TV always converts") { nav.navigate(LibraryHealthRoute) },
+                ) + (if (companion?.features?.contains(dev.nitrate.core.admin.ImageGuide.FEATURE) == true) listOf(
+                    dev.nitrate.tv.ui.settings.SettingsLink("Library images overview", "Every title's pictures: how many of each kind, the space they take, and which are missing, small or the wrong shape") { nav.navigate(ImagesOverviewRoute) },
+                ) else emptyList()) + listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Manage server", "Libraries, tasks, activity, devices and users") { nav.navigate(ServerAdminRoute) },
                 ) else emptyList())),
                 dev.nitrate.tv.ui.settings.SettingsSection("About", listOf(
@@ -193,6 +196,7 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
                     dev.nitrate.core.settings.SettingsPlace.QUERY_ANALYZER -> nav.navigate(QueryAnalyzerRoute)
                     dev.nitrate.core.settings.SettingsPlace.HOUSEHOLD -> nav.navigate(HouseholdDevicesRoute)
                     dev.nitrate.core.settings.SettingsPlace.HEALTH -> nav.navigate(LibraryHealthRoute)
+                    dev.nitrate.core.settings.SettingsPlace.IMAGES -> nav.navigate(ImagesOverviewRoute)
                     dev.nitrate.core.settings.SettingsPlace.MANAGE_SERVER -> nav.navigate(ServerAdminRoute)
                     dev.nitrate.core.settings.SettingsPlace.UPDATES -> nav.navigate(UpdatesRoute)
                     dev.nitrate.core.settings.SettingsPlace.PLUGINS -> nav.navigate(PluginsRoute)

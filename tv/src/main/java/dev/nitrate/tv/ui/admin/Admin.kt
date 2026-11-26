@@ -105,9 +105,11 @@ fun ManageItemScreen(
     asEditor: Boolean = false,
     /** Admins with the Companion's `creditsreport`: Refresh has a "Credits check" line. */
     creditsCheck: Boolean = false,
+    /** Opens on Images (from the Library images overview). */
+    images: Boolean = false,
 ) {
     val item by produceState<MediaItem?>(null, itemId) { value = runCatching { repository.getItem(itemId) }.getOrNull() }
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(if (images) 2 else 0) }
     var status by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
     Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, top = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

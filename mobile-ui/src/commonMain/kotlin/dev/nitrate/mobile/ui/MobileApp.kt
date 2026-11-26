@@ -70,7 +70,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class PersonRoute(val personId: String, val name: String, val studio: String? = null, val year: Int? = null)
 
 /** Admin: an item's metadata, identity, images and refresh. */
-@Serializable data class ManageItemRoute(val itemId: String)
+@Serializable data class ManageItemRoute(val itemId: String, val images: Boolean = false)
 
 /** Admin: the whole server (tasks, activity, devices, users). */
 @Serializable object ServerAdminRoute
@@ -78,6 +78,7 @@ import kotlinx.serialization.Serializable
 @Serializable object HouseholdDevicesRoute
 @Serializable object GuideRoute
 @Serializable object PlaybackOverviewRoute
+@Serializable object ImagesOverviewRoute
 @Serializable object QueryAnalyzerRoute
 @Serializable object ChannelsRoute
 @Serializable object WatchPartnersRoute
@@ -443,12 +444,13 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 DetailsScreen(actions.fromGroup(route.group), route.itemId, route.seasonId, route.artKey)
             }
             screen<PlaylistRoute> { entry -> entry.toRoute<PlaylistRoute>().let { r -> PlaylistScreen(actions.fromGroup(r.group), r.playlistId) } }
-            screen<ManageItemRoute> { entry -> ManageItemScreen(actions, entry.toRoute<ManageItemRoute>().itemId) }
+            screen<ManageItemRoute> { entry -> entry.toRoute<ManageItemRoute>().let { ManageItemScreen(actions, it.itemId, it.images) } }
             screen<ServerAdminRoute> { ServerAdminScreen(actions) }
             screen<LibraryHealthRoute> { LibraryHealthScreen(actions) }
             screen<HouseholdDevicesRoute> { HouseholdDevicesScreen(actions) }
             screen<GuideRoute> { GuideScreen(admin = actions.container.account.collectAsState().value?.isAdmin == true) }
             screen<PlaybackOverviewRoute> { PlaybackOverviewScreen(actions) }
+            screen<ImagesOverviewRoute> { ImagesOverviewScreen(actions) }
             screen<QueryAnalyzerRoute> { QueryAnalyzerScreen(actions) }
             screen<ChannelsRoute> { ChannelsScreen(actions) }
             screen<CatalogsRoute> { CatalogsScreen(actions) }

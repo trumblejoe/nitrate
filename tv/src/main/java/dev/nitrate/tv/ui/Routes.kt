@@ -43,10 +43,11 @@ import kotlinx.serialization.Serializable
 @Serializable object StatsRoute
 @Serializable object DiaryRoute
 @Serializable object ServerSettingsRoute
-@Serializable data class ManageItemRoute(val itemId: String)
+@Serializable data class ManageItemRoute(val itemId: String, val images: Boolean = false)
 @Serializable object ServerAdminRoute
 @Serializable object LibraryHealthRoute
 @Serializable object PlaybackOverviewRoute
+@Serializable object ImagesOverviewRoute
 
 /** Settings → Tools → TV & receiver check (the Companion plugin's clips). */
 @Serializable object TvCheckRoute

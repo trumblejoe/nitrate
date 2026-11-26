@@ -211,6 +211,24 @@ internal class JellyfinCompanion(private val client: JellyfinClient) {
             )
         }
 
+    /** The Library images overview (feature `imagesurvey`, admins), by the rules in core `admin/ImageGuide`. */
+    suspend fun imageOverview(ask: dev.nitrate.core.admin.ImageOverviewAsk): dev.nitrate.core.admin.ImageOverview {
+        val body = ImageOverviewPostDto(
+            libraryId = ask.libraryId,
+            expected = dev.nitrate.core.admin.ImageGuide.expected.entries.associate { (k, v) -> dev.nitrate.core.admin.ImageGuide.wire(k) to v.map { it.wire } },
+            sizes = dev.nitrate.core.admin.ImageGuide.rules.map { SizeRuleDto(it.type.wire, it.itemKind?.let(dev.nitrate.core.admin.ImageGuide::wire), it.minWidth, it.ratio) },
+            only = ask.only?.wire,
+            onlyType = ask.onlyType?.wire,
+            limit = ask.limit,
+        )
+        val text = client.http.post(client.url("Nitrate", "Images", "Overview")) {
+            with(client) { auth() }
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.bodyAsText()
+        return JellyfinJson.decodeFromString<ImageOverviewDto>(text).toModel()
+    }
+
     suspend fun forgetHouseholdDevice(userId: String, deviceId: String) {
         client.http.delete(client.url("Nitrate", "Devices", userId, deviceId)) { with(client) { auth() } }
     }
@@ -584,4 +602,71 @@ internal data class UpdateStatusDto(
         lastCheckedAt?.let { runCatching { kotlin.time.Instant.parse(it).toEpochMilliseconds() }.getOrNull() },
         lastCheck, autoUpdate,
     )
+}
+
+@Serializable
+internal data class SizeRuleDto(val type: String, val itemKind: String?, val minWidth: Int, val ratio: Double?)
+
+@Serializable
+internal data class ImageOverviewPostDto(
+    val libraryId: String?,
+    val expected: Map<String, List<String>>,
+    val sizes: List<SizeRuleDto>,
+    val only: String?,
+    val onlyType: String?,
+    val limit: Int,
+)
+
+@Serializable
+internal data class ImageTypeTotalsDto(val type: String, val count: Int = 0, val bytes: Long = 0, val small: Int = 0, val misshapen: Int = 0, val unknownSize: Int = 0, val notSaved: Int = 0, val gone: Int = 0)
+
+@Serializable
+internal data class ImageKindTotalsDto(val kind: String, val items: Int = 0, val complete: Int = 0, val bytes: Long = 0, val missing: Map<String, Int> = emptyMap())
+
+@Serializable
+internal data class ImageFlawDto(val type: String, val index: Int = 0, val width: Int? = null, val height: Int? = null, val flaw: String)
+
+@Serializable
+internal data class ImageProblemDto(
+    val id: String,
+    val name: String = "",
+    val kind: String,
+    val seriesName: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    val missing: List<String> = emptyList(),
+    val flaws: List<ImageFlawDto> = emptyList(),
+)
+
+@Serializable
+internal data class BigImageDto(val id: String, val name: String = "", val kind: String, val seriesName: String? = null, val season: Int? = null, val episode: Int? = null, val type: String, val index: Int = 0, val bytes: Long = 0, val width: Int? = null, val height: Int? = null)
+
+@Serializable
+internal data class ImageOverviewDto(
+    val items: Int = 0,
+    val images: Int = 0,
+    val bytes: Long = 0,
+    val types: List<ImageTypeTotalsDto> = emptyList(),
+    val kinds: List<ImageKindTotalsDto> = emptyList(),
+    val problems: List<ImageProblemDto> = emptyList(),
+    val problemsTotal: Int = 0,
+    val largest: List<BigImageDto> = emptyList(),
+) {
+    fun toModel(): dev.nitrate.core.admin.ImageOverview {
+        fun type(name: String) = dev.nitrate.core.admin.ImageType.entries.firstOrNull { it.wire.equals(name, ignoreCase = true) }
+        return dev.nitrate.core.admin.ImageOverview(
+            items = items, images = images, bytes = bytes,
+            types = types.map { dev.nitrate.core.admin.ImageTypeTotals(type(it.type), it.type, it.count, it.bytes, it.small, it.misshapen, it.unknownSize, it.notSaved, it.gone) },
+            kinds = kinds.map { k -> dev.nitrate.core.admin.ImageKindTotals(itemKind(k.kind), k.kind, k.items, k.complete, k.bytes, k.missing.mapNotNull { (t, n) -> type(t)?.let { it to n } }.toMap()) },
+            problems = problems.map { p ->
+                dev.nitrate.core.admin.ImageProblem(
+                    normalizeId(p.id), p.name, itemKind(p.kind), p.seriesName, p.season, p.episode,
+                    p.missing.mapNotNull(::type),
+                    p.flaws.mapNotNull { f -> dev.nitrate.core.admin.ImageFlawKind.of(f.flaw)?.let { dev.nitrate.core.admin.ImageFlaw(type(f.type), f.type, f.index, f.width, f.height, it) } },
+                )
+            },
+            problemsTotal = problemsTotal,
+            largest = largest.map { b -> dev.nitrate.core.admin.BigImageFile(normalizeId(b.id), dev.nitrate.core.admin.ImageGuide.title(b.name, itemKind(b.kind), b.seriesName, b.season, b.episode), itemKind(b.kind), type(b.type), b.type, b.index, b.bytes, b.width, b.height) },
+        )
+    }
 }

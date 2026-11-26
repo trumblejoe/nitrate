@@ -182,6 +182,9 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
         if (account?.isAdmin == true) {
             item { Link("Household devices", "How every device in the house plays the library, its tests and what its users saw at their TVs") { actions.nav.navigate(HouseholdDevicesRoute) } }
             item { Link("Library health", "Missing artwork and details, duplicates, missing episodes, what this phone always converts") { actions.nav.navigate(LibraryHealthRoute) } }
+            if (companion?.features?.contains(dev.nitrate.core.admin.ImageGuide.FEATURE) == true) item {
+                Link("Library images overview", "Every title's pictures: how many of each kind, the space they take, and which are missing, small or the wrong shape") { actions.nav.navigate(ImagesOverviewRoute) }
+            }
             item { Link("Manage server", "Libraries, tasks, activity, devices and users") { actions.nav.navigate(ServerAdminRoute) } }
         }
 
@@ -217,6 +220,7 @@ internal fun openPlace(actions: AppActions, place: dev.nitrate.core.settings.Set
         dev.nitrate.core.settings.SettingsPlace.QUERY_ANALYZER -> actions.nav.navigate(QueryAnalyzerRoute)
         dev.nitrate.core.settings.SettingsPlace.HOUSEHOLD -> actions.nav.navigate(HouseholdDevicesRoute)
         dev.nitrate.core.settings.SettingsPlace.HEALTH -> actions.nav.navigate(LibraryHealthRoute)
+        dev.nitrate.core.settings.SettingsPlace.IMAGES -> actions.nav.navigate(ImagesOverviewRoute)
         dev.nitrate.core.settings.SettingsPlace.MANAGE_SERVER -> actions.nav.navigate(ServerAdminRoute)
         dev.nitrate.core.settings.SettingsPlace.LICENCES -> actions.nav.navigate(LicensesRoute)
         // The phone's Display page holds what the TV splits into several.

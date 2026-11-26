@@ -512,6 +512,9 @@ interface MediaServer {
     /** Every household device's latest summary (admins). */
     suspend fun householdDevices(): List<dev.nitrate.core.playback.HouseholdDevice> = unsupported()
 
+    /** The Library images overview (Companion feature `imagesurvey`, admins): one library (or all) by core `admin/ImageGuide`. */
+    suspend fun imageOverview(ask: dev.nitrate.core.admin.ImageOverviewAsk): dev.nitrate.core.admin.ImageOverview = unsupported()
+
     /** Forgets one device's summary. */
     suspend fun forgetHouseholdDevice(userId: String, deviceId: String): Unit = unsupported()
 
