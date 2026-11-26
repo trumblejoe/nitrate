@@ -189,7 +189,12 @@ fun PlayerScreen(
     }
     // Negotiation, track mapping, reporting and transcode fallback live in the shared session.
     val session = remember(itemId) {
-        PlaybackSession(context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory, describedAudio = describedAudio)
+        PlaybackSession(
+            context, repository, playbackSettings, deviceNoun = "This TV", onEnded = { ended() }, trackMemory = trackMemory, describedAudio = describedAudio,
+            // A profile 7 file's kind remembered for How it plays; this playback's log kept on the TV.
+            onDvLayers = { id, layers -> watchGroups?.rememberDvLayers(id, layers) },
+            keepLog = { report -> if (testPlay == null) watchGroups?.keepPlaybackLog(report) },
+        )
             .also {
                 if (testPlay != null) Unit // loaded below, once the title's length is known
                 else if (clipEndMs != null) it.loadClip(itemId, startMs ?: 0, clipEndMs)

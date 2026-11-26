@@ -107,6 +107,8 @@ object PlaybackPredictor {
         audioIndex: Int? = null,
         subtitleIndex: Int? = null,
         display: DisplaySnapshot? = null,
+        /** A profile 7 file's kind, as found when it last played here (null: not played yet). */
+        dvLayers: DolbyVisionLayers? = null,
     ): PlaybackPrediction {
         val video = source.streams.firstOrNull { it.kind == StreamKind.VIDEO }
         val audio = audio(source, audioIndex)
@@ -125,7 +127,7 @@ object PlaybackPredictor {
             else -> tier(outCodec, if (converted) null else video, caps)
         }
 
-        val hdr = video?.let { hdrPath(it, verdict, caps, settings) }
+        val hdr = video?.let { hdrPath(it, verdict, caps, settings, dvLayers) }
 
         // Sound.
         val processing = listOfNotNull("dialogue boost".takeIf { settings.dialogueBoost }, "night mode".takeIf { settings.nightMode })
@@ -187,14 +189,15 @@ object PlaybackPredictor {
         }
     }
 
-    private fun hdrPath(v: MediaStream, verdict: DeliveryVerdict, caps: DeviceCapabilities, settings: PlaybackSettings): String? {
+    private fun hdrPath(v: MediaStream, verdict: DeliveryVerdict, caps: DeviceCapabilities, settings: PlaybackSettings, dvLayers: DolbyVisionLayers? = null): String? {
         val range = v.rangeType ?: return null
         if (range == "SDR" || range == "Unknown") return null
         if (tonemapped(verdict)) return "Tone-mapped to SDR by the server (see why above)"
         val allowed = CapabilityRules.allowedRangeTypes(caps, settings).toSet()
         val dv = CapabilityRules.hdrFormats(caps, settings).any { it.id == PlaybackSettings.hdrId("DOVI") && it.allowed }
         return when {
-            range.startsWith("DOVIWithEL") || v.dvProfile == 7 -> "Dolby Vision profile 7 " + CapabilityRules.profile7(caps, settings).label
+            range.startsWith("DOVIWithEL") || v.dvProfile == 7 ->
+                "Dolby Vision profile 7 (" + (dvLayers?.short ?: "MEL or FEL: known once played") + ") " + CapabilityRules.profile7(caps, settings).label
             range.startsWith("DOVI") && dv -> "Dolby Vision" + (v.dvProfile?.let { " (profile $it)" } ?: "") +
                 (if ("DOVI" !in caps.hdr) " as it is from the server. " + VideoPath.hdrUnreported(
                     caps.hdr, settings.deviceCheck?.seen?.let(TvCheck::showedHdr) == true, caps.model.startsWith("Amazon", ignoreCase = true)) else "")

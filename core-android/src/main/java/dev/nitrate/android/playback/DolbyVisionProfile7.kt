@@ -41,6 +41,8 @@ class DolbyVisionProfile7(
     private val toProfile81: (ByteArray) -> ByteArray? = dev.nitrate.dovi.RpuConverter::toProfile81,
     /** Told how many frames' metadata couldn't be rewritten, now and then. */
     private val onFailures: (Int) -> Unit = {},
+    /** Told once per file which kind of profile 7 it is (MEL or FEL), from its first frames' enhancement layer. */
+    private val onLayers: (dev.nitrate.core.playback.DolbyVisionLayers) -> Unit = {},
 ) : ExtractorsFactory {
 
     override fun createExtractors(): Array<Extractor> = inner.createExtractors().map(::Wrapped).toTypedArray()
@@ -90,6 +92,10 @@ class DolbyVisionProfile7(
         private var pending = ByteArray(256 * 1024)
         private var pendingSize = 0
         private var failures = 0
+        // The enhancement layer's size over the first frames that have one (MEL or FEL), said once.
+        private var layerFrames = 0
+        private var layerBytes = 0L
+        private var layersSaid = false
 
         override fun format(format: Format) {
             val profile7 = isProfile7(format)
@@ -133,7 +139,16 @@ class DolbyVisionProfile7(
             val frame = pending.copyOfRange(start, end)
             // Encrypted or carrying extra data: sent on as it is.
             val out = if (cryptoData != null || flags and C.BUFFER_FLAG_HAS_SUPPLEMENTAL_DATA != 0) frame else {
-                rewriteFrame(frame, toProfile81) { failures++ }
+                rewriteFrame(frame, toProfile81, onFailure = { failures++ }, onEnhancementLayer = { bytes ->
+                    if (!layersSaid) {
+                        layerFrames++
+                        layerBytes += bytes
+                        if (layerFrames >= dev.nitrate.core.playback.DolbyVisionLayers.FRAMES) {
+                            layersSaid = true
+                            onLayers(dev.nitrate.core.playback.DolbyVisionLayers.of(layerBytes / layerFrames))
+                        }
+                    }
+                })
             }
             track.sampleData(ParsableByteArray(out), out.size, TrackOutput.SAMPLE_DATA_PART_MAIN)
             track.sampleMetadata(timeUs, flags, out.size, 0, cryptoData)
@@ -177,13 +192,20 @@ class DolbyVisionProfile7(
          * its RPU rewritten by [convert]. An RPU that can't be rewritten is dropped too (that frame
          * then shows as HDR10). A frame that isn't Annex B is left as it is.
          */
-        fun rewriteFrame(frame: ByteArray, convert: (ByteArray) -> ByteArray?, onFailure: () -> Unit = {}): ByteArray {
+        fun rewriteFrame(
+            frame: ByteArray,
+            convert: (ByteArray) -> ByteArray?,
+            /** The frame's enhancement-layer bytes (told only when it has some). */
+            onEnhancementLayer: (Int) -> Unit = {},
+            onFailure: () -> Unit = {},
+        ): ByteArray {
             val units = nalUnits(frame) ?: return frame
             val out = java.io.ByteArrayOutputStream(frame.size)
+            var layer = 0
             for ((from, to) in units) {
                 if (to - from < 2) continue
                 when ((frame[from].toInt() shr 1) and 0x3F) {
-                    NAL_ENHANCEMENT_LAYER -> continue
+                    NAL_ENHANCEMENT_LAYER -> { layer += to - from; continue }
                     NAL_RPU -> {
                         val converted = convert(frame.copyOfRange(from, to))
                         if (converted == null) { onFailure(); continue }
@@ -193,6 +215,7 @@ class DolbyVisionProfile7(
                     else -> { out.write(START_CODE); out.write(frame, from, to - from) }
                 }
             }
+            if (layer > 0) onEnhancementLayer(layer)
             return out.toByteArray()
         }
 

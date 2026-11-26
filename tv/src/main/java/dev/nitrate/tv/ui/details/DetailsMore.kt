@@ -182,5 +182,6 @@ internal fun CheckPlaybackDialog(
         onFix = { fix -> scope.launch { apply(item, fix); round++ } },
         onDismiss = onDismiss,
         canApply = { it is dev.nitrate.core.playback.PlaybackFix.Change || it is dev.nitrate.core.playback.PlaybackFix.UseVersion },
+        sendLog = dev.nitrate.tv.ui.pages.LocalTvContainer.current?.takeIf { it.lastPlaybackLog(item.id) != null }?.let { c -> { c.sendLastPlaybackLog(item.id) } },
     )
 }

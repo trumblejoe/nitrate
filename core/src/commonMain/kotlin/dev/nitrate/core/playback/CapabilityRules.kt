@@ -131,6 +131,29 @@ object CapabilityRules {
     }
 }
 
+/**
+ * Which kind of dual-layer Dolby Vision (profile 7) a file is, by how much its enhancement layer
+ * carries: MEL (minimal: next to nothing, as most streaming-style encodes) or FEL (full: a second
+ * picture layer, as many disc copies). Found while playing (its size per frame), then remembered
+ * for the file on this device.
+ */
+enum class DolbyVisionLayers(val short: String, val label: String) {
+    MEL("MEL", "MEL (a minimal enhancement layer)"),
+    FEL("FEL", "FEL (a full enhancement layer)");
+
+    companion object {
+        /** Above this many enhancement-layer bytes a frame on average, it's a full layer. */
+        const val FEL_BYTES_PER_FRAME = 3_000
+
+        /** Frames looked at before saying. */
+        const val FRAMES = 48
+
+        fun of(averageBytesPerFrame: Long): DolbyVisionLayers = if (averageBytesPerFrame > FEL_BYTES_PER_FRAME) FEL else MEL
+
+        fun parse(name: String?): DolbyVisionLayers? = entries.firstOrNull { it.name == name }
+    }
+}
+
 /** How dual-layer Dolby Vision (profile 7) is played: see [CapabilityRules.profile7]. */
 enum class Profile7Playback(val label: String) {
     DOLBY_VISION("as Dolby Vision (profile 7)"),

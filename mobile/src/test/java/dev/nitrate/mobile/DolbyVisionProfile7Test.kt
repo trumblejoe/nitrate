@@ -67,6 +67,21 @@ class DolbyVisionProfile7Test {
     }
 
     @Test
+    fun `the enhancement layer's size per frame tells MEL from FEL`() {
+        var told = 0
+        DolbyVisionProfile7.rewriteFrame(frame, fakeConvert, onEnhancementLayer = { told = it })
+        assertEquals(el.size, told)
+        // A frame without one says nothing.
+        var asked = false
+        DolbyVisionProfile7.rewriteFrame(byteArrayOf(0, 0, 0, 1) + slice + byteArrayOf(0, 0, 0, 1) + rpu, fakeConvert, onEnhancementLayer = { asked = true })
+        assertEquals(false, asked)
+        val g = dev.nitrate.core.playback.DolbyVisionLayers.Companion
+        assertEquals(dev.nitrate.core.playback.DolbyVisionLayers.MEL, g.of(40))
+        assertEquals(dev.nitrate.core.playback.DolbyVisionLayers.FEL, g.of(60_000))
+        assertEquals(dev.nitrate.core.playback.DolbyVisionLayers.FEL, g.parse("FEL"))
+    }
+
+    @Test
     fun `a frame loses its enhancement layer and gets its RPU rewritten`() {
         val out = DolbyVisionProfile7.rewriteFrame(frame, fakeConvert)
         val expected = byteArrayOf(0, 0, 0, 1) + slice + byteArrayOf(0, 0, 0, 1) + rpu + byteArrayOf(0x81.toByte())

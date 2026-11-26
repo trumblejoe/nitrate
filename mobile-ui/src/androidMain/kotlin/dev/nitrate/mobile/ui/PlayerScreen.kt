@@ -153,6 +153,9 @@ actual fun PlayerScreen(
         PlaybackSession(
             context, actions.server, actions.container.playbackSettings, deviceNoun = "This device", onEnded = { ended() },
             trackMemory = actions.container.trackMemory, describedAudio = actions.container::prefersDescribedAudio,
+            // A profile 7 file's kind remembered for How it plays; this playback's log kept on the phone.
+            onDvLayers = actions.container::rememberDvLayers,
+            keepLog = { report -> if (testPlay == null) actions.container.keepPlaybackLog(report) },
         )
             .also {
                 if (testPlay != null) Unit // loaded below, once the title's length is known

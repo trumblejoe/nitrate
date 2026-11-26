@@ -654,6 +654,41 @@ class AppContainer(
         if (groupSessions.current.value?.itemId == item.id) groupSessions.leave()
     }
 
+    /** A profile 7 file's kind (MEL or FEL) as found when it played on this device (kept on the device). */
+    fun dvLayersOf(itemId: String?): dev.nitrate.core.playback.DolbyVisionLayers? =
+        itemId?.let { id -> runCatching { platform.libraryKeyValues.get("dv.layers.$id") }.getOrNull() }?.let(dev.nitrate.core.playback.DolbyVisionLayers::parse)
+
+    /** Remembers what [dvLayersOf] says for [itemId] (told by the player once it has seen enough frames). */
+    fun rememberDvLayers(itemId: String, layers: dev.nitrate.core.playback.DolbyVisionLayers) {
+        runCatching { platform.libraryKeyValues.put("dv.layers.$itemId", layers.name) }
+    }
+
+    /**
+     * The last playback's log (the device, the server's decision, the player's events, kept as it
+     * plays and when it closes), so a playback that went wrong can be reported after leaving it.
+     * Kept on the device only; sent only when asked ([sendLastPlaybackLog]).
+     */
+    fun keepPlaybackLog(player: PlayerReport) {
+        val itemId = player.item?.id ?: return
+        networkScope.launch {
+            runCatching {
+                val text = playbackReport(player)
+                dev.nitrate.android.files.File("${platform.filesDir}/$LAST_PLAYBACK_FILE").writeText("$itemId\n$text")
+            }
+        }
+    }
+
+    /** The last playback's log when it was of [itemId] (else null). */
+    fun lastPlaybackLog(itemId: String): String? = runCatching {
+        val text = dev.nitrate.android.files.File("${platform.filesDir}/$LAST_PLAYBACK_FILE").takeIf { it.exists() }?.readText() ?: return null
+        text.substringAfter('\n').takeIf { text.substringBefore('\n') == itemId }
+    }.getOrNull()
+
+    /** Saves [lastPlaybackLog] of [itemId] in the server's logs (Jellyfin Dashboard → Logs): the file's name. */
+    suspend fun sendLastPlaybackLog(itemId: String): Result<String> = runCatching {
+        server.sendClientLog("The last playback's log\n\n" + (lastPlaybackLog(itemId) ?: error("No log kept for this title")))
+    }
+
     /** What went wrong when the app last closed on an error (written on the device only, Android's `CrashNote`), if it did. */
     fun lastCrash(): String? = runCatching {
         dev.nitrate.android.files.File("${platform.filesDir}/last-crash.txt").takeIf { it.exists() }?.readText()
@@ -891,7 +926,7 @@ class AppContainer(
         val settings = playbackSettings.current()
         // The device's part (decoder, HDR, sound, refresh rate), for the file and tracks the server answered for.
         val prediction = runCatching {
-            dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, settings, plan.source, plan.audioIndex, plan.subtitleIndex, itemId, platform.displaySnapshot())
+            dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, settings, plan.source, plan.audioIndex, plan.subtitleIndex, itemId, platform.displaySnapshot(), dvLayersOf(itemId))
         }.getOrNull()
         return dev.nitrate.core.playback.PlaybackDoctor.diagnose(plan, capabilities, settings).copy(plan = plan, prediction = prediction)
     }
@@ -905,7 +940,7 @@ class AppContainer(
         val display = platform.displaySnapshot()
         val sources = server.playbackSources(libraryId, onProgress)
         val entries = dev.nitrate.core.playback.PlaybackOverview.build(sources) { item, source ->
-            dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, settings, source, itemId = item.id, display = display)
+            dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, settings, source, itemId = item.id, display = display, dvLayers = dvLayersOf(item.id))
         }
         val overview = dev.nitrate.core.playback.PlaybackOverview(
             entries = entries,
@@ -985,7 +1020,7 @@ class AppContainer(
 
     /** How [itemId] would play here, worked out on the device alone (no call to the server's playback decision). */
     suspend fun predictPlayback(itemId: String, source: dev.nitrate.core.model.MediaSource, audioIndex: Int? = null, subtitleIndex: Int? = null): dev.nitrate.core.playback.PlaybackPrediction =
-        dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, playbackSettings.current(), source, audioIndex, subtitleIndex, itemId, platform.displaySnapshot())
+        dev.nitrate.core.jellyfin.ProfileCheck.predict(capabilities, playbackSettings.current(), source, audioIndex, subtitleIndex, itemId, platform.displaySnapshot(), dvLayersOf(itemId))
 
     /** Applies a fix found by [checkPlayback] (settings and versions; tracks are chosen in the player). */
     suspend fun applyPlaybackFix(itemId: String, fix: dev.nitrate.core.playback.PlaybackFix) {
@@ -1288,3 +1323,6 @@ class AppContainer(
 
 /** How long a library scan's changes are let settle before pages reload (`AppContainer.serverChanges`). */
 private const val LIBRARY_SETTLE_MS = 1_700L
+
+/** The last playback's log on the device (`AppContainer.keepPlaybackLog`). */
+private const val LAST_PLAYBACK_FILE = "last-playback.txt"

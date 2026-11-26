@@ -171,7 +171,8 @@ object ProfileCheck {
         subtitleIndex: Int? = null,
         itemId: String? = null,
         display: dev.nitrate.core.playback.DisplaySnapshot? = null,
+        dvLayers: dev.nitrate.core.playback.DolbyVisionLayers? = null,
     ): dev.nitrate.core.playback.PlaybackPrediction = dev.nitrate.core.playback.PlaybackPredictor.predict(
-        source, verdict(caps, settings, source, audioIndex, subtitleIndex, itemId), caps, settings, audioIndex, subtitleIndex, display,
+        source, verdict(caps, settings, source, audioIndex, subtitleIndex, itemId), caps, settings, audioIndex, subtitleIndex, display, dvLayers,
     )
 }

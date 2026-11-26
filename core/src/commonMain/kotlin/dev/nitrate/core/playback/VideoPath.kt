@@ -20,6 +20,8 @@ data class VideoPath(
     /** The file's own range when it differs (e.g. Dolby Vision profile 7 sent on as 8.1 or HDR10). */
     val fileRange: String? = null,
     val profile7: Profile7Playback? = null,
+    /** A profile 7 file's kind (MEL or FEL), once found while playing. */
+    val dvLayers: DolbyVisionLayers? = null,
     val software: Boolean = false,
     val tunneled: Boolean = false,
     /** The display's current mode and the HDR kinds it takes ("HDR10", "HLG", "Dolby Vision", "HDR10+"). */
@@ -67,9 +69,11 @@ data class VideoPath(
         val range = inRange ?: return null
         if (range == "SDR" && fileRange == null) return null
         val from = fileRange?.takeIf { it != range }?.let { "$it → " }.orEmpty()
+        val kind = dvLayers?.let { "${it.short}, " }.orEmpty()
         val how = when (profile7) {
-            Profile7Playback.AS_PROFILE_8 -> " (converted to profile 8.1 here)"
-            Profile7Playback.BASE_LAYER -> " (its base layer)"
+            Profile7Playback.AS_PROFILE_8 -> " ($kind" + "converted to profile 8.1 here)"
+            Profile7Playback.BASE_LAYER -> " (${kind}its base layer)"
+            Profile7Playback.DOLBY_VISION -> dvLayers?.let { " (${it.short})" }.orEmpty()
             else -> ""
         }
         val shown = when {

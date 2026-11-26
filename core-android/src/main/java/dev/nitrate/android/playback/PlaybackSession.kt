@@ -1,5 +1,6 @@
 package dev.nitrate.android.playback
 
+import dev.nitrate.android.report
 import android.content.Context
 import android.net.Uri
 import java.io.File
@@ -78,6 +79,10 @@ class PlaybackSession(
     private val describedAudio: suspend () -> Boolean = { false },
     /** What this device reports it can play (probed once per app run). */
     private val capabilities: () -> dev.nitrate.core.playback.DeviceCapabilities = { DeviceProbe.cached(context) },
+    /** Remembers a profile 7 file's kind (MEL or FEL) once seen, for How it plays (`AppContainer.rememberDvLayers`). */
+    private val onDvLayers: (itemId: String, dev.nitrate.core.playback.DolbyVisionLayers) -> Unit = { _, _ -> },
+    /** Keeps this playback's log on the device as it plays and when it closes (`AppContainer.keepPlaybackLog`). */
+    private val keepLog: (dev.nitrate.android.PlayerReport) -> Unit = {},
 ) : dev.nitrate.android.remote.RemotePlayer {
     private val appContext = context.applicationContext
     private val nightMode = NightModeAudioProcessor()
@@ -195,6 +200,21 @@ class PlaybackSession(
     }
     @Volatile private var networkBps: Long? = null
 
+    /** The profile 7 file's kind, once its first frames have been seen (cleared for each title). */
+    @Volatile private var dvLayers: dev.nitrate.core.playback.DolbyVisionLayers? = null
+
+    // This playback's log kept on the device every few seconds while it plays (off the main
+    // thread, so a playback whose screen stops answering is still on record) and when it closes.
+    private val logKeeper = appScope.launch {
+        var lastKept: String? = null
+        while (true) {
+            kotlinx.coroutines.delay(LOG_KEEP_MS)
+            val report = runCatching { report() }.getOrNull() ?: continue
+            val key = "${report.item?.id}|${report.events.size}|${report.error}"
+            if (report.item != null && key != lastKept) { lastKept = key; keepLog(report) }
+        }
+    }
+
     /**
      * The picture's path, refreshed every second while collected (the Info panel): what the decoder
      * gets, HDR and how it's shown, the display's mode, smoothness and how subtitles are drawn.
@@ -238,6 +258,7 @@ class PlaybackSession(
             inRange = shownRange,
             fileRange = fileRange?.takeIf { it != shownRange },
             profile7 = profile7.takeIf { type.startsWith("DOVIWithEL", ignoreCase = true) },
+            dvLayers = dvLayers.takeIf { type.startsWith("DOVIWithEL", ignoreCase = true) },
             software = _videoDecoder.value?.startsWith(dev.nitrate.core.playback.DeviceCapabilities.SOFTWARE_VIDEO_DECODER) == true,
             tunneled = runCatching { exo.isTunnelingEnabled }.getOrDefault(false),
             displayWidth = display?.width,
@@ -453,7 +474,15 @@ class PlaybackSession(
             // Dual-layer Dolby Vision (profile 7): as it is, rewritten as profile 8.1, or its HDR10
             // base layer, by what this device decodes.
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(context, DolbyVisionProfile7({ profile7 }, onFailures = { n -> log("Dolby Vision: $n frames' metadata couldn't be converted (shown as HDR10)") }))
+                DefaultMediaSourceFactory(context, DolbyVisionProfile7(
+                    { profile7 },
+                    onFailures = { n -> log("Dolby Vision: $n frames' metadata couldn't be converted (shown as HDR10)") },
+                    onLayers = { layers ->
+                        dvLayers = layers
+                        log("Dolby Vision profile 7: ${layers.label}")
+                        _item.value?.id?.let { onDvLayers(it, layers) }
+                    },
+                ))
                     .setDataSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, http)),
             )
             .build()
@@ -847,6 +876,7 @@ class PlaybackSession(
     }
 
     private fun load(itemId: String, fromStart: Boolean, startMs: Long?, nextPart: Boolean) {
+        dvLayers = null
         log("Load $itemId (fromStart=$fromStart, startMs=$startMs${if (nextPart) ", next part" else ""})")
         if (!nextPart) remainingParts = emptyList()
         pendingItem = itemId to (startMs ?: 0)
@@ -1664,6 +1694,8 @@ class PlaybackSession(
 
     /** Reports the stop to the server and frees the exo. Call once, when leaving playback. */
     fun release() {
+        logKeeper.cancel()
+        runCatching { report() }.getOrNull()?.takeIf { it.item != null }?.let(keepLog)
         val local = localProgress
         if (local != null) {
             val position = exo.currentPosition
@@ -1681,6 +1713,9 @@ class PlaybackSession(
     }
 
     private companion object {
+        /** How often this playback's log is kept on the device while it plays. */
+        const val LOG_KEEP_MS = 10_000L
+
         /** Second subtitle language per show (or film), for this app run. */
         private val secondMemory = java.util.concurrent.ConcurrentHashMap<String, Pair<String?, String?>>()
 

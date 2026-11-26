@@ -1,5 +1,8 @@
 package dev.nitrate.tv.ui.player
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,8 +39,12 @@ fun PlaybackFixDialog(
     onFix: (PlaybackFix) -> Unit,
     onDismiss: () -> Unit,
     canApply: (PlaybackFix) -> Boolean = { true },
+    /** Saves the last playback's log of this title in the server's logs (only when one is kept on the device). */
+    sendLog: (suspend () -> Result<String>)? = null,
 ) {
     val focus = remember { FocusRequester() }
+    val logScope = androidx.compose.runtime.rememberCoroutineScope()
+    var logMessage by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     // Focus starts on the first fix that can be applied here, else on Close.
     val firstFix = diagnosis?.findings?.flatMap { it.fixes }?.firstOrNull(canApply)
     dev.nitrate.tv.ui.lists.TvPanel(onDismiss, width = 680) {
@@ -93,6 +100,22 @@ fun PlaybackFixDialog(
                                     )
                                 }
                             }
+                        }
+                        if (sendLog != null) item {
+                            ListItem(
+                                selected = false,
+                                onClick = {
+                                    logMessage = "Sending…"
+                                    logScope.launch {
+                                        logMessage = sendLog().fold(
+                                            { name -> "Saved on your server as $name (Jellyfin Dashboard → Logs)" },
+                                            { e -> "Couldn't send it: ${e.message ?: e::class.simpleName}" },
+                                        )
+                                    }
+                                },
+                                headlineContent = { Text("Send the last try's log") },
+                                supportingContent = { Text(logMessage ?: "What happened when this last played here, saved in your server's logs for a bug report") },
+                            )
                         }
                         item {
                             ListItem(

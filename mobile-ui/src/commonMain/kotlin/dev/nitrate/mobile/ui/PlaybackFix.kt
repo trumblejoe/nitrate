@@ -40,7 +40,11 @@ fun PlaybackFixDialog(
     canApply: (PlaybackFix) -> Boolean = { true },
     /** Opens the extended media information, when there's a file to describe. */
     onMediaInfo: (() -> Unit)? = null,
+    /** Saves the last playback's log of this title in the server's logs (only when one is kept on the device). */
+    sendLog: (suspend () -> Result<String>)? = null,
 ) {
+    val logScope = rememberCoroutineScope()
+    var logMessage by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(diagnosis?.quality?.label ?: "How this plays") },
@@ -86,6 +90,21 @@ fun PlaybackFixDialog(
                             }
                         }
                     }
+                    if (sendLog != null) item {
+                        Column(Modifier.padding(top = 12.dp)) {
+                            OutlinedButton(onClick = {
+                                logMessage = "Sending…"
+                                logScope.launch {
+                                    logMessage = sendLog().fold(
+                                        { name -> "Saved on your server as $name (Jellyfin Dashboard → Logs)" },
+                                        { e -> "Couldn't send it: ${e.message ?: e::class.simpleName}" },
+                                    )
+                                }
+                            }) { Text("Send the last try's log") }
+                            Text(logMessage ?: "What happened when this last played here, saved in your server's logs for a bug report",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+                        }
+                    }
                 }
             }
         },
@@ -116,5 +135,6 @@ fun CheckPlaybackDialog(actions: AppActions, item: MediaItem, onDismiss: () -> U
         onDismiss = onDismiss,
         canApply = { it is PlaybackFix.Change || it is PlaybackFix.UseVersion },
         onMediaInfo = { info = true }.takeIf { plan != null },
+        sendLog = actions.container.takeIf { it.lastPlaybackLog(item.id) != null }?.let { c -> { c.sendLastPlaybackLog(item.id) } },
     )
 }
