@@ -270,7 +270,8 @@ fun PlayerScreen(
     LaunchedEffect(groupChat, item?.id) {
         val i = item ?: return@LaunchedEffect
         if (groupChat == null || clipEndMs != null || testPlay != null) return@LaunchedEffect
-        groupChat.start(i.id, player.currentPosition) { ids -> displayPrefs.groupChatOn(ids) }
+        // As picked on the details page it was played from, else as remembered for its groups.
+        groupChat.start(i.id, player.currentPosition, dev.nitrate.android.playback.ChatChoices.take(i.id)) { ids -> displayPrefs.groupChatOn(ids) }
     }
     DisposableEffect(groupChat) { onDispose { groupChat?.close() } }
     // Who it's watched with: the group button, for titles shared with a watch group and Group Watch Sessions.

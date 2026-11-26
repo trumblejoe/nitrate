@@ -142,6 +142,25 @@ class TimelineChatHistoriesTest {
         assertEquals(listOf("n1", "n2"), chat.history.value.map { it.id })
     }
 
+    @Test fun theDetailsPagesPickDecidesThisPlayback() = runTest(UnconfinedTestDispatcher()) {
+        val server = Server()
+        val chat = TimelineChat(server, backgroundScope, { "me" }, null, chatsOn = { true }) { 0 }
+        // Off, though the groups' remembered choice is on.
+        chat.start("ep1", 0, ChatPick.Off) { true }
+        advanceUntilIdle()
+        assertFalse(chat.on.value)
+        // An earlier chat: on, and it plays along once the chats are known.
+        chat.start("ep1", 0, ChatPick.Replay("tue")) { false }
+        advanceUntilIdle()
+        assertTrue(chat.on.value)
+        assertEquals("tue", chat.playing.value)
+        // A new chat: on, nothing earlier.
+        chat.start("ep1", 0, ChatPick.New) { false }
+        advanceUntilIdle()
+        assertTrue(chat.on.value)
+        assertNull(chat.playing.value)
+    }
+
     @Test fun pickingAnEarlierChatPlaysItAlongAndANewMessageBuildsOnIt() = runTest(UnconfinedTestDispatcher()) {
         val server = Server()
         val chat = TimelineChat(server, backgroundScope, { "me" }, null, chatsOn = { true }) { 0 }

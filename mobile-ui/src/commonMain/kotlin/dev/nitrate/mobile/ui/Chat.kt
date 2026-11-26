@@ -69,7 +69,8 @@ fun rememberGroupChat(actions: AppActions, itemId: String?, enabled: Boolean, po
     val prefs by androidx.compose.runtime.rememberUpdatedState(LocalDisplayPrefs.current)
     LaunchedEffect(chat, itemId) {
         val id = itemId ?: return@LaunchedEffect
-        chat.start(id, positionMs()) { groups -> prefs.groupChatOn(groups) }
+        // As picked on the details page it was played from, else as remembered for its groups.
+        chat.start(id, positionMs(), dev.nitrate.android.playback.ChatChoices.take(id)) { groups -> prefs.groupChatOn(groups) }
         // Notes pop up as playback reaches them (never ahead).
         while (true) {
             delay(1_000)

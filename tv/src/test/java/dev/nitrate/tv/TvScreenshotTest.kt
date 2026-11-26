@@ -3043,6 +3043,34 @@ class TvScreenshotTest {
         compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/tv-details-more.png")
     }
 
+    /**
+     * A part shared with a watch group: "What it starts with" says Chat: Off; its Chat choice lists
+     * Off, New chat and the earlier chats to replay; picking one shows on the line, and Play hands it
+     * to that playback only.
+     */
+    @Test fun detailsChatChoice() {
+        var played = false
+        shoot("tv-details-chat-line", setup = { c ->
+            (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats")
+            c.refreshCompanionForTests()
+        }, act = {
+            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+            choose("Chat: Off")
+            chooseExact("Chat")
+            compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+            check(compose.onAllNodes(androidx.compose.ui.test.hasText("For this playback only.")).fetchSemanticsNodes().isNotEmpty()) { "for this playback only" }
+            check(compose.onAllNodes(androidx.compose.ui.test.hasText("14 messages")).fetchSemanticsNodes().isNotEmpty()) { "the earlier chats to replay" }
+            compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/tv-details-chat-choice.png")
+            chooseExact("14 messages")
+            check(compose.onAllNodes(androidx.compose.ui.test.hasText("Chat: Replay", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the line says what replays" }
+        }) { c ->
+            dev.nitrate.tv.ui.details.DetailsScreen(c.server, "s1e2", null, onPlay = { _, _ -> played = true }, onOpen = {}, chat = c.detailsChat(null))
+        }
+        check(dev.nitrate.android.playback.ChatChoices.chosen("s1e2") is dev.nitrate.core.companion.ChatPick.Replay)
+        dev.nitrate.android.playback.ChatChoices.arm("s1e2")
+        check(dev.nitrate.android.playback.ChatChoices.take("s1e2") is dev.nitrate.core.companion.ChatPick.Replay)
+    }
+
     @Test fun album() = shoot("tv-album") { c -> dev.nitrate.tv.ui.details.DetailsScreen(c.server, "al1", null, onPlay = { _, _ -> }, onOpen = {}) }
 
     @Test fun liveTv() = shoot("tv-live-tv") { c ->

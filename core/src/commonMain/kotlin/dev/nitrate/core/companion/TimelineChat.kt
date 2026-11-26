@@ -288,6 +288,9 @@ class TimelineChat(
     private var onFor: (List<String>) -> Boolean = { true }
     private var turned = false
 
+    /** The earlier chat picked on the details page, played once the title's chats are known. */
+    private var replay: String? = null
+
     /** What the on/off choice is remembered under: the title's watch groups (those in [focus]), else the live group. */
     val keys: List<String> get() = _groups.value.map { it.id }.filter { f -> focus?.let { f in it } ?: true }.ifEmpty { listOfNotNull(live?.groupId?.value) }
 
@@ -317,13 +320,16 @@ class TimelineChat(
 
     /**
      * A playback of [itemId] starts at [startMs]: one request for its notes. Group chat starts as
-     * [onFor] says for the groups (asked again once they're known, unless switched meanwhile).
+     * [onFor] says for the groups (asked again once they're known, unless switched meanwhile), or
+     * as [pick] says (chosen on the details page for this playback: Off, a new chat, or an earlier
+     * one to replay, played once the title's chats are known).
      */
-    fun start(itemId: String, startMs: Long, onFor: (List<String>) -> Boolean) {
+    fun start(itemId: String, startMs: Long, pick: ChatPick? = null, onFor: (List<String>) -> Boolean) {
         this.itemId = itemId
         this.onFor = onFor
-        turned = false
-        val on = onFor(keys)
+        turned = pick != null
+        replay = (pick as? ChatPick.Replay)?.chatId
+        val on = if (pick != null) pick != ChatPick.Off else onFor(keys)
         clock.start(startMs, on)
         _on.value = on
         _showAll.value = false
@@ -527,6 +533,10 @@ class TimelineChat(
         }
         if (shared != null) applySession(shared) else offer()
         showNotes()
+        // The details page's pick (outside a session, where what plays along is the session's).
+        val picked = replay
+        replay = null
+        if (picked != null && shared == null && session == null) scope.launch { play(picked) }
     }
 
     /** Playback is at [positionMs] (call about once a second): pops up what's been reached; reloads rarely. */

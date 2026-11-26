@@ -603,6 +603,23 @@ class ScreenshotTest {
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/phone-details-more.png")
     }
 
+    /** A part shared with a watch group: a Chat pill beside Audio and Subtitles (Off), opening Off, New chat and the earlier chats to replay. */
+    @Test fun detailsChatChoice() {
+        shoot("phone-details-chat-line", setup = { c ->
+            (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats")
+            c.refreshCompanionForTests()
+        }) { DetailsScreen(it, "s1e2", null) }
+        compose.onAllNodesWithText("Chat").onFirst().performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.onAllNodesWithText("14 messages").onFirst().assertExists()
+        compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/phone-details-chat-choice.png")
+        compose.onAllNodesWithText("14 messages").onFirst().performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithText("Replay", substring = true).onFirst().assertExists()
+        dev.nitrate.android.playback.ChatChoices.choose("s1e2", dev.nitrate.core.companion.ChatPick.Off)
+    }
+
     @Test fun search() = shoot("phone-search") { SearchScreen(it, initialQuery = "re", autoFocus = false) }
 
     @Test

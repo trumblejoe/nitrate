@@ -600,6 +600,24 @@ class AppContainer(
      * group's card for a part of its titles, like playing the card itself; null (elsewhere) for
      * anything else, or when the page was opened any other way ([groupId] null).
      */
+    /**
+     * The details page's Chat choice ([groupId]: the watch group the page was entered from, whose
+     * chats it offers; null: every chat of the user's on the title): offered where the title is in
+     * one of the user's watch groups and the Companion keeps group chat; earlier chats only with
+     * chat histories, one request when the choice is opened.
+     */
+    fun detailsChat(groupId: String?): dev.nitrate.android.playback.DetailsChat = dev.nitrate.android.playback.DetailsChat(
+        choosable = { item ->
+            companionState.value?.features?.contains("notes") == true &&
+                partners.value?.on(item.seriesId ?: item.id)?.isNotEmpty() == true
+        },
+        replayable = { item ->
+            if (companionState.value?.features?.contains("chats") != true) emptyList()
+            else runCatching { server.titleChats(item.id) }.getOrNull()?.chats.orEmpty()
+                .filter { groupId == null || it.groupId == null || it.groupId == groupId }
+        },
+    )
+
     fun detailsOrigin(groupId: String?, item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.partners.PlayOrigin? =
         dev.nitrate.core.partners.PlayOrigin.fromDetails(groupId, item, partners.value, groupStandings.value)
 

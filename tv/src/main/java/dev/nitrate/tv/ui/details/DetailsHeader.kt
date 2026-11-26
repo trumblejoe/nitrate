@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -99,6 +100,7 @@ internal fun Header(
     onPlayFrom: (MediaItem, Long) -> Unit = { i, _ -> onPlay(i, false) },
     /** The season this show's page was opened at (a season's page): the heading names it. */
     season: MediaItem? = null,
+    chat: dev.nitrate.android.playback.DetailsChat? = null,
 ) {
     // Music pages have more buttons in a row.
     val wideHeader = item.kind == ItemKind.MUSIC_ALBUM || item.kind == ItemKind.MUSIC_ARTIST
@@ -231,7 +233,7 @@ internal fun Header(
             val actionError = vm.state.collectAsState().value.actionError
             actionError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             // What Play starts with: sound, subtitles and which version, in one quiet line.
-            StartsWithLine(item, playTarget, trackSetup, pickTrack)
+            StartsWithLine(item, playTarget, trackSetup, pickTrack, chat)
             if (moreOpen) MorePanel(item, repository, playTarget, canCollect, onManage, onBrowse, checkPlayback, applyPlaybackFix, onPlayFrom, onPlay = { onPlay(it, false) }, onOpenShow = { id -> onOpen(MediaItem(id, "", ItemKind.SERIES)) }) { moreOpen = false }
         }
         val partners = dev.nitrate.tv.ui.partners.LocalPartnerProgress.current
@@ -261,8 +263,10 @@ internal fun WhereItBelongs(item: MediaItem, state: DetailsState, onOpen: (Media
 }
 
 /**
- * "Audio: English · 5.1  ·  Subtitles: Off  ·  Version: 4K": what Play starts with, as one quiet line.
- * OK opens the choices; a track picked is remembered for the show (or title), as in the player.
+ * "Audio: English · 5.1  ·  Subtitles: Off  ·  Version: 4K  ·  Chat: Off": what Play starts with, as
+ * one quiet line. OK opens the choices; a track picked is remembered for the show (or title), as in
+ * the player. Chat (a title in one of the user's watch groups): Off, New chat or an earlier chat to
+ * replay, for the playback Play starts from this page only (`ChatChoices`).
  */
 @Composable
 internal fun StartsWithLine(
@@ -270,17 +274,28 @@ internal fun StartsWithLine(
     playTarget: MediaItem?,
     trackSetup: (suspend (MediaItem) -> dev.nitrate.core.playback.TrackSetup)?,
     pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup,
+    chat: dev.nitrate.android.playback.DetailsChat? = null,
 ) {
     var setup by remember(playTarget?.id) { mutableStateOf<dev.nitrate.core.playback.TrackSetup?>(null) }
+    val chatFor = playTarget?.takeIf { it.isPlayable && chat?.choosable?.invoke(it) == true }
+    val picks by dev.nitrate.android.playback.ChatChoices.picks.collectAsState()
+    val chatPick = chatFor?.let { picks[it.id] } ?: dev.nitrate.core.companion.ChatPick.Off
+    // The earlier chats, asked for when the Chat choice first opens (and for an earlier chat's name).
+    var chats by remember(chatFor?.id) { mutableStateOf<List<dev.nitrate.core.companion.NoteChat>?>(null) }
+    val offsetAt = { ms: Long -> java.util.TimeZone.getDefault().getOffset(ms) / 60_000 }
+    val chatName = dev.nitrate.core.companion.ChatPick.label(chatPick, chats.orEmpty(), offsetAt)
     LaunchedEffect(playTarget?.id) {
         setup = playTarget?.takeIf { it.isPlayable && trackSetup != null }?.let { runCatching { trackSetup!!(it) }.getOrNull() }
     }
     var version by remember(item.id) { mutableStateOf(dev.nitrate.android.playback.VersionChoices[item.id]) }
     val versions = item.versions.size > 1
     val s = setup?.takeIf { it.hasChoices }
-    if (s == null && !versions) return
+    if (s == null && !versions && chatFor == null) return
     val versionName = item.versions.firstOrNull { it.id == version }?.name ?: "Auto"
-    val parts = listOfNotNull(s?.let { "Audio: ${it.audioName}" }, s?.let { "Subtitles: ${it.subtitleName}" }, if (versions) "Version: $versionName" else null)
+    val parts = listOfNotNull(
+        s?.let { "Audio: ${it.audioName}" }, s?.let { "Subtitles: ${it.subtitleName}" }, if (versions) "Version: $versionName" else null,
+        chatFor?.let { "Chat: $chatName" },
+    )
     var open by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -295,6 +310,8 @@ internal fun StartsWithLine(
             }
             if (versions) ListItem(selected = false, onClick = { open = false; picking = "version" }, headlineContent = { Text("Version") }, supportingContent = { Text(versionName) },
                 modifier = if (s == null) Modifier.focusRequester(first) else Modifier)
+            if (chatFor != null) ListItem(selected = false, onClick = { open = false; picking = "chat" }, headlineContent = { Text("Chat") }, supportingContent = { Text(chatName) },
+                modifier = if (s == null && !versions) Modifier.focusRequester(first) else Modifier)
         }
         LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     }
@@ -309,6 +326,40 @@ internal fun StartsWithLine(
                 onSelect = { index -> picking = null; scope.launch { setup = pickTrack(playTarget, s, kind, index) } },
                 onDismiss = { picking = null },
             )
+        }
+        "chat" -> if (chatFor != null) {
+            LaunchedEffect(chatFor.id) { if (chats == null) chats = chat?.replayable?.invoke(chatFor).orEmpty() }
+            val first = remember { FocusRequester() }
+            dev.nitrate.tv.ui.lists.TvDialog({ picking = null }) {
+                Text("Chat", style = MaterialTheme.typography.headlineSmall)
+                Text("For this playback only.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                fun pick(p: dev.nitrate.core.companion.ChatPick) { dev.nitrate.android.playback.ChatChoices.choose(chatFor.id, p); picking = null }
+                val off = dev.nitrate.core.companion.ChatPick.Off
+                val new = dev.nitrate.core.companion.ChatPick.New
+                ListItem(selected = chatPick == off, onClick = { pick(off) }, headlineContent = { Text("Off") }, supportingContent = { Text("Nothing pops up; turn it on in the player any time") },
+                    // Focus on what's picked (on Off while an earlier chat picked is still being looked for).
+                    modifier = if (chatPick == off || (chatPick is dev.nitrate.core.companion.ChatPick.Replay && chats?.none { it.id == chatPick.chatId } != false)) Modifier.focusRequester(first) else Modifier)
+                ListItem(selected = chatPick == new, onClick = { pick(new) }, headlineContent = { Text(dev.nitrate.core.companion.NoteChats.NEW_CHAT) }, supportingContent = { Text("Nothing earlier pops up") },
+                    modifier = if (chatPick == new) Modifier.focusRequester(first) else Modifier)
+                val earlier = chats
+                if (earlier == null) Text("Looking for earlier chats…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else if (earlier.isNotEmpty()) {
+                    Text("Replay an earlier chat: its messages pop up as you reach them.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                        items(earlier.size, key = { earlier[it].id }) { i ->
+                            val c = earlier[i]
+                            val p = dev.nitrate.core.companion.ChatPick.Replay(c.id)
+                            ListItem(
+                                selected = chatPick == p, onClick = { pick(p) },
+                                headlineContent = { Text(dev.nitrate.core.companion.NoteChats.title(c, earlier, offsetAt)) },
+                                supportingContent = { Text(dev.nitrate.core.companion.NoteChats.detail(c, earlier, offsetAt)) },
+                                modifier = if (chatPick == p) Modifier.focusRequester(first) else Modifier,
+                            )
+                        }
+                    }
+                }
+            }
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
         }
         "version" -> {
             val first = remember { FocusRequester() }

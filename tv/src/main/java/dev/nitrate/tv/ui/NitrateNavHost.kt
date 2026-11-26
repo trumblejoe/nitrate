@@ -313,6 +313,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 pickTrack = { item, setup, kind, index -> container.pickTrack(item, setup, kind, index) },
                 applyPlaybackFix = { item, fix -> container.applyPlaybackFix(item.id, fix) },
                 watchPartners = partnersOn,
+                chat = container.detailsChat(route.group),
             )
             }
         }

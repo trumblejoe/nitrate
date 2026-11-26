@@ -201,7 +201,7 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     if (!music) PlaySection(actions, item, playTarget)
                     if (item.versions.size > 1) VersionChooser(item)
                     // The tracks Play starts with, and a way to change them (a show's page: its next episode).
-                    if (!music) (if (item.isPlayable) item else playTarget)?.let { TrackLine(actions, it) }
+                    if (!music) (if (item.isPlayable) item else playTarget)?.let { TrackLine(actions, it, chat = actions.container.detailsChat(actions.groupOf(item))) }
                     // One short row: watched, favourite, the trailer, downloading, playing elsewhere; the rest under More.
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
@@ -489,8 +489,8 @@ private fun PlaySection(actions: AppActions, item: MediaItem, seriesTarget: Medi
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            PillButton(label, Icons.Default.PlayArrow, primary = true, onClick = { target?.let { actions.play(it, false) } }, modifier = Modifier.weight(1f))
-            if (resumeMs > 0 && target != null) PillButton("Restart", Icons.Default.Refresh, primary = false, onClick = { actions.play(target, true) })
+            PillButton(label, Icons.Default.PlayArrow, primary = true, onClick = { target?.let { actions.playFromDetails(it, false) } }, modifier = Modifier.weight(1f))
+            if (resumeMs > 0 && target != null) PillButton("Restart", Icons.Default.Refresh, primary = false, onClick = { actions.playFromDetails(target, true) })
         }
         val pct = target?.user?.playedPercentage?.toFloat()?.div(100f)
         if (pct != null && pct > 0f && !target.user.played) {
@@ -524,7 +524,7 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
     Column(
         Modifier.fillMaxWidth()
             .then(if (thisOne) Modifier.background(Color.White.copy(alpha = 0.06f)) else Modifier)
-            .pressable({ if (thisOne) { if (episode.isPlayable) actions.play(episode, false) } else actions.open(episode, "ep-${episode.id}") })
+            .pressable({ if (thisOne) { if (episode.isPlayable) actions.playFromDetails(episode, false) } else actions.open(episode, "ep-${episode.id}") })
             .padding(horizontal = ScreenPadding, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -538,7 +538,7 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 }
                 // Play straight from the list (not an episode the library doesn't have).
                 if (episode.isPlayable) Box(
-                    Modifier.align(Alignment.Center).size(36.dp).clip(CircleShape).background(Color(0x88000000)).pressable({ actions.play(episode, false) }),
+                    Modifier.align(Alignment.Center).size(36.dp).clip(CircleShape).background(Color(0x88000000)).pressable({ actions.playFromDetails(episode, false) }),
                     Alignment.Center,
                 ) { Icon(Icons.Default.PlayArrow, "Play", tint = Color.White) }
                 val pct = episode.user.playedPercentage?.toFloat()?.div(100f)
@@ -646,7 +646,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, canManage: Bo
     }
     when (open) {
         "plays" -> CheckPlaybackDialog(actions, item, onDismiss)
-        "moments" -> GroupNotesDialog(actions, item, { at -> actions.playFrom(item, at) }, onDismiss)
+        "moments" -> GroupNotesDialog(actions, item, { at -> dev.nitrate.android.playback.ChatChoices.arm(item.id); actions.playFrom(item, at) }, onDismiss)
         "chat" -> EarlierChatDialog(actions, item.id, onDismiss)
         "add" -> AddToListDialog(actions, item, onDismiss)
         "together" -> TogetherChoicesSheet(actions, item, onStart = {}, onDismiss = onDismiss)
@@ -668,4 +668,10 @@ private fun ShowCrumb(actions: AppActions, show: MediaItem) {
         maxLines = 1, overflow = TextOverflow.Ellipsis,
         modifier = Modifier.pressable({ actions.nav.navigate(DetailsRoute(show.id, group = actions.groupOf(show))) }).padding(vertical = 4.dp),
     )
+}
+
+/** Play from a details page: the page's chat pick (Off unless chosen) goes to that one playback. */
+private fun AppActions.playFromDetails(item: MediaItem, fromStart: Boolean) {
+    dev.nitrate.android.playback.ChatChoices.arm(item.id)
+    play(item, fromStart)
 }

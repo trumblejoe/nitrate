@@ -106,7 +106,12 @@ fun DetailsScreen(
     pickTrack: suspend (MediaItem, dev.nitrate.core.playback.TrackSetup, dev.nitrate.core.model.StreamKind, Int) -> dev.nitrate.core.playback.TrackSetup = { _, s, _, _ -> s },
     /** Plays from a point (a marked moment). */
     onPlayFrom: (MediaItem, Long) -> Unit = { i, _ -> onPlay(i, false) },
+    /** The Chat choice in "What it starts with" (null: none, as before the Companion). */
+    chat: dev.nitrate.android.playback.DetailsChat? = null,
 ) {
+    // Playing from here hands the page's chat pick (Off unless chosen) to that one playback.
+    @Suppress("NAME_SHADOWING") val onPlay: (MediaItem, Boolean) -> Unit = { i, fromStart -> dev.nitrate.android.playback.ChatChoices.arm(i.id); onPlay(i, fromStart) }
+    @Suppress("NAME_SHADOWING") val onPlayFrom: (MediaItem, Long) -> Unit = { i, at -> dev.nitrate.android.playback.ChatChoices.arm(i.id); onPlayFrom(i, at) }
     val dataCache = dev.nitrate.tv.ui.lists.rememberDataCache()
     // "More like this" off: the server isn't asked for similar titles at all.
     val similarOn = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.similar
@@ -151,7 +156,7 @@ fun DetailsScreen(
             verticalArrangement = Arrangement.spacedBy(32.dp),
         ) {
             item(key = "header") {
-                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack, onPlayFrom,
+                Header(item, repository, state, vm, playFocus, onPlay, onManage, canCollect, onPlayQueue, onOpen, onBrowse, checkPlayback, applyPlaybackFix, trackSetup, pickTrack, onPlayFrom, chat = chat,
                     season = if (seasonId != null && item.kind == ItemKind.SERIES) state.seasons.getOrNull(state.selectedSeason) else null)
             }
 
