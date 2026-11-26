@@ -576,9 +576,6 @@ actual fun PlayerScreen(
             onPictureInPicture = { dialog = PlayerDialog.NONE; pip.enterNow(aspect) },
             onPlayedElsewhere = { dialog = PlayerDialog.NONE; onExit() },
             onDismiss = { dialog = PlayerDialog.NONE },
-            groupChat = if (groupChat != null && chatAvailable) { {
-                GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.player.currentPosition) }, onShowMissed = { groupChat.showMissed(); dialog = PlayerDialog.NONE; chatOpen = true })
-            } } else null,
         )
         dialog == PlayerDialog.FIX -> {
             val diagnosis by androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackDiagnosis?>(null, p) {

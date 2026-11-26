@@ -183,13 +183,12 @@ class NoteClock(private val selfId: () -> String?) {
 }
 
 /**
- * Group chat for one playback. With chat histories (Companion `chats`) a playback starts on a
- * **New chat**: nothing earlier loads or pops up unasked (one request lists the title's chats and
- * the viewer's groups on it, nothing of what was said), the chat is made on the server only with
- * the first message written here, and [play] picks an earlier chat to play along (its notes, and
- * those of the chats it builds on, pop up as playback passes them; a chat written meanwhile links to
- * it, nothing is copied). In a Group Watch Session everyone shares one chat, and a chat picked by
- * anyone there plays for everyone. Without `chats` it is as before: the title's pinned notes
+ * Group chat for one playback. With threads (Companion `threads`) the playback is in the watch
+ * group's conversation on the title: one request gives the viewer's groups on the part, each
+ * group's threads and the current threads' messages, which pop up as playback reaches them (only
+ * the groups the playback counts for, [focus]); what's written goes into the group's current thread
+ * (the server picks it). [play] replays an older thread too (its messages pop up the same way); in a
+ * Group Watch Session a replay picked by anyone there plays for everyone. Without `threads` it is as before: the title's pinned notes
  * (loaded once as it starts, again only every [REFRESH_MS] or when the chat is opened after
  * [REOPEN_MS]) pop up as they're reached, and notes someone in the session brought in (older apps'
  * "Bring our earlier notes") too. Live messages from this device's Group Watch Session show at once.
@@ -204,10 +203,8 @@ class TimelineChat(
     private val liveNotes: () -> Boolean = { true },
     /** The title turned out to be shared with a watch group (once per playback): the app reloads its groups. */
     private val onShared: () -> Unit = {},
-    /** Whether the server keeps chat histories (`chats`). */
-    private val chatsOn: () -> Boolean = { false },
-    /** Whether chats can be made favourites (`chatfavourites`): the Chats list shows a heart beside each. */
-    private val favouritesOn: () -> Boolean = { false },
+    /** Whether the server keeps each group's conversation per title (`threads`). */
+    private val threadsOn: () -> Boolean = { false },
     private val nowMs: () -> Long,
 ) {
     private val clock = NoteClock(selfId)
@@ -220,7 +217,7 @@ class TimelineChat(
     private var brought: List<TimelineNote> = emptyList()
     private var sharedTold = false
     private var chatsMode = false
-    private var writing: String? = null
+    private var allThreads: List<ThreadGroup> = emptyList()
     private var along: List<TimelineNote> = emptyList()
     private var here: List<TimelineNote> = emptyList()
 
@@ -250,21 +247,17 @@ class TimelineChat(
     /** Who brought earlier notes into this watch party (user id; null: nobody), for the player's panel. */
     val broughtBy: StateFlow<String?> = _broughtBy
 
-    private val _allChats = MutableStateFlow<List<NoteChat>>(emptyList())
-    /** Every chat on the title the viewer may see (for labels: what a chat builds on). */
-    val allChats: StateFlow<List<NoteChat>> = _allChats
+    private val _threads = MutableStateFlow<List<ThreadGroup>>(emptyList())
+    /** The threads of the groups this playback counts for (each group's current one first), for the replay choice and the hearts. */
+    val threads: StateFlow<List<ThreadGroup>> = _threads
 
-    private val _chats = MutableStateFlow<List<NoteChat>>(emptyList())
-    /** The earlier chats to offer under "Chats" (for the groups this counts for), newest first. */
-    val chats: StateFlow<List<NoteChat>> = _chats
+    private val _hasThreads = MutableStateFlow(false)
+    /** The server keeps each group's conversation per title (`threads`). */
+    val hasThreads: StateFlow<Boolean> = _hasThreads
 
-    private val _hasChats = MutableStateFlow(false)
-    /** The server keeps chat histories: "Chats" can be offered. */
-    val hasChats: StateFlow<Boolean> = _hasChats
-
-    private val _playing = MutableStateFlow<String?>(null)
-    /** The earlier chat playing along (null: New chat). In a Group Watch Session, the one picked for everyone. */
-    val playing: StateFlow<String?> = _playing
+    private val _replaying = MutableStateFlow<String?>(null)
+    /** The older thread replayed too (null: none). In a Group Watch Session, the one picked for everyone. */
+    val replaying: StateFlow<String?> = _replaying
 
     private val _popups = MutableSharedFlow<TimelineNote>(extraBufferCapacity = 32)
     /** Notes to pop up over the video, as they're reached (or arrive live). */
@@ -288,7 +281,7 @@ class TimelineChat(
     private var onFor: (List<String>) -> Boolean = { true }
     private var turned = false
 
-    /** The earlier chat picked on the details page, played once the title's chats are known. */
+    /** The older thread picked on the details page, replayed once the part's threads are known. */
     private var replay: String? = null
 
     /** What the on/off choice is remembered under: the title's watch groups (those in [focus]), else the live group. */
@@ -310,7 +303,7 @@ class TimelineChat(
     }
 
     private fun offer() {
-        _chats.value = NoteChats.offered(_allChats.value, focus, writing)
+        _threads.value = allThreads.filter { g -> focus?.let { g.groupId in it } ?: true }
     }
 
     private fun inFocus(n: TimelineNote): Boolean {
@@ -321,14 +314,14 @@ class TimelineChat(
     /**
      * A playback of [itemId] starts at [startMs]: one request for its notes. Group chat starts as
      * [onFor] says for the groups (asked again once they're known, unless switched meanwhile), or
-     * as [pick] says (chosen on the details page for this playback: Off, a new chat, or an earlier
-     * one to replay, played once the title's chats are known).
+     * as [pick] says (chosen on the details page for this playback: Off, on, or an older thread to
+     * replay too, once the part's threads are known).
      */
     fun start(itemId: String, startMs: Long, pick: ChatPick? = null, onFor: (List<String>) -> Boolean) {
         this.itemId = itemId
         this.onFor = onFor
         turned = pick != null
-        replay = (pick as? ChatPick.Replay)?.chatId
+        replay = (pick as? ChatPick.Replay)?.threadId
         val on = if (pick != null) pick != ChatPick.Off else onFor(keys)
         clock.start(startMs, on)
         _on.value = on
@@ -337,14 +330,13 @@ class TimelineChat(
         pageNotes = emptyList()
         brought = emptyList()
         sharedTold = false
-        chatsMode = chatsOn()
-        _hasChats.value = false
-        writing = null
+        chatsMode = threadsOn()
+        _hasThreads.value = false
         along = emptyList()
         here = emptyList()
-        _playing.value = null
-        _allChats.value = emptyList()
-        _chats.value = emptyList()
+        _replaying.value = null
+        allThreads = emptyList()
+        _threads.value = emptyList()
         clock.setNotes(emptyList())
         _groups.value = emptyList()
         publish()
@@ -360,7 +352,7 @@ class TimelineChat(
                 }
             }
         }
-        // Someone brought (or stopped bringing) earlier notes into the session, or picked a chat to play along: ask again.
+        // Someone brought (or stopped bringing) earlier notes into the session, or picked a thread to replay: ask again.
         broughtJob = live?.let { chat ->
             scope.launch {
                 var seen: Long? = null
@@ -374,8 +366,8 @@ class TimelineChat(
 
     private fun showNotes() {
         if (chatsMode) {
-            // Only what was asked for: the chat playing along, and what's written here.
-            clock.setNotes(NoteChats.showing(along, here))
+            // The group's conversation (the groups this counts for) and the thread replayed too.
+            clock.setNotes(Threads.showing(along, here.filter(::inFocus)))
             publish()
             return
         }
@@ -384,7 +376,7 @@ class TimelineChat(
         publish()
     }
 
-    /** This device's Group Watch Session's chat on the title: what plays along for everyone, and the chat written there. */
+    /** This device's Group Watch Session's conversation on the title: the thread replayed for everyone, if any. */
     private fun loadSessionChat() {
         val id = itemId ?: return
         val session = sessionId ?: return
@@ -402,39 +394,43 @@ class TimelineChat(
     }
 
     private fun applySession(shared: SessionChat) {
-        writing = shared.chatId ?: writing
-        _playing.value = shared.along
+        _replaying.value = shared.along
         _broughtBy.value = shared.by
         along = shared.notes
-        offer()
         showNotes()
     }
 
     /**
-     * Plays an earlier chat along ([chatId]; null: New chat, nothing earlier): its notes, and those
-     * of the chats it builds on, pop up as continuous playback passes them and list up to the
-     * furthest point reached. In a Group Watch Session it plays for everyone there. A chat written
-     * here from now on links to it. Fails without chat histories, or outside the session.
+     * Replays an older thread too ([threadId]; null: just the group's conversation): its messages pop
+     * up as continuous playback passes them and list up to the furthest point reached; what's
+     * written still goes into the current thread. In a Group Watch Session it replays for everyone
+     * there. Fails without threads, or outside the session.
      */
-    suspend fun play(chatId: String?): Result<Unit> {
+    suspend fun play(threadId: String?): Result<Unit> {
         val id = itemId ?: return Result.failure(IllegalStateException("Nothing is playing"))
-        if (!chatsMode) return Result.failure(UnsupportedOperationException("This server keeps no chat histories"))
+        if (!chatsMode) return Result.failure(UnsupportedOperationException("This server keeps no conversations"))
         val session = sessionId
         if (session != null) {
-            return runCatching { server.playAlong(session, id, chatId) }.onSuccess { loadSessionChat() }
+            return runCatching { server.playAlong(session, id, threadId) }.onSuccess { loadSessionChat() }
         }
-        _playing.value = chatId
-        if (chatId == null) {
+        _replaying.value = threadId
+        if (threadId == null) {
             along = emptyList()
             showNotes()
             return Result.success(Unit)
         }
-        return runCatching { server.chatNotes(id, chatId) }.onSuccess { notes ->
-            if (itemId == id && _playing.value == chatId) {
+        return runCatching { server.threadNotes(id, threadId) }.onSuccess { notes ->
+            if (itemId == id && _replaying.value == threadId) {
                 along = notes
                 showNotes()
             }
         }.map { }
+    }
+
+    /** The group's creator starts a new thread for [groupId] on this title (a rewatch); the part's threads are read again. */
+    suspend fun startThread(groupId: String): Result<Unit> {
+        val id = itemId ?: return Result.failure(IllegalStateException("Nothing is playing"))
+        return runCatching { server.startThread(id, groupId) }.onSuccess { load() }
     }
 
     /** The notes brought into this device's live session on this title (none outside one). */
@@ -464,7 +460,7 @@ class TimelineChat(
         loadedAt = nowMs()
         loadJob?.cancel()
         if (chatsMode) {
-            loadJob = scope.launch { loadChats(id) }
+            loadJob = scope.launch { loadThreads(id) }
             return
         }
         loadJob = scope.launch {
@@ -493,10 +489,10 @@ class TimelineChat(
         }
     }
 
-    /** The title's chats (one request, nothing of what was said) and, in a session, its shared chat. */
-    private suspend fun loadChats(id: String) {
+    /** The part's threads and the current threads' messages (one request) and, in a session, what's replayed for everyone. */
+    private suspend fun loadThreads(id: String) {
         val page = try {
-            server.titleChats(id)
+            server.titleThreads(id)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -512,16 +508,18 @@ class TimelineChat(
         }
         if (itemId != id) return
         if (page == null) {
-            // A server that turned chat histories off (or couldn't answer): as before.
-            if (!_hasChats.value && !chatsOn()) {
+            // A server without threads (or couldn't answer): as before.
+            if (!_hasThreads.value && !threadsOn()) {
                 chatsMode = false
                 load()
             }
             return
         }
-        _hasChats.value = true
+        _hasThreads.value = true
         _groups.value = page.groups
-        _allChats.value = page.chats
+        allThreads = page.threads
+        // What was written here meanwhile stays until the page has it too.
+        here = page.notes + here.filter { mine -> page.notes.none { it.id == mine.id } && !mine.live }
         if (page.groups.isNotEmpty() && !sharedTold) {
             sharedTold = true
             onShared()
@@ -531,9 +529,9 @@ class TimelineChat(
             clock.initially(on)
             _on.value = on
         }
-        if (shared != null) applySession(shared) else offer()
-        showNotes()
-        // The details page's pick (outside a session, where what plays along is the session's).
+        offer()
+        if (shared != null) applySession(shared) else showNotes()
+        // The details page's pick (outside a session, where what's replayed is the session's).
         val picked = replay
         replay = null
         if (picked != null && shared == null && session == null) scope.launch { play(picked) }
@@ -546,24 +544,16 @@ class TimelineChat(
         if (nowMs() - loadedAt >= REFRESH_MS) load()
     }
 
-    /** Whether the Chats list shows a heart beside each earlier chat (the server keeps favourites). */
-    val canFavourite: Boolean get() = favouritesOn()
-
     /**
-     * Makes an earlier chat one of the viewer's favourites, or not (the server never deletes a
-     * favourite by its time rules): shown at once, put back if the server says no.
+     * Makes one of the groups' threads a favourite of the viewer's, or not (the server never deletes a
+     * favourite by its time rules): changed only once the server says so.
      */
-    suspend fun favourite(chatId: String, favourite: Boolean): Result<Unit> {
+    suspend fun favourite(threadId: String, favourite: Boolean): Result<Unit> {
         val id = itemId ?: return Result.failure(IllegalStateException("Nothing is playing"))
-        fun mark(on: Boolean) {
-            _allChats.value = _allChats.value.map { if (it.id == chatId) it.copy(favourite = on) else it }
+        return runCatching { server.favouriteThread(id, threadId, favourite) }.onSuccess {
+            if (itemId != id) return@onSuccess
+            allThreads = allThreads.map { g -> g.copy(threads = g.threads.map { if (it.id == threadId) it.copy(favourite = favourite) else it }) }
             offer()
-        }
-        val before = _allChats.value.firstOrNull { it.id == chatId }?.favourite ?: return Result.failure(NoSuchElementException("No such chat"))
-        mark(favourite)
-        return runCatching { server.favouriteChat(id, chatId, favourite) }.onFailure { e ->
-            if (e is CancellationException) throw e
-            if (itemId == id) mark(before)
         }
     }
 
@@ -627,7 +617,7 @@ class TimelineChat(
         return Result.success(note)
     }
 
-    /** Written into this playback's chat (made on the server with its first message), linking to the chat playing along. */
+    /** Written into the group's current thread (the server picks it): for the groups this counts for, or in the live session. */
     private suspend fun sendToChat(id: String, text: String, kind: ChatKind, positionMs: Long, session: String?): Result<TimelineNote> {
         val to = focus
         if (session == null && (_groups.value.isEmpty() || to != null && _groups.value.none { it.id in to })) {
@@ -639,9 +629,8 @@ class TimelineChat(
             )
         }
         return runCatching {
-            server.pinChatNote(id, positionMs, kind, text, session, to.takeIf { session == null }, ChatWrite(writing, _playing.value.takeIf { session == null }))
+            server.pinNote(id, positionMs, kind, text, session, to.takeIf { session == null })
         }.onSuccess { note ->
-            note.chatId?.let { if (writing != it) { writing = it; offer() } }
             here = here + note
             clock.own(note)
             showNotes()

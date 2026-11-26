@@ -18,8 +18,8 @@ import kotlinx.coroutines.launch
 /**
  * This playback's chat on the user's phones: their remote shows what it shows (told on each change,
  * and again every [RemotePrompt.REPEAT_MS]) and hands back what to do, which is done here, as this
- * TV: a message or reaction pinned at this player's position in its chat, Group chat on or off, an
- * earlier chat to play along. The phones never write to the server themselves.
+ * TV: a message or reaction pinned at this player's position in the group's conversation, Group
+ * chat on or off for this playback. The phones never write to the server themselves.
  */
 @Composable
 internal fun ChatOnPhones(
@@ -45,7 +45,6 @@ internal fun ChatOnPhones(
                     RemoteChatDo.Kind.TEXT -> d.text?.trim()?.takeIf { it.isNotEmpty() }?.let { chat.send(it.take(500), ChatKind.TEXT, position()) }
                     RemoteChatDo.Kind.REACTION -> d.text?.takeIf { it.isNotEmpty() }?.let { chat.send(it.take(16), ChatKind.REACTION, position()) }
                     RemoteChatDo.Kind.TURN -> d.on?.let(turn)
-                    RemoteChatDo.Kind.PLAY -> chat.play(d.chatId)
                 }
             }
         }
@@ -54,8 +53,8 @@ internal fun ChatOnPhones(
         while (true) {
             val now = System.currentTimeMillis()
             val state = RemoteChatState.of(
-                deviceId, itemId, chat.on.value, currentWho, chat.hasChats.value, chat.playing.value,
-                chat.chats.value, chat.allChats.value, chat.history.value, currentPicks.emojis, currentPicks.lines, offsetAt,
+                deviceId, itemId, chat.on.value, currentWho, chat.replaying.value, chat.threads.value,
+                chat.history.value, currentPicks.emojis, currentPicks.lines, offsetAt,
             )
             // Told at once when something changed (a phone's own message comes back this way), else now and then.
             if (state != last || now - lastAt >= RemotePrompt.REPEAT_MS) {

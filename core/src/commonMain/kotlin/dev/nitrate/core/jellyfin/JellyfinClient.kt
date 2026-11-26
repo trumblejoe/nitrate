@@ -965,43 +965,59 @@ class JellyfinClient(
         }
     }
 
-    override suspend fun titleChats(itemId: String): dev.nitrate.core.companion.TitleChats? =
-        if (!companionHas("chats")) null
-        else get("Nitrate", "Chats", query = mapOf("itemId" to dashless(listOf(itemId)))).decode<ChatsPageDto>().let { page ->
-            dev.nitrate.core.companion.TitleChats(
+    override suspend fun titleThreads(itemId: String): dev.nitrate.core.companion.TitleThreads? =
+        if (!companionHas("threads")) null
+        else get("Nitrate", "Threads", query = mapOf("itemId" to dashless(listOf(itemId)))).decode<ThreadsPageDto>().let { page ->
+            dev.nitrate.core.companion.TitleThreads(
                 page.groups.map { dev.nitrate.core.companion.NoteGroup(normalizeId(it.id), it.title) },
-                page.chats.map {
-                    dev.nitrate.core.companion.NoteChat(
-                        normalizeId(it.id), it.groupId?.let(::normalizeId), it.created, it.buildsOn?.let(::normalizeId), it.sessionId?.let(::normalizeId),
-                        it.people, it.count, it.earlier, it.favourite,
+                page.threads.map { g ->
+                    dev.nitrate.core.companion.ThreadGroup(
+                        normalizeId(g.groupId), g.title, normalizeId(g.titleId), g.canStart,
+                        g.threads.map { dev.nitrate.core.companion.ChatThread(normalizeId(it.id), it.started, it.count, it.current, it.favourite) },
                     )
                 },
+                page.notes.map { it.toNote() },
             )
         }
 
-    override suspend fun chatNotes(itemId: String, chatId: String): List<dev.nitrate.core.companion.TimelineNote> =
-        if (!companionHas("chats")) emptyList()
+    override suspend fun threadNotes(itemId: String, threadId: String): List<dev.nitrate.core.companion.TimelineNote> =
+        if (!companionHas("threads")) emptyList()
         else try {
-            get("Nitrate", "Chats", dashless(listOf(chatId)), query = mapOf("itemId" to dashless(listOf(itemId)))).decode<ChatNotesDto>().notes.map { it.toNote() }
+            get("Nitrate", "Threads", dashless(listOf(threadId)), "Notes", query = mapOf("itemId" to dashless(listOf(itemId)))).decode<List<NoteDto>>().map { it.toNote() }
         } catch (e: io.ktor.client.plugins.ClientRequestException) {
             if (e.response.status == HttpStatusCode.NotFound || e.response.status == HttpStatusCode.Forbidden) emptyList() else throw e
         }
 
-    override suspend fun pinChatNote(
-        itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?, groupIds: List<String>?,
-        chat: dev.nitrate.core.companion.ChatWrite,
-    ): dev.nitrate.core.companion.TimelineNote =
-        if (!companionHas("chats")) pinNote(itemId, positionMs, kind, text, sessionId, groupIds)
-        else companionApi.pinNote(
-            NotePostDto(
-                dashless(listOf(itemId)), positionMs, text, if (kind == dev.nitrate.core.companion.ChatKind.REACTION) "Reaction" else "Text", sessionId,
-                groupIds = groupIds?.map { dashless(listOf(it)) },
-                chats = true, chatId = chat.chatId?.let { dashless(listOf(it)) }, buildsOn = chat.buildsOn?.let { dashless(listOf(it)) },
-            ),
-        ).toNote()
+    override suspend fun startThread(itemId: String, groupId: String) {
+        if (!companionHas("threads")) throw UnsupportedOperationException("Not supported by this server")
+        try {
+            http.post(url("Nitrate", "Threads", "New")) {
+                auth()
+                contentType(ContentType.Application.Json)
+                setBody(ThreadPostDto(dashless(listOf(itemId)), dashless(listOf(groupId))))
+            }
+        } catch (e: io.ktor.client.plugins.ClientRequestException) {
+            if (e.response.status == HttpStatusCode.Forbidden || e.response.status == HttpStatusCode.NotFound) throw dev.nitrate.core.companion.ChatForbidden()
+            throw e
+        }
+    }
+
+    override suspend fun favouriteThread(itemId: String, threadId: String, favourite: Boolean) {
+        if (!companionHas("threads")) throw UnsupportedOperationException("Not supported by this server")
+        try {
+            http.put(url("Nitrate", "Threads", dashless(listOf(threadId)), "Favourite")) {
+                auth()
+                contentType(ContentType.Application.Json)
+                setBody(FavouritePostDto(dashless(listOf(itemId)), favourite))
+            }
+        } catch (e: io.ktor.client.plugins.ClientRequestException) {
+            if (e.response.status == HttpStatusCode.Forbidden || e.response.status == HttpStatusCode.NotFound) throw dev.nitrate.core.companion.ChatForbidden()
+            throw e
+        }
+    }
 
     override suspend fun playAlong(sessionId: String, itemId: String, chatId: String?) {
-        if (!companionHas("chats")) throw UnsupportedOperationException("Not supported by this server")
+        if (!companionHas("threads")) throw UnsupportedOperationException("Not supported by this server")
         try {
             http.put(url("Nitrate", "Chats", "Session", sessionId)) {
                 auth()
@@ -1014,22 +1030,8 @@ class JellyfinClient(
         }
     }
 
-    override suspend fun favouriteChat(itemId: String, chatId: String, favourite: Boolean) {
-        if (!companionHas("chatfavourites")) throw UnsupportedOperationException("Not supported by this server")
-        try {
-            http.put(url("Nitrate", "Chats", "Favourites", dashless(listOf(chatId)))) {
-                auth()
-                contentType(ContentType.Application.Json)
-                setBody(FavouritePostDto(dashless(listOf(itemId)), favourite))
-            }
-        } catch (e: io.ktor.client.plugins.ClientRequestException) {
-            if (e.response.status == HttpStatusCode.Forbidden || e.response.status == HttpStatusCode.NotFound) throw dev.nitrate.core.companion.ChatForbidden()
-            throw e
-        }
-    }
-
     override suspend fun sessionChat(sessionId: String, itemId: String): dev.nitrate.core.companion.SessionChat? =
-        if (!companionHas("chats")) null
+        if (!companionHas("threads")) null
         else runCatching {
             get("Nitrate", "Chats", "Session", sessionId, query = mapOf("itemId" to dashless(listOf(itemId)))).decode<SessionChatDto>().let { page ->
                 val by = page.by?.let(::normalizeId)

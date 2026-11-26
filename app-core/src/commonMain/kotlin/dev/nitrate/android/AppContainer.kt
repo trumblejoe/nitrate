@@ -243,8 +243,7 @@ class AppContainer(
         dev.nitrate.core.companion.TimelineChat(
             server, scope, { server.userId }, chat.takeIf { live },
             liveNotes = { companionState.value?.features?.contains("livenotes") != false },
-            chatsOn = { companionState.value?.features?.contains("chats") == true },
-            favouritesOn = { companionState.value?.features?.contains("chatfavourites") == true },
+            threadsOn = { companionState.value?.features?.contains("threads") == true },
             onShared = { networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Watch partners")) { refreshPartners() } },
         ) { nowMs() }
 
@@ -262,13 +261,6 @@ class AppContainer(
             chatShows[id] ?: runCatching { server.getItem(id) }.getOrNull()?.also { chatShows[id] = it }
         }
         return dev.nitrate.core.companion.QuickReplies.forTitle(item, show)
-    }
-
-    /** Group chat on or off for a title's watch groups: remembered per group, a display preference (per user). */
-    suspend fun setGroupChat(groupIds: List<String>, on: Boolean) {
-        val user = server.userId ?: return
-        if (groupIds.isEmpty()) return
-        displaySettings.savePrefs(user, displaySettings.prefs(user).first().withGroupChat(groupIds, on))
     }
 
     /** Chats in [groupId] without playing (null stops); this device's own group comes first. */
@@ -611,11 +603,14 @@ class AppContainer(
             companionState.value?.features?.contains("notes") == true &&
                 partners.value?.on(item.seriesId ?: item.id)?.isNotEmpty() == true
         },
-        replayable = { item ->
-            if (companionState.value?.features?.contains("chats") != true) emptyList()
-            else runCatching { server.titleChats(item.id) }.getOrNull()?.chats.orEmpty()
-                .filter { groupId == null || it.groupId == null || it.groupId == groupId }
+        threads = { item ->
+            if (companionState.value?.features?.contains("threads") != true) emptyList()
+            else runCatching { server.titleThreads(item.id) }.getOrNull()?.threads.orEmpty()
+                .filter { groupId == null || it.groupId == groupId }
         },
+        chatOn = { prefs -> prefs.groupChatOn() },
+        favourite = { item, threadId, on -> server.favouriteThread(item.id, threadId, on) },
+        startThread = { item, groupId -> server.startThread(item.id, groupId) },
     )
 
     fun detailsOrigin(groupId: String?, item: dev.nitrate.core.model.MediaItem): dev.nitrate.core.partners.PlayOrigin? =

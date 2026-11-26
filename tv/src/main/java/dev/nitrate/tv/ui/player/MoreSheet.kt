@@ -187,14 +187,6 @@ internal class PlayerChoices(
     val refreshNote: String? = null,
     /** Pages of their own (Speakers, Second subtitles, Find subtitles, Watch party): label → content. */
     val pages: List<Pair<String, @Composable (onBack: () -> Unit) -> Unit>> = emptyList(),
-    /** Group chat (the watch group's notes popping up as they're reached) on or off; null: no group to chat with here. */
-    val groupChat: Boolean? = null,
-    /** What it starts as (on; off in easy mode). */
-    val defaultGroupChat: Boolean = true,
-    val onGroupChat: (Boolean) -> Unit = {},
-    /** Others' notes passed before group chat was turned on in this playback, for "Show what I missed". */
-    val missedNotes: Int = 0,
-    val onShowMissed: () -> Unit = {},
 )
 
 internal val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
@@ -266,13 +258,6 @@ internal fun PlayerChoicesTab(choices: PlayerChoices) {
                 DefaultChip(m.label, selected = choices.sound == m, isDefault = m == choices.defaultSound) { choices.onSound(m) }
             }
             if (choices.sound != choices.defaultSound) MakeDefault(choices.onSoundAsDefault)
-        }
-        choices.groupChat?.let { on ->
-            Line("Group chat", if (on) "On" else "Off") {
-                DefaultChip("Off", selected = !on, isDefault = !choices.defaultGroupChat) { choices.onGroupChat(false) }
-                DefaultChip("On", selected = on, isDefault = choices.defaultGroupChat) { choices.onGroupChat(true) }
-                if (on && choices.missedNotes > 0) DefaultChip("Show what I missed (${choices.missedNotes})", selected = false, isDefault = false) { choices.onShowMissed() }
-            }
         }
         Line("Sleep timer", when { choices.sleepAtEnd -> "End of this"; choices.sleepAt != null -> "On"; else -> "Off" }) {
             DefaultChip("Off", selected = choices.sleepAt == null && !choices.sleepAtEnd, isDefault = true) { choices.onSleep(null, false) }
@@ -438,11 +423,6 @@ internal fun rememberPlayerChoices(
     onFrameRate: (dev.nitrate.core.playback.FrameRateMatch) -> Unit = {},
     /** The TV's refresh rate now (null: unknown). */
     displayHz: Float? = null,
-    /** This playback's group chat, when there's a group to chat with ([groupChatAvailable]). */
-    groupChat: dev.nitrate.core.companion.TimelineChat? = null,
-    groupChatAvailable: Boolean = false,
-    onGroupChat: (Boolean) -> Unit = {},
-    onShowMissed: () -> Unit = {},
 ): PlayerChoices {
     val scope = rememberCoroutineScope()
     val saved by settings.settings.collectAsState(dev.nitrate.core.playback.PlaybackSettings())
@@ -466,14 +446,7 @@ internal fun rememberPlayerChoices(
         })
         add("Find subtitles" to { back -> SubtitleSearch(repository, session, onDone = { lang -> session.reloadWithNewSubtitle(lang); onDone() }, onBack = back) })
     }
-    val chatOn = groupChat?.on?.collectAsState()?.value
-    val missed = groupChat?.missed?.collectAsState()?.value.orEmpty()
     return PlayerChoices(
-        groupChat = chatOn?.takeIf { groupChatAvailable },
-        defaultGroupChat = !dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.easyMode,
-        onGroupChat = onGroupChat,
-        missedNotes = missed.size,
-        onShowMissed = onShowMissed,
         speed = speed,
         onSpeed = session::setSpeed,
         sound = sound,

@@ -21,10 +21,16 @@ val ChatChoices = dev.nitrate.core.companion.ChatPicks()
 
 /**
  * A details page's Chat choice ("What it starts with"): whether it's offered for the part Play
- * starts ([choosable]: in one of the user's watch groups, with the Companion's group chat) and the
- * earlier chats to replay, asked for only when the choice is opened ([replayable], newest first).
+ * starts ([choosable]: in one of the user's watch groups, with the Companion's group chat), the
+ * groups' threads on it (older ones to replay, hearts, the creator's Start a new thread), asked for
+ * only when the choice is opened ([threads]), and what it starts on ([chatOn]: the user's setting).
  */
 class DetailsChat(
     val choosable: (dev.nitrate.core.model.MediaItem) -> Boolean,
-    val replayable: suspend (dev.nitrate.core.model.MediaItem) -> List<dev.nitrate.core.companion.NoteChat>,
+    val threads: suspend (dev.nitrate.core.model.MediaItem) -> List<dev.nitrate.core.companion.ThreadGroup>,
+    val chatOn: (dev.nitrate.core.pages.DisplayPrefs) -> Boolean,
+    /** Makes a thread a favourite of the user's, or not (never deleted by the server's time rules). */
+    val favourite: suspend (dev.nitrate.core.model.MediaItem, String, Boolean) -> Unit = { _, _, _ -> },
+    /** The group's creator starts a new thread on the title (a rewatch). */
+    val startThread: suspend (dev.nitrate.core.model.MediaItem, String) -> Unit = { _, _ -> },
 )

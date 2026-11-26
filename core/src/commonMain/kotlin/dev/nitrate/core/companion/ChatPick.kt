@@ -4,41 +4,46 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
-/** The chat chosen on a details page for the playback it starts: none, a new one, or an earlier one replayed. */
+/** The chat chosen on a details page for the playback it starts: off, on (the group's conversation), or on with an older thread replayed too. */
 sealed interface ChatPick {
     data object Off : ChatPick
-    data object New : ChatPick
-    data class Replay(val chatId: String) : ChatPick
+    data object On : ChatPick
+    data class Replay(val threadId: String) : ChatPick
 
     companion object {
-        /** "Off", "New chat", "Replay 2026/11/22 · Tommy, Suzy" (an earlier chat no longer listed: "Replay an earlier chat"). */
-        fun label(pick: ChatPick, all: List<NoteChat>, offsetAt: (Long) -> Int): String = when (pick) {
+        /** "Off", "On", "Replay 2026/10/02" (an older thread no longer listed: "Replay an earlier thread"). */
+        fun label(pick: ChatPick, groups: List<ThreadGroup>, offsetAt: (Long) -> Int): String = when (pick) {
             Off -> "Off"
-            New -> NoteChats.NEW_CHAT
-            is Replay -> all.firstOrNull { it.id == pick.chatId }?.let { "Replay " + NoteChats.title(it, all, offsetAt) } ?: "Replay an earlier chat"
+            On -> "On"
+            is Replay -> groups.flatMap { it.threads }.firstOrNull { it.id == pick.threadId }
+                ?.let { "Replay " + Threads.date(it.startedMs, offsetAt(it.startedMs)) } ?: "Replay an earlier thread"
         }
+
+        /** What a details page starts on: the user's own setting (Settings, Group chat). */
+        fun default(chatOn: Boolean): ChatPick = if (chatOn) On else Off
     }
 }
 
 /**
- * Details pages' chat picks, for one playback each: what a page shows ([chosen], Off until picked)
- * and, once its Play is pressed ([arm]), what the player takes as it starts ([take]); taken once, so
- * the next playback (Up Next, a card) goes by the remembered on/off again. Kept until the app closes.
+ * Details pages' chat picks, for one playback each: what a page shows ([chosen], the user's setting
+ * until picked) and, once its Play is pressed ([arm]), what the player takes as it starts ([take]);
+ * taken once, so the next playback (Up Next, a card) goes by the setting again. Kept until the app closes.
  */
 class ChatPicks {
     private val chosenState = MutableStateFlow(emptyMap<String, ChatPick>())
     private val pending = mutableMapOf<String, ChatPick>()
 
-    /** What each title's details page has picked (Off when not in it). */
+    /** What each title's details page has picked (the setting's when not in it). */
     val picks: StateFlow<Map<String, ChatPick>> = chosenState
 
-    fun chosen(itemId: String): ChatPick = chosenState.value[itemId] ?: ChatPick.Off
+    /** What [itemId]'s details page shows: what was picked, else [default] (the user's setting). */
+    fun chosen(itemId: String, default: ChatPick = ChatPick.On): ChatPick = chosenState.value[itemId] ?: default
 
     fun choose(itemId: String, pick: ChatPick) = chosenState.update { it + (itemId to pick) }
 
-    /** Play pressed on a details page: its pick (Off unless chosen) goes to the playback, and the page goes back to Off. */
+    /** Play pressed on a details page: its pick goes to the playback (nothing picked: the setting's, as any playback), and the page goes back to the setting. */
     fun arm(itemId: String) {
-        pending[itemId] = chosen(itemId)
+        chosenState.value[itemId]?.let { pending[itemId] = it } ?: pending.remove(itemId)
         chosenState.update { it - itemId }
     }
 

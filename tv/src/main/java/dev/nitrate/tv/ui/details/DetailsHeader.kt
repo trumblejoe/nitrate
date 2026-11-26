@@ -279,11 +279,13 @@ internal fun StartsWithLine(
     var setup by remember(playTarget?.id) { mutableStateOf<dev.nitrate.core.playback.TrackSetup?>(null) }
     val chatFor = playTarget?.takeIf { it.isPlayable && chat?.choosable?.invoke(it) == true }
     val picks by dev.nitrate.android.playback.ChatChoices.picks.collectAsState()
-    val chatPick = chatFor?.let { picks[it.id] } ?: dev.nitrate.core.companion.ChatPick.Off
-    // The earlier chats, asked for when the Chat choice first opens (and for an earlier chat's name).
-    var chats by remember(chatFor?.id) { mutableStateOf<List<dev.nitrate.core.companion.NoteChat>?>(null) }
+    // Until picked here, the user's own setting (Settings, Group chat).
+    val chatDefault = dev.nitrate.core.companion.ChatPick.default(chat?.chatOn?.invoke(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current) ?: true)
+    val chatPick = chatFor?.let { picks[it.id] } ?: chatDefault
+    // The groups' threads, asked for when the Chat choice first opens (and for an older thread's name).
+    var threads by remember(chatFor?.id) { mutableStateOf<List<dev.nitrate.core.companion.ThreadGroup>?>(null) }
     val offsetAt = { ms: Long -> java.util.TimeZone.getDefault().getOffset(ms) / 60_000 }
-    val chatName = dev.nitrate.core.companion.ChatPick.label(chatPick, chats.orEmpty(), offsetAt)
+    val chatName = dev.nitrate.core.companion.ChatPick.label(chatPick, threads.orEmpty(), offsetAt)
     LaunchedEffect(playTarget?.id) {
         setup = playTarget?.takeIf { it.isPlayable && trackSetup != null }?.let { runCatching { trackSetup!!(it) }.getOrNull() }
     }
@@ -327,39 +329,68 @@ internal fun StartsWithLine(
                 onDismiss = { picking = null },
             )
         }
-        "chat" -> if (chatFor != null) {
-            LaunchedEffect(chatFor.id) { if (chats == null) chats = chat?.replayable?.invoke(chatFor).orEmpty() }
+        "chat" -> if (chatFor != null && chat != null) {
+            var asking by remember { mutableStateOf<dev.nitrate.core.companion.ThreadGroup?>(null) }
+            suspend fun reload() { threads = chat.threads(chatFor) }
+            LaunchedEffect(chatFor.id) { if (threads == null) reload() }
             val first = remember { FocusRequester() }
             dev.nitrate.tv.ui.lists.TvDialog({ picking = null }) {
                 Text("Chat", style = MaterialTheme.typography.headlineSmall)
-                Text("For this playback only.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("For this playback only. Your setting: Settings, Group chat.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 fun pick(p: dev.nitrate.core.companion.ChatPick) { dev.nitrate.android.playback.ChatChoices.choose(chatFor.id, p); picking = null }
                 val off = dev.nitrate.core.companion.ChatPick.Off
-                val new = dev.nitrate.core.companion.ChatPick.New
-                ListItem(selected = chatPick == off, onClick = { pick(off) }, headlineContent = { Text("Off") }, supportingContent = { Text("Nothing pops up; turn it on in the player any time") },
-                    // Focus on what's picked (on Off while an earlier chat picked is still being looked for).
-                    modifier = if (chatPick == off || (chatPick is dev.nitrate.core.companion.ChatPick.Replay && chats?.none { it.id == chatPick.chatId } != false)) Modifier.focusRequester(first) else Modifier)
-                ListItem(selected = chatPick == new, onClick = { pick(new) }, headlineContent = { Text(dev.nitrate.core.companion.NoteChats.NEW_CHAT) }, supportingContent = { Text("Nothing earlier pops up") },
-                    modifier = if (chatPick == new) Modifier.focusRequester(first) else Modifier)
-                val earlier = chats
-                if (earlier == null) Text("Looking for earlier chats…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else if (earlier.isNotEmpty()) {
-                    Text("Replay an earlier chat: its messages pop up as you reach them.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                        items(earlier.size, key = { earlier[it].id }) { i ->
-                            val c = earlier[i]
-                            val p = dev.nitrate.core.companion.ChatPick.Replay(c.id)
-                            ListItem(
-                                selected = chatPick == p, onClick = { pick(p) },
-                                headlineContent = { Text(dev.nitrate.core.companion.NoteChats.title(c, earlier, offsetAt)) },
-                                supportingContent = { Text(dev.nitrate.core.companion.NoteChats.detail(c, earlier, offsetAt)) },
-                                modifier = if (chatPick == p) Modifier.focusRequester(first) else Modifier,
-                            )
+                val on = dev.nitrate.core.companion.ChatPick.On
+                val groups = threads
+                // Focus on what's picked (on On while an older thread picked is still being looked for).
+                val pickedListed = chatPick !is dev.nitrate.core.companion.ChatPick.Replay || groups?.any { g -> g.threads.any { it.id == chatPick.threadId } } == true
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    item {
+                        ListItem(selected = chatPick == off, onClick = { pick(off) }, headlineContent = { Text("Off") }, supportingContent = { Text("Nothing pops up; turn it on in the player any time") },
+                            modifier = if (chatPick == off) Modifier.focusRequester(first) else Modifier)
+                    }
+                    item {
+                        ListItem(selected = chatPick == on, onClick = { pick(on) }, headlineContent = { Text("On") }, supportingContent = { Text("The group's conversation pops up as you reach it") },
+                            modifier = if (chatPick == on || !pickedListed) Modifier.focusRequester(first) else Modifier)
+                    }
+                    if (groups == null) item { Text("Looking for earlier threads…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    groups.orEmpty().forEach { g ->
+                        if (g.older.isNotEmpty()) item(key = "h-${g.groupId}") {
+                            Text("Replay an older thread with ${g.title}: its messages pop up too", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                        }
+                        items(g.older.size, key = { g.older[it].id }) { i ->
+                            val t = g.older[i]
+                            val p = dev.nitrate.core.companion.ChatPick.Replay(t.id)
+                            // ▶ from the thread's line reaches its heart: a favourite is never deleted by the server's time rules.
+                            androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                                ListItem(
+                                    selected = chatPick == p, onClick = { pick(p) },
+                                    headlineContent = { Text("Replay " + dev.nitrate.core.companion.Threads.date(t.startedMs, offsetAt(t.startedMs))) },
+                                    supportingContent = { Text(dev.nitrate.core.companion.Threads.detail(t)) },
+                                    modifier = Modifier.weight(1f).then(if (chatPick == p) Modifier.focusRequester(first) else Modifier),
+                                )
+                                ThreadHeart(t.favourite) { scope.launch { runCatching { chat.favourite(chatFor, t.id, !t.favourite) }.onSuccess { reload() } } }
+                            }
+                        }
+                        // The group's creator: a new thread (a rewatch), asked first.
+                        if (g.canStart && g.current != null) item(key = "new-${g.groupId}") {
+                            ListItem(selected = false, onClick = { asking = g }, headlineContent = { Text("Start a new thread") }, supportingContent = { Text("For a rewatch: the conversation so far is kept to replay") })
                         }
                     }
                 }
             }
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+            asking?.let { g ->
+                dev.nitrate.tv.ui.lists.TvDialog({ asking = null }) {
+                    Text("Start a new thread with ${g.title}?", style = MaterialTheme.typography.headlineSmall)
+                    Text("Everyone's messages from now go into a new conversation. This one is kept, to replay.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val yes = remember { FocusRequester() }
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                        androidx.tv.material3.Button(onClick = { asking = null; scope.launch { runCatching { chat.startThread(chatFor, g.groupId) }.onSuccess { reload() } } }, modifier = Modifier.focusRequester(yes)) { Text("Start it") }
+                        androidx.tv.material3.OutlinedButton(onClick = { asking = null }) { Text("Cancel") }
+                    }
+                    LaunchedEffect(Unit) { runCatching { yes.requestFocus() } }
+                }
+            }
         }
         "version" -> {
             val first = remember { FocusRequester() }
@@ -377,5 +408,16 @@ internal fun StartsWithLine(
             }
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
         }
+    }
+}
+
+/** A thread's heart: filled for a favourite; says "Favourite" or "Not a favourite". */
+@Composable
+private fun ThreadHeart(favourite: Boolean, onClick: () -> Unit) {
+    androidx.tv.material3.IconButton(onClick = onClick) {
+        androidx.tv.material3.Icon(
+            if (favourite) androidx.compose.material.icons.Icons.Filled.Favorite else androidx.compose.material.icons.Icons.Filled.FavoriteBorder,
+            contentDescription = if (favourite) dev.nitrate.core.companion.Threads.FAVOURITE else dev.nitrate.core.companion.Threads.NOT_FAVOURITE,
+        )
     }
 }

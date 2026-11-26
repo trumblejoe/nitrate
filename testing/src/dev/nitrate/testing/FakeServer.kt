@@ -607,9 +607,10 @@ class FakeServer : MediaServer {
 
     /** Group chat pinned along each title (feature `notes`): the group's, at points through the episode. */
     val notes = mutableListOf(
-        dev.nitrate.core.companion.TimelineNote("n1", "user-2", "Will", "s1e2", 4_000, dev.nitrate.core.companion.ChatKind.TEXT, "The opening shot!", listOf("g1"), 1, chatId = "c-tue"),
-        dev.nitrate.core.companion.TimelineNote("n2", "user-4", "Frank", "s1e2", 6_000, dev.nitrate.core.companion.ChatKind.REACTION, "😱", listOf("g2"), 2, chatId = "c-nov"),
-        dev.nitrate.core.companion.TimelineNote("n3", "user-2", "Will", "s1e2", 1_500_000, dev.nitrate.core.companion.ChatKind.TEXT, "Called it.", listOf("g1"), 3, chatId = "c-tue"),
+        dev.nitrate.core.companion.TimelineNote("n1", "user-2", "Will", "s1e2", 4_000, dev.nitrate.core.companion.ChatKind.TEXT, "The opening shot!", listOf("g1"), 1, chatId = "t-now"),
+        dev.nitrate.core.companion.TimelineNote("n2", "user-4", "Frank", "s1e2", 6_000, dev.nitrate.core.companion.ChatKind.REACTION, "😱", listOf("g2"), 2, chatId = "t-g2"),
+        dev.nitrate.core.companion.TimelineNote("n3", "user-2", "Will", "s1e2", 1_500_000, dev.nitrate.core.companion.ChatKind.TEXT, "Called it.", listOf("g1"), 3, chatId = "t-now"),
+        dev.nitrate.core.companion.TimelineNote("o1", "user-2", "Will", "s1e2", 5_000, dev.nitrate.core.companion.ChatKind.TEXT, "First time round!", listOf("g1"), 0, chatId = "t-old"),
         dev.nitrate.core.companion.TimelineNote("m1", "user-1", "nitrate", "s1e2", 900_000, dev.nitrate.core.companion.ChatKind.TEXT, "", listOf("g1"), 4, moment = true),
     )
 
@@ -621,62 +622,64 @@ class FakeServer : MediaServer {
         )
 
     override suspend fun pinNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?) =
-        dev.nitrate.core.companion.TimelineNote("n${notes.size + 1}", "user-1", "nitrate", itemId, positionMs, kind, text, listOf("g1", "g2"), notes.size + 1L).also { notes += it }
+        dev.nitrate.core.companion.TimelineNote("n${notes.size + 1}", "user-1", "nitrate", itemId, positionMs, kind, text, listOf("g1", "g2"), notes.size + 1L, chatId = "t-now").also { notes += it }
 
     override suspend fun deleteNote(itemId: String, id: String) { notes.removeAll { it.id == id && it.userId == userId } }
 
     /**
-     * Chat histories (feature `chats`) on the show's episodes: Will's from two days ago, Frank's
-     * ("Frank, Tommy and Jane" group) from a couple of weeks ago, and one from an hour ago building
-     * on Will's.
+     * The groups' conversations (feature `threads`) on the show: Will's group (g1, this user made it)
+     * has its current thread and an older one from the first time round (a favourite); Frank's (g2)
+     * its current one.
      */
-    val noteChats: List<dev.nitrate.core.companion.NoteChat> get() {
+    fun threadGroups(): List<dev.nitrate.core.companion.ThreadGroup> {
         val now = System.currentTimeMillis()
         val day = 24 * 3_600_000L
+        fun count(id: String) = notes.count { it.itemId == "s1e2" && it.chatId == id }
         return listOf(
-            dev.nitrate.core.companion.NoteChat("c-tonight", "g1", now - 3_600_000L, buildsOn = "c-tue", people = listOf("Will"), count = 3),
-            dev.nitrate.core.companion.NoteChat("c-tue", "g1", now - 2 * day, people = listOf("Will"), count = 14),
-            dev.nitrate.core.companion.NoteChat("c-nov", "g2", now - 12 * day, people = listOf("Frank", "Tommy"), count = 3),
+            dev.nitrate.core.companion.ThreadGroup(
+                "g1", "The Night Reel", "series-1", canStart = true,
+                threads = listOf(
+                    dev.nitrate.core.companion.ChatThread("t-now", now - 2 * day, count("t-now"), current = true, favourite = "t-now" in favouriteThreads),
+                    dev.nitrate.core.companion.ChatThread("t-old", now - 300 * day, count("t-old"), favourite = "t-old" in favouriteThreads),
+                ),
+            ),
+            dev.nitrate.core.companion.ThreadGroup(
+                "g2", "The Night Reel", "series-1", canStart = false,
+                threads = listOf(dev.nitrate.core.companion.ChatThread("t-g2", now - 12 * day, count("t-g2"), current = true)),
+            ),
         )
     }
 
-    /** Earlier chats picked to play along in a session, and messages written with chat histories. */
+    /** Older threads replayed for everyone in a session, and new threads started (by group). */
     val playedAlong = mutableListOf<String?>()
-    val chatWrites = mutableListOf<dev.nitrate.core.companion.ChatWrite>()
+    val startedThreads = mutableListOf<String>()
 
-    override suspend fun titleChats(itemId: String): dev.nitrate.core.companion.TitleChats? =
-        if ("chats" !in companionFeatures) null
-        else dev.nitrate.core.companion.TitleChats(
-            if (itemId.startsWith("s1e")) listOf(dev.nitrate.core.companion.NoteGroup("g1", "The Night Reel"), dev.nitrate.core.companion.NoteGroup("g2", "The Night Reel")) else emptyList(),
-            if (itemId == "s1e2") noteChats.map { it.copy(favourite = it.id in favouriteChats) } else emptyList(),
+    override suspend fun titleThreads(itemId: String): dev.nitrate.core.companion.TitleThreads? =
+        if ("threads" !in companionFeatures) null
+        else if (!itemId.startsWith("s1e")) dev.nitrate.core.companion.TitleThreads(emptyList(), emptyList(), emptyList())
+        else dev.nitrate.core.companion.TitleThreads(
+            listOf(dev.nitrate.core.companion.NoteGroup("g1", "The Night Reel"), dev.nitrate.core.companion.NoteGroup("g2", "The Night Reel")),
+            threadGroups(),
+            notes.filter { it.itemId == itemId && (it.chatId == "t-now" || it.chatId == "t-g2") }.sortedBy { it.positionMs },
         )
 
-    override suspend fun chatNotes(itemId: String, chatId: String): List<dev.nitrate.core.companion.TimelineNote> {
-        val chain = dev.nitrate.core.companion.NoteChats.chain(chatId, noteChats)
-        return notes.filter { it.itemId == itemId && it.chatId in chain }.sortedBy { it.positionMs }
-    }
+    override suspend fun threadNotes(itemId: String, threadId: String): List<dev.nitrate.core.companion.TimelineNote> =
+        notes.filter { it.itemId == itemId && it.chatId == threadId }.sortedBy { it.positionMs }
 
-    override suspend fun pinChatNote(
-        itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?, groupIds: List<String>?,
-        chat: dev.nitrate.core.companion.ChatWrite,
-    ): dev.nitrate.core.companion.TimelineNote {
-        chatWrites += chat
-        return dev.nitrate.core.companion.TimelineNote("n${notes.size + 1}", "user-1", "nitrate", itemId, positionMs, kind, text, groupIds ?: listOf("g1"), notes.size + 1L, chatId = chat.chatId ?: "c-new")
-            .also { notes += it }
-    }
+    override suspend fun startThread(itemId: String, groupId: String) { startedThreads += groupId }
 
     override suspend fun playAlong(sessionId: String, itemId: String, chatId: String?) { playedAlong += chatId }
 
-    /** Chats made favourites (by id): Tuesday's with Will is one. */
-    val favouriteChats = mutableSetOf("c-tue")
+    /** Threads made favourites (by id): the first time round with Will is one. */
+    val favouriteThreads = mutableSetOf("t-old")
 
-    override suspend fun favouriteChat(itemId: String, chatId: String, favourite: Boolean) {
-        if (favourite) favouriteChats += chatId else favouriteChats -= chatId
+    override suspend fun favouriteThread(itemId: String, threadId: String, favourite: Boolean) {
+        if (favourite) favouriteThreads += threadId else favouriteThreads -= threadId
     }
 
     override suspend fun sessionChat(sessionId: String, itemId: String): dev.nitrate.core.companion.SessionChat? =
-        if ("chats" !in companionFeatures) null
-        else dev.nitrate.core.companion.SessionChat(null, playedAlong.lastOrNull(), playedAlong.lastOrNull()?.let { "user-1" }, playedAlong.lastOrNull()?.let { chatNotes(itemId, it) }.orEmpty())
+        if ("threads" !in companionFeatures) null
+        else dev.nitrate.core.companion.SessionChat("t-now", playedAlong.lastOrNull(), playedAlong.lastOrNull()?.let { "user-1" }, playedAlong.lastOrNull()?.let { threadNotes(itemId, it) }.orEmpty())
 
     /** A few weeks of watching, for the diary. */
     val diaryEntries = mutableListOf(

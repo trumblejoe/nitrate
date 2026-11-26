@@ -431,6 +431,7 @@ internal fun LazyListScope.shownSettings(prefs: DisplayPrefs, update: ((DisplayP
         Triple("Logos", "Title art instead of plain titles", Pair({ p -> p.logos }, { p, v -> p.copy(logos = v) })),
         Triple("Cast & crew", "On details pages", Pair({ p -> p.cast }, { p, v -> p.copy(cast = v) })),
         Triple("More like this", "On details pages", Pair({ p -> p.similar }, { p, v -> p.copy(similar = v) })),
+        Triple("Group chat", "On when you watch something with a watch group. Turn it on or off for one playback in the player", Pair({ p -> p.chatOn }, { p, v -> p.copy(chatOn = v) })),
     )
     toggles.forEach { (label, detail, get) ->
         item(key = "pref-$label") { Toggle(label, detail, get.first(prefs)) { v -> update { get.second(it, v) } } }

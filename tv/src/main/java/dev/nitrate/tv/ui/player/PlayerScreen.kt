@@ -138,8 +138,6 @@ fun PlayerScreen(
      * reached, and the chat panel writes new ones here (Companion `notes`; live in a SyncPlay group too).
      */
     groupChat: dev.nitrate.core.companion.TimelineChat? = null,
-    /** Remembers Group chat on or off for these watch groups (a display preference, per user). */
-    onGroupChat: (List<String>, Boolean) -> Unit = { _, _ -> },
     /** A recap clip: plays from [startMs] to here, unreported, then ends. */
     clipEndMs: Long? = null,
     /** The user's audio-description preference. */
@@ -495,10 +493,9 @@ fun PlayerScreen(
     LaunchedEffect(item?.id, position / 1000) { item?.let { skipWatch?.position(it.id, position, System.currentTimeMillis()) } }
     // Notes pop up as playback reaches them (never ahead).
     LaunchedEffect(item?.id, position / 1000) { if (item != null && clipEndMs == null && testPlay == null) groupChat?.at(position) }
+    // For this playback only: the setting (Settings, Group chat) stays as it is.
     fun turnGroupChat(on: Boolean) {
-        val chat = groupChat ?: return
-        chat.turn(on, player.currentPosition)
-        onGroupChat(chat.keys, on)
+        groupChat?.turn(on, player.currentPosition)
     }
     val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE &&
         upNextAt != null && position >= upNextAt
@@ -872,9 +869,7 @@ fun PlayerScreen(
                     onPerson = { person = it },
                     choices = rememberPlayerChoices(session, playbackSettings, repository, sleepAt, sleepAtEndState.value,
                         onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDone = { panel = Panel.NONE },
-                        frameRate = frameRateOverride, onFrameRate = { frameRateOverride = it }, displayHz = rememberDisplayHz(),
-                        groupChat = groupChat, groupChatAvailable = chatAvailable, onGroupChat = ::turnGroupChat,
-                        onShowMissed = { groupChat?.showMissed(); chatLog = true; panel = Panel.CHAT }),
+                        frameRate = frameRateOverride, onFrameRate = { frameRateOverride = it }, displayHz = rememberDisplayHz()),
                 ),
                 // Never reopens on the episodes or collection (spoilers): Settings instead.
                 initial = moreTab?.takeIf { it != "siblings" },

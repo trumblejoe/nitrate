@@ -158,39 +158,31 @@ interface MediaServer {
     suspend fun bringNotes(sessionId: String, groupId: String?): Unit = unsupported()
 
     /**
-     * A title's chat histories the caller may see, newest first, and their watch groups on it
-     * (Companion `chats`; nothing of what was said); null on servers without chat histories.
+     * A part's conversations for the caller (Companion `threads`): their watch groups on it, each
+     * group's threads on its title (the current one first), and the current threads' messages they
+     * may read; null on servers without threads.
      */
-    suspend fun titleChats(itemId: String): dev.nitrate.core.companion.TitleChats? = null
+    suspend fun titleThreads(itemId: String): dev.nitrate.core.companion.TitleThreads? = null
+
+    /** One of the caller's groups' threads on a part, to replay an older one: its messages they may read (empty when it isn't theirs). */
+    suspend fun threadNotes(itemId: String, threadId: String): List<dev.nitrate.core.companion.TimelineNote> = emptyList()
 
     /**
-     * A chat picked to play along (`chats`): its notes and those of the chats it builds on that the
-     * caller may read, earliest in the title first. Empty when none of it is theirs to read.
+     * Starts a new thread for watch group [groupId] on the title holding [itemId] (its creator only,
+     * else [dev.nitrate.core.companion.ChatForbidden]): what's written from now goes into it.
      */
-    suspend fun chatNotes(itemId: String, chatId: String): List<dev.nitrate.core.companion.TimelineNote> = emptyList()
+    suspend fun startThread(itemId: String, groupId: String): Unit = unsupported()
+
+    /** Makes one of the caller's groups' threads a favourite of theirs, or not: the server's time rules never delete a favourite. */
+    suspend fun favouriteThread(itemId: String, threadId: String, favourite: Boolean): Unit = unsupported()
 
     /**
-     * Pins a message into a chat history (`chats`): [chat]'s chat (this playback's, from the first
-     * message's answer), else a new one made now, building on the chat playing along. In a live
-     * session ([sessionId]) the server keeps one chat for everyone there. The answer's
-     * [dev.nitrate.core.companion.TimelineNote.chatId] says which. Servers without `chats` pin it as [pinNote] does.
-     */
-    suspend fun pinChatNote(itemId: String, positionMs: Long, kind: dev.nitrate.core.companion.ChatKind, text: String, sessionId: String?, groupIds: List<String>?, chat: dev.nitrate.core.companion.ChatWrite): dev.nitrate.core.companion.TimelineNote =
-        pinNote(itemId, positionMs, kind, text, sessionId, groupIds)
-
-    /**
-     * Plays an earlier chat along for everyone in the live session [sessionId] on [itemId]
-     * (`chats`; null stops it). Throws [dev.nitrate.core.companion.ChatForbidden] outside the session or for a chat the caller can't see.
+     * Replays an older thread for everyone in the live session [sessionId] on [itemId] (`threads`;
+     * null stops it). Throws [dev.nitrate.core.companion.ChatForbidden] outside the session or for a thread that isn't the caller's.
      */
     suspend fun playAlong(sessionId: String, itemId: String, chatId: String?): Unit = unsupported()
 
-    /**
-     * Makes a chat the caller may see one of their favourites, or not (Companion `chatfavourites`):
-     * the server's time rules never delete a favourite. Throws [dev.nitrate.core.companion.ChatForbidden] for a chat they can't see.
-     */
-    suspend fun favouriteChat(itemId: String, chatId: String, favourite: Boolean): Unit = unsupported()
-
-    /** The live session's chat on [itemId] (`chats`): the chat written there and the earlier one playing along with its notes; null when not in it. */
+    /** The live session's conversation on [itemId] (`threads`): the thread written there and the older one replayed for everyone, with its messages; null when not in it. */
     suspend fun sessionChat(sessionId: String, itemId: String): dev.nitrate.core.companion.SessionChat? = null
 
     /** The notes brought into the live session [sessionId] on [itemId] (`livenotes`); empty when none or not in it. */

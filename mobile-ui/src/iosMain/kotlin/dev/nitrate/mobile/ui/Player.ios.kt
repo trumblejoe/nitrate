@@ -304,9 +304,6 @@ actual fun PlayerScreen(
     }
     if (more && p != null) IosPlayerMore(
         actions, session, p, local, sleepAt, sleepAtEnd, onSleep = { at, end -> sleepAt = at; sleepAtEnd = end },
-        groupChat = if (groupChat != null && chatAvailable) { {
-            GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) }, onShowMissed = { groupChat.showMissed(); more = false; chatOpen = true })
-        } } else null,
     ) { more = false }
     when {
         p == null || picking == null -> Unit

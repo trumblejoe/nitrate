@@ -508,23 +508,23 @@ internal data class NotesPageDto(val groups: List<NoteGroupDto> = emptyList(), v
 @Serializable
 internal data class NotePostDto(
     val itemId: String, val positionMs: Long, val text: String, val kind: String = "Text", val sessionId: String? = null, val groupIds: List<String>? = null,
-    val chats: Boolean = false, val chatId: String? = null, val buildsOn: String? = null,
 )
 
 @Serializable
-internal data class ChatViewDto(
-    val id: String, val groupId: String? = null, val created: Long = 0, val buildsOn: String? = null, val sessionId: String? = null,
-    val people: List<String> = emptyList(), val count: Int = 0, val earlier: Boolean = false, val favourite: Boolean = false,
-)
+internal data class ThreadViewDto(val id: String, val started: Long = 0, val count: Int = 0, val current: Boolean = false, val favourite: Boolean = false)
+
+@Serializable
+internal data class ThreadGroupDto(val groupId: String, val title: String = "", val titleId: String, val canStart: Boolean = false, val threads: List<ThreadViewDto> = emptyList())
+
+@Serializable
+internal data class ThreadsPageDto(val groups: List<NoteGroupDto> = emptyList(), val threads: List<ThreadGroupDto> = emptyList(), val notes: List<NoteDto> = emptyList())
+
+@Serializable
+internal data class ThreadPostDto(val itemId: String, val groupId: String)
 
 @Serializable
 internal data class FavouritePostDto(val itemId: String, val favourite: Boolean)
 
-@Serializable
-internal data class ChatsPageDto(val groups: List<NoteGroupDto> = emptyList(), val chats: List<ChatViewDto> = emptyList())
-
-@Serializable
-internal data class ChatNotesDto(val id: String, val chain: List<String> = emptyList(), val notes: List<NoteDto> = emptyList())
 
 @Serializable
 internal data class AlongPostDto(val itemId: String, val chatId: String?)

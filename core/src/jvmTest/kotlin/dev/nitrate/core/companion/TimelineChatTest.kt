@@ -92,13 +92,12 @@ class TimelineChatTest {
         assertEquals(emptyList<TimelineNote>(), Notes.reached(notes, Notes.listableUpTo(started.copy(user = UserState()))))
     }
 
-    @Test fun groupChatIsRememberedPerGroupAndStartsOffInEasyMode() {
+    @Test fun groupChatIsOneSettingOnByDefaultAndOffInEasyMode() {
         assertTrue(DisplayPrefs().groupChatOn(listOf("g1")))
+        assertFalse(DisplayPrefs(chatOn = false).groupChatOn(listOf("g1")))
         assertFalse(DisplayPrefs(easyMode = true).groupChatOn(listOf("g1")))
-        val off = DisplayPrefs().withGroupChat(listOf("g1", "g2"), false)
-        assertFalse(off.groupChatOn(listOf("g2")))
-        assertTrue(off.groupChatOn(listOf("g3")))
-        assertTrue(DisplayPrefs(easyMode = true).withGroupChat(listOf("g1"), true).groupChatOn(listOf("g1")))
+        // The older per-group memory is no longer read.
+        assertTrue(DisplayPrefs(groupChat = mapOf("g1" to false)).groupChatOn(listOf("g1")))
     }
 
     @Test fun oldMomentsReadAsNotes() {

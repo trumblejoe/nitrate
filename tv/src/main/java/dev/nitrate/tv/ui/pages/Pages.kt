@@ -244,6 +244,7 @@ fun DisplaySettingsScreen(container: AppContainer, page: DisplayPage = DisplayPa
         Triple("Logos", { p -> p.logos }, { p, v -> p.copy(logos = v) }),
         Triple("Cast & crew", { p -> p.cast }, { p, v -> p.copy(cast = v) }),
         Triple("More like this", { p -> p.similar }, { p, v -> p.copy(similar = v) }),
+        Triple("Group chat (on when watching with a watch group)", { p -> p.chatOn }, { p, v -> p.copy(chatOn = v) }),
     )
     @Composable
     fun Toggle(label: String, detail: String?, on: Boolean, modifier: Modifier = Modifier, flip: () -> Unit) = ListItem(

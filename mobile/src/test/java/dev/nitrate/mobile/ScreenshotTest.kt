@@ -220,7 +220,7 @@ class ScreenshotTest {
      * sheet on a new chat (nothing earlier loaded), with the title's quick replies; with [chats], on Chats.
      */
     private fun chatsPanel(name: String, chats: Boolean = false, emojis: Boolean = false) = shoot(name, setup = { c ->
-        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions", "chatfavourites")
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "threads", "sessions")
         c.refreshCompanionForTests()
     }) { actions ->
         val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -233,7 +233,7 @@ class ScreenshotTest {
             chat.focus(listOf("g1"))
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.ChatPanelSheet(chat, "Will", positionMs = { 1_000_000 }, picks = picks.value, onDismiss = {}, showChats = chats, showEmojis = emojis)
+            dev.nitrate.mobile.ui.ChatPanelSheet(chat, "Will", positionMs = { 1_000_000 }, picks = picks.value, onDismiss = {}, showEmojis = emojis)
         }
     }
 
@@ -242,7 +242,7 @@ class ScreenshotTest {
      * own") and Start a Group Watch Session; no chat (that's the Chat button's).
      */
     @Test fun groupPanel() = shoot("phone-group-panel", setup = { c ->
-        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions")
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "threads", "sessions")
         c.refreshCompanionForTests()
     }) { actions ->
         Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -251,7 +251,7 @@ class ScreenshotTest {
     }
 
     /**
-     * The chat sheet, fully up on the conversation: "New chat · Will ›" (tap for Chats), then the
+     * The chat sheet, fully up on the conversation: "Group chat · Will" with Turn off, then the
      * title's own emojis first and its characters' names and short lines under them, the message box.
      */
     @Test fun chatSheet() = chatsPanel("phone-chat-sheet")
@@ -259,8 +259,6 @@ class ScreenshotTest {
     /** The one emoji button's full list under the message box: the title's own and the usual ones first, then the rest by kind. */
     @Test fun chatEmojis() = chatsPanel("phone-chat-emojis", emojis = true)
 
-    /** Chats: Group chat on or off, New chat, and this group's earlier chats newest first (dated 2026/11/22), one building on another, each with a heart (Tuesday's a favourite). */
-    @Test fun groupChats() = chatsPanel("phone-group-chats", chats = true)
 
     /** An episode of The Night Reel, shared with two watch groups (Will; Frank, Tommy and Jane). */
     private fun withChip(
@@ -603,21 +601,25 @@ class ScreenshotTest {
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/phone-details-more.png")
     }
 
-    /** A part shared with a watch group: a Chat pill beside Audio and Subtitles (Off), opening Off, New chat and the earlier chats to replay. */
+    /**
+     * A part shared with a watch group: a Chat pill beside Audio and Subtitles (On: the user's
+     * setting), opening Off, On, the group's older thread to replay (with its heart) and, for the
+     * group's creator, Start a new thread.
+     */
     @Test fun detailsChatChoice() {
         shoot("phone-details-chat-line", setup = { c ->
-            (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats")
+            (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "threads")
             c.refreshCompanionForTests()
         }) { DetailsScreen(it, "s1e2", null) }
         compose.onAllNodesWithText("Chat").onFirst().performClick()
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(1_000)
-        compose.onAllNodesWithText("14 messages").onFirst().assertExists()
+        compose.onAllNodesWithText("Start a new thread", substring = true).onFirst().assertExists()
         compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/phone-details-chat-choice.png")
-        compose.onAllNodesWithText("14 messages").onFirst().performClick()
+        compose.onAllNodesWithText("Replay 2", substring = true).onFirst().performClick()
         compose.waitForIdle()
         compose.onAllNodesWithText("Replay", substring = true).onFirst().assertExists()
-        dev.nitrate.android.playback.ChatChoices.choose("s1e2", dev.nitrate.core.companion.ChatPick.Off)
+        dev.nitrate.android.playback.ChatChoices.choose("s1e2", dev.nitrate.core.companion.ChatPick.On)
     }
 
     @Test fun search() = shoot("phone-search") { SearchScreen(it, initialQuery = "re", autoFocus = false) }
@@ -1071,25 +1073,21 @@ class ScreenshotTest {
         compose.waitForIdle()
     }) { a -> androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) { dev.nitrate.mobile.ui.RemoteSessionCard(a, "s1", "Living room TV") } }
 
-    /** The remote's Chat card while the TV plays something with group chat: which chat, the last messages, the quick lines, emoji button and message box; the chat line opens the choices. Sent through the TV. */
+    /** The remote's Chat card while the TV plays something with group chat: which conversation (with Turn off), the last messages, the quick lines, emoji button and message box. Sent through the TV. */
     @Test fun remoteChat() {
         val sent = mutableListOf<dev.nitrate.core.remote.RemoteChatDo>()
         val state = dev.nitrate.core.remote.RemoteChatState(
-            "tv1", "s1e2", on = true, line = "New chat · Will", hasChats = true,
-            chats = listOf(dev.nitrate.core.remote.RemoteChatState.Option("tue", "2026/11/24 · Will", "14 messages")),
+            "tv1", "s1e2", on = true, line = "Group chat · Will",
             recent = listOf(
                 dev.nitrate.core.remote.RemoteChatState.Line("Will", "0:04", "The opening shot!"),
                 dev.nitrate.core.remote.RemoteChatState.Line("Will", "0:06", "😱", reaction = true),
             ),
             emojis = listOf("👻") + dev.nitrate.core.companion.QUICK_REACTIONS, lines = listOf("Iris!", "No way!", "Called it"),
         )
-        shoot("phone-remote-chat", act = {
-            compose.onNodeWithText("New chat · Will ›").performClick()
-            compose.waitForIdle()
-        }) { androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) { dev.nitrate.mobile.ui.RemoteChatCard(state, "Living room TV") { sent += it } } }
-        compose.onNodeWithText("2026/11/24 · Will").performClick()
+        shoot("phone-remote-chat") { androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) { dev.nitrate.mobile.ui.RemoteChatCard(state, "Living room TV") { sent += it } } }
         compose.onNodeWithText("Iris!").performClick()
-        check(sent == listOf(dev.nitrate.core.remote.RemoteChatDo(dev.nitrate.core.remote.RemoteChatDo.Kind.PLAY, chatId = "tue"), dev.nitrate.core.remote.RemoteChatDo(dev.nitrate.core.remote.RemoteChatDo.Kind.TEXT, text = "Iris!"))) { sent.toString() }
+        compose.onNodeWithText("Turn off").performClick()
+        check(sent == listOf(dev.nitrate.core.remote.RemoteChatDo(dev.nitrate.core.remote.RemoteChatDo.Kind.TEXT, text = "Iris!"), dev.nitrate.core.remote.RemoteChatDo(dev.nitrate.core.remote.RemoteChatDo.Kind.TURN, on = false))) { sent.toString() }
     }
 
     /** One the TV hosts, gathering: who it waits for, and the starter's Start now and End for everyone. */

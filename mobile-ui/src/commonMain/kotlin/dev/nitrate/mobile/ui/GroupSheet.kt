@@ -53,7 +53,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.nitrate.core.companion.ChatKind
-import dev.nitrate.core.companion.NoteChats
 import dev.nitrate.core.companion.Notes
 import dev.nitrate.core.companion.QuickPicks
 import dev.nitrate.core.companion.QuickReplies
@@ -188,10 +187,6 @@ fun PlayerChatSheet(
     onDismiss: () -> Unit,
 ) {
     val container = actions.container
-    val scope = rememberCoroutineScope()
-    var problem by remember { mutableStateOf<String?>(null) }
-    val me = container.server.userId
-    val pickedBy = chat.broughtBy.collectAsState().value
     // The title's quick replies (the usual ones until its own are worked out: an episode's show is asked for once).
     val picks by produceState(QuickReplies.forTitle(item), item?.id) {
         if (item != null) value = container.quickPicks(item)
@@ -201,22 +196,16 @@ fun PlayerChatSheet(
         who = chip?.group?.let(WithChip::nameOf) ?: chatTitle,
         positionMs = positionMs,
         picks = picks,
-        inSession = chip?.inSession == true,
-        pickedBy = pickedBy?.takeIf { it != me }?.let { id -> chip?.groups?.flatMap { it.others }?.firstOrNull { it.id == id }?.name ?: "Someone watching" },
         onTurn = { on -> turnGroupChat(actions, chat, on, positionMs()) },
-        onPlayChat = { id ->
-            scope.launch { chat.play(id).onSuccess { problem = null }.onFailure { problem = it.message ?: "Couldn't open that chat" } }
-        },
-        problem = problem,
         onDismiss = onDismiss,
     )
 }
 
 /**
- * The player's chat as a sheet (the Chat button opens it, fully up): the conversation first. Its top
- * line says which chat this is and who with ("New chat · Will ›", tapping it opens **Chats**: Group
- * chat on or off, New chat and the earlier chats to play along, each with a heart); then what was
- * said up to here, the title's reactions and quick lines (one tap each) and a message box.
+ * The player's chat as a sheet (the Chat button opens it, fully up): which conversation this is
+ * ("Group chat · Will", "Replaying 2026/10/02 · Will"; chosen before playing, on the details page)
+ * with Turn off for this playback; then what was said up to here, the title's quick lines (one tap
+ * each) and the message box with its emoji button.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -226,54 +215,40 @@ fun ChatPanelSheet(
     who: String?,
     positionMs: () -> Long = { 0L },
     picks: QuickPicks = QuickPicks.PLAIN,
-    inSession: Boolean = false,
-    /** Who else picked the chat playing along for everyone in the session (null: the user, or nobody). */
-    pickedBy: String? = null,
     onTurn: (Boolean) -> Unit = {},
-    onPlayChat: (String?) -> Unit = {},
-    problem: String? = null,
     onDismiss: () -> Unit,
-    /** Opens on Chats (screenshots). */
-    showChats: Boolean = false,
     /** Opens with the emoji list showing (screenshots). */
     showEmojis: Boolean = false,
-    /** The device's offset from UTC (minutes) at a moment, for the chats' dates. */
+    /** The device's offset from UTC (minutes) at a moment, for a replay's date. */
     offsetAt: (Long) -> Int = { (timeZoneOffsetMsAt(it) / 60_000).toInt() },
 ) {
-    var chats by remember { mutableStateOf(showChats) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        dev.nitrate.mobile.platform.PlatformBackHandler(enabled = chats) { chats = false }
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).imePadding(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (chats) ChatsList(chat, inSession, pickedBy, offsetAt, onTurn, onPick = { id -> onPlayChat(id); chats = false }, onBack = { chats = false })
-            else Conversation(chat, who, positionMs, picks, pickedBy, problem, offsetAt, onTurn, showEmojis) { chats = true }
+            Conversation(chat, who, positionMs, picks, offsetAt, onTurn, showEmojis)
         }
     }
 }
 
-/** Which chat (tap for Chats), what was said up to here, reactions, quick lines and a message box. */
+/** Which conversation (with Turn off), what was said up to here, quick lines and a message box. */
 @Composable
 private fun Conversation(
     chat: TimelineChat,
     who: String?,
     positionMs: () -> Long,
     picks: QuickPicks,
-    pickedBy: String?,
-    problem: String?,
     offsetAt: (Long) -> Int,
     onTurn: (Boolean) -> Unit,
     showEmojis: Boolean,
-    onChats: () -> Unit,
 ) {
     val on by chat.on.collectAsState()
     val unread by chat.unread.collectAsState()
     val history by chat.history.collectAsState()
     val missed by chat.missed.collectAsState()
-    val hasChats by chat.hasChats.collectAsState()
-    val playing by chat.playing.collectAsState()
-    val all by chat.allChats.collectAsState()
+    val replaying by chat.replaying.collectAsState()
+    val threads by chat.threads.collectAsState()
     val scope = rememberCoroutineScope()
     var draft by remember { mutableStateOf("") }
     var sendProblem by remember { mutableStateOf<String?>(null) }
@@ -290,30 +265,23 @@ private fun Conversation(
                 .onFailure { sendProblem = it.message ?: "Couldn't send" }
         }
     }
-    Action(
-        (if (hasChats && on) NoteChats.playingLabel(playing, all, offsetAt) else "Group chat") + (who?.let { " · $it" } ?: "") + " ›",
-        when {
-            !on -> "Off · Chats ›"
-            pickedBy != null && playing != null -> "$pickedBy picked it for everyone · Chats ›"
-            hasChats -> "Change chat, or turn it off · Chats ›"
-            else -> "Turn it on or off ›"
-        },
-        bold = true,
-        onClick = onChats,
-    )
+    // Which conversation this is (chosen before playing), and Turn off for this playback.
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (on) dev.nitrate.core.companion.Threads.line(replaying, threads, who, offsetAt) else "Group chat is off",
+            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
+        )
+        if (on) TextButton(onClick = { onTurn(false) }) { Text("Turn off") }
+    }
     if (!on) {
-        Text("Group chat is off: nothing pops up, and nothing is sent.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Nothing pops up, and nothing is sent.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         androidx.compose.material3.Button(onClick = { onTurn(true) }) { Text("Turn on") }
         return
     }
     if (missed.isNotEmpty()) TextButton(onClick = { chat.showMissed() }) { Text("Show what I missed (${missed.size})") }
     LazyColumn(Modifier.fillMaxWidth().heightIn(min = 60.dp, max = 300.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (history.isEmpty()) item {
-            Text(
-                if (playing == null) "A new chat: nothing earlier pops up. A reaction or a note stays at this point for your group."
-                else "Nothing yet up to here.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text("Nothing yet up to here. A reaction or a message stays at this point for your group.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(history, key = { it.id }) { n ->
             Column {
@@ -345,7 +313,7 @@ private fun Conversation(
         }
     }
     if (picking) EmojiList(Emojis.groupsFor(picks)) { emoji -> send(emoji, ChatKind.REACTION); picking = false }
-    (problem ?: sendProblem)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    sendProblem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 }
 
 /** The full emoji list under the message box, by heading ("For this" first); a tap sends one. */
@@ -368,55 +336,6 @@ internal fun EmojiList(groups: List<dev.nitrate.core.companion.EmojiGroup>, onPi
             }
         }
     }
-}
-
-/** Chats: Group chat on or off, then New chat and the earlier chats for this group and part, newest first. */
-@Composable
-private fun ChatsList(
-    chat: TimelineChat,
-    inSession: Boolean,
-    pickedBy: String?,
-    offsetAt: (Long) -> Int,
-    onTurn: (Boolean) -> Unit,
-    onPick: (String?) -> Unit,
-    onBack: () -> Unit,
-) {
-    val scope = rememberCoroutineScope()
-    val on by chat.on.collectAsState()
-    val hasChats by chat.hasChats.collectAsState()
-    val offered by chat.chats.collectAsState()
-    val all by chat.allChats.collectAsState()
-    val playing by chat.playing.collectAsState()
-    Text("Chats", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-    GroupChatSwitch(on, onTurn)
-    if (hasChats && on) {
-        Text(
-            if (inSession) "What you pick plays along for everyone in the Group Watch Session." + (pickedBy?.let { " $it picked the one now." } ?: "")
-            else "Pick an earlier chat to play along: its messages pop up as you reach them. Anything you write starts a new chat that builds on it.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-            item { Choice(NoteChats.NEW_CHAT, selected = playing == null, detail = "Nothing earlier pops up") { onPick(null) } }
-            items(offered, key = { it.id }) { c ->
-                // The heart keeps a chat: a favourite is never deleted by the server's time rules.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { Choice(NoteChats.title(c, all, offsetAt), selected = playing == c.id, detail = NoteChats.detail(c, all, offsetAt)) { onPick(c.id) } }
-                    if (chat.canFavourite) {
-                        IconButton(onClick = { scope.launch { chat.favourite(c.id, !c.favourite) } }) {
-                            Icon(
-                                if (c.favourite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                if (c.favourite) NoteChats.FAVOURITE else NoteChats.NOT_FAVOURITE,
-                                tint = if (c.favourite) accentColor() else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-            if (offered.isEmpty()) item { Text("No earlier chats on this yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
-        }
-    }
-    TextButton(onClick = onBack) { Text("Back") }
 }
 
 @Composable

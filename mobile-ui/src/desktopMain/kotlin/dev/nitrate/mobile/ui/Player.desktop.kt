@@ -419,9 +419,6 @@ fun DesktopPlayer(
                     Panel.INFO -> if (p != null) PlayerInfoDialog(session, p, local, onDismiss = close)
                     Panel.MORE -> if (p != null) DesktopPlayerMore(
                         session, settings, p, sleepAt, sleepAtEnd, onSleep = { at, end -> sleepAt = at; sleepAtEnd = end },
-                        groupChat = if (groupChat != null && chatAvailable) { {
-                            GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) }, onShowMissed = { groupChat.showMissed(); panel = Panel.CHAT })
-                        } } else null,
                         onDismiss = close,
                     )
                     Panel.GROUP -> if (!easy && withChip != null) PlayerGroupSheet(actions, company, withChip, item, positionMs = { session.currentMs() }, onDismiss = close)

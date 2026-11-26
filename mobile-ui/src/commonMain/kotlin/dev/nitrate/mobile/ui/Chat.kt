@@ -86,11 +86,10 @@ fun rememberGroupChat(actions: AppActions, itemId: String?, enabled: Boolean, po
 fun groupChatAvailable(chat: TimelineChat?, liveGroup: Boolean): Boolean =
     chat != null && (chat.groups.collectAsState().value.isNotEmpty() || liveGroup)
 
-/** Turns group chat on or off for this playback and remembers it for the title's groups (per user). */
+/** Turns group chat on or off for this playback only (the setting stays as it is: Settings, Group chat). */
+@Suppress("UNUSED_PARAMETER")
 fun turnGroupChat(actions: AppActions, chat: TimelineChat, on: Boolean, positionMs: Long) {
     chat.turn(on, positionMs)
-    val groups = chat.keys
-    actions.scope.launch { actions.container.setGroupChat(groups, on) }
 }
 
 /**
@@ -124,32 +123,6 @@ fun NoteToasts(popups: Flow<TimelineNote>, modifier: Modifier = Modifier) {
                 }
             }
         }
-    }
-}
-
-/** "Group chat" with its switch (the whole line toggles), for the group panel's Chats and the player's More. */
-@Composable
-fun GroupChatSwitch(on: Boolean, onTurn: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier.fillMaxWidth().toggleable(value = on, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onTurn).padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Group chat: " + if (on) "On" else "Off", style = MaterialTheme.typography.titleSmall)
-            Text(if (on) "What's said pops up as you reach it" else "No pop-ups, nothing sent", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked = on, onCheckedChange = null)
-    }
-}
-
-/** The player's More: the Group chat switch, and "Show what I missed" after turning it on mid-play. */
-@Composable
-fun GroupChatRow(chat: TimelineChat, onTurn: (Boolean) -> Unit, onShowMissed: () -> Unit) {
-    val on by chat.on.collectAsState()
-    val missed by chat.missed.collectAsState()
-    Column {
-        GroupChatSwitch(on, onTurn)
-        if (on && missed.isNotEmpty()) TextButton(onClick = onShowMissed) { Text("Show what I missed (${missed.size})") }
     }
 }
 

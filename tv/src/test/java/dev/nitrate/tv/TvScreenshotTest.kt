@@ -1689,22 +1689,17 @@ class TvScreenshotTest {
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("The chat so far")).fetchSemanticsNodes().isEmpty()) { "opening again keeps it as left" }
-        choose("Group chat")
-        check(focusedHasText("Group chat: On")) { "the chat line opens Chats on its first line; focused: ${focusedNodes()}" }
-        press("ok")
-        press("back")
-        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        choose("Turn off")
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat is off", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "turned off, the strip says so" }
-        check(focusedHasText("Group chat")) { "Back from Chats returns focus to the chat line; focused: ${focusedNodes()}" }
+        check(focusedHasText("Turn on")) { "focus on Turn on; focused: ${focusedNodes()}" }
     }
 
     /**
      * The real player on an episode of a show shared with two watch groups (Will; Frank, Tommy and
-     * Jane), played from Will's card, with its group button; with [chats] the server keeps chat histories.
+     * Jane), played from Will's card, with its group button; with [chats] the server keeps each group's conversation (threads).
      */
-    private fun withPlayer(name: String, easy: Boolean = false, chats: Boolean = false, favourites: Boolean = false, act: () -> Unit) = shoot(name, setup = { c ->
-        if (chats) (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions")
-        if (favourites) (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "chatfavourites"
+    private fun withPlayer(name: String, easy: Boolean = false, chats: Boolean = false, act: () -> Unit) = shoot(name, setup = { c ->
+        if (chats) (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "threads", "sessions")
         c.refreshCompanionForTests()
         // Played from Will's card on Home's Watching together row: the guards hand that on to the player.
         c.plugins.checkBeforePlay(c.server.getItem("s1e2"), dev.nitrate.core.partners.PlayOrigin.GroupCard("g1")) { dev.nitrate.core.plugins.GuardAction.PlayAnyway }
@@ -1757,54 +1752,29 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(focusedHasText("Counting for you and Will · Change")) { "the panel opens on its top line; focused: ${focusedNodes()}" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watching on your own")).fetchSemanticsNodes().isNotEmpty()) { "it says you watch on your own" }
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("New chat", substring = true)).fetchSemanticsNodes().isEmpty()) { "the chat isn't in the group panel" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat", substring = true)).fetchSemanticsNodes().isEmpty()) { "the chat isn't in the group panel" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Start a Group Watch Session")).fetchSemanticsNodes().isNotEmpty()) { "Start a Group Watch Session is offered" }
     }
 
-    /** Opens the chat strip from the Chat button and Chats from its chat line ("New chat · Will ›"). */
-    private fun openChats() {
+    /**
+     * The strip says which conversation it is (the group's, chosen before playing); Turn off (for
+     * this playback) leaves Turn on in its place.
+     */
+    @Test fun playerChatThreadLine() = withPlayer("tv-player-chat-thread", chats = true) {
         reachChatButton()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        repeat(16) { if (!focusedHasText("New chat · Will ›")) press("right") }
-        check(focusedHasText("New chat · Will ›")) { "▶ along the lines reaches the chat line, which says it's a new chat with Will; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat · Will")).fetchSemanticsNodes().isNotEmpty()) { "the line says whose conversation" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("New chat", substring = true)).fetchSemanticsNodes().isEmpty()) { "no Chats list any more" }
+        repeat(6) { if (!focusedHasText("Turn off")) press("up", "right") }
+        check(focusedHasText("Turn off")) { "Turn off is reachable; focused: ${focusedNodes()}" }
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-    }
-
-    /**
-     * Chats, from the chat strip's chat line: Group chat on or off, New chat, then this group's
-     * earlier chats (newest first, one building on another).
-     */
-    @Test fun playerGroupChats() = withPlayer("tv-player-group-chats", chats = true) {
-        openChats()
-        check(focusedHasText("Group chat: On")) { "Chats opens on its first line; focused: ${focusedNodes()}" }
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("builds on", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "a chat building on another says so" }
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Frank, Tommy", substring = true)).fetchSemanticsNodes().isEmpty()) { "another group's chats aren't offered" }
-        repeat(6) { if (!focusedExact("14 messages")) press("down") }
-        check(focusedExact("14 messages")) { "the earlier chats are reachable; focused: ${focusedNodes()}" }
-        check(textMatches(Regex("\\d{4}/\\d{2}/\\d{2} · Will")) && textMatches(Regex("14 messages"))) { "earlier chats are dated by the device's calendar" }
-        check(textMatches(Regex("3 new · builds on \\d{4}/\\d{2}/\\d{2} \\(Will · 14 messages\\)"))) { "and what they build on too" }
-    }
-
-    /**
-     * Each earlier chat has a heart: ▶ from its line reaches it, focused visibly, saying "Favourite"
-     * (Tuesday's with Will is one) or "Not a favourite"; OK changes it there and then.
-     */
-    @Test fun playerGroupChatsHearts() = withPlayer("tv-player-group-chats-hearts", chats = true, favourites = true) {
-        openChats()
-        repeat(6) { if (!focusedExact("14 messages")) press("down") }
-        check(focusedExact("14 messages")) { "on Tuesday's chat; focused: ${focusedNodes()}" }
-        press("right")
-        check(focusedHasDescription("Favourite")) { "▶ reaches its heart, a favourite; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat is off", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "turned off for this playback" }
+        check(focusedHasText("Turn on")) { "focus on Turn on; focused: ${focusedNodes()}" }
         press("ok")
-        check(focusedHasDescription("Not a favourite")) { "OK takes it away; focused: ${focusedNodes()}" }
-        press("ok")
-        check(focusedHasDescription("Favourite")) { "and puts it back; focused: ${focusedNodes()}" }
-        press("left")
-        check(focusedExact("14 messages")) { "◀ back on the chat's line; focused: ${focusedNodes()}" }
-        press("up", "right")
-        check(focusedHasDescription("Not a favourite")) { "the chat building on it has its own heart; focused: ${focusedNodes()}" }
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedHasDescription("Emoji")) { "back on, focus on the emoji button; focused: ${focusedNodes()}" }
     }
 
     /**
@@ -1849,16 +1819,6 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("For this")).fetchSemanticsNodes().isEmpty()) { "Back closes the list" }
         check(focusedHasDescription("Emoji")) { "focus back on the emoji button; focused: ${focusedNodes()}" }
-    }
-
-    @Test fun playerGroupChatsPicked() = withPlayer("tv-player-group-chat-picked", chats = true) {
-        openChats()
-        chooseExact("14 messages")
-        check(focusedHasText("Playing along")) { "Chats closes, focus back on the chat line, which says what plays along; focused: ${focusedNodes()}" }
-        press("back")
-        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Playing along", substring = true)).fetchSemanticsNodes().isEmpty()) { "Back closes the strip" }
-        check(focusedHasText("Chat")) { "focus returns to the Chat button; focused: ${focusedNodes()}" }
     }
 
     /** Change: choosing the other group changes the button; a page's Back goes back a page, the last closes the panel, focus back on the button. */
@@ -3044,27 +3004,29 @@ class TvScreenshotTest {
     }
 
     /**
-     * A part shared with a watch group: "What it starts with" says Chat: Off; its Chat choice lists
-     * Off, New chat and the earlier chats to replay; picking one shows on the line, and Play hands it
-     * to that playback only.
+     * A part shared with a watch group: "What it starts with" says Chat: On (the user's setting); its
+     * Chat choice lists Off, On and the group's older thread to replay (with its heart) and, for the
+     * group's creator, Start a new thread; picking a replay shows on the line, and Play hands it to
+     * that playback only.
      */
     @Test fun detailsChatChoice() {
-        var played = false
         shoot("tv-details-chat-line", setup = { c ->
-            (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats")
+            (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "threads")
             c.refreshCompanionForTests()
         }, act = {
             compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-            choose("Chat: Off")
+            choose("Chat: On")
             chooseExact("Chat")
             compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-            check(compose.onAllNodes(androidx.compose.ui.test.hasText("For this playback only.")).fetchSemanticsNodes().isNotEmpty()) { "for this playback only" }
-            check(compose.onAllNodes(androidx.compose.ui.test.hasText("14 messages")).fetchSemanticsNodes().isNotEmpty()) { "the earlier chats to replay" }
+            check(compose.onAllNodes(androidx.compose.ui.test.hasText("For this playback only", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "for this playback only" }
+            check(textMatches(Regex("Replay \\d{4}/\\d{2}/\\d{2}"))) { "the older thread to replay" }
+            check(compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Favourite")).fetchSemanticsNodes().isNotEmpty()) { "with its heart" }
+            check(compose.onAllNodes(androidx.compose.ui.test.hasText("Start a new thread")).fetchSemanticsNodes().isNotEmpty()) { "the creator can start a new one" }
             compose.onAllNodes(androidx.compose.ui.test.isDialog()).onFirst().captureRoboImage("build/outputs/roborazzi/tv-details-chat-choice.png")
-            chooseExact("14 messages")
+            choose("Replay ")
             check(compose.onAllNodes(androidx.compose.ui.test.hasText("Chat: Replay", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "the line says what replays" }
         }) { c ->
-            dev.nitrate.tv.ui.details.DetailsScreen(c.server, "s1e2", null, onPlay = { _, _ -> played = true }, onOpen = {}, chat = c.detailsChat(null))
+            dev.nitrate.tv.ui.details.DetailsScreen(c.server, "s1e2", null, onPlay = { _, _ -> }, onOpen = {}, chat = c.detailsChat(null))
         }
         check(dev.nitrate.android.playback.ChatChoices.chosen("s1e2") is dev.nitrate.core.companion.ChatPick.Replay)
         dev.nitrate.android.playback.ChatChoices.arm("s1e2")

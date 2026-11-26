@@ -62,8 +62,10 @@ data class DisplayPrefs(
     /** Playlists marked "in story order", which get a recap too (shared on every device, like spoiler hiding). */
     /** Shared shows whose spoiler hiding goes by the user's own progress, not the furthest-behind member's. */
     val ownSpoilerShows: Set<String> = emptySet(),
-    /** Group chat in the player (pop-ups of the group's notes, writing), on or off per watch group id; missing = on (off in easy mode). */
+    /** Older apps' group chat on or off per watch group id; no longer read (one setting, [chatOn]), kept under its name. */
     val groupChat: Map<String, Boolean> = emptyMap(),
+    /** Group chat in the player (the group's conversation popping up, writing), on unless turned off; one setting for every group. */
+    val chatOn: Boolean = true,
     val recapPlaylists: Set<String> = emptySet(),
     val accent: AccentMode = AccentMode.ARTWORK,
     /** Pure black backgrounds (OLED). */
@@ -150,11 +152,8 @@ data class DisplayPrefs(
     /** Progress shown as [style]; None also turns the bars off everywhere else (details pages, the player). */
     fun withProgress(style: ProgressStyle): DisplayPrefs = copy(progressStyle = style, progressBars = style != ProgressStyle.NONE)
 
-    /** Whether group chat starts on for a title watched with [groupIds]: the first one's choice, else on (off in easy mode). */
-    fun groupChatOn(groupIds: Collection<String>): Boolean = groupIds.firstNotNullOfOrNull { groupChat[it] } ?: !easyMode
-
-    /** [groupChatOn] set for all of [groupIds] (a title's groups go together). */
-    fun withGroupChat(groupIds: Collection<String>, on: Boolean): DisplayPrefs = copy(groupChat = groupChat + groupIds.associateWith { on })
+    /** Whether group chat starts on for a playback (any group's): the user's setting, [chatOn]; never in easy mode. */
+    fun groupChatOn(@Suppress("UNUSED_PARAMETER") groupIds: Collection<String> = emptyList()): Boolean = chatOn && !easyMode
 
     companion object {
         /**
