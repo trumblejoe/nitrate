@@ -955,6 +955,22 @@ class ScreenshotTest {
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.ARTWORK))
     }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
 
+    /**
+     * The Watching together row shows as soon as it's loaded, before the app has heard from the
+     * Companion this run (it only exists where the server has watch groups): it used to wait for that.
+     */
+    @Test fun togetherRowBeforeTheCompanionAnswers() = shoot("phone-together-row-early") { a ->
+        check(a.container.companion.value == null) { "the Companion hasn't answered yet" }
+        val rows = androidx.compose.runtime.produceState<List<dev.nitrate.core.rows.MediaRow>>(emptyList()) { value = a.server.homeRows() }.value
+        val cw = rows.firstOrNull { it.key == "home/continue_watching" } ?: return@shoot
+        val together = cw.copy(key = dev.nitrate.core.partners.TogetherRow.KEY, title = dev.nitrate.core.partners.TogetherRow.TITLE)
+        dev.nitrate.mobile.ui.TogetherHost(a, dev.nitrate.mobile.ui.togetherRowOn(a)) {
+            androidx.compose.foundation.layout.Column(Modifier.padding(top = 24.dp)) {
+                dev.nitrate.mobile.ui.CinematicRow(together, dev.nitrate.core.rows.RowDisplay(dev.nitrate.core.rows.RowStyle.WIDE, showTitles = true), a)
+            }
+        }
+    }
+
     /** A Home row drawn in [style], under Continue Watching as on the real Home. */
     @Composable
     private fun StyledRow(a: AppActions, style: dev.nitrate.core.rows.RowStyle) {

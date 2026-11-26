@@ -130,6 +130,18 @@ fun partnersAvailable(actions: AppActions): Boolean {
     return companion?.features?.contains(WatchPartners.FEATURE) == true && dev.nitrate.core.partners.WatchPartnersPlugin.ID in enabled
 }
 
+/**
+ * Whether the Watching together row's cards are handled (and the row shown): Watch groups on for this
+ * device, and the server not known to lack watch partners. Before the server's answer this run (it's
+ * asked for as the app starts) the row shows at once, as it loaded: it only exists where the server has them.
+ */
+@Composable
+fun togetherRowOn(actions: AppActions): Boolean {
+    val companion by actions.container.companion.collectAsState()
+    val enabled by actions.container.plugins.enabledIds.collectAsState(emptySet())
+    return dev.nitrate.core.partners.WatchPartnersPlugin.ID in enabled && (companion == null || companion?.features?.contains(WatchPartners.FEATURE) == true)
+}
+
 /** The partners' progress on a show, for its details pages. */
 @Composable
 fun rememberPartnerProgress(actions: AppActions, seriesId: String?): List<PartnerProgress> {

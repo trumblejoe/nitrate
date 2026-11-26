@@ -119,7 +119,7 @@ fun HomeTab(actions: AppActions, modifier: Modifier = Modifier, onSearch: () -> 
         onPauseOrDispose { }
     }
 
-    TogetherHost(actions, partnersAvailable(actions)) {
+    TogetherHost(actions, togetherRowOn(actions)) {
     when (val s = state) {
         RowsState.Loading -> RowsPlaceholder(modifier.padding(top = 56.dp))
         is RowsState.Error -> ErrorMessage(s.message, vm::refresh, modifier)

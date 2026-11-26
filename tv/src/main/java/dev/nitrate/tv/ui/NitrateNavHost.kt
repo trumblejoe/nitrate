@@ -148,6 +148,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     // Watch partners: the server's Companion plugin has them and the plugin is on.
     val partnersOn = companion?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) == true &&
         dev.nitrate.core.partners.WatchPartnersPlugin.ID in enabledIds
+    // The Watching together row's cards: handled (and the row shown) unless Watch groups is off here or the
+    // server is known to lack it; before its answer this run the row shows at once, as it loaded.
+    val togetherRowOn = dev.nitrate.core.partners.WatchPartnersPlugin.ID in enabledIds &&
+        (companion == null || companion?.features?.contains(dev.nitrate.core.partners.WatchPartners.FEATURE) == true)
     // Playlists added to the menu (stored with the display settings).
     val storedPrefs by remember(userId) { userId?.let { container.displaySettings.prefs(it) } ?: kotlinx.coroutines.flow.flowOf(dev.nitrate.core.pages.DisplayPrefs()) }
         .collectAsState(dev.nitrate.core.pages.DisplayPrefs())
@@ -258,7 +262,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             )
         }
         composable<HomeRoute> {
-            dev.nitrate.tv.ui.partners.TogetherHost(container, partnersOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
+            dev.nitrate.tv.ui.partners.TogetherHost(container, togetherRowOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
             HomeScreen(
                 repository = container.server,
                 displaySettings = container.displaySettings,
@@ -380,7 +384,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             val pagePrefs = dev.nitrate.core.pages.PageLooks.forPage(dev.nitrate.tv.ui.components.LocalDisplayPrefs.current, dev.nitrate.core.pages.PageKeys.custom(route.pageId))
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.page(route.pageId), overlay = pagePrefs.tvArrangement.fullArt) { insets ->
                 // The Watching together row works here too (its invites, start card and choices), as on Home.
-                dev.nitrate.tv.ui.partners.TogetherHost(container, partnersOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
+                dev.nitrate.tv.ui.partners.TogetherHost(container, togetherRowOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
                     CustomPageScreen(container, route.pageId, route.editNow, onOpen = nav::openItem, onPlay = { item -> gate.play(item) }, onDeleted = { nav.popBackStack() }, insets = insets)
                 }
             }
@@ -517,7 +521,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             // Library pages are laid out like Home unless set otherwise; full art has the menu over it.
             val libraryFullArt = dev.nitrate.core.pages.PageLooks.forPage(prefs, dev.nitrate.core.pages.PageKeys.library(libraryId)).tvArrangement.fullArt
             dev.nitrate.tv.ui.home.MainMenu(dev.nitrate.core.pages.MenuStops.library(libraryId), overlay = libraryFullArt) { insets ->
-                dev.nitrate.tv.ui.partners.TogetherHost(container, partnersOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
+                dev.nitrate.tv.ui.partners.TogetherHost(container, togetherRowOn, onPlay = { item -> gate.play(item) }, onOpenShow = { id, group -> nav.navigate(DetailsRoute(id, group = group)) }) {
                 LibraryScreen(
                     fullArt = libraryFullArt,
                     insets = insets,

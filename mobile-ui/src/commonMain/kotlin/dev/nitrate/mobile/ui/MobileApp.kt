@@ -386,7 +386,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         CompositionLocalProvider(LocalSharedScope provides this) {
         // The Watching together row's taps (an invite's answer, the start card, a shared title's choices)
         // on every page it can be on (Home, custom pages, library pages), not just Home.
-        TogetherHost(actions, partnersAvailable(actions)) {
+        TogetherHost(actions, togetherRowOn(actions)) {
         NavHost(
             navController = nav,
             startDestination = startRoute,
