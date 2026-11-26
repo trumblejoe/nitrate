@@ -67,83 +67,50 @@ import kotlinx.coroutines.launch
 fun PlayerGroupSheet(
     actions: AppActions,
     company: WatchCompany?,
-    chip: WithChip?,
+    chip: WithChip,
     item: MediaItem?,
-    groupChat: TimelineChat?,
-    chatAvailable: Boolean,
-    chatTitle: String?,
     positionMs: () -> Long,
     onDismiss: () -> Unit,
 ) {
     val container = actions.container
     val scope = rememberCoroutineScope()
     var problem by remember { mutableStateOf<String?>(null) }
-    val me = container.server.userId
-    val pickedBy = groupChat?.broughtBy?.collectAsState()?.value
-    // The title's quick replies (the usual ones until its own are worked out: an episode's show is asked for once).
-    val picks by produceState(QuickReplies.forTitle(item), item?.id) {
-        if (item != null) value = container.quickPicks(item)
-    }
     GroupSheet(
         chip = chip,
-        chat = groupChat?.takeIf { chatAvailable },
-        chatTitle = chatTitle,
-        positionMs = positionMs,
-        picks = picks,
         problem = problem,
-        pickedBy = pickedBy?.takeIf { it != me }?.let { id -> chip?.groups?.flatMap { it.others }?.firstOrNull { it.id == id }?.name ?: "Someone watching" },
         onCountFor = { company?.countFor(it) },
         // A Group Watch Session of the group it counts for, from where this player is now.
-        onStartSession = if (container.sessionsAvailable() && chip?.group != null) ({
+        onStartSession = if (container.sessionsAvailable() && chip.group != null) ({
             scope.launch { problem = item?.let { container.startWatchingNow(it, chip.group, positionMs()) } }
         }) else null,
         onLeaveSession = { container.groupSessions.leave(); onDismiss() },
         onEndSession = { container.groupSessions.end(); onDismiss() },
         onSameRoom = { group, ids -> company?.sameRoom(group, ids) },
-        onTurnChat = { on -> groupChat?.let { turnGroupChat(actions, it, on, positionMs()) } },
-        onPlayChat = { id ->
-            scope.launch {
-                groupChat?.play(id)?.onSuccess { problem = null }?.onFailure { problem = it.message ?: "Couldn't open that chat" }
-            }
-        },
         onDismiss = onDismiss,
     )
 }
 
-private enum class GroupPage { MAIN, COUNT, ROOM, CHATS }
+private enum class GroupPage { MAIN, COUNT, ROOM }
 
 /**
  * The group panel as a sheet (the player's group button opens it): the top line says who it counts
  * for ("Counting for you, Tommy & Suzy · Change", which opens the Change choices and "We're in the same
- * room") or "In a Group Watch Session with Tommy"; then the chat: which chat this is ("New chat", or
- * the earlier one playing along; tapping it opens **Chats**: Group chat on or off, New chat and the
- * earlier chats, newest first), what was said up to here, reactions and a message box; then "Start a
- * Group Watch Session" (in one: leave it, or end it for everyone when the user started it).
+ * room") or "In a Group Watch Session with Tommy"; then "Start a Group Watch Session" (in one: leave
+ * it, or end it for everyone when the user started it). The chat is the Chat button's ([ChatPanelSheet]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupSheet(
-    chip: WithChip?,
-    chat: TimelineChat?,
-    chatTitle: String? = null,
-    positionMs: () -> Long = { 0L },
+    chip: WithChip,
     problem: String? = null,
-    /** Who else picked the chat playing along for everyone in the session (null: the user, or nobody). */
-    pickedBy: String? = null,
     onCountFor: (WatchingWith) -> Unit = {},
     /** Starts a Group Watch Session (null: the server has none, or no group to start it for). */
     onStartSession: (() -> Unit)? = {},
     onLeaveSession: () -> Unit = {},
     onEndSession: () -> Unit = {},
     onSameRoom: (groupId: String, present: List<String>) -> Unit = { _, _ -> },
-    onTurnChat: (Boolean) -> Unit = {},
-    onPlayChat: (String?) -> Unit = {},
     onDismiss: () -> Unit,
     initialPage: String? = null,
-    /** The chat's one-press reactions and lines for this title. */
-    picks: QuickPicks = QuickPicks.PLAIN,
-    /** The device's offset from UTC (minutes) at a moment, for the chats' dates. */
-    offsetAt: (Long) -> Int = { (timeZoneOffsetMsAt(it) / 60_000).toInt() },
 ) {
     var page by remember { mutableStateOf(initialPage?.let { GroupPage.valueOf(it) } ?: GroupPage.MAIN) }
     val back = { page = if (page == GroupPage.ROOM) GroupPage.COUNT else GroupPage.MAIN }
@@ -151,27 +118,26 @@ fun GroupSheet(
         // A page's system Back goes back one step; on the first page it closes the sheet.
         dev.nitrate.mobile.platform.PlatformBackHandler(enabled = page != GroupPage.MAIN) { back() }
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).imePadding(),
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             when (page) {
-                GroupPage.MAIN -> GroupMain(chip, chat, chatTitle, positionMs, problem, pickedBy, offsetAt, picks, onStartSession, onLeaveSession, onEndSession) { page = it }
-                GroupPage.COUNT -> chip?.let { c ->
+                GroupPage.MAIN -> GroupMain(chip, problem, onStartSession, onLeaveSession, onEndSession) { page = it }
+                GroupPage.COUNT -> {
                     Text("Counting for", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text("Who what you play to the end counts for.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val chosen = c.group?.id
-                    c.groups.forEach { g -> Choice("With " + WithChip.nameOf(g), selected = chosen == g.id) { onCountFor(WatchingWith.Group(g.id)); back() } }
+                    val chosen = chip.group?.id
+                    chip.groups.forEach { g -> Choice("With " + WithChip.nameOf(g), selected = chosen == g.id) { onCountFor(WatchingWith.Group(g.id)); back() } }
                     Choice("No group", selected = chosen == null) { onCountFor(WatchingWith.JustMe); back() }
-                    if (c.group != null) {
+                    if (chip.group != null) {
                         Action(
                             "We're in the same room",
-                            if (c.roomNames.isEmpty()) "Pick who's watching here with you: it counts for them too" else "Here: " + WithChip.and(c.roomNames) + " · change",
+                            if (chip.roomNames.isEmpty()) "Pick who's watching here with you: it counts for them too" else "Here: " + WithChip.and(chip.roomNames) + " · change",
                         ) { page = GroupPage.ROOM }
                     }
                     TextButton(onClick = back) { Text("Back") }
                 }
-                GroupPage.ROOM -> chip?.group?.let { g -> RoomPicker(chip, g, onDone = { ids -> onSameRoom(g.id, ids); page = GroupPage.MAIN }, onBack = back) }
-                GroupPage.CHATS -> chat?.let { ChatsList(it, chip?.inSession == true, pickedBy, offsetAt, onTurnChat, onPick = { id -> onPlayChat(id); back() }, onBack = back) }
+                GroupPage.ROOM -> chip.group?.let { g -> RoomPicker(chip, g, onDone = { ids -> onSameRoom(g.id, ids); page = GroupPage.MAIN }, onBack = back) }
             }
         }
     }
@@ -179,33 +145,24 @@ fun GroupSheet(
 
 @Composable
 private fun GroupMain(
-    chip: WithChip?,
-    chat: TimelineChat?,
-    chatTitle: String?,
-    positionMs: () -> Long,
+    chip: WithChip,
     problem: String?,
-    pickedBy: String?,
-    offsetAt: (Long) -> Int,
-    picks: QuickPicks,
     onStartSession: (() -> Unit)?,
     onLeaveSession: () -> Unit,
     onEndSession: () -> Unit,
     go: (GroupPage) -> Unit,
 ) {
-    when {
-        chip != null && !chip.inSession -> Action(chip.label, chip.who, bold = true) { go(GroupPage.COUNT) }
-        chip != null -> {
-            Text(chip.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(chip.who, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        else -> Text("Group chat" + (chatTitle?.let { " · $it" } ?: ""), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    if (!chip.inSession) {
+        Action(chip.label, chip.who, bold = true) { go(GroupPage.COUNT) }
+    } else {
+        Text(chip.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(chip.who, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    if (chat != null) ChatPart(chat, positionMs, pickedBy, offsetAt, picks) { go(GroupPage.CHATS) }
-    if (chip?.inSession == true) {
+    if (chip.inSession) {
         Heading("Group Watch Session")
         Action("Leave the Group Watch Session", "Carry on by yourself from here", onClick = onLeaveSession)
         if (chip.startedByMe) Action("End it for everyone", "Everyone carries on by themselves", onClick = onEndSession)
-    } else if (onStartSession != null && chip?.group != null) {
+    } else if (onStartSession != null && chip.group != null) {
         Action(
             "Start a Group Watch Session",
             "With " + WithChip.nameOf(chip.group!!) + ": they're asked to join, and everyone starts together on their own screen",
@@ -215,10 +172,96 @@ private fun GroupMain(
     problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 }
 
-/** The chat: which one (tap for Chats), what was said up to here, reactions and a message box. */
+/** The chat sheet wired to the app (see [ChatPanelSheet]). */
 @Composable
-private fun ChatPart(chat: TimelineChat, positionMs: () -> Long, pickedBy: String?, offsetAt: (Long) -> Int, picks: QuickPicks, onChats: () -> Unit) {
+fun PlayerChatSheet(
+    actions: AppActions,
+    chip: WithChip?,
+    item: MediaItem?,
+    chat: TimelineChat,
+    chatTitle: String?,
+    positionMs: () -> Long,
+    onDismiss: () -> Unit,
+) {
+    val container = actions.container
+    val scope = rememberCoroutineScope()
+    var problem by remember { mutableStateOf<String?>(null) }
+    val me = container.server.userId
+    val pickedBy = chat.broughtBy.collectAsState().value
+    // The title's quick replies (the usual ones until its own are worked out: an episode's show is asked for once).
+    val picks by produceState(QuickReplies.forTitle(item), item?.id) {
+        if (item != null) value = container.quickPicks(item)
+    }
+    ChatPanelSheet(
+        chat = chat,
+        who = chip?.group?.let(WithChip::nameOf) ?: chatTitle,
+        positionMs = positionMs,
+        picks = picks,
+        inSession = chip?.inSession == true,
+        pickedBy = pickedBy?.takeIf { it != me }?.let { id -> chip?.groups?.flatMap { it.others }?.firstOrNull { it.id == id }?.name ?: "Someone watching" },
+        onTurn = { on -> turnGroupChat(actions, chat, on, positionMs()) },
+        onPlayChat = { id ->
+            scope.launch { chat.play(id).onSuccess { problem = null }.onFailure { problem = it.message ?: "Couldn't open that chat" } }
+        },
+        problem = problem,
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * The player's chat as a sheet (the Chat button opens it, fully up): the conversation first. Its top
+ * line says which chat this is and who with ("New chat · Will ›", tapping it opens **Chats**: Group
+ * chat on or off, New chat and the earlier chats to play along, each with a heart); then what was
+ * said up to here, the title's reactions and quick lines (one tap each) and a message box.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatPanelSheet(
+    chat: TimelineChat,
+    /** Who it's with ("Will", "Tommy & Suzy"). */
+    who: String?,
+    positionMs: () -> Long = { 0L },
+    picks: QuickPicks = QuickPicks.PLAIN,
+    inSession: Boolean = false,
+    /** Who else picked the chat playing along for everyone in the session (null: the user, or nobody). */
+    pickedBy: String? = null,
+    onTurn: (Boolean) -> Unit = {},
+    onPlayChat: (String?) -> Unit = {},
+    problem: String? = null,
+    onDismiss: () -> Unit,
+    /** Opens on Chats (screenshots). */
+    showChats: Boolean = false,
+    /** The device's offset from UTC (minutes) at a moment, for the chats' dates. */
+    offsetAt: (Long) -> Int = { (timeZoneOffsetMsAt(it) / 60_000).toInt() },
+) {
+    var chats by remember { mutableStateOf(showChats) }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        dev.nitrate.mobile.platform.PlatformBackHandler(enabled = chats) { chats = false }
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp).imePadding(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (chats) ChatsList(chat, inSession, pickedBy, offsetAt, onTurn, onPick = { id -> onPlayChat(id); chats = false }, onBack = { chats = false })
+            else Conversation(chat, who, positionMs, picks, pickedBy, problem, offsetAt, onTurn) { chats = true }
+        }
+    }
+}
+
+/** Which chat (tap for Chats), what was said up to here, reactions, quick lines and a message box. */
+@Composable
+private fun Conversation(
+    chat: TimelineChat,
+    who: String?,
+    positionMs: () -> Long,
+    picks: QuickPicks,
+    pickedBy: String?,
+    problem: String?,
+    offsetAt: (Long) -> Int,
+    onTurn: (Boolean) -> Unit,
+    onChats: () -> Unit,
+) {
     val on by chat.on.collectAsState()
+    val unread by chat.unread.collectAsState()
     val history by chat.history.collectAsState()
     val missed by chat.missed.collectAsState()
     val hasChats by chat.hasChats.collectAsState()
@@ -226,32 +269,35 @@ private fun ChatPart(chat: TimelineChat, positionMs: () -> Long, pickedBy: Strin
     val all by chat.allChats.collectAsState()
     val scope = rememberCoroutineScope()
     var draft by remember { mutableStateOf("") }
-    var problem by remember { mutableStateOf<String?>(null) }
+    var sendProblem by remember { mutableStateOf<String?>(null) }
     val list = rememberLazyListState()
     LaunchedEffect(Unit) { chat.opened() }
+    // Open: what pops up meanwhile is seen.
+    LaunchedEffect(unread) { if (unread > 0) chat.read() }
     LaunchedEffect(history.size) { if (history.isNotEmpty()) list.animateScrollToItem(history.size - 1) }
     fun send(text: String, kind: ChatKind) {
         scope.launch {
             chat.send(text, kind, positionMs())
-                .onSuccess { if (kind == ChatKind.TEXT) draft = ""; problem = null }
-                .onFailure { problem = it.message ?: "Couldn't send" }
+                .onSuccess { if (kind == ChatKind.TEXT) draft = ""; sendProblem = null }
+                .onFailure { sendProblem = it.message ?: "Couldn't send" }
         }
     }
-    Heading("Chat")
     Action(
+        (if (hasChats && on) NoteChats.playingLabel(playing, all, offsetAt) else "Group chat") + (who?.let { " · $it" } ?: "") + " ›",
         when {
-            !on -> "Group chat: Off"
-            hasChats -> NoteChats.playingLabel(playing, all, offsetAt)
-            else -> "Group chat: On"
-        },
-        when {
+            !on -> "Off · Chats ›"
             pickedBy != null && playing != null -> "$pickedBy picked it for everyone · Chats ›"
-            hasChats -> "Chats: play an earlier chat along, or turn it off ›"
+            hasChats -> "Change chat, or turn it off · Chats ›"
             else -> "Turn it on or off ›"
         },
+        bold = true,
         onClick = onChats,
     )
-    if (!on) return
+    if (!on) {
+        Text("Group chat is off: nothing pops up, and nothing is sent.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.material3.Button(onClick = { onTurn(true) }) { Text("Turn it on") }
+        return
+    }
     if (missed.isNotEmpty()) TextButton(onClick = { chat.showMissed() }) { Text("Show what I missed (${missed.size})") }
     LazyColumn(Modifier.fillMaxWidth().heightIn(min = 60.dp, max = 300.dp), state = list, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (history.isEmpty()) item {
@@ -291,7 +337,7 @@ private fun ChatPart(chat: TimelineChat, positionMs: () -> Long, pickedBy: Strin
             Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = accentColor())
         }
     }
-    problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    (problem ?: sendProblem)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 }
 
 /** Chats: Group chat on or off, then New chat and the earlier chats for this group and part, newest first. */

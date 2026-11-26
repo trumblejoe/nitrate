@@ -259,6 +259,7 @@ actual fun PlayerScreen(
     )
     val withChip = company?.chip?.collectAsState()?.value
     var withOpen by remember { mutableStateOf(false) }
+    var chatOpen by remember { mutableStateOf(false) }
     // A Group Watch Session on this part: the countdown, reports, and the others' pauses and jumps offered.
     val sessionPlayback = rememberSessionPlayback(
         actions.container, item?.id, enabled = !local && clipEndMs == null && testPlay == null,
@@ -432,8 +433,10 @@ actual fun PlayerScreen(
                     val sub = listOfNotNull(item?.episodeLabel, "Downloaded".takeIf { local }, plan?.method?.takeIf { it != PlayMethod.DIRECT_PLAY }?.let { if (it == PlayMethod.TRANSCODE) "Transcoding" else "Direct stream" })
                     if (sub.isNotEmpty()) Text(sub.joinToString(" · "), color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                 }
-                // The one group button: who it counts for, the chat and Group Watch Sessions (easy mode: who it counts for, said).
-                GroupButton(withChip, chatAvailable, easy, onOpen = { withOpen = true }, modifier = Modifier.padding(horizontal = 4.dp))
+                // The group button: who it counts for and Group Watch Sessions (easy mode: who it counts for, said).
+                GroupButton(withChip, easy, onOpen = { withOpen = true }, modifier = Modifier.padding(horizontal = 4.dp))
+                // The chat has its own button, opening on the conversation.
+                if (groupChat != null && chatAvailable && !easy) ChatButton(groupChat, onOpen = { chatOpen = true })
                 if (canWrite && !writing && !easy) IconButton(onClick = { writing = true }) { Icon(Icons.Default.Edit, "Write beside the video (Ctrl+E)", tint = Color.White) }
                 if ((item?.chapters?.size ?: 0) > 1 && !easy) TextButton(onClick = { dialog = PlayerDialog.CHAPTERS }) { Text("Chapters", color = Color.White) }
                 if (lyrics != null) TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "Hide lyrics" else "Lyrics", color = Color.White) }
@@ -542,17 +545,20 @@ actual fun PlayerScreen(
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 48.dp, end = 16.dp)
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), MaterialTheme.shapes.medium).padding(horizontal = 12.dp, vertical = 8.dp),
         )
-        if (groupChat != null && chatAvailable && !withOpen) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+        if (groupChat != null && chatAvailable && !chatOpen) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
         // More than one group would count this: which one, plainly, as it starts.
         if (!inPip) CountingBanner(withChip, easy, onOpen = { withOpen = true }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
         if (!inPip) SessionOverlay(sessionPlayback, actions.container, Modifier.matchParentSize())
     }
-    if (withOpen && !easy && (withChip != null || chatAvailable)) {
-        PlayerGroupSheet(
-            actions, company, withChip, item, groupChat, chatAvailable,
-            chatTitle = groupSession?.title ?: syncGroup?.name ?: groupChat?.groups?.collectAsState()?.value?.firstOrNull()?.title,
+    if (withOpen && !easy && withChip != null) {
+        PlayerGroupSheet(actions, company, withChip, item, positionMs = { session.player.currentPosition }) { withOpen = false }
+    }
+    if (chatOpen && !easy && groupChat != null && chatAvailable) {
+        PlayerChatSheet(
+            actions, withChip, item, groupChat,
+            chatTitle = groupSession?.title ?: syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title,
             positionMs = { session.player.currentPosition },
-        ) { withOpen = false }
+        ) { chatOpen = false }
     }
 
     val p = plan
@@ -571,7 +577,7 @@ actual fun PlayerScreen(
             onPlayedElsewhere = { dialog = PlayerDialog.NONE; onExit() },
             onDismiss = { dialog = PlayerDialog.NONE },
             groupChat = if (groupChat != null && chatAvailable) { {
-                GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.player.currentPosition) }, onShowMissed = { groupChat.showMissed(); dialog = PlayerDialog.NONE; withOpen = true })
+                GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.player.currentPosition) }, onShowMissed = { groupChat.showMissed(); dialog = PlayerDialog.NONE; chatOpen = true })
             } } else null,
         )
         dialog == PlayerDialog.FIX -> {

@@ -102,8 +102,8 @@ fun chatFocus(chip: WithChip?): List<String>? = when {
  * counts for. Nothing without a group.
  */
 @Composable
-fun GroupButton(chip: WithChip?, chatAvailable: Boolean, easy: Boolean, onOpen: () -> Unit, modifier: Modifier = Modifier) {
-    val label = (if (easy) chip?.plain else chip?.button ?: "Group chat".takeIf { chatAvailable }) ?: return
+fun GroupButton(chip: WithChip?, easy: Boolean, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val label = (if (easy) chip?.plain else chip?.button) ?: return
     val shape = RoundedCornerShape(50)
     val base = modifier.widthIn(max = 260.dp).background(Color.White.copy(alpha = 0.16f), shape)
     Row(
@@ -165,3 +165,24 @@ fun CountingBanner(chip: WithChip?, easy: Boolean, onOpen: () -> Unit, modifier:
 /** How long "Counting for: …" stays up as playback starts. */
 const val COUNTING_MS = 5_000L
 
+
+/** A speech bubble: the player's Chat button. */
+val ChatBubbleIcon: androidx.compose.ui.graphics.vector.ImageVector =
+    androidx.compose.ui.graphics.vector.ImageVector.Builder("ChatBubble", 24.dp, 24.dp, 24f, 24f).addPath(
+        androidx.compose.ui.graphics.vector.addPathNodes("M20,2H4C2.9,2 2,2.9 2,4v18l4,-4h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2zM6,9h12v2H6V9zM14,14H6v-2h8v2zM18,8H6V6h12v2z"),
+        fill = androidx.compose.ui.graphics.SolidColor(Color.Black),
+    ).build()
+
+/**
+ * The player's Chat button (where there's a group to chat with; not in easy mode): a speech bubble
+ * with how many messages popped up since the chat was last open. Opens the chat sheet.
+ */
+@Composable
+fun ChatButton(chat: dev.nitrate.core.companion.TimelineChat, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val unread by chat.unread.collectAsState()
+    androidx.compose.material3.IconButton(onClick = onOpen, modifier = modifier) {
+        androidx.compose.material3.BadgedBox(badge = { if (unread > 0) androidx.compose.material3.Badge { Text(if (unread > 9) "9+" else "$unread") } }) {
+            androidx.compose.material3.Icon(ChatBubbleIcon, if (unread > 0) "Chat, $unread new" else "Chat", tint = Color.White)
+        }
+    }
+}

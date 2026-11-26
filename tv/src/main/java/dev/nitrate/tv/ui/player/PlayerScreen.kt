@@ -94,13 +94,14 @@ import dev.nitrate.core.model.SubtitleDelivery
 private const val CONTROLS_TIMEOUT_MS = 5_000L
 
 
-private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, FIX, GROUP }
+private enum class Panel { NONE, AUDIO, SUBTITLES, INFO, MORE, FIX, GROUP, CHAT }
 
 /** Panels shown as dialogs (their own window, with focus of their own). */
 private val DIALOG_PANELS = setOf(Panel.AUDIO, Panel.SUBTITLES, Panel.FIX)
 
 /** The With… button's place for focus (its label changes with who's watching). */
 private const val WITH_KEY = "with"
+private const val CHAT_KEY = "chat"
 
 /** Keys that, with the controls hidden, only bring them back. */
 private val WAKE_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)
@@ -278,8 +279,12 @@ fun PlayerScreen(
         positionMs = { player.currentPosition }, durationMs = { player.duration.coerceAtLeast(0L) },
     )
     val withChip = company?.chip?.collectAsState()?.value
-    // The one group button (counting for, chat, Group Watch Session): only where a group is involved.
-    val groupLabel = groupButtonLabel(withChip, chatAvailable).takeIf { !easy }
+    // The group button (counting for, Group Watch Session): only where a group is involved.
+    val groupLabel = groupButtonLabel(withChip).takeIf { !easy }
+    // The Chat button (its strip across the bottom), with how many popped up since it was last open.
+    val chatUnread = groupChat?.unread?.collectAsState()?.value ?: 0
+    val chatLabel = chatButtonLabel(chatUnread).takeIf { chatAvailable && !easy }
+    var chatLog by remember { mutableStateOf(false) }
     // A Group Watch Session on this part: the countdown, reports, and the others' pauses and jumps offered.
     val sessionPlayback = rememberSessionPlayback(watchGroups, item?.id, player, enabled = clipEndMs == null && testPlay == null)
     val sessionNotice = sessionPlayback?.notice?.collectAsState()?.value
@@ -555,7 +560,7 @@ fun PlayerScreen(
                 // Info open it closes that, back to the controls.
                 if (event.key == Key.Menu) {
                     if (event.type == KeyEventType.KeyUp) when {
-                        panel == Panel.MORE || panel == Panel.INFO -> panel = Panel.NONE
+                        panel == Panel.MORE || panel == Panel.INFO || panel == Panel.CHAT -> panel = Panel.NONE
                         controlsVisible -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
                         else -> touch()
                     }
@@ -622,7 +627,7 @@ fun PlayerScreen(
         // The More panel takes the controls' place while it's open.
         // More and Info take the controls' place while they're open.
         androidx.compose.animation.AnimatedVisibility(
-            visible = controlsVisible && panel != Panel.MORE && panel != Panel.INFO, enter = fadeIn(), exit = fadeOut(),
+            visible = controlsVisible && panel != Panel.MORE && panel != Panel.INFO && panel != Panel.CHAT, enter = fadeIn(), exit = fadeOut(),
             modifier = Modifier.align(Alignment.BottomStart).onFocusChanged { controlsHaveFocus = it.hasFocus },
         ) {
             // Info and Chat open beside the video: their buttons close them again.
@@ -648,8 +653,10 @@ fun PlayerScreen(
                     sessionNotice?.action?.let { a -> PlayerAction(a, key = SESSION_KEY) { sessionPlayback?.act(); controlFocus.last = null; refocus() } },
                     PlayerAction("Audio", ready) { panel = Panel.AUDIO },
                     PlayerAction("Subtitles", ready) { panel = Panel.SUBTITLES },
-                    // The group button (who it counts for, the chat, Group Watch Sessions); in easy mode only who it counts for, said beside the buttons.
+                    // The group button (who it counts for, Group Watch Sessions); in easy mode only who it counts for, said beside the buttons.
                     groupLabel?.let { PlayerAction(it, key = WITH_KEY) { toggle(Panel.GROUP) } },
+                    // The chat: a strip across the bottom, the video above.
+                    chatLabel?.let { PlayerAction(it, key = CHAT_KEY) { panel = Panel.CHAT } },
                     PlayerAction("Info", ready) { panel = Panel.INFO }.takeIf { !easy },
                     PlayerAction("More", ready) { panel = Panel.MORE }.takeIf { !easy },
                     PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },
@@ -673,17 +680,24 @@ fun PlayerScreen(
             )
         }
 
-        if (groupChat != null && chatAvailable) {
-            // Pop-ups from the others, out of the way of the controls and any open chat panel.
-            if (panel != Panel.GROUP) dev.nitrate.tv.ui.together.NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 32.dp))
+        if (groupChat != null && chatAvailable && !(panel == Panel.CHAT && chatLog)) {
+            // Pop-ups from the others, out of the way of the controls (with the chat so far showing, it says the same).
+            dev.nitrate.tv.ui.together.NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 32.dp))
         }
-        if (panel == Panel.GROUP && groupLabel != null) {
+        if (panel == Panel.GROUP && groupLabel != null && withChip != null) {
             // Back goes back a page, then closes it; focus returns to the group button.
             PlayerGroupPanel(
-                watchGroups, company, withChip, item, groupChat, chatAvailable,
-                chatTitle = groupSession?.title ?: syncGroup?.name ?: noteGroups.firstOrNull()?.title,
-                onGroupChat = ::turnGroupChat, positionMs = { player.currentPosition }, onClose = { panel = Panel.NONE },
+                watchGroups, company, withChip, item, positionMs = { player.currentPosition }, onClose = { panel = Panel.NONE },
                 modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
+        if (panel == Panel.CHAT && groupChat != null && chatLabel != null) {
+            // Stays until Back (Chats, then the chat so far, close first); focus returns to the Chat button.
+            PlayerChatStrip(
+                watchGroups, withChip, item, groupChat,
+                chatTitle = groupSession?.title ?: syncGroup?.name ?: noteGroups.firstOrNull()?.title,
+                onTurn = ::turnGroupChat, positionMs = { player.currentPosition },
+                log = chatLog, onLog = { chatLog = it },
             )
         }
 
@@ -848,7 +862,7 @@ fun PlayerScreen(
                         onSleep = { at, end -> sleepAt = at; sleepAtEndState.value = end }, onDone = { panel = Panel.NONE },
                         frameRate = frameRateOverride, onFrameRate = { frameRateOverride = it }, displayHz = rememberDisplayHz(),
                         groupChat = groupChat, groupChatAvailable = chatAvailable, onGroupChat = ::turnGroupChat,
-                        onShowMissed = { groupChat?.showMissed(); panel = Panel.GROUP }),
+                        onShowMissed = { groupChat?.showMissed(); chatLog = true; panel = Panel.CHAT }),
                 ),
                 // Never reopens on the episodes or collection (spoilers): Settings instead.
                 initial = moreTab?.takeIf { it != "siblings" },
@@ -912,6 +926,7 @@ fun PlayerScreen(
     }
     // The button went (the title stopped being shared, or the session ended) while its panel was open.
     LaunchedEffect(groupLabel == null) { if (groupLabel == null && panel == Panel.GROUP) panel = Panel.NONE }
+    LaunchedEffect(chatLabel == null) { if (chatLabel == null && panel == Panel.CHAT) panel = Panel.NONE }
     person?.let { who ->
         // Focus stays on their photo in the cast strip; the controls stay up a while longer.
         PersonDialog(repository, who, item, onDismiss = { person = null; touch() })

@@ -203,7 +203,7 @@ class ScreenshotTest {
         }
     }
 
-    /** The group panel where only the chat is involved (an older server without chat histories): the group's notes up to 16:40 (not the one at 25:00), reactions. */
+    /** The chat sheet on an older server without chat histories: the group's notes up to 16:40 (not the one at 25:00), reactions, the message box. */
     @Test fun groupChat() = shoot("phone-group-chat", setup = { c ->
         (c.server as dev.nitrate.testing.FakeServer).companionFeatures += "notes"
     }) { actions ->
@@ -211,15 +211,15 @@ class ScreenshotTest {
         val chat = androidx.compose.runtime.remember { actions.container.timelineChat(scope, live = false) }
         androidx.compose.runtime.LaunchedEffect(Unit) { chat.start("s1e2", 1_000_000) { true } }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.GroupSheet(null, chat, "The Night Reel", positionMs = { 1_000_000 }, onTurnChat = { chat.turn(it, 1_000_000) }, onDismiss = {})
+            dev.nitrate.mobile.ui.ChatPanelSheet(chat, "The Night Reel", positionMs = { 1_000_000 }, onTurn = { chat.turn(it, 1_000_000) }, onDismiss = {})
         }
     }
 
     /**
-     * A playback's chat with chat histories (and favourites), started from a group's card: the panel
-     * on a new chat (nothing earlier loaded), with the title's quick replies.
+     * A playback's chat with chat histories (and favourites), started from a group's card: the chat
+     * sheet on a new chat (nothing earlier loaded), with the title's quick replies; with [chats], on Chats.
      */
-    private fun chatsPanel(name: String, page: String? = null) = shoot(name, setup = { c ->
+    private fun chatsPanel(name: String, chats: Boolean = false) = shoot(name, setup = { c ->
         (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions", "chatfavourites")
         c.refreshCompanionForTests()
     }) { actions ->
@@ -233,22 +233,31 @@ class ScreenshotTest {
             chat.focus(listOf("g1"))
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.GroupSheet(
-                withChip(actions, with = dev.nitrate.core.partners.WatchingWith.Group("g1")), chat, positionMs = { 1_000_000 }, onDismiss = {}, initialPage = page,
-                picks = picks.value,
-            )
+            dev.nitrate.mobile.ui.ChatPanelSheet(chat, "Will", positionMs = { 1_000_000 }, picks = picks.value, onDismiss = {}, showChats = chats)
         }
     }
 
     /**
      * The group panel: who it counts for ("Counting for you and Will · Change", "Watching on your
-     * own"), the chat (a new one) with the title's own emojis first and its characters' names and
-     * short lines under them, Start a Group Watch Session.
+     * own") and Start a Group Watch Session; no chat (that's the Chat button's).
      */
-    @Test fun groupPanel() = chatsPanel("phone-group-panel")
+    @Test fun groupPanel() = shoot("phone-group-panel", setup = { c ->
+        (c.server as dev.nitrate.testing.FakeServer).companionFeatures += listOf("notes", "chats", "sessions")
+        c.refreshCompanionForTests()
+    }) { actions ->
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            dev.nitrate.mobile.ui.GroupSheet(withChip(actions, with = dev.nitrate.core.partners.WatchingWith.Group("g1")), onDismiss = {})
+        }
+    }
+
+    /**
+     * The chat sheet, fully up on the conversation: "New chat · Will ›" (tap for Chats), then the
+     * title's own emojis first and its characters' names and short lines under them, the message box.
+     */
+    @Test fun chatSheet() = chatsPanel("phone-chat-sheet")
 
     /** Chats: Group chat on or off, New chat, and this group's earlier chats newest first (dated 2026/11/22), one building on another, each with a heart (Tuesday's a favourite). */
-    @Test fun groupChats() = chatsPanel("phone-group-chats", page = "CHATS")
+    @Test fun groupChats() = chatsPanel("phone-group-chats", chats = true)
 
     /** An episode of The Night Reel, shared with two watch groups (Will; Frank, Tommy and Jane). */
     private fun withChip(
@@ -268,7 +277,7 @@ class ScreenshotTest {
     fun withChipShown() = shoot("phone-group-button") { actions ->
         val chip = withChip(actions)
         Box(Modifier.fillMaxSize().background(Color(0xFF203040))) {
-            dev.nitrate.mobile.ui.GroupButton(withChip(actions, with = dev.nitrate.core.partners.WatchingWith.Group("g2")), chatAvailable = true, easy = false, onOpen = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(12.dp))
+            dev.nitrate.mobile.ui.GroupButton(withChip(actions, with = dev.nitrate.core.partners.WatchingWith.Group("g2")), easy = false, onOpen = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(12.dp))
             dev.nitrate.mobile.ui.CountingBanner(chip, easy = false, onOpen = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 72.dp))
         }
     }
@@ -276,7 +285,7 @@ class ScreenshotTest {
     /** Change, from the panel's top line: each group on the title, No group, and the same room. */
     @Test fun withSheet() = shoot("phone-group-change") { actions ->
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.GroupSheet(withChip(actions), null, onDismiss = {}, initialPage = "COUNT")
+            dev.nitrate.mobile.ui.GroupSheet(withChip(actions), onDismiss = {}, initialPage = "COUNT")
         }
     }
 
@@ -285,7 +294,7 @@ class ScreenshotTest {
         val chip = withChip(actions, room = dev.nitrate.core.partners.SameRoom("g2", listOf("user-5")))
         check(chip.label == "In the room with Tommy") { chip.label }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.GroupSheet(chip, null, initialPage = "ROOM", onDismiss = {})
+            dev.nitrate.mobile.ui.GroupSheet(chip, initialPage = "ROOM", onDismiss = {})
         }
     }
 
@@ -294,7 +303,7 @@ class ScreenshotTest {
         val chip = withChip(actions, inSession = true)
         check(chip.label == "In a Group Watch Session with Will") { chip.label }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            dev.nitrate.mobile.ui.GroupSheet(chip, null, onDismiss = {})
+            dev.nitrate.mobile.ui.GroupSheet(chip, onDismiss = {})
         }
     }
 

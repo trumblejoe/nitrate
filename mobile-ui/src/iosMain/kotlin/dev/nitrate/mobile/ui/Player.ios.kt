@@ -163,6 +163,7 @@ actual fun PlayerScreen(
     )
     val withChip = company?.chip?.collectAsState()?.value
     var withOpen by remember { mutableStateOf(false) }
+    var chatOpen by remember { mutableStateOf(false) }
     // A Group Watch Session on this part: the countdown, reports, and the others' pauses and jumps offered.
     val sessionPlayback = rememberSessionPlayback(
         container, item?.id, enabled = !local && clipEndMs == null && testPlay == null,
@@ -195,7 +196,8 @@ actual fun PlayerScreen(
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
             // The one group button: who it counts for, the chat and Group Watch Sessions (easy mode: who it counts for, said).
-            GroupButton(withChip, chatAvailable, easy, onOpen = { pressed(); withOpen = true }, modifier = Modifier.padding(horizontal = 4.dp))
+            GroupButton(withChip, easy, onOpen = { pressed(); withOpen = true }, modifier = Modifier.padding(horizontal = 4.dp))
+            if (groupChat != null && chatAvailable && !easy) ChatButton(groupChat, onOpen = { pressed(); chatOpen = true })
             if (plan != null && clipEndMs == null) {
                 TextButton(onClick = { pressed(); picking = StreamKind.AUDIO }) { Text("Audio", color = Color.White) }
                 TextButton(onClick = { pressed(); picking = StreamKind.SUBTITLE }) { Text("Subtitles", color = Color.White) }
@@ -250,7 +252,7 @@ actual fun PlayerScreen(
                 )
             }
         }
-        if (groupChat != null && chatAvailable && !withOpen) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+        if (groupChat != null && chatAvailable && !chatOpen) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
         // More than one group would count this: which one, plainly, as it starts.
         CountingBanner(withChip, easy, onOpen = { withOpen = true }, modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 56.dp))
         SessionOverlay(sessionPlayback, container, Modifier.matchParentSize().windowInsetsPadding(WindowInsets.safeDrawing))
@@ -290,17 +292,20 @@ actual fun PlayerScreen(
     }
 
     val p = plan
-    if (withOpen && !easy && (withChip != null || chatAvailable)) {
-        PlayerGroupSheet(
-            actions, company, withChip, item, groupChat, chatAvailable,
-            chatTitle = groupSession?.title ?: syncGroup?.name ?: groupChat?.groups?.collectAsState()?.value?.firstOrNull()?.title,
+    if (withOpen && !easy && withChip != null) {
+        PlayerGroupSheet(actions, company, withChip, item, positionMs = { session.currentMs() }) { withOpen = false }
+    }
+    if (chatOpen && !easy && groupChat != null && chatAvailable) {
+        PlayerChatSheet(
+            actions, withChip, item, groupChat,
+            chatTitle = groupSession?.title ?: syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title,
             positionMs = { session.currentMs() },
-        ) { withOpen = false }
+        ) { chatOpen = false }
     }
     if (more && p != null) IosPlayerMore(
         actions, session, p, local, sleepAt, sleepAtEnd, onSleep = { at, end -> sleepAt = at; sleepAtEnd = end },
         groupChat = if (groupChat != null && chatAvailable) { {
-            GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) }, onShowMissed = { groupChat.showMissed(); more = false; withOpen = true })
+            GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) }, onShowMissed = { groupChat.showMissed(); more = false; chatOpen = true })
         } } else null,
     ) { more = false }
     when {

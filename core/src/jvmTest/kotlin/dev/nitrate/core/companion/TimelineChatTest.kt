@@ -131,6 +131,10 @@ class TimelineChatTest {
         for (s in 0..70L) { now = s * 1_000; chat.at(s * 1_000) }
         assertEquals(1, loads)
         assertEquals(listOf("a", "b"), popped.map { it.id })
+        // The Chat button's count: what popped up since the chat was last looked at.
+        assertEquals(2, chat.unread.value)
+        chat.read()
+        assertEquals(0, chat.unread.value)
         // Opened within a minute of loading: no new request; later, one; ten minutes in: one more.
         now = TimelineChat.REOPEN_MS - 1
         chat.opened()

@@ -1633,33 +1633,72 @@ class TvScreenshotTest {
 
     private fun focusedNodes() = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().joinToString { it.config.toString() }
 
+    private fun reachChatButton() {
+        repeat(10) { if (!focusedHasText("Chat")) press("right") }
+        check(focusedHasText("Chat")) { "should reach the Chat button; focused: ${focusedNodes()}" }
+    }
+
+    private fun focusedOnAReaction() =
+        (dev.nitrate.core.companion.QUICK_REACTIONS + "👻").any { focusedExact(it) }
+
     /**
-     * The player's group button where only the chat is involved: it opens the group panel on the
-     * chat line, ▼ reaches the reactions and then the text field (it used to fall out to the
-     * player), focus stays in the panel, and Back closes it with focus back on the button.
+     * The Chat button opens the chat strip across the bottom (the video above, the controls out of
+     * the way) on the first reaction; ▼ reaches the quick lines and ▶ along them the text field;
+     * focus stays in the strip, and Back closes it with focus back on the button.
      */
-    @Test fun playerGroupChatFocus() = groupChatPlayer("tv-player-group-chat") {
-        repeat(8) { if (!focusedHasText("Group chat")) press("right") }
-        check(focusedHasText("Group chat")) { "should reach the group button; focused: ${focusedNodes()}" }
+    @Test fun playerChatStrip() = groupChatPlayer("tv-player-chat-strip") {
+        reachChatButton()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(focusedHasText("Group chat: On")) { "the panel opens on the chat line; focused: ${focusedNodes()}" }
+        check(focusedOnAReaction()) { "the strip opens on the first reaction; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Audio")).fetchSemanticsNodes().isEmpty()) { "the controls make way for it" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The chat so far")).fetchSemanticsNodes().isEmpty()) { "the chat so far waits to be asked for" }
         press("down")
-        check(dev.nitrate.core.companion.QUICK_REACTIONS.take(5).any { focusedHasText(it) }) { "▼ reaches the reactions; focused: ${focusedNodes()}" }
-        press("down", "down")
         check(focusedHasText("No way!")) { "▼ from the reactions reaches the quick lines; focused: ${focusedNodes()}" }
-        press("down")
-        check(focusedHasText("Type a message")) { "▼ from the lines should reach the text field; focused: ${focusedNodes()}" }
-        // Further down and sideways: still inside the panel.
+        repeat(12) { if (!focusedHasText("Type a message")) press("right") }
+        check(focusedHasText("Type a message")) { "▶ along the lines reaches the text field; focused: ${focusedNodes()}" }
+        // Further down and sideways: still inside the strip.
         press("down", "down", "right", "left")
-        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "focus must stay in the panel" }
+        check(compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().isNotEmpty()) { "focus must stay in the strip" }
         check(!focusedHasText("Audio") && !focusedHasText("Subtitles")) { "focus must not fall out to the controls; focused: ${focusedNodes()}" }
-        press("up", "up")
-        check(focusedHasText("Type a message") || focusedHasText("No way!") || dev.nitrate.core.companion.QUICK_REACTIONS.any { focusedHasText(it) }) { "▲ goes back up the panel; focused: ${focusedNodes()}" }
         press("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Type a message")).fetchSemanticsNodes().isEmpty()) { "Back closes the panel" }
-        check(focusedHasText("Group chat")) { "focus returns to the button that opened it; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Type a message")).fetchSemanticsNodes().isEmpty()) { "Back closes the strip" }
+        check(focusedHasText("Chat")) { "focus returns to the Chat button; focused: ${focusedNodes()}" }
+    }
+
+    /**
+     * The page button beside the chat line shows the chat so far above the strip (Show what I
+     * missed when there is some); Back hides it first, then closes the strip.
+     */
+    @Test fun playerChatSoFar() = groupChatPlayer("tv-player-chat-so-far") {
+        reachChatButton()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        repeat(16) { if (!focusedHasDescription("Show the chat so far")) press("right") }
+        check(focusedHasDescription("Show the chat so far")) { "▶ along the reactions reaches the chat line and the page button; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The chat so far")).fetchSemanticsNodes().isNotEmpty()) { "it shows above the strip" }
+        check(focusedHasDescription("Hide the chat so far")) { "the button now hides it; focused: ${focusedNodes()}" }
+        press("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The chat so far")).fetchSemanticsNodes().isEmpty()) { "Back hides it first" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Type a message")).fetchSemanticsNodes().isNotEmpty()) { "the strip stays" }
+        press("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedHasText("Chat")) { "then closes, focus back on the Chat button; focused: ${focusedNodes()}" }
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The chat so far")).fetchSemanticsNodes().isEmpty()) { "opening again keeps it as left" }
+        choose("Group chat")
+        check(focusedHasText("Group chat: On")) { "the chat line opens Chats on its first line; focused: ${focusedNodes()}" }
+        press("ok")
+        press("back")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat is off", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "turned off, the strip says so" }
+        check(focusedHasText("Group chat")) { "Back from Chats returns focus to the chat line; focused: ${focusedNodes()}" }
     }
 
     /**
@@ -1706,13 +1745,14 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
     }
 
-    /** The group button in the controls (in place of the old With… chip and chat button): the group's name, a button like the others. */
-    @Test fun playerGroupButton() = withPlayer("tv-player-group-button") {
+    /** The group button in the controls: the group's name, a button like the others; the chat has its own button beside it. */
+    @Test fun playerGroupButton() = withPlayer("tv-player-group-button", chats = true) {
         reachGroupButton()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat: ", substring = true)).fetchSemanticsNodes().isEmpty()) { "no separate chat button" }
+        press("right")
+        check(focusedHasText("Chat")) { "the Chat button comes next; focused: ${focusedNodes()}" }
     }
 
-    /** OK on it opens the group panel beside the video: who it counts for, the chat (a new one), Start a Group Watch Session. */
+    /** OK on it opens the group panel beside the video: who it counts for, Start a Group Watch Session (the chat is the Chat button's). */
     @Test fun playerGroupPanel() = withPlayer("tv-player-group-panel", chats = true) {
         reachGroupButton()
         press("ok")
@@ -1720,24 +1760,27 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
         check(focusedHasText("Counting for you and Will · Change")) { "the panel opens on its top line; focused: ${focusedNodes()}" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Watching on your own")).fetchSemanticsNodes().isNotEmpty()) { "it says you watch on your own" }
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Chat: New chat")).fetchSemanticsNodes().isNotEmpty()) { "a new chat by default" }
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("The opening shot!")).fetchSemanticsNodes().isEmpty()) { "nothing earlier unasked" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("New chat", substring = true)).fetchSemanticsNodes().isEmpty()) { "the chat isn't in the group panel" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Start a Group Watch Session")).fetchSemanticsNodes().isNotEmpty()) { "Start a Group Watch Session is offered" }
     }
 
+    /** Opens the chat strip from the Chat button and Chats from its chat line ("New chat · Will ›"). */
+    private fun openChats() {
+        reachChatButton()
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        repeat(16) { if (!focusedHasText("New chat · Will ›")) press("right") }
+        check(focusedHasText("New chat · Will ›")) { "▶ along the reactions reaches the chat line, which says it's a new chat with Will; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+    }
+
     /**
-     * Chats, reached with the D-pad from the panel: New chat, then this group's earlier chats
-     * (newest first, one building on another); picking one plays it along, and Back on the panel
-     * returns focus to the group button.
+     * Chats, from the chat strip's chat line: Group chat on or off, New chat, then this group's
+     * earlier chats (newest first, one building on another).
      */
     @Test fun playerGroupChats() = withPlayer("tv-player-group-chats", chats = true) {
-        reachGroupButton()
-        press("ok")
-        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        press("down")
-        check(focusedHasText("Chat: New chat")) { "▼ reaches the chat line; focused: ${focusedNodes()}" }
-        press("ok")
-        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        openChats()
         check(focusedHasText("Group chat: On")) { "Chats opens on its first line; focused: ${focusedNodes()}" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("builds on", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "a chat building on another says so" }
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Frank, Tommy", substring = true)).fetchSemanticsNodes().isEmpty()) { "another group's chats aren't offered" }
@@ -1752,10 +1795,7 @@ class TvScreenshotTest {
      * (Tuesday's with Will is one) or "Not a favourite"; OK changes it there and then.
      */
     @Test fun playerGroupChatsHearts() = withPlayer("tv-player-group-chats-hearts", chats = true, favourites = true) {
-        reachGroupButton()
-        press("ok")
-        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        choose("Chat: New chat")
+        openChats()
         repeat(6) { if (!focusedExact("14 messages")) press("down") }
         check(focusedExact("14 messages")) { "on Tuesday's chat; focused: ${focusedNodes()}" }
         press("right")
@@ -1771,36 +1811,33 @@ class TvScreenshotTest {
     }
 
     /**
-     * The panel's quick replies: the title's own emojis first (its tags), then the usual ones; under
+     * The strip's quick replies: the title's own emojis first (its tags), then the usual ones; under
      * them its main characters' names and short lines, one press sending a line as a message.
      */
     @Test fun playerGroupQuickReplies() = withPlayer("tv-player-group-quick-replies", chats = true) {
-        reachGroupButton()
+        reachChatButton()
         press("ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("👻")).fetchSemanticsNodes().isNotEmpty()) { "the title's own emoji (haunted)" }
-        repeat(6) { if (!focusedHasText("Iris!")) press("down") }
+        check(focusedExact("👻")) { "the title's own emoji (haunted) comes first; focused: ${focusedNodes()}" }
+        press("down")
         check(focusedHasText("Iris!")) { "the lead character's name comes first among the lines; focused: ${focusedNodes()}" }
         press("right")
         check(focusedHasText("The Projectionist!")) { "◀▶ along the lines; focused: ${focusedNodes()}" }
         press("left", "ok")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Iris!")).fetchSemanticsNodes().size >= 2) { "one press sent it: it's in the chat" }
-        press("down")
-        check(focusedHasText("Type a message")) { "▼ from the lines reaches the text field; focused: ${focusedNodes()}" }
+        compose.onNode(androidx.compose.ui.test.hasContentDescription("Show the chat so far")).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Iris!")).fetchSemanticsNodes().size >= 2) { "one press sent it: it's in the chat so far" }
     }
 
     @Test fun playerGroupChatsPicked() = withPlayer("tv-player-group-chat-picked", chats = true) {
-        reachGroupButton()
-        press("ok")
-        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        choose("Chat: New chat")
+        openChats()
         chooseExact("14 messages")
-        check(focusedHasText("Chat: Playing along")) { "back on the panel, focus on the chat line, which says what plays along; focused: ${focusedNodes()}" }
+        check(focusedHasText("Playing along")) { "Chats closes, focus back on the chat line, which says what plays along; focused: ${focusedNodes()}" }
         press("back")
         compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
-        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Chat: Playing along", substring = true)).fetchSemanticsNodes().isEmpty()) { "Back closes the panel" }
-        check(focusedIs("Will")) { "focus returns to the group button; focused: ${focusedNodes()}" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Playing along", substring = true)).fetchSemanticsNodes().isEmpty()) { "Back closes the strip" }
+        check(focusedHasText("Chat")) { "focus returns to the Chat button; focused: ${focusedNodes()}" }
     }
 
     /** Change: choosing the other group changes the button; a page's Back goes back a page, the last closes the panel, focus back on the button. */
@@ -1849,9 +1886,10 @@ class TvScreenshotTest {
         }
     }
 
-    /** Group chat off in easy mode: no chat button. */
+    /** Group chat off in easy mode: no Chat button. */
     @Test fun playerGroupChatEasyOff() = groupChatPlayer("tv-player-group-chat-easy", easy = true) {
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("Group chat", substring = true)).fetchSemanticsNodes().isEmpty()) { "no group chat in easy mode" }
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Chat", substring = true)).fetchSemanticsNodes().isEmpty()) { "no Chat button in easy mode" }
     }
 
     @Test fun playerControlsPlay() = playerControls("tv-player-controls-play")

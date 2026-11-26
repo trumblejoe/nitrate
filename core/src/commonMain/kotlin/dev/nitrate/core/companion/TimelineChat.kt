@@ -270,6 +270,18 @@ class TimelineChat(
     /** Notes to pop up over the video, as they're reached (or arrive live). */
     val popups: SharedFlow<TimelineNote> = _popups
 
+    private val _unread = MutableStateFlow(0)
+    /** Notes popped up since the chat was last looked at ([read]), for the Chat button's count. */
+    val unread: StateFlow<Int> = _unread
+
+    /** The chat is being looked at: nothing unread. */
+    fun read() { _unread.value = 0 }
+
+    private fun pop(n: TimelineNote) {
+        _unread.value += 1
+        _popups.tryEmit(n)
+    }
+
     /** Whether there's anyone to chat with here: a watch group on the title, or a live group. */
     val available: Boolean get() = _groups.value.isNotEmpty() || live?.groupId?.value != null
 
@@ -315,6 +327,7 @@ class TimelineChat(
         clock.start(startMs, on)
         _on.value = on
         _showAll.value = false
+        _unread.value = 0
         pageNotes = emptyList()
         brought = emptyList()
         sharedTold = false
@@ -336,7 +349,7 @@ class TimelineChat(
             scope.launch {
                 chat.incoming.collect { m ->
                     val id = this@TimelineChat.itemId ?: return@collect
-                    clock.live(Notes.fromLive(m, id, clock.reachedMs))?.let { _popups.tryEmit(it) }
+                    clock.live(Notes.fromLive(m, id, clock.reachedMs))?.let(::pop)
                     publish()
                 }
             }
@@ -518,7 +531,7 @@ class TimelineChat(
 
     /** Playback is at [positionMs] (call about once a second): pops up what's been reached; reloads rarely. */
     fun at(positionMs: Long) {
-        clock.at(positionMs).forEach { _popups.tryEmit(it) }
+        clock.at(positionMs).forEach(::pop)
         publish()
         if (nowMs() - loadedAt >= REFRESH_MS) load()
     }

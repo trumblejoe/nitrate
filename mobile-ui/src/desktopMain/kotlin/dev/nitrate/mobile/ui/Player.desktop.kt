@@ -154,7 +154,7 @@ private fun NoPlayer(onExit: () -> Unit) {
 }
 
 /** What's open over the video besides the controls. */
-private enum class Panel { AUDIO, SUBTITLES, CHAPTERS, MORE, INFO, GROUP }
+private enum class Panel { AUDIO, SUBTITLES, CHAPTERS, MORE, INFO, GROUP, CHAT }
 
 /**
  * The player's screen for a [session]: the video, Nitrate's controls (shown on mouse movement,
@@ -333,7 +333,7 @@ fun DesktopPlayer(
                         TopBar(
                             item = item, plan = plan != null && clipEndMs == null, easy = easy,
                             chapters = !easy && item?.chapters.orEmpty().isNotEmpty(),
-                            chatAvailable = chatAvailable, withChip = withChip,
+                            chat = groupChat?.takeIf { chatAvailable }, withChip = withChip,
                             onBack = { pressed(); onExit() }, onPanel = { pressed(); panel = it },
                         )
                         BottomBar(
@@ -370,7 +370,7 @@ fun DesktopPlayer(
                     }
                 }) { creditAction = null }
 
-                if (groupChat != null && chatAvailable && panel != Panel.GROUP) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+                if (groupChat != null && chatAvailable && panel != Panel.CHAT) NoteToasts(groupChat.popups, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
                 CountingBanner(withChip, easy, onOpen = { panel = Panel.GROUP }, modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp))
                 SessionOverlay(sessionPlayback, container, Modifier.matchParentSize())
 
@@ -420,13 +420,14 @@ fun DesktopPlayer(
                     Panel.MORE -> if (p != null) DesktopPlayerMore(
                         session, settings, p, sleepAt, sleepAtEnd, onSleep = { at, end -> sleepAt = at; sleepAtEnd = end },
                         groupChat = if (groupChat != null && chatAvailable) { {
-                            GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) }, onShowMissed = { groupChat.showMissed(); panel = Panel.GROUP })
+                            GroupChatRow(groupChat, onTurn = { turnGroupChat(actions, groupChat, it, session.currentMs()) }, onShowMissed = { groupChat.showMissed(); panel = Panel.CHAT })
                         } } else null,
                         onDismiss = close,
                     )
-                    Panel.GROUP -> if (!easy && (withChip != null || chatAvailable)) PlayerGroupSheet(
-                        actions, company, withChip, item, groupChat, chatAvailable,
-                        chatTitle = groupSession?.title ?: syncGroup?.name ?: groupChat?.groups?.collectAsState()?.value?.firstOrNull()?.title,
+                    Panel.GROUP -> if (!easy && withChip != null) PlayerGroupSheet(actions, company, withChip, item, positionMs = { session.currentMs() }, onDismiss = close)
+                    Panel.CHAT -> if (!easy && groupChat != null && chatAvailable) PlayerChatSheet(
+                        actions, withChip, item, groupChat,
+                        chatTitle = groupSession?.title ?: syncGroup?.name ?: groupChat.groups.collectAsState().value.firstOrNull()?.title,
                         positionMs = { session.currentMs() }, onDismiss = close,
                     )
                 }
@@ -473,7 +474,7 @@ private fun OverlayHost(native: Boolean, content: @Composable () -> Unit) {
 /** Back, the title, the group button and the player's menus. */
 @Composable
 private fun BoxScope.TopBar(
-    item: MediaItem?, plan: Boolean, easy: Boolean, chapters: Boolean, chatAvailable: Boolean, withChip: dev.nitrate.core.partners.WithChip?,
+    item: MediaItem?, plan: Boolean, easy: Boolean, chapters: Boolean, chat: dev.nitrate.core.companion.TimelineChat?, withChip: dev.nitrate.core.partners.WithChip?,
     onBack: () -> Unit, onPanel: (Panel) -> Unit,
 ) {
     Row(
@@ -488,8 +489,9 @@ private fun BoxScope.TopBar(
             color = Color.White, style = MaterialTheme.typography.titleMedium,
             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
         )
-        // The one group button: who it counts for, the chat and Group Watch Sessions (easy mode: who it counts for, said).
-        GroupButton(withChip, chatAvailable, easy, onOpen = { onPanel(Panel.GROUP) }, modifier = Modifier.padding(horizontal = 4.dp))
+        // The group button: who it counts for and Group Watch Sessions (easy mode: who it counts for, said); the chat its own button.
+        GroupButton(withChip, easy, onOpen = { onPanel(Panel.GROUP) }, modifier = Modifier.padding(horizontal = 4.dp))
+        if (chat != null && !easy) ChatButton(chat, onOpen = { onPanel(Panel.CHAT) })
         if (plan) {
             TextButton(onClick = { onPanel(Panel.AUDIO) }) { Text("Audio", color = Color.White) }
             TextButton(onClick = { onPanel(Panel.SUBTITLES) }) { Text("Subtitles", color = Color.White) }
