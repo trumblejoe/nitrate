@@ -386,8 +386,10 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(controlsVisible) {
-        // A credits-scene banner keeps focus on its button, so OK acts on it.
-        if (controlsVisible && creditAction == null) controlFocus.playPause()
+        // Focus goes to play/pause only from the player itself (or from nowhere): a pop-up that has
+        // it (Up Next, Skip intro/recap/credits, a credits-scene banner) keeps it, so the key that
+        // brought the controls back, and OK after it, act on the pop-up.
+        if (controlsVisible && (rootFocused || !playerHasFocus) && creditAction == null) controlFocus.playPause()
     }
     // A pop-up closed: the controls stay up a while longer (presses in it weren't counted) and focus
     // goes back to the button that opened it, so one Back closes it and the next hides the controls.

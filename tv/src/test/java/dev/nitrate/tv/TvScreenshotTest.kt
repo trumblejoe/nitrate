@@ -1682,6 +1682,24 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.player.PlayerScreen(c.server, c.playbackSettings, "s1e2", fromStart = true, onExit = {})
     }
 
+    /**
+     * A pop-up over the video (here Skip intro) keeps the focus it took: the first key brings the
+     * controls back but leaves focus on the pop-up, so one OK skips (it used to move to play/pause).
+     */
+    @Test fun playerPopUpKeepsFocusAsControlsReturn() = shoot("tv-player-skip-keeps-focus", act = {
+        press("menu")
+        compose.mainClock.advanceTimeBy(600); compose.waitForIdle()
+        check(focusedHasText("Skip intro")) { "Skip intro takes focus with the controls hidden; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
+        check(!shows("Skip intro")) { "one OK skips the intro; focused: ${focusedNodes()}" }
+    }) { c ->
+        val withIntro = object : dev.nitrate.core.MediaServer by c.server {
+            override suspend fun mediaSegments(itemId: String) = listOf(dev.nitrate.core.model.MediaSegment(dev.nitrate.core.model.SegmentKind.INTRO, 0, 90_000))
+        }
+        dev.nitrate.tv.ui.player.PlayerScreen(withIntro, c.playbackSettings, "s1e2", fromStart = true, onExit = {})
+    }
+
     /** The remote's menu key hides the controls, and shows them again with focus on play/pause. */
     @Test fun playerMenuKey() = shoot("tv-player-menu-key", act = {
         press("right")
