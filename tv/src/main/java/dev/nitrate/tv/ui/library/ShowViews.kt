@@ -137,8 +137,33 @@ fun ShowView(view: BrowseView, args: ShowArgs, modifier: Modifier = Modifier) {
         BrowseView.ROLODEX -> Rolodex(args, modifier)
         BrowseView.STARFIELD -> Starfield(args, modifier)
         BrowseView.DECK -> Deck(args, modifier)
-        else -> Unit
+        else -> if (view.shared) SharedOnTv(view, args, modifier)
     }
+}
+
+/** A view the phone draws too (`:show-views`): the TV's type, accent, Back, A–Z and display settings handed in. */
+@Composable
+private fun SharedOnTv(view: BrowseView, args: ShowArgs, modifier: Modifier) {
+    val prefs = LocalDisplayPrefs.current
+    val type = MaterialTheme.typography
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val source = dev.nitrate.showviews.ShowSource(
+        items = args.items, server = args.repository, titleOf = args.titleOf,
+        overviewOf = @Composable { item: MediaItem -> item.overview?.takeIf { prefs.overview && !dev.nitrate.tv.ui.partners.descriptionHidden(item) } },
+        onOpen = args.onOpen, onPlay = { if (it.isPlayable) args.onPlay(it) else args.onOpen(it) }, onNeedMore = args.onNeedMore,
+        complete = args.total >= 0 && args.items.size >= args.total,
+        lines = prefs.collageLines, tv = true,
+    )
+    val style = dev.nitrate.showviews.ShowStyle(
+        display = type.headlineMedium, title = type.titleLarge, body = type.bodyLarge, label = type.labelLarge,
+        accent = MaterialTheme.colorScheme.primary,
+    )
+    val host = dev.nitrate.showviews.ShowHost(
+        backHandler = @Composable { on: Boolean, back: () -> Unit -> androidx.activity.compose.BackHandler(on, back) },
+        letters = if (args.letterAt != null) { m, jump -> ShowLetters(args, vertical = true, onJump = jump, modifier = m) } else null,
+        focus = focus,
+    )
+    dev.nitrate.showviews.SharedShowView(view, source, style, host, modifier)
 }
 
 // ---- Shared pieces ----

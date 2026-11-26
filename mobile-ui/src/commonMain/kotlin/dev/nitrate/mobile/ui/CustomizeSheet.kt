@@ -91,7 +91,23 @@ private fun ListSections(list: ListPanel?, libraryPage: Boolean, actions: AppAct
                 FilterChip(selected = view == v, onClick = { list.vm.update { it.copy(view = v) } }, label = { Text(v.label) })
             }
         }
-        Text("How this list shows its titles: posters, wide artwork, or lines with details.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("How this list shows its titles: posters, wide artwork, lines with details, or one of the drawn views (Vortex, Volumes, Collage).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Collage: what its hairlines join (one setting for every library's Collage).
+        if (view == dev.nitrate.core.pages.BrowseView.COLLAGE) {
+            val prefs = LocalDisplayPrefs.current
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            Text("Lines join", style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                dev.nitrate.core.pages.CollageLines.entries.forEach { l ->
+                    FilterChip(
+                        selected = prefs.collageLines == l,
+                        onClick = { actions.server.userId?.let { u -> scope.launch { actions.container.displaySettings.savePrefs(u, prefs.copy(collageLines = l)) } } },
+                        label = { Text(l.label) },
+                    )
+                }
+            }
+            Text(prefs.collageLines.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
     // A library's page: how its full list (All) is laid out, the same choice as Settings › Display.
     if (libraryPage) {

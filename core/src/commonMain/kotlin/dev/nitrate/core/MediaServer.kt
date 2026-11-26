@@ -914,6 +914,9 @@ interface MediaServer {
     /** A song's lyrics (timed or plain), or null when it has none. */
     suspend fun lyrics(itemId: String): dev.nitrate.core.music.Lyrics? = null
 
+    /** The directors and writers of [ids] (other credits left out), in one request: for Collage's lines. */
+    suspend fun crewOf(ids: List<String>): Map<String, List<dev.nitrate.core.model.Person>> = emptyMap()
+
     /** The collections (box sets) [itemId] is in. */
     suspend fun collectionsOf(itemId: String): List<MediaItem> = emptyList()
 

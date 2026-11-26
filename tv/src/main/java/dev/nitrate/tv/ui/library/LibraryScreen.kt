@@ -310,7 +310,7 @@ private fun CollectionsGrid(
         refocus = tabFocus,
     )
     val list = collections
-    if (view.tvOnly) {
+    if (view.isShow) {
         Column(Modifier.fillMaxSize().padding(start = PagePadding, end = PagePadding, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             tabs()
             when {

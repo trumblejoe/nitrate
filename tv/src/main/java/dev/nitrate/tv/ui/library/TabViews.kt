@@ -101,7 +101,7 @@ internal fun TitlesInView(
     upTo: FocusRequester? = null,
     label: String = "",
 ) {
-    if (view.tvOnly) {
+    if (view.isShow) {
         Column(Modifier.fillMaxSize().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             header()
             Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = PagePadding)) {

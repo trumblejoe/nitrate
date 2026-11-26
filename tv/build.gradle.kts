@@ -102,6 +102,7 @@ dependencies {
     implementation(libs.androidx.work)
 
     implementation(project(":core-android"))
+    implementation(project(":show-views"))
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.serialization.json)

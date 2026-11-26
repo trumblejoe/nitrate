@@ -207,7 +207,12 @@ class FakeServer : MediaServer {
 
     /** A longer list for browsing screens: the films plus more, in name order. */
     private val shelf = (films + listOf("Arclight", "Booth Nine", "Cue Marks", "Dissolve", "Emulsion", "Frame Line", "Iris Out", "Leader Tape", "Matte Box", "Optical Sound", "Reel Change", "Splice")
-        .mapIndexed { i, n -> movie("x$i", n, 1980 + i * 3) }).sortedBy { it.name }
+        .mapIndexed { i, n -> movie("x$i", n, 1980 + i * 3).copy(genres = listOf(listOf("Drama", "Comedy", "Horror", "Sci-Fi")[i % 4], listOf("Mystery", "Romance", "Thriller")[i % 3])) }).sortedBy { it.name }
+    /** Directors and writers for Collage's lines: a few names shared round the shelf. */
+    override suspend fun crewOf(ids: List<String>) = ids.associateWith { id ->
+        val n = id.hashCode().let { if (it < 0) -it else it }
+        listOf(Person("d${n % 3}", listOf("Ana Bell", "Rafe Moreau", "Kit Osei")[n % 3], type = "Director"), Person("w${n % 4}", listOf("June Park", "Theo Lund", "Ines Gray", "Ola Weir")[n % 4], type = "Writer"))
+    }
     override suspend fun queryPage(query: dev.nitrate.core.pages.ItemQuery, startIndex: Int, limit: Int) =
         shelf.drop(startIndex).take(limit) to shelf.size
     override suspend fun collectionItems(collectionId: String) = films.take(3)

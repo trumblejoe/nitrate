@@ -32,6 +32,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":core"))
             api(project(":app-core"))
+            implementation(project(":show-views"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.ui)

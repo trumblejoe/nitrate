@@ -66,6 +66,8 @@ data class DisplayPrefs(
     val groupChat: Map<String, Boolean> = emptyMap(),
     /** Group chat in the player (the group's conversation popping up, writing), on unless turned off; one setting for every group. */
     val chatOn: Boolean = true,
+    /** What Collage's hairlines join (every library's Collage, both apps). */
+    val collageLines: CollageLines = CollageLines.GENRE,
     val recapPlaylists: Set<String> = emptySet(),
     val accent: AccentMode = AccentMode.ARTWORK,
     /** Pure black backgrounds (OLED). */

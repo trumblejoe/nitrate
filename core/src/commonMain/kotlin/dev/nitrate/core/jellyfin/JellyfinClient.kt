@@ -1994,6 +1994,15 @@ class JellyfinClient(
         return dev.nitrate.core.music.Lyrics(lines, synced).takeIf { !it.isEmpty }
     }
 
+    override suspend fun crewOf(ids: List<String>): Map<String, List<dev.nitrate.core.model.Person>> {
+        if (ids.isEmpty()) return emptyMap()
+        return items(
+            "Items",
+            query = mapOf("ids" to dashless(ids), "userId" to userId, "fields" to "People", "enableImages" to false, "enableTotalRecordCount" to false),
+            kind = dev.nitrate.core.cache.AnswerKind.STRUCTURE,
+        ).associate { it.id to it.people.filter { p -> p.type == "Director" || p.type == "Writer" } }
+    }
+
     override suspend fun collectionsOf(itemId: String): List<MediaItem> = items("Items", itemId.replace("-", ""), "Collections", query = mapOf("fields" to ROW_FIELDS))
 
     override suspend fun collectionItems(collectionId: String): List<MediaItem> = items(

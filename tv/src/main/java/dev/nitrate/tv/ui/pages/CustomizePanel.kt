@@ -226,7 +226,7 @@ fun CustomizePanel(container: AppContainer, pageKey: String, request: CustomizeR
                         )
                         CustomizeSection.PAGE -> {
                             // The tab's view first (its choice in use takes focus), then the rest of the page.
-                            if (view != null) viewItems(view, first)
+                            if (view != null) viewItems(view, first, container)
                             pageSection(container, owner, name, request.vm, if (view != null) FocusRequester() else first)
                         }
                     }
@@ -377,7 +377,7 @@ private fun LazyListScope.pageSection(container: AppContainer, owner: String, na
  * show views, then how many across for a grid. Saved for that tab, shown behind the panel at once.
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-private fun LazyListScope.viewItems(choice: TabViewChoice, first: FocusRequester) {
+private fun LazyListScope.viewItems(choice: TabViewChoice, first: FocusRequester, container: AppContainer) {
     item { Heading("View", choice.tab) }
     item {
         androidx.compose.foundation.layout.FlowRow(
@@ -389,6 +389,19 @@ private fun LazyListScope.viewItems(choice: TabViewChoice, first: FocusRequester
                 val on = choice.rows != true && v == choice.view
                 FilterChip(selected = on, onClick = { choice.onView(v) }, modifier = if (on) Modifier.focusRequester(first) else Modifier) { Text(v.label) }
             }
+        }
+    }
+    // Collage: what its hairlines join (one setting for every library's Collage).
+    if (choice.rows != true && choice.view == dev.nitrate.core.pages.BrowseView.COLLAGE) item {
+        val prefs = rememberStoredPrefs(container)
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Lines join", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                dev.nitrate.core.pages.CollageLines.entries.forEach { l ->
+                    FilterChip(selected = prefs.collageLines == l, onClick = { container.changePrefs { it.copy(collageLines = l) } }) { Text(l.label) }
+                }
+            }
+            Text(prefs.collageLines.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     // The plain grids: how many titles across (kept per view).

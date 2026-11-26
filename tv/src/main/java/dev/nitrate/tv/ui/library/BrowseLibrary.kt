@@ -219,7 +219,7 @@ fun BrowseLibrary(
             if (lastFocused in inSight) lastFocused else inSight.firstOrNull() ?: 0
         }
     }
-    val downToGrid = !options.view.tvOnly && !lettersOnTop && state.items.isNotEmpty()
+    val downToGrid = !options.view.isShow && !lettersOnTop && state.items.isNotEmpty()
     // The tabs bar as on Home and the other tabs: the library's name and tabs, then the buttons at its end.
     val bar: @Composable () -> Unit = {
         Row(Modifier.fillMaxWidth().focusProperties { if (downToGrid) down = gridEntry }, verticalAlignment = Alignment.CenterVertically) {
@@ -227,7 +227,7 @@ fun BrowseLibrary(
             Box(Modifier.padding(end = PagePadding + dev.nitrate.tv.ui.components.LocalClockRoom.current)) { buttons() }
         }
     }
-    if (options.view.tvOnly) {
+    if (options.view.isShow) {
         // A show view fills the page under the tabs bar; no A–Z (nothing to scroll through).
         Column(Modifier.fillMaxSize().padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             bar()

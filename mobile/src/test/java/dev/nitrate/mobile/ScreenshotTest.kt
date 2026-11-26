@@ -965,6 +965,19 @@ class ScreenshotTest {
         compose.mainClock.advanceTimeBy(1_500)
     }
 
+    /** The drawn views on the phone: Vortex, Volumes and Collage (genre lines), filling the page under the bar. */
+    @Test fun browseVortex() = shoot("phone-browse-vortex", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.VORTEX))
+    }, act = { compose.mainClock.advanceTimeBy(1_500) }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
+    @Test fun browseVolumes() = shoot("phone-browse-volumes", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.VOLUMES))
+    }, act = { compose.mainClock.advanceTimeBy(1_800) }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
+    @Test fun browseCollage() = shoot("phone-browse-collage", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.COLLAGE))
+    }, act = { compose.mainClock.advanceTimeBy(1_500) }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
     @Test fun browseArtwork() = shoot("phone-browse-artwork", setup = { c ->
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.ARTWORK))
     }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }

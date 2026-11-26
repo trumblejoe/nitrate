@@ -692,17 +692,19 @@ class TvScreenshotTest {
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
 
     /** A library's All tab in [view]: Down from the bar into it, then Right twice; something in it keeps focus. */
-    private fun showViewShot(view: dev.nitrate.core.pages.BrowseView, downs: Int = 2, rights: Int = 2) = shoot("tv-library-view-${view.name.lowercase()}", setup = { c ->
+    private fun showViewShot(view: dev.nitrate.core.pages.BrowseView, downs: Int = 2, rights: Int = 2, then: List<String> = emptyList(), name: String = view.name.lowercase(), lines: dev.nitrate.core.pages.CollageLines? = null) = shoot("tv-library-view-$name", setup = { c ->
         c.displaySettings.savePrefs("user-1", rowsLibrary)
         c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
             dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
             dev.nitrate.core.pages.LibraryTab("recommended", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
         ))
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = view))
+        if (lines != null) c.displaySettings.savePrefs("user-1", rowsLibrary.copy(collageLines = lines))
     }, act = {
         repeat(downs) { press("down") }
         repeat(rights) { press("right") }
-        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
+        then.forEach { press(it) }
+        compose.mainClock.advanceTimeBy(1_600); compose.waitForIdle()
         val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes()
         // The view starts just under the tabs bar (Sort and Filters sit at its end).
         check(focused.isNotEmpty() && focused.first().boundsInRoot.top > 110f) { "focus should be in the ${view.label} view, got ${focused.map { it.boundsInRoot }}" }
@@ -716,6 +718,16 @@ class TvScreenshotTest {
     @Test fun libraryStarfield() = showViewShot(dev.nitrate.core.pages.BrowseView.STARFIELD, downs = 3)
     /** The deck after five deals: the dealt cards lie scattered on the table behind. */
     @Test fun libraryDeck() = showViewShot(dev.nitrate.core.pages.BrowseView.DECK, downs = 3, rights = 5)
+    /** Vortex: down the tunnel two titles; then OK peels the chosen card out with Details and Play. */
+    @Test fun libraryVortex() = showViewShot(dev.nitrate.core.pages.BrowseView.VORTEX)
+    @Test fun libraryVortexPeeled() = showViewShot(dev.nitrate.core.pages.BrowseView.VORTEX, then = listOf("ok"), name = "vortex-peeled")
+    /** Volumes: the third book open; then ▼ turns to its facts and cast. */
+    @Test fun libraryVolumes() = showViewShot(dev.nitrate.core.pages.BrowseView.VOLUMES)
+    @Test fun libraryVolumesTurned() = showViewShot(dev.nitrate.core.pages.BrowseView.VOLUMES, then = listOf("down"), name = "volumes-turned")
+    /** Collage with genre lines; with director lines; and the lightbox. */
+    @Test fun libraryCollage() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE)
+    @Test fun libraryCollageDirectors() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE, name = "collage-directors", lines = dev.nitrate.core.pages.CollageLines.DIRECTOR)
+    @Test fun libraryCollageLightbox() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE, then = listOf("ok"), name = "collage-lightbox")
 
     /**
      * Choosing a show view in Customize (the box, which isn't a grid) rebuilds the All tab behind the

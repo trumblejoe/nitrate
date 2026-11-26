@@ -7,8 +7,13 @@ import kotlinx.serialization.Serializable
 
 /** How a library's full list is shown: a grid of posters or of artwork, or a list with details. */
 @Serializable
-/** How a library's All view lays titles out. [tvOnly] views need the TV's own screen (the phone shows its grid instead). */
-enum class BrowseView(val label: String, val tvOnly: Boolean = false, val columnChoices: IntRange = IntRange.EMPTY) {
+/**
+ * How a library's All view lays titles out. [tvOnly] views need the TV's own screen (the phone shows
+ * its grid instead); [shared] ones are drawn by the shared `:show-views` module on every app. Both are
+ * show views ([isShow]): one title chosen at a time, not a grid. New entries go at the end (saved by name;
+ * an older app reads one it doesn't know as Posters).
+ */
+enum class BrowseView(val label: String, val tvOnly: Boolean = false, val columnChoices: IntRange = IntRange.EMPTY, val shared: Boolean = false) {
     GRID("Posters", columnChoices = 4..10), ARTWORK("Artwork", columnChoices = 2..6), LIST("List", columnChoices = 1..3),
     /** Posters flying round a box, bouncing off its walls and each other; the one focused stops still. */
     BOUNCE("Bouncing box", tvOnly = true),
@@ -25,7 +30,16 @@ enum class BrowseView(val label: String, val tvOnly: Boolean = false, val column
     /** Posters drifting towards you out of deep space; the chosen one parked up front. */
     STARFIELD("Starfield", tvOnly = true),
     /** A deck of cards: each one dealt off the top with a flick. */
-    DECK("Shuffle deck", tvOnly = true);
+    DECK("Shuffle deck", tvOnly = true),
+    /** Curved cards on a spiral into a point of light: fly down the tunnel, OK peels one out. */
+    VORTEX("Vortex", shared = true),
+    /** Each title a book drifting through window light; the chosen one opens, ▲▼ turn its pages. */
+    VOLUMES("Volumes", shared = true),
+    /** An endless board of posters and artwork tied by hairlines (what they share), with a lightbox. */
+    COLLAGE("Collage", shared = true);
+
+    /** One title chosen at a time (not a grid): a TV-only or a shared view. */
+    val isShow: Boolean get() = tvOnly || shared
 
     /** The grid's own column count (album covers are square, so fit more). */
     fun defaultColumns(music: Boolean): Int = when (this) {

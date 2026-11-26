@@ -199,6 +199,8 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
                 state.error != null && state.items.isEmpty() -> withTop { ErrorMessage(state.error ?: "", vm::retry) }
                 state.loading -> withTop { GridPlaceholder(minWidth = if (artwork) 240.dp else if (square) 140.dp else 110.dp, aspect = if (artwork) 16f / 9f else if (square) 1f else 2f / 3f) }
                 state.items.isEmpty() -> withTop { EmptyResults(options) { update { it.clearFilters() } } }
+                // Vortex, Volumes, Collage: drawn by :show-views, filling the page under the bar.
+                options.view.shared -> withTop { SharedView(actions, options.view, state, vm::loadMore, ::tap, Modifier.fillMaxSize()) }
                 options.view != BrowseView.LIST -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = if (artwork) 240.dp else if (square) 140.dp else 110.dp),
                     state = grid,
@@ -240,7 +242,7 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
                     if (state.error != null) item { LoadMoreFailed(state.error.orEmpty(), vm::retry) }
                 }
             }
-            if (options.alphabetical && state.items.isNotEmpty()) {
+            if (options.alphabetical && state.items.isNotEmpty() && !options.view.shared) {
                 // Scrolling grid: the strip starts where the posters do, below the tabs and the bar.
                 val below = if (pinned) 0.dp else with(density) { topHeight.toDp() }
                 AlphabetStrip(Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(top = below + 8.dp, bottom = 8.dp), ::jump)
@@ -507,3 +509,21 @@ private fun Modifier.fadeUnderBar(scrolled: () -> Boolean) = graphicsLayer { com
     }
 
 private val FADE = 28.dp
+
+/** A view every app draws the same way (`:show-views`): the phone's type, accent, Back and display settings handed in. */
+@Composable
+internal fun SharedView(actions: AppActions, view: BrowseView, state: dev.nitrate.android.viewmodel.BrowseState, more: () -> Unit, open: (MediaItem) -> Unit, modifier: Modifier) {
+    val prefs = LocalDisplayPrefs.current
+    val type = MaterialTheme.typography
+    val source = dev.nitrate.showviews.ShowSource(
+        items = state.items, server = actions.server, titleOf = { it.name },
+        overviewOf = @Composable { item: MediaItem -> item.overview?.takeIf { prefs.overview && !descriptionHidden(item) } },
+        onOpen = open, onPlay = { actions.play(it, false) }, onNeedMore = more,
+        complete = state.complete, lines = prefs.collageLines, tv = false,
+    )
+    val style = dev.nitrate.showviews.ShowStyle(
+        display = type.headlineSmall, title = type.titleMedium, body = type.bodyMedium, label = type.labelMedium, accent = accentColor(),
+    )
+    val host = dev.nitrate.showviews.ShowHost(backHandler = @Composable { on: Boolean, back: () -> Unit -> dev.nitrate.mobile.platform.PlatformBackHandler(on, back) })
+    dev.nitrate.showviews.SharedShowView(view, source, style, host, modifier)
+}
