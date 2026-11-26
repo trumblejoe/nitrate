@@ -52,6 +52,10 @@ class SoftwareVideoProfileTest {
         assertEquals("VideoBitDepth", tenBit.applyConditions.single().property)
         assertEquals("1080", tenBit.conditions.first { it.property == "Height" }.value)
         assertEquals("NotEquals", tenBit.conditions.first { it.property == "IsInterlaced" }.condition)
+        // Direct play only: Jellyfin tests applyConditions against the source when converting too,
+        // and a 10-bit 4K HEVC film was converted at 1080p because of this rule.
+        assertEquals("-ts", tenBit.container)
+        assertEquals(null, main.container)
     }
 
     @Test

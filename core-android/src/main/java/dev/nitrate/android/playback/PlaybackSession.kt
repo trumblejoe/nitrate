@@ -590,7 +590,9 @@ class PlaybackSession(
         override fun onPlayerError(e: PlaybackException) {
             val format = (e as? ExoPlaybackException)?.takeIf { it.type == ExoPlaybackException.TYPE_RENDERER }?.rendererFormat
             log("Error ${e.errorCodeName}: ${e.message}" + (e.cause?.let { "; cause ${it::class.simpleName}: ${it.message}" } ?: "") +
-                (format?.let { "; format ${it.sampleMimeType} ${it.codecs ?: ""} ${it.width}x${it.height}" } ?: ""))
+                (format?.let { "; format ${it.sampleMimeType} ${it.codecs ?: ""} ${it.width}x${it.height}" } ?: "") +
+                // Where it happened (Media3's own messages don't say), so a report tells whose code failed.
+                whereFailed(e)?.let { "; at $it" }.orEmpty())
             val failed = _plan.value
             if (failed == null || failed.method == PlayMethod.TRANSCODE || localProgress != null) {
                 _error.value = "Playback failed: ${e.errorCodeName}"
@@ -1549,6 +1551,21 @@ class PlaybackSession(
         }.onFailure { log("Couldn't show 3D in 2D: ${it.message}") }
     }
 
+    /**
+     * The innermost cause's first few stack frames, plus the first of Nitrate's own if those are
+     * all Media3's or Android's ("MatroskaExtractor.readBlock:1234 < … ; Nitrate: DolbyVisionProfile7…").
+     */
+    private fun whereFailed(e: Throwable): String? {
+        var root: Throwable = e
+        while (root.cause != null && root.cause !== root) root = root.cause!!
+        val frames = root.stackTrace.takeIf { it.isNotEmpty() } ?: return null
+        fun name(f: StackTraceElement) = "${f.className.substringAfterLast('.')}.${f.methodName}:${f.lineNumber}"
+        val top = frames.take(FAILURE_FRAMES).joinToString(" < ", transform = ::name)
+        val ours = frames.firstOrNull { it.className.startsWith("dev.nitrate.") }
+        val oursNote = ours?.takeIf { it !in frames.take(FAILURE_FRAMES) }?.let { "; Nitrate: ${name(it)}" }.orEmpty()
+        return "${root::class.simpleName} " + top + oursNote
+    }
+
     /** Read when each file is opened: how dual-layer Dolby Vision (profile 7) plays. */
     @Volatile private var profile7 = dev.nitrate.core.playback.Profile7Playback.BASE_LAYER
 
@@ -1731,6 +1748,9 @@ class PlaybackSession(
     private companion object {
         /** How often this playback's log is kept on the device while it plays. */
         const val LOG_KEEP_MS = 10_000L
+
+        /** Stack frames of a playback error kept in the log. */
+        private const val FAILURE_FRAMES = 4
 
         /** Second subtitle language per show (or film), for this app run. */
         private val secondMemory = java.util.concurrent.ConcurrentHashMap<String, Pair<String?, String?>>()

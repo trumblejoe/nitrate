@@ -122,6 +122,7 @@ class JellyfinDeviceProfileTest {
         val soft = withSoftware.first { it.applyConditions.any { c -> c.property == "VideoProfile" } }
         assertEquals("high 4:2:2|high 4:4:4 predictive", soft.applyConditions.single().value)
         assertEquals("1080", soft.conditions.first { it.property == "Height" }.value)
+        assertEquals("-ts", soft.container)
 
         // "Always" for the codec: the user says it plays everything.
         val always = profiles(h264Hw, PlaybackSettings(overrides = mapOf("hevc" to Override.ALWAYS))).first { it.codec == "hevc" && it.applyConditions.isEmpty() }

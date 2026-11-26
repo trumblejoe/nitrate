@@ -30,6 +30,8 @@ data class CodecProfileDto(
     val codec: String,
     val conditions: List<ProfileConditionDto>,
     val applyConditions: List<ProfileConditionDto> = emptyList(),
+    /** Containers it applies to ("-ts": every container but TS); null for all. */
+    val container: String? = null,
 )
 
 @Serializable
@@ -85,9 +87,16 @@ object JellyfinDeviceProfile {
         // Prefer HEVC output when allowed: half the bitrate of H.264 for the same quality.
         val transcodeVideo = listOfNotNull("hevc".takeIf { it in video }, "h264").joinToString(",")
         val transcodeAudio = listOf("aac", "ac3", "eac3").filter { it in audio }.ifEmpty { listOf("aac") }.joinToString(",")
+        // AVPlayer takes HEVC and HDR only in fragmented MP4 segments.
+        val transcodeContainer = if (apple) "mp4" else "ts"
+        // Rules that hold only for some source files (a 10-bit or unusual profile decoded in software
+        // here) are kept to direct play: Jellyfin tests a profile's applyConditions against the source
+        // even when converting, and caps the whole conversion by the smallest size of any that matches
+        // (a 10-bit 4K HEVC film came out 1080p because 10-bit H.264 is software-only here).
+        // Not on Apple, whose conversions are MP4 like the files it plays.
+        val directPlayOnly = if (apple) null else "-$transcodeContainer"
         val transcoding = listOf(
-            // AVPlayer takes HEVC and HDR only in fragmented MP4 segments.
-            TranscodingProfileDto(if (apple) "mp4" else "ts", "Video", transcodeVideo, transcodeAudio, "hls", minSegments = 1, breakOnNonKeyFrames = true),
+            TranscodingProfileDto(transcodeContainer, "Video", transcodeVideo, transcodeAudio, "hls", minSegments = 1, breakOnNonKeyFrames = true),
             if (apple) TranscodingProfileDto("aac", "Audio", "", "aac", "hls", minSegments = 1) else TranscodingProfileDto("mp3", "Audio", "", "mp3", "http"),
         )
 
@@ -116,6 +125,7 @@ object JellyfinDeviceProfile {
                         type = "Video",
                         codec = limit.codec,
                         applyConditions = listOf(ProfileConditionDto("EqualsAny", "VideoProfile", missing.sorted().joinToString("|"))),
+                        container = directPlayOnly,
                         conditions = listOf(
                             ProfileConditionDto("LessThanEqual", "Width", "1920"),
                             ProfileConditionDto("LessThanEqual", "Height", CapabilityRules.SOFTWARE_MAX_HEIGHT.toString()),
@@ -129,6 +139,7 @@ object JellyfinDeviceProfile {
                         type = "Video",
                         codec = limit.codec,
                         applyConditions = listOf(ProfileConditionDto("GreaterThanEqual", "VideoBitDepth", "9")),
+                        container = directPlayOnly,
                         conditions = listOf(
                             ProfileConditionDto("LessThanEqual", "Width", (h * 16 / 9).toString()),
                             ProfileConditionDto("LessThanEqual", "Height", h.toString()),
