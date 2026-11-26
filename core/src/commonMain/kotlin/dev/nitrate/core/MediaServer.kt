@@ -914,6 +914,13 @@ interface MediaServer {
     /** A song's lyrics (timed or plain), or null when it has none. */
     suspend fun lyrics(itemId: String): dev.nitrate.core.music.Lyrics? = null
 
+    /**
+     * A found image's width and height read from the start of its file (Fanart.tv and some other
+     * providers don't say), or null when it can't be read. Asked of the image's own address with
+     * nothing of the user's or the server's sent; each address read once.
+     */
+    suspend fun remoteImageSize(url: String): Pair<Int, Int>? = null
+
     /** The directors and writers of [ids] (other credits left out), in one request: for Collage's lines. */
     suspend fun crewOf(ids: List<String>): Map<String, List<dev.nitrate.core.model.Person>> = emptyMap()
 

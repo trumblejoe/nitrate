@@ -658,7 +658,12 @@ private fun RemoteImagesDialog(actions: AppActions, item: MediaItem, type: Image
                 )
                 else -> LazyVerticalGrid(GridCells.Adaptive(if (type == ImageType.PRIMARY) 110.dp else 200.dp), contentPadding = PaddingValues(ScreenPadding),
                     horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(list, key = { it.url }) { img ->
+                    items(list, key = { it.url }) { found ->
+                        // Fanart.tv and others give no size: read it from the file's start.
+                        val measured by produceState<Pair<Int, Int>?>(null, found.url) {
+                            if (dev.nitrate.core.admin.RemoteImages.sizeMissing(found)) value = actions.server.remoteImageSize(found.url)
+                        }
+                        val img = dev.nitrate.core.admin.RemoteImages.sized(found, measured)
                         val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height, episode)
                         Column(Modifier.pressable({ if (img.url !in picked) { picked += img.url; onPick(img.url) } })) {
                             Box(Modifier.fillMaxWidth().aspectRatio(img.width?.let { w -> img.height?.let { h -> w.toFloat() / h } } ?: 1f).clip(RoundedCornerShape(10.dp))

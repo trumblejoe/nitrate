@@ -78,6 +78,9 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.utils.io.readAvailable
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -143,6 +146,46 @@ class JellyfinClient(
             connectTimeoutMillis = 8_000
             requestTimeoutMillis = 60_000
         }
+    }
+
+    /**
+     * For addresses outside the server (image providers' files): no Authorization, no tags, no
+     * Accept pinning; nothing that says who's asking.
+     */
+    private val outside by lazy {
+        HttpClient(engine) {
+            expectSuccess = true
+            install(HttpTimeout) { connectTimeoutMillis = 6_000; requestTimeoutMillis = 15_000 }
+        }
+    }
+    private val remoteSizes = mutableMapOf<String, Pair<Int, Int>?>()
+    private val remoteSizesLock = kotlinx.coroutines.sync.Mutex()
+
+    override suspend fun remoteImageSize(url: String): Pair<Int, Int>? {
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return null
+        remoteSizesLock.withLock { if (url in remoteSizes) return remoteSizes[url] }
+        val size = runCatching {
+            outside.prepareGet(url) {
+                // Only the start of the file: its header says the size.
+                header(HttpHeaders.Range, "bytes=0-${dev.nitrate.core.comics.ImageSize.READ_BYTES - 1}")
+                header(HttpHeaders.Accept, "image/*")
+            }.execute { response ->
+                val channel = response.bodyAsChannel()
+                val buf = ByteArray(dev.nitrate.core.comics.ImageSize.READ_BYTES)
+                var n = 0
+                var found: Pair<Int, Int>? = null
+                while (n < buf.size) {
+                    val got = channel.readAvailable(buf, n, buf.size - n)
+                    if (got <= 0) break
+                    n += got
+                    found = dev.nitrate.core.comics.ImageSize.of(buf.copyOf(n))
+                    if (found != null) break
+                }
+                found
+            }
+        }.getOrNull()?.takeIf { it.first > 0 && it.second > 0 }
+        remoteSizesLock.withLock { remoteSizes[url] = size }
+        return size
     }
 
     init {

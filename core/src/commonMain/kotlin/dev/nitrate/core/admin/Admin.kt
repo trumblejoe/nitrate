@@ -152,6 +152,14 @@ object RemoteImages {
         shortfall(type, image.width, image.height, episode)?.let { "small: $it" },
     ).joinToString(" · ")
 
+    /** [image] with the size read from its file ([measured]) where the provider gave none. */
+    fun sized(image: RemoteImage, measured: Pair<Int, Int>?): RemoteImage =
+        if (measured == null || (image.width != null && image.width > 0 && image.height != null && image.height > 0)) image
+        else image.copy(width = measured.first, height = measured.second)
+
+    /** Whether the provider left out [image]'s size (it's read from the file instead). */
+    fun sizeMissing(image: RemoteImage): Boolean = image.width == null || image.width <= 0 || image.height == null || image.height <= 0
+
     /** "2000×3000", or null when not known. */
     fun size(width: Int?, height: Int?): String? = if (width == null || height == null) null else "${width}×$height"
 }

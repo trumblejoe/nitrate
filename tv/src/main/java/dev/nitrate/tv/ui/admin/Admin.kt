@@ -441,7 +441,12 @@ private fun ImagesTab(repository: MediaServer, item: MediaItem, notify: (String)
                     )
                     // Room around the row for a picture growing as it's focused.
                     else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(24.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 20.dp, horizontal = 16.dp)) {
-                        items(list, key = { it.url }) { img ->
+                        items(list, key = { it.url }) { found ->
+                            // Fanart.tv and others give no size: read it from the file's start.
+                            val measured by produceState<Pair<Int, Int>?>(null, found.url) {
+                                if (dev.nitrate.core.admin.RemoteImages.sizeMissing(found)) value = repository.remoteImageSize(found.url)
+                            }
+                            val img = dev.nitrate.core.admin.RemoteImages.sized(found, measured)
                             val small = dev.nitrate.core.admin.RemoteImages.isSmall(type, img.width, img.height, episode)
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Card(onClick = {
