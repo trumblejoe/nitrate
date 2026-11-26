@@ -1783,6 +1783,9 @@ class JellyfinClient(
         // The groups changed (someone joined, left, or moved on): each show's group progress is asked afresh.
         if (lastPartners?.let { it.first == accountKey && it.second == info } != true) {
             if (lastPartners != null) answers.forget { key, kind -> kind == dev.nitrate.core.cache.AnswerKind.COMPANION && "Partners/Progress" in key }
+            // Joining a group shares its playlists with the user (the Companion does it as the groups
+            // are read): what was refused before (a playlist that wasn't theirs yet) is asked again now.
+            refusalLock.withLock { refusals.clear() }
             lastPartners = accountKey to info
         }
         partnersListener?.invoke(info)

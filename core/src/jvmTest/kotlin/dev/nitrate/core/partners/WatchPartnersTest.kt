@@ -17,6 +17,21 @@ class WatchPartnersTest {
     private val sam = PartnerProgress("g1", "sam", "Sam", setOf("e1-1", "e1-2"), "S1 E2", "e1-3")
     private val kim = PartnerProgress("g2", "kim", "Kim", setOf("e1-1"), "S1 E1", "e1-2")
 
+    /**
+     * A show's episodes in another group's playlist: on the show's page (its standings), that group's
+     * place is its own record, never the user's own Watched (episodes seen alone aren't the group's).
+     */
+    @Test fun aGroupHoldingAPlaylistOfTheShowGoesByItsRecordOnTheShow() {
+        val playlistGroup = WatchGroup("gp", "marathon", "Marathon", listOf(dev.nitrate.core.writing.UserRef("kim", "Kim")), 0, ownRecord = setOf("e1-1"))
+        val showGroup = WatchGroup("gs", "bear", "Bear", listOf(dev.nitrate.core.writing.UserRef("sam", "Sam")), 0, ownRecord = emptySet())
+        val k = KeepUp.of("bear", listOf(ep(1, played = true), ep(2, played = true), ep(3)), emptyList(), listOf(playlistGroup, showGroup))
+        assertEquals(setOf("e1-1", "e1-2"), k.mineIn(null))
+        assertEquals(setOf("e1-1"), k.mineIn("gp"))
+        assertEquals(emptySet<String>(), k.mineIn("gs"))
+        // An episode from the playlist group's card: where the user stands with that group, by its record.
+        assertEquals(1, k.nextIndexIn("gp"))
+    }
+
     @Test fun whoIsBehindAndHowTheyAreNamed() {
         assertEquals(listOf("Kim"), WatchPartners.behind(ep(2), listOf(sam, kim)).map { it.userName })
         assertEquals("Sam and Kim", WatchPartners.names(listOf("Sam", "Kim")))

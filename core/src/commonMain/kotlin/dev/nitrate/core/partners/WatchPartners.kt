@@ -500,9 +500,10 @@ data class KeepUp(
     /** What the title's parts are called: "episode" for a show, else "title". */
     val noun: String = "episode",
     /**
-     * The user's place in each group on the title by the group's own record (group id → the parts
-     * watched as far as that group goes, [WatchGroup.ownRecord]). Groups without one (older
-     * servers) go by [mine], Jellyfin's watched state.
+     * The user's place in each group by the group's own record (group id → this title's parts
+     * watched as far as that group goes, [WatchGroup.ownRecord]): every group with a record, not
+     * only those holding the title, since a record is kept per part (a show's episodes can be in
+     * another group's playlist). Groups without one (older servers) go by [mine], Jellyfin's watched state.
      */
     val own: Map<String, Set<String>> = emptyMap(),
 ) {
@@ -521,13 +522,14 @@ data class KeepUp(
     companion object {
         /**
          * [seriesId] is the group's title (a show, film, playlist or collection); [items] what it
-         * holds, in order; [groups] the user's groups (those holding this title give [own]).
+         * holds, in order; [groups] the user's groups (each with a record gives [own], whether or
+         * not it holds this title: never the user's own Watched for a group that keeps its record).
          */
         fun of(seriesId: String, items: List<MediaItem>, progress: List<PartnerProgress>, groups: List<WatchGroup> = emptyList()): KeepUp {
             val real = WatchPartners.countable(items)
             val noun = if (real.all { it.kind == ItemKind.EPISODE }) "episode" else "title"
             val ids = real.map { it.id }
-            val own = groups.filter { it.holds(seriesId) && it.ownRecord != null }.associate { g -> g.id to g.ownRecord!!.filter { it in ids }.toSet() }
+            val own = groups.filter { it.ownRecord != null }.associate { g -> g.id to g.ownRecord!!.filter { it in ids }.toSet() }
             return KeepUp(seriesId, ids, real.filter { it.user.played }.map { it.id }.toSet(), progress, noun, own)
         }
     }
