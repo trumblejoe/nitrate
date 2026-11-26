@@ -39,7 +39,8 @@ data class RemotePrompt(
 
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-        fun isOurs(header: String?) = header == PROMPT || header == PROMPT_GONE || header == ANSWER || header == RemoteSessionStart.HEADER
+        fun isOurs(header: String?) = header == PROMPT || header == PROMPT_GONE || header == ANSWER || header == RemoteSessionStart.HEADER ||
+            header == RemoteChatState.STATE || header == RemoteChatState.GONE || header == RemoteChatDo.HEADER
 
         fun encode(p: RemotePrompt) = json.encodeToString(serializer(), p)
         fun decode(text: String): RemotePrompt? = runCatching { json.decodeFromString(serializer(), text) }.getOrNull()

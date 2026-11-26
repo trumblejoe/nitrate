@@ -132,6 +132,9 @@ class RemoteControlHub(
             RemotePrompt.PROMPT_GONE -> _prompts.value = _prompts.value.filterValues { it.first.id != text }
             RemotePrompt.ANSWER -> RemotePrompt.readAnswer(text)?.let { _answers.tryEmit(it) }
             dev.nitrate.core.remote.RemoteSessionStart.HEADER -> dev.nitrate.core.remote.RemoteSessionStart.decode(text)?.let { _sessionStarts.tryEmit(it) }
+            dev.nitrate.core.remote.RemoteChatState.STATE -> dev.nitrate.core.remote.RemoteChatState.decode(text)?.let { c -> _chats.value = _chats.value + (c.deviceId to (c to dev.nitrate.android.nowMs())) }
+            dev.nitrate.core.remote.RemoteChatState.GONE -> _chats.value = _chats.value - text
+            dev.nitrate.core.remote.RemoteChatDo.HEADER -> dev.nitrate.core.remote.RemoteChatDo.decode(text)?.let { _chatDos.tryEmit(it) }
         }
     }
 
@@ -167,6 +170,38 @@ class RemoteControlHub(
         _prompts.value = _prompts.value - prompt.deviceId
         server.sendMessage(sessionId, RemotePrompt.ANSWER, RemotePrompt.answer(prompt.id, choiceId))
     }
+
+    // ---- The TV's chat, chatted in from a phone (relayed through the TV) ----
+
+    private val _chats = MutableStateFlow<Map<String, Pair<dev.nitrate.core.remote.RemoteChatState, Long>>>(emptyMap())
+
+    /** Phone: the chats of what the user's TVs are playing, by the TV's device id, with when last heard. */
+    val chats: StateFlow<Map<String, Pair<dev.nitrate.core.remote.RemoteChatState, Long>>> = _chats
+
+    /** Phone: the chat on the device [deviceId] now, if heard lately. */
+    fun chatFrom(deviceId: String?, nowMs: Long): dev.nitrate.core.remote.RemoteChatState? =
+        _chats.value[deviceId]?.takeIf { nowMs - it.second < RemotePrompt.FORGET_MS }?.first
+
+    private val _chatDos = MutableSharedFlow<dev.nitrate.core.remote.RemoteChatDo>(extraBufferCapacity = 16)
+
+    /** TV: what a phone's remote asks its chat to do. */
+    val chatDos: SharedFlow<dev.nitrate.core.remote.RemoteChatDo> = _chatDos
+
+    /** TV: tells the user's phones what its chat shows. */
+    suspend fun tellChat(state: dev.nitrate.core.remote.RemoteChatState) {
+        val text = dev.nitrate.core.remote.RemoteChatState.encode(state)
+        runCatching { phones() }.getOrDefault(emptyList()).forEach { runCatching { server.sendMessage(it.id, dev.nitrate.core.remote.RemoteChatState.STATE, text) } }
+    }
+
+    /** TV: its chat went away (the player closed, or there's no one to chat with), without waiting. */
+    fun chatGoneSoon() {
+        val id = server.deviceId ?: return
+        scope.launch { runCatching { phones() }.getOrDefault(emptyList()).forEach { runCatching { server.sendMessage(it.id, dev.nitrate.core.remote.RemoteChatState.GONE, id) } } }
+    }
+
+    /** Phone: asks the chat on the device whose session is [sessionId] to do [what] (it posts, as that TV). */
+    suspend fun chatDo(sessionId: String, what: dev.nitrate.core.remote.RemoteChatDo) =
+        server.sendMessage(sessionId, dev.nitrate.core.remote.RemoteChatDo.HEADER, dev.nitrate.core.remote.RemoteChatDo.encode(what))
 
     fun stop() {
         job?.cancel()

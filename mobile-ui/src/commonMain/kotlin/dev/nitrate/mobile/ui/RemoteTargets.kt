@@ -24,6 +24,8 @@ data class RemoteView(
     val prompt: RemotePrompt? = null,
     /** Nitrate on a TV: pages and titles can be opened there, and text typed, from here. */
     val choosable: Boolean = false,
+    /** The chat of what it plays (Nitrate on a TV), chatted in through it. */
+    val chat: dev.nitrate.core.remote.RemoteChatState? = null,
 )
 
 /**
@@ -52,6 +54,8 @@ interface RemoteTarget {
     /** Plays [item] there from [startMs]. */
     suspend fun play(item: MediaItem, startMs: Long)
     suspend fun answer(prompt: RemotePrompt, choiceId: String) = Unit
+    /** Asks its chat to do something ([RemoteView.chat] only): it posts as that TV. */
+    suspend fun chatDo(what: dev.nitrate.core.remote.RemoteChatDo) = Unit
 }
 
 /**
@@ -78,6 +82,7 @@ class SessionTarget(
             navigable = s.navigable,
             prompt = container.remote.promptFrom(s.deviceId, nowMs()),
             choosable = s.choosable,
+            chat = container.remote.chatFrom(s.deviceId, nowMs())?.takeIf { it.itemId == s.nowPlaying?.id },
         )
     }
 
@@ -92,6 +97,7 @@ class SessionTarget(
     override suspend fun show(item: MediaItem) = server.showOn(sessionId, item)
     override suspend fun type(text: String) = server.typeOn(sessionId, text)
     override suspend fun answer(prompt: RemotePrompt, choiceId: String) = container.remote.answer(sessionId, prompt, choiceId)
+    override suspend fun chatDo(what: dev.nitrate.core.remote.RemoteChatDo) = container.remote.chatDo(sessionId, what)
 
     override suspend fun play(item: MediaItem, startMs: Long) {
         val send = beforeSending(item) ?: return

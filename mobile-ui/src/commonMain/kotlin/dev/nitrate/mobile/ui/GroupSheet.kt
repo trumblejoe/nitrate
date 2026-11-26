@@ -350,7 +350,7 @@ private fun Conversation(
 
 /** The full emoji list under the message box, by heading ("For this" first); a tap sends one. */
 @Composable
-private fun EmojiList(groups: List<dev.nitrate.core.companion.EmojiGroup>, onPick: (String) -> Unit) {
+internal fun EmojiList(groups: List<dev.nitrate.core.companion.EmojiGroup>, onPick: (String) -> Unit) {
     androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
         androidx.compose.foundation.lazy.grid.GridCells.Adaptive(44.dp),
         Modifier.fillMaxWidth().heightIn(max = 280.dp),

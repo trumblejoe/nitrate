@@ -1071,6 +1071,27 @@ class ScreenshotTest {
         compose.waitForIdle()
     }) { a -> androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) { dev.nitrate.mobile.ui.RemoteSessionCard(a, "s1", "Living room TV") } }
 
+    /** The remote's Chat card while the TV plays something with group chat: which chat, the last messages, the quick lines, emoji button and message box; the chat line opens the choices. Sent through the TV. */
+    @Test fun remoteChat() {
+        val sent = mutableListOf<dev.nitrate.core.remote.RemoteChatDo>()
+        val state = dev.nitrate.core.remote.RemoteChatState(
+            "tv1", "s1e2", on = true, line = "New chat · Will", hasChats = true,
+            chats = listOf(dev.nitrate.core.remote.RemoteChatState.Option("tue", "2026/11/24 · Will", "14 messages")),
+            recent = listOf(
+                dev.nitrate.core.remote.RemoteChatState.Line("Will", "0:04", "The opening shot!"),
+                dev.nitrate.core.remote.RemoteChatState.Line("Will", "0:06", "😱", reaction = true),
+            ),
+            emojis = listOf("👻") + dev.nitrate.core.companion.QUICK_REACTIONS, lines = listOf("Iris!", "No way!", "Called it"),
+        )
+        shoot("phone-remote-chat", act = {
+            compose.onNodeWithText("New chat · Will ›").performClick()
+            compose.waitForIdle()
+        }) { androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) { dev.nitrate.mobile.ui.RemoteChatCard(state, "Living room TV") { sent += it } } }
+        compose.onNodeWithText("2026/11/24 · Will").performClick()
+        compose.onNodeWithText("Iris!").performClick()
+        check(sent == listOf(dev.nitrate.core.remote.RemoteChatDo(dev.nitrate.core.remote.RemoteChatDo.Kind.PLAY, chatId = "tue"), dev.nitrate.core.remote.RemoteChatDo(dev.nitrate.core.remote.RemoteChatDo.Kind.TEXT, text = "Iris!"))) { sent.toString() }
+    }
+
     /** One the TV hosts, gathering: who it waits for, and the starter's Start now and End for everyone. */
     @Test fun remoteSessionGathering() {
         lateinit var server: FakeServer

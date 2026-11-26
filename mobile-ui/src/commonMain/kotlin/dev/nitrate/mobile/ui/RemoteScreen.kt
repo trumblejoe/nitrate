@@ -134,6 +134,8 @@ fun RemoteScreen(actions: AppActions, sessionId: String, target: RemoteTarget? =
                     onType = { text -> send { type(text) } },
                 )
                 if (!arrows) RemoteSessionCard(actions, sessionId, name)
+                // The chat of what it plays, chatted in through the TV.
+                view?.chat?.takeIf { !arrows && !LocalDisplayPrefs.current.easyMode }?.let { c -> RemoteChatCard(c, name) { what -> send { chatDo(what) } } }
                 if (arrows || np == null) GoToRow(actions, onGo = { item -> send { if (item == null) navigate(GeneralCommand.GO_HOME) else show(item) } }, onSearch = { send { navigate(GeneralCommand.GO_TO_SEARCH) } })
             }
             if (arrows) {

@@ -692,6 +692,17 @@ fun PlayerScreen(
                 modifier = Modifier.align(Alignment.TopEnd),
             )
         }
+        if (groupChat != null && chatLabel != null && item != null) {
+            // The chat on the user's phones' remotes too: what they send is posted here, as this TV.
+            val chatPicks by androidx.compose.runtime.produceState(dev.nitrate.core.companion.QuickReplies.forTitle(item), item?.id) {
+                item?.let { i -> watchGroups?.let { value = it.quickPicks(i) } }
+            }
+            ChatOnPhones(
+                remote, repository.deviceId, item!!.id, groupChat,
+                who = withChip?.group?.let(dev.nitrate.core.partners.WithChip::nameOf) ?: groupSession?.title ?: syncGroup?.name ?: noteGroups.firstOrNull()?.title,
+                picks = chatPicks, positionMs = { player.currentPosition }, onTurn = ::turnGroupChat,
+            )
+        }
         if (panel == Panel.CHAT && groupChat != null && chatLabel != null) {
             // Stays until Back (Chats, then the chat so far, close first); focus returns to the Chat button.
             PlayerChatStrip(
