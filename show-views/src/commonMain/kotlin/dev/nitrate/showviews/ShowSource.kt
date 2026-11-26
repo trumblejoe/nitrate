@@ -90,6 +90,9 @@ fun SharedShowView(view: BrowseView, source: ShowSource, style: ShowStyle, host:
         BrowseView.VORTEX -> Vortex(source, style, host, modifier)
         BrowseView.VOLUMES -> Volumes(source, style, host, modifier)
         BrowseView.COLLAGE -> CollageView(source, style, host, modifier)
+        BrowseView.CORRIDOR -> Corridor(source, style, host, modifier)
+        BrowseView.PANES -> Panes(source, style, host, modifier)
+        BrowseView.PAVEMENT -> Pavement(source, style, host, modifier)
         else -> Unit
     }
 }

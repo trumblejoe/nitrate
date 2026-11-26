@@ -91,7 +91,7 @@ private fun ListSections(list: ListPanel?, libraryPage: Boolean, actions: AppAct
                 FilterChip(selected = view == v, onClick = { list.vm.update { it.copy(view = v) } }, label = { Text(v.label) })
             }
         }
-        Text("How this list shows its titles: posters, wide artwork, lines with details, or one of the drawn views (Vortex, Volumes, Collage).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("How this list shows its titles: posters, wide artwork, lines with details, or one of the drawn views (Vortex, Volumes, Collage, Corridor, Panes, Pavement).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         // Collage: what its hairlines join (one setting for every library's Collage).
         if (view == dev.nitrate.core.pages.BrowseView.COLLAGE) {
             val prefs = LocalDisplayPrefs.current

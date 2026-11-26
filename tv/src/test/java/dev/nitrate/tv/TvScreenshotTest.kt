@@ -728,6 +728,13 @@ class TvScreenshotTest {
     @Test fun libraryCollage() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE)
     @Test fun libraryCollageDirectors() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE, name = "collage-directors", lines = dev.nitrate.core.pages.CollageLines.DIRECTOR)
     @Test fun libraryCollageLightbox() = showViewShot(dev.nitrate.core.pages.BrowseView.COLLAGE, then = listOf("ok"), name = "collage-lightbox")
+    /** Corridor: two posters along, the grid round the chosen one lit; then OK peels it off the wall. */
+    @Test fun libraryCorridor() = showViewShot(dev.nitrate.core.pages.BrowseView.CORRIDOR)
+    @Test fun libraryCorridorPeeled() = showViewShot(dev.nitrate.core.pages.BrowseView.CORRIDOR, then = listOf("ok"), name = "corridor-peeled")
+    /** Panes: two flown through, the third on the glass in front. */
+    @Test fun libraryPanes() = showViewShot(dev.nitrate.core.pages.BrowseView.PANES)
+    /** Pavement: two passed (blown off), the third stood up with its words. */
+    @Test fun libraryPavement() = showViewShot(dev.nitrate.core.pages.BrowseView.PAVEMENT)
 
     /**
      * Choosing a show view in Customize (the box, which isn't a grid) rebuilds the All tab behind the

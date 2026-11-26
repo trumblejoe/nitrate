@@ -978,6 +978,19 @@ class ScreenshotTest {
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.COLLAGE))
     }, act = { compose.mainClock.advanceTimeBy(1_500) }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
 
+    /** Corridor, Panes and Pavement on the phone (held upright). */
+    @Test fun browseCorridor() = shoot("phone-browse-corridor", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.CORRIDOR))
+    }, act = { compose.mainClock.advanceTimeBy(1_500) }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
+    @Test fun browsePanes() = shoot("phone-browse-panes", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.PANES))
+    }, act = { compose.mainClock.advanceTimeBy(1_500) }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
+    @Test fun browsePavement() = shoot("phone-browse-pavement", setup = { c ->
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.PAVEMENT))
+    }, act = { compose.mainClock.advanceTimeBy(1_800) }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }
+
     @Test fun browseArtwork() = shoot("phone-browse-artwork", setup = { c ->
         c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(view = dev.nitrate.core.pages.BrowseView.ARTWORK))
     }) { dev.nitrate.mobile.ui.BrowseLibrary(it, moviesLibrary) }

@@ -36,7 +36,13 @@ enum class BrowseView(val label: String, val tvOnly: Boolean = false, val column
     /** Each title a book drifting through window light; the chosen one opens, ▲▼ turn its pages. */
     VOLUMES("Volumes", shared = true),
     /** An endless board of posters and artwork tied by hairlines (what they share), with a lightbox. */
-    COLLAGE("Collage", shared = true);
+    COLLAGE("Collage", shared = true),
+    /** A dark wireframe gallery corridor bending ahead, posters hung on its walls lighting the grid; OK peels one off. */
+    CORRIDOR("Corridor", shared = true),
+    /** A row of glass panes, each a title's artwork; fly through them one by one. */
+    PANES("Panes", shared = true),
+    /** Posters lying in a street in low sun; each peels up as you reach it and blows away as you pass. */
+    PAVEMENT("Pavement", shared = true);
 
     /** One title chosen at a time (not a grid): a TV-only or a shared view. */
     val isShow: Boolean get() = tvOnly || shared
