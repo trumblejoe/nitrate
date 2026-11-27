@@ -212,7 +212,17 @@ actual fun PlayerScreen(
         val upNextAt = (if (film) NextInCollection.offerAtMs(durationMs, segments, item?.chapters.orEmpty()) else PlaybackMoments.upNextAtMs(durationMs, segments))
             .let { at -> creditScenes?.upNextAt(at, durationMs) ?: at }
         val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && positionMs >= upNextAt
-        if (clipEndMs == null) SkipButton(PlaybackMoments.skippable(segments, positionMs).takeIf { !showUpNext }) {
+        val skipNow = PlaybackMoments.skippable(segments, positionMs).takeIf { !showUpNext && clipEndMs == null }
+        val lowerOffer by session.travel.offer.collectAsState()
+        LowerQualityPrompt(lowerOffer?.takeIf { skipNow == null && !showUpNext }, onLower = session::lowerQuality, onDismiss = session.travel::dismiss)
+        session.notice.collectAsState().value?.let {
+            Text(
+                it, style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp, start = 24.dp, end = 24.dp)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.medium).padding(16.dp),
+            )
+        }
+        if (clipEndMs == null) SkipButton(skipNow) {
             item?.let { i -> container.skipWatch.skipped(i.id, it, dev.nitrate.android.nowMs()) }
             session.seekTo(it.endMs)
         }
@@ -434,6 +444,7 @@ private fun IosPlayerMore(
                     null, null,
                     pictureWords = decoding?.let { dev.nitrate.core.playback.Decoders.mpvPicture(it, "This device's hardware") } ?: dev.nitrate.core.playback.Decoders.APPLE_PLAYER.takeIf { decoding == null },
                     soundWords = decoding?.let { dev.nitrate.core.playback.Decoders.mpvSound(it) } ?: dev.nitrate.core.playback.Decoders.APPLE_PLAYER.takeIf { decoding == null },
+                    quality = session.travel.quality.collectAsState().value,
                 )
             rows.forEach { (label, value) ->
                 Row(Modifier.padding(vertical = 2.dp)) {

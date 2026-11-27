@@ -51,8 +51,17 @@ data class TitleFailure(val capability: String, val error: String, val atMs: Lon
  */
 @Serializable
 data class PlaybackSettings(
-    /** Above this the server converts down; [NO_LIMIT] (the default) leaves every file as it is. */
+    /**
+     * At home (on the server's own network): above this the server converts down; [NO_LIMIT] (the
+     * default) leaves every file as it is. Away and on mobile data: [awayMaxBitrate], [mobileMaxBitrate].
+     */
     val maxBitrate: Int = NO_LIMIT,
+    /** Away from home (not on the server's network; a VPN counts as away): a cap, or [AUTO_BITRATE] from a quick speed test. */
+    val awayMaxBitrate: Int = AUTO_BITRATE,
+    /** On mobile data or metered Wi-Fi (phones and tablets): a cap, or [AUTO_BITRATE]. */
+    val mobileMaxBitrate: Int = AUTO_BITRATE,
+    /** When playback keeps buffering, lower the quality by itself (else it's offered with one press). */
+    val autoLowerQuality: Boolean = false,
     val maxResolution: MaxResolution = MaxResolution.AUTO,
     val allowDirectPlay: Boolean = true,
     val allowDirectStream: Boolean = true,
@@ -160,6 +169,11 @@ data class PlaybackSettings(
          */
         const val NO_LIMIT = 1_000_000_000
         val BITRATES = listOf(NO_LIMIT, 120_000_000, 80_000_000, 40_000_000, 20_000_000, 10_000_000, 4_000_000)
+
+        /** Quality from a quick speed test to the server ([TravelQuality.autoLimit]). */
+        const val AUTO_BITRATE = 0
+        val AWAY_BITRATES = listOf(AUTO_BITRATE, NO_LIMIT, 120_000_000, 80_000_000, 40_000_000, 20_000_000, 10_000_000, 4_000_000)
+        val MOBILE_BITRATES = listOf(AUTO_BITRATE, 8_000_000, 4_000_000, 2_000_000, NO_LIMIT)
         fun hdrId(format: String) = "range:$format"
     }
 }

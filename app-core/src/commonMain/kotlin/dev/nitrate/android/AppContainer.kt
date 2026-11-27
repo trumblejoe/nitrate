@@ -1,5 +1,6 @@
 package dev.nitrate.android
 
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.builtins.serializer
 import kotlinx.coroutines.launch
 
@@ -1223,12 +1224,44 @@ class AppContainer(
     }
 
     private fun reconnectSoon() {
+        forgetNetworkPlace()
         reconnecting?.cancel()
         reconnecting = networkScope.launch {
             // Networks settle in a moment; don't chase every flap.
             kotlinx.coroutines.delay(1_500)
             reconnect()
         }
+    }
+
+    private class Measured<T>(val server: String?, val atMs: Long, val value: T)
+    private var placeKnown: Measured<Boolean?>? = null
+    private var speedKnown: Measured<Long?>? = null
+    private val qualityLock = kotlinx.coroutines.sync.Mutex()
+
+    /** The network changed: where the device is, and the speed to the server, are found again. */
+    private fun forgetNetworkPlace() {
+        placeKnown = null
+        speedKnown = null
+    }
+
+    /**
+     * The quality limit for a playback starting now: at home the home limit; away (the server says
+     * this device isn't on its network, a VPN included) or on mobile data, that limit, or with Auto,
+     * 70% of a quick speed test to the server (`TravelQuality`). Where the device is stays known for
+     * [PLACE_KEPT_MS] and the speed for [SPEED_KEPT_MS], both forgotten when the network changes. At
+     * most a few seconds (the speed test), and only away or on mobile data with Auto.
+     */
+    suspend fun qualityDecision(): dev.nitrate.core.playback.QualityDecision = qualityLock.withLock {
+        val settings = playbackSettings.current()
+        val now = nowMs()
+        val url = server.serverUrl
+        val inNetwork = placeKnown?.takeIf { it.server == url && now - it.atMs < PLACE_KEPT_MS }?.value
+            ?: server.inServerNetwork().also { placeKnown = Measured(url, now, it) }
+        val place = dev.nitrate.core.playback.TravelQuality.place(inNetwork, runCatching { platform.onMobileData() }.getOrDefault(false))
+        val measured = if (!dev.nitrate.core.playback.TravelQuality.needsMeasuring(settings, place)) null
+        else speedKnown?.takeIf { it.server == url && now - it.atMs < SPEED_KEPT_MS }?.value
+            ?: server.measureBitrate().also { speedKnown = Measured(url, nowMs(), it) }
+        dev.nitrate.core.playback.TravelQuality.decide(settings, place, measured)
     }
 
     /** Re-picks the server address now (also after the addresses change). */
@@ -1366,6 +1399,12 @@ class AppContainer(
     companion object {
         /** The Companion plugin feature that times requests on the server. */
         const val QUERY_TIMES_FEATURE = "querytimes"
+
+        /** How long where the device is (home or away) stays known, unless the network changes first. */
+        const val PLACE_KEPT_MS = 2 * 60_000L
+
+        /** How long Auto's speed test stays good, unless the network changes first. */
+        const val SPEED_KEPT_MS = 10 * 60_000L
     }
 }
 

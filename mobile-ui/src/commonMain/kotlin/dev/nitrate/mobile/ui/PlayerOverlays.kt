@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -135,6 +136,37 @@ fun BoxScope.SkipButton(segment: MediaSegment?, onSkip: (MediaSegment) -> Unit) 
             Text(s.kind.skipLabel, color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.width(8.dp))
             Icon(Icons.Default.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+/**
+ * It kept buffering: "Lower the quality" in the corner ([toBps] null hides it). The press plays on
+ * from here at that quality for this title; ✕ puts it aside (it comes back if the buffering does).
+ */
+@Composable
+fun BoxScope.LowerQualityPrompt(toBps: Int?, onLower: (Int) -> Unit, onDismiss: () -> Unit) {
+    AnimatedVisibility(
+        toBps != null,
+        enter = slideInHorizontally { it / 2 } + fadeIn(),
+        exit = slideOutHorizontally { it / 2 } + fadeOut(),
+        modifier = Modifier.align(Alignment.BottomEnd).padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
+    ) {
+        val to = toBps ?: return@AnimatedVisibility
+        Row(
+            Modifier.clip(RoundedCornerShape(24.dp)).background(Color(0xE6101216)).padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("It keeps buffering", color = Color.White, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Lower to ${dev.nitrate.core.playback.formatBitrate(to)}",
+                color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White).pressable({ onLower(to) }).padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+            androidx.compose.material3.IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, "Not now", tint = Color.White, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

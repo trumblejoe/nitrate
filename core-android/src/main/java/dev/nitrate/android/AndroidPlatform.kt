@@ -91,6 +91,14 @@ class AndroidPlatform(context: Context, clientName: String, version: String) : A
         }
     }
 
+    override fun onMobileData(): Boolean {
+        if (deviceKind == DeviceKind.TV) return false
+        val connectivity = appContext.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+        val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork ?: return false) ?: return false
+        return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) ||
+            !caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    }
+
     override fun timestamp(): String = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", java.util.Locale.US).format(java.util.Date())
 }
 

@@ -66,12 +66,15 @@ fun PlaybackPlan.infoRows(
     videoDecoder: String?, audioDecoder: String?, soundPassedThrough: Boolean = false,
     /** Already in plain words (mpv's, Apple's player): shown as they are in place of [videoDecoder]/[audioDecoder]. */
     pictureWords: String? = null, soundWords: String? = null,
+    /** The quality limit this plays with (away, mobile data, lowered); a row only when it's more than home with no limit. */
+    quality: QualityDecision? = null,
 ): List<Pair<String, String>> {
     val video = source.streams.firstOrNull { it.kind == StreamKind.VIDEO }
     val audio = source.streams.firstOrNull { it.index == audioIndex }
     return buildList {
         add("Server" to Decoders.serverWords(this@infoRows))
         if (transcodeReasons.isNotEmpty()) add("Why" to transcodeReasons.joinToString(", ") { it.toReadableReason() })
+        quality?.takeIf { it.place != NetworkPlace.HOME || it.lowered || it.limitBps < PlaybackSettings.NO_LIMIT }?.let { add("Quality" to it.describe()) }
         add("Container" to (source.container ?: "?"))
         source.bitrate?.let { add("Bitrate" to "${formatOneDecimal(it / 1_000_000.0)} Mbps") }
         video?.let {

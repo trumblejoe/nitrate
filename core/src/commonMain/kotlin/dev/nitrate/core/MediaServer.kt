@@ -369,7 +369,15 @@ interface MediaServer {
         mediaSourceId: String? = null,
         deviceCaps: dev.nitrate.core.playback.DeviceCapabilities? = null,
         convertSound: Set<String> = emptySet(),
+        /** The quality limit for this playback (away, mobile data, lowered); null: the home limit from the settings. */
+        maxBitrate: Int? = null,
     ): PlaybackPlan
+
+    /** Whether the server sees this device on its own network (Jellyfin's System/Endpoint); null when it can't say. */
+    suspend fun inServerNetwork(): Boolean? = null
+
+    /** The download speed from the server now (bps), timed over a short test download; null when it failed. */
+    suspend fun measureBitrate(): Long? = null
     suspend fun reportStart(plan: PlaybackPlan, positionMs: Long)
     suspend fun reportProgress(plan: PlaybackPlan, positionMs: Long, isPaused: Boolean)
 

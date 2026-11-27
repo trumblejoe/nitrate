@@ -85,6 +85,8 @@ class PlaybackSession(
     private val layersOf: (itemId: String) -> dev.nitrate.core.playback.DolbyVisionLayers? = { null },
     /** Keeps this playback's log on the device as it plays and when it closes (`AppContainer.keepPlaybackLog`). */
     private val keepLog: (dev.nitrate.android.PlayerReport) -> Unit = {},
+    /** The quality limit for a title starting now (`AppContainer.qualityDecision`: home, away, mobile data); null: the home limit. */
+    private val qualityFor: suspend () -> dev.nitrate.core.playback.QualityDecision? = { null },
 ) : dev.nitrate.android.remote.RemotePlayer {
     private val appContext = context.applicationContext
     private val nightMode = NightModeAudioProcessor()
@@ -154,6 +156,22 @@ class PlaybackSession(
 
     /** A one-off message, e.g. "switched to transcoding"; cleared after a few seconds. */
     val notice: StateFlow<String?> = _notice
+
+    private val _quality = MutableStateFlow<dev.nitrate.core.playback.QualityDecision?>(null)
+
+    /** The quality limit this title plays with (where the device is, Auto's measurement, lowered), for Info. */
+    val quality: StateFlow<dev.nitrate.core.playback.QualityDecision?> = _quality
+    private val _lowerQualityOffer = MutableStateFlow<Int?>(null)
+
+    /**
+     * It kept buffering ([dev.nitrate.core.playback.StallCounter]) and the quality can go lower: the
+     * limit (bps) one press on "Lower the quality" would play at ([lowerQuality]); null otherwise.
+     */
+    val lowerQualityOffer: StateFlow<Int?> = _lowerQualityOffer
+    private val stallCounter = dev.nitrate.core.playback.StallCounter()
+
+    /** The item [quality] was decided for: a track change or a fix keeps it (and any lowering); the next title decides afresh. */
+    @Volatile private var qualityItem: String? = null
     private val _videoFrameRate = MutableStateFlow<Float?>(null)
 
     /** The playing video's frames per second, from the file or else the server's stream info. */
@@ -656,7 +674,10 @@ class PlaybackSession(
         override fun onPlaybackStateChanged(state: Int) {
             // Smoothness: a stall is waiting for data after the first picture, other than just after a seek.
             val now = System.currentTimeMillis()
-            if (state == Player.STATE_BUFFERING && firstFrameAt != null && now - seekedAt > 3_000) stallFrom = now
+            if (state == Player.STATE_BUFFERING && firstFrameAt != null && now - seekedAt > 3_000) {
+                stallFrom = now
+                onStall(now)
+            }
             if (state == Player.STATE_READY) stallFrom?.let { from -> stalls++; stalledMs += now - from; stallFrom = null }
             log("State ${when (state) { Player.STATE_BUFFERING -> "buffering"; Player.STATE_READY -> "ready"; Player.STATE_ENDED -> "ended"; else -> "idle" }} at ${exo.currentPosition}ms")
             group?.onPlayerState()
@@ -956,6 +977,9 @@ class PlaybackSession(
     /** Plays a downloaded file from [plan] (local paths), reporting progress to [onProgress]. */
     fun loadLocal(item: MediaItem, plan: PlaybackPlan, startMs: Long, onProgress: suspend (positionMs: Long, durationMs: Long, ended: Boolean) -> Unit) {
         localProgress = onProgress
+        _quality.value = null
+        qualityItem = null
+        _lowerQualityOffer.value = null
         _item.value = item
         // The show's remembered languages win over the download's defaults, as when streaming; the
         // audio-description preference applies when nothing was picked.
@@ -1184,7 +1208,7 @@ class PlaybackSession(
             )
         }
         if (localProgress != null) return sync?.let { dev.nitrate.core.playback.PlaybackDiagnosis(dev.nitrate.core.playback.PlaybackQuality.ORIGINAL, "Plays from this device", listOf(it), p) }
-        val d = dev.nitrate.core.playback.PlaybackDoctor.diagnose(p, caps, settings.current(), forcedTranscode)
+        val d = dev.nitrate.core.playback.PlaybackDoctor.diagnose(p, caps, settings.current(), forcedTranscode, quality = _quality.value)
         return if (sync == null) d else d.copy(findings = listOf(sync) + d.findings)
     }
 
@@ -1310,6 +1334,55 @@ class PlaybackSession(
         }
     }
 
+    /**
+     * A stall while playing: the second within a minute offers "Lower the quality", or lowers it at
+     * once with the user's "Lower the quality automatically". Not for files on the device.
+     */
+    private fun onStall(now: Long) {
+        val p = _plan.value ?: return
+        if (localProgress != null || p.url.startsWith("/") || !stallCounter.stall(now)) return
+        val next = nextLowerQuality(p) ?: run { log("Kept buffering; the quality is as low as it goes"); return }
+        scope.launch {
+            if (runCatching { settings.current().autoLowerQuality }.getOrDefault(false)) {
+                lowerQuality(next)
+                showNotice("Lowered the quality to ${dev.nitrate.core.playback.formatBitrate(next)} — it kept buffering")
+            } else {
+                log("Kept buffering: offering to lower the quality to ${dev.nitrate.core.playback.formatBitrate(next)}")
+                _lowerQualityOffer.value = next
+                // Not answered in a while: put aside (it comes back if the buffering does).
+                delay(OFFER_SHOWN_MS)
+                if (_lowerQualityOffer.value == next) _lowerQualityOffer.value = null
+            }
+        }
+    }
+
+    /** Half of what's playing now (the limit, else the stream's own rate), or null when it's as low as it goes. */
+    private fun nextLowerQuality(p: PlaybackPlan): Int? {
+        val limit = _quality.value?.limitBps ?: dev.nitrate.core.playback.PlaybackSettings.NO_LIMIT
+        val streamBps = smoothness().streamBps?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
+        return dev.nitrate.core.playback.TravelQuality.stepDown(limit, streamBps ?: p.source.bitrate)
+    }
+
+    /**
+     * Plays on from here at a lower quality ([bps], else the offer's), for this title: the server
+     * converts it down; the next title starts at the usual quality again.
+     */
+    fun lowerQuality(bps: Int? = null) {
+        val p = _plan.value ?: return
+        val to = bps ?: _lowerQualityOffer.value ?: nextLowerQuality(p) ?: return
+        _lowerQualityOffer.value = null
+        stallCounter.reset()
+        val before = _quality.value ?: dev.nitrate.core.playback.QualityDecision(dev.nitrate.core.playback.NetworkPlace.HOME, dev.nitrate.core.playback.PlaybackSettings.NO_LIMIT)
+        _quality.value = before.copy(limitBps = to, lowered = true)
+        log("Lowered the quality to ${dev.nitrate.core.playback.formatBitrate(to)}: it kept buffering")
+        restart(exo.currentPosition, forceTranscode = forcedTranscode, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex)
+    }
+
+    /** "Lower the quality" put aside: offered again if it keeps buffering. */
+    fun dismissLowerQuality() {
+        _lowerQualityOffer.value = null
+    }
+
     /** A new item: subtitle timing and its cached files belong to the old one. */
     private fun forgetItemState() {
         videoFormat = null
@@ -1355,6 +1428,16 @@ class PlaybackSession(
         if (soundFailed != null) log("This title's sound ($soundFailed) failed here before: the server converts just the sound")
         convertedSound = sound
         forcedTranscode = forceTranscode
+        // Where the device is and the quality for it, once per title (Auto's speed test is kept a while).
+        if (qualityItem != current.id) {
+            qualityItem = current.id
+            _lowerQualityOffer.value = null
+            stallCounter.reset()
+            _quality.value = runCatching { qualityFor() }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }.getOrNull()
+            _quality.value?.let { log("Quality: ${it.describe()}") }
+        }
+        // At home (not lowered) the settings' own limit, so a change made while playing counts.
+        val maxBitrate = _quality.value?.takeIf { it.place != dev.nitrate.core.playback.NetworkPlace.HOME || it.lowered }?.limitBps
         // What the user picked for this show (matched to this episode's streams) or this title.
         var audio = audioIndex
         var subtitle = subtitleIndex
@@ -1388,6 +1471,7 @@ class PlaybackSession(
                 audioIndex = audioIndex,
                 subtitleIndex = subtitleIndex,
                 convertSound = sound,
+                maxBitrate = maxBitrate,
                 // The same version on a track change; otherwise the one chosen on the details page, if any.
                 mediaSourceId = sourceId ?: _plan.value?.takeIf { it.itemId == current.id }?.mediaSourceId ?: VersionChoices[current.id],
             )
@@ -1828,6 +1912,9 @@ class PlaybackSession(
         private val secondMemory = java.util.concurrent.ConcurrentHashMap<String, Pair<String?, String?>>()
 
         const val PROGRESS_INTERVAL_MS = 10_000L
+
+        /** How long "Lower the quality" stays offered without an answer. */
+        const val OFFER_SHOWN_MS = 30_000L
         const val NOTICE_MS = 8_000L
 
         /** Events kept for a playback report. */

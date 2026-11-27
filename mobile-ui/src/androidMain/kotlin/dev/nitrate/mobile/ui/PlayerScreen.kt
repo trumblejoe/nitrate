@@ -157,6 +157,8 @@ actual fun PlayerScreen(
             onDvLayers = actions.container::rememberDvLayers,
             layersOf = actions.container::dvLayersOf,
             keepLog = { report -> if (testPlay == null) actions.container.keepPlaybackLog(report) },
+            // Away or on mobile data: a lower quality (test plays check the file as it is).
+            qualityFor = { if (testPlay == null) actions.container.qualityDecision() else null },
         )
             .also {
                 if (testPlay != null) Unit // loaded below, once the title's length is known
@@ -454,7 +456,10 @@ actual fun PlayerScreen(
             .let { at -> creditScenes?.upNextAt(at, progress.durationMs) ?: at }
         val showUpNext = next != null && onPlayNext != null && !upNextHidden && !sleepAtEnd && upNextAt != null && progress.positionMs >= upNextAt && scrub == null
         if (!inPip) SecondSubtitleLine(session, playbackSettings.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = if (controlsVisible) 76.dp else 20.dp, start = 24.dp, end = 24.dp))
-        SkipButton(PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }) {
+        val lowerOffer by session.lowerQualityOffer.collectAsState()
+        val skipNow = PlaybackMoments.skippable(segments, progress.positionMs).takeIf { !showUpNext && scrub == null }
+        if (!inPip) LowerQualityPrompt(lowerOffer?.takeIf { skipNow == null && !showUpNext }, onLower = session::lowerQuality, onDismiss = session::dismissLowerQuality)
+        SkipButton(skipNow) {
             item?.let { i -> actions.container.skipWatch.skipped(i.id, it, dev.nitrate.android.nowMs()) }
             session.seekTo(it.endMs)
         }
@@ -606,7 +611,8 @@ actual fun PlayerScreen(
                             Text(value, style = MaterialTheme.typography.bodyMedium, color = if (label == "Note") accentColor() else MaterialTheme.colorScheme.onSurface)
                         }
                     }
-                    rows(p.infoRows(videoDecoder, audioDecoder, soundPassedThrough = audioPath.delivery == dev.nitrate.core.playback.AudioDelivery.BITSTREAM) + videoPath?.rows().orEmpty())
+                    val quality by session.quality.collectAsState()
+                    rows(p.infoRows(videoDecoder, audioDecoder, soundPassedThrough = audioPath.delivery == dev.nitrate.core.playback.AudioDelivery.BITSTREAM, quality = quality) + videoPath?.rows().orEmpty())
                     val sound = audioPath.rows()
                     if (sound.isNotEmpty()) {
                         Text("Sound", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))

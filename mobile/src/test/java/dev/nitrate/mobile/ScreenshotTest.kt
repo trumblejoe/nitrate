@@ -1,5 +1,6 @@
 package dev.nitrate.mobile
 
+import dev.nitrate.mobile.ui.LowerQualityPrompt
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
@@ -687,6 +688,15 @@ class ScreenshotTest {
             GestureFeedbackView(GestureFeedback.Seek(-20_000))
             TrickplayPreview(server, "s2e4", info, positionMs = 21_000, x = 900f, barTop = 1000f)
             UpNextCard(next, server, seconds = 10, onPlay = {}, onHide = {})
+        }
+    }
+
+    /** It kept buffering: "Lower the quality" in the corner, with ✕ to put it aside. */
+    @Test
+    fun playerLowerQuality() = shoot("phone-player-lower-quality") { actions ->
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            AsyncImage(actions.server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            LowerQualityPrompt(6_000_000, onLower = {}, onDismiss = {})
         }
     }
 

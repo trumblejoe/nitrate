@@ -76,8 +76,26 @@ class IosPlatform(private val version: String) : AppPlatform {
 
     override fun pictureReader(): dev.nitrate.android.comics.PictureReader = IosPictureReader()
 
-    // Reconnecting on network changes (NWPathMonitor) comes later; the app re-checks when it opens.
-    override fun watchNetwork(onChange: () -> Unit) = Unit
+    /** Whether the path in use is cellular or marked expensive/constrained (a hotspot, Low Data Mode), from [watchNetwork]'s monitor. */
+    private var expensive = false
+    private var pathMonitor: platform.Network.nw_path_monitor_t = null
+
+    /** Network changes from NWPathMonitor (the first report, on starting, isn't a change). */
+    override fun watchNetwork(onChange: () -> Unit) {
+        if (pathMonitor != null) return
+        var first = true
+        val monitor = platform.Network.nw_path_monitor_create()
+        platform.Network.nw_path_monitor_set_update_handler(monitor) { path ->
+            expensive = platform.Network.nw_path_is_expensive(path) || platform.Network.nw_path_is_constrained(path) ||
+                platform.Network.nw_path_uses_interface_type(path, platform.Network.nw_interface_type_cellular)
+            if (first) first = false else onChange()
+        }
+        platform.Network.nw_path_monitor_set_queue(monitor, platform.darwin.dispatch_get_main_queue())
+        platform.Network.nw_path_monitor_start(monitor)
+        pathMonitor = monitor
+    }
+
+    override fun onMobileData(): Boolean = expensive
 
     override fun timestamp(): String = NSDateFormatter().apply {
         dateFormat = "yyyy-MM-dd HH:mm:ss Z"

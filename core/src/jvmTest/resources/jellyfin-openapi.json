@@ -2018,6 +2018,19 @@
     ],
     "type": "string"
    },
+   "EndPointInfo": {
+    "additionalProperties": false,
+    "description": "Class EndPointInfo.",
+    "properties": {
+     "IsInNetwork": {
+      "type": "boolean"
+     },
+     "IsLocal": {
+      "type": "boolean"
+     }
+    },
+    "type": "object"
+   },
    "ExternalIdInfo": {
     "additionalProperties": false,
     "properties": {
@@ -21737,6 +21750,37 @@
       ]
      }
     ],
+    "tags": [
+     "System"
+    ]
+   }
+  },
+  "/System/Endpoint": {
+   "get": {
+    "operationId": "GetEndpointInfo",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EndPointInfo"
+        }
+       },
+       "application/json; profile=\"CamelCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/EndPointInfo"
+        }
+       },
+       "application/json; profile=\"PascalCase\"": {
+        "schema": {
+         "$ref": "#/components/schemas/EndPointInfo"
+        }
+       }
+      }
+     },
+     "401": {},
+     "403": {}
+    },
     "tags": [
      "System"
     ]

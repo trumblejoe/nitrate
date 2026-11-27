@@ -17,7 +17,7 @@ class PlayingServer(private val fake: FakeServer = FakeServer(), private val seg
 
     override suspend fun resolvePlayback(
         itemId: String, isAudio: Boolean, startMs: Long, forceTranscode: Boolean, audioIndex: Int?, subtitleIndex: Int?,
-        mediaSourceId: String?, deviceCaps: dev.nitrate.core.playback.DeviceCapabilities?, convertSound: Set<String>,
+        mediaSourceId: String?, deviceCaps: dev.nitrate.core.playback.DeviceCapabilities?, convertSound: Set<String>, maxBitrate: Int?,
     ): PlaybackPlan {
         resolved += forceTranscode
         val source = fake.mediaSource(itemId)

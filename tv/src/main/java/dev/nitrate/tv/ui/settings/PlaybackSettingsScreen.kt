@@ -190,9 +190,20 @@ private fun LazyListScope.mainPage(
         if (open) RefreshRateInfo { open = false }
     }
     item {
-        ChoiceRow("Maximum bitrate", formatBitrate(settings.maxBitrate), "No limit plays every file as it is (a fast file on a slow network buffers rather than being converted). Set a cap only if you'd rather the server convert big files down, e.g. away from home.") {
+        ChoiceRow("Quality at home", formatBitrate(settings.maxBitrate), "On the server's own network. No limit plays every file as it is; set a cap only if you'd rather the server convert big files down.") {
             val list = PlaybackSettings.BITRATES
             update { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
+        }
+    }
+    item {
+        ChoiceRow("Quality away from home", formatBitrate(settings.awayMaxBitrate), "In a hotel or anywhere off the server's network (a VPN counts as away). Auto times a quick test download from the server and asks for 70% of it, so the server converts big files down to fit.") {
+            val list = PlaybackSettings.AWAY_BITRATES
+            update { it.copy(awayMaxBitrate = list[(list.indexOf(it.awayMaxBitrate) + 1).mod(list.size)]) }
+        }
+    }
+    item {
+        ToggleRow("Lower the quality automatically", settings.autoLowerQuality, "When it keeps buffering (twice in a minute), lower the quality by itself. Off: it's offered with one press.") { v ->
+            update { it.copy(autoLowerQuality = v) }
         }
     }
     item(key = "advanced") {

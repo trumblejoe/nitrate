@@ -199,6 +199,8 @@ fun PlayerScreen(
             onDvLayers = { id, layers -> watchGroups?.rememberDvLayers(id, layers) },
             layersOf = { id -> watchGroups?.dvLayersOf(id) },
             keepLog = { report -> if (testPlay == null) watchGroups?.keepPlaybackLog(report) },
+            // Away or on a slow line: a lower quality (test plays check the file as it is).
+            qualityFor = { if (testPlay == null) watchGroups?.qualityDecision() else null },
         )
             .also {
                 if (testPlay != null) Unit // loaded below, once the title's length is known
@@ -248,6 +250,7 @@ fun PlayerScreen(
     val plan by session.plan.collectAsState()
     val error by session.error.collectAsState()
     val notice by session.notice.collectAsState()
+    val lowerOffer by session.lowerQualityOffer.collectAsState()
     // The result of "Send log", shown like a notice for a while.
     var logMessage by remember { mutableStateOf<String?>(null) }
     val logScope = rememberCoroutineScope()
@@ -394,7 +397,7 @@ fun PlayerScreen(
         // Focus goes to play/pause only from the player itself (or from nowhere): a pop-up that has
         // it (Up Next, Skip intro/recap/credits, a credits-scene banner) keeps it, so the key that
         // brought the controls back, and OK after it, act on the pop-up.
-        if (controlsVisible && (rootFocused || !playerHasFocus) && creditAction == null) controlFocus.playPause()
+        if (controlsVisible && (rootFocused || !playerHasFocus) && creditAction == null && lowerOffer == null) controlFocus.playPause()
     }
     // A pop-up closed: the controls stay up a while longer (presses in it weren't counted) and focus
     // goes back to the button that opened it, so one Back closes it and the next hides the controls.
@@ -552,7 +555,9 @@ fun PlayerScreen(
     // scene in the credits; one at a time) is in the action corner, bottom right: 48 dp up with the
     // controls hidden, docked at the right end of their buttons' row when they're up and there's
     // room (else just above them), gliding between. Subtitles lift above it, and above the controls.
-    val actionShowing = showUpNext || showSkip || creditAction != null
+    // It kept buffering: "Lower the quality", when nothing else is in the corner or open.
+    val showLower = lowerOffer != null && !showUpNext && !showSkip && creditAction == null && panel == Panel.NONE && person == null && stillAsk == null
+    val actionShowing = showUpNext || showSkip || creditAction != null || showLower
     var actionSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     // What the subtitle view was last styled with (a plain holder: not state, nothing redraws for it).
     val subtitleLook = remember { arrayOfNulls<Any>(1) }
@@ -587,6 +592,7 @@ fun PlayerScreen(
             openPanel != null -> { openPanel = null; touch() }
             showUpNext -> { upNextHidden = true; refocus() }
             creditAction != null -> { creditAction = null; refocus() }
+            showLower -> { session.dismissLowerQuality(); refocus() }
             skipSegment != null && skipFocused -> { skipFaded = skipSegment; skipFocused = false; refocus() }
             // The same whether playing or paused: Back hides the controls, then leaves.
             controlsVisible -> { controlsVisible = false; runCatching { rootFocus.requestFocus() } }
@@ -915,6 +921,12 @@ fun PlayerScreen(
         // Gone while it had focus (faded or its part ended): focus goes back where it belongs.
         LaunchedEffect(showSkip) { if (!showSkip && skipFocused) { skipFocused = false; refocus() } }
 
+        if (showLower) lowerOffer?.let { to ->
+            ActionCorner(actionBottom, onSize = { actionSize = it }) {
+                LowerQualityBanner(to, takeFocus = true, onLower = { session.lowerQuality(to); refocus() })
+            }
+        }
+
         creditAction?.takeIf { !showUpNext }?.let { a ->
             // The banner's button on the phone too.
             val actLabel = when (a) {
@@ -983,6 +995,7 @@ fun PlayerScreen(
         if (panel == Panel.INFO && p != null) {
             // Over the video with the controls out of the way; ▲▼ scroll it, Back closes it.
             PlaybackInfoPanel(p, videoDecoder, audioDecoder, Modifier.align(Alignment.Center).padding(horizontal = 32.dp, vertical = 24.dp), audio = session.audioPath.collectAsState().value,
+                quality = session.quality.collectAsState().value,
                 video = androidx.compose.runtime.produceState<dev.nitrate.core.playback.VideoPath?>(null, session) { session.videoPath().collect { value = it } }.value,
                 trail = androidx.compose.runtime.produceState<dev.nitrate.core.playback.PlaybackTrail?>(null, session, capabilities) {
                     val caps = capabilities ?: return@produceState

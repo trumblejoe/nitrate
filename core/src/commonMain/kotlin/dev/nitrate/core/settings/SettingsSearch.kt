@@ -80,7 +80,10 @@ object SettingsSearch {
         SettingEntry("Match frame rate", SettingsPlace.SOUND, "refresh rate judder 24p 23.976 hz display mode", T),
         SettingEntry("Stay at the film's rate", SettingsPlace.SOUND, "refresh rate hold keep afterwards", T),
         SettingEntry("How refresh rate works", SettingsPlace.SOUND, "refresh rate judder black screen", T),
-        SettingEntry("Maximum bitrate", SettingsPlace.SOUND, "quality data limit network buffering convert"),
+        SettingEntry("Quality at home", SettingsPlace.SOUND, "maximum bitrate quality limit network buffering convert"),
+        SettingEntry("Quality away from home", SettingsPlace.SOUND, "travel travelling hotel slow internet vpn remote bitrate auto speed buffering"),
+        SettingEntry("Quality on mobile data", SettingsPlace.SOUND, "cellular 4g 5g lte hotspot metered data plan bitrate auto", P),
+        SettingEntry("Lower the quality automatically", SettingsPlace.SOUND, "buffering stalls keeps buffering slow travel hotel"),
         // Picture & sound › Advanced
         SettingEntry("Advanced playback settings", SettingsPlace.SOUND_ADVANCED, "troubleshooting formats fixes"),
         SettingEntry("Formats this device plays (Always / Never)", SettingsPlace.SOUND_ADVANCED, "codecs hevc av1 h264 hdr hdr10 dolby vision override capabilities"),

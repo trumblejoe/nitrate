@@ -175,3 +175,5 @@ actual fun EpubScreen(book: dev.nitrate.android.comics.OpenedBook.Epub, onExit: 
     // Android reads EPUBs in Readium (the platform's EpubReaderHost); nothing to show here.
     androidx.compose.runtime.LaunchedEffect(Unit) { onExit() }
 }
+
+actual val hasMobileData: Boolean = true

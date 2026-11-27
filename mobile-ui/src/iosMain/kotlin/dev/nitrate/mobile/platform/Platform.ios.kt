@@ -287,3 +287,5 @@ object RemoteFollowing {
         follower = null
     }
 }
+
+actual val hasMobileData: Boolean = true

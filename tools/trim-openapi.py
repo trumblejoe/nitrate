@@ -22,6 +22,7 @@ PATHS = [
     "/Sessions/Logout",
     "/ClientLog/Document",
     "/System/Ping",
+    "/System/Endpoint",
     "/System/Configuration/{key}",
     "/Search/Hints",
     "/Videos/{itemId}/AdditionalParts",

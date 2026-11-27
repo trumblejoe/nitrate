@@ -55,6 +55,12 @@ interface AppPlatform {
     /** Calls [onChange] when the network changes (leaving home Wi-Fi…), to re-pick the server address. */
     fun watchNetwork(onChange: () -> Unit)
 
+    /**
+     * Whether the network in use now is mobile data or a metered Wi-Fi (a phone's hotspot), for the
+     * mobile-data quality limit: phones and tablets; TVs and computers say false.
+     */
+    fun onMobileData(): Boolean = false
+
     /** Now, as "yyyy-MM-dd HH:mm:ss Z" in the device's time zone, for reports. */
     fun timestamp(): String
 

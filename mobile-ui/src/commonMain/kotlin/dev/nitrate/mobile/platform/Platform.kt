@@ -167,3 +167,6 @@ expect val canTestPlay: Boolean
  */
 @androidx.compose.runtime.Composable
 expect fun EpubScreen(book: dev.nitrate.android.comics.OpenedBook.Epub, onExit: () -> Unit)
+
+/** Whether this device can be on mobile data (phones, tablets): Settings shows "Quality on mobile data". */
+expect val hasMobileData: Boolean

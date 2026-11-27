@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -343,7 +344,17 @@ fun DesktopPlayer(
                     }
                 }
 
-                if (clipEndMs == null) SkipButton(PlaybackMoments.skippable(segments, positionMs).takeIf { !showUpNext }) {
+                val skipNow = PlaybackMoments.skippable(segments, positionMs).takeIf { !showUpNext && clipEndMs == null }
+                val lowerOffer by session.travel.offer.collectAsState()
+                LowerQualityPrompt(lowerOffer?.takeIf { skipNow == null && !showUpNext }, onLower = session::lowerQuality, onDismiss = session.travel::dismiss)
+                session.notice.collectAsState().value?.let {
+                    Text(
+                        it, style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = 24.dp).widthIn(max = 420.dp)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.medium).padding(16.dp),
+                    )
+                }
+                if (clipEndMs == null) SkipButton(skipNow) {
                     item?.let { i -> container.skipWatch.skipped(i.id, it, dev.nitrate.android.nowMs()) }
                     session.seekTo(it.endMs)
                 }
@@ -585,7 +596,10 @@ private fun PlayerInfoDialog(session: DesktopPlayerSession, plan: dev.nitrate.co
     }
     val decoding = remember(mpvRows) { session.player.decoding() }
     val rows = listOf("Player" to "mpv", "Source" to (if (local) "Downloaded copy" else "Streaming")) +
-        plan.infoRows(null, null, pictureWords = dev.nitrate.core.playback.Decoders.mpvPicture(decoding, "This computer's graphics card"), soundWords = dev.nitrate.core.playback.Decoders.mpvSound(decoding)) + mpvRows
+        plan.infoRows(
+            null, null, pictureWords = dev.nitrate.core.playback.Decoders.mpvPicture(decoding, "This computer's graphics card"), soundWords = dev.nitrate.core.playback.Decoders.mpvSound(decoding),
+            quality = session.travel.quality.collectAsState().value,
+        ) + mpvRows
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Info") },

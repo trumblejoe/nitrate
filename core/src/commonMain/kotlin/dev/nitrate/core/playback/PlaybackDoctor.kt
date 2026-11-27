@@ -128,6 +128,8 @@ object PlaybackDoctor {
         settings: PlaybackSettings,
         /** True when Nitrate itself asked for a transcode after direct play failed. */
         forcedTranscode: Boolean = false,
+        /** The quality limit this playback has (away, mobile data, lowered); null: the home limit from [settings]. */
+        quality: QualityDecision? = null,
     ): PlaybackDiagnosis {
         val reasons = plan.transcodeReasons.toSet()
         val streams = plan.source.streams
@@ -187,7 +189,7 @@ object PlaybackDoctor {
         }
 
         if (handles("ContainerBitrateExceedsLimit", "VideoBitrateNotSupported", "AudioBitrateNotSupported")) {
-            findings += bitrateFinding(plan, settings)
+            findings += bitrateFinding(plan, settings, quality)
         }
 
         if (audio != null && handles(
@@ -393,8 +395,19 @@ object PlaybackDoctor {
             adminTip = "Hardware tone mapping on the server keeps this smooth; an SDR or HDR10 version would play directly.")
     }
 
-    private fun bitrateFinding(plan: PlaybackPlan, settings: PlaybackSettings): PlaybackFinding {
+    private fun bitrateFinding(plan: PlaybackPlan, settings: PlaybackSettings, quality: QualityDecision?): PlaybackFinding {
         val bitrate = plan.source.bitrate
+        // Away, on mobile data or lowered: that limit, not the home one, made the server send less.
+        quality?.takeIf { it.place != NetworkPlace.HOME || it.lowered }?.let { q ->
+            val why = if (q.lowered) "it kept buffering, so the quality was lowered to ${formatBitrate(q.limitBps)} for this title"
+            else "${q.place.label.lowercase()}, this device's limit is ${if (q.auto) "Auto: " else ""}${formatBitrate(q.limitBps)}"
+            val setting = if (q.place == NetworkPlace.MOBILE_DATA) "Quality on mobile data" else "Quality away from home"
+            return PlaybackFinding(
+                "The file is bigger than the limit",
+                (bitrate?.let { "The file needs ${formatBitrate(it)}; " } ?: "") + "$why, so the server sends a smaller stream. Change it in Settings → Picture & sound → $setting.",
+                versionFixes(plan),
+            )
+        }
         val needed = bitrate?.let { b -> PlaybackSettings.BITRATES.filter { it >= b }.minOrNull() }
         val mbps = { b: Int -> if (b >= PlaybackSettings.NO_LIMIT) "no limit" else "${(b + 999_999) / 1_000_000} Mbps" }
         val fixes = buildList<PlaybackFix> {

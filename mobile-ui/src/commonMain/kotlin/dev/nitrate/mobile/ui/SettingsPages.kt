@@ -167,11 +167,24 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                 item { Toggle("Swipe for brightness and volume", "Up and down on the left of the video for brightness, on the right for volume", playback.swipeControls) { v -> updatePlayback { it.copy(swipeControls = v) } } }
                 heading("Streaming")
                 item {
-                    Choice("Maximum bitrate", formatBitrate(playback.maxBitrate), "No limit plays every file as it is. Set a cap to have the server convert big files down, e.g. on mobile data") {
+                    Choice("Quality at home", formatBitrate(playback.maxBitrate), "On the server's own network. No limit plays every file as it is; set a cap to have the server convert big files down") {
                         val list = PlaybackSettings.BITRATES
                         updatePlayback { it.copy(maxBitrate = list[(list.indexOf(it.maxBitrate) + 1).mod(list.size)]) }
                     }
                 }
+                item {
+                    Choice("Quality away from home", formatBitrate(playback.awayMaxBitrate), "Off the server's network (a VPN counts as away). Auto times a quick test download and asks for 70% of it") {
+                        val list = PlaybackSettings.AWAY_BITRATES
+                        updatePlayback { it.copy(awayMaxBitrate = list[(list.indexOf(it.awayMaxBitrate) + 1).mod(list.size)]) }
+                    }
+                }
+                if (dev.nitrate.mobile.platform.hasMobileData) item {
+                    Choice("Quality on mobile data", formatBitrate(playback.mobileMaxBitrate), "On mobile data or a hotspot, wherever you are. Auto measures as away does; a cap saves your data plan") {
+                        val list = PlaybackSettings.MOBILE_BITRATES
+                        updatePlayback { it.copy(mobileMaxBitrate = list[(list.indexOf(it.mobileMaxBitrate) + 1).mod(list.size)]) }
+                    }
+                }
+                item { Toggle("Lower the quality automatically", "When it keeps buffering (twice in a minute), lower the quality by itself. Off: it's offered with one press", playback.autoLowerQuality) { v -> updatePlayback { it.copy(autoLowerQuality = v) } } }
                 item { Link("Advanced", "Dolby Vision profile 7, 3D, resolution limit, direct play, and the formats this phone plays") { pane?.invoke(SettingsPage.ADVANCED) ?: actions.nav.navigate(SettingsPageRoute(SettingsPage.ADVANCED.name)) } }
             }
             SettingsPage.ADVANCED -> {

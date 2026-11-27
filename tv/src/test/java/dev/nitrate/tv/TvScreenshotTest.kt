@@ -2556,6 +2556,17 @@ class TvScreenshotTest {
         check(!shows("DTS decoded here")) { "OK sends DTS to the receiver again" }
     }) { c -> dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities) }
 
+    /** Travelling: the quality away from home (Auto by default) and lowering it by itself, reached with the D-pad. */
+    @Test fun travelQualitySettings() = shoot("tv-travel-quality-settings", act = {
+        repeat(40) { if (!focusedHasText("Quality away from home")) press("down") }
+        check(focusedHasText("Auto")) { "Auto by default; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(focusedHasText("No limit")) { "OK moves to the next choice; focused: ${focusedNodes()}" }
+        press("down")
+        check(focusedHasText("Lower the quality automatically")) { "focused: ${focusedNodes()}" }
+    }) { c -> dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities) }
+
     @Test fun advancedPlayback() = shoot("tv-picture-and-sound-advanced") { c ->
         dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities, dev.nitrate.tv.ui.settings.PlaybackPage.ADVANCED)
     }
@@ -2587,6 +2598,14 @@ class TvScreenshotTest {
                 dev.nitrate.tv.ui.player.CreditSceneBanner(dev.nitrate.core.playback.CreditSkipper.Action.HeadsUp(during = false, after = true), onAct = {}, onDone = {})
                 dev.nitrate.tv.ui.player.CreditSceneBanner(dev.nitrate.core.playback.CreditSkipper.Action.Skip(450_000, 360_000, afterCredits = true), onAct = {}, onDone = {})
             }
+        }
+    }
+
+    /** It kept buffering: "Lower the quality" in the action corner, focused so one OK lowers it. */
+    @Test fun lowerQuality() = shoot("tv-player-lower-quality", act = { check(focusedHasText("Lower the quality (6 Mbps)")) }) { c ->
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+            coil3.compose.AsyncImage(c.server.backdropUrl(MediaItem("series-1", "", ItemKind.SERIES)), null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            dev.nitrate.tv.ui.player.LowerQualityBanner(6_000_000, takeFocus = true, onLower = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(end = 48.dp, bottom = 48.dp))
         }
     }
 

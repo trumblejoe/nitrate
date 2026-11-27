@@ -211,3 +211,5 @@ actual fun rememberCast(): CastControl? = null
 // Windows' media overlay for another device's playback comes later.
 @Composable
 actual fun rememberRemoteFollower(): (sessionId: String) -> Unit = remember { { _ -> } }
+
+actual val hasMobileData: Boolean = false

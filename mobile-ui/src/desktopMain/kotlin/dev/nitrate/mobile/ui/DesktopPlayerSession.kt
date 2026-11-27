@@ -83,6 +83,16 @@ class DesktopPlayerSession(
     val secondSubtitle: StateFlow<Second?> = _second
     private var secondJob: Job? = null
 
+    /** Away or on a slow line: the quality limit, stalls watched (mpv's paused-for-cache) and "Lower the quality". */
+    val travel = dev.nitrate.android.playback.QualityKeeper(
+        decide = { if (reported) container.qualityDecision() else null },
+        autoLower = { container.playbackSettings.current().autoLowerQuality },
+    )
+    private val _notice = MutableStateFlow<String?>(null)
+
+    /** A one-off message ("Lowered the quality…"), cleared after a few seconds. */
+    val notice: StateFlow<String?> = _notice
+
     /** Called when the viewer did something (paused, played, jumped): for "Still watching?". */
     var onInput: (() -> Unit)? = null
 
@@ -117,6 +127,7 @@ class DesktopPlayerSession(
             runCatching {
                 val downloads = container.downloads
                 var record = downloads.find(itemId) ?: error("This download isn't on the PC any more.")
+                travel.local()
                 downloads.makeSeekable(record)
                 record = downloads.withServerDefaults(downloads.find(itemId) ?: record)
                 download = record
@@ -152,6 +163,7 @@ class DesktopPlayerSession(
         val p = server.resolvePlayback(
             itemId, isAudio = false, startMs = startMs, forceTranscode = forceTranscode,
             audioIndex = audioIndex, subtitleIndex = subtitleIndex, mediaSourceId = version,
+            maxBitrate = travel.maxBitrateFor(itemId),
         )
         player.load(media(p, startMs, authHeaders()))
         _plan.value = p
@@ -178,6 +190,11 @@ class DesktopPlayerSession(
                 if (s.durationSeconds > 0) _durationMs.value = (s.durationSeconds * 1000).toLong()
                 _paused.value = s.paused
                 _buffering.value = s.buffering
+                if (download == null && _plan.value != null) {
+                    if (kotlin.math.abs(_positionMs.value - before) > 3_000) travel.seeked()
+                    travel.look(s.buffering, playing = !s.paused && !s.buffering, streamBps = _plan.value?.let(dev.nitrate.core.playback.TravelQuality::streamBps))
+                        ?.let { to -> restartLower(to); showNotice("Lowered the quality to ${dev.nitrate.core.playback.formatBitrate(to)} — it kept buffering") }
+                }
                 if (s.ended && !_ended.value) {
                     _ended.value = true
                     recordLocal(ended = true)
@@ -228,7 +245,29 @@ class DesktopPlayerSession(
 
     val isPaused: Boolean get() = player.state.value.paused
 
+    /** "Lower the quality": plays on from here at the offered quality, for this title. */
+    fun lowerQuality(bps: Int) {
+        travel.lowered(bps)
+        scope.launch { restartLower(bps) }
+    }
+
+    private suspend fun restartLower(bps: Int) {
+        val p = _plan.value ?: return
+        val item = _item.value ?: return
+        runCatching { play(item.id, currentMs(), p.audioIndex, p.subtitleIndex, forceTranscode = convertedAfterFailure) }
+            .onFailure { _error.value = "Couldn't lower the quality: ${it.message}" }
+    }
+
+    private fun showNotice(message: String) {
+        _notice.value = message
+        scope.launch {
+            delay(8_000)
+            if (_notice.value == message) _notice.value = null
+        }
+    }
+
     fun seekTo(ms: Long) {
+        travel.seeked()
         val to = ms.coerceAtLeast(0).let { t -> _durationMs.value.takeIf { it > 0 }?.let { d -> minOf(t, d - 500) } ?: t }
         player.seek(to / 1000.0)
         _positionMs.value = to

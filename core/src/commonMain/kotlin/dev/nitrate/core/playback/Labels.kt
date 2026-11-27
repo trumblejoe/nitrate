@@ -27,7 +27,13 @@ fun capabilityLabel(id: String): String = when (id) {
     else -> id
 }
 
-fun formatBitrate(bps: Int) = if (bps >= PlaybackSettings.NO_LIMIT) "No limit" else "${bps / 1_000_000} Mbps"
+fun formatBitrate(bps: Int) = when {
+    bps == PlaybackSettings.AUTO_BITRATE -> "Auto"
+    bps >= PlaybackSettings.NO_LIMIT -> "No limit"
+    bps < 1_000_000 -> "${bps / 1000} kbps"
+    bps % 1_000_000 != 0 && bps < 10_000_000 -> "${(bps / 100_000) / 10.0} Mbps"
+    else -> "${bps / 1_000_000} Mbps"
+}
 
 /** A codec's everyday name ("HEVC", "Dolby Digital Plus"), for sentences. */
 fun codecLabel(codec: String?): String = when (codec?.lowercase()) {

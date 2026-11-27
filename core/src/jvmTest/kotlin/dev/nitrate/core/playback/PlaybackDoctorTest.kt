@@ -57,6 +57,15 @@ class PlaybackDoctorTest {
         assertEquals(null, f.adminTip)
     }
 
+    @Test
+    fun awayTheTravelLimitIsNamedAndTheHomeLimitIsLeftAlone() {
+        val away = QualityDecision(NetworkPlace.AWAY, 12_000_000, auto = true, measuredBps = 18_000_000)
+        val d = PlaybackDoctor.diagnose(plan(reasons = listOf("ContainerBitrateExceedsLimit")), caps(), PlaybackSettings(), quality = away)
+        val f = d.findings.single { it.title == "The file is bigger than the limit" }
+        assertTrue(f.text, "Quality away from home" in f.text && "Auto: 12 Mbps" in f.text)
+        assertTrue(f.fixes.none { it is PlaybackFix.Change })
+    }
+
     @Test fun bitrateOverTheLimitOffersTheNextStep() {
         val d = PlaybackDoctor.diagnose(plan(reasons = listOf("ContainerBitrateExceedsLimit")), caps(), PlaybackSettings(maxBitrate = 20_000_000))
         val fix = d.findings.single().fixes.first() as PlaybackFix.Change

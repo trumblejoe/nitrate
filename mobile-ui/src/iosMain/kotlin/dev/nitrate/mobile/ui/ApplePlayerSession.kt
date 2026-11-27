@@ -33,6 +33,7 @@ import platform.AVFoundation.play
 import platform.AVFoundation.rate
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
 import platform.AVFoundation.seekToTime
+import platform.AVFoundation.timeControlStatus
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMakeWithSeconds
 import platform.Foundation.NSNotificationCenter
@@ -125,6 +126,16 @@ class ApplePlayerSession(private val container: AppContainer, private val report
         }
     }
 
+    /** Away or on mobile data: the quality limit, stalls watched (Apple's player waiting for data, mpv's paused-for-cache) and "Lower the quality". */
+    val travel = dev.nitrate.android.playback.QualityKeeper(
+        decide = { if (reported) container.qualityDecision() else null },
+        autoLower = { container.playbackSettings.current().autoLowerQuality },
+    )
+    private val _notice = MutableStateFlow<String?>(null)
+
+    /** A one-off message ("Lowered the quality…"), cleared after a few seconds. */
+    val notice: StateFlow<String?> = _notice
+
     /** mpv, once a title needs it (kept for the rest of this session's titles). */
     var mpv: MpvPlayer? = null
         private set
@@ -162,6 +173,7 @@ class ApplePlayerSession(private val container: AppContainer, private val report
             runCatching {
                 val downloads = container.downloads
                 var record = downloads.find(itemId) ?: error("This download isn't on the device any more.")
+                travel.local()
                 downloads.makeSeekable(record)
                 record = downloads.withServerDefaults(downloads.find(itemId) ?: record)
                 download = record
@@ -207,13 +219,14 @@ class ApplePlayerSession(private val container: AppContainer, private val report
     private suspend fun play(itemId: String, startMs: Long, audioIndex: Int?, subtitleIndex: Int?) {
         val previous = _plan.value
         val version = dev.nitrate.android.playback.VersionChoices[itemId]
-        var p = server.resolvePlayback(itemId, isAudio = false, startMs = startMs, audioIndex = audioIndex, subtitleIndex = subtitleIndex, mediaSourceId = version)
+        val limit = travel.maxBitrateFor(itemId)
+        var p = server.resolvePlayback(itemId, isAudio = false, startMs = startMs, audioIndex = audioIndex, subtitleIndex = subtitleIndex, mediaSourceId = version, maxBitrate = limit)
         // Apple's player would need the server to convert it: mpv plays the file as it is instead.
         val factory = Mpv.factory
         if (p.method == dev.nitrate.core.model.PlayMethod.TRANSCODE && factory != null) {
             val forMpv = runCatching {
                 server.resolvePlayback(itemId, isAudio = false, startMs = startMs, audioIndex = audioIndex, subtitleIndex = subtitleIndex, mediaSourceId = version,
-                    deviceCaps = Mpv.capabilities(container.capabilities))
+                    deviceCaps = Mpv.capabilities(container.capabilities), maxBitrate = limit)
             }.getOrNull()
             if (forMpv != null && forMpv.method != dev.nitrate.core.model.PlayMethod.TRANSCODE) {
                 // The Apple play session the server opened is closed straight away.
@@ -282,6 +295,13 @@ class ApplePlayerSession(private val container: AppContainer, private val report
                 if (pausedNow != wasPaused || kotlin.math.abs(_positionMs.value - before) > 3_000) onInput?.invoke()
                 wasPaused = pausedNow
                 if (!usingMpv && !pausedNow && _speed.value != 1f && player.rate != _speed.value) player.rate = _speed.value
+                if (download == null && _plan.value != null) {
+                    if (kotlin.math.abs(_positionMs.value - before) > 3_000) travel.seeked()
+                    val buffering = if (usingMpv) mpv?.property("paused-for-cache") == "yes"
+                    else player.timeControlStatus == platform.AVFoundation.AVPlayerTimeControlStatusWaitingToPlayAtSpecifiedRate
+                    travel.look(buffering, playing = !pausedNow && !buffering, streamBps = _plan.value?.let(dev.nitrate.core.playback.TravelQuality::streamBps))
+                        ?.let { to -> restartLower(); showNotice("Lowered the quality to ${dev.nitrate.core.playback.formatBitrate(to)} — it kept buffering") }
+                }
                 if (usingMpv) {
                     mpv?.let { m ->
                         m.duration().takeIf { it > 0 }?.let { _durationMs.value = (it * 1000).toLong() }
@@ -313,7 +333,29 @@ class ApplePlayerSession(private val container: AppContainer, private val report
         _creditScenes.value = CreditScenes.info(runtime, item.tags, _segments.value, item.chapters)
     }
 
+    /** "Lower the quality": plays on from here at the offered quality, for this title. */
+    fun lowerQuality(bps: Int) {
+        travel.lowered(bps)
+        scope.launch { restartLower() }
+    }
+
+    private suspend fun restartLower() {
+        val p = _plan.value ?: return
+        val item = _item.value ?: return
+        runCatching { play(item.id, currentMs(), p.audioIndex, p.subtitleIndex) }
+            .onFailure { _error.value = "Couldn't lower the quality: ${it.message}" }
+    }
+
+    private fun showNotice(message: String) {
+        _notice.value = message
+        scope.launch {
+            delay(8_000)
+            if (_notice.value == message) _notice.value = null
+        }
+    }
+
     fun seekTo(ms: Long) {
+        travel.seeked()
         if (usingMpv) mpv?.seek(ms.coerceAtLeast(0) / 1000.0) else player.seekToTime(CMTimeMakeWithSeconds(ms.coerceAtLeast(0) / 1000.0, 600))
         _positionMs.value = ms
     }

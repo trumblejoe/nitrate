@@ -81,6 +81,7 @@ class JellyfinContractTest {
             path.endsWith("/Sessions") -> """[{"Id":"s1","UserName":"joe","Client":"Nitrate","DeviceName":"TV","PlayState":{"PositionTicks":600000000,"IsPaused":true,"PlayMethod":"DirectPlay"},"NowPlayingItem":$ITEM,"SupportsRemoteControl":true,"TranscodingInfo":{"IsVideoDirect":false,"IsAudioDirect":true,"VideoCodec":"hevc","HardwareAccelerationType":"qsv","Framerate":41.5,"Width":3840,"Height":2160,"TranscodeReasons":["VideoRangeTypeNotSupported"]}}]"""
             path.endsWith("/ClientLog/Document") -> """{"FileName":"upload_nitrate.log"}"""
             path.endsWith("/System/Info/Public") -> """{"ServerName":"Home","Version":"10.11.0","Id":"$HEX"}"""
+            path.endsWith("/System/Endpoint") -> """{"IsLocal":false,"IsInNetwork":true}"""
             path.endsWith("/Users/Public") -> """[{"Id":"$HEX","Name":"joe","HasPassword":true,"PrimaryImageTag":"t"}]"""
             path.contains("/Users/AuthenticateBy") || path.contains("/Users/AuthenticateWith") ->
                 """{"User":{"Id":"$HEX","Name":"joe"},"AccessToken":"tok"}"""
@@ -337,6 +338,8 @@ class JellyfinContractTest {
         client.libraryFilters(DASHED, listOf(dev.nitrate.core.model.ItemKind.MOVIE))
         client.showsMissingEpisodes()
         client.setShowMissingEpisodes(true)
+        assertEquals(true, client.inServerNetwork())
+        assertTrue((client.measureBitrate() ?: 0) > 0)
         val speed = client.speedCheck()
         assertEquals(8, speed.size)
         assertTrue(speed.joinToString { "${it.id}:${it.error}" }, speed.all { it.error == null })
@@ -416,6 +419,7 @@ class JellyfinContractTest {
             serializer<AuthenticationResultDto>() to "AuthenticationResult",
             serializer<QuickConnectResultDto>() to "QuickConnectResult",
             serializer<PublicSystemInfoDto>() to "PublicSystemInfo",
+            serializer<EndPointInfoDto>() to "EndPointInfo",
             // Request bodies, including fields left at their defaults in the request test.
             serializer<PlaybackInfoRequestDto>() to "PlaybackInfoDto",
             serializer<AuthenticateByNameDto>() to "AuthenticateUserByName",

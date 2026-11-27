@@ -111,6 +111,9 @@ object DeviceBackups {
         fun hardware(setting: String, from: String, to: String) { if (from != to) add(Difference("This device's hardware results", setting, from, to)) }
 
         playback("Maximum bitrate", dev.nitrate.core.playback.formatBitrate(a.maxBitrate), dev.nitrate.core.playback.formatBitrate(n.maxBitrate))
+        playback("Quality away from home", dev.nitrate.core.playback.formatBitrate(a.awayMaxBitrate), dev.nitrate.core.playback.formatBitrate(n.awayMaxBitrate))
+        playback("Quality on mobile data", dev.nitrate.core.playback.formatBitrate(a.mobileMaxBitrate), dev.nitrate.core.playback.formatBitrate(n.mobileMaxBitrate))
+        playback("Lower the quality automatically", onOff(a.autoLowerQuality), onOff(n.autoLowerQuality))
         playback("Maximum resolution", a.maxResolution.label, n.maxResolution.label)
         playback("Direct play", onOff(a.allowDirectPlay), onOff(n.allowDirectPlay))
         playback("Direct stream", onOff(a.allowDirectStream), onOff(n.allowDirectStream))

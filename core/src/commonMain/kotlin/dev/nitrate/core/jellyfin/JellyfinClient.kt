@@ -1556,8 +1556,9 @@ class JellyfinClient(
         mediaSourceId: String?,
         deviceCaps: DeviceCapabilities?,
         convertSound: Set<String>,
+        maxBitrate: Int?,
     ): PlaybackPlan {
-        val settings = playbackSettings.current()
+        val settings = playbackSettings.current().let { s -> maxBitrate?.let { s.copy(maxBitrate = it) } ?: s }
         val directPlay = !forceTranscode && settings.allowDirectPlay
         val directStream = !forceTranscode && settings.allowDirectStream
         val info = post<PlaybackInfoRequestDto>(
@@ -2179,6 +2180,27 @@ class JellyfinClient(
         return steps
     }
 
+    override suspend fun inServerNetwork(): Boolean? =
+        runCatching { get("System", "Endpoint").decode<EndPointInfoDto>().isInNetwork }.getOrNull()
+
+    /**
+     * Times a test download from the server (Jellyfin's own speed test, Playback/BitrateTest): 1 MB,
+     * then 6 MB when that took under 0.6 s (a fast line needs more to measure); the faster of the two.
+     * At most a few seconds; null when it failed.
+     */
+    override suspend fun measureBitrate(): Long? = runCatching {
+        kotlinx.coroutines.withTimeout(8_000) {
+            suspend fun timed(bytes: Int): Pair<Long, Long> {
+                val mark = kotlin.time.TimeSource.Monotonic.markNow()
+                val got = http.get(url("Playback", "BitrateTest", query = mapOf("size" to bytes))) { auth() }.readRawBytes().size
+                val ms = mark.elapsedNow().inWholeMilliseconds.coerceAtLeast(1)
+                return got.toLong() * 8 * 1000 / ms to ms
+            }
+            val (first, ms) = timed(1_000_000)
+            if (ms < 600) maxOf(first, timed(6_000_000).first) else first
+        }
+    }.getOrNull()
+
     // ---- Search ----
 
     override suspend fun additionalParts(itemId: String): List<MediaItem> =
@@ -2747,3 +2769,7 @@ internal fun itemQueryParams(q: ItemQuery): Map<String, Any?> {
 
 /** What [JellyfinClient.itemById] asks for: what a details page shows (the single lookup gives everything). */
 private const val BY_ID_FIELDS = "Overview,Genres,Tags,ChildCount,PrimaryImageAspectRatio,People,Studios,ProviderIds"
+
+/** System/Endpoint: whether the request came from the server's own network. */
+@kotlinx.serialization.Serializable
+internal data class EndPointInfoDto(val isLocal: Boolean = false, val isInNetwork: Boolean = false)
