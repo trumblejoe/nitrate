@@ -129,6 +129,25 @@ public static class LogicServices
             sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "smart-collections.json")));
         serviceCollection.AddHostedService<Nitrate.Companion.SmartCollections.SmartCollectionWatcher>();
+        // Watched/Unwatched answered at once and saved to Jellyfin a moment later (kept in the database meanwhile).
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Watched.WatchedQueue(
+            sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>(),
+            new Nitrate.Companion.Watched.JellyfinWatchMarker(sp.GetRequiredService<IUserManager>(), sp.GetRequiredService<ILibraryManager>()),
+            sp.GetRequiredService<IUserDataManager>(),
+            sp.GetRequiredService<TimeProvider>(),
+            logs.CreateLogger("Nitrate.Companion.Watched")));
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Watched.WatchedQueue>());
+        // Timing Watched/Unwatched and each watch-state listener for an admin (registered last, so it's
+        // stopped first: the listeners are put back before anything else lets go of its own).
+        serviceCollection.AddSingleton(sp =>
+        {
+            var plugins = sp.GetService<MediaBrowser.Common.Plugins.IPluginManager>();
+            return new Nitrate.Companion.WatchTiming.WatchChangeTiming(
+                sp.GetRequiredService<IUserDataManager>(),
+                assembly => plugins?.Plugins.FirstOrDefault(p => p.Instance?.GetType().Assembly == assembly)?.Name,
+                sp.GetRequiredService<TimeProvider>());
+        });
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.WatchTiming.WatchChangeTiming>());
         // The nightly tasks' results, fingerprints and unreadable files: one database, one row per
         // title (results from the older JSON files and fingerprint folder are moved in once).
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Storage.CompanionDb(
@@ -189,6 +208,7 @@ public static class LogicServices
         {
             typeof(IApplicationPaths), typeof(ILibraryManager), typeof(IUserManager), typeof(IUserDataManager),
             typeof(ISessionManager), typeof(IDeviceManager), typeof(MediaBrowser.Controller.SyncPlay.ISyncPlayManager),
+            typeof(MediaBrowser.Common.Plugins.IPluginManager),
         };
         foreach (var type in built)
         {

@@ -1445,18 +1445,48 @@ class JellyfinClient(
     ).filter { it.user.lastPlayedMs != null }
 
     override suspend fun setPlayed(itemId: String, played: Boolean) {
-        saying { if (played) post<Unit>("UserPlayedItems", itemId) else http.delete(url("UserPlayedItems", itemId)) { auth() } }
-        watchStateFromServer(listOf(itemId))
+        setPlayed(itemId, played, null)
     }
 
-    override suspend fun setFavorite(itemId: String, favorite: Boolean) = saying {
-        if (favorite) post<Unit>("UserFavoriteItems", itemId) else http.delete(url("UserFavoriteItems", itemId)) { auth() }
+    override suspend fun setPlayed(itemId: String, played: Boolean, before: dev.nitrate.core.model.UserState?): Boolean {
+        // Shown at once, before the server answers (it may take a moment on a busy server).
+        if (before != null) say(mapOf(itemId to before.marked(played, clock())))
+        // A press, with the Companion: kept there at once and saved to Jellyfin a moment later.
+        if (before != null && companionHas(WATCHED_QUEUE)) {
+            val queued = try {
+                post<WatchedPostDto>("Nitrate", "Watched", body = WatchedPostDto(listOf(dashless(listOf(itemId))), played)).decode<WatchedAnswerDto>()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null // Not there just now: Jellyfin's own, below.
+            }
+            if (queued != null) {
+                if (queued.notFound.isEmpty()) return false
+                watchStateFromServer(listOf(itemId))
+                throw IllegalStateException("the server said 404 Not Found")
+            }
+        }
+        val answer = try {
+            saying { if (played) post<Unit>("UserPlayedItems", itemId) else http.delete(url("UserPlayedItems", itemId)) { auth() } }
+        } catch (e: Exception) {
+            // Not done: what the server has, back on screen.
+            if (before != null && e !is kotlinx.coroutines.CancellationException) watchStateFromServer(listOf(itemId))
+            throw e
+        }
+        // The answer is the marks as saved: no second request to read them.
+        val saved = runCatching { answer.decode<UserDataDto>() }.getOrNull()
+        if (saved != null) say(mapOf(itemId to saved.toUserState())) else watchStateFromServer(listOf(itemId))
+        return true
+    }
+
+    override suspend fun setFavorite(itemId: String, favorite: Boolean) {
+        saying { if (favorite) post<Unit>("UserFavoriteItems", itemId) else http.delete(url("UserFavoriteItems", itemId)) { auth() } }
     }
 
     /** [block], a refusal said in words: "the server said 403 Forbidden: <its reason>" (for a page to show). */
-    private suspend fun saying(block: suspend () -> Unit) {
+    private suspend fun <T> saying(block: suspend () -> T): T {
         try {
-            block()
+            return block()
         } catch (e: io.ktor.client.plugins.ResponseException) {
             val why = runCatching { e.response.bodyAsText().trim().trim('"') }.getOrNull()?.takeIf { it.isNotBlank() && it.length < 300 }
             throw IllegalStateException("the server said ${e.response.status.value} ${e.response.status.description}" + (why?.let { ": $it" } ?: ""), e)
@@ -2605,6 +2635,20 @@ class JellyfinClient(
         }
     }
 
+    override suspend fun startWatchTiming(minutes: Int): dev.nitrate.core.diagnostics.WatchTimingReport =
+        post<Unit>("Nitrate", "WatchTiming", "Start", query = mapOf("minutes" to minutes)).decode<WatchTimingDto>().toReport()
+
+    override suspend fun watchTimingReport(): dev.nitrate.core.diagnostics.WatchTimingReport? = try {
+        if (!companionHas(dev.nitrate.core.diagnostics.WatchTiming.FEATURE)) null
+        else get("Nitrate", "WatchTiming").decode<WatchTimingDto>().toReport()
+    } catch (e: io.ktor.client.plugins.ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound || e.response.status == HttpStatusCode.Forbidden) null else throw e
+    }
+
+    override suspend fun stopWatchTiming() {
+        runCatching { post<Unit>("Nitrate", "WatchTiming", "Stop") }
+    }
+
     override suspend fun keepsPlaylistRecords(): Boolean = companionHas(PLAYLIST_RECORDS)
 
     override suspend fun playlistRecords(): List<dev.nitrate.core.playlists.PlaylistRecord> =
@@ -2720,6 +2764,11 @@ class JellyfinClient(
      */
     private suspend fun watchStateFromServer(ids: List<String>) {
         val states = runCatching { userStates(ids) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return
+        say(states)
+    }
+
+    /** [states] said as a change here at once (kept answers put right, pages told), and not again when the server's push repeats them. */
+    private suspend fun say(states: Map<String, dev.nitrate.core.model.UserState>) {
         saidLock.withLock { val now = clock(); states.forEach { (k, v) -> saidStates[k] = v to now } }
         watchStateChanged(states)
         watchFlow.emit(ServerEvent.UserDataChanged(states.keys.toList(), states))
@@ -2750,6 +2799,8 @@ class JellyfinClient(
         const val GROUP_RESTORE_WAIT_MS = 2_500L
         /** The Companion keeps playlists' own records and sittings (POST /Nitrate/Playlists/Sitting). */
         const val PLAYLIST_RECORDS = "playlistrecords"
+        /** The Companion answers Watched/Unwatched at once and saves them a moment later (POST /Nitrate/Watched). */
+        const val WATCHED_QUEUE = "watchedqueue"
 
         /** How long a state said here stops the server's push of the same one being said again. */
         const val SAID_KEPT_MS = 5_000L

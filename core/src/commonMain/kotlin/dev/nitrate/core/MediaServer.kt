@@ -306,6 +306,16 @@ interface MediaServer {
     /** How a playlist's row reads more of it, or null when it can't. */
     fun moreOfPlaylist(playlistId: String): dev.nitrate.core.rows.RowMore? = null
     suspend fun setPlayed(itemId: String, played: Boolean)
+
+    /**
+     * [setPlayed], with what the user had before ([before]: shown changed at once, before the server
+     * answers; null: shown once it has). True when the server has saved it; false when it's been taken
+     * to be saved a moment later (the Companion's queue): the marks shown are then the expected ones.
+     */
+    suspend fun setPlayed(itemId: String, played: Boolean, before: dev.nitrate.core.model.UserState?): Boolean {
+        setPlayed(itemId, played)
+        return true
+    }
     suspend fun setFavorite(itemId: String, favorite: Boolean)
 
     // ---- Images ----
@@ -1096,6 +1106,15 @@ interface MediaServer {
      * without it, this app puts back their watched mark and resume point after its own stop report.
      */
     suspend fun keepOwnState(itemId: String, playlistId: String, before: dev.nitrate.core.model.UserState) {}
+
+    /** Starts timing the admin's own Watched/Unwatched for [minutes] (Companion `watchtiming`). */
+    suspend fun startWatchTiming(minutes: Int): dev.nitrate.core.diagnostics.WatchTimingReport = unsupported()
+
+    /** The admin's last watch-change timing, as it stands (null: none). */
+    suspend fun watchTimingReport(): dev.nitrate.core.diagnostics.WatchTimingReport? = null
+
+    /** Stops timing (the results stay). */
+    suspend fun stopWatchTiming() {}
 
     /** Whether the server keeps each playlist's own record (the Companion, feature `playlistrecords`). */
     suspend fun keepsPlaylistRecords(): Boolean = false

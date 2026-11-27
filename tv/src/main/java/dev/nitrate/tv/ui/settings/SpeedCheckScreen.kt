@@ -55,6 +55,14 @@ fun SpeedCheckScreen(container: AppContainer, startNow: Boolean = false) {
     var saved by remember { mutableStateOf<String?>(null) }
     val first = remember { FocusRequester() }
     val context = androidx.compose.ui.platform.LocalContext.current
+    var timing by remember { mutableStateOf<dev.nitrate.core.diagnostics.WatchTimingReport?>(null) }
+    LaunchedEffect(Unit) { if (container.canTimeWatched()) timing = runCatching { container.server.watchTimingReport() }.getOrNull() }
+    LaunchedEffect(timing?.running) {
+        while (timing?.running == true) {
+            kotlinx.coroutines.delay(3_000)
+            runCatching { container.server.watchTimingReport() }.getOrNull()?.let { timing = it }
+        }
+    }
 
     fun run() {
         if (running) return
@@ -120,6 +128,53 @@ fun SpeedCheckScreen(container: AppContainer, startNow: Boolean = false) {
                 modifier = Modifier.widthIn(max = 900.dp),
             )
         }
+        if (container.canTimeWatched()) watchTiming(container, timing, { timing = it }, scope)
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+}
+
+/**
+ * "Why is Watched slow?" (admins with the Companion): the server times this admin's own
+ * Watched/Unwatched presses for three minutes, in any app, and each plugin Jellyfin runs when a
+ * title's watched state changes; what it finds shows as it comes in.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.watchTiming(
+    container: AppContainer,
+    report: dev.nitrate.core.diagnostics.WatchTimingReport?,
+    onReport: (dev.nitrate.core.diagnostics.WatchTimingReport?) -> Unit,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    item {
+        Column(Modifier.padding(top = 24.dp).widthIn(max = 820.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Why is Watched slow?", style = MaterialTheme.typography.titleLarge)
+            Text(
+                if (report?.running == true) "Timing now: press Watched and Unwatched on a few titles, on this TV or any other app, then come back here."
+                else "For three minutes, your server times your own Watched and Unwatched presses, and each plugin Jellyfin runs when a title's watched state changes. Nothing else is changed or sent anywhere.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (report?.running == true) {
+                OutlinedButton(onClick = { scope.launch { runCatching { container.server.stopWatchTiming() }; onReport(runCatching { container.server.watchTimingReport() }.getOrNull()) } }) { Text("Stop timing") }
+            } else {
+                Button(onClick = { scope.launch { runCatching { container.server.startWatchTiming(3) }.onSuccess(onReport) } }) {
+                    Text(if (report == null) "Time my Watched presses" else "Time them again")
+                }
+            }
+        }
+    }
+    report?.let { r ->
+        items(dev.nitrate.core.diagnostics.WatchTiming.findings(r)) { f ->
+            ListItem(selected = false, onClick = {}, headlineContent = { Text(f) }, modifier = Modifier.widthIn(max = 900.dp))
+        }
+        items(r.listeners) { l ->
+            ListItem(
+                selected = false,
+                onClick = {},
+                headlineContent = { Text(l.name) },
+                supportingContent = { Text("${l.saves} saves") },
+                trailingContent = { Text("${dev.nitrate.core.diagnostics.WatchTiming.ms(l.medianMs)} · slowest ${dev.nitrate.core.diagnostics.WatchTiming.ms(l.maxMs)}") },
+                modifier = Modifier.widthIn(max = 900.dp),
+            )
+        }
+    }
 }

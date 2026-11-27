@@ -127,8 +127,12 @@ public sealed class CompanionLogic : ICompanionLogic
     public void RequestStarting(HttpContext context) => QueryTimes.QueryTiming.Starting(_services.GetRequiredService<QueryTimes.QueryTimeStore>());
 
     /// <inheritdoc />
-    public void RequestFinished(HttpContext context, TimeSpan elapsed) =>
+    public void RequestFinished(HttpContext context, TimeSpan elapsed)
+    {
         QueryTimes.QueryTiming.Finished(_services.GetRequiredService<QueryTimes.QueryTimeStore>(), context, elapsed);
+        var user = Guid.TryParse(context.User?.Claims.FirstOrDefault(c => c.Type == "Jellyfin-UserId")?.Value, out var id) ? id : (Guid?)null;
+        _services.GetRequiredService<WatchTiming.WatchChangeTiming>().RequestFinished(user, context.Request.Method, context.Request.Path.Value ?? string.Empty, elapsed);
+    }
 
     /// <inheritdoc />
     public IReadOnlyDictionary<string, byte[]> ExportState()

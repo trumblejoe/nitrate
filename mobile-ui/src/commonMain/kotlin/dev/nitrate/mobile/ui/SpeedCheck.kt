@@ -127,3 +127,77 @@ fun SpeedCheckDialog(actions: AppActions, startNow: Boolean = true, onDismiss: (
         dismissButton = { TextButton(onClick = onDismiss, enabled = !running) { Text("Close") } },
     )
 }
+
+/** Settings row (admins with the Companion): times Watched/Unwatched and the server's watch-change listeners. */
+@Composable
+fun WatchTimingRow(actions: AppActions) {
+    var open by remember { mutableStateOf(false) }
+    ListItem(
+        modifier = Modifier.clickable { open = true },
+        headlineContent = { Text("Why is Watched slow?") },
+        supportingContent = { Text("Times your next Watched and Unwatched presses on the server, and each plugin that reacts to them") },
+        trailingContent = { Text("›", color = MaterialTheme.colorScheme.primary) },
+    )
+    if (open) WatchTimingDialog(actions) { open = false }
+}
+
+/**
+ * Starts the Companion timing the admin's own Watched/Unwatched for three minutes, then shows what
+ * it finds as presses come in (asked again every few seconds while it runs).
+ */
+@Composable
+fun WatchTimingDialog(actions: AppActions, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val platformActions = dev.nitrate.mobile.platform.rememberPlatformActions()
+    var report by remember { mutableStateOf<dev.nitrate.core.diagnostics.WatchTimingReport?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { report = runCatching { actions.server.watchTimingReport() }.getOrNull() }
+    LaunchedEffect(report?.running) {
+        while (report?.running == true) {
+            kotlinx.coroutines.delay(3_000)
+            runCatching { actions.server.watchTimingReport() }.getOrNull()?.let { report = it }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Why is Watched slow?") },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                item {
+                    Text(
+                        if (report?.running == true) "Timing now: press Watched and Unwatched on a few titles, in any app, then come back."
+                        else "For three minutes, your server times your own Watched and Unwatched presses, and each plugin Jellyfin runs when a title's watched state changes. Nothing else is changed or sent anywhere.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                problem?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
+                report?.let { r ->
+                    item { Text("What it shows", style = MaterialTheme.typography.labelLarge, color = accentColor(), modifier = Modifier.padding(top = 6.dp)) }
+                    items(dev.nitrate.core.diagnostics.WatchTiming.findings(r)) { f -> Text("•  $f", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.copyOnLongPress(f)) }
+                    if (r.listeners.isNotEmpty()) {
+                        item { Text("Each listener (middle · slowest)", style = MaterialTheme.typography.labelLarge, color = accentColor(), modifier = Modifier.padding(top = 6.dp)) }
+                        items(r.listeners) { l ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(l.name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                Text("${dev.nitrate.core.diagnostics.WatchTiming.ms(l.medianMs)} · ${dev.nitrate.core.diagnostics.WatchTiming.ms(l.maxMs)}", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row {
+                report?.takeIf { it.presses.isNotEmpty() || it.saves.isNotEmpty() }?.let { r ->
+                    TextButton(onClick = { platformActions.copy(dev.nitrate.core.diagnostics.WatchTiming.render(r), "Nitrate watch-change timing") }) { Text("Copy") }
+                }
+                if (report?.running == true) TextButton(onClick = { scope.launch { runCatching { actions.server.stopWatchTiming() }; report = runCatching { actions.server.watchTimingReport() }.getOrNull() } }) { Text("Stop") }
+                else TextButton(onClick = {
+                    problem = null
+                    scope.launch { runCatching { actions.server.startWatchTiming(3) }.onSuccess { report = it }.onFailure { problem = "Couldn't start: ${it.message}" } }
+                }) { Text(if (report == null) "Start" else "Start again") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}

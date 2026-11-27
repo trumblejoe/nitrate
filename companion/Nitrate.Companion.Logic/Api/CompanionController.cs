@@ -124,6 +124,10 @@ public class CompanionController : ControllerBase
         // kept out of the person's own state, the record moved on as they stop (POST /Nitrate/Playlists/Sitting;
         // diary entries carry PlaylistId).
         features.Add("playlistrecords");
+        // Timing Watched/Unwatched and each watch-state listener for an admin (/Nitrate/WatchTiming).
+        features.Add("watchtiming");
+        // Watched/Unwatched answered at once and saved to Jellyfin a moment later (POST /Nitrate/Watched).
+        features.Add("watchedqueue");
         // Change counters for the apps' kept rows (GET /Nitrate/Changes).
         features.Add("changes");
         features.Add("formats");

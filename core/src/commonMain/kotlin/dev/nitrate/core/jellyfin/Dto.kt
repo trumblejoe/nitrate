@@ -562,3 +562,31 @@ internal data class BroughtNotesDto(val by: String? = null, val notes: List<Note
 
 @Serializable
 internal data class ChatRecordDto(val from: String, val name: String = "", val kind: String = "Text", val text: String = "", val positionMs: Long? = null, val at: Long = 0)
+
+@Serializable internal data class TimedPressDto(val at: Long = 0, val watched: Boolean = true, val ms: Double = 0.0)
+@Serializable internal data class ListenerTimeDto(val name: String = "", val ms: Double = 0.0)
+@Serializable internal data class TimedSaveDto(val at: Long = 0, val title: String = "", val reason: String = "", val listenersMs: Double = 0.0, val listeners: List<ListenerTimeDto> = emptyList())
+@Serializable internal data class ListenerSummaryDto(val name: String = "", val saves: Int = 0, val medianMs: Double = 0.0, val maxMs: Double = 0.0)
+
+/** The Companion's watch-change timing (GET/POST /Nitrate/WatchTiming). */
+@Serializable internal data class WatchTimingDto(
+    val supported: Boolean = false,
+    val running: Boolean = false,
+    val endsAt: Long = 0,
+    val presses: List<TimedPressDto> = emptyList(),
+    val saves: List<TimedSaveDto> = emptyList(),
+    val listeners: List<ListenerSummaryDto> = emptyList(),
+) {
+    fun toReport() = dev.nitrate.core.diagnostics.WatchTimingReport(
+        supported, running, endsAt,
+        presses.map { dev.nitrate.core.diagnostics.TimedPress(it.at, it.watched, it.ms) },
+        saves.map { s -> dev.nitrate.core.diagnostics.TimedSave(s.at, s.title, s.reason, s.listenersMs, s.listeners.map { dev.nitrate.core.diagnostics.ListenerTime(it.name, it.ms) }) },
+        listeners.map { dev.nitrate.core.diagnostics.ListenerSummary(it.name, it.saves, it.medianMs, it.maxMs) },
+    )
+}
+
+/** Watched or Unwatched pressed (POST /Nitrate/Watched). */
+@Serializable internal data class WatchedPostDto(val itemIds: List<String>, val played: Boolean)
+
+/** Titles not marked (the rest are kept, to be saved a moment later). */
+@Serializable internal data class WatchedAnswerDto(val notFound: List<String> = emptyList())

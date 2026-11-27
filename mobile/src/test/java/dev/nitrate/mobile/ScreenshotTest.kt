@@ -1115,6 +1115,19 @@ class ScreenshotTest {
     fun cressidaRow() = shoot("phone-row-cressida") { StyledRow(it, dev.nitrate.core.rows.RowStyle.CRESSIDA) }
 
     @Test fun speedCheck() = shoot("phone-speed-check") { a -> dev.nitrate.mobile.ui.SpeedCheckDialog(a) {} }
+
+    /** "Why is Watched slow?": the plugin that holds every save up, named. */
+    @Test fun watchTiming() {
+        shoot("phone-watch-timing", setup = { c ->
+            (c.server as dev.nitrate.testing.FakeServer).watchTiming = dev.nitrate.core.diagnostics.WatchTimingReport(
+                supported = true, running = false, endsAtMs = 0,
+                presses = listOf(1900.0, 2100.0, 2000.0).map { dev.nitrate.core.diagnostics.TimedPress(0, true, it) },
+                saves = List(3) { dev.nitrate.core.diagnostics.TimedSave(0, "Nitrate", "TogglePlayed", 1810.0, emptyList()) },
+                listeners = listOf(dev.nitrate.core.diagnostics.ListenerSummary("Trakt (ServerEntryPoint)", 3, 1800.0, 2000.0), dev.nitrate.core.diagnostics.ListenerSummary("Jellyfin (UserDataChangeNotifier)", 3, 0.2, 0.3)),
+            )
+        }) { a -> dev.nitrate.mobile.ui.WatchTimingDialog(a) {} }
+        compose.onAllNodesWithText("Trakt (ServerEntryPoint) takes about 1.8 s", substring = true).onFirst().assertExists()
+    }
     @Test fun queryAnalyzer() = shoot("phone-query-analyzer") { a -> dev.nitrate.mobile.ui.QueryAnalyzerScreen(a) }
 
     @Test fun addToLists() = shoot("phone-add-to-lists") { a ->

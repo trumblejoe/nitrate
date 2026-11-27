@@ -1283,6 +1283,9 @@ class AppContainer(
         return dev.nitrate.core.companion.WatchTime.of(sittings, offsetMs)
     }
 
+    /** Whether this admin can time Watched/Unwatched and the server's watch-change listeners (Companion `watchtiming`). */
+    fun canTimeWatched(): Boolean = account.value?.isAdmin == true && companionOffers(dev.nitrate.core.diagnostics.WatchTiming.FEATURE)
+
     /** Each kind of request's typical time day by day (admins, Companion `querytimes`); empty otherwise. */
     suspend fun queryTrends(days: Int = 30): List<dev.nitrate.core.companion.QueryTrend> =
         if (account.value?.isAdmin != true || !companionOffers("querytimes")) emptyList()

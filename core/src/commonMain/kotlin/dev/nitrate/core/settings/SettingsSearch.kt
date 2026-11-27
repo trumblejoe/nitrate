@@ -181,7 +181,7 @@ object SettingsSearch {
         SettingEntry("Audio channel test", SettingsPlace.AUDIO_TEST, "speakers voice each channel surround", T),
         SettingEntry("TV & receiver check", SettingsPlace.TV_CHECK, "hdr dolby vision atmos clips receiver shows", T),
         SettingEntry("Library playback overview", SettingsPlace.OVERVIEW, "converted transcoded titles test play"),
-        SettingEntry("Server speed check", SettingsPlace.SPEED_CHECK, "slow network latency", T),
+        SettingEntry("Server speed check", SettingsPlace.SPEED_CHECK, "slow network latency watched unwatched plugins", T),
         SettingEntry("Query analyzer", SettingsPlace.QUERY_ANALYZER, "requests slow server load"),
         SettingEntry("Household devices", SettingsPlace.HOUSEHOLD, "admin devices reports", adminOnly = true),
         SettingEntry("Library health", SettingsPlace.HEALTH, "missing artwork duplicates metadata", adminOnly = true),

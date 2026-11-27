@@ -75,15 +75,7 @@ internal fun ItemDto.toMediaItem(): MediaItem {
         airsBeforeSeason = airsBeforeSeasonNumber,
         airsBeforeEpisode = airsBeforeEpisodeNumber,
         airsAfterSeason = airsAfterSeasonNumber,
-        user = UserState(
-            played = userData?.played == true,
-            playedPercentage = userData?.playedPercentage,
-            positionMs = (userData?.playbackPositionTicks ?: 0L).ticksToMs(),
-            isFavorite = userData?.isFavorite == true,
-            unplayedCount = userData?.unplayedItemCount,
-            lastPlayedMs = userData?.lastPlayedDate?.let { runCatching { kotlin.time.Instant.parse(it).toEpochMilliseconds() }.getOrNull() },
-            playCount = userData?.playCount ?: 0,
-        ),
+        user = userData.toUserState(),
         images = ItemImages(
             primary = imageTags?.get("Primary"),
             thumb = imageTags?.get("Thumb"),
@@ -212,3 +204,14 @@ internal fun extraLabel(type: String): String = when (type) {
     "ThemeSong", "ThemeVideo" -> "Theme"
     else -> type.replace(Regex("([a-z])([A-Z])"), "$1 $2").lowercase().replaceFirstChar { it.uppercase() }
 }
+
+/** The user's marks for a title, as Jellyfin gives them (on an item, or as the answer to marking it). */
+internal fun UserDataDto?.toUserState() = UserState(
+    played = this?.played == true,
+    playedPercentage = this?.playedPercentage,
+    positionMs = (this?.playbackPositionTicks ?: 0L).ticksToMs(),
+    isFavorite = this?.isFavorite == true,
+    unplayedCount = this?.unplayedItemCount,
+    lastPlayedMs = this?.lastPlayedDate?.let { runCatching { kotlin.time.Instant.parse(it).toEpochMilliseconds() }.getOrNull() },
+    playCount = this?.playCount ?: 0,
+)

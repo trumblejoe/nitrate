@@ -148,7 +148,16 @@ data class UserState(
     val lastPlayedMs: Long? = null,
     /** How many times it's been played (the server counts each finish). */
     val playCount: Int = 0,
-)
+) {
+    /**
+     * As the server leaves it once marked watched ([played]) or unwatched at [nowMs] (Jellyfin's own
+     * rules for the button), for showing at once while the server does it. A show's or season's
+     * unwatched count isn't known when unmarking: the server's answer gives it.
+     */
+    fun marked(played: Boolean, nowMs: Long): UserState =
+        if (played) copy(played = true, positionMs = 0, playedPercentage = null, unplayedCount = unplayedCount?.let { 0 }, playCount = maxOf(playCount, 1), lastPlayedMs = lastPlayedMs ?: nowMs)
+        else copy(played = false, positionMs = 0, playedPercentage = null, playCount = 0, lastPlayedMs = null)
+}
 
 /**
  * Image tags for building URLs (tags make URLs cache-safe). Episodes fall back to their

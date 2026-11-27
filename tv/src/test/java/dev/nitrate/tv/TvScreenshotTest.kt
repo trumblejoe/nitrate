@@ -3441,6 +3441,19 @@ class TvScreenshotTest {
 
     @Test fun speedCheck() = shoot("tv-speed-check") { c -> dev.nitrate.tv.ui.settings.SpeedCheckScreen(c, startNow = true) }
 
+    /** Admins with the Companion: "Why is Watched slow?" names the plugin that holds every save up, reachable with the D-pad. */
+    @Test fun watchTiming() = shoot("tv-watch-timing", { c ->
+        val s = c.server as dev.nitrate.testing.FakeServer
+        s.companionFeatures += dev.nitrate.core.diagnostics.WatchTiming.FEATURE
+        s.watchTiming = sampleWatchTiming
+        c.refreshCompanionForTests()
+        c.refreshAccount()
+    }, act = {
+        check(compose.onAllNodes(androidx.compose.ui.test.hasText("Why is Watched slow?")).fetchSemanticsNodes().isNotEmpty()) { "The section should show for admins" }
+        repeat(12) { if (!focusedHasText("Time them again")) press("down") }
+        check(focusedHasText("Time them again")) { "Its button should be reachable with the D-pad" }
+    }) { c -> dev.nitrate.tv.ui.settings.SpeedCheckScreen(c) }
+
     /** The query analyzer: costliest kinds of request first, with where they came from and hints. */
     @Test fun queryAnalyzer() = shoot("tv-query-analyzer") { c -> dev.nitrate.tv.ui.settings.QueryAnalyzerScreen(c) }
 
@@ -3725,4 +3738,15 @@ private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsFocusedOrH
         p = p.parent
     }
     error("Not focused: ${node.config}")
+
+    private val sampleWatchTiming = dev.nitrate.core.diagnostics.WatchTimingReport(
+        supported = true, running = false, endsAtMs = 0,
+        presses = listOf(1900.0, 2100.0, 2000.0).map { dev.nitrate.core.diagnostics.TimedPress(0, true, it) },
+        saves = List(3) { dev.nitrate.core.diagnostics.TimedSave(0, "Nitrate", "TogglePlayed", 1810.0, emptyList()) },
+        listeners = listOf(
+            dev.nitrate.core.diagnostics.ListenerSummary("Trakt (ServerEntryPoint)", 3, 1800.0, 2000.0),
+            dev.nitrate.core.diagnostics.ListenerSummary("Nitrate Companion (ChangeStamps)", 3, 0.4, 0.9),
+            dev.nitrate.core.diagnostics.ListenerSummary("Jellyfin (UserDataChangeNotifier)", 3, 0.2, 0.3),
+        ),
+    )
 }

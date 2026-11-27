@@ -240,6 +240,13 @@ class FakeServer : MediaServer {
         if (itemId == "m1") listOf(MediaItem("m1-trailer", "Trailer", ItemKind.VIDEO, extraType = "Trailer")) else emptyList()
     /** The signed-in account: an admin unless a test makes it a metadata editor ([signInAsEditor]). */
     var accountInfo = dev.nitrate.core.admin.AccountInfo("user-1", "Joe", isAdmin = true)
+
+    /** The Companion's watch-change timing, as the server would have it (null: none yet). */
+    var watchTiming: dev.nitrate.core.diagnostics.WatchTimingReport? = null
+    override suspend fun watchTimingReport() = watchTiming
+    override suspend fun startWatchTiming(minutes: Int) =
+        dev.nitrate.core.diagnostics.WatchTimingReport(true, true, 1, emptyList(), emptyList(), emptyList()).also { watchTiming = it }
+    override suspend fun stopWatchTiming() { watchTiming = watchTiming?.copy(running = false) }
     override suspend fun account() = accountInfo
 
     /** Makes the account a metadata editor (Companion feature `metadata`) in the Movies library, not an admin. */

@@ -177,9 +177,31 @@ class DetailsViewModel(
         cache?.write(account, seasonKey(season.id), episodes, kotlinx.serialization.builtins.ListSerializer(MediaItem.serializer()))
     }
 
-    fun togglePlayed() = mutate(if (_state.value.item?.user?.played == true) "Couldn't mark it unwatched" else "Couldn't mark it watched") { item ->
+    /**
+     * Watched/Unwatched shows at once (the title, and the episodes on show when it's a show or a season),
+     * while the server does it. Once it's saved the page is read again; taken to be saved a moment later
+     * (the Companion's queue), what's shown stays. Not done: the page shows what the server has, and why.
+     */
+    fun togglePlayed() {
+        val item = _state.value.item ?: return
         val played = !item.user.played
-        repository.setPlayed(item.id, played)
+        val now = dev.nitrate.android.nowMs()
+        fun inside(e: MediaItem) = e.id == item.id || e.seriesId == item.id || e.seasonId == item.id
+        _state.update { s ->
+            s.copy(
+                actionError = null,
+                item = s.item?.copy(user = item.user.marked(played, now)),
+                episodes = s.episodes.map { e -> if (inside(e)) e.copy(user = e.user.marked(played, now)) else e },
+                contents = s.contents.map { e -> if (inside(e)) e.copy(user = e.user.marked(played, now)) else e },
+            )
+        }
+        viewModelScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Details")) {
+            val saved = runCatching { repository.setPlayed(item.id, played, item.user) }.onFailure { e ->
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _state.update { it.copy(actionError = (if (played) "Couldn't mark it watched: " else "Couldn't mark it unwatched: ") + (e.message ?: "no answer from the server")) }
+            }.getOrNull()
+            if (saved != false) refresh()
+        }
     }
 
     fun toggleFavorite() = mutate(if (_state.value.item?.user?.isFavorite == true) "Couldn't take it out of favourites" else "Couldn't add it to favourites") { item ->
