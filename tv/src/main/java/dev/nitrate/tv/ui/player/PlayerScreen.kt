@@ -36,6 +36,8 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -478,16 +480,23 @@ fun PlayerScreen(
     // where a seek moves everyone), else offered; a heads-up when only the tags know of one.
     val autoSkip = dev.nitrate.tv.ui.components.LocalDisplayPrefs.current.creditScenes && syncGroup == null && groupSession == null
     val skipper = remember(creditScenes, autoSkip) { creditScenes?.let { dev.nitrate.core.playback.CreditSkipper(it, autoSkip) } }
-    LaunchedEffect(skipper, position / 500) {
-        val a = skipper?.at(position) ?: return@LaunchedEffect
-        if (a is dev.nitrate.core.playback.CreditSkipper.Action.Skip) player.seekTo(a.toMs)
-        creditAction = a
+    // The clock (`position`, every 250 ms) is read only where it's shown or in effects like these
+    // (snapshotFlow, derivedStateOf): read in the screen itself, it rebuilt the whole player (controls,
+    // More's tabs, the subtitle view) four times a second, and the menus lagged on slower TVs.
+    LaunchedEffect(skipper) {
+        val s = skipper ?: return@LaunchedEffect
+        snapshotFlow { position / 500 }.collect {
+            val a = s.at(position) ?: return@collect
+            if (a is dev.nitrate.core.playback.CreditSkipper.Action.Skip) player.seekTo(a.toMs)
+            creditAction = a
+        }
     }
     // Skip intro / Skip recap: shown on entering one for 10 s by itself, and whenever the controls are up
     // while it lasts. Not in recap clips or test plays.
-    val skipSegment = remember(segments, position / 1000) {
-        dev.nitrate.core.playback.PlaybackMoments.skippable(segments, position)?.takeIf { skipLabel(it) != null }
-    }?.takeIf { clipEndMs == null && testPlay == null }
+    val skippableNow by remember(segments) {
+        derivedStateOf { dev.nitrate.core.playback.PlaybackMoments.skippable(segments, position)?.takeIf { skipLabel(it) != null } }
+    }
+    val skipSegment = skippableNow?.takeIf { clipEndMs == null && testPlay == null }
     var skipFaded by remember { mutableStateOf<dev.nitrate.core.model.MediaSegment?>(null) }
     var skipFocused by remember { mutableStateOf(false) }
     LaunchedEffect(skipSegment) {
@@ -495,19 +504,49 @@ fun PlayerScreen(
         delay(10_000)
         skipFaded = skipSegment
     }
-    LaunchedEffect(item?.id, position / 1000) { item?.let { skipWatch?.position(it.id, position, System.currentTimeMillis()) } }
-    // Notes pop up as playback reaches them (never ahead).
-    LaunchedEffect(item?.id, position / 1000) { if (item != null && clipEndMs == null && testPlay == null) groupChat?.at(position) }
+    LaunchedEffect(item?.id) {
+        val i = item ?: return@LaunchedEffect
+        snapshotFlow { position / 1000 }.collect {
+            skipWatch?.position(i.id, position, System.currentTimeMillis())
+            // Notes pop up as playback reaches them (never ahead).
+            if (clipEndMs == null && testPlay == null) groupChat?.at(position)
+        }
+    }
     // For this playback only: the setting (Settings, Group chat) stays as it is.
     fun turnGroupChat(on: Boolean) {
         groupChat?.turn(on, player.currentPosition)
     }
-    val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE &&
-        upNextAt != null && position >= upNextAt
+    val pastUpNext by remember(upNextAt) { derivedStateOf { upNextAt != null && position >= upNextAt } }
+    val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE && pastUpNext
     val showSkip = skipSegment != null && (skipSegment != skipFaded || controlsVisible) && !showUpNext && creditAction == null &&
         panel == Panel.NONE && person == null && stillAsk == null
     // The controls as drawn (More, Info and Chat take their place).
     val controlsShown = controlsVisible && panel != Panel.MORE && panel != Panel.INFO && panel != Panel.CHAT
+
+    // How smoothly the screen draws, by what's open, for the playback report ("Screen drawing").
+    // What's open is kept in a plain holder (not state), so measuring never redraws anything.
+    val drawingWhat = remember { arrayOf("nothing open") }
+    drawingWhat[0] = when {
+        panel == Panel.MORE -> "More open"
+        panel == Panel.INFO -> "Info open"
+        panel == Panel.CHAT -> "the chat open"
+        panel != Panel.NONE || person != null || openPanel != null -> "a pop-up or panel open"
+        controlsShown -> "the controls up"
+        else -> "nothing open"
+    }
+    val hostView = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(session, hostView) {
+        val window = hostView.context.findActivity()?.window
+        val listener = android.view.Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
+            val first = android.os.Build.VERSION.SDK_INT >= 26 && metrics.getMetric(android.view.FrameMetrics.FIRST_DRAW_FRAME) == 1L
+            if (!first) {
+                val hz = hostView.display?.refreshRate?.takeIf { it > 1f } ?: 60f
+                session.frames.record(drawingWhat[0], metrics.getMetric(android.view.FrameMetrics.TOTAL_DURATION) / 1_000_000.0, 1000.0 / hz)
+            }
+        }
+        runCatching { window?.addOnFrameMetricsAvailableListener(listener, android.os.Handler(android.os.Looper.getMainLooper())) }
+        onDispose { runCatching { window?.removeOnFrameMetricsAvailableListener(listener) } }
+    }
 
     // Where things go over the video. Everything OK acts on (Up Next, Skip intro/recap/credits, a
     // scene in the credits; one at a time) is in the action corner, bottom right: 48 dp up with the
@@ -515,6 +554,8 @@ fun PlayerScreen(
     // room (else just above them), gliding between. Subtitles lift above it, and above the controls.
     val actionShowing = showUpNext || showSkip || creditAction != null
     var actionSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    // What the subtitle view was last styled with (a plain holder: not state, nothing redraws for it).
+    val subtitleLook = remember { arrayOfNulls<Any>(1) }
     var buttonsRow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var playerBox by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -640,10 +681,15 @@ fun PlayerScreen(
                 }
             },
             update = {
-                it.applySubtitleStyle(settingsNow.subtitleStyle, plan?.styledSubtitle == true)
-                // Above the action pop-up or the controls, never under them (and never lower than the user's own margin).
-                if (subtitleLift > 0.dp && it.height > 0) {
-                    it.subtitleView?.setBottomPaddingFraction(maxOf(settingsNow.subtitleStyle.bottomMargin, with(density) { subtitleLift.toPx() } / it.height))
+                // Restyled only when something about it changed (each restyle lays the subtitles out again).
+                val look = listOf(settingsNow.subtitleStyle, plan?.styledSubtitle == true, subtitleLift, it.height)
+                if (look != subtitleLook[0]) {
+                    subtitleLook[0] = look
+                    it.applySubtitleStyle(settingsNow.subtitleStyle, plan?.styledSubtitle == true)
+                    // Above the action pop-up or the controls, never under them (and never lower than the user's own margin).
+                    if (subtitleLift > 0.dp && it.height > 0) {
+                        it.subtitleView?.setBottomPaddingFraction(maxOf(settingsNow.subtitleStyle.bottomMargin, with(density) { subtitleLift.toPx() } / it.height))
+                    }
                 }
                 // Styled subtitles drawn by libass in their own layer over the picture.
                 it.assSubtitles().apply {
@@ -658,7 +704,7 @@ fun PlayerScreen(
         // In the small window: just the picture, no controls or pop-ups.
         if (inPip) return@Box
 
-        lyrics?.takeIf { showLyrics }?.let { LyricsView(it, position, Modifier.align(Alignment.CenterEnd)) }
+        lyrics?.takeIf { showLyrics }?.let { l -> val at = Modifier.align(Alignment.CenterEnd); Reading({ position }) { LyricsView(l, it, at) } }
 
         // The TV changing its refresh rate: a quiet screen rather than a frozen frame before the black.
         if (matchingRate) MatchingRefreshRate(item?.displayTitle)
@@ -676,8 +722,8 @@ fun PlayerScreen(
             PlayerControls(
                 item = item,
                 plan = p,
-                position = position,
-                duration = duration,
+                position = { position },
+                duration = { duration },
                 playing = playing,
                 focus = controlFocus,
                 onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
@@ -754,7 +800,8 @@ fun PlayerScreen(
         }
 
         if (showUpNext && nextUp != null) {
-            val remaining = ((duration - position) / 1000).toInt()
+            // Read once (the card counts down by itself), not from the clock state, so the screen isn't rebuilt by it.
+            val remaining = remember(nextUp.id) { ((player.duration - player.currentPosition) / 1000).toInt() }
             ActionCorner(actionBottom, onSize = { actionSize = it }) {
                 UpNextCard(
                     nextUp, repository, seconds = remaining.coerceIn(5, 15).takeIf { !film },
@@ -919,7 +966,7 @@ fun PlayerScreen(
                     cast = if (showCast) item?.people.orEmpty().filter { it.imageTag != null || !it.role.isNullOrBlank() }.take(30) else emptyList(),
                     chapterImage = { i -> item?.let { repository.chapterImageUrl(it, i, 320) } },
                     personImage = repository::personImageUrl,
-                    position = position,
+                    position = { position },
                     onChapter = { player.seekTo(it) },
                     onPerson = { person = it },
                     choices = rememberPlayerChoices(session, playbackSettings, repository, sleepAt, sleepAtEndState.value,
@@ -1016,3 +1063,7 @@ private fun androidx.compose.foundation.layout.BoxScope.ActionCorner(bottom: and
         modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = y).onSizeChanged(onSize),
     ) { content() }
 }
+
+/** [read] read in a scope of its own, so a value that changes often (the clock) redraws only [content]. */
+@Composable
+internal fun <T> Reading(read: () -> T, content: @Composable (T) -> Unit) = content(read())

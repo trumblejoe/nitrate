@@ -362,7 +362,8 @@ internal fun moreTabs(
     cast: List<dev.nitrate.core.model.Person>,
     chapterImage: (Int) -> String?,
     personImage: (dev.nitrate.core.model.Person) -> String?,
-    position: Long,
+    /** The clock, read only in the chapters' row (through the chapter it's in, so it redraws at chapter changes). */
+    position: () -> Long,
     onChapter: (Long) -> Unit,
     onPerson: (dev.nitrate.core.model.Person) -> Unit,
     choices: PlayerChoices,
@@ -376,7 +377,9 @@ internal fun moreTabs(
         MoreTab("settings", "Settings") { PlayerChoicesTab(choices) },
         chapters.takeIf { it.size > 1 }?.let { list ->
             MoreTab("chapters", "Chapters") {
-                val now = dev.nitrate.core.playback.Chapters.current(list, position).coerceAtLeast(0)
+                val now by androidx.compose.runtime.remember(list) {
+                    androidx.compose.runtime.derivedStateOf { dev.nitrate.core.playback.Chapters.current(list, position()).coerceAtLeast(0) }
+                }
                 CardRow(list.size, now) { i, modifier ->
                     ChapterCard(i, list[i], dev.nitrate.core.playback.Chapters.title(list, i), chapterImage(i), playing = i == now, onClick = { onChapter(list[i].startMs) }, modifier = modifier)
                 }

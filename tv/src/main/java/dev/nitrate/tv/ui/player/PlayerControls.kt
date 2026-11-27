@@ -98,8 +98,9 @@ internal class ControlFocus {
 internal fun PlayerControls(
     item: MediaItem?,
     plan: PlaybackPlan?,
-    position: Long,
-    duration: Long,
+    /** The clock, read only by the seek bar (the rest of the controls aren't redrawn as it ticks). */
+    position: () -> Long,
+    duration: () -> Long,
     playing: Boolean,
     focus: ControlFocus,
     onPlayPause: () -> Unit,
@@ -379,7 +380,9 @@ private fun PauseSymbol() {
  * the current spot, an outline and a hint of what Left and Right do.
  */
 @Composable
-private fun SeekBar(position: Long, duration: Long, onSeek: (Long) -> Unit) {
+private fun SeekBar(readPosition: () -> Long, readDuration: () -> Long, onSeek: (Long) -> Unit) {
+    val position = readPosition()
+    val duration = readDuration()
     var focused by remember { mutableStateOf(false) }
     var widthPx by remember { mutableStateOf(0) }
     val accent = MaterialTheme.colorScheme.primary

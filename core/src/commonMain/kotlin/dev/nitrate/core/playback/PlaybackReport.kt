@@ -22,6 +22,8 @@ data class PlaybackReport(
     /** The player's recent events, oldest first. */
     val events: List<String> = emptyList(),
     val error: String? = null,
+    /** How smoothly the player's screen drew, by what was open ([FrameStats.lines]). */
+    val uiFrames: List<String> = emptyList(),
 ) {
     fun render(): String = buildString {
         line("$app $version playback report, $createdAt")
@@ -99,6 +101,12 @@ data class PlaybackReport(
         error?.let {
             section("Error")
             line(it)
+            line()
+        }
+
+        if (uiFrames.isNotEmpty()) {
+            section("Screen drawing")
+            uiFrames.forEach { line(it) }
             line()
         }
 

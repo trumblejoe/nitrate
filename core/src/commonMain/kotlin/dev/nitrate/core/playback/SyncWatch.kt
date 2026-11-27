@@ -44,9 +44,19 @@ class SyncWatch {
     private var lastFixMs = Long.MIN_VALUE / 2
     private var fixes = 0
     private var context = ""
+    // The last look's offset in this steady stretch (null: none yet), to tell a stall from drift.
+    private var prevOffsetMs: Long? = null
+    private var stallCount = 0
 
     /** How many times drift was fixed in this playback. */
     val driftFixes: Int get() = fixes
+
+    /** How many times the sound held up for a moment (a jump, not drift: nothing to fix). */
+    val stalls: Int get() = stallCount
+
+    /** How far the last stall moved the clock, in ms. */
+    var lastStallMs: Long = 0
+        private set
 
     val warning: SyncWarning? get() = current
 
@@ -65,6 +75,7 @@ class SyncWatch {
         carriedMs = 0
         lastOffsetMs = 0
         overSamples = 0
+        prevOffsetMs = null
     }
 
     /** What the sound goes out as, for the warning's words (e.g. "DTS passed through to the receiver"). */
@@ -84,6 +95,7 @@ class SyncWatch {
             if (baseline != null) carriedMs = lastOffsetMs
             baseline = null
             overSamples = 0
+            prevOffsetMs = null
             return null
         }
         val base = baseline ?: (positionMs to realMs).also {
@@ -91,6 +103,20 @@ class SyncWatch {
             if (carriedMs == 0L) steadySinceMs = realMs
         }
         val offset = carriedMs + (positionMs - base.first) - (realMs - base.second)
+        // A jump between two looks is the sound held up for a moment (the device busy), not drift:
+        // the picture waits for the sound, so they're still together, and a re-sync (a seek) would
+        // only cost seconds of buffering. Keep what was measured before it and carry on from here.
+        val before = prevOffsetMs
+        if (before != null && kotlin.math.abs(offset - before) > STALL_STEP_MS) {
+            stallCount++
+            lastStallMs = offset - before
+            carriedMs = before
+            baseline = positionMs to realMs
+            lastOffsetMs = before
+            overSamples = 0
+            return null
+        }
+        prevOffsetMs = offset
         lastOffsetMs = offset
         val elapsed = (realMs - steadySinceMs).coerceAtLeast(1)
         val drifting = kotlin.math.abs(offset) >= DRIFT_MS && kotlin.math.abs(offset).toDouble() / elapsed >= DRIFT_RATE
@@ -211,6 +237,12 @@ class SyncWatch {
         const val DRIFT_SAMPLES = 3
         /** How often the clock is looked at while playing. */
         const val CLOCK_EVERY_MS = 2_000L
+
+        /**
+         * A jump this big between two looks ([CLOCK_EVERY_MS] apart) is a stall, not drift: drift
+         * creeps (even 1% slow is 20 ms a look).
+         */
+        const val STALL_STEP_MS = 60L
         /** At most one re-sync this often. */
         const val FIX_EVERY_MS = 120_000L
         /** After this many re-syncs in one playback, say so and offer the lasting fix. */

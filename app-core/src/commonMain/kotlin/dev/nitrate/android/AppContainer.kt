@@ -924,6 +924,7 @@ class AppContainer(
             audioDecoder = player?.audioDecoder,
             events = player?.events.orEmpty(),
             error = player?.error,
+            uiFrames = player?.uiFrames.orEmpty(),
         ).render()
 
     /**

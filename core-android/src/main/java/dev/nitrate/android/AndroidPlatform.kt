@@ -104,7 +104,7 @@ fun AppContainer(
 ) = AppContainer(AndroidPlatform(context, clientName, version), clientName, version, serverOverride, downloadStoreOverride)
 
 /** What [session] contributes to a playback report. */
-fun PlaybackSession.report() = PlayerReport(item.value, plan.value, videoDecoder.value, audioDecoder.value, eventLog(), error.value)
+fun PlaybackSession.report() = PlayerReport(item.value, plan.value, videoDecoder.value, audioDecoder.value, eventLog(), error.value, frames.lines())
 
 /** A playback report with [session]'s item, server decision and player events. */
 suspend fun AppContainer.playbackReport(session: PlaybackSession?): String = playbackReport(session?.report())

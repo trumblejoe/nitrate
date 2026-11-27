@@ -187,6 +187,9 @@ class PlaybackSession(
     /** Watches for sound and picture falling out of step ([dev.nitrate.core.playback.SyncWatch]); fed on the player's thread. */
     private val syncWatch = dev.nitrate.core.playback.SyncWatch()
     @Volatile private var autoResync = true
+
+    /** How smoothly the player's screen drew while this played (fed by the app's player on the main thread), for the report. */
+    val frames = dev.nitrate.core.playback.FrameStats()
     @Volatile private var decodeHere: Set<String> = emptySet()
     /** The encoded format going out untouched to a receiver now (server codec name), if any. */
     @Volatile private var passedThrough: String? = null
@@ -708,7 +711,10 @@ class PlaybackSession(
             while (isActive) {
                 delay(dev.nitrate.core.playback.SyncWatch.CLOCK_EVERY_MS)
                 val steady = exo.isPlaying && exo.playbackState == Player.STATE_READY && exo.playbackParameters.speed == 1f && !quiet && group == null
-                val drift = syncWatch.clock(exo.currentPosition, System.currentTimeMillis(), steady) ?: continue
+                val stallsBefore = syncWatch.stalls
+                val fixed = syncWatch.clock(exo.currentPosition, System.currentTimeMillis(), steady)
+                if (syncWatch.stalls > stallsBefore) log("Sound held up for a moment (${syncWatch.lastStallMs} ms); not drift, so not lined up again")
+                val drift = fixed ?: continue
                 if (autoResync) {
                     log("Sound and picture drifted ${drift} ms apart; lined up again")
                     // A seek to where it is sets the sound output up afresh, as stopping and playing again does.

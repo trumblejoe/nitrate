@@ -85,4 +85,6 @@ class PlayerReport(
     val audioDecoder: String?,
     val events: List<String>,
     val error: String?,
+    /** How smoothly the player's screen drew ([dev.nitrate.core.playback.FrameStats.lines]). */
+    val uiFrames: List<String> = emptyList(),
 )

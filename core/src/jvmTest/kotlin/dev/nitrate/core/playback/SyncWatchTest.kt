@@ -129,6 +129,31 @@ class SyncWatchTest {
         assertEquals(2, w.driftFixes)
     }
 
+    /**
+     * The sound held up for a moment (the device busy) puts the clock 141 ms behind at once: not
+     * drift (sound and picture wait together), so no re-sync, whose seek would cost seconds of buffering.
+     */
+    @Test fun aStallIsNotDrift() {
+        val w = SyncWatch()
+        w.settling(0)
+        // In step for 20 s, then the clock falls 141 ms behind between two looks, then in step again.
+        var t = 5_000L
+        var pos = 0L
+        val asked = mutableListOf<Long>()
+        while (t < 120_000) {
+            if (t == 25_000L) pos -= 141
+            w.clock(pos, t, steady = true)?.let { asked += it }
+            t += SyncWatch.CLOCK_EVERY_MS
+            pos += SyncWatch.CLOCK_EVERY_MS
+        }
+        assertTrue(asked.isEmpty(), "asked to re-sync: $asked")
+        assertEquals(1, w.stalls)
+        assertEquals(-141L, w.lastStallMs)
+        // Real drift after a stall is still found (what was measured before it is kept).
+        val later = w.play(t, 60, 0.995, startPos = pos)
+        assertTrue(later.isNotEmpty())
+    }
+
     @Test fun theSoundRunningDryIsNotDrift() {
         val w = SyncWatch()
         w.settling(0)

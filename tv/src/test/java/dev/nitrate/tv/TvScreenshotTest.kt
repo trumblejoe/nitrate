@@ -1665,7 +1665,7 @@ class TvScreenshotTest {
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF2A3440))) {
             Box(Modifier.align(androidx.compose.ui.Alignment.BottomStart)) {
                 dev.nitrate.tv.ui.player.PlayerControls(
-                    item, null, position = 1_260_000, duration = 2_700_000, playing = true, focus = focus,
+                    item, null, position = { 1_260_000L }, duration = { 2_700_000L }, playing = true, focus = focus,
                     onPlayPause = {}, onSeek = {},
                     buttons = listOf("Audio", "Subtitles", "Info", "More").map { dev.nitrate.tv.ui.player.PlayerAction(it) {} },
                 )
@@ -2039,7 +2039,7 @@ class TvScreenshotTest {
                         cast = sampleCast,
                         chapterImage = { i -> c.server.imageUrl(current, dev.nitrate.core.model.ImageKind.BACKDROP, 320).takeIf { i % 3 != 2 } },
                         personImage = { p -> c.server.imageUrl(current, dev.nitrate.core.model.ImageKind.PRIMARY, 300).takeIf { p.imageTag != null } },
-                        position = 1_260_000,
+                        position = { 1_260_000L },
                         onChapter = {}, onPerson = {},
                         choices = sampleChoices(),
                     ),
@@ -2080,7 +2080,7 @@ class TvScreenshotTest {
                     dev.nitrate.tv.ui.player.MoreSheet(
                         dev.nitrate.tv.ui.player.moreTabs(
                             current = current.copy(kind = dev.nitrate.core.model.ItemKind.EPISODE, chapters = sampleChapters), titleStrips = sampleStrips(c, current), cast = emptyList(),
-                            chapterImage = { null }, personImage = { null }, position = 0, onChapter = {}, onPerson = {}, choices = sampleChoices(),
+                            chapterImage = { null }, personImage = { null }, position = { 0L }, onChapter = {}, onPerson = {}, choices = sampleChoices(),
                         ),
                         initial = "siblings", onTab = {}, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomStart),
                     )
