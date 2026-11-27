@@ -83,7 +83,53 @@ class AppContainer(
     val dataCache: dev.nitrate.android.storage.DataCache by lazy { dev.nitrate.android.storage.DataCache(platform.cacheDir) }
 
     /** Video playlists in their own order: where each was left, what plays next, Home's "Continue your playlists". */
-    val playlists: dev.nitrate.android.playlists.PlaylistPlaying by lazy { dev.nitrate.android.playlists.PlaylistPlaying(server, dataCache, ::nowMs) }
+    val playlists: dev.nitrate.android.playlists.PlaylistPlaying by lazy {
+        dev.nitrate.android.playlists.PlaylistPlaying(server, dataCache, ::nowMs, playlistRecords).also { p ->
+            // A playlist sitting's stop goes to the playlist's own record; seen in a playlist isn't a spoiler.
+            dev.nitrate.core.partners.Spoilers.seenInPlaylists = p::seenInPlaylists
+            recordsScope.launch { p.followStops() }
+        }
+    }
+
+    private val recordsScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+
+    /** Each playlist's own record, kept with the user's synced settings (one shared entry per playlist). */
+    private val playlistRecords = object : dev.nitrate.android.playlists.PlaylistRecordStore {
+        private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        private fun name(id: String) = dev.nitrate.core.pages.DisplayProfiles.PLAYLIST_RECORD + id
+        override suspend fun get(playlistId: String): dev.nitrate.core.playlists.PlaylistRecord? {
+            val user = server.userId ?: return null
+            val raw = displaySettings.entriesStartingWith(user, name(playlistId)).first()[name(playlistId)] ?: return null
+            return runCatching { json.decodeFromString(dev.nitrate.core.playlists.PlaylistRecord.serializer(), raw) }.getOrNull()
+        }
+        override suspend fun put(record: dev.nitrate.core.playlists.PlaylistRecord) {
+            val user = server.userId ?: return
+            displaySettings.saveEntry(user, name(record.playlistId), json.encodeToString(dev.nitrate.core.playlists.PlaylistRecord.serializer(), record))
+        }
+        override suspend fun all(): List<dev.nitrate.core.playlists.PlaylistRecord> {
+            val user = server.userId ?: return emptyList()
+            return displaySettings.entriesStartingWith(user, dev.nitrate.core.pages.DisplayProfiles.PLAYLIST_RECORD).first().values
+                .mapNotNull { runCatching { json.decodeFromString(dev.nitrate.core.playlists.PlaylistRecord.serializer(), it) }.getOrNull() }
+        }
+    }
+
+    /**
+     * Where a play starts that wasn't given a place: a watch group's card at the group's own resume
+     * point (0: the start); a playlist's card ([MediaItem.playlistId]) as a sitting of that playlist, at
+     * the playlist's own resume point; null otherwise (the user's own). Said for every play, so a
+     * playlist sitting is known as it starts (even one played from the start).
+     */
+    fun playStartMs(origin: dev.nitrate.core.partners.PlayOrigin?, item: dev.nitrate.core.model.MediaItem): Long? {
+        groupStartMs(origin, item)?.let { playlists.playsOnItsOwn(item.id); return it }
+        val playlistId = item.playlistId
+        if (playlistId == null || origin is dev.nitrate.core.partners.PlayOrigin.GroupCard) {
+            // Played on its own: not a sitting of any playlist, whatever was started before.
+            playlists.playsOnItsOwn(item.id)
+            return null
+        }
+        playlists.startedFrom(playlistId, item.id)
+        return playlists.resumeIn(playlistId, item.id)
+    }
 
     val server: MediaServer = serverOverride ?: JellyfinClient(
         engine = platform.serverEngine(),
@@ -154,6 +200,7 @@ class AppContainer(
             local = platform.libraryKeyValues,
             notifier = { newEpisodes },
             now = ::nowMs,
+            playlistRemaining = { id -> playlists.remaining(id) },
         )
     }
 
@@ -1256,6 +1303,12 @@ class AppContainer(
         writing.account = server.currentAccountKey
         watchNetwork()
         packForTrips()
+        loadPlaylistRecords()
+    }
+
+    /** The user's playlists' own records into memory (spoilers and resume points need them at once). */
+    fun loadPlaylistRecords() {
+        recordsScope.launch { runCatching { playlists.loadRecords() } }
     }
 
     private val networkScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate + dev.nitrate.core.diagnostics.QueryOrigin("In the background"))

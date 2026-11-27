@@ -52,6 +52,8 @@ class Trips(
     private val local: KeyValues,
     private val notifier: () -> NewEpisodeNotifier,
     private val now: () -> Long,
+    /** What's left in a playlist from where it was left, by its own record (not the user's own marks). */
+    private val playlistRemaining: suspend (String) -> List<MediaItem> = { emptyList() },
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
     private val lock = Mutex()
@@ -254,7 +256,7 @@ class Trips(
         }
         PickKind.SEASON -> server.episodes(pick.seriesId ?: "", pick.id).filterNot { it.user.played }
         PickKind.TITLE -> listOf(server.getItem(pick.id))
-        PickKind.PLAYLIST -> server.playlistItems(pick.id)
+        PickKind.PLAYLIST -> playlistRemaining(pick.id).ifEmpty { server.playlistItems(pick.id) }
         PickKind.COLLECTION -> server.collectionItems(pick.id)
     }.filter { it.isPlayable && it.kind != ItemKind.AUDIO }
 

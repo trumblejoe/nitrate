@@ -84,6 +84,31 @@ class WatchStateNowTest {
         assertEquals(true, heard.await().states[id]?.played)
     }
 
+    /** A playlist sitting: once its stop is reported, the user's own state from before is put back, and the stop is told. */
+    @Test fun aPlaylistSittingPutsTheUsersOwnStateBack() = runBlocking {
+        val c = client()
+        val told = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { c.playStops.first() } }
+        c.keepOwnState(id, dev.nitrate.core.model.UserState(played = false, positionMs = 0))
+        c.reportStopped(plan, 1_500_000)
+        c.stopsSettled()
+        val asked = synchronized(paths) { paths.toList() }
+        val stop = asked.indexOf("POST /Sessions/Playing/Stopped")
+        val putBack = asked.indexOfFirst { it.startsWith("POST /UserItems/") && it.endsWith("/UserData") }
+        assertTrue("own state put back after the stop: $asked", stop >= 0 && putBack > stop)
+        val e = told.await()
+        assertEquals(id, e.itemId)
+        assertEquals(1_500_000L, e.positionMs)
+        assertEquals(false, e.forGroup)
+    }
+
+    @Test fun aStopOnItsOwnPutsNothingBack() = runBlocking {
+        val c = client()
+        c.reportStopped(plan, 60_000)
+        c.stopsSettled()
+        val asked = synchronized(paths) { paths.toList() }
+        assertTrue("nothing put back: $asked", asked.none { it.endsWith("/UserData") })
+    }
+
     @Test fun nothingOnItsWayIsNoWait() = runBlocking {
         val c = client()
         val started = System.currentTimeMillis()

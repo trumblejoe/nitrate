@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
 @Serializable object NowPlayingRoute
 @Serializable object OfflineRoute
 /** [group]: opened from that watch group's card on Home's Watching together row (plays from the page count as from the card). */
-@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val group: String? = null)
+@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val group: String? = null, val playlist: String? = null)
 @Serializable object SettingsRoute
 @Serializable object SettingsHubRoute
 @Serializable object AdvancedPlaybackRoute

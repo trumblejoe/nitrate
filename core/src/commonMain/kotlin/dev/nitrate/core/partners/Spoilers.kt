@@ -18,9 +18,15 @@ import dev.nitrate.core.pages.DisplayPrefs
  * description held back. [safe] makes the copy every screen shows, so no screen has to remember.
  */
 object Spoilers {
-    /** Whether the user has seen [item] anywhere: on their own, or with any of their groups. */
+    /**
+     * Seen in one of the user's playlists (each playlist keeps its own record, apart from the user's own
+     * Watched marks): set by the app at sign-in. For spoilers only: seen anywhere is seen.
+     */
+    var seenInPlaylists: (String) -> Boolean = { false }
+
+    /** Whether the user has seen [item] anywhere: on their own, in a playlist, or with any of their groups. */
     fun seen(item: MediaItem, info: PartnersInfo?): Boolean =
-        item.user.played || info?.groups.orEmpty().any { g -> g.ownRecord?.contains(item.id) == true }
+        item.user.played || seenInPlaylists(item.id) || info?.groups.orEmpty().any { g -> g.ownRecord?.contains(item.id) == true }
 
     /** Whether [item] is part of a title the user watches with a Together group. */
     fun togetherTitle(item: MediaItem, info: PartnersInfo?): Boolean =

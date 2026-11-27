@@ -41,6 +41,8 @@ object DisplayProfiles {
     /** One entry per trip being packed for ("trip:<id>"), and one per device that can pack ("packer:<device id>"). */
     const val TRIP = "trip:"
     const val PACKER = "packer:"
+    /** One entry per playlist with its own record ("plrec:<playlist id>": watched entries, resume points, where it's at). */
+    const val PLAYLIST_RECORD = "plrec:"
 
     fun isBuiltIn(id: String) = BUILT_IN.any { it.id == id }
 
@@ -48,7 +50,7 @@ object DisplayProfiles {
      * Stays the same on every device: custom pages (and their rows), per-series languages,
      * audiobook bookmarks, the profile list and shared settings. Everything else belongs to a profile.
      */
-    fun isShared(name: String) = name == PAGES || name == TRACKS || name == PROFILES || name == SHARED || name.startsWith(BOOKMARKS) || name.startsWith(TRIP) || name.startsWith(PACKER) ||
+    fun isShared(name: String) = name == PAGES || name == TRACKS || name == PROFILES || name == SHARED || name.startsWith(BOOKMARKS) || name.startsWith(TRIP) || name.startsWith(PACKER) || name.startsWith(PLAYLIST_RECORD) ||
         name.startsWith(LAYOUT + PageKeys.custom(""))
 
     /** Where [name] is stored for [profileId]. */

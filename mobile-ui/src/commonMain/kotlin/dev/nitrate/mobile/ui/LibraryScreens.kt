@@ -316,7 +316,8 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
                 actions.container.playlists.startedFrom(playlistId, item.id)
                 val pl = playlist
                 if (storyOrder && pl != null && actions.container.recapBefore(item, pl) != null) actions.nav.navigate(RecapRoute)
-                else actions.play(item, false)
+                // A sitting of the playlist: at its own resume point, counted in its own record.
+                else actions.play(item.copy(playlistId = playlistId), false)
             }
         }
         // Where the user is: how much is watched and what's next (carrying on from the entry played most recently, in any app).
@@ -432,8 +433,8 @@ fun PlaylistScreen(actions: AppActions, playlistId: String) {
     menuFor?.let { item ->
         val playing = actions.container.playlists
         ChoiceSheet(item.displayTitle, onDismiss = { menuFor = null }) { choice ->
-            choice("Play from here", null) { scope.launch { playing.startedFrom(playlistId, item.id); actions.play(item, false) } }
-            choice("Open it", null) { actions.open(item) }
+            choice("Play from here", null) { scope.launch { playing.startedFrom(playlistId, item.id); actions.play(item.copy(playlistId = playlistId), false) } }
+            choice("Open it", null) { actions.open(item.copy(playlistId = playlistId)) }
             choice("Mark watched up to here", "Everything before it too") { change { playing.markUpTo(playlistId, item.id, true) } }
             choice("Mark unwatched from here on", "Everything after it too") { change { playing.markUpTo(playlistId, item.id, false) } }
         }

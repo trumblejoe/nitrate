@@ -175,6 +175,8 @@ fun PlayerScreen(
     var upNext by remember { mutableStateOf<MediaItem?>(null) }
     // Watching through a playlist: what follows is the playlist's next, and it rolls on whatever it is.
     var inPlaylist by remember { mutableStateOf(false) }
+    // The playlist whose order Up Next follows (its name), for the card's heading.
+    var upNextFrom by remember { mutableStateOf<String?>(null) }
     var upNextHidden by remember { mutableStateOf(false) }
     var stillAsk by remember { mutableStateOf<MediaItem?>(null) }
     val askStill by playbackSettings.settings.map { it.askStillWatching }.collectAsState(true)
@@ -303,12 +305,16 @@ fun PlayerScreen(
         upNext = null
         upNextHidden = false
         inPlaylist = false
-        if (onPlayNext == null || clipEndMs != null) return@LaunchedEffect
-        // Part of a playlist being watched through (started from it, or carried on to): its order decides.
+        upNextFrom = null
+        if (clipEndMs != null) return@LaunchedEffect
+        // A sitting of a playlist (started from it: its page, its card, the one before it in it; queues
+        // too, so the playlist's own record counts it): its order decides what's next. Asked first.
         val inList = playlistNext?.let { runCatching { it(current) }.getOrNull() }
+        if (onPlayNext == null) return@LaunchedEffect
         if (inList != null) {
             inPlaylist = true
             upNext = inList.next
+            upNextFrom = inList.name
             return@LaunchedEffect
         }
         upNext = runCatching {
@@ -815,6 +821,7 @@ fun PlayerScreen(
                     onCountdownEnd = { rollOn(nextUp) },
                     onHide = { upNextHidden = true; refocus() },
                     compact = controlsShown,
+                    playlist = upNextFrom,
                 )
             }
             // The same question on the phone's remote.

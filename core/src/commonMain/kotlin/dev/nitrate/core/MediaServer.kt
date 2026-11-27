@@ -1088,6 +1088,16 @@ interface MediaServer {
      */
     suspend fun groupPlay(itemId: String, groupIds: List<String>, before: dev.nitrate.core.model.UserState) {}
 
+    /**
+     * [itemId] is about to play as a playlist sitting: it counts for the playlist's own record, not the
+     * user's, so their own state from before ([before]) is put back when its playback stops (their
+     * watched mark and resume point; Jellyfin's play count can't be put back).
+     */
+    fun keepOwnState(itemId: String, before: dev.nitrate.core.model.UserState) {}
+
+    /** Every playback stop reported from this app, once it's been sent (for playlist records). */
+    val playStops: kotlinx.coroutines.flow.Flow<dev.nitrate.core.model.PlayStop> get() = kotlinx.coroutines.flow.emptyFlow()
+
     /** [rows] with each card's watched marks and progress as the server has them now (one light request). */
     suspend fun withFreshMarks(rows: List<dev.nitrate.core.rows.MediaRow>): List<dev.nitrate.core.rows.MediaRow> = rows
 

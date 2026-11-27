@@ -229,7 +229,7 @@ internal data class PlaybackStopDto(
 )
 
 @Serializable
-internal data class UpdateUserDataDto(val playbackPositionTicks: Long, val played: Boolean, val lastPlayedDate: String)
+internal data class UpdateUserDataDto(val playbackPositionTicks: Long, val played: Boolean, val lastPlayedDate: String? = null)
 
 @Serializable
 internal data class TrickplayInfoDto(

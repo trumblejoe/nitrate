@@ -177,7 +177,11 @@ fun BoxScope.LowerQualityPrompt(toBps: Int?, onLower: (Int) -> Unit, onDismiss: 
  * for "Play now", since a film can have scenes during its credits.
  */
 @Composable
-fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, onCountdownEnd: () -> Unit = onPlay) {
+fun BoxScope.UpNextCard(
+    next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, onCountdownEnd: () -> Unit = onPlay,
+    /** The playlist whose order this follows ("Next in Kids Bedtime"); null: the show's (or the collection's). */
+    playlist: String? = null,
+) {
     // Spoiler-safe: an episode not seen yet shows as "S1:E5", blurred.
     @Suppress("NAME_SHADOWING") val next = spoilerSafe(next)
     var left by androidx.compose.runtime.remember(next.id) { mutableIntStateOf(seconds ?: 0) }
@@ -208,7 +212,7 @@ fun BoxScope.UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onP
                 Icon(Icons.Default.PlayArrow, "Play now", tint = Color.White)
             }
             Column(Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(if (seconds == null) "NEXT IN THE COLLECTION" else "UP NEXT · ${left}s", color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Text(dev.nitrate.core.playlists.upNextHeading(seconds?.let { left }, playlist, next), color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Text(next.episodeLabel ?: (next.name + (next.productionYear?.let { " ($it)" } ?: "")), color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                     Text("Play now", color = contentOn(accent), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,

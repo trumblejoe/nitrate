@@ -94,6 +94,12 @@ data class MediaItem(
      * that group's card (`PlayOrigin.of`). Null everywhere else.
      */
     val watchGroupId: String? = null,
+    /**
+     * Not from the server: the playlist this card stands for (Home's "Continue your playlists", a
+     * title opened from a playlist, the next one in a playlist being watched): playing it is a sitting
+     * of that playlist, counted in the playlist's own record, not the user's. Null everywhere else.
+     */
+    val playlistId: String? = null,
 ) {
     val isEpisode get() = kind == ItemKind.EPISODE
     /** Something to play: not an episode the library is missing or that hasn't aired. */

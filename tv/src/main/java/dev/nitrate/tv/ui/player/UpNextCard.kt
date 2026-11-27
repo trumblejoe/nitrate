@@ -1,5 +1,6 @@
 package dev.nitrate.tv.ui.player
 
+import dev.nitrate.core.playlists.upNextHeading
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +46,11 @@ import kotlinx.coroutines.delay
  * so the countdown and focus carry on as the controls come and go).
  */
 @Composable
-fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier, onCountdownEnd: () -> Unit = onPlay, compact: Boolean = false) {
+fun UpNextCard(
+    next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier, onCountdownEnd: () -> Unit = onPlay, compact: Boolean = false,
+    /** The playlist whose order this follows ("Next in Kids Bedtime"); null: the show's next episode (or the collection's next film). */
+    playlist: String? = null,
+) {
     var left by remember(next.id) { mutableIntStateOf(seconds ?: 0) }
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(next.id) {
@@ -59,7 +64,8 @@ fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -
     }
     // Spoiler-safe: an episode not seen yet shows as "S1:E5", blurred.
     val shownNext = dev.nitrate.tv.ui.partners.spoilerSafe(next)
-    val heading = if (seconds == null) "NEXT IN THE COLLECTION" else "UP NEXT · ${left}s"
+    // Which order it follows, said plainly: the playlist's, the show's or the collection's.
+    val heading = upNextHeading(seconds?.let { left }, playlist, next)
     val name = shownNext.episodeLabel ?: (shownNext.name + (shownNext.productionYear?.let { " ($it)" } ?: ""))
     if (compact) {
         Row(

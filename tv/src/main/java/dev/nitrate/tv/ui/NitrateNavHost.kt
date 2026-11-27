@@ -104,7 +104,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             nav.navigate(NowPlayingRoute) { launchSingleTop = true }
         } else nav.playQueue((if (shuffle) items.drop(start).shuffled() else items.drop(start)).map { it.id })
     }
-    val gate = rememberPlaybackGate(container.plugins, container::groupStartMs, container::playTurnedDown) { item, fromStart, startMs ->
+    val gate = rememberPlaybackGate(container.plugins, container::playStartMs, container::playTurnedDown) { item, fromStart, startMs ->
         scope.launch {
             // A book opens in the reader, from wherever Play was pressed.
             if (item.kind == dev.nitrate.core.model.ItemKind.BOOK) nav.navigate(ComicRoute(item.id))
@@ -208,12 +208,15 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 playlists = container.playlists,
                 playlistId = playlistId,
                 onPlayQueue = { items -> listen(items) },
-                onOpen = { item -> nav.openItem(item, openGroup ?: item.watchGroupId) },
+                // Opened from the playlist: plays from its page stay sittings of the playlist.
+                onOpen = { item -> nav.openItem(item.copy(playlistId = playlistId), openGroup ?: item.watchGroupId) },
                 onDeleted = onDeleted,
                 header = header,
                 pinning = pinning,
                 onContinue = { pl, next, rest ->
                     scope.launch {
+                        // Played through as a queue: each one a sitting of the playlist.
+                        rest.forEach { container.playlists.startedFrom(pl.id, it.id) }
                         if (container.recapBefore(next, pl) != null) nav.navigate(RecapRoute) else nav.playQueue(rest.map { it.id })
                     }
                 },
@@ -222,7 +225,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                     scope.launch {
                         container.playlists.startedFrom(pl.id, item.id)
                         // In story order, a "Last time" recap first when one is due.
-                        if (pl.id in displayPrefs.recapPlaylists && container.recapBefore(item, pl) != null) nav.navigate(RecapRoute) else gate.play(item)
+                        if (pl.id in displayPrefs.recapPlaylists && container.recapBefore(item, pl) != null) nav.navigate(RecapRoute) else gate.play(item.copy(playlistId = pl.id))
                     }
                 },
             )
@@ -305,9 +308,10 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 itemId = route.itemId,
                 seasonId = route.seasonId,
                 // Opened from a watch group's card: its title's parts play (and open) from that card.
-                onPlay = { item, fromStart -> gate.play(item, fromStart, origin = container.detailsOrigin(route.group, item)) },
-                onPlayFrom = { item, at -> gate.play(item, startMs = at, origin = container.detailsOrigin(route.group, item)) },
-                onOpen = { item -> nav.openItem(item, (container.detailsOrigin(route.group, item) as? dev.nitrate.core.partners.PlayOrigin.GroupCard)?.groupId) },
+                // Opened from a playlist: what plays from here is a sitting of that playlist.
+                onPlay = { item, fromStart -> gate.play(item.inPlaylist(route.playlist), fromStart, origin = container.detailsOrigin(route.group, item)) },
+                onPlayFrom = { item, at -> gate.play(item.inPlaylist(route.playlist), startMs = at, origin = container.detailsOrigin(route.group, item)) },
+                onOpen = { item -> nav.openItem(item.inPlaylist(route.playlist), (container.detailsOrigin(route.group, item) as? dev.nitrate.core.partners.PlayOrigin.GroupCard)?.groupId) },
                 onManage = if (canManage) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
                 onPlayQueue = { items -> listen(items) },
@@ -599,7 +603,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 syncPlay = container.syncPlay.takeIf { !route.test },
                 stillWatching = container.stillWatching,
                 skipWatch = container.skipWatch,
-                playlistNext = if (route.queue.isBlank() && route.clipEndMs < 0 && !route.test) { item -> container.playlists.contextOf(item) } else null,
+                // Every playback (queues too) says whether it's a playlist sitting; only outside queues does the playlist give Up Next.
+                playlistNext = if (route.clipEndMs < 0 && !route.test) { item -> container.playlists.contextOf(item) } else null,
                 stillWatchingRewind = container::stillWatchingRewind,
                 sendLog = { session -> container.sendPlaybackReport(session) },
                 capabilities = container.capabilities,
@@ -845,13 +850,17 @@ fun NavController.openItem(item: MediaItem, group: String? = item.watchGroupId) 
     val seriesId = item.seriesId
     when {
         item.kind == ItemKind.SEASON && seriesId != null ->
-            navigate(DetailsRoute(seriesId, seasonId = item.id, group = group))
+            navigate(DetailsRoute(seriesId, seasonId = item.id, group = group, playlist = item.playlistId))
         item.kind == ItemKind.LIBRARY ->
             navigate(LibraryRoute(item.id))
         item.kind == ItemKind.PLAYLIST -> navigate(PlaylistRoute(item.id, group = group))
-        else -> navigate(DetailsRoute(item.id, group = group))
+        // A title opened from a playlist (or its card) keeps it: plays from its page are sittings of it.
+        else -> navigate(DetailsRoute(item.id, group = group, playlist = item.playlistId))
     }
 }
+
+/** [this] as a sitting of [playlistId] (null: as it is). */
+private fun MediaItem.inPlaylist(playlistId: String?): MediaItem = if (playlistId == null) this else copy(playlistId = playlistId)
 
 /** Plays the first id, queueing the rest. Queue items always start from the beginning. */
 fun NavController.playQueue(ids: List<String>) {

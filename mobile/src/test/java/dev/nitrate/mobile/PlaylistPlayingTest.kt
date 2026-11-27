@@ -10,6 +10,7 @@ import dev.nitrate.core.model.ItemKind
 import dev.nitrate.core.model.MediaItem
 import dev.nitrate.testing.FakeServer
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -18,9 +19,9 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * "Continue your playlists" stays light for the server: Home asks on every reload, so after the first
- * time it's one small "played lately" request; playlists' contents are read only for those being
- * watched, and kept.
+ * Playlists keep their own record, apart from the user's own: a playlist is watched through only by
+ * sittings started from it (never guessed from what was played), its place moves only by those, and
+ * "Continue your playlists" reads only the records and the playlists' kept contents.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], application = android.app.Application::class)
@@ -29,6 +30,8 @@ class PlaylistPlayingTest {
     private val now = 1_800_000_000_000L
     private val asked = mutableListOf<String>()
     private val fake = FakeServer()
+    private val kept = mutableListOf<String>()
+    private val stops = kotlinx.coroutines.flow.MutableSharedFlow<dev.nitrate.core.model.PlayStop>(extraBufferCapacity = 4)
 
     private fun episode(s: Int, n: Int, playedDaysAgo: Int?) = MediaItem(
         "s${s}e$n", "Episode $n", ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonId = "season-$s", seasonNumber = s, indexNumber = n,
@@ -47,115 +50,92 @@ class PlaylistPlayingTest {
         }
         override suspend fun allEpisodes(seriesId: String): List<MediaItem> { asked += "episodes:$seriesId"; return (1..4).map { episode(1, it, null) } }
         override suspend fun recentlyPlayed(limit: Int): List<MediaItem> { asked += "recent"; return listOf(episode(1, 2, 1), episode(1, 1, 3)) }
+        override suspend fun userData(itemId: String) = dev.nitrate.core.model.RemoteUserData(played = false, positionMs = 0, lastPlayedMs = null)
+        override fun keepOwnState(itemId: String, before: dev.nitrate.core.model.UserState) { kept += itemId }
+        override val playStops = stops
     }
 
+
     @Test
-    fun homeReloadsAskOnlyWhatWasPlayedLately() = runBlocking {
+    fun activePlaylistsAreSeededOnceThenOnlyRecordsAreRead() = runBlocking {
         val playing = PlaylistPlaying(server, DataCache(ApplicationProvider.getApplicationContext<Context>()), nowMs = { now })
+        // The first time: playlists being watched by the user's own marks get a record from those marks.
         val row = playing.continueRow()
-        assertNotNull(row)
-        // Carries on after the last episode played (S1 E2), in the playlist's order.
         assertEquals(listOf("s1e3"), row!!.items.map { it.id })
-        // The first time: the list, every playlist's members (light), and only the watched one's contents.
-        assertEquals(1, asked.count { it.startsWith("items:") })
-        assertEquals(1, asked.count { it.startsWith("episodes:") })
-        assertEquals(20, asked.count { it.startsWith("members:") })
+        // The card stands for its playlist: playing it is a sitting of p1.
+        assertEquals("p1", row.items.single().playlistId)
         asked.clear()
-        // Every reload after that: one small request.
-        repeat(5) { playing.continueRow() }
-        assertEquals(List(5) { "recent" }, asked)
+        // Every reload after that: nothing asked of the server (records, and contents kept).
+        repeat(3) { playing.continueRow() }
+        assertEquals(emptyList<String>(), asked)
     }
 
     @Test
-    fun nothingPlayedLatelyAsksNothingElse() = runBlocking {
-        val quiet = object : MediaServer by server {
-            override suspend fun recentlyPlayed(limit: Int): List<MediaItem> { asked += "recent"; return emptyList() }
-        }
-        val playing = PlaylistPlaying(quiet, null, nowMs = { now })
-        assertEquals(null, playing.continueRow())
-        // The playlists' list (kept half an hour), then what was played lately: nothing more.
-        assertEquals(listOf("playlists", "recent"), asked)
-    }
-
-    @Test
-    fun noPlaylistsAsksNothingMore() = runBlocking {
-        val none = object : MediaServer by server {
-            override suspend fun playlists(): List<MediaItem> { asked += "playlists"; return emptyList() }
-        }
-        val playing = PlaylistPlaying(none, null, nowMs = { now })
-        repeat(3) { assertEquals(null, playing.continueRow()) }
-        // Without playlists, "played lately" is never asked.
-        assertEquals(listOf("playlists"), asked)
-    }
-
-    @Test
-    fun aPlaylistMadeHereIsSeenAtOnce() = runBlocking {
+    fun watchingOnYourOwnDoesntMoveThePlaylist() = runBlocking {
         val playing = PlaylistPlaying(server, null, nowMs = { now })
         playing.continueRow()
-        asked.clear()
-        playing.playlistsChanged()
-        playing.continueRow()
-        // The list is read again rather than kept for half an hour.
-        assertEquals(1, asked.count { it == "playlists" })
+        // S1 E3 and E4 watched on their own since: the playlist still carries on from S1 E3.
+        val ownWatch = object : MediaServer by server {
+            override suspend fun recentlyPlayed(limit: Int): List<MediaItem> = listOf(episode(1, 4, 0), episode(1, 3, 0), episode(1, 2, 1))
+        }
+        val again = PlaylistPlaying(ownWatch, null, nowMs = { now }, records = recordsOf(playing))
+        assertEquals(listOf("s1e3"), again.continueRow()!!.items.map { it.id })
     }
 
-    /** The Companion's facts for playlist p1: a film, then a show put in whole (S1 E2 played a day ago). */
-    private fun facts() = listOf(
-        dev.nitrate.core.playlists.PlaylistFacts(
-            "p1",
-            listOf(MediaItem("m1", "", ItemKind.MOVIE), MediaItem("series-1", "", ItemKind.SERIES)),
-            mapOf("series-1" to (1..4).map { n -> episode(1, n, if (n <= 2) 3 - n else null).copy(name = "") } + episode(0, 1, null).copy(name = "")),
-        ),
-    )
-
-    @Test
-    fun theCompanionsFactsReadNoPlaylist() = runBlocking {
-        var failing = false
-        val companion = object : MediaServer by server {
-            override suspend fun playlistFacts(sinceMs: Long): List<dev.nitrate.core.playlists.PlaylistFacts> {
-                asked += "facts"
-                if (failing) throw IllegalStateException("Socket timeout has expired")
-                return facts()
-            }
-            override suspend fun cardsFor(ids: List<String>) = ids.map { asked += "card:$it"; episode(1, 3, null) }
-            override suspend fun withFreshMarks(rows: List<dev.nitrate.core.rows.MediaRow>) = rows.also { asked += "marks" }
-        }
-        val playing = PlaylistPlaying(companion, DataCache(ApplicationProvider.getApplicationContext<Context>()), nowMs = { now })
-        // The app's own rules over the facts: carries on after S1 E2 (specials left out), the card read whole.
-        val row = playing.continueRow()
-        assertEquals(listOf("s1e3"), row!!.items.map { it.id })
-        assertEquals(listOf("facts", "card:s1e3"), asked)
-        assertNotNull(playing.status.value.answeredMs)
-        // The Companion stops answering: no reading of playlists here, and the row stays as it was.
-        asked.clear()
-        failing = true
-        assertEquals(listOf("s1e3"), playing.continueRow()!!.items.map { it.id })
-        assertEquals(listOf("facts", "marks"), asked)
-        assertNotNull(playing.status.value.failingSinceMs)
-        assertTrue(playing.status.value.line { "t" }!!.contains("hasn't answered"))
-        // Not asked again within a minute.
-        asked.clear()
-        playing.continueRow()
-        assertEquals(listOf("marks"), asked)
+    private suspend fun recordsOf(playing: PlaylistPlaying) = dev.nitrate.android.playlists.PlaylistRecordStore.InMemory().also { store ->
+        playing.loadRecords().forEach { store.put(it) }
     }
 
     @Test
-    fun membersAreKeptOnTheDeviceUntilAPlaylistChanges() = runBlocking {
-        val cache = DataCache(ApplicationProvider.getApplicationContext<Context>())
-        var saved = "a"
-        val dated = object : MediaServer by server {
-            override suspend fun playlists(): List<MediaItem> =
-                (1..20).map { MediaItem("p$it", "Playlist $it", ItemKind.PLAYLIST, version = if (it == 3) saved else "a") }
+    fun onlyAPlayStartedFromAPlaylistIsASittingOfIt() = runBlocking {
+        val playing = PlaylistPlaying(server, null, nowMs = { now })
+        playing.continueRow()
+        // S1 E3 is where p1 carries on, but played from Continue Watching: not a sitting, nothing guessed.
+        assertEquals(null, playing.contextOf(episode(1, 3, null)))
+        assertEquals(emptyList<String>(), kept)
+        // Started from the playlist (its card, its page): a sitting, the user's own state kept, the next in its order.
+        playing.startedFrom("p1", "s1e3")
+        val ctx = playing.contextOf(episode(1, 3, null))!!
+        assertEquals("s1e4", ctx.next?.id)
+        assertEquals("p1", ctx.next?.playlistId)
+        assertEquals(listOf("s1e3"), kept)
+        // Played on its own after all: not a sitting any more.
+        playing.playsOnItsOwn("s1e3")
+        assertEquals(null, playing.contextOf(episode(1, 3, null)))
+    }
+
+    @Test
+    fun aSittingsStopGoesToThePlaylistsOwnRecord() = runBlocking {
+        val playing = PlaylistPlaying(server, null, nowMs = { now })
+        playing.continueRow()
+        val following = launch(kotlinx.coroutines.Dispatchers.Unconfined) { playing.followStops() }
+        playing.startedFrom("p1", "s1e3")
+        playing.contextOf(episode(1, 3, null))
+        // Stopped 20 minutes in (runtime unknown here): its resume point in the playlist.
+        stops.emit(dev.nitrate.core.model.PlayStop("s1e3", 1_200_000, forGroup = false))
+        kotlinx.coroutines.delay(50)
+        assertEquals(1_200_000L, playing.resumeIn("p1", "s1e3"))
+        val entries = playing.entries("p1")
+        assertEquals(1_200_000L, entries.first { it.id == "s1e3" }.user.positionMs)
+        // A group's playback is never a playlist's.
+        playing.startedFrom("p1", "s1e4")
+        playing.contextOf(episode(1, 4, null))
+        stops.emit(dev.nitrate.core.model.PlayStop("s1e4", 1_200_000, forGroup = true))
+        kotlinx.coroutines.delay(50)
+        assertEquals(0L, playing.resumeIn("p1", "s1e4"))
+        following.cancel()
+    }
+
+    @Test
+    fun markingInThePlaylistLeavesTheUsersOwnMarks() = runBlocking {
+        var setPlayed = 0
+        val counting = object : MediaServer by server {
+            override suspend fun setPlayed(itemId: String, played: Boolean) { setPlayed++ }
         }
-        PlaylistPlaying(dated, cache, nowMs = { now }).continueRow()
-        assertEquals(20, asked.count { it.startsWith("members:") })
-        asked.clear()
-        // A new run (or coming back to this account): nothing that hasn't changed is read again.
-        PlaylistPlaying(dated, cache, nowMs = { now }).continueRow()
-        assertEquals(0, asked.count { it.startsWith("members:") })
-        // One playlist saved since: only it is read.
-        saved = "b"
-        PlaylistPlaying(dated, cache, nowMs = { now }).continueRow()
-        assertEquals(listOf("members:p3"), asked.filter { it.startsWith("members:") })
+        val playing = PlaylistPlaying(counting, null, nowMs = { now })
+        playing.markUpTo("p1", "s1e3", watched = true)
+        assertEquals(0, setPlayed)
+        assertTrue(playing.entries("p1").first { it.id == "s1e3" }.user.played)
+        assertTrue(playing.seenInPlaylists("s1e3"))
     }
 }

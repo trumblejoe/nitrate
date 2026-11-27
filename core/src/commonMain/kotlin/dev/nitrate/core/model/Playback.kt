@@ -122,3 +122,6 @@ data class VersionOption(val id: String, val name: String?, val directPlay: Bool
 
 /** A user's state for one item on the server, with when it was last played (epoch ms). */
 data class RemoteUserData(val played: Boolean, val positionMs: Long, val lastPlayedMs: Long?)
+
+/** A playback that stopped at [positionMs]; [forGroup] when it was watched for a watch group. */
+data class PlayStop(val itemId: String, val positionMs: Long, val forGroup: Boolean)

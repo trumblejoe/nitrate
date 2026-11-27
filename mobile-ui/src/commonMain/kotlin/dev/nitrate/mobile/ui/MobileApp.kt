@@ -65,7 +65,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class LibraryRoute(val libraryId: String)
 /** [artKey] names the card it was opened from, so its artwork can morph into the page. */
 /** [group]: opened from that watch group's card on Home's Watching together row (plays from the page count as from the card). */
-@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null, val group: String? = null)
+@Serializable data class DetailsRoute(val itemId: String, val seasonId: String? = null, val artKey: String? = null, val group: String? = null, val playlist: String? = null)
 @Serializable data class PlaylistRoute(val playlistId: String, val group: String? = null)
 @Serializable data class PersonRoute(val personId: String, val name: String, val studio: String? = null, val year: Int? = null)
 
@@ -155,6 +155,19 @@ class AppActions(
      */
     suspend fun checkBeforeSending(item: MediaItem): MediaItem? = beforeSending(item)
 
+    /**
+     * For a details page opened from playlist [playlistId] (null: opened any other way, this as it is):
+     * what plays from it is a sitting of that playlist (its own record and resume points).
+     */
+    fun fromPlaylist(playlistId: String?): AppActions {
+        if (playlistId == null) return this
+        val tagged: (MediaItem) -> MediaItem = { item -> tag(item).copy(playlistId = playlistId) }
+        return AppActions(
+            container, nav, scope, playAt?.let { p -> { item, ms -> p(tagged(item), ms) } }, { item, fromStart -> play(tagged(item), fromStart) },
+            cards, { item -> beforeSending(tagged(item)) }, tagged,
+        )
+    }
+
     /** The watch group whose card [item]'s details page counts plays for (see [fromGroup]); null elsewhere. */
     fun groupOf(item: MediaItem): String? = tag(item).watchGroupId
 
@@ -173,7 +186,8 @@ class AppActions(
             item.kind == ItemKind.SEASON && series != null -> nav.navigate(DetailsRoute(series, seasonId = item.id, group = group))
             item.kind == ItemKind.LIBRARY -> nav.navigate(LibraryRoute(item.id))
             item.kind == ItemKind.PLAYLIST -> nav.navigate(PlaylistRoute(item.id, group = group))
-            else -> nav.navigate(DetailsRoute(item.id, artKey = artKey, group = group))
+            // Opened from a playlist: its plays stay sittings of that playlist.
+            else -> nav.navigate(DetailsRoute(item.id, artKey = artKey, group = group, playlist = tag(item).playlistId))
         }
     }
 
@@ -231,7 +245,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         val state = container.server.restoreSession()
         start = when {
             container.shouldPickProfile(state) -> ProfilesRoute
-            state == SessionState.VALID -> { container.settingsSync.pull(); container.backups.onSignedIn(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; container.packForTrips(); MainRoute }
+            state == SessionState.VALID -> { container.settingsSync.pull(); container.backups.onSignedIn(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; container.packForTrips(); container.loadPlaylistRecords(); MainRoute }
             state == SessionState.UNREACHABLE -> OfflineRoute
             else -> ConnectRoute
         }
@@ -340,7 +354,9 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                         answer.await().also { pending = null }
                     }
                     // From a group's card: the group's own resume point (or the start), never the solo one.
-                    val groupStart = if (fromStart || startMs != null) null else container.groupStartMs(from, item)
+                    // Said for every play: a playlist's card starts a sitting of it even from the start.
+                    val placed = container.playStartMs(from, item)
+                    val groupStart = if (fromStart || startMs != null) null else placed
                     @Suppress("NAME_SHADOWING") val fromStart = fromStart || groupStart == 0L
                     @Suppress("NAME_SHADOWING") val startMs = startMs ?: groupStart?.takeIf { it > 0 }
                     when (action) {
@@ -441,7 +457,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     if (themeOn) actions.container.themeMusic.show(route.itemId) else actions.container.themeMusic.stop()
                     onDispose { actions.container.themeMusic.hide(route.itemId) }
                 }
-                DetailsScreen(actions.fromGroup(route.group), route.itemId, route.seasonId, route.artKey)
+                DetailsScreen(actions.fromGroup(route.group).fromPlaylist(route.playlist), route.itemId, route.seasonId, route.artKey)
             }
             screen<PlaylistRoute> { entry -> entry.toRoute<PlaylistRoute>().let { r -> PlaylistScreen(actions.fromGroup(r.group), r.playlistId) } }
             screen<ManageItemRoute> { entry -> entry.toRoute<ManageItemRoute>().let { ManageItemScreen(actions, it.itemId, it.images, if (it.run) actions.container.imageFixRun else emptyList()) } }

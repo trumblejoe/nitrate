@@ -73,7 +73,9 @@ class PlaybackGate(
                 checking = false
             }
             // From a group's card: the group's own resume point (or the start), never the solo one.
-            val fromGroup = if (fromStart || startMs != null) null else groupStart(from, item)
+            // Said for every play (a playlist's card starts a sitting even from the start); used when no place was given.
+            val placed = groupStart(from, item)
+            val fromGroup = if (fromStart || startMs != null) null else placed
             @Suppress("NAME_SHADOWING") val fromStart = fromStart || fromGroup == 0L
             @Suppress("NAME_SHADOWING") val startMs = startMs ?: fromGroup?.takeIf { it > 0 }
             when (action) {

@@ -126,6 +126,8 @@ actual fun PlayerScreen(
     var upNext by remember { mutableStateOf<MediaItem?>(null) }
     // Watching through a playlist: what follows is the playlist's next, and it rolls on whatever it is.
     var inPlaylist by remember { mutableStateOf(false) }
+    // The playlist whose order Up Next follows (its name), for the card's heading.
+    var upNextFrom by remember { mutableStateOf<String?>(null) }
     var upNextHidden by remember { mutableStateOf(false) }
     // "Still watching?": asked instead of rolling on when nothing's been pressed for a while.
     val still = actions.container.stillWatching
@@ -296,11 +298,14 @@ actual fun PlayerScreen(
     LaunchedEffect(item?.id) {
         val current = item ?: return@LaunchedEffect
         inPlaylist = false
+        upNextFrom = null
+        // A sitting of a playlist (started from it; queues too, so its own record counts it): its order decides. Asked first.
+        val ctx = if (!local && clipEndMs == null) runCatching { actions.container.playlists.contextOf(current) }.getOrNull() else null
         if (onPlayNext == null) return@LaunchedEffect
-        // Part of a playlist being watched through (started from it, or carried on to): its order decides.
-        if (!local && clipEndMs == null) runCatching { actions.container.playlists.contextOf(current) }.getOrNull()?.let { ctx ->
+        if (ctx != null) {
             inPlaylist = true
             upNext = ctx.next
+            upNextFrom = ctx.name
             return@LaunchedEffect
         }
         if (current.kind == dev.nitrate.core.model.ItemKind.MOVIE) {
@@ -467,7 +472,7 @@ actual fun PlayerScreen(
         LaunchedEffect(progress.positionMs / 1000) { item?.let { i -> actions.container.skipWatch.position(i.id, progress.positionMs, dev.nitrate.android.nowMs()) } }
         if (showUpNext && next != null) {
             val remaining = ((progress.durationMs - progress.positionMs) / 1000).toInt()
-            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true }, onCountdownEnd = { rollOn(next) })
+            UpNextCard(next, actions.server, seconds = remaining.coerceIn(5, 15).takeIf { !film }, onPlay = { onPlayNext?.invoke(next) }, onHide = { upNextHidden = true }, onCountdownEnd = { rollOn(next) }, playlist = upNextFrom)
         }
         // Scenes in the credits: skipped to when the credits start (not in a watch-together group,
         // where a seek moves everyone), else offered; a heads-up when only the tags know of one.

@@ -2584,14 +2584,27 @@ class JellyfinClient(
         runCatching { post<PlaybackStartDto>("Sessions", "Playing", "Progress", body = startInfo(plan, positionMs, isPaused)) }
     }
 
+    override fun keepOwnState(itemId: String, before: dev.nitrate.core.model.UserState) {
+        ownKept.update { it + (itemId to before) }
+    }
+
+    override val playStops: kotlinx.coroutines.flow.Flow<dev.nitrate.core.model.PlayStop> get() = stopped
+
+    private val stopped = kotlinx.coroutines.flow.MutableSharedFlow<dev.nitrate.core.model.PlayStop>(extraBufferCapacity = 16)
+
+    /** Titles playing as a playlist sitting, with the user's own state from before (put back when they stop). */
+    private val ownKept = kotlinx.coroutines.flow.MutableStateFlow<Map<String, dev.nitrate.core.model.UserState>>(emptyMap())
+
     override fun reportStopped(plan: PlaybackPlan, positionMs: Long) {
         val id = plan.itemId
         val group = groupPlays.value[id]
+        // A playlist sitting (never a group's): the user's own state is put back here, after the stop.
+        val kept = ownKept.value[id]?.takeIf { group == null }
         val job = appScope.launch {
             // A group play's own state is put back by the Companion just after the server has
             // marked it: listen for that before saying the stop is done.
             // Meanwhile the server's pushes for it (watched, then put back) aren't passed on.
-            if (group != null) restoring.update { it + id }
+            if (group != null || kept != null) restoring.update { it + id }
             try {
                 val restored = group?.let { before ->
                     async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
@@ -2606,8 +2619,18 @@ class JellyfinClient(
                 if (!sent) { restored?.cancel(); return@launch }
                 groupPlays.update { it - id }
                 restored?.await()
+                if (kept != null) {
+                    ownKept.update { it - id }
+                    runCatching {
+                        post<UpdateUserDataDto>(
+                            "UserItems", id, "UserData",
+                            body = UpdateUserDataDto(kept.positionMs.msToTicks(), kept.played, kept.lastPlayedMs?.let { Instant.fromEpochMilliseconds(it).toString() }),
+                        )
+                    }
+                }
+                stopped.tryEmit(dev.nitrate.core.model.PlayStop(id, positionMs, forGroup = group != null))
             } finally {
-                if (group != null) restoring.update { it - id }
+                if (group != null || kept != null) restoring.update { it - id }
             }
             watchStateFromServer(listOf(id))
         }
