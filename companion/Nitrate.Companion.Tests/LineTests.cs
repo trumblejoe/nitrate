@@ -180,6 +180,23 @@ public class CachedSubtitleTests
     }
 
     [Fact]
+    public void FilesThatAreGoneAreNotAskedAbout()
+    {
+        var embedded = new MediaBrowser.Model.Entities.MediaStream { Index = 2, Type = MediaBrowser.Model.Entities.MediaStreamType.Subtitle };
+        var beside = new MediaBrowser.Model.Entities.MediaStream { Index = 5, Type = MediaBrowser.Model.Entities.MediaStreamType.Subtitle, IsExternal = true, Path = "/m/Film.ar.srt" };
+        var streams = new[] { embedded, beside };
+        var there = new HashSet<string> { "/m/Film.mkv" };
+
+        // The media file is gone: nothing is read (and the server isn't asked to extract anything).
+        Assert.Null(Nitrate.Companion.Lines.LineIndexJob.Readable("/m/Gone.mkv", streams, there.Contains));
+        Assert.Null(Nitrate.Companion.Lines.LineIndexJob.Readable(null, streams, there.Contains));
+        // The media file is there but the subtitle file beside it isn't: only the embedded track.
+        Assert.Equal(new[] { 2 }, Nitrate.Companion.Lines.LineIndexJob.Readable("/m/Film.mkv", streams, there.Contains)!.Select(s => s.Index));
+        there.Add("/m/Film.ar.srt");
+        Assert.Equal(new[] { 2, 5 }, Nitrate.Companion.Lines.LineIndexJob.Readable("/m/Film.mkv", streams, there.Contains)!.Select(s => s.Index));
+    }
+
+    [Fact]
     public void OnlyAFreshCachedCopyIsUsed()
     {
         var dir = Path.Combine(Path.GetTempPath(), "nitrate-subs-" + Guid.NewGuid().ToString("N"));

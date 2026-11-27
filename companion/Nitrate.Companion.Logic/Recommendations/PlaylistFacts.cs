@@ -46,11 +46,18 @@ public record PlaylistFactsOut(Guid Id, IReadOnlyList<EntryFacts> Entries);
 /// applied here. Kept cheap: which playlists hold what is kept in memory (read again only for a
 /// playlist that changes), what each person played lately is read once and then followed from the
 /// server's watch events, and an answer is kept while nothing it depends on has changed. One
-/// working-out per person at a time; anyone asking meanwhile shares it.
+/// working-out per person at a time; anyone asking meanwhile shares it. Big playlists (watch-order
+/// guides hold hundreds of entries, a title often in several) cost nothing after the first time:
+/// each playlist's shape (its entries, and a show's or season's episodes) is kept per person until
+/// the playlist or something in it changes, and each person's watch state per title is kept and
+/// followed from the watch events, so an answer after a play is put together in memory.
 /// </summary>
 public class PlaylistFacts : IHostedService
 {
     private const int RecentKept = 200;
+
+    /// <summary>How long a playlist's shape is kept with nothing changing (a person's access can change unseen).</summary>
+    private static readonly TimeSpan ShapeKept = TimeSpan.FromHours(6);
 
     private readonly ILibraryManager _library;
     private readonly IUserDataManager _userData;
@@ -62,6 +69,8 @@ public class PlaylistFacts : IHostedService
     private readonly ConcurrentDictionary<Guid, List<Played>> _recent = new();
     private readonly ConcurrentDictionary<(Guid User, long Since), (ChangesOut At, IReadOnlyList<PlaylistFactsOut> Facts)> _answers = new();
     private readonly ConcurrentDictionary<(Guid User, long Since), Lazy<Task<IReadOnlyList<PlaylistFactsOut>>>> _working = new();
+    private readonly ConcurrentDictionary<(Guid User, Guid Playlist), PlaylistShape> _shapes = new();
+    private readonly ConcurrentDictionary<Guid, WatchStates> _states = new();
     private bool _built;
 
     /// <summary>Initializes a new instance of the <see cref="PlaylistFacts"/> class.</summary>
@@ -236,41 +245,68 @@ public class PlaylistFacts : IHostedService
             .Select(p => _library.GetItemById(p.Key) as Playlist)
             .Where(p => p is not null && p.IsVisible(user))
             .Take(20)
-            .Select(p => new PlaylistFactsOut(p!.Id, p.GetChildren(user, true, new InternalItemsQuery(user)).Select(e => Entry(e, user)).ToList()))
+            .Select(p => Assemble(Shape(p!, user), States(user, user.Id)))
             .ToList();
     }
 
-    private EntryFacts Entry(BaseItem item, User user)
+    /// <summary>[shape] with the watch state of each entry and episode from [states].</summary>
+    public static PlaylistFactsOut Assemble(PlaylistShape shape, Func<Guid, WatchState> states) =>
+        new(shape.Id, shape.Entries.Select(e =>
+        {
+            var w = states(e.Id);
+            var episodes = e.Episodes?.Select(ep =>
+            {
+                var s = states(ep.Id);
+                return new EpisodeFacts(ep.Id, ep.SeasonId, ep.Season, ep.Number, ep.Missing, s.Played, s.LastPlayedMs, s.PositionMs);
+            }).ToList();
+            return new EntryFacts(e.Id, e.Kind, e.SeriesId, e.SeasonId, e.Season, w.Played, w.LastPlayedMs, w.PositionMs, episodes);
+        }).ToList());
+
+    /// <summary>[playlist]'s shape for [user]: kept, read again when it or something in it changed (or after a while).</summary>
+    private PlaylistShape Shape(Playlist playlist, User user)
     {
-        var (played, at, position) = State(item, user);
-        IReadOnlyList<EpisodeFacts>? episodes = item is Series or Season
+        var key = (user.Id, playlist.Id);
+        if (_shapes.TryGetValue(key, out var kept) && DateTime.UtcNow - kept.Read < ShapeKept)
+        {
+            return kept;
+        }
+
+        var shape = new PlaylistShape(playlist.Id, playlist.GetChildren(user, true, new InternalItemsQuery(user)).Select(e => EntryShape(e, user)).ToList(), DateTime.UtcNow);
+        _shapes[key] = shape;
+        return shape;
+    }
+
+    private EntryShape EntryShape(BaseItem item, User user)
+    {
+        IReadOnlyList<EpisodeShape>? episodes = item is Series or Season
             ? _library.GetItemList(new InternalItemsQuery(user)
             {
                 AncestorIds = new[] { item.Id },
                 IncludeItemTypes = new[] { BaseItemKind.Episode },
                 Recursive = true,
                 OrderBy = new[] { (ItemSortBy.ParentIndexNumber, SortOrder.Ascending), (ItemSortBy.IndexNumber, SortOrder.Ascending) },
-            }).OfType<Episode>().Select(e =>
-            {
-                var (p, a, pos) = State(e, user);
-                return new EpisodeFacts(e.Id, e.SeasonId, e.ParentIndexNumber, e.IndexNumber, e.IsVirtualItem, p, a, pos);
-            }).ToList()
+            }).OfType<Episode>().Select(e => new EpisodeShape(e.Id, e.SeasonId, e.ParentIndexNumber, e.IndexNumber, e.IsVirtualItem)).ToList()
             : null;
         return item switch
         {
-            Episode e => new EntryFacts(e.Id, "Episode", e.SeriesId, e.SeasonId, e.ParentIndexNumber, played, at, position, null),
-            Season s => new EntryFacts(s.Id, "Season", s.SeriesId, null, s.IndexNumber, played, at, position, episodes),
-            _ => new EntryFacts(item.Id, item.GetBaseItemKind().ToString(), null, null, null, played, at, position, episodes),
+            Episode e => new EntryShape(e.Id, "Episode", e.SeriesId, e.SeasonId, e.ParentIndexNumber, null),
+            Season s => new EntryShape(s.Id, "Season", s.SeriesId, null, s.IndexNumber, episodes),
+            _ => new EntryShape(item.Id, item.GetBaseItemKind().ToString(), null, null, null, episodes),
         };
     }
 
-    private (bool Played, long? At, long Position) State(BaseItem item, User user)
+    /// <summary>[user]'s watch state per title: read once each, then followed from the watch events.</summary>
+    private Func<Guid, WatchState> States(User user, Guid userId)
     {
-        var data = _userData.GetUserData(user, item);
-        return (
-            data?.Played == true,
-            data?.LastPlayedDate is { } d ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Utc)).ToUnixTimeMilliseconds() : null,
-            (data?.PlaybackPositionTicks ?? 0) / TimeSpan.TicksPerMillisecond);
+        var states = _states.GetOrAdd(userId, _ => new WatchStates());
+        return id => states.Get(id, () => State(id, user));
+    }
+
+    private WatchState State(Guid id, User user)
+    {
+        var item = _library.GetItemById(id);
+        var data = item is null ? null : _userData.GetUserData(user, item);
+        return WatchState.Of(data?.Played == true, data?.LastPlayedDate, data?.PlaybackPositionTicks ?? 0);
     }
 
     /// <summary>What [user] played lately, most recent first: read once, then followed from the watch events.</summary>
@@ -298,11 +334,43 @@ public class PlaylistFacts : IHostedService
             {
                 _dirty.Add(e.Item.Id);
             }
+
+            Forget(new[] { e.Item.Id });
+            return;
+        }
+
+        // An episode added, replaced or renumbered changes the shape of every playlist holding it,
+        // its season or its show; anything else in a playlist changes that playlist's shape.
+        var ids = new[] { (Guid?)e.Item.Id, (e.Item as Episode)?.SeriesId, (e.Item as Episode)?.SeasonId, (e.Item as Season)?.SeriesId }.OfType<Guid>();
+        List<Guid> playlists;
+        lock (_lock)
+        {
+            playlists = ids.SelectMany(id => _holders.TryGetValue(id, out var p) ? p : Enumerable.Empty<Guid>()).Distinct().ToList();
+        }
+
+        Forget(playlists);
+    }
+
+    private void Forget(IReadOnlyCollection<Guid> playlists)
+    {
+        if (playlists.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var key in _shapes.Keys.Where(k => playlists.Contains(k.Playlist)).ToList())
+        {
+            _shapes.TryRemove(key, out _);
         }
     }
 
     private void OnUserData(object? sender, UserDataSaveEventArgs e)
     {
+        if (e.Item is not null && e.UserData is { } saved && _states.TryGetValue(e.UserId, out var states))
+        {
+            states.Put(e.Item.Id, WatchState.Of(saved.Played, saved.LastPlayedDate, saved.PlaybackPositionTicks));
+        }
+
         if (!_recent.TryGetValue(e.UserId, out var list) || e.UserData?.LastPlayedDate is not { } at || e.Item is null)
         {
             return;
@@ -321,3 +389,71 @@ public class PlaylistFacts : IHostedService
 
     private sealed record Played(Guid Id, Guid? SeriesId, Guid? SeasonId, DateTime At);
 }
+
+/// <summary>A person's watch state for one title.</summary>
+/// <param name="Played">Watched.</param>
+/// <param name="LastPlayedMs">When last played, epoch ms.</param>
+/// <param name="PositionMs">Where it was left, ms.</param>
+public record WatchState(bool Played, long? LastPlayedMs, long PositionMs)
+{
+    /// <summary>From the server's own user data.</summary>
+    public static WatchState Of(bool played, DateTime? lastPlayed, long positionTicks) => new(
+        played,
+        lastPlayed is { } d ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Utc)).ToUnixTimeMilliseconds() : null,
+        positionTicks / TimeSpan.TicksPerMillisecond);
+}
+
+/// <summary>
+/// One person's watch state per title: each read once, then replaced by what the watch events say.
+/// A read racing a save never wins over it (an event's state is always put; a read only fills a gap).
+/// </summary>
+public class WatchStates
+{
+    /// <summary>Titles kept before all are let go (read again as needed).</summary>
+    public const int MaxKept = 50_000;
+
+    private readonly ConcurrentDictionary<Guid, WatchState> _states = new();
+
+    /// <summary>[id]'s state, read with [read] the first time.</summary>
+    public WatchState Get(Guid id, Func<WatchState> read)
+    {
+        if (_states.TryGetValue(id, out var kept))
+        {
+            return kept;
+        }
+
+        if (_states.Count >= MaxKept)
+        {
+            _states.Clear();
+        }
+
+        return _states.GetOrAdd(id, _ => read());
+    }
+
+    /// <summary>[id]'s state as just saved.</summary>
+    public void Put(Guid id, WatchState state) => _states[id] = state;
+}
+
+/// <summary>A playlist's entries without anyone's watch state, as one person sees them.</summary>
+/// <param name="Id">The playlist.</param>
+/// <param name="Entries">Its entries in its own order.</param>
+/// <param name="Read">When it was read.</param>
+public record PlaylistShape(Guid Id, IReadOnlyList<EntryShape> Entries, DateTime Read);
+
+/// <summary>One entry of a <see cref="PlaylistShape"/> (see <see cref="EntryFacts"/>).</summary>
+/// <param name="Id">The title, show or season.</param>
+/// <param name="Kind">Jellyfin's item kind.</param>
+/// <param name="SeriesId">An episode's or season's show.</param>
+/// <param name="SeasonId">An episode's season.</param>
+/// <param name="Season">An episode's or season's number.</param>
+/// <param name="Episodes">A show's or season's episodes in the show's order.</param>
+public record EntryShape(Guid Id, string Kind, Guid? SeriesId, Guid? SeasonId, int? Season, IReadOnlyList<EpisodeShape>? Episodes);
+
+/// <summary>One episode of a show or season entry (see <see cref="EpisodeFacts"/>).</summary>
+/// <param name="Id">The episode.</param>
+/// <param name="SeasonId">Its season.</param>
+/// <param name="Season">Its season number.</param>
+/// <param name="Number">Its episode number.</param>
+/// <param name="Missing">Known but not in the library.</param>
+public record EpisodeShape(Guid Id, Guid? SeasonId, int? Season, int? Number, bool Missing);
+

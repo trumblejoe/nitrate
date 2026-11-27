@@ -115,7 +115,13 @@ public class LineIndexJob : IScheduledTask
     /// <summary>Reads one title's subtitles, unless they're unchanged since last time.</summary>
     public async Task IndexAsync(BaseItem item, CancellationToken cancellationToken)
     {
-        var streams = Pick(_sources.GetMediaStreams(item.Id));
+        // A file the library still lists but that's gone from disk (renamed or replaced, not yet
+        // rescanned) isn't asked about: the server's extraction would only fail on it.
+        if (Readable(item.Path, Pick(_sources.GetMediaStreams(item.Id)), File.Exists) is not { } streams)
+        {
+            return;
+        }
+
         var version = string.Join(
             ';',
             new[] { item.DateModified.Ticks.ToString(CultureInfo.InvariantCulture) }.Concat(streams.Select(s => $"{s.Index}:{s.Language}:{s.Path}")));
@@ -220,6 +226,20 @@ public class LineIndexJob : IScheduledTask
     /// </summary>
     public static string? CachedCopy(Func<int, IEnumerable<string>> candidates, int index, DateTime modified) =>
         candidates(index).FirstOrDefault(p => File.Exists(p) && new FileInfo(p).Length > 0 && File.GetLastWriteTimeUtc(p) >= (modified.Kind == DateTimeKind.Local ? modified.ToUniversalTime() : modified));
+
+    /// <summary>
+    /// Of [streams], the ones there's something to read for: none (null) when the media file at
+    /// [mediaPath] is gone, and a subtitle file beside it only while that file is there.
+    /// </summary>
+    public static IReadOnlyList<MediaStream>? Readable(string? mediaPath, IReadOnlyList<MediaStream> streams, Func<string, bool> exists)
+    {
+        if (string.IsNullOrEmpty(mediaPath) || !exists(mediaPath))
+        {
+            return null;
+        }
+
+        return streams.Where(s => !s.IsExternal || (!string.IsNullOrEmpty(s.Path) && exists(s.Path))).ToList();
+    }
 
     /// <summary>
     /// Which subtitles to read: text ones (not forced, which hold only a few lines), one per

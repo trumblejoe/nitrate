@@ -192,8 +192,23 @@ public class HomeController : ControllerBase
     /// </summary>
     [HttpGet("Playlists/Watching")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<PlaylistFactsOut>>> PlaylistsWatching([FromQuery] long since, [FromQuery] int limit = 20, CancellationToken cancellationToken = default) =>
-        Me() is { } user ? Ok(await _playlistFacts.ForAsync(user, since, Math.Clamp(limit, 1, 20), cancellationToken).ConfigureAwait(false)) : Unauthorized();
+    public async Task<ActionResult<IReadOnlyList<PlaylistFactsOut>>> PlaylistsWatching([FromQuery] long since, [FromQuery] int limit = 20, CancellationToken cancellationToken = default)
+    {
+        if (Me() is not { } user)
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            return Ok(await _playlistFacts.ForAsync(user, since, Math.Clamp(limit, 1, 20), cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The app stopped waiting (the working-out goes on and is kept for its next ask): no error to log.
+            return StatusCode(499);
+        }
+    }
 
     /// <summary>"&lt;id&gt;:Movie,&lt;id&gt;:Series" into libraries and kinds (anything else left out).</summary>
     public static IReadOnlyList<(Guid Library, BaseItemKind Kind)> ParseLatest(string? latest) =>
