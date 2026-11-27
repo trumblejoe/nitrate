@@ -562,7 +562,10 @@ class TvScreenshotTest {
         check(focusedHasText("Arclight")) { "Left from the first title stays on it; focused: ${focusedNodes()}" }
     }
 
-    /** The All tab: Back deep in the grid goes to the first title, and ▲ from the options bar to the chosen tab. */
+    /**
+     * The All tab: Back deep in the grid goes to the jump bar (down the right) at the stop for where
+     * you are, so the A–Z is one press away; Back again leaves (the library controls).
+     */
     @Test fun allTabMovesAroundEasily() = libraryShot("tv-library-all-moving", rowsLibrary) {
         compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
         repeat(4) { if (!focusedHasText("All")) press("right") }
@@ -574,10 +577,11 @@ class TvScreenshotTest {
         check(!focusedHasText("Arclight")) { "should be deep in the grid" }
         press("back")
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
-        check(focusedHasText("Arclight")) { "Back deep in the grid should go to the first title; focused: ${focusedNodes()} ${compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().map { it.boundsInRoot }}" }
-        press("up", "up")
-        compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
-        check(focusedHasText("All")) { "▲ from the options bar should go to the chosen tab" }
+        val focused = compose.onAllNodes(androidx.compose.ui.test.isFocused()).fetchSemanticsNodes().single()
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        check(focused.boundsInRoot.left > root.width * 0.9f) { "Back deep in the grid should go to the jump bar on the right; focused: ${focusedNodes()} ${focused.boundsInRoot}" }
+        val spoken = if (androidx.compose.ui.semantics.SemanticsProperties.ContentDescription in focused.config) focused.config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].joinToString() else ""
+        check(spoken.length == 1 && spoken[0].isLetter()) { "…on a letter (where you are in the A–Z): '$spoken'" }
     }
 
     /**
