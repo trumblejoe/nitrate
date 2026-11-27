@@ -31,6 +31,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
@@ -501,6 +504,38 @@ fun PlayerScreen(
     }
     val showUpNext = nextUp != null && onPlayNext != null && !upNextHidden && !sleepAtEndState.value && panel == Panel.NONE &&
         upNextAt != null && position >= upNextAt
+    val showSkip = skipSegment != null && (skipSegment != skipFaded || controlsVisible) && !showUpNext && creditAction == null &&
+        panel == Panel.NONE && person == null && stillAsk == null
+    // The controls as drawn (More, Info and Chat take their place).
+    val controlsShown = controlsVisible && panel != Panel.MORE && panel != Panel.INFO && panel != Panel.CHAT
+
+    // Where things go over the video. Everything OK acts on (Up Next, Skip intro/recap/credits, a
+    // scene in the credits; one at a time) is in the action corner, bottom right: 48 dp up with the
+    // controls hidden, docked at the right end of their buttons' row when they're up and there's
+    // room (else just above them), gliding between. Subtitles lift above it, and above the controls.
+    val actionShowing = showUpNext || showSkip || creditAction != null
+    var actionSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    var buttonsRow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var playerBox by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val actionBottom = with(density) {
+        val row = buttonsRow
+        val box = playerBox
+        when {
+            !controlsShown -> 48.dp
+            row == null || box == null || actionSize.width == 0 -> CONTROLS_HEIGHT
+            // Docked: centred on the buttons, with a gap after the last one.
+            box.right - 48.dp.toPx() - actionSize.width >= row.right + 24.dp.toPx() -> (box.bottom - row.center.y - actionSize.height / 2f).coerceAtLeast(0f).toDp()
+            else -> CONTROLS_HEIGHT
+        }
+    }
+    val subtitleLift = with(density) {
+        when {
+            controlsShown -> CONTROLS_HEIGHT + 8.dp
+            actionShowing && actionSize.height > 0 -> 48.dp + actionSize.height.toDp() + 12.dp
+            else -> 0.dp
+        }
+    }
 
     // Back closes the topmost thing. Handled as a key (below) as well as here: unhandled, Compose's own
     // Back first moves focus out of the group it's in (More's tabs or row, Info), so it took two presses.
@@ -592,6 +627,7 @@ fun PlayerScreen(
                 }
             }
             .onFocusChanged { rootFocused = it.isFocused; playerHasFocus = it.hasFocus }
+            .onGloballyPositioned { playerBox = it.boundsInRoot() }
             .focusRequester(rootFocus)
             .focusable(),
     ) {
@@ -605,6 +641,10 @@ fun PlayerScreen(
             },
             update = {
                 it.applySubtitleStyle(settingsNow.subtitleStyle, plan?.styledSubtitle == true)
+                // Above the action pop-up or the controls, never under them (and never lower than the user's own margin).
+                if (subtitleLift > 0.dp && it.height > 0) {
+                    it.subtitleView?.setBottomPaddingFraction(maxOf(settingsNow.subtitleStyle.bottomMargin, with(density) { subtitleLift.toPx() } / it.height))
+                }
                 // Styled subtitles drawn by libass in their own layer over the picture.
                 it.assSubtitles().apply {
                     this.player = it.player
@@ -627,7 +667,7 @@ fun PlayerScreen(
         // The More panel takes the controls' place while it's open.
         // More and Info take the controls' place while they're open.
         androidx.compose.animation.AnimatedVisibility(
-            visible = controlsVisible && panel != Panel.MORE && panel != Panel.INFO && panel != Panel.CHAT, enter = fadeIn(), exit = fadeOut(),
+            visible = controlsShown, enter = fadeIn(), exit = fadeOut(),
             modifier = Modifier.align(Alignment.BottomStart).onFocusChanged { controlsHaveFocus = it.hasFocus },
         ) {
             // Info and Chat open beside the video: their buttons close them again.
@@ -677,6 +717,7 @@ fun PlayerScreen(
                 // Down opens More (not in easy mode, which has no More).
                 onDown = { if (!easy && ready) panel = Panel.MORE },
                 note = withChip?.plain?.takeIf { easy },
+                onButtonsPlaced = { buttonsRow = it },
             )
         }
 
@@ -714,13 +755,15 @@ fun PlayerScreen(
 
         if (showUpNext && nextUp != null) {
             val remaining = ((duration - position) / 1000).toInt()
-            UpNextCard(
-                nextUp, repository, seconds = remaining.coerceIn(5, 15).takeIf { !film },
-                onPlay = { onPlayNext?.invoke(nextUp) },
-                onCountdownEnd = { rollOn(nextUp) },
-                onHide = { upNextHidden = true; refocus() },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
-            )
+            ActionCorner(actionBottom, onSize = { actionSize = it }) {
+                UpNextCard(
+                    nextUp, repository, seconds = remaining.coerceIn(5, 15).takeIf { !film },
+                    onPlay = { onPlayNext?.invoke(nextUp) },
+                    onCountdownEnd = { rollOn(nextUp) },
+                    onHide = { upNextHidden = true; refocus() },
+                    compact = controlsShown,
+                )
+            }
             // The same question on the phone's remote.
             val ask = remember(nextUp.id) {
                 dev.nitrate.core.remote.RemotePrompt(
@@ -732,8 +775,6 @@ fun PlayerScreen(
             AskPhones(remote, ask) { choice -> if (choice == "play") onPlayNext?.invoke(nextUp) else { upNextHidden = true; refocus() } }
         }
 
-        // More than one group would count this: which one, plainly, as it starts (the With… button changes it).
-        CountingBanner(withChip, Modifier.align(Alignment.TopCenter).padding(top = 32.dp))
 
         // The Group Watch Session: the countdown in the middle, the others' news top right; neither ever takes focus.
         SessionCountdown(
@@ -742,9 +783,11 @@ fun PlayerScreen(
             starter = groupSession?.startedByMe == true,
             modifier = Modifier.align(Alignment.Center),
         )
-        SessionNoticeBanner(sessionNotice, controlsUp = controlsVisible, modifier = Modifier.align(Alignment.TopEnd).padding(top = 32.dp, end = 48.dp))
-
-        SecondSubtitleLine(session, settingsNow.subtitleStyle.scale, Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp))
+        // The second subtitles keep the top centre to themselves (measured, so the notices sit below them).
+        var secondLineHeight by remember { mutableIntStateOf(0) }
+        Box(Modifier.align(Alignment.TopCenter).padding(top = 36.dp, start = 96.dp, end = 96.dp).onSizeChanged { secondLineHeight = it.height }) {
+            SecondSubtitleLine(session, settingsNow.subtitleStyle.scale)
+        }
 
         // A stereo film or episode is playing on a new output with more than two speakers: a quiet
         // note once a day per output, never a dialog over the video or a change of focus.
@@ -759,7 +802,21 @@ fun PlayerScreen(
                 playbackSettings.update { it.copy(speakerAskLater = dev.nitrate.core.playback.Speakers.askLater(it.speakerAskLater, o, System.currentTimeMillis())) }
             }
         }
-        speakerBanner?.let { o -> SpeakersBanner(o) { speakerBanner = null } }
+        // Notices that never take focus, in one stack at the top right (below the second subtitles when
+        // they're showing): the Group Watch Session's news, which group this counts for, a new sound output.
+        val stackTop by androidx.compose.animation.core.animateDpAsState(
+            if (secondLineHeight > 0) 36.dp + with(density) { secondLineHeight.toDp() } + 16.dp else 32.dp, label = "notices",
+        )
+        androidx.compose.foundation.layout.Column(
+            Modifier.align(Alignment.TopEnd).padding(top = stackTop, end = 48.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SessionNoticeBanner(sessionNotice, controlsUp = controlsVisible)
+            // More than one group would count this: which one, plainly, as it starts (the With… button changes it).
+            CountingBanner(withChip)
+            speakerBanner?.let { o -> SpeakersBanner(o, { speakerBanner = null }) }
+        }
 
         stillAsk?.let { next ->
             val rewind = remember(next) { stillWatching?.rewind() }
@@ -792,11 +849,9 @@ fun PlayerScreen(
             )
         }
 
-        val showSkip = skipSegment != null && (skipSegment != skipFaded || controlsVisible) && !showUpNext && creditAction == null &&
-            panel == Panel.NONE && person == null && stillAsk == null
         if (showSkip && skipSegment != null) {
             val seg = skipSegment
-            SkipSegmentButton(
+            ActionCorner(actionBottom, onSize = { actionSize = it }) { SkipSegmentButton(
                 seg,
                 // Only when nothing else is in use: never from the controls someone is moving through.
                 takeFocus = rootFocused,
@@ -808,8 +863,7 @@ fun PlayerScreen(
                     refocus()
                 },
                 onFocus = { skipFocused = it },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
-            )
+            ) }
         }
         // Gone while it had focus (faded or its part ended): focus goes back where it belongs.
         LaunchedEffect(showSkip) { if (!showSkip && skipFocused) { skipFocused = false; refocus() } }
@@ -838,7 +892,7 @@ fun PlayerScreen(
                 creditAction = null
                 refocus()
             }
-            CreditSceneBanner(
+            ActionCorner(actionBottom, onSize = { actionSize = it }) { CreditSceneBanner(
                 a,
                 // Never takes focus from More, Info or a dialog; Back closes those first anyway.
                 takeFocus = panel == Panel.NONE && person == null,
@@ -853,8 +907,7 @@ fun PlayerScreen(
                     creditAction = null
                     refocus()
                 },
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = if (controlsVisible) CONTROLS_HEIGHT else 48.dp),
-            )
+            ) }
         }
 
         if (panel == Panel.MORE && p != null) {
@@ -948,3 +1001,18 @@ fun PlayerScreen(
     }
 }
 
+/**
+ * The action corner, bottom right: where whatever OK acts on over the video shows (Up Next, Skip
+ * intro/recap/credits, a scene in the credits), sliding in from the right; [bottom] glides as the
+ * controls come and go. [onSize]: how big it is, so subtitles lift above it and it docks in the controls.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.ActionCorner(bottom: androidx.compose.ui.unit.Dp, onSize: (androidx.compose.ui.unit.IntSize) -> Unit, content: @Composable () -> Unit) {
+    val y by androidx.compose.animation.core.animateDpAsState(bottom, label = "action-corner")
+    val shown = remember { androidx.compose.animation.core.MutableTransitionState(false) }.apply { targetState = true }
+    androidx.compose.animation.AnimatedVisibility(
+        visibleState = shown,
+        enter = androidx.compose.animation.slideInHorizontally { it / 2 } + fadeIn(),
+        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = y).onSizeChanged(onSize),
+    ) { content() }
+}

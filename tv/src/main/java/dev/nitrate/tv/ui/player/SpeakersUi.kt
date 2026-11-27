@@ -123,7 +123,7 @@ fun SpeakersQuestionDialog(
  * takes focus from the player and fades by itself; it says where to set the speakers up.
  */
 @Composable
-fun androidx.compose.foundation.layout.BoxScope.SpeakersBanner(output: SoundOutput, onDone: () -> Unit) {
+fun SpeakersBanner(output: SoundOutput, onDone: () -> Unit, modifier: Modifier = Modifier) {
     LaunchedEffect(output.key) {
         kotlinx.coroutines.delay(12_000)
         onDone()
@@ -132,7 +132,7 @@ fun androidx.compose.foundation.layout.BoxScope.SpeakersBanner(output: SoundOutp
         "New sound output: ${output.label}. Set up its speakers in More (or Settings → Picture & sound) to hear stereo on all of them.",
         style = MaterialTheme.typography.bodyMedium,
         color = androidx.compose.ui.graphics.Color.White,
-        modifier = Modifier.align(androidx.compose.ui.Alignment.TopStart).padding(32.dp).width(620.dp)
+        modifier = modifier.width(520.dp)
             .background(androidx.compose.ui.graphics.Color(0xE6101216), RoundedCornerShape(14.dp)).padding(horizontal = 18.dp, vertical = 12.dp),
     )
 }
@@ -178,5 +178,5 @@ fun SpeakersSetupPrompt(container: dev.nitrate.android.AppContainer) {
 internal object SpeakersUiPreview {
     @Composable
     fun androidx.compose.foundation.layout.BoxScope.banner() =
-        SpeakersBanner(SoundOutput(dev.nitrate.core.playback.OutputKind.HDMI, "Living room soundbar", 6)) {}
+        SpeakersBanner(SoundOutput(dev.nitrate.core.playback.OutputKind.HDMI, "Living room soundbar", 6), {}, Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 32.dp, end = 48.dp))
 }

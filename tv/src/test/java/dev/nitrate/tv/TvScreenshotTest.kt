@@ -1700,6 +1700,30 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.player.PlayerScreen(withIntro, c.playbackSettings, "s1e2", fromStart = true, onExit = {})
     }
 
+    /**
+     * The action corner: with the controls up, Skip intro docks at the right end of their buttons'
+     * row (level with play/pause, after the last button); with them hidden it sits 48 dp up in the corner.
+     */
+    @Test fun playerActionCornerDocksInTheControls() = shoot("tv-player-action-corner-docked", act = {
+        fun bounds(m: androidx.compose.ui.test.SemanticsMatcher) = compose.onAllNodes(m).fetchSemanticsNodes().first().boundsInRoot
+        val skip = bounds(androidx.compose.ui.test.hasText("Skip intro"))
+        val play = bounds(androidx.compose.ui.test.hasContentDescription("Play") or androidx.compose.ui.test.hasContentDescription("Pause"))
+        val more = bounds(androidx.compose.ui.test.hasText("More"))
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        check(kotlin.math.abs(skip.center.y - play.center.y) < 4f) { "level with play/pause: skip ${skip.center.y}, play ${play.center.y}" }
+        check(skip.left > more.right) { "after the last button" }
+        check(kotlin.math.abs(root.right - skip.right - 48f * compose.density.density) < 4f) { "48 dp from the right edge" }
+        press("menu")
+        compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
+        val hidden = bounds(androidx.compose.ui.test.hasText("Skip intro"))
+        check(kotlin.math.abs(root.bottom - hidden.bottom - 48f * compose.density.density) < 4f) { "48 dp up with the controls hidden: ${root.bottom - hidden.bottom}" }
+    }) { c ->
+        val withIntro = object : dev.nitrate.core.MediaServer by c.server {
+            override suspend fun mediaSegments(itemId: String) = listOf(dev.nitrate.core.model.MediaSegment(dev.nitrate.core.model.SegmentKind.INTRO, 0, 90_000))
+        }
+        dev.nitrate.tv.ui.player.PlayerScreen(withIntro, c.playbackSettings, "s1e2", fromStart = true, onExit = {})
+    }
+
     /** The remote's menu key hides the controls, and shows them again with focus on play/pause. */
     @Test fun playerMenuKey() = shoot("tv-player-menu-key", act = {
         press("right")
@@ -2532,7 +2556,7 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.settings.PlaybackSettingsScreen(c.playbackSettings, c.capabilities, dev.nitrate.tv.ui.settings.PlaybackPage.ADVANCED)
     }
 
-    /** Up Next on TV: the next episode with its countdown, and the next film in a collection without. */
+    /** Up Next on TV: the next episode with its countdown, the next film in a collection without, and the compact form docked in the controls. */
     @Test fun upNext() = shoot("tv-up-next") { c ->
         androidx.compose.foundation.layout.Column(
             Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black).padding(48.dp),
@@ -2543,6 +2567,11 @@ class TvScreenshotTest {
                 c.server, seconds = 12, onPlay = {}, onHide = {},
             )
             dev.nitrate.tv.ui.player.UpNextCard(MediaItem("m3", "Gate Weave", ItemKind.MOVIE, productionYear = 2024), c.server, seconds = null, onPlay = {}, onHide = {})
+            // Docked in the controls' row of buttons while they're up: one line, no picture.
+            dev.nitrate.tv.ui.player.UpNextCard(
+                MediaItem("s2e6", "Episode title 6", ItemKind.EPISODE, seriesId = "series-1", seriesName = "The Night Reel", seasonNumber = 2, indexNumber = 6),
+                c.server, seconds = 9, onPlay = {}, onHide = {}, compact = true,
+            )
         }
     }
 

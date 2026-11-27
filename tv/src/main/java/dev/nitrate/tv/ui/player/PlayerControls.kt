@@ -44,6 +44,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -107,6 +109,8 @@ internal fun PlayerControls(
     onDown: () -> Unit = {},
     /** Said beside the buttons, not pressed (easy mode's "With Will · on your own"). */
     note: String? = null,
+    /** Where the row of buttons is (in the root), so a pop-up can dock at its right end when there's room. */
+    onButtonsPlaced: (androidx.compose.ui.geometry.Rect) -> Unit = {},
 ) {
     Column(
         Modifier
@@ -124,7 +128,7 @@ internal fun PlayerControls(
             // Down from the buttons opens the More panel (episodes, chapters, cast, extras, settings).
             Modifier.onPreviewKeyEvent { e ->
                 if (e.key == Key.DirectionDown && e.type == KeyEventType.KeyDown) { onDown(); true } else false
-            },
+            }.onGloballyPositioned { onButtonsPlaced(it.boundsInRoot()) },
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

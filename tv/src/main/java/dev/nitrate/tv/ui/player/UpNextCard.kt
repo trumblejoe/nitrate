@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,10 +40,12 @@ import kotlinx.coroutines.delay
 /**
  * What plays next, near the end: the next episode (playing by itself after [seconds]) or the
  * next film in a collection ([seconds] null: only when asked, since a film can have scenes in its
- * credits). Takes focus on "Play now" when it appears; "Hide" (or Back) keeps watching.
+ * credits). Takes focus on "Play now" when it appears; "Hide" (or Back) keeps watching. [compact]:
+ * one line with no picture, to sit in the controls' row of buttons while they're up (the same card,
+ * so the countdown and focus carry on as the controls come and go).
  */
 @Composable
-fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier, onCountdownEnd: () -> Unit = onPlay) {
+fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -> Unit, onHide: () -> Unit, modifier: Modifier = Modifier, onCountdownEnd: () -> Unit = onPlay, compact: Boolean = false) {
     var left by remember(next.id) { mutableIntStateOf(seconds ?: 0) }
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(next.id) {
@@ -56,6 +59,23 @@ fun UpNextCard(next: MediaItem, server: MediaServer, seconds: Int?, onPlay: () -
     }
     // Spoiler-safe: an episode not seen yet shows as "S1:E5", blurred.
     val shownNext = dev.nitrate.tv.ui.partners.spoilerSafe(next)
+    val heading = if (seconds == null) "NEXT IN THE COLLECTION" else "UP NEXT · ${left}s"
+    val name = shownNext.episodeLabel ?: (shownNext.name + (shownNext.productionYear?.let { " ($it)" } ?: ""))
+    if (compact) {
+        Row(
+            modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xE6101216)).padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(Modifier.widthIn(max = 190.dp)) {
+                Text(heading, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(name, style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Button(onClick = onPlay, modifier = Modifier.focusRequester(playFocus)) { Text("Play now") }
+            OutlinedButton(onClick = onHide) { Text("Hide") }
+        }
+        return
+    }
     Row(
         modifier.width(560.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xE6101216)).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
