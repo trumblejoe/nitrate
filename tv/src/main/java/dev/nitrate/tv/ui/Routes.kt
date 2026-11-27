@@ -42,6 +42,8 @@ import kotlinx.serialization.Serializable
 @Serializable object QueryAnalyzerRoute
 @Serializable object StatsRoute
 @Serializable object DiaryRoute
+@Serializable object TripsRoute
+@Serializable data class TripRoute(val tripId: String = "")
 @Serializable object ServerSettingsRoute
 @Serializable data class ManageItemRoute(val itemId: String, val images: Boolean = false, val run: Boolean = false)
 @Serializable object ServerAdminRoute

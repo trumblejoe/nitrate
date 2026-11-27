@@ -197,6 +197,13 @@ class DisplaySettingsStore(
     suspend inline fun <reified T> saveView(userId: String, pageKey: String, value: T) =
         saveRaw(userId, VIEW + pageKey, json.encodeToString(value))
 
+    /** Entries whose names start with [start] (shared ones, such as trips), by name. */
+    fun entriesStartingWith(userId: String, start: String): Flow<Map<String, String>> =
+        store.data.map { prefs -> entries(prefs, userId).filterKeys { it.startsWith(start) } }
+
+    /** Saves or (with null) removes a shared entry by its own name. */
+    suspend fun saveEntry(userId: String, name: String, raw: String?) = if (raw == null) removeRaw(userId, name) else saveRaw(userId, name, raw)
+
     @PublishedApi
     internal fun rawFlow(userId: String, name: String): Flow<String?> =
         store.data.map { it[resolve(it, userId, name)] }

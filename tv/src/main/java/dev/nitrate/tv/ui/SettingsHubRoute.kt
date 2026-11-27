@@ -115,6 +115,7 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
                 dev.nitrate.tv.ui.settings.SettingsSection("Your watching", listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Comic catalogs", "Read from an OPDS server (Komga, Kavita, Calibre…) or CLU; add \"Comics\" to the menu in Display → Menu stops") { nav.navigate(CatalogsRoute) },
                     dev.nitrate.tv.ui.settings.SettingsLink("Your year", "What you've watched and listened to: top shows, genres and artists") { nav.navigate(StatsRoute) },
+                    dev.nitrate.tv.ui.settings.SettingsLink("Packing for a trip", "Plan what your phones, tablets and laptop download before you go") { nav.navigate(TripsRoute) },
                 ) + (if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) listOf(
                     dev.nitrate.tv.ui.settings.SettingsLink("Watch diary", "Every film and episode you finish, with your ratings and notes") { nav.navigate(DiaryRoute) },
                 ) else emptyList()) + (if (partnersOn) listOf(
@@ -184,6 +185,7 @@ internal fun TvSettingsHub(container: AppContainer, nav: androidx.navigation.Nav
                     dev.nitrate.core.settings.SettingsPlace.BACKUP -> nav.navigate(DeviceBackupRoute)
                     dev.nitrate.core.settings.SettingsPlace.SETUP -> container.setup.rerun()
                     dev.nitrate.core.settings.SettingsPlace.STATS -> nav.navigate(StatsRoute)
+                    dev.nitrate.core.settings.SettingsPlace.TRIPS -> nav.navigate(TripsRoute)
                     dev.nitrate.core.settings.SettingsPlace.DIARY -> nav.navigate(DiaryRoute)
                     dev.nitrate.core.settings.SettingsPlace.PARTNERS -> nav.navigate(WatchPartnersRoute)
                     dev.nitrate.core.settings.SettingsPlace.CATALOGS -> nav.navigate(CatalogsRoute)

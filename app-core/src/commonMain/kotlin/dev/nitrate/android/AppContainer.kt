@@ -122,6 +122,50 @@ class AppContainer(
         )
     }
 
+    /** Whether this device downloads (phones, tablets, the iPhone and iPad, computers; not the TV). */
+    val canDownload: Boolean get() = deviceKind != dev.nitrate.core.pages.DeviceKind.TV
+
+    /**
+     * Packing for trips: plans synced with the user's settings (planned on any device, the TV
+     * included), and this device's share packed, said and cleared (`docs/features/playback.md`).
+     */
+    val trips by lazy {
+        dev.nitrate.android.trips.Trips(
+            server, displaySettings, settingsSync,
+            downloads = { if (canDownload) downloads else null },
+            me = {
+                if (!canDownload) null
+                else dev.nitrate.core.downloads.Packer(
+                    deviceId = platform.identity.deviceId, name = platform.identity.deviceName,
+                    kind = when {
+                        platform.appKind == "desktop" -> "computer"
+                        deviceKind == dev.nitrate.core.pages.DeviceKind.TABLET -> "tablet"
+                        else -> "phone"
+                    },
+                )
+            },
+            freeBytes = { if (canDownload) runCatching { downloadSpaceFree() }.getOrNull() else null },
+            hevcHere = { capabilities.video.containsKey("hevc") },
+            onMobileData = { runCatching { platform.onMobileData() }.getOrDefault(false) },
+            local = platform.libraryKeyValues,
+            notifier = { newEpisodes },
+            now = ::nowMs,
+        )
+    }
+
+    /** Packs for trips in the background, a little after opening and whenever a plan changes (never before Home). */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    fun packForTrips() {
+        if (!canDownload) return
+        tripsJob?.cancel()
+        tripsJob = networkScope.launch(dev.nitrate.core.diagnostics.QueryOrigin("Packing for a trip")) {
+            kotlinx.coroutines.delay(15_000)
+            runCatching { trips.pack() }
+            trips.trips().drop(1).debounce(3_000).collect { runCatching { trips.pack() } }
+        }
+    }
+    private var tripsJob: kotlinx.coroutines.Job? = null
+
     /** The signed-in user's audio-description preference (a display setting, so it follows them). */
     suspend fun prefersDescribedAudio(): Boolean {
         val user = server.userId ?: return false
@@ -1207,6 +1251,7 @@ class AppContainer(
         refreshGroupStandings()
         writing.account = server.currentAccountKey
         watchNetwork()
+        packForTrips()
     }
 
     private val networkScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate + dev.nitrate.core.diagnostics.QueryOrigin("In the background"))

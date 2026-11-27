@@ -231,7 +231,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
         val state = container.server.restoreSession()
         start = when {
             container.shouldPickProfile(state) -> ProfilesRoute
-            state == SessionState.VALID -> { container.settingsSync.pull(); container.backups.onSignedIn(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; MainRoute }
+            state == SessionState.VALID -> { container.settingsSync.pull(); container.backups.onSignedIn(); container.remote.start(); appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; container.packForTrips(); MainRoute }
             state == SessionState.UNREACHABLE -> OfflineRoute
             else -> ConnectRoute
         }
@@ -400,7 +400,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                 ProfilesScreen(
                     actions,
                     onOpened = {
-                        appScope.launch { container.downloads.syncWatchState(); container.downloads.refreshSmart() }
+                        appScope.launch { container.downloads.syncWatchState(); container.downloads.refreshSmart() }; container.packForTrips()
                         nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                     },
                     onSignInAgain = { a -> nav.navigate(LoginRoute(a.serverUrl, a.serverName)) },
@@ -422,7 +422,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                         container.settingsSync.pull()
                         container.backups.onSignedIn()
                         container.remote.start()
-                        appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }
+                        appScope.launch { container.refreshAccount(); container.downloads.syncWatchState(); container.downloads.refreshSmart() }; container.packForTrips()
                         nav.navigate(MainRoute) { popUpTo(0) { inclusive = true } }
                     },
                     onSignedOut = { signedOut() },
@@ -475,6 +475,8 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
             screen<RemoteRoute> { entry -> RemoteScreen(actions, entry.toRoute<RemoteRoute>().sessionId) }
             screen<NowPlayingRoute> { NowPlayingScreen(actions, onBack = { nav.popBackStack() }) }
             screen<StatsRoute> { StatsScreen(actions) }
+            screen<TripsRoute> { TripsScreen(actions) }
+            screen<TripRoute> { entry -> TripScreen(actions, entry.toRoute<TripRoute>().tripId) }
             screen<DiaryRoute> { DiaryScreen(actions) }
             screen<CustomPageRoute> { entry ->
                 val route = entry.toRoute<CustomPageRoute>()

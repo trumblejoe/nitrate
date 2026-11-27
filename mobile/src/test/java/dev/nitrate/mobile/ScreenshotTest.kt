@@ -691,6 +691,33 @@ class ScreenshotTest {
         }
     }
 
+    /** A trip's plan: dates, the devices carrying it with what each comes to, and what to pack. */
+    @Test
+    fun tripPlan() = shoot("phone-trip-plan", setup = { c -> c.trips.register(); c.trips.save(sampleTrip(c)) }) { actions ->
+        dev.nitrate.mobile.ui.TripScreen(actions, "lake")
+    }
+
+    @Test
+    fun tripsList() = shoot("phone-trips", setup = { c -> c.trips.register(); c.trips.save(sampleTrip(c)) }) { actions ->
+        dev.nitrate.mobile.ui.TripsScreen(actions)
+    }
+
+    private fun sampleTrip(c: dev.nitrate.android.AppContainer): dev.nitrate.core.downloads.Trip {
+        val day = dev.nitrate.core.downloads.TripPlanner.DAY_MS
+        val leave = 1_900_000_000_000L - 1_900_000_000_000L % day
+        val here = c.trips.here!!
+        return dev.nitrate.core.downloads.Trip(
+            "lake", "Lake house", leave, leave + 7 * day,
+            devices = listOf(dev.nitrate.core.downloads.TripDevice(here.deviceId, here.name, roomBytes = 16_000_000_000)),
+            picks = listOf(
+                dev.nitrate.core.downloads.TripPick("series-1", dev.nitrate.core.downloads.PickKind.SHOW, "The Night Reel", episodes = 6, runtimeMs = 45 * 60_000, bitrate = 12_000_000, seriesId = "series-1", suggested = true),
+                dev.nitrate.core.downloads.TripPick("m1", dev.nitrate.core.downloads.PickKind.TITLE, "Silver Screen", runtimeMs = 128 * 60_000, bitrate = 24_000_000, suggested = true),
+                dev.nitrate.core.downloads.TripPick("m2", dev.nitrate.core.downloads.PickKind.TITLE, "Paper Moon Harbour", runtimeMs = 104 * 60_000),
+            ),
+            hoursPerDay = 1.5,
+        )
+    }
+
     /** It kept buffering: "Lower the quality" in the corner, with ✕ to put it aside. */
     @Test
     fun playerLowerQuality() = shoot("phone-player-lower-quality") { actions ->

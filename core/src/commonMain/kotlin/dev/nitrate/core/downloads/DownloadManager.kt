@@ -126,7 +126,20 @@ class DownloadManager(
     suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean, tracks: TrackRequest? = null): Int =
         enqueue(items, quality, hevc, auto = false, tracks = tracks)
 
-    private suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean, auto: Boolean, tracks: TrackRequest? = null): Int {
+    /**
+     * Queues [items] packed for a trip (tagged with [tripId] and [pickId], so the trip's over clears
+     * them). Titles already downloaded stay as they are, untagged. Returns how many were added.
+     */
+    suspend fun enqueueForTrip(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean, tripId: String, pickId: String): Int =
+        enqueue(items, quality, hevc, auto = false, trip = tripId to pickId)
+
+    /** This user's downloads packed for [tripId]. */
+    fun tripRecords(tripId: String): List<DownloadRecord> = mine(store.data.value).filter { it.tripId == tripId }
+
+    /** Every trip with downloads here. */
+    fun tripIds(): Set<String> = mine(store.data.value).mapNotNull { it.tripId }.toSet()
+
+    private suspend fun enqueue(items: List<MediaItem>, quality: DownloadQuality, hevc: Boolean, auto: Boolean, tracks: TrackRequest? = null, trip: Pair<String, String>? = null): Int {
         val user = server.userId ?: return 0
         val url = server.serverUrl ?: return 0
         val existing = mine(store.data.value).map { it.itemId }.toSet()
@@ -139,6 +152,7 @@ class DownloadManager(
                     item.id, url, user, item, quality, hevc, createdAtMs = created + i, auto = auto,
                     audioIndex = tracks?.audioIndex?.takeIf { fresh.size == 1 }, subtitleIndex = tracks?.subtitleIndex?.takeIf { fresh.size == 1 },
                     burnInSubtitles = tracks?.burnIn == true && !quality.isOriginal,
+                    tripId = trip?.first, tripPickId = trip?.second,
                 )
             })
         }
@@ -161,10 +175,13 @@ class DownloadManager(
         refreshSmart()
     }
 
+    /** Keeps the background refresh running (trips being packed need it as smart downloads do). */
+    fun keepRefreshing() = scheduler.scheduleSmartRefresh(true, store.data.value.settings.wifiOnly)
+
     /** Turns smart downloads off for a show. Episodes already downloaded stay. */
     suspend fun removeSmartRule(seriesId: String) {
         store.update { d -> d.copy(rules = d.rules.filterNot { it.matches(seriesId) }) }
-        if (store.data.value.rules.isEmpty()) scheduler.scheduleSmartRefresh(false, false)
+        if (store.data.value.rules.isEmpty() && mine(store.data.value).none { it.tripId != null }) scheduler.scheduleSmartRefresh(false, false)
     }
 
     private fun SmartRule.matches(seriesId: String) = this.seriesId == seriesId && userId == server.userId && serverUrl == server.serverUrl

@@ -165,6 +165,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
 
         group("Your watching")
         item { Link("Your year", "Films, episodes and songs, top shows, genres and artists") { actions.nav.navigate(StatsRoute) } }
+        item { Link("Packing for a trip", "Plan what to download on your phone, tablet or laptop before you go") { actions.nav.navigate(TripsRoute) } }
         if (companion?.features?.contains(dev.nitrate.core.diary.Diary.FEATURE) == true) item {
             Link("Watch diary", "Every film and episode you finish, with your ratings and notes; export for Letterboxd") { actions.nav.navigate(DiaryRoute) }
         }
@@ -212,6 +213,7 @@ internal fun openPlace(actions: AppActions, place: dev.nitrate.core.settings.Set
         dev.nitrate.core.settings.SettingsPlace.PROFILES -> actions.nav.navigate(ProfilesRoute)
         dev.nitrate.core.settings.SettingsPlace.SERVERS -> actions.nav.navigate(ServerAddressesRoute)
         dev.nitrate.core.settings.SettingsPlace.STATS -> actions.nav.navigate(StatsRoute)
+        dev.nitrate.core.settings.SettingsPlace.TRIPS -> actions.nav.navigate(TripsRoute)
         dev.nitrate.core.settings.SettingsPlace.DIARY -> actions.nav.navigate(DiaryRoute)
         dev.nitrate.core.settings.SettingsPlace.PARTNERS -> actions.nav.navigate(WatchPartnersRoute)
         dev.nitrate.core.settings.SettingsPlace.CATALOGS -> actions.nav.navigate(CatalogsRoute)

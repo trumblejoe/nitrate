@@ -108,6 +108,15 @@ fun DownloadsScreen(actions: AppActions, modifier: Modifier = Modifier, onBack: 
             }
         }
         item { DownloadSettingsCard(actions, settings) }
+        item {
+            ListItem(
+                modifier = Modifier.pressable({ actions.nav.navigate(TripsRoute) }),
+                colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                leadingContent = { Icon(NitrateIcons.Auto, null, tint = accentColor()) },
+                headlineContent = { Text("Packing for a trip") },
+                supportingContent = { Text("What to have on this ${actions.container.trips.here?.kind ?: "device"} before you go") },
+            )
+        }
         if (rules.isNotEmpty()) {
             item { SectionTitle("Smart downloads", Modifier.padding(top = 8.dp)) }
             items(rules, key = { "r-${it.seriesId}" }) { rule ->

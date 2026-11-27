@@ -80,6 +80,8 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             downloads.syncWatchState()
             // Watched episodes make room for the next ones.
             downloads.refreshSmart()
+            // Trips this device carries: their plans may have changed elsewhere (the TV).
+            runCatching { container.trips.pack() }
             val left = downloads.downloads.first().count { it.pendingSync }
             return if (left > 0) Result.retry() else Result.success()
         }
@@ -96,6 +98,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             downloads.runQueue().also { notifications.cancel() }
         }
         downloads.syncWatchState()
+        runCatching { container.trips.afterDownloads() }
         return if (result == QueueResult.RETRY) Result.retry() else Result.success()
     }
 

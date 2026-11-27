@@ -269,6 +269,9 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         context.notificationPrefs.edit { it[notifiedKey(account)] = fresh }
     }
 
+    override fun tripNews(tripId: String, title: String, text: String) =
+        postSocial("trip:$tripId", title, text, TRIPS_CHANNEL, "Packing for a trip")
+
     private fun postSocial(key: String, title: String, text: String, channel: String, channelName: String, openInvites: Boolean = false) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -399,6 +402,7 @@ class AndroidNewEpisodeNotifier(private val context: Context, private val server
         private const val REQUESTS_CHANNEL = "partner_requests"
         private const val REQUESTS_NAME = "Watch group requests"
         private const val PARTY_CHANNEL = "watch_party"
+        private const val TRIPS_CHANNEL = "trips"
         private const val PARTY_TAG = "watch-party"
         internal const val PARTY_GROUP = "group"
         internal const val PARTY_TITLE = "title"

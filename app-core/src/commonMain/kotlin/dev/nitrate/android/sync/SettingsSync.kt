@@ -41,6 +41,12 @@ class SettingsSync(
         scope.launch { sync(userId) }
     }
 
+    /** Brings this device and the server together now, and waits for it (packing for a trip reads the latest plans). */
+    suspend fun syncNow() {
+        val userId = repository.userId ?: return
+        sync(userId)
+    }
+
     /** Debounced so flipping through options sends one update. */
     private fun schedulePush(userId: String) {
         pushJob?.cancel()

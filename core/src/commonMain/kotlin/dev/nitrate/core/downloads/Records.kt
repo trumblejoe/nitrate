@@ -63,6 +63,9 @@ data class DownloadRecord(
      */
     val assFiles: Map<Int, String> = emptyMap(),
     val fontFiles: List<String> = emptyList(),
+    /** Packed for this [Trip] (and which of its picks): cleared with the trip, never by smart downloads. */
+    val tripId: String? = null,
+    val tripPickId: String? = null,
 ) {
     val key get() = Key(serverUrl, userId, itemId)
 

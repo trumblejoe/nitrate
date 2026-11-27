@@ -640,6 +640,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, canManage: Bo
         // In one of the user's watch groups: the same choices as a long press on its Watching together card.
         if (together) entry("Watch group…", "Mark for the group, start a Group Watch Session, same room, invite, leave") { open = "together" }
         if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) entry("Add to a playlist or collection", null) { open = "add" }
+        if (!music && (video || item.kind == ItemKind.SERIES || item.kind == ItemKind.SEASON || item.kind == ItemKind.BOX_SET)) entry("Pack for a trip", "Have it on your phone, tablet or laptop while you're away") { open = "trip" }
         studio?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", it, studio = it)) } }
         year?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", "From $it", year = it)) } }
         if (canManage) entry("Manage", "Details, images, identify") { onDismiss(); actions.nav.navigate(ManageItemRoute(item.id)) }
@@ -650,6 +651,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, canManage: Bo
         "chat" -> EarlierChatDialog(actions, item.id, onDismiss)
         "add" -> AddToListDialog(actions, item, onDismiss)
         "together" -> TogetherChoicesSheet(actions, item, onStart = {}, onDismiss = onDismiss)
+        "trip" -> PackForTripSheet(actions, item, onDismiss)
     }
 }
 

@@ -33,6 +33,7 @@ class DesktopDownloadScheduler(private val container: () -> dev.nitrate.android.
             do {
                 again = false
                 val result = runCatching { container().downloads.runQueue() }.getOrDefault(QueueResult.RETRY)
+                runCatching { container().trips.afterDownloads() }
                 if (result == QueueResult.RETRY && retries++ < RETRIES) {
                     delay(RETRY_MS)
                     again = true
@@ -53,6 +54,7 @@ class DesktopDownloadScheduler(private val container: () -> dev.nitrate.android.
             while (true) {
                 delay(SMART_EVERY_MS)
                 runCatching { container().downloads.refreshSmart() }
+                runCatching { container().trips.pack() }
             }
         }
     }

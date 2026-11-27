@@ -403,6 +403,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             val groups by container.partners.collectAsState()
             dev.nitrate.tv.ui.settings.StatsScreen(container.server, groups)
         }
+        composable<TripsRoute> { dev.nitrate.tv.ui.settings.TripsScreen(container) { id -> nav.navigate(TripRoute(id)) } }
+        composable<TripRoute> { entry -> dev.nitrate.tv.ui.settings.TripScreen(container, entry.toRoute<TripRoute>().tripId) { nav.popBackStack() } }
         composable<DiaryRoute> {
             val groups by container.partners.collectAsState()
             dev.nitrate.tv.ui.settings.DiaryScreen(container.server, groups)

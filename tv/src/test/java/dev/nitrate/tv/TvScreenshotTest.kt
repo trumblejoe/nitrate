@@ -2601,6 +2601,30 @@ class TvScreenshotTest {
         }
     }
 
+    /** Planning a trip on the TV: Save first, then dates, the devices (a phone registered itself) and what to pack, all reachable with the D-pad. */
+    @Test fun tripPlan() = shoot("tv-trip-plan", setup = { c ->
+        val day = dev.nitrate.core.downloads.TripPlanner.DAY_MS
+        val leave = 1_900_000_000_000L - 1_900_000_000_000L % day
+        // A phone that opened Nitrate: it can pack. The TV can't.
+        c.displaySettings.saveEntry("user-1", "packer:phone-1", """{"deviceId":"phone-1","name":"Joe's phone","kind":"phone","freeBytes":40000000000,"seenMs":1}""")
+        c.trips.save(dev.nitrate.core.downloads.Trip(
+            "lake", "Lake house", leave, leave + 7 * day,
+            devices = listOf(dev.nitrate.core.downloads.TripDevice("phone-1", "Joe's phone")),
+            picks = listOf(
+                dev.nitrate.core.downloads.TripPick("series-1", dev.nitrate.core.downloads.PickKind.SHOW, "The Night Reel", episodes = 6, runtimeMs = 45 * 60_000, seriesId = "series-1", suggested = true),
+                dev.nitrate.core.downloads.TripPick("m1", dev.nitrate.core.downloads.PickKind.TITLE, "Silver Screen", runtimeMs = 128 * 60_000),
+            ),
+            hoursPerDay = 1.5,
+        ))
+    }, act = {
+        check(focusedHasText("Save")) { "Save takes focus first; focused: ${focusedNodes()}" }
+        repeat(12) { if (!focusedHasText("The Night Reel")) press("down") }
+        check(focusedHasText("The Night Reel")) { "the picks are reachable; focused: ${focusedNodes()}" }
+        press("ok")
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        check(focusedHasText("One more episode")) { "OK on a show opens its choices; focused: ${focusedNodes()}" }
+    }) { c -> dev.nitrate.tv.ui.settings.TripScreen(c, "lake") {} }
+
     /** It kept buffering: "Lower the quality" in the action corner, focused so one OK lowers it. */
     @Test fun lowerQuality() = shoot("tv-player-lower-quality", act = { check(focusedHasText("Lower the quality (6 Mbps)")) }) { c ->
         androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {

@@ -42,6 +42,7 @@ class IosDownloadScheduler : DownloadScheduler {
                 do {
                     again = false
                     val result = runCatching { IosApp.container.downloads.runQueue() }.getOrDefault(QueueResult.RETRY)
+                    runCatching { IosApp.container.trips.afterDownloads() }
                     // No connection: try again for a while, then leave it for the next time the app opens.
                     if (result == QueueResult.RETRY && retries++ < RETRIES) {
                         delay(RETRY_MS)

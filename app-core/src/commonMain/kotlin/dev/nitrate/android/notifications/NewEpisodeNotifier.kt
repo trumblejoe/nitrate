@@ -19,6 +19,9 @@ interface NewEpisodeNotifier {
     /** Keeps the background check scheduled (or not) to match the settings; call at startup. */
     suspend fun ensureScheduled()
 
+    /** A trip's packing on this device: ready ("All 14 on this phone"), or won't finish before leaving. One per trip, replaced. */
+    fun tripNews(tripId: String, title: String, text: String) = Unit
+
     /** Watch-together invites and watch-partner requests, each its own switch (on until switched off). */
     val invitesEnabled: Flow<Boolean> get() = MutableStateFlow(false)
     val partnerRequestsEnabled: Flow<Boolean> get() = MutableStateFlow(false)

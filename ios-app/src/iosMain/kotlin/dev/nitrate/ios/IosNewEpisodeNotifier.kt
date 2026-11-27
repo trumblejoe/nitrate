@@ -130,6 +130,14 @@ class IosNewEpisodeNotifier(private val server: MediaServer, private val store: 
         store.edit { it[seenKey(account)] = newest }
     }
 
+    override fun tripNews(tripId: String, title: String, text: String) {
+        val content = UNMutableNotificationContent().apply {
+            setTitle(title)
+            setBody(text)
+        }
+        UNUserNotificationCenter.currentNotificationCenter().addNotificationRequest(UNNotificationRequest.requestWithIdentifier("trip-$tripId", content, null), null)
+    }
+
     private fun post(seriesId: String, title: String, text: String, openItemId: String) {
         val content = UNMutableNotificationContent().apply {
             setTitle(title)
