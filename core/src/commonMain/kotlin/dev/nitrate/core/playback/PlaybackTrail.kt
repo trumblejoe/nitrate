@@ -154,12 +154,7 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
                 video?.inRange,
             ).joinToString(" · ").ifEmpty { null }
             val keptHdr = v.rangeType?.let { it != "SDR" && it != "Unknown" } == true
-            val decoderTier = when {
-                videoDecoder == null -> null
-                videoDecoder.startsWith(DeviceCapabilities.SOFTWARE_VIDEO_DECODER) -> DecoderTier.NITRATE_SOFTWARE
-                videoDecoder.startsWith("c2.android.") || videoDecoder.startsWith("OMX.google.") -> DecoderTier.DEVICE_SOFTWARE
-                else -> DecoderTier.HARDWARE
-            }
+            val decoderTier = videoDecoder?.let(Decoders::tierOf)
             val processing = listOfNotNull(
                 video?.profile7?.let { p -> when (p) {
                     Profile7Playback.AS_PROFILE_8 -> "Dolby Vision profile 7 rewritten as 8.1"
@@ -191,7 +186,7 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
                 },
                 TrailStep("Arrived", TrailActor.MEASURED, arrived ?: "Not yet",
                     differs = if (keptHdr && !converted && video?.inRange == "SDR") "the file is HDR but SDR arrived" else null),
-                TrailStep("Decoded by", TrailActor.MEASURED, videoDecoder?.let { "$it (${decoderTier?.label?.lowercase()})" } ?: "Not yet",
+                TrailStep("Decoded by", TrailActor.MEASURED, videoDecoder?.let(Decoders::describe) ?: "Not yet",
                     differs = prediction?.decoder?.takeIf { decoderTier != null && it != decoderTier && it != DecoderTier.NONE }?.let { "predicted: ${it.label.lowercase()}" }),
                 TrailStep("Nitrate's processing", TrailActor.NITRATE, processing.ifEmpty { listOf("None: the picture goes on as decoded") }.joinToString("; ")),
                 TrailStep("Went out", TrailActor.DEVICE, out ?: "Not known", video?.displayHdr?.let { "Android reports ${it.sorted().joinToString().ifEmpty { "no HDR" }} on this display" }),
@@ -233,8 +228,8 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
                 TrailStep("Server", TrailActor.SERVER, serverWhat),
                 TrailStep("Arrived", TrailActor.MEASURED, arrived ?: "Not yet"),
                 TrailStep("Decoded by", TrailActor.MEASURED, when {
-                    path?.delivery == AudioDelivery.BITSTREAM -> "Not decoded: sent on untouched"
-                    audioDecoder != null -> audioDecoder
+                    path?.delivery == AudioDelivery.BITSTREAM -> "Not decoded here: ${Decoders.PASSED_THROUGH.replaceFirstChar { it.lowercase() }}"
+                    audioDecoder != null -> Decoders.describe(audioDecoder)
                     else -> "Not yet"
                 }, path?.decodedWhy?.takeIf { decodedHere }),
                 TrailStep("Nitrate's processing", TrailActor.NITRATE, processing.ifEmpty { listOf("None") }.joinToString("; ")),

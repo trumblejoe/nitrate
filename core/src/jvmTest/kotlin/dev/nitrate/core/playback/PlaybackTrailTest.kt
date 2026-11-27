@@ -49,7 +49,7 @@ class PlaybackTrailTest {
         val refresh = trail.trails.first { it.title == "Refresh rate" }.steps.last()
         assertEquals("Switched the TV from 59.94 Hz to 23.976 Hz", refresh.what)
         val sound = trail.trails.first { it.title == "Sound" }.steps.associateBy { it.step }
-        assertEquals("Not decoded: sent on untouched", sound.getValue("Decoded by").what)
+        assertEquals("Not decoded here: sent untouched to the TV or receiver", sound.getValue("Decoded by").what)
         // The prediction was "repackaged" (MKV direct plays here, so as it is): only the server step may differ.
         assertTrue(trail.render().contains("Playback trail: Avatar (2009)"))
     }

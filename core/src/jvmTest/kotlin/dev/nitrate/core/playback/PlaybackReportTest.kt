@@ -40,7 +40,9 @@ class PlaybackReportTest {
         assertTrue("Reasons: VideoBitDepthNotSupported" in text)
         assertTrue("#0 VIDEO: hevc, Main 10, 720x480, 10-bit, SDR" in text)
         assertTrue("Video hevc: up to" in text && "8-bit" in text)
-        assertTrue("Video decoder" in text || "Video: OMX.MTK.VIDEO.DECODER.AVC" in text)
+        // Who decodes, in plain words with the decoder's own name in brackets.
+        assertTrue(text, "Video: This device's hardware (OMX.MTK.VIDEO.DECODER.AVC)" in text)
+        assertTrue(text, "Audio: Android's software decoder (c2.android.aac.decoder)" in text)
         assertTrue("Player events" in text)
         assertFalse("The access token never leaves in a report", "SECRET123" in text)
         assertTrue("api_key=<removed>" in text)

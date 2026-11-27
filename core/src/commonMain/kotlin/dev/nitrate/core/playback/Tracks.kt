@@ -57,18 +57,16 @@ private fun MediaStream.toChoice(): TrackChoice {
 fun String.toReadableReason(): String =
     replace(Regex("([a-z])([A-Z])"), "$1 $2").lowercase().replaceFirstChar { it.uppercase() }
 
-/** Label/value rows describing how a plan plays, for an info panel. */
-fun PlaybackPlan.infoRows(videoDecoder: String?, audioDecoder: String?): List<Pair<String, String>> {
+/**
+ * Label/value rows describing how a plan plays, for an info panel: what the server does, the file,
+ * and who decodes the picture and the sound, in plain words with the decoder's name in brackets
+ * ([Decoders]; [soundPassedThrough]: the sound goes on untouched to the TV or receiver).
+ */
+fun PlaybackPlan.infoRows(videoDecoder: String?, audioDecoder: String?, soundPassedThrough: Boolean = false): List<Pair<String, String>> {
     val video = source.streams.firstOrNull { it.kind == StreamKind.VIDEO }
     val audio = source.streams.firstOrNull { it.index == audioIndex }
     return buildList {
-        add(
-            "Method" to when (method) {
-                PlayMethod.DIRECT_PLAY -> "Direct play"
-                PlayMethod.DIRECT_STREAM -> "Direct stream (remux)"
-                PlayMethod.TRANSCODE -> "Transcode"
-            },
-        )
+        add("Server" to Decoders.serverWords(this@infoRows))
         if (transcodeReasons.isNotEmpty()) add("Why" to transcodeReasons.joinToString(", ") { it.toReadableReason() })
         add("Container" to (source.container ?: "?"))
         source.bitrate?.let { add("Bitrate" to "${formatOneDecimal(it / 1_000_000.0)} Mbps") }
@@ -76,7 +74,7 @@ fun PlaybackPlan.infoRows(videoDecoder: String?, audioDecoder: String?): List<Pa
             add("Video" to listOfNotNull(it.codec?.uppercase(), it.profile, "${it.width}×${it.height}", it.rangeType, it.bitDepth?.let { b -> "$b-bit" }).joinToString(" · "))
         }
         audio?.let { add("Audio" to listOfNotNull(it.codec?.uppercase(), it.channelLayout, it.language).joinToString(" · ")) }
-        videoDecoder?.let { add("Video decoder" to it) }
-        audioDecoder?.let { add("Audio decoder" to it) }
+        videoDecoder?.let { add("Picture decoder" to Decoders.describe(it)) }
+        Decoders.describeSound(audioDecoder, soundPassedThrough)?.let { add("Sound decoder" to it) }
     }
 }

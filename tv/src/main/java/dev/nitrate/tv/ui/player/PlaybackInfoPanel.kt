@@ -80,7 +80,7 @@ fun PlaybackInfoPanel(
         Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Picture", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 4.dp))
-                InfoRows(plan.infoRows(videoDecoder, audioDecoder) + video?.rows().orEmpty())
+                InfoRows(plan.infoRows(videoDecoder, audioDecoder, soundPassedThrough = audio?.delivery == dev.nitrate.core.playback.AudioDelivery.BITSTREAM) + video?.rows().orEmpty())
             }
             val sound = audio?.rows().orEmpty()
             if (sound.isNotEmpty()) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {

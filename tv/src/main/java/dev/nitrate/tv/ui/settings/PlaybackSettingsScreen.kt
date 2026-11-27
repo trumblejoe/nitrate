@@ -268,8 +268,8 @@ private fun LazyListScope.advancedPage(
         items(CapabilityRules.videoCodecs(capabilities, settings), key = { it.id }) { cap ->
             val c = capabilities.video[cap.id]
             val reported = c?.let {
-                "${it.maxWidth}×${it.maxHeight}" + (if (it.tenBit) ", 10-bit" else ", 8-bit") + (if (it.hardware) ", hardware" else ", software") + " (${it.decoderName})" +
-                    (if (it.softwareTenBit) "; 10-bit in software up to 1080p" else "")
+                "${it.maxWidth}×${it.maxHeight}" + (if (it.tenBit) ", 10-bit" else ", 8-bit") + "; decoded by " + dev.nitrate.core.playback.Decoders.describe(it.decoderName) +
+                    (if (it.softwareTenBit) "; 10-bit by Nitrate's FFmpeg up to 1080p" else "")
             }
             val limits = listOfNotNull(
                 settings.codecMaxHeight[cap.id]?.let { "limited to ${it}p" },
@@ -288,8 +288,7 @@ private fun LazyListScope.advancedPage(
         section("Audio codecs")
         items(CapabilityRules.audioCodecs(capabilities, settings), key = { it.id }) { cap ->
             val a = capabilities.audio[cap.id]
-            val reported = listOfNotNull(a?.decoder?.let { "decoder $it" }, "HDMI passthrough".takeIf { a?.passthrough == true })
-                .joinToString(", ").ifEmpty { null }
+            val reported = a?.let { dev.nitrate.core.playback.Decoders.decodedBy(capabilities, cap.id)?.let { d -> "decoded by $d" } }
             CapabilityRow(cap, reported, emptyList(), settings, update)
         }
         item(key = "passthrough-extras") {
@@ -495,7 +494,7 @@ private fun CapabilityRow(
             Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
                 Text(override?.label ?: "Auto", color = MaterialTheme.colorScheme.primary)
                 Text(
-                    if (cap.allowed) "direct play" else "transcode",
+                    if (cap.allowed) "direct play" else dev.nitrate.core.playback.Decoders.serverConverts(cap.id),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (cap.allowed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                 )

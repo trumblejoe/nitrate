@@ -61,8 +61,8 @@ data class PlaybackReport(
 
         if (videoDecoder != null || audioDecoder != null) {
             section("Decoders in use")
-            videoDecoder?.let { line("Video: $it") }
-            audioDecoder?.let { line("Audio: $it") }
+            videoDecoder?.let { line("Video: ${Decoders.describe(it)}") }
+            audioDecoder?.let { line("Audio: ${Decoders.describe(it)}") }
             line()
         }
 
@@ -72,7 +72,7 @@ data class PlaybackReport(
                 if (v.softwareTenBit) ", plus 10-bit in software (FFmpeg) up to ${CapabilityRules.SOFTWARE_MAX_HEIGHT}p" else "")
         }
         caps.audio.values.sortedBy { it.codec }.forEach { a ->
-            line("Audio ${a.codec}: decoder ${a.decoder ?: "none"}, passthrough ${if (a.passthrough) "yes" else "no"}")
+            line("Audio ${a.codec}: decoded by ${a.decoder?.let(Decoders::describeReported) ?: "nothing here"}, passthrough ${if (a.passthrough) "yes (the TV or receiver can decode it)" else "no"}")
         }
         line("Also passed through untouched: ${caps.passthroughExtras.sorted().joinToString(", ").ifEmpty { "none (DTS-HD goes out as its DTS core, Atmos in E-AC-3 as plain E-AC-3)" }}")
         line("HDR on the display: ${caps.hdr.sorted().joinToString(", ").ifEmpty { "none" }}")

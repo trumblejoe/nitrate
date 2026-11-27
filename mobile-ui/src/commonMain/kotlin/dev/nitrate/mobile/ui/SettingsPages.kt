@@ -220,7 +220,7 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                 heading("Formats")
                 item { Text("Tap to cycle Auto → Always → Never.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
                 items(CapabilityRules.videoCodecs(caps, playback) + CapabilityRules.hdrFormats(caps, playback) + CapabilityRules.audioCodecs(caps, playback), key = { it.id }) { cap ->
-                    Capability(cap, playback, updatePlayback)
+                    Capability(cap, playback, updatePlayback, dev.nitrate.core.playback.Decoders.decodedBy(caps, cap.id))
                 }
             }
             SettingsPage.SUBTITLES -> {
@@ -466,7 +466,7 @@ internal fun Toggle(label: String, detail: String, checked: Boolean, onToggle: (
 }
 
 @Composable
-internal fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, update: ((PlaybackSettings) -> PlaybackSettings) -> Unit) {
+internal fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, update: ((PlaybackSettings) -> PlaybackSettings) -> Unit, decodedBy: String? = null) {
     val override = settings.overrides[cap.id]
     ListItem(
         modifier = Modifier.clickable {
@@ -481,12 +481,13 @@ internal fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, up
         supportingContent = {
             Text(
                 (if (cap.claimed) "Device supports it" else "Device doesn't report it") +
+                    (decodedBy?.let { " · decoded by $it" } ?: "") +
                     (settings.learnedFailures[cap.id]?.let { " · failed here ${it.count}×" } ?: ""),
             )
         },
         trailingContent = {
             Text(
-                (override?.label ?: "Auto") + " · " + if (cap.allowed) "direct" else "transcode",
+                (override?.label ?: "Auto") + " · " + if (cap.allowed) "direct" else dev.nitrate.core.playback.Decoders.serverConverts(cap.id),
                 color = if (cap.allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             )
         },

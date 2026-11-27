@@ -21,12 +21,12 @@ data class DeliveryVerdict(
     val convertsSoundTo: String? = null,
 )
 
-/** Which decoder shows the picture. */
-enum class DecoderTier(val label: String) {
-    HARDWARE("Hardware decoder"),
-    DEVICE_SOFTWARE("Android's software decoder"),
-    NITRATE_SOFTWARE("Nitrate's software decoder (FFmpeg)"),
-    NONE("No picture"),
+/** Which decoder shows the picture (or decodes the sound); [plain] is how Info, Settings and reports say it ([Decoders]). */
+enum class DecoderTier(val label: String, val plain: String) {
+    HARDWARE("Hardware decoder", "This device's hardware"),
+    DEVICE_SOFTWARE("Android's software decoder", "Android's software decoder"),
+    NITRATE_SOFTWARE("Nitrate's software decoder (FFmpeg)", "Nitrate's FFmpeg"),
+    NONE("No picture", "Nothing"),
 }
 
 /** How the sound reaches the speakers. */

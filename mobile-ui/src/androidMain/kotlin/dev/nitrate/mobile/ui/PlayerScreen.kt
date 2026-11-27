@@ -606,7 +606,7 @@ actual fun PlayerScreen(
                             Text(value, style = MaterialTheme.typography.bodyMedium, color = if (label == "Note") accentColor() else MaterialTheme.colorScheme.onSurface)
                         }
                     }
-                    rows(p.infoRows(videoDecoder, audioDecoder) + videoPath?.rows().orEmpty())
+                    rows(p.infoRows(videoDecoder, audioDecoder, soundPassedThrough = audioPath.delivery == dev.nitrate.core.playback.AudioDelivery.BITSTREAM) + videoPath?.rows().orEmpty())
                     val sound = audioPath.rows()
                     if (sound.isNotEmpty()) {
                         Text("Sound", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
