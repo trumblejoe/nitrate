@@ -59,6 +59,10 @@ fun DiaryScreen(actions: AppActions) {
     val rewatches = remember(list) { list?.let(Diary::rewatches).orEmpty() }
     val groupsInfo by actions.container.partners.collectAsState()
     fun groupName(id: String) = groupsInfo?.groups?.firstOrNull { it.id == id }?.let(dev.nitrate.core.partners.WithChip::nameOf)
+    // Playlist sittings say which playlist (asked only when the diary has some).
+    val playlistNames by produceState(emptyMap<String, String>(), list) {
+        if (list?.any { it.playlistId != null } == true) value = runCatching { actions.server.playlists().associate { it.id to it.name } }.getOrDefault(emptyMap())
+    }
 
     LazyColumn(
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
@@ -88,7 +92,7 @@ fun DiaryScreen(actions: AppActions) {
                         Column(Modifier.weight(1f)) {
                             Text(e.title + (e.year?.takeIf { e.episodeLabel == null }?.let { " ($it)" } ?: ""), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             // A group watch says who with: it's kept apart from the user's own watching.
-                            val sub = listOfNotNull(e.episodeLabel, Diary.withLabel(e, ::groupName), "Rewatch".takeIf { e.id in rewatches })
+                            val sub = listOfNotNull(e.episodeLabel, Diary.withLabel(e, ::groupName), Diary.inLabel(e, playlistNames::get), "Rewatch".takeIf { e.id in rewatches })
                             if (sub.isNotEmpty()) Text(sub.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             e.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                         }

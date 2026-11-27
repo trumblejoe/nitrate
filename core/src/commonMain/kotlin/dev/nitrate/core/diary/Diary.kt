@@ -27,6 +27,8 @@ data class DiaryEntry(
     val logged: Boolean,
     /** Watched for these watch groups (kept apart from the user's own watching); empty: their own. */
     val groupIds: List<String> = emptyList(),
+    /** Watched as a sitting of this playlist (its own record, not the user's), else null. */
+    val playlistId: String? = null,
 ) {
     /** Watched with a group rather than on the user's own. */
     val withGroup: Boolean get() = groupIds.isNotEmpty()
@@ -82,6 +84,10 @@ object Diary {
     /** "With Tommy & Suzy" for an entry watched with groups ([groupName] names a group id; null: no longer in it), else null. */
     fun withLabel(entry: DiaryEntry, groupName: (String) -> String?): String? =
         if (!entry.withGroup) null else "With " + entry.groupIds.map { groupName(it) ?: "a past group" }.distinct().joinToString(", ")
+
+    /** "In Kids Bedtime" for an entry watched as a playlist sitting ([playlistName]: null when it's gone), else null. */
+    fun inLabel(entry: DiaryEntry, playlistName: (String) -> String?): String? =
+        entry.playlistId?.let { "In " + (playlistName(it) ?: "a playlist") }
 
     fun asHistory(entries: List<DiaryEntry>, history: List<MediaItem>): List<MediaItem> {
         val start = entries.minOfOrNull { it.watchedAtMs } ?: return history

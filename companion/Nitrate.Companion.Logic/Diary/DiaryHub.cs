@@ -8,6 +8,7 @@ public record DiaryTitle(Guid ItemId, string Kind, string Name, Guid? SeriesId, 
 /// <summary>
 /// One watch: a title, when it was finished, and the person's own rating (1–10, half stars) and note.
 /// [GroupIds]: watched for those groups (kept apart from the person's own watching), else null.
+/// [PlaylistId]: watched as a sitting of that playlist, else null.
 /// </summary>
 public record DiaryEntry(
     Guid Id,
@@ -25,7 +26,8 @@ public record DiaryEntry(
     int? Rating,
     string? Note,
     bool Logged,
-    IReadOnlyList<Guid>? GroupIds = null);
+    IReadOnlyList<Guid>? GroupIds = null,
+    Guid? PlaylistId = null);
 
 /// <summary>A change to an entry: a rating (null keeps it, 0 clears it), a note (null keeps it, "" clears it), or the date.</summary>
 public record DiaryEdit(int? Rating, string? Note, long? WatchedAt);
@@ -101,7 +103,7 @@ public class DiaryHub
     }
 
     /// <summary>Records that <paramref name="userId"/> finished <paramref name="title"/> just now (once per watch).</summary>
-    public DiaryEntry? Finished(Guid userId, DiaryTitle title, IReadOnlyList<Guid>? groupIds = null)
+    public DiaryEntry? Finished(Guid userId, DiaryTitle title, IReadOnlyList<Guid>? groupIds = null, Guid? playlistId = null)
     {
         var now = _time.GetUtcNow().ToUnixTimeMilliseconds();
         return Change(userId, list =>
@@ -111,7 +113,7 @@ public class DiaryHub
                 return null;
             }
 
-            var entry = Entry(title, now, null, null, logged: false) with { GroupIds = groupIds is { Count: > 0 } ? groupIds : null };
+            var entry = Entry(title, now, null, null, logged: false) with { GroupIds = groupIds is { Count: > 0 } ? groupIds : null, PlaylistId = playlistId };
             list.Add(entry);
             return entry;
         });

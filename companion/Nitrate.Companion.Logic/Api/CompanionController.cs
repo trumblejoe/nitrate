@@ -120,6 +120,10 @@ public class CompanionController : ControllerBase
         features.Add("playlistfacts");
         // Group watches kept out of the person's own history (POST /Nitrate/Partners/GroupPlay; diary entries carry GroupIds).
         features.Add("groupplay");
+        // Playlists' own records kept per person (GET/PUT /Nitrate/Playlists/Records), and playlist sittings
+        // kept out of the person's own state, the record moved on as they stop (POST /Nitrate/Playlists/Sitting;
+        // diary entries carry PlaylistId).
+        features.Add("playlistrecords");
         // Change counters for the apps' kept rows (GET /Nitrate/Changes).
         features.Add("changes");
         features.Add("formats");

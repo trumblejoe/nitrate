@@ -57,6 +57,10 @@ fun DiaryScreen(server: MediaServer, groups: dev.nitrate.core.partners.PartnersI
     val scope = rememberCoroutineScope()
     val list = entries?.getOrNull()
     val rewatches = remember(list) { list?.let(Diary::rewatches).orEmpty() }
+    // Playlist sittings say which playlist (asked only when the diary has some).
+    val playlistNames by produceState(emptyMap<String, String>(), list) {
+        if (list?.any { it.playlistId != null } == true) value = runCatching { server.playlists().associate { it.id to it.name } }.getOrDefault(emptyMap())
+    }
     val date = remember { SimpleDateFormat("EEE d MMM yyyy", Locale.getDefault()) }
     val first = remember { FocusRequester() }
 
@@ -79,7 +83,7 @@ fun DiaryScreen(server: MediaServer, groups: dev.nitrate.core.partners.PartnersI
                     headlineContent = { Text(e.title + (e.year?.takeIf { e.episodeLabel == null }?.let { " ($it)" } ?: "")) },
                     supportingContent = {
                         // A group watch says who with: it's kept apart from the user's own watching.
-                        val sub = listOfNotNull(e.episodeLabel, Diary.withLabel(e, ::groupName), "Rewatch".takeIf { e.id in rewatches }, e.note)
+                        val sub = listOfNotNull(e.episodeLabel, Diary.withLabel(e, ::groupName), Diary.inLabel(e, playlistNames::get), "Rewatch".takeIf { e.id in rewatches }, e.note)
                         if (sub.isNotEmpty()) Text(sub.joinToString(" · "), maxLines = 1)
                     },
                     trailingContent = { Text(Diary.stars(e.rating), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) },

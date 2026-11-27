@@ -30,14 +30,25 @@ import org.junit.Test
 class WatchStateNowTest {
     private val server = "http://jf.example:8096"
     private val id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    private val playlist = "cccccccc-cccc-cccc-cccc-cccccccccccc"
     private val paths = mutableListOf<String>()
     @Volatile private var played = false
+    @Volatile private var companion = false
 
     private val engine = MockEngine { request ->
         val path = request.url.encodedPath
         synchronized(paths) { paths += "${request.method.value} $path" }
         when {
             path == "/Sessions/Playing/Stopped" -> { delay(400); played = true; respond("", HttpStatusCode.NoContent) }
+            path == "/Nitrate/Companion" -> respond(
+                if (companion) """{"Version":"1","Features":["playlistrecords"]}""" else """{"Version":"1","Features":[]}""",
+                HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+            path == "/Nitrate/Playlists/Records/cccccccccccccccccccccccccccccccc" && request.method.value == "GET" -> respond("", HttpStatusCode.NotFound)
+            path == "/Nitrate/Playlists/Records/cccccccccccccccccccccccccccccccc" -> respond(
+                """{"PlaylistId":"cccccccc-cccc-cccc-cccc-cccccccccccc","Watched":["bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"],"Resume":{},"LastId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","LastAtMs":5}""",
+                HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"),
+            )
             request.method.value == "POST" -> { played = true; respond("", HttpStatusCode.NoContent) }
             else -> respond(
                 """{"Items":[{"Id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","Name":"Ep","Type":"Episode","UserData":{"Played":$played,"PlaybackPositionTicks":0}}]}""",
@@ -88,7 +99,7 @@ class WatchStateNowTest {
     @Test fun aPlaylistSittingPutsTheUsersOwnStateBack() = runBlocking {
         val c = client()
         val told = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(5_000) { c.playStops.first() } }
-        c.keepOwnState(id, dev.nitrate.core.model.UserState(played = false, positionMs = 0))
+        c.keepOwnState(id, playlist, dev.nitrate.core.model.UserState(played = false, positionMs = 0))
         c.reportStopped(plan, 1_500_000)
         c.stopsSettled()
         val asked = synchronized(paths) { paths.toList() }
@@ -99,6 +110,26 @@ class WatchStateNowTest {
         assertEquals(id, e.itemId)
         assertEquals(1_500_000L, e.positionMs)
         assertEquals(false, e.forGroup)
+    }
+
+    /** With the Companion, it keeps the sitting: it puts the own state back and moves the record on, not this app. */
+    @Test fun withTheCompanionTheServerKeepsTheSitting() = runBlocking {
+        companion = true
+        val c = client()
+        assertTrue(c.keepsPlaylistRecords())
+        val told = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(8_000) { c.playStops.first() } }
+        c.keepOwnState(id, playlist, dev.nitrate.core.model.UserState(played = false, positionMs = 0, playCount = 2))
+        c.reportStopped(plan, 1_500_000)
+        val e = told.await()
+        assertEquals(true, e.recordedByServer)
+        val asked = synchronized(paths) { paths.toList() }
+        assertTrue("the sitting said to the Companion: $asked", "POST /Nitrate/Playlists/Sitting" in asked)
+        assertTrue("nothing put back by the app: $asked", asked.none { it.startsWith("POST /UserItems/") })
+        // Records: none yet is null; one kept comes back as the server keeps it.
+        assertEquals(null, c.playlistRecord(playlist))
+        val kept = c.putPlaylistRecord(dev.nitrate.core.playlists.PlaylistRecord(playlist), onlyIfNew = true)
+        assertEquals(setOf(id), kept.watched)
+        assertEquals(playlist, kept.playlistId)
     }
 
     @Test fun aStopOnItsOwnPutsNothingBack() = runBlocking {

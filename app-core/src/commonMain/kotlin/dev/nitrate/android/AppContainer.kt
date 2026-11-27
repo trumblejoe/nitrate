@@ -93,8 +93,43 @@ class AppContainer(
 
     private val recordsScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
 
-    /** Each playlist's own record, kept with the user's synced settings (one shared entry per playlist). */
+    /**
+     * Each playlist's own record: on the server when the Companion keeps them (it moves a record on as a
+     * sitting stops, even with the app closed), else with the user's synced settings (one shared entry per
+     * playlist). Records kept in settings before the Companion was there are moved up to it once.
+     */
     private val playlistRecords = object : dev.nitrate.android.playlists.PlaylistRecordStore {
+        private val inSettings = SettingsPlaylistRecords()
+        private val moved = HashSet<String>()
+        private val moving = kotlinx.coroutines.sync.Mutex()
+
+        /** The Companion's, when it keeps them (settings records moved up first, once per account). */
+        private suspend fun onServer(): Boolean {
+            if (!runCatching { server.keepsPlaylistRecords() }.getOrDefault(false)) return false
+            val account = server.currentAccountKey ?: return true
+            moving.withLock {
+                if (account in moved) return@withLock
+                val done = runCatching { dataCache.read(account, MOVED_UP, kotlinx.serialization.serializer<Boolean>()) }.getOrNull() == true
+                if (!done) {
+                    val all = inSettings.all()
+                    // Only when every one went up: else tried again next time (none replaces one kept there).
+                    if (all.all { r -> runCatching { server.putPlaylistRecord(r, onlyIfNew = true) }.isSuccess }) {
+                        runCatching { dataCache.write(account, MOVED_UP, true, kotlinx.serialization.serializer<Boolean>()) }
+                    } else return@withLock
+                }
+                moved += account
+            }
+            return true
+        }
+
+        override suspend fun get(playlistId: String) = if (onServer()) server.playlistRecord(playlistId) else inSettings.get(playlistId)
+        override suspend fun put(record: dev.nitrate.core.playlists.PlaylistRecord, onlyIfNew: Boolean) =
+            if (onServer()) server.putPlaylistRecord(record, onlyIfNew) else inSettings.put(record, onlyIfNew)
+        override suspend fun all() = if (onServer()) server.playlistRecords() else inSettings.all()
+    }
+
+    /** Playlist records in the user's synced settings (one shared `plrec:` entry per playlist). */
+    private inner class SettingsPlaylistRecords : dev.nitrate.android.playlists.PlaylistRecordStore {
         private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         private fun name(id: String) = dev.nitrate.core.pages.DisplayProfiles.PLAYLIST_RECORD + id
         override suspend fun get(playlistId: String): dev.nitrate.core.playlists.PlaylistRecord? {
@@ -102,9 +137,11 @@ class AppContainer(
             val raw = displaySettings.entriesStartingWith(user, name(playlistId)).first()[name(playlistId)] ?: return null
             return runCatching { json.decodeFromString(dev.nitrate.core.playlists.PlaylistRecord.serializer(), raw) }.getOrNull()
         }
-        override suspend fun put(record: dev.nitrate.core.playlists.PlaylistRecord) {
-            val user = server.userId ?: return
+        override suspend fun put(record: dev.nitrate.core.playlists.PlaylistRecord, onlyIfNew: Boolean): dev.nitrate.core.playlists.PlaylistRecord {
+            if (onlyIfNew) get(record.playlistId)?.let { return it }
+            val user = server.userId ?: return record
             displaySettings.saveEntry(user, name(record.playlistId), json.encodeToString(dev.nitrate.core.playlists.PlaylistRecord.serializer(), record))
+            return record
         }
         override suspend fun all(): List<dev.nitrate.core.playlists.PlaylistRecord> {
             val user = server.userId ?: return emptyList()
@@ -1499,6 +1536,8 @@ class AppContainer(
     }
 
     companion object {
+        /** Playlist records kept in settings were moved up to the Companion (per account, this device). */
+        private const val MOVED_UP = "playlist-records-moved-up"
         /** The Companion plugin feature that times requests on the server. */
         const val QUERY_TIMES_FEATURE = "querytimes"
 

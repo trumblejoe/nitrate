@@ -51,10 +51,11 @@ class PlaylistPlaying(
      * [playlistId]'s own record: kept, else stored, else (the first time, [raw] given) started from the
      * user's own progress on its entries ([dev.nitrate.core.playlists.PlaylistRecords.seed]) and stored.
      */
-    private suspend fun recordFor(playlistId: String, raw: List<MediaItem>?): dev.nitrate.core.playlists.PlaylistRecord? {
-        known.value[knownKey(playlistId)]?.let { return it }
+    private suspend fun recordFor(playlistId: String, raw: List<MediaItem>?, fresh: Boolean = false): dev.nitrate.core.playlists.PlaylistRecord? {
+        if (!fresh) known.value[knownKey(playlistId)]?.let { return it }
+        // A seed is kept only when there's none yet: one kept elsewhere (another device, the server) wins.
         val stored = runCatching { records.get(playlistId) }.getOrNull()
-            ?: raw?.let { dev.nitrate.core.playlists.PlaylistRecords.seed(playlistId, it).also { r -> runCatching { records.put(r) } } }
+            ?: raw?.let { val seed = dev.nitrate.core.playlists.PlaylistRecords.seed(playlistId, it); runCatching { records.put(seed, onlyIfNew = true) }.getOrDefault(seed) }
             ?: return null
         known.update { it + (knownKey(playlistId) to stored) }
         return stored
@@ -270,7 +271,7 @@ class PlaylistPlaying(
         val id = entries[at].id
         if (sittings.value[id] == null) {
             val own = runCatching { server.userData(id) }.getOrNull()
-            server.keepOwnState(id, own?.let { dev.nitrate.core.model.UserState(played = it.played, positionMs = it.positionMs, lastPlayedMs = it.lastPlayedMs) } ?: item.user)
+            server.keepOwnState(id, from, own?.let { dev.nitrate.core.model.UserState(played = it.played, positionMs = it.positionMs, lastPlayedMs = it.lastPlayedMs, playCount = it.playCount) } ?: item.user)
             sittings.update { it + (id to from) }
         }
         return remember(from, entries, at)
@@ -304,6 +305,11 @@ class PlaylistPlaying(
             if (stop.forGroup) return@collect
             val from = sittings.value[stop.itemId] ?: return@collect
             sittings.update { it - stop.itemId }
+            if (stop.recordedByServer) {
+                // The Companion moved the record on as the server heard the stop: read it as it is now.
+                runCatching { records.get(from) }.getOrNull()?.let { r -> known.update { it + (knownKey(from) to r) } }
+                return@collect
+            }
             val raw = runCatching { rawEntries(from, fresherThanMs = STRUCTURE_MS) }.getOrNull() ?: return@collect
             val record = recordFor(from, raw) ?: return@collect
             val runtime = raw.firstOrNull { it.id == stop.itemId }?.runtimeMs
@@ -348,7 +354,8 @@ class PlaylistPlaying(
         if (!done) {
             val lists = runCatching { fromFacts(LOOK_IN) }.getOrNull() ?: runCatching { activeHere(LOOK_IN) }.getOrDefault(emptyList())
             for ((playlistId, entries) in lists) {
-                if (runCatching { records.get(playlistId) }.getOrNull() == null) save(dev.nitrate.core.playlists.PlaylistRecords.seed(playlistId, entries))
+                runCatching { records.put(dev.nitrate.core.playlists.PlaylistRecords.seed(playlistId, entries), onlyIfNew = true) }.getOrNull()
+                    ?.let { r -> known.update { it + (knownKey(playlistId) to r) } }
             }
             runCatching { cache?.write(account, SEEDED, true, Boolean.serializer()) }
         }
@@ -404,7 +411,8 @@ class PlaylistPlaying(
      */
     suspend fun markUpTo(playlistId: String, itemId: String, watched: Boolean) {
         val raw = rawEntries(playlistId, fresherThanMs = 0)
-        val record = recordFor(playlistId, raw) ?: return
+        // Read as kept now (a sitting elsewhere may have moved it on since).
+        val record = recordFor(playlistId, raw, fresh = true) ?: return
         save(dev.nitrate.core.playlists.PlaylistRecords.markUpTo(record, raw, itemId, watched))
     }
 

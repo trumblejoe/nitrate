@@ -131,6 +131,9 @@ namespace Nitrate.Companion.Logic
         /// <summary>Group playbacks waiting to stop (<see cref="Partners.GroupPlays"/>).</summary>
         public const string GroupPlays = "groupplays.v1";
 
+        /// <summary>Playlist sittings waiting to stop (<see cref="Playlists.PlaylistSittings"/>).</summary>
+        public const string PlaylistSittings = "playlistsittings.v1";
+
         /// <summary>Because you watched facts (<see cref="BecauseStore"/>); "because.v1" held rows, no longer taken.</summary>
         public const string Because = "becausefacts.v1";
 

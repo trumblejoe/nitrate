@@ -23,6 +23,16 @@ public class DiaryTests
     private readonly MemoryStorage _storage = new();
 
     [Fact]
+    public void APlaylistSittingSaysWhichPlaylist()
+    {
+        var diary = new DiaryHub(_storage, _time);
+        var playlist = Guid.NewGuid();
+        Assert.Equal(playlist, diary.Finished(Ann, Film, null, playlist)!.PlaylistId);
+        _time.Advance(TimeSpan.FromDays(1));
+        Assert.Null(diary.Finished(Ann, Film)!.PlaylistId);
+    }
+
+    [Fact]
     public void RecordsEachWatchOnce()
     {
         var diary = new DiaryHub(_storage, _time);

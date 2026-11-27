@@ -121,7 +121,10 @@ data class PlaybackPlan(
 data class VersionOption(val id: String, val name: String?, val directPlay: Boolean, val directStream: Boolean, val bitrate: Int? = null)
 
 /** A user's state for one item on the server, with when it was last played (epoch ms). */
-data class RemoteUserData(val played: Boolean, val positionMs: Long, val lastPlayedMs: Long?)
+data class RemoteUserData(val played: Boolean, val positionMs: Long, val lastPlayedMs: Long?, val playCount: Int = 0)
 
-/** A playback that stopped at [positionMs]; [forGroup] when it was watched for a watch group. */
-data class PlayStop(val itemId: String, val positionMs: Long, val forGroup: Boolean)
+/**
+ * A playback that stopped at [positionMs]; [forGroup] when it was watched for a watch group;
+ * [recordedByServer] when it was a playlist sitting whose record the server (the Companion) moved on.
+ */
+data class PlayStop(val itemId: String, val positionMs: Long, val forGroup: Boolean, val recordedByServer: Boolean = false)

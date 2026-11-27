@@ -374,6 +374,28 @@ internal data class GroupPlayDto(val itemId: String, val groupIds: List<String>,
 @Serializable
 internal data class OwnStateDto(val played: Boolean, val positionMs: Long, val playCount: Int, val lastPlayedMs: Long?)
 
+/** A playback that's a sitting of a playlist (POST /Nitrate/Playlists/Sitting). */
+@Serializable
+internal data class PlaylistSittingDto(val itemId: String, val playlistId: String?, val before: OwnStateDto?)
+
+/** A playlist's own record as the Companion keeps it (GET/PUT /Nitrate/Playlists/Records). */
+@Serializable
+internal data class PlaylistRecordDto(
+    val playlistId: String = "",
+    val watched: List<String> = emptyList(),
+    val resume: Map<String, Long> = emptyMap(),
+    val lastId: String? = null,
+    val lastAtMs: Long = 0,
+) {
+    fun toRecord(id: String = playlistId) = dev.nitrate.core.playlists.PlaylistRecord(
+        playlistId = normalizeId(id),
+        watched = watched.map(::normalizeId).toSet(),
+        resume = resume.mapKeys { normalizeId(it.key) },
+        lastId = lastId?.let(::normalizeId),
+        lastAtMs = lastAtMs,
+    )
+}
+
 /** One playlist's facts from the Companion (GET /Nitrate/Playlists/Watching). */
 @Serializable
 internal data class PlaylistFactsDto(val id: String, val entries: List<EntryFactsDto> = emptyList()) {

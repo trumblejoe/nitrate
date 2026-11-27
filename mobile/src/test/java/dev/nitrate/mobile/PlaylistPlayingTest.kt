@@ -51,7 +51,7 @@ class PlaylistPlayingTest {
         override suspend fun allEpisodes(seriesId: String): List<MediaItem> { asked += "episodes:$seriesId"; return (1..4).map { episode(1, it, null) } }
         override suspend fun recentlyPlayed(limit: Int): List<MediaItem> { asked += "recent"; return listOf(episode(1, 2, 1), episode(1, 1, 3)) }
         override suspend fun userData(itemId: String) = dev.nitrate.core.model.RemoteUserData(played = false, positionMs = 0, lastPlayedMs = null)
-        override fun keepOwnState(itemId: String, before: dev.nitrate.core.model.UserState) { kept += itemId }
+        override suspend fun keepOwnState(itemId: String, playlistId: String, before: dev.nitrate.core.model.UserState) { kept += itemId }
         override val playStops = stops
     }
 
@@ -123,6 +123,26 @@ class PlaylistPlayingTest {
         stops.emit(dev.nitrate.core.model.PlayStop("s1e4", 1_200_000, forGroup = true))
         kotlinx.coroutines.delay(50)
         assertEquals(0L, playing.resumeIn("p1", "s1e4"))
+        following.cancel()
+    }
+
+    /** With the Companion, the server moved the record on as it heard the stop: the app reads it, it doesn't work it out. */
+    @Test
+    fun aStopTheServerRecordedIsReadBack() = runBlocking {
+        val store = dev.nitrate.android.playlists.PlaylistRecordStore.InMemory()
+        val playing = PlaylistPlaying(server, null, nowMs = { now }, records = store)
+        playing.continueRow()
+        val following = launch(kotlinx.coroutines.Dispatchers.Unconfined) { playing.followStops() }
+        playing.startedFrom("p1", "s1e3")
+        playing.contextOf(episode(1, 3, null))
+        // As the Companion leaves it: watched to the end in the playlist.
+        val before = store.get("p1")!!
+        store.put(before.copy(watched = before.watched + "s1e3", lastId = "s1e3", lastAtMs = now))
+        // The app's own stop said 20 minutes in, but the server's record is what counts.
+        stops.emit(dev.nitrate.core.model.PlayStop("s1e3", 1_200_000, forGroup = false, recordedByServer = true))
+        kotlinx.coroutines.delay(50)
+        assertTrue(playing.seenInPlaylists("s1e3"))
+        assertEquals(0L, playing.resumeIn("p1", "s1e3"))
         following.cancel()
     }
 

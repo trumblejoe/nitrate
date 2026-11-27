@@ -16,10 +16,12 @@ public class DiaryRecorder : IHostedService
     private readonly DiaryHub _diary;
     private readonly IUserDataManager _userData;
     private readonly Nitrate.Companion.Partners.GroupPlays _groupPlays;
+    private readonly Nitrate.Companion.Playlists.PlaylistSittings _sittings;
 
     /// <summary>Initializes a new instance of the <see cref="DiaryRecorder"/> class.</summary>
-    public DiaryRecorder(DiaryHub diary, IUserDataManager userData, Nitrate.Companion.Partners.GroupPlays groupPlays)
+    public DiaryRecorder(DiaryHub diary, IUserDataManager userData, Nitrate.Companion.Partners.GroupPlays groupPlays, Nitrate.Companion.Playlists.PlaylistSittings sittings)
     {
+        _sittings = sittings;
         _groupPlays = groupPlays;
         _diary = diary;
         _userData = userData;
@@ -62,7 +64,7 @@ public class DiaryRecorder : IHostedService
             return;
         }
 
-        // Watched for groups: kept as a group watch, apart from the person's own.
-        _diary.Finished(e.UserId, title, _groupPlays.For(e.UserId, e.Item.Id));
+        // Watched for groups: kept as a group watch, apart from the person's own; a playlist sitting says which.
+        _diary.Finished(e.UserId, title, _groupPlays.For(e.UserId, e.Item.Id), _sittings.For(e.UserId, e.Item.Id));
     }
 }

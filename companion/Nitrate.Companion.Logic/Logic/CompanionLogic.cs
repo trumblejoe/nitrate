@@ -153,6 +153,7 @@ public sealed class CompanionLogic : ICompanionLogic
         Put(HandOver.Sso, () => _services.GetRequiredService<Sso.SsoService>().ExportState());
         Put(HandOver.QueryTimes, () => _services.GetRequiredService<QueryTimes.QueryTimeStore>().ExportState());
         Put(HandOver.GroupPlays, () => _services.GetRequiredService<Partners.GroupPlays>().ExportState());
+        Put(HandOver.PlaylistSittings, () => _services.GetRequiredService<Playlists.PlaylistSittings>().ExportState());
         Put(HandOver.Because, () => _services.GetRequiredService<Recommendations.BecauseStore>().ExportState());
         Put(HandOver.Sittings, () => _services.GetRequiredService<Insights.SittingRecorder>().ExportState());
         Put(HandOver.Together, () => _services.GetRequiredService<Partners.TogetherRecorder>().ExportState());
@@ -191,6 +192,7 @@ public sealed class CompanionLogic : ICompanionLogic
         Take<List<Sso.PendingSignInState>>(HandOver.Sso, s => _services.GetRequiredService<Sso.SsoService>().ImportState(s));
         Take<QueryTimes.QueryTimesState>(HandOver.QueryTimes, s => _services.GetRequiredService<QueryTimes.QueryTimeStore>().ImportState(s));
         Take<List<Partners.GroupPlayState>>(HandOver.GroupPlays, s => _services.GetRequiredService<Partners.GroupPlays>().ImportState(s));
+        Take<List<Playlists.PlaylistSittingState>>(HandOver.PlaylistSittings, s => _services.GetRequiredService<Playlists.PlaylistSittings>().ImportState(s));
         Take<Dictionary<Guid, Recommendations.BecauseFacts>>(HandOver.Because, s => _services.GetRequiredService<Recommendations.BecauseStore>().ImportState(s));
         Take<List<Insights.SittingState>>(HandOver.Sittings, s => _services.GetRequiredService<Insights.SittingRecorder>().ImportState(s));
         Take<List<Partners.TogetherSeenState>>(HandOver.Together, s => _services.GetRequiredService<Partners.TogetherRecorder>().ImportState(s));

@@ -66,6 +66,10 @@ public static class LogicServices
         // A group watch kept out of the person's own history (their state put back when it stops).
         serviceCollection.AddSingleton<GroupPlays>();
         serviceCollection.AddHostedService(sp => sp.GetRequiredService<GroupPlays>());
+        // Playlists' own records, and sittings of them kept out of the person's own state.
+        serviceCollection.AddSingleton(sp => new Nitrate.Companion.Playlists.PlaylistRecordBook(sp.GetRequiredService<Nitrate.Companion.Storage.CompanionDb>()));
+        serviceCollection.AddSingleton<Nitrate.Companion.Playlists.PlaylistSittings>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<Nitrate.Companion.Playlists.PlaylistSittings>());
         serviceCollection.AddHostedService<Nitrate.Companion.Diary.DiaryRecorder>();
         serviceCollection.AddSingleton(sp => new Nitrate.Companion.Lines.LineIndex(
             Path.Combine(sp.GetRequiredService<IApplicationPaths>().DataPath, "nitrate-companion", "lines.db")));

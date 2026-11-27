@@ -2552,6 +2552,7 @@ class JellyfinClient(
             played = data.played,
             positionMs = data.playbackPositionTicks.ticksToMs(),
             lastPlayedMs = data.lastPlayedDate?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() },
+            playCount = data.playCount ?: 0,
         )
     }
 
@@ -2584,29 +2585,75 @@ class JellyfinClient(
         runCatching { post<PlaybackStartDto>("Sessions", "Playing", "Progress", body = startInfo(plan, positionMs, isPaused)) }
     }
 
-    override fun keepOwnState(itemId: String, before: dev.nitrate.core.model.UserState) {
-        ownKept.update { it + (itemId to before) }
+    override suspend fun keepOwnState(itemId: String, playlistId: String, before: dev.nitrate.core.model.UserState) {
+        // The Companion puts it back (and moves the record on) when the server says it stopped, even
+        // with this app closed; else this app does, after its own stop report.
+        val byServer = companionHas(PLAYLIST_RECORDS) && runCatching {
+            post<PlaylistSittingDto>(
+                "Nitrate", "Playlists", "Sitting",
+                body = PlaylistSittingDto(
+                    dashless(listOf(itemId)), dashless(listOf(playlistId)),
+                    OwnStateDto(before.played, before.positionMs, before.playCount, before.lastPlayedMs),
+                ),
+            )
+        }.isSuccess
+        if (byServer) {
+            serverKept.update { it + (itemId to before) }
+            ownKept.update { it - itemId }
+        } else {
+            ownKept.update { it + (itemId to before) }
+        }
     }
+
+    override suspend fun keepsPlaylistRecords(): Boolean = companionHas(PLAYLIST_RECORDS)
+
+    override suspend fun playlistRecords(): List<dev.nitrate.core.playlists.PlaylistRecord> =
+        get("Nitrate", "Playlists", "Records").decode<List<PlaylistRecordDto>>().map { it.toRecord() }
+
+    override suspend fun playlistRecord(playlistId: String): dev.nitrate.core.playlists.PlaylistRecord? = try {
+        get("Nitrate", "Playlists", "Records", dashless(listOf(playlistId))).decode<PlaylistRecordDto>().toRecord(playlistId)
+    } catch (e: io.ktor.client.plugins.ClientRequestException) {
+        if (e.response.status == HttpStatusCode.NotFound) null else throw e
+    }
+
+    override suspend fun putPlaylistRecord(record: dev.nitrate.core.playlists.PlaylistRecord, onlyIfNew: Boolean): dev.nitrate.core.playlists.PlaylistRecord =
+        http.put(url("Nitrate", "Playlists", "Records", dashless(listOf(record.playlistId)), query = mapOf("onlyIfNew" to onlyIfNew))) {
+            auth()
+            contentType(ContentType.Application.Json)
+            setBody(
+                PlaylistRecordDto(
+                    watched = record.watched.map { dashless(listOf(it)) },
+                    resume = record.resume.mapKeys { dashless(listOf(it.key)) },
+                    lastId = record.lastId?.let { dashless(listOf(it)) },
+                    lastAtMs = record.lastAtMs,
+                ),
+            )
+        }.decode<PlaylistRecordDto>().toRecord(record.playlistId)
 
     override val playStops: kotlinx.coroutines.flow.Flow<dev.nitrate.core.model.PlayStop> get() = stopped
 
     private val stopped = kotlinx.coroutines.flow.MutableSharedFlow<dev.nitrate.core.model.PlayStop>(extraBufferCapacity = 16)
 
-    /** Titles playing as a playlist sitting, with the user's own state from before (put back when they stop). */
+    /** Titles playing as a playlist sitting the Companion keeps, with the user's own state from before (it puts it back as they stop). */
+    private val serverKept = kotlinx.coroutines.flow.MutableStateFlow<Map<String, dev.nitrate.core.model.UserState>>(emptyMap())
+
+    /** Titles playing as a playlist sitting, with the user's own state from before (put back here when they stop). */
     private val ownKept = kotlinx.coroutines.flow.MutableStateFlow<Map<String, dev.nitrate.core.model.UserState>>(emptyMap())
 
     override fun reportStopped(plan: PlaybackPlan, positionMs: Long) {
         val id = plan.itemId
         val group = groupPlays.value[id]
-        // A playlist sitting (never a group's): the user's own state is put back here, after the stop.
-        val kept = ownKept.value[id]?.takeIf { group == null }
+        // A playlist sitting (never a group's): the Companion puts the user's own state back, else this app does after the stop.
+        val served = serverKept.value[id]?.takeIf { group == null }
+        val kept = ownKept.value[id]?.takeIf { group == null && served == null }
+        val held = group != null || served != null || kept != null
         val job = appScope.launch {
-            // A group play's own state is put back by the Companion just after the server has
-            // marked it: listen for that before saying the stop is done.
+            // A group play's or a kept sitting's own state is put back by the Companion just after the
+            // server has marked it: listen for that before saying the stop is done.
             // Meanwhile the server's pushes for it (watched, then put back) aren't passed on.
-            if (group != null || kept != null) restoring.update { it + id }
+            if (held) restoring.update { it + id }
             try {
-                val restored = group?.let { before ->
+                val restored = (group ?: served)?.let { before ->
                     async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
                         kotlinx.coroutines.withTimeoutOrNull(GROUP_RESTORE_WAIT_MS) {
                             pushed.first { e -> e.states[id]?.let { it.played == before.played && it.positionMs == before.positionMs } == true }
@@ -2618,6 +2665,7 @@ class JellyfinClient(
                 }.isSuccess
                 if (!sent) { restored?.cancel(); return@launch }
                 groupPlays.update { it - id }
+                serverKept.update { it - id }
                 restored?.await()
                 if (kept != null) {
                     ownKept.update { it - id }
@@ -2628,9 +2676,9 @@ class JellyfinClient(
                         )
                     }
                 }
-                stopped.tryEmit(dev.nitrate.core.model.PlayStop(id, positionMs, forGroup = group != null))
+                stopped.tryEmit(dev.nitrate.core.model.PlayStop(id, positionMs, forGroup = group != null, recordedByServer = served != null))
             } finally {
-                if (group != null || kept != null) restoring.update { it - id }
+                if (held) restoring.update { it - id }
             }
             watchStateFromServer(listOf(id))
         }
@@ -2700,6 +2748,8 @@ class JellyfinClient(
 
         /** How long a group play's stop waits for the Companion to put the user's own state back. */
         const val GROUP_RESTORE_WAIT_MS = 2_500L
+        /** The Companion keeps playlists' own records and sittings (POST /Nitrate/Playlists/Sitting). */
+        const val PLAYLIST_RECORDS = "playlistrecords"
 
         /** How long a state said here stops the server's push of the same one being said again. */
         const val SAID_KEPT_MS = 5_000L

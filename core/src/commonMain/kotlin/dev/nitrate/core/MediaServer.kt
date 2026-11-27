@@ -1089,11 +1089,28 @@ interface MediaServer {
     suspend fun groupPlay(itemId: String, groupIds: List<String>, before: dev.nitrate.core.model.UserState) {}
 
     /**
-     * [itemId] is about to play as a playlist sitting: it counts for the playlist's own record, not the
-     * user's, so their own state from before ([before]) is put back when its playback stops (their
-     * watched mark and resume point; Jellyfin's play count can't be put back).
+     * [itemId] is about to play as a sitting of [playlistId]: it counts for the playlist's own record, not
+     * the user's, so their own state from before ([before]) is put back when its playback stops. With the
+     * Companion (feature `playlistrecords`) the server does that and moves the playlist's record on, even
+     * if the app is closed meanwhile (the stop is then told with [dev.nitrate.core.model.PlayStop.recordedByServer]);
+     * without it, this app puts back their watched mark and resume point after its own stop report.
      */
-    fun keepOwnState(itemId: String, before: dev.nitrate.core.model.UserState) {}
+    suspend fun keepOwnState(itemId: String, playlistId: String, before: dev.nitrate.core.model.UserState) {}
+
+    /** Whether the server keeps each playlist's own record (the Companion, feature `playlistrecords`). */
+    suspend fun keepsPlaylistRecords(): Boolean = false
+
+    /** Every one of the user's playlist records the server keeps (only when [keepsPlaylistRecords]). */
+    suspend fun playlistRecords(): List<dev.nitrate.core.playlists.PlaylistRecord> = unsupported()
+
+    /** The user's record of [playlistId] the server keeps; null: none yet (only when [keepsPlaylistRecords]). */
+    suspend fun playlistRecord(playlistId: String): dev.nitrate.core.playlists.PlaylistRecord? = unsupported()
+
+    /**
+     * Keeps [record] on the server and gives back what's kept; [onlyIfNew]: only when there's none yet (a
+     * record started from the user's own progress never replaces one kept). Only when [keepsPlaylistRecords].
+     */
+    suspend fun putPlaylistRecord(record: dev.nitrate.core.playlists.PlaylistRecord, onlyIfNew: Boolean = false): dev.nitrate.core.playlists.PlaylistRecord = unsupported()
 
     /** Every playback stop reported from this app, once it's been sent (for playlist records). */
     val playStops: kotlinx.coroutines.flow.Flow<dev.nitrate.core.model.PlayStop> get() = kotlinx.coroutines.flow.emptyFlow()
