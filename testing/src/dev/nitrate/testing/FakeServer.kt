@@ -196,7 +196,7 @@ class FakeServer : MediaServer {
 
     override fun backdropUrl(item: MediaItem): String? = art("${artKey(item)}-backdrop")
     override fun backdropUrls(item: MediaItem) = listOfNotNull(backdropUrl(item))
-    override suspend fun search(query: String) = dev.nitrate.core.model.SearchResults(
+    override suspend fun search(query: String, areas: Set<dev.nitrate.core.search.SearchArea>) = dev.nitrate.core.model.SearchResults(
         movies = films.filter { it.name.contains(query, ignoreCase = true) || query.length < 3 },
         shows = listOf(series),
         episodes = (1..3).map { episode(1, it, false) },

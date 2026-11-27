@@ -50,6 +50,21 @@ data class SearchResults(
     val episodes: List<MediaItem> = emptyList(),
     val collections: List<MediaItem> = emptyList(),
     val people: List<Person> = emptyList(),
+    val playlists: List<MediaItem> = emptyList(),
+    val artists: List<MediaItem> = emptyList(),
+    val albums: List<MediaItem> = emptyList(),
+    val songs: List<MediaItem> = emptyList(),
+    val audiobooks: List<MediaItem> = emptyList(),
+    val books: List<MediaItem> = emptyList(),
+    /** Music videos and home videos. */
+    val videos: List<MediaItem> = emptyList(),
+    /** Live TV channels. */
+    val channels: List<MediaItem> = emptyList(),
 ) {
-    val isEmpty get() = movies.isEmpty() && shows.isEmpty() && episodes.isEmpty() && collections.isEmpty() && people.isEmpty()
+    val isEmpty get() = movies.isEmpty() && shows.isEmpty() && episodes.isEmpty() && collections.isEmpty() && people.isEmpty() &&
+        playlists.isEmpty() && artists.isEmpty() && albums.isEmpty() && songs.isEmpty() && audiobooks.isEmpty() && books.isEmpty() &&
+        videos.isEmpty() && channels.isEmpty()
+
+    /** Songs grouped by artist, then album ([dev.nitrate.core.search.SearchScope.groupSongs]). */
+    val songsByArtist: List<dev.nitrate.core.search.SongArtist> get() = dev.nitrate.core.search.SearchScope.groupSongs(songs)
 }

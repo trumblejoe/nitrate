@@ -2863,6 +2863,41 @@ class TvScreenshotTest {
         dev.nitrate.tv.ui.search.SearchScreen(c.server, c.searchHistory, initialQuery = "re", onOpen = {}, onPerson = {})
     }
 
+    /** Beyond films: playlists, artists, albums and songs (a row per artist and album) and channels, for the areas the user has; OK on a song plays it. */
+    @Test fun searchMusicAndMore() {
+        var played: dev.nitrate.core.model.MediaItem? = null
+        var asked: Set<dev.nitrate.core.search.SearchArea>? = null
+        shoot("tv-search-music", act = {
+            check(asked == setOf(dev.nitrate.core.search.SearchArea.MUSIC, dev.nitrate.core.search.SearchArea.LIVE_TV)) { "searched the user's areas: $asked" }
+            repeat(12) { if (!focusedHasText("Moonlit Road")) press("down") }
+            check(focusedHasText("Moonlit Road")) { "a song is reachable; focused: ${focusedNodes()}" }
+            check(shows("Songs · Night Owls · Late Shift")) { "songs grouped by artist and album" }
+            press("ok")
+            compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+            check(played?.id == "song-1") { "OK plays the song" }
+        }) { c ->
+            fun item(id: String, name: String, kind: dev.nitrate.core.model.ItemKind) = dev.nitrate.core.model.MediaItem(id, name, kind)
+            val withMusic = object : dev.nitrate.core.MediaServer by c.server {
+                override suspend fun searchHints(query: String) = dev.nitrate.core.model.SearchResults()
+                override suspend fun search(query: String, areas: Set<dev.nitrate.core.search.SearchArea>) = dev.nitrate.core.model.SearchResults(
+                    playlists = listOf(item("pl1", "Road trip", dev.nitrate.core.model.ItemKind.PLAYLIST)),
+                    artists = listOf(item("ar1", "Night Owls", dev.nitrate.core.model.ItemKind.MUSIC_ARTIST)),
+                    albums = listOf(item("al1", "Late Shift", dev.nitrate.core.model.ItemKind.MUSIC_ALBUM).copy(albumArtist = "Night Owls")),
+                    songs = listOf(
+                        item("song-1", "Moonlit Road", dev.nitrate.core.model.ItemKind.AUDIO).copy(album = "Late Shift", albumId = "al1", albumArtist = "Night Owls", indexNumber = 4, runtimeMs = 241_000),
+                        item("song-2", "Road Home", dev.nitrate.core.model.ItemKind.AUDIO).copy(album = "Morning", albumId = "al2", albumArtist = "Day Trippers", indexNumber = 2, runtimeMs = 198_000),
+                    ),
+                    channels = listOf(item("ch1", "Road Movies HD", dev.nitrate.core.model.ItemKind.TV_CHANNEL)),
+                )
+            }
+            dev.nitrate.tv.ui.search.SearchScreen(
+                withMusic, c.searchHistory, initialQuery = "road", onOpen = {}, onPerson = {},
+                areas = { setOf(dev.nitrate.core.search.SearchArea.MUSIC, dev.nitrate.core.search.SearchArea.LIVE_TV).also { asked = it } },
+                onPlay = { played = it },
+            )
+        }
+    }
+
     /**
      * Every row style shows an episode not seen yet spoiler-safe: its name never shows ("Episode 7"
      * instead), whatever the style draws (posters, artwork, showcases, film strip, lightning, Cressida).

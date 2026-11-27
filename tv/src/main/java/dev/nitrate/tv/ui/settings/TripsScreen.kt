@@ -291,7 +291,8 @@ private fun AddToTripPanel(container: AppContainer, onDismiss: () -> Unit, onPic
     val results by produceState<List<MediaItem>>(emptyList(), query) {
         if (query.length < 2) { value = emptyList(); return@produceState }
         kotlinx.coroutines.delay(300)
-        value = runCatching { container.server.search(query) }.getOrNull()?.let { it.shows + it.movies + it.collections }.orEmpty().take(20)
+        value = runCatching { container.server.search(query, container.searchAreas() - dev.nitrate.core.search.SearchArea.MUSIC - dev.nitrate.core.search.SearchArea.LIVE_TV) }.getOrNull()
+            ?.let { it.shows + it.movies + it.collections + it.playlists + it.videos + it.episodes }.orEmpty().take(20)
     }
     val focus = remember { FocusRequester() }
     TvDialog(onDismiss = onDismiss, width = 640) {
@@ -300,11 +301,15 @@ private fun AddToTripPanel(container: AppContainer, onDismiss: () -> Unit, onPic
         results.forEach { item ->
             ListItem(
                 selected = false, onClick = { onPick(item); onDismiss() },
-                headlineContent = { Text(item.name) },
+                // An episode by its show and number only (no spoilers).
+                headlineContent = { Text(if (item.kind == ItemKind.EPISODE) item.seriesName ?: "Episode" else item.name) },
                 supportingContent = {
                     Text(when (item.kind) {
                         ItemKind.SERIES -> "Show: its next episodes"
                         ItemKind.BOX_SET -> "Collection"
+                        ItemKind.PLAYLIST -> "Playlist"
+                        ItemKind.VIDEO, ItemKind.MUSIC_VIDEO -> "Video"
+                        ItemKind.EPISODE -> "${item.seriesName ?: ""} · S${item.seasonNumber ?: "?"}:E${item.indexNumber ?: "?"}"
                         else -> listOfNotNull("Film", item.productionYear?.toString()).joinToString(" · ")
                     })
                 },

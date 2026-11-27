@@ -90,7 +90,7 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
         // Quick matches first (names and pictures, cheap for the server), then the full results.
         // A newer query cancels this one: not an error to show.
         try { results = Result.success(dev.nitrate.core.diagnostics.withQueryOrigin("Search") { actions.server.searchHints(query) }) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
-        results = try { Result.success(dev.nitrate.core.diagnostics.withQueryOrigin("Search") { actions.server.search(query) }.also { resultsFor = query }) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results?.takeIf { it.isSuccess } ?: Result.failure(e) }
+        results = try { Result.success(dev.nitrate.core.diagnostics.withQueryOrigin("Search") { actions.server.search(query, actions.container.searchAreas()) }.also { resultsFor = query }) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results?.takeIf { it.isSuccess } ?: Result.failure(e) }
         loading = false
     }
     if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -136,7 +136,7 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
                         }
                     }
                 } else item {
-                    Text("Find movies, shows, episodes and people.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding))
+                    Text("Find films, shows, episodes, people, playlists, and anything else in your libraries: music, books, videos, channels.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = ScreenPadding))
                 }
                 results?.isFailure == true -> item { Text("Couldn't search: ${results?.exceptionOrNull()?.message}", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = ScreenPadding)) }
                 r == null -> Unit
@@ -162,6 +162,31 @@ fun SearchScreen(actions: AppActions, modifier: Modifier = Modifier, initialQuer
                     if (r.shows.isNotEmpty()) item { PosterResults("Shows", r.shows, actions, ::openFromResults) }
                     if (r.people.isNotEmpty()) item { PeopleResults(r.people, actions) { scope.launch { history.add(query) } } }
                     if (r.collections.isNotEmpty()) item { PosterResults("Collections", r.collections, actions, ::openFromResults) }
+                    if (r.playlists.isNotEmpty()) item { PosterResults("Playlists", r.playlists, actions, ::openFromResults, CardShape.SQUARE) }
+                    if (r.artists.isNotEmpty()) item { PosterResults("Artists", r.artists, actions, ::openFromResults, CardShape.SQUARE) }
+                    if (r.albums.isNotEmpty()) item { PosterResults("Albums", r.albums, actions, ::openFromResults, CardShape.SQUARE) }
+                    if (r.songs.isNotEmpty()) {
+                        item { SectionHeader("Songs", Modifier.padding(bottom = 0.dp)) }
+                        r.songsByArtist.forEach { artist ->
+                            artist.albums.forEach { album ->
+                                item(key = "album-${artist.name}-${album.name}") {
+                                    // "Artist · Album": tap the album's name for the album itself.
+                                    Text(
+                                        "${artist.name} · ${album.name}", style = MaterialTheme.typography.titleSmall, color = accentColor(), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.fillMaxWidth().then(album.albumId?.let { id -> Modifier.pressable({ scope.launch { history.add(query) }; actions.nav.navigate(DetailsRoute(id)) }) } ?: Modifier)
+                                            .padding(horizontal = ScreenPadding, vertical = 6.dp),
+                                    )
+                                }
+                                items(album.songs, key = { "song-${it.id}" }) { song ->
+                                    SongResult(song, actions) { scope.launch { history.add(query) }; actions.playOrOpen(song) }
+                                }
+                            }
+                        }
+                    }
+                    if (r.audiobooks.isNotEmpty()) item { PosterResults("Audiobooks", r.audiobooks, actions, ::openFromResults, CardShape.SQUARE) }
+                    if (r.books.isNotEmpty()) item { PosterResults("Books", r.books, actions, ::openFromResults) }
+                    if (r.videos.isNotEmpty()) item { PosterResults("Videos", r.videos, actions, ::openFromResults, CardShape.WIDE) }
+                    if (r.channels.isNotEmpty()) item { PosterResults("Channels", r.channels, actions, { item, _ -> scope.launch { history.add(query) }; actions.playOrOpen(item) }, CardShape.WIDE) }
                     if (r.episodes.isNotEmpty()) {
                         item { SectionHeader("Episodes", Modifier.padding(bottom = 0.dp)) }
                         items(r.episodes.take(20), key = { "ep-${it.id}" }) { ep -> EpisodeResult(ep, actions) { openFromResults(ep, "search-${ep.id}") } }
@@ -185,7 +210,7 @@ private fun SearchField(query: String, onChange: (String) -> Unit, focus: FocusR
         Icon(Icons.Default.Search, null, tint = if (query.isNotEmpty()) accent else MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(12.dp))
         Box(Modifier.weight(1f)) {
-            if (query.isEmpty()) Text("Titles, people, episodes", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+            if (query.isEmpty()) Text("Titles, people, music, playlists", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
             BasicTextField(
                 query,
                 onChange,
@@ -205,14 +230,14 @@ private fun SearchField(query: String, onChange: (String) -> Unit, focus: FocusR
 }
 
 @Composable
-private fun PosterResults(title: String, items: List<MediaItem>, actions: AppActions, open: (MediaItem, String) -> Unit) {
+private fun PosterResults(title: String, items: List<MediaItem>, actions: AppActions, open: (MediaItem, String) -> Unit, shape: CardShape = CardShape.POSTER) {
     Column {
         SectionHeader(title)
         LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(items, key = { it.id }) { item ->
                 val key = "search-${item.id}"
-                MediaCard(item, actions.server.cardImage(item, CardShape.POSTER), CardShape.POSTER, onClick = { open(item, key) }, width = 116.dp,
-                    title = item.name, subtitle = item.productionYear?.toString(), sharedKey = key)
+                MediaCard(item, actions.server.cardImage(item, shape), shape, onClick = { open(item, key) }, width = if (shape == CardShape.WIDE) 200.dp else if (shape == CardShape.SQUARE) 132.dp else 116.dp,
+                    title = item.name, subtitle = resultSubtitle(item), sharedKey = key)
             }
         }
     }
@@ -238,6 +263,23 @@ fun PersonBubble(person: Person, actions: AppActions, onClick: () -> Unit) {
         }
         Text(person.name, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
         person.role?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    }
+}
+
+/** Under a card: the year, or for music and books who made it. */
+private fun resultSubtitle(item: MediaItem): String? = when (item.kind) {
+    dev.nitrate.core.model.ItemKind.MUSIC_ALBUM, dev.nitrate.core.model.ItemKind.AUDIOBOOK -> item.albumArtist ?: item.artists.firstOrNull() ?: item.productionYear?.toString()
+    dev.nitrate.core.model.ItemKind.MUSIC_ARTIST, dev.nitrate.core.model.ItemKind.PLAYLIST, dev.nitrate.core.model.ItemKind.TV_CHANNEL -> null
+    else -> item.productionYear?.toString()
+}
+
+/** A song found: its number on the album, its name and length; tap plays it. */
+@Composable
+private fun SongResult(song: MediaItem, actions: AppActions, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().pressable(onClick).padding(horizontal = ScreenPadding, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(song.indexNumber?.toString() ?: "♪", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(32.dp))
+        Text(song.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        song.runtimeMs?.let { ms -> Text("${ms / 60_000}:${(ms / 1000 % 60).toString().padStart(2, '0')}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 

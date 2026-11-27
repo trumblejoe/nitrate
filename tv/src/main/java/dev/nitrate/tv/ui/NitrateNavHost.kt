@@ -468,6 +468,8 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 startWithVoice = route.voice,
                 onOpen = nav::openItem,
                 onPerson = { p -> nav.navigate(PersonRoute(p.id, p.name)) },
+                areas = container::searchAreas,
+                onPlay = { item -> scope.launch { gate.play(item) } },
                 linesOn = companion?.features?.contains(dev.nitrate.core.lines.SpokenLines.FEATURE) == true,
                 onPlayLine = { line ->
                     scope.launch {

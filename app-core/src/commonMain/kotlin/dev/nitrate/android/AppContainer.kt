@@ -122,6 +122,10 @@ class AppContainer(
         )
     }
 
+    /** What search looks through beyond films and shows: the areas the user has libraries for (from the list kept on the device). */
+    fun searchAreas(): Set<dev.nitrate.core.search.SearchArea> =
+        dev.nitrate.core.search.SearchScope.areas(runCatching { libraryCache.cached(server) }.getOrDefault(emptyList()))
+
     /** Whether this device downloads (phones, tablets, the iPhone and iPad, computers; not the TV). */
     val canDownload: Boolean get() = deviceKind != dev.nitrate.core.pages.DeviceKind.TV
 

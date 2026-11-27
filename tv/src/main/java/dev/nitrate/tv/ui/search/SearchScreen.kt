@@ -65,6 +65,10 @@ fun SearchScreen(
     /** "Search what people say" (Companion plugin): lines said, played from just before. */
     linesOn: Boolean = false,
     onPlayLine: (dev.nitrate.core.lines.SpokenLine) -> Unit = {},
+    /** Beyond films and shows: the user's music, books, videos and channels ([dev.nitrate.core.search.SearchScope]). */
+    areas: () -> Set<dev.nitrate.core.search.SearchArea> = { emptySet() },
+    /** A song or a channel: plays at once (through the guards). */
+    onPlay: (MediaItem) -> Unit = onOpen,
 ) {
     var query by remember { mutableStateOf(initialQuery) }
     var results by retained<SearchResults?>("search-results") { null }
@@ -99,7 +103,7 @@ fun SearchScreen(
         // Quick matches first (names and pictures, cheap for the server), then the full results.
         // A newer query cancels this one (keep what's shown until its results arrive).
         try { results = dev.nitrate.core.diagnostics.withQueryOrigin("Search") { repository.searchHints(q) } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
-        results = try { dev.nitrate.core.diagnostics.withQueryOrigin("Search") { repository.search(q) }.also { resultsFor = q } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results }
+        results = try { dev.nitrate.core.diagnostics.withQueryOrigin("Search") { repository.search(q, areas()) }.also { resultsFor = q } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { results }
         searching = false
     }
     var lines by remember { mutableStateOf<List<dev.nitrate.core.lines.SpokenLine>>(emptyList()) }
@@ -126,7 +130,7 @@ fun SearchScreen(
                     TvTextField(
                         query,
                         { query = it },
-                        placeholder = "Movies, shows, episodes, people",
+                        placeholder = "Films, shows, people, music, playlists",
                         modifier = Modifier.width(620.dp).focusRequester(field),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { scope.launch { history.add(query) } }),
@@ -144,21 +148,29 @@ fun SearchScreen(
             }
         }
         val r = results ?: return@LazyColumn
-        fun row(title: String, list: List<MediaItem>, wide: Boolean = false) {
+        fun row(title: String, list: List<MediaItem>, wide: Boolean = false, square: Boolean = false, key: String = title, onClick: (MediaItem) -> Unit = ::open) {
             if (list.isEmpty()) return
-            item(key = title) {
+            item(key = key) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = PagePadding))
                     LazyRow(contentPadding = PaddingValues(horizontal = PagePadding), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         items(list, key = { it.id }) { item ->
+                            val episode = item.kind == dev.nitrate.core.model.ItemKind.EPISODE
                             MediaCard(
                                 item = item,
-                                imageUrl = if (wide) repository.imageUrl(item, ImageKind.THUMB, 240) ?: repository.backdropUrl(item) else repository.imageUrl(item, ImageKind.PRIMARY, 360),
-                                width = if (wide) 260.dp else 140.dp,
-                                aspectRatio = if (wide) 16f / 9f else 2f / 3f,
-                                title = if (wide) item.seriesName ?: item.name else item.name,
-                                subtitle = if (wide) item.episodeLabel else item.productionYear?.toString(),
-                                onClick = { open(item) },
+                                imageUrl = if (wide) repository.imageUrl(item, ImageKind.THUMB, 240) ?: repository.imageUrl(item, ImageKind.PRIMARY, 360) ?: repository.backdropUrl(item)
+                                else repository.imageUrl(item, ImageKind.PRIMARY, 360),
+                                width = if (wide) 260.dp else if (square) 150.dp else 140.dp,
+                                aspectRatio = if (wide) 16f / 9f else if (square) 1f else 2f / 3f,
+                                title = if (episode) item.seriesName ?: item.name else item.name,
+                                subtitle = when {
+                                    episode -> item.episodeLabel
+                                    item.kind == dev.nitrate.core.model.ItemKind.MUSIC_ALBUM || item.kind == dev.nitrate.core.model.ItemKind.AUDIOBOOK -> item.albumArtist ?: item.artists.firstOrNull()
+                                    item.kind == dev.nitrate.core.model.ItemKind.AUDIO -> item.runtimeMs?.let { ms -> "${ms / 60_000}:${(ms / 1000 % 60).toString().padStart(2, '0')}" }
+                                    item.kind == dev.nitrate.core.model.ItemKind.MUSIC_ARTIST || item.kind == dev.nitrate.core.model.ItemKind.PLAYLIST || item.kind == dev.nitrate.core.model.ItemKind.TV_CHANNEL -> null
+                                    else -> item.productionYear?.toString()
+                                },
+                                onClick = { onClick(item) },
                             )
                         }
                     }
@@ -182,6 +194,22 @@ fun SearchScreen(
         row("Shows", r.shows)
         row("Episodes", r.episodes, wide = true)
         row("Collections", r.collections)
+        row("Playlists", r.playlists, square = true)
+        row("Artists", r.artists, square = true)
+        row("Albums", r.albums, square = true)
+        // Songs, a row per artist and album (OK plays the song; the album is in Albums, or on the song's page).
+        r.songsByArtist.forEach { artist ->
+            artist.albums.forEach { album ->
+                row("Songs · ${artist.name} · ${album.name}", album.songs, square = true, key = "songs-${artist.name}-${album.name}") { song ->
+                    scope.launch { history.add(query) }
+                    onPlay(song)
+                }
+            }
+        }
+        row("Audiobooks", r.audiobooks, square = true)
+        row("Books", r.books)
+        row("Videos", r.videos, wide = true)
+        row("Channels", r.channels, wide = true) { ch -> scope.launch { history.add(query) }; onPlay(ch) }
         if (!quoteFirst) saidIn()
         if (r.people.isNotEmpty()) item(key = "people") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

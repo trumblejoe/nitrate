@@ -2348,7 +2348,7 @@ class JellyfinClient(
         if (term.isEmpty()) return SearchResults()
         val hintQuery = mapOf(
             "searchTerm" to term, "userId" to userId, "limit" to 40,
-            "includeItemTypes" to "Movie,Series,Episode,BoxSet,Person",
+            "includeItemTypes" to "Movie,Series,Episode,BoxSet,Playlist,Person",
             "includePeople" to true, "includeMedia" to true,
         )
         val hints = shared(dev.nitrate.core.cache.AnswerKind.SEARCH, arrayOf("Search", "Hints"), hintQuery) {
@@ -2373,6 +2373,7 @@ class JellyfinClient(
             shows = items.filter { it.kind == ItemKind.SERIES },
             episodes = items.filter { it.kind == ItemKind.EPISODE },
             collections = items.filter { it.kind == ItemKind.BOX_SET },
+            playlists = items.filter { it.kind == ItemKind.PLAYLIST },
             people = people,
         )
     }
@@ -2410,32 +2411,47 @@ class JellyfinClient(
         return order.mapNotNull { films[it] ?: shows[it] }
     }
 
-    override suspend fun search(query: String): SearchResults = coroutineScope {
+    override suspend fun search(query: String, areas: Set<dev.nitrate.core.search.SearchArea>): SearchResults = coroutineScope {
         val term = query.trim()
         if (term.isEmpty()) return@coroutineScope SearchResults()
-        val items = async {
+        fun find(types: String, limit: Int) = async {
             items(
                 "Items",
                 kind = dev.nitrate.core.cache.AnswerKind.SEARCH,
                 query = mapOf(
                     "searchTerm" to term,
                     "recursive" to true,
-                    "includeItemTypes" to "Movie,Series,Episode,BoxSet",
-                    "limit" to 60,
+                    "includeItemTypes" to types,
+                    "limit" to limit,
                     "fields" to "PrimaryImageAspectRatio",
                     "enableTotalRecordCount" to false,
                 ),
             )
         }
+        val items = find("Movie,Series,Episode,BoxSet,Playlist", 60)
+        // The user's other libraries, each kind in its own request so a common word's many songs
+        // don't push out the albums: asked only for the areas the user has.
+        val other = areas.flatMap { it.kinds }.mapNotNull(::itemTypeName)
+        val others = if (other.isEmpty()) null else find(other.joinToString(","), 60)
+        val songs = if (dev.nitrate.core.search.SearchArea.MUSIC in areas) find("Audio", 50) else null
         // People come with the quick matches (asked first, and kept): no search of its own.
         val people = async { runCatching { searchHints(term).people }.getOrDefault(emptyList()) }
         val found = items.await()
+        val more = others?.let { runCatching { it.await() }.getOrDefault(emptyList()) }.orEmpty()
         SearchResults(
             movies = found.filter { it.kind == ItemKind.MOVIE },
             shows = found.filter { it.kind == ItemKind.SERIES },
             episodes = found.filter { it.kind == ItemKind.EPISODE },
             collections = found.filter { it.kind == ItemKind.BOX_SET },
+            playlists = found.filter { it.kind == ItemKind.PLAYLIST },
             people = people.await(),
+            artists = more.filter { it.kind == ItemKind.MUSIC_ARTIST },
+            albums = more.filter { it.kind == ItemKind.MUSIC_ALBUM },
+            audiobooks = more.filter { it.kind == ItemKind.AUDIOBOOK },
+            books = more.filter { it.kind == ItemKind.BOOK },
+            videos = more.filter { it.kind == ItemKind.VIDEO || it.kind == ItemKind.MUSIC_VIDEO },
+            channels = more.filter { it.kind == ItemKind.TV_CHANNEL },
+            songs = songs?.let { runCatching { it.await() }.getOrDefault(emptyList()) }.orEmpty().filter { it.kind == ItemKind.AUDIO },
         )
     }
 
@@ -2713,6 +2729,7 @@ internal fun itemTypeName(kind: ItemKind): String? = when (kind) {
     ItemKind.MUSIC_ALBUM -> "MusicAlbum"
     ItemKind.AUDIO -> "Audio"
     ItemKind.MUSIC_ARTIST -> "MusicArtist"
+    ItemKind.TV_CHANNEL -> "TvChannel"
     else -> null
 }
 

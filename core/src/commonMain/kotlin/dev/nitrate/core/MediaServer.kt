@@ -1084,7 +1084,11 @@ interface MediaServer {
     /** [rows] with each card's watched marks and progress as the server has them now (one light request). */
     suspend fun withFreshMarks(rows: List<dev.nitrate.core.rows.MediaRow>): List<dev.nitrate.core.rows.MediaRow> = rows
 
-    suspend fun search(query: String): SearchResults = unsupported()
+    /**
+     * Everything matching [query]: films, shows, episodes, collections, playlists and people, and from
+     * [areas] (the user's music, books, other videos, live TV channels) only those asked for.
+     */
+    suspend fun search(query: String, areas: Set<dev.nitrate.core.search.SearchArea> = emptySet()): SearchResults = unsupported()
 
     /** Movies and shows [personId] appears in, newest first. */
     suspend fun itemsWithPerson(personId: String): List<MediaItem> = unsupported()

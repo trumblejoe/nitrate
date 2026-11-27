@@ -382,13 +382,13 @@ fun AddToTripSheet(actions: AppActions, onDismiss: () -> Unit, onPick: (MediaIte
     val results by produceState<dev.nitrate.core.model.SearchResults?>(null, query) {
         if (query.length < 2) { value = null; return@produceState }
         kotlinx.coroutines.delay(300)
-        value = runCatching { actions.server.search(query) }.getOrNull()
+        value = runCatching { actions.server.search(query, actions.container.searchAreas() - dev.nitrate.core.search.SearchArea.MUSIC - dev.nitrate.core.search.SearchArea.LIVE_TV) }.getOrNull()
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             OutlinedTextField(query, { query = it }, label = { Text("Find a film, show or collection") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             val r = results
-            val found = r?.let { it.shows + it.movies + it.collections + it.episodes }.orEmpty().take(30)
+            val found = r?.let { it.shows + it.movies + it.collections + it.playlists + it.videos + it.episodes }.orEmpty().take(30)
             LazyColumn(Modifier.padding(top = 8.dp)) {
                 items(found, key = { it.id }) { item ->
                     val safe = spoilerSafe(item)
@@ -399,6 +399,8 @@ fun AddToTripSheet(actions: AppActions, onDismiss: () -> Unit, onPick: (MediaIte
                             Text(when (item.kind) {
                                 dev.nitrate.core.model.ItemKind.SERIES -> "Show: its next episodes"
                                 dev.nitrate.core.model.ItemKind.BOX_SET -> "Collection"
+                                dev.nitrate.core.model.ItemKind.PLAYLIST -> "Playlist"
+                                dev.nitrate.core.model.ItemKind.VIDEO, dev.nitrate.core.model.ItemKind.MUSIC_VIDEO -> "Video"
                                 dev.nitrate.core.model.ItemKind.EPISODE -> "Episode"
                                 else -> listOfNotNull("Film", item.productionYear?.toString()).joinToString(" · ")
                             })
