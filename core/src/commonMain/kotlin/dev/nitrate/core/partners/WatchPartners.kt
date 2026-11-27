@@ -500,18 +500,24 @@ data class KeepUp(
     /** What the title's parts are called: "episode" for a show, else "title". */
     val noun: String = "episode",
     /**
-     * The user's place in each group by the group's own record (group id → this title's parts
-     * watched as far as that group goes, [WatchGroup.ownRecord]): every group with a record, not
-     * only those holding the title, since a record is kept per part (a show's episodes can be in
-     * another group's playlist). Groups without one (older servers) go by [mine], Jellyfin's watched state.
+     * The user's place in each group holding the title by the group's own record (group id → the
+     * parts watched as far as that group goes, [WatchGroup.ownRecord]); these are the title's groups
+     * ([TogetherRow.groupsOf], one card each). Groups without one (older servers) go by [mine],
+     * Jellyfin's watched state.
      */
     val own: Map<String, Set<String>> = emptyMap(),
+    /**
+     * The records of the user's other groups, for this title's parts: a record is kept per part, so a
+     * show's episodes in another group's playlist read that group's record here too, never [mine]
+     * ([mineIn] only; these groups don't hold the title and get no card for it).
+     */
+    val otherRecords: Map<String, Set<String>> = emptyMap(),
 ) {
     /** One film on its own (nothing to keep pace through, only who's seen it). */
     val single get() = order.size == 1
 
     /** What the user has watched as far as group [groupId] goes: its own record; else (older servers, or no group) Jellyfin's watched state ([mine]). */
-    fun mineIn(groupId: String?): Set<String> = groupId?.let(own::get) ?: mine
+    fun mineIn(groupId: String?): Set<String> = groupId?.let { own[it] ?: otherRecords[it] } ?: mine
 
     /** The first part (index in [order]) the user hasn't watched as far as group [groupId] goes; [order]'s size when all are. */
     fun nextIndexIn(groupId: String?): Int {
@@ -522,15 +528,16 @@ data class KeepUp(
     companion object {
         /**
          * [seriesId] is the group's title (a show, film, playlist or collection); [items] what it
-         * holds, in order; [groups] the user's groups (each with a record gives [own], whether or
-         * not it holds this title: never the user's own Watched for a group that keeps its record).
+         * holds, in order; [groups] the user's groups (those holding this title give [own], the
+         * others with a record [otherRecords]: never the user's own Watched for a group that keeps one).
          */
         fun of(seriesId: String, items: List<MediaItem>, progress: List<PartnerProgress>, groups: List<WatchGroup> = emptyList()): KeepUp {
             val real = WatchPartners.countable(items)
             val noun = if (real.all { it.kind == ItemKind.EPISODE }) "episode" else "title"
             val ids = real.map { it.id }
-            val own = groups.filter { it.ownRecord != null }.associate { g -> g.id to g.ownRecord!!.filter { it in ids }.toSet() }
-            return KeepUp(seriesId, ids, real.filter { it.user.played }.map { it.id }.toSet(), progress, noun, own)
+            val (holding, others) = groups.filter { it.ownRecord != null }.partition { it.holds(seriesId) }
+            fun records(list: List<WatchGroup>) = list.associate { g -> g.id to g.ownRecord!!.filter { it in ids }.toSet() }
+            return KeepUp(seriesId, ids, real.filter { it.user.played }.map { it.id }.toSet(), progress, noun, records(holding), records(others))
         }
     }
 }
