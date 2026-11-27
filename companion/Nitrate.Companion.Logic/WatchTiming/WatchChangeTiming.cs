@@ -210,7 +210,9 @@ public class WatchChangeTiming : IHostedService
             cls = outer.Name;
         }
 
-        return $"{owner} ({cls})";
+        // An async listener hands its work off at its first wait: only the part before it holds the save up.
+        var later = listener.Method.GetCustomAttribute<System.Runtime.CompilerServices.AsyncStateMachineAttribute>() is not null ? ", then carries on in the background" : string.Empty;
+        return $"{owner} ({cls}{later})";
     }
 
     /// <inheritdoc />

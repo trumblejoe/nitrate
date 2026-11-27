@@ -35,10 +35,14 @@ public class PlaylistsController : ControllerBase
     private readonly PlaylistRecordBook _book;
     private readonly PlaylistSittings _sittings;
     private readonly IUserManager _users;
+    private readonly Nitrate.Companion.Watched.WatchedQueue _watched;
+    private readonly TimeProvider _time;
 
     /// <summary>Initializes a new instance of the <see cref="PlaylistsController"/> class.</summary>
-    public PlaylistsController(PlaylistRecordBook book, PlaylistSittings sittings, IUserManager users)
+    public PlaylistsController(PlaylistRecordBook book, PlaylistSittings sittings, IUserManager users, Nitrate.Companion.Watched.WatchedQueue watched, TimeProvider time)
     {
+        _watched = watched;
+        _time = time;
         _book = book;
         _sittings = sittings;
         _users = users;
@@ -103,7 +107,9 @@ public class PlaylistsController : ControllerBase
             return BadRequest("Your own state before the playback is needed");
         }
 
-        _sittings.Playing(me, body.ItemId, playlist, body.Before);
+        // A Watched/Unwatched still waiting is saved first, and is what's put back afterwards.
+        var before = _watched.SaveNow(me, body.ItemId) is { } pressed ? body.Before.Marked(pressed.Played, _time.GetUtcNow().ToUnixTimeMilliseconds()) : body.Before;
+        _sittings.Playing(me, body.ItemId, playlist, before);
         return NoContent();
     }
 

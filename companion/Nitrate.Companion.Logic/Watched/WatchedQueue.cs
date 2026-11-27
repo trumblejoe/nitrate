@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nitrate.Companion.Storage;
@@ -213,12 +214,53 @@ public class WatchedQueue : IHostedService
     }
 
     /// <summary>
-    /// A title's watch state was saved: if it wasn't this queue saving it, a press still waiting for it
-    /// gives way (the newer change wins).
+    /// [user]'s press for [itemId], if one is waiting, saved now (before a playback of it is counted
+    /// apart from their own, so the state put back afterwards is the one they pressed). The press saved,
+    /// else null.
     /// </summary>
-    public void SavedElsewhere(Guid user, Guid itemId, long at)
+    public PendingMark? SaveNow(Guid user, Guid itemId)
     {
-        if (_saving)
+        PendingMark? mark;
+        lock (_lock)
+        {
+            mark = Current(user, itemId);
+        }
+
+        if (mark is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            _saving = true;
+            _marker.Mark(user, itemId, mark.Played);
+        }
+        finally
+        {
+            _saving = false;
+        }
+
+        lock (_lock)
+        {
+            if (Current(user, itemId) is { } still && still.At == mark.At)
+            {
+                _db.DeleteRecord(Kind, user.ToString("N"), itemId.ToString("N"));
+            }
+        }
+
+        return mark;
+    }
+
+    /// <summary>
+    /// A title's watch state was saved for [reason]: when it wasn't this queue saving it and it set the
+    /// watched mark itself (Watched/Unwatched in another app, a playback that finished, a state put back),
+    /// a press still waiting for it gives way (the newer change wins). A playback starting or moving on
+    /// doesn't: the press is still saved, as it would have been before it with Jellyfin alone.
+    /// </summary>
+    public void SavedElsewhere(Guid user, Guid itemId, long at, UserDataSaveReason reason)
+    {
+        if (_saving || reason is not (UserDataSaveReason.TogglePlayed or UserDataSaveReason.UpdateUserData or UserDataSaveReason.PlaybackFinished))
         {
             return;
         }
@@ -293,7 +335,7 @@ public class WatchedQueue : IHostedService
         {
             if (e.Item is not null)
             {
-                SavedElsewhere(e.UserId, e.Item.Id, _time.GetUtcNow().ToUnixTimeMilliseconds());
+                SavedElsewhere(e.UserId, e.Item.Id, _time.GetUtcNow().ToUnixTimeMilliseconds(), e.SaveReason);
             }
         }
         catch (Exception)

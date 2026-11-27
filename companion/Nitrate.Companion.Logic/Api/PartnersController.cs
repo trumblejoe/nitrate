@@ -79,10 +79,14 @@ public class PartnersController : ControllerBase
     private readonly PartnerHub _partners;
     private readonly IUserManager _users;
     private readonly GroupPlays _groupPlays;
+    private readonly Nitrate.Companion.Watched.WatchedQueue _watched;
+    private readonly TimeProvider _time;
 
     /// <summary>Initializes a new instance of the <see cref="PartnersController"/> class.</summary>
-    public PartnersController(PartnerHub partners, IUserManager users, GroupPlays groupPlays)
+    public PartnersController(PartnerHub partners, IUserManager users, GroupPlays groupPlays, Nitrate.Companion.Watched.WatchedQueue watched, TimeProvider time)
     {
+        _watched = watched;
+        _time = time;
         _groupPlays = groupPlays;
         _partners = partners;
         _users = users;
@@ -154,7 +158,9 @@ public class PartnersController : ControllerBase
             throw new PartnerException(PartnerError.Invalid, "Your own state before the playback is needed");
         }
 
-        _groupPlays.Playing(me, body.ItemId, groups, body.Before);
+        // A Watched/Unwatched still waiting is saved first, and is what's put back afterwards.
+        var before = _watched.SaveNow(me, body.ItemId) is { } pressed ? body.Before.Marked(pressed.Played, _time.GetUtcNow().ToUnixTimeMilliseconds()) : body.Before;
+        _groupPlays.Playing(me, body.ItemId, groups, before);
     });
 
     /// <summary>The caller's resume point in a group (a part stopped part-way while watching it for the group).</summary>

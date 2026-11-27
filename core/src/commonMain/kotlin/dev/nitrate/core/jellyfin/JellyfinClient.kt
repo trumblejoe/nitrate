@@ -1395,8 +1395,9 @@ class JellyfinClient(
         return ids.mapNotNull { found[it] }
     }
 
-    override suspend fun groupPlay(itemId: String, groupIds: List<String>, before: dev.nitrate.core.model.UserState) {
+    override suspend fun groupPlay(itemId: String, groupIds: List<String>, givenBefore: dev.nitrate.core.model.UserState) {
         if (!companionHas("groupplay")) return
+        val before = withRecentPress(itemId, givenBefore)
         groupPlays.update { it + (itemId to before) }
         post<GroupPlayDto>(
             "Nitrate", "Partners", "GroupPlay",
@@ -1451,6 +1452,7 @@ class JellyfinClient(
     override suspend fun setPlayed(itemId: String, played: Boolean, before: dev.nitrate.core.model.UserState?): Boolean {
         // Shown at once, before the server answers (it may take a moment on a busy server).
         if (before != null) say(mapOf(itemId to before.marked(played, clock())))
+        pressed.update { it + (itemId to (played to clock())) }
         // A press, with the Companion: kept there at once and saved to Jellyfin a moment later.
         if (before != null && companionHas(WATCHED_QUEUE)) {
             val queued = try {
@@ -1461,7 +1463,14 @@ class JellyfinClient(
                 null // Not there just now: Jellyfin's own, below.
             }
             if (queued != null) {
-                if (queued.notFound.isEmpty()) return false
+                if (queued.notFound.isEmpty()) {
+                    // Saved a moment later: if the server doesn't say so soon, what it has is read and shown.
+                    appScope.launch {
+                        val heard = kotlinx.coroutines.withTimeoutOrNull(PRESS_CONFIRM_MS) { pushed.first { itemId in it.itemIds } }
+                        if (heard == null) watchStateFromServer(listOf(itemId))
+                    }
+                    return false
+                }
                 watchStateFromServer(listOf(itemId))
                 throw IllegalStateException("the server said 404 Not Found")
             }
@@ -2615,7 +2624,8 @@ class JellyfinClient(
         runCatching { post<PlaybackStartDto>("Sessions", "Playing", "Progress", body = startInfo(plan, positionMs, isPaused)) }
     }
 
-    override suspend fun keepOwnState(itemId: String, playlistId: String, before: dev.nitrate.core.model.UserState) {
+    override suspend fun keepOwnState(itemId: String, playlistId: String, givenBefore: dev.nitrate.core.model.UserState) {
+        val before = withRecentPress(itemId, givenBefore)
         // The Companion puts it back (and moves the record on) when the server says it stopped, even
         // with this app closed; else this app does, after its own stop report.
         val byServer = companionHas(PLAYLIST_RECORDS) && runCatching {
@@ -2677,6 +2687,21 @@ class JellyfinClient(
     override val playStops: kotlinx.coroutines.flow.Flow<dev.nitrate.core.model.PlayStop> get() = stopped
 
     private val stopped = kotlinx.coroutines.flow.MutableSharedFlow<dev.nitrate.core.model.PlayStop>(extraBufferCapacity = 16)
+
+    /** Watched/Unwatched pressed here lately (played, when), for a playback counted apart starting meanwhile. */
+    private val pressed = kotlinx.coroutines.flow.MutableStateFlow<Map<String, Pair<Boolean, Long>>>(emptyMap())
+
+    /**
+     * [before] for a playback counted apart (a group's, a playlist's), with a Watched/Unwatched pressed
+     * here in the last minute laid over it: the state read before the press reached the server would
+     * otherwise be put back when that playback stops, undoing the press.
+     */
+    private fun withRecentPress(itemId: String, before: dev.nitrate.core.model.UserState): dev.nitrate.core.model.UserState {
+        val now = clock()
+        pressed.update { m -> m.filterValues { now - it.second < PRESS_KEPT_MS } }
+        val (played, _) = pressed.value[itemId] ?: return before
+        return if (before.played == played && before.positionMs == 0L) before else before.marked(played, now)
+    }
 
     /** Titles playing as a playlist sitting the Companion keeps, with the user's own state from before (it puts it back as they stop). */
     private val serverKept = kotlinx.coroutines.flow.MutableStateFlow<Map<String, dev.nitrate.core.model.UserState>>(emptyMap())
@@ -2801,6 +2826,10 @@ class JellyfinClient(
         const val PLAYLIST_RECORDS = "playlistrecords"
         /** The Companion answers Watched/Unwatched at once and saves them a moment later (POST /Nitrate/Watched). */
         const val WATCHED_QUEUE = "watchedqueue"
+        /** How long a press is laid over the state kept for a playback counted apart. */
+        const val PRESS_KEPT_MS = 60_000L
+        /** How long a press kept by the Companion waits for the server to say it's saved before what it has is read. */
+        const val PRESS_CONFIRM_MS = 30_000L
 
         /** How long a state said here stops the server's push of the same one being said again. */
         const val SAID_KEPT_MS = 5_000L

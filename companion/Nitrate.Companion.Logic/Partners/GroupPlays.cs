@@ -10,7 +10,12 @@ namespace Nitrate.Companion.Partners;
 /// <param name="PositionMs">Their resume point, ms.</param>
 /// <param name="PlayCount">How many times they'd played it.</param>
 /// <param name="LastPlayedMs">When they last played it, epoch ms.</param>
-public record OwnState(bool Played, long PositionMs, int PlayCount, long? LastPlayedMs);
+public record OwnState(bool Played, long PositionMs, int PlayCount, long? LastPlayedMs)
+{
+    /// <summary>As Jellyfin's own Watched ([played]) or Unwatched leaves it at [nowMs].</summary>
+    public OwnState Marked(bool played, long nowMs) =>
+        played ? new OwnState(true, 0, Math.Max(PlayCount, 1), LastPlayedMs ?? nowMs) : new OwnState(false, 0, 0, null);
+}
 
 /// <summary>A playback watched for groups, kept until it stops.</summary>
 /// <param name="UserId">Who's watching.</param>

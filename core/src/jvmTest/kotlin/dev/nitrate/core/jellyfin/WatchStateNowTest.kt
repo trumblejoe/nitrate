@@ -32,6 +32,7 @@ class WatchStateNowTest {
     private val id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
     private val playlist = "cccccccc-cccc-cccc-cccc-cccccccccccc"
     private val paths = mutableListOf<String>()
+    private val bodies = mutableMapOf<String, String>()
     @Volatile private var played = false
     @Volatile private var companion = false
     @Volatile private var features = "\"playlistrecords\""
@@ -41,6 +42,7 @@ class WatchStateNowTest {
     private val engine = MockEngine { request ->
         val path = request.url.encodedPath
         synchronized(paths) { paths += "${request.method.value} $path" }
+        if (path == "/Nitrate/Playlists/Sitting" || path == "/Nitrate/Partners/GroupPlay") synchronized(bodies) { bodies[path] = (request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent)?.bytes()?.decodeToString().orEmpty() }
         when {
             path == "/Sessions/Playing/Stopped" -> { delay(400); played = true; respond("", HttpStatusCode.NoContent) }
             path.startsWith("/UserPlayedItems/") -> {
@@ -127,6 +129,20 @@ class WatchStateNowTest {
         val asked = synchronized(paths) { paths.toList() }
         assertTrue("kept by the Companion: $asked", "POST /Nitrate/Watched" in asked)
         assertTrue("Jellyfin's own Watched not asked: $asked", asked.none { it.contains("/UserPlayedItems/") })
+    }
+
+    /**
+     * Watched pressed, then a playlist sitting of it starts before the press is saved: the state kept to
+     * be put back when the sitting stops is the pressed one, not the one read before the press.
+     */
+    @Test fun aPressJustBeforeAPlaylistSittingIsWhatIsPutBack() = runBlocking {
+        companion = true
+        features = "\"watchedqueue\",\"playlistrecords\""
+        val c = client()
+        c.setPlayed(id, true, dev.nitrate.core.model.UserState(played = false, positionMs = 600_000))
+        c.keepOwnState(id, playlist, dev.nitrate.core.model.UserState(played = false, positionMs = 600_000))
+        val sent = synchronized(bodies) { bodies["/Nitrate/Playlists/Sitting"] }.orEmpty()
+        assertTrue(sent, sent.contains("\"Played\":true") && sent.contains("\"PositionMs\":0"))
     }
 
     @Test fun watchedPressedIsSaidAtOnceFromTheServersAnswer() = runBlocking {
