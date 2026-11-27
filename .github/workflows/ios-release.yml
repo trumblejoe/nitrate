@@ -99,7 +99,9 @@ jobs:
           xcodebuild -version
           brew install xcodegen
       - name: Kotlin framework
-        run: ./gradlew :ios-app:linkReleaseFrameworkIosArm64 --console=plain
+        # The release link is Kotlin/Native's heaviest step and runs in Gradle's own process: it gets
+        # most of the Mac's 7 GB, one task at a time (4 GB with modules side by side ran out).
+        run: ./gradlew :ios-app:linkReleaseFrameworkIosArm64 --console=plain --no-parallel "-Dorg.gradle.jvmargs=-Xmx6g -Dfile.encoding=UTF-8"
       - name: App
         working-directory: iosApp
         env:
