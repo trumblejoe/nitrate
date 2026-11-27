@@ -339,6 +339,7 @@ class JellyfinContractTest {
         client.showsMissingEpisodes()
         client.setShowMissingEpisodes(true)
         client.search("night", dev.nitrate.core.search.SearchArea.entries.toSet())
+        client.tagCounts(DASHED, listOf(dev.nitrate.core.model.ItemKind.MOVIE))
         assertEquals(true, client.inServerNetwork())
         assertTrue((client.measureBitrate() ?: 0) > 0)
         val speed = client.speedCheck()

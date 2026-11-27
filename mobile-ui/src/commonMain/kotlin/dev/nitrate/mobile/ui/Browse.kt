@@ -35,6 +35,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -282,7 +283,10 @@ fun BrowseLibrary(actions: AppActions, library: MediaItem, header: (@Composable 
         editing = false
         if (changed) { selecting = false; selected = emptySet(); vm.reload() }
     }
-    if (filtering) FilterSheet(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { filtering = false })
+    if (filtering) FilterSheet(
+        options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { filtering = false },
+        tagCounts = { actions.server.tagCounts(library.id, Browse.typesFor(library.collection)) },
+    )
 }
 
 @Composable
@@ -445,7 +449,17 @@ private fun EmptyResults(options: BrowseOptions, onClear: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun FilterSheet(options: BrowseOptions, genres: List<String>, available: dev.nitrate.core.model.LibraryFilters, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
+private fun FilterSheet(
+    options: BrowseOptions, genres: List<String>, available: dev.nitrate.core.model.LibraryFilters, codecs: Boolean,
+    onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit,
+    /** How many titles carry each tag, for the tag sheet's most used first. */
+    tagCounts: suspend () -> Map<String, Int> = { emptyMap() },
+) {
+    var choosingTags by remember { mutableStateOf(false) }
+    if (choosingTags) {
+        TagSheet(available.tags, options.tags, tagCounts, onToggle = { t -> onChange { it.toggleTag(t) } }, onClear = { onChange { it.copy(tags = emptyList()) } }, onDismiss = { choosingTags = false })
+        return
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = ScreenPadding).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -493,8 +507,64 @@ private fun FilterSheet(options: BrowseOptions, genres: List<String>, available:
                     FilterChip(g in options.genres, { onChange { o -> o.copy(genres = if (g in o.genres) o.genres - g else o.genres + g) } }, label = { Text(g) })
                 }
             }
+            // Tags can run to hundreds: the chosen ones here, the rest in a sheet of their own.
             if (available.tags.isNotEmpty()) Group("Tags (any of)") {
-                available.tags.take(60).forEach { t -> FilterChip(t in options.tags, { onChange { it.toggleTag(t) } }, label = { Text(t) }) }
+                options.tags.forEach { t -> FilterChip(true, { onChange { it.toggleTag(t) } }, label = { Text(t) }, trailingIcon = { Icon(Icons.Default.Close, "Remove $t", Modifier.size(16.dp)) }) }
+                androidx.compose.material3.AssistChip(onClick = { choosingTags = true }, label = { Text(if (options.tags.isEmpty()) "Choose tags… (${available.tags.size})" else "More tags…") })
+            }
+        }
+    }
+}
+
+/**
+ * Filter by tags: type to find one (names starting with what's typed first), or page through them
+ * most used first (counted over the library's titles), the chosen ones leading. Back or Done
+ * returns to the filters.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun TagSheet(all: List<String>, chosen: List<String>, counts: suspend () -> Map<String, Int>, onToggle: (String) -> Unit, onClear: () -> Unit, onDismiss: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    var page by remember { mutableStateOf(0) }
+    val tagCounts by androidx.compose.runtime.produceState(emptyMap<String, Int>()) { value = runCatching { counts() }.getOrDefault(emptyMap()) }
+    // Ranked once per opening (and when the counts arrive): choosing a tag doesn't reshuffle the page.
+    val ranked = remember(all, tagCounts) { dev.nitrate.core.pages.TagChoices.rank(all, tagCounts, chosen) }
+    val pages = dev.nitrate.core.pages.TagChoices.pages(ranked.size)
+    val typed = query.isNotBlank()
+    val shown = if (typed) dev.nitrate.core.pages.TagChoices.matches(all, query, tagCounts, limit = 24) else dev.nitrate.core.pages.TagChoices.page(ranked, page)
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = ScreenPadding).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (chosen.isEmpty()) "Tags" else "Tags · ${chosen.size} chosen", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (chosen.isNotEmpty()) TextButton(onClick = onClear) { Text("Clear tags") }
+                TextButton(onClick = onDismiss) { Text("Done") }
+            }
+            androidx.compose.material3.OutlinedTextField(
+                query, { query = it; page = 0 }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                label = { Text("Type to find a tag") },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                // Done on the keyboard picks the best match.
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { shown.firstOrNull()?.takeIf { typed && it !in chosen }?.let(onToggle) }),
+            )
+            Text(
+                when {
+                    typed && shown.isEmpty() -> "No tag matches “${query.trim()}”."
+                    typed -> "Matching “${query.trim()}”"
+                    tagCounts.isEmpty() -> "All ${all.size} tags, A–Z"
+                    else -> "Most used first · page ${page + 1} of $pages"
+                },
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                shown.forEach { t ->
+                    val n = tagCounts[t]
+                    FilterChip(t in chosen, { onToggle(t) }, label = { Text(if (n != null) "$t · $n" else t) })
+                }
+            }
+            if (!typed && pages > 1) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(enabled = page > 0, onClick = { page-- }) { Text("Previous") }
+                Text("${page + 1} / $pages", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(enabled = page < pages - 1, onClick = { page++ }) { Text("Next") }
             }
         }
     }

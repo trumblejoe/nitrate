@@ -555,9 +555,10 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(800); compose.waitForIdle()
         // Down from the tabs bar (Sort, Filters and View at its end) goes straight into the grid.
         press("down")
+        val afterDown = focusedNodes()
         // Left along the first row to its first title.
         repeat(6) { if (!focusedHasText("Arclight")) press("left") }
-        check(focusedHasText("Arclight")) { "Left within the grid should move to the first title" }
+        check(focusedHasText("Arclight")) { "Left within the grid should move to the first title; after down: $afterDown; now: ${focusedNodes()}" }
         press("left")
         check(focusedHasText("Arclight")) { "Left from the first title stays on it; focused: ${focusedNodes()}" }
     }
@@ -746,6 +747,60 @@ class TvScreenshotTest {
         compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
         check(compose.onAllNodes(androidx.compose.ui.test.hasText("View: Artwork", substring = true)).fetchSemanticsNodes().isNotEmpty()) { "⏩ should say the new view" }
     }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
+    /** With filters on and many tabs, the tabs bar stays on one line: tabs and buttons never wrap. */
+    @Test fun libraryBarWithFilters() = shoot("tv-library-bar-filters", setup = { c ->
+        c.displaySettings.savePrefs("user-1", rowsLibrary)
+        c.displaySettings.saveLibraryTabs("user-1", "lib-movies", listOf(
+            dev.nitrate.core.pages.LibraryTab("all", dev.nitrate.core.pages.LibraryTabKind.ALL),
+            dev.nitrate.core.pages.LibraryTab("rec", dev.nitrate.core.pages.LibraryTabKind.RECOMMENDED),
+            dev.nitrate.core.pages.LibraryTab("col", dev.nitrate.core.pages.LibraryTabKind.COLLECTIONS),
+            dev.nitrate.core.pages.LibraryTab("gen", dev.nitrate.core.pages.LibraryTabKind.GENRES),
+            dev.nitrate.core.pages.LibraryTab("unw", dev.nitrate.core.pages.LibraryTabKind.UNWATCHED),
+            dev.nitrate.core.pages.LibraryTab("dec", dev.nitrate.core.pages.LibraryTabKind.DECADES),
+        ))
+        c.displaySettings.saveView("user-1", "browse/lib-movies", dev.nitrate.core.pages.BrowseOptions(
+            sort = dev.nitrate.core.pages.QuerySort.DATE_ADDED, descending = true, watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED,
+            genres = listOf("Drama"), tags = listOf("noir"),
+        ))
+    }, act = {
+        // Each tab on one line: as tall as the others (nothing wrapped onto a second line).
+        val heights = listOf("All", "Recommended", "Decades").map { t -> compose.onAllNodes(androidx.compose.ui.test.hasText(t)).fetchSemanticsNodes().first().boundsInRoot.height }
+        check(heights.max() - heights.min() < 4f) { "tabs on one line each: $heights" }
+        check(shows("Clear filters")) { "the buttons are there too" }
+    }) { c -> WithMenu(c) { dev.nitrate.tv.ui.library.LibraryScreen(c.server, c.displaySettings, "lib-movies", onOpen = {}, onPlay = {}) } }
+
+    /** Filters: Clear all at the top beside Done; the chosen tags shown, the rest behind "More tags…". */
+    @Test fun libraryFilterPanel() = shoot("tv-library-filter-panel", act = {
+        fun top(text: String) = compose.onAllNodes(androidx.compose.ui.test.hasText(text, substring = true)).fetchSemanticsNodes().first().boundsInRoot.top
+        check(kotlin.math.abs(top("Clear all") - top("Done")) < 4f) { "Clear all sits beside Done, at the top" }
+        check(focusedHasText("Done")) { "focused: ${focusedNodes()}" }
+        check(shows("noir")) { "the chosen tag shows" }
+    }) { c ->
+        dev.nitrate.tv.ui.library.FilterDialog(
+            dev.nitrate.core.pages.BrowseOptions(watched = dev.nitrate.core.pages.WatchFilter.UNWATCHED, tags = listOf("noir")),
+            genres = listOf("Drama", "Comedy"),
+            available = dev.nitrate.core.model.LibraryFilters(genres = listOf("Drama", "Comedy"), years = listOf(1999, 2010), tags = (1..80).map { "tag $it" } + "noir"),
+            codecs = false, onChange = {}, onDismiss = {},
+        )
+    }
+
+    /** Tags in a panel of their own: most used first a page at a time, and typing finds them. */
+    @Test fun libraryTagPanel() {
+        val tags = (1..60).map { "tag %02d".format(it) } + listOf("film noir", "noir", "Neo-noir", "heist")
+        val counts = mapOf("heist" to 30, "noir" to 12, "film noir" to 9) + (1..60).associate { "tag %02d".format(it) to 1 }
+        var toggled: String? = null
+        shoot("tv-library-tag-panel", act = {
+            check(shows("Most used first · page 1 of 3")) { "paged, most used first" }
+            press("down"); press("down")
+            check(focusedHasText("heist")) { "▼ from the box goes to the most used tag; focused: ${focusedNodes()}" }
+            press("ok")
+            compose.mainClock.advanceTimeBy(300); compose.waitForIdle()
+            check(toggled == "heist") { "OK chooses it" }
+        }) {
+            dev.nitrate.tv.ui.library.TagPanel(tags, chosen = emptyList(), counts = { counts }, onToggle = { toggled = it }, onClear = {}, onDismiss = {})
+        }
+    }
 
     /** Sorted by release date: the jump bar is decades. */
     @Test fun libraryJumpBarDecades() = shoot("tv-library-jump-decades", setup = { c ->

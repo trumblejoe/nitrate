@@ -2334,6 +2334,17 @@ class JellyfinClient(
         )
     }
 
+    override suspend fun tagCounts(libraryId: String?, types: List<ItemKind>, sample: Int): Map<String, Int> = items(
+        "Items",
+        kind = dev.nitrate.core.cache.AnswerKind.SEARCH,
+        query = mapOf(
+            "userId" to userId, "parentId" to libraryId, "recursive" to true,
+            "includeItemTypes" to types.mapNotNull(::itemTypeName).joinToString(",").ifEmpty { null },
+            "fields" to "Tags", "limit" to sample,
+            "enableImages" to false, "enableUserData" to false, "enableTotalRecordCount" to false,
+        ),
+    ).flatMap { it.tags.distinct() }.groupingBy { it }.eachCount()
+
     override suspend fun showsMissingEpisodes(): Boolean =
         runCatching { (get("Users", "Me").decode<JsonObject>()["Configuration"] as? JsonObject)?.get("DisplayMissingEpisodes")?.let { (it as JsonPrimitive).content == "true" } }.getOrNull() ?: false
 

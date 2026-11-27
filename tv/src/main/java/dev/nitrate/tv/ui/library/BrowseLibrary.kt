@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -277,11 +278,16 @@ fun BrowseLibrary(
     }
     val downToGrid = !options.view.isShow && !lettersOnTop && state.items.isNotEmpty()
     // The tabs bar as on Home and the other tabs: the library's name and tabs, then the buttons at its end.
+    // The tabs keep their whole width; when the buttons don't fit beside them (many tabs, filters
+    // on), the buttons go on a line of their own below, never squeezing the tabs onto two lines.
+    val clockRoom = dev.nitrate.tv.ui.components.LocalClockRoom.current
     val bar: @Composable () -> Unit = {
-        Row(Modifier.fillMaxWidth().focusProperties { if (downToGrid) down = gridEntry }, verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { header() }
-            Box(Modifier.padding(end = PagePadding + dev.nitrate.tv.ui.components.LocalClockRoom.current)) { buttons() }
-        }
+        TabsAndButtons(
+            Modifier.fillMaxWidth().focusProperties { if (downToGrid) down = gridEntry },
+            // Inside the tabs' own scroll (a focus group of its own) the rule must be said again.
+            tabs = { Box(Modifier.focusProperties { if (downToGrid) down = gridEntry }) { header() } },
+            buttons = { Box(Modifier.padding(start = PagePadding, end = PagePadding + clockRoom)) { buttons() } },
+        )
     }
     // The same keys in every view: ⏪ ⏩ the view, number keys a letter; Back (nothing open in the view) to the jump bar.
     Box(Modifier.fillMaxSize().onPreviewKeyEvent { e ->
@@ -473,7 +479,10 @@ fun BrowseLibrary(
             val all = BrowseView.entries
             cycleView(all.indexOf(v) - all.indexOf(options.view))
         }, onDismiss = { dialog = null })
-        "filters" -> FilterDialog(options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null })
+        "filters" -> FilterDialog(
+            options, genres, libraryFilters, codecs = dev.nitrate.core.pages.Codecs.offeredFor(library.collection), onChange = update, onDismiss = { dialog = null },
+            tagCounts = { repository.tagCounts(library.id, Browse.typesFor(library.collection)) },
+        )
     }
 }
 
@@ -540,6 +549,34 @@ private fun ViewDialog(current: BrowseView, onPick: (BrowseView) -> Unit, onDism
             }
         }
         LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    }
+}
+
+/**
+ * The tabs bar's two parts: [tabs] at their own width on the left and [buttons] at the right end
+ * when both fit on one line, else the buttons on a line below, from the left. Neither is squeezed.
+ */
+@Composable
+internal fun TabsAndButtons(modifier: Modifier, tabs: @Composable () -> Unit, buttons: @Composable () -> Unit) {
+    // More tabs than fit: they slide sideways (a focused tab scrolls into sight) rather than wrap.
+    val scroll = rememberScrollState()
+    androidx.compose.ui.layout.Layout(content = { Box(Modifier.horizontalScroll(scroll)) { tabs() }; Box { buttons() } }, modifier = modifier) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val t = measurables[0].measure(loose)
+        val b = measurables[1].measure(loose)
+        val width = constraints.maxWidth
+        if (t.width + b.width <= width) {
+            val height = maxOf(t.height, b.height)
+            layout(width, height) {
+                t.place(0, (height - t.height) / 2)
+                b.place(width - b.width, (height - b.height) / 2)
+            }
+        } else {
+            layout(width, t.height + b.height) {
+                t.place(0, 0)
+                b.place(0, t.height)
+            }
+        }
     }
 }
 
@@ -658,15 +695,27 @@ private fun SortDialog(options: BrowseOptions, onPick: ((BrowseOptions) -> Brows
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FilterDialog(options: BrowseOptions, genres: List<String>, available: dev.nitrate.core.model.LibraryFilters, codecs: Boolean, onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit) {
+internal fun FilterDialog(
+    options: BrowseOptions, genres: List<String>, available: dev.nitrate.core.model.LibraryFilters, codecs: Boolean,
+    onChange: ((BrowseOptions) -> BrowseOptions) -> Unit, onDismiss: () -> Unit,
+    /** How many titles carry each tag, for the tag panel's most used first. */
+    tagCounts: suspend () -> Map<String, Int> = { emptyMap() },
+) {
     val first = remember { FocusRequester() }
+    var choosingTags by remember { mutableStateOf(false) }
+    if (choosingTags) {
+        TagPanel(available.tags, options.tags, tagCounts, onToggle = { t -> onChange { it.toggleTag(t) } }, onClear = { onChange { it.copy(tags = emptyList()) } }, onDismiss = { choosingTags = false })
+        return
+    }
     dev.nitrate.tv.ui.lists.TvPanel(onDismiss, width = 860) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Filters", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            // The panel's own controls together at the top: Clear all beside Done.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(if (options.filterCount > 0) "Filters · ${options.filterCount}" else "Filters", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                if (options.filterCount > 0) OutlinedButton(onClick = { onChange { it.clearFilters() } }) { Text("Clear all") }
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.focusRequester(first)) { Text("Done") }
             }
             Group("Watched") { WatchFilter.entries.forEach { w -> FilterChip(options.watched == w, { onChange { it.copy(watched = w) } }) { Text(w.label) } } }
@@ -704,13 +753,78 @@ private fun FilterDialog(options: BrowseOptions, genres: List<String>, available
             if (genres.isNotEmpty()) Group("Genres (any of)") {
                 genres.forEach { g -> FilterChip(g in options.genres, { onChange { o -> o.copy(genres = if (g in o.genres) o.genres - g else o.genres + g) } }) { Text(g) } }
             }
+            // Tags can run to hundreds: the chosen ones here, the rest in a panel of their own.
             if (available.tags.isNotEmpty()) Group("Tags (any of)") {
-                available.tags.take(60).forEach { t -> FilterChip(t in options.tags, { onChange { it.toggleTag(t) } }) { Text(t) } }
+                options.tags.forEach { t -> FilterChip(true, { onChange { it.toggleTag(t) } }) { Text("$t  ✕") } }
+                OutlinedButton(onClick = { choosingTags = true }) { Text(if (options.tags.isEmpty()) "Choose tags… (${available.tags.size})" else "More tags…") }
             }
-            if (options.filterCount > 0) OutlinedButton(onClick = { onChange { it.clearFilters() } }) { Text("Clear all") }
             LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
         }
     }
+}
+
+/**
+ * Filter by tags: type to find one (names starting with what's typed first), or page through them
+ * most used first (counted over the library's titles), the chosen ones leading. OK on a tag adds or
+ * removes it; Done (or Back) goes back to the filters.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun TagPanel(all: List<String>, chosen: List<String>, counts: suspend () -> Map<String, Int>, onToggle: (String) -> Unit, onClear: () -> Unit, onDismiss: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    var page by remember { mutableStateOf(0) }
+    val tagCounts by androidx.compose.runtime.produceState(emptyMap<String, Int>()) { value = runCatching { counts() }.getOrDefault(emptyMap()) }
+    // Ranked once per opening (and when the counts arrive): choosing a tag doesn't reshuffle the page.
+    val ranked = remember(all, tagCounts) { dev.nitrate.core.pages.TagChoices.rank(all, tagCounts, chosen) }
+    val pages = dev.nitrate.core.pages.TagChoices.pages(ranked.size)
+    val typed = query.isNotBlank()
+    val shown = if (typed) dev.nitrate.core.pages.TagChoices.matches(all, query, tagCounts, limit = 24) else dev.nitrate.core.pages.TagChoices.page(ranked, page)
+    val done = remember { FocusRequester() }
+    val firstTag = remember { FocusRequester() }
+    dev.nitrate.tv.ui.lists.TvPanel(onDismiss, width = 860) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(if (chosen.isEmpty()) "Tags" else "Tags · ${chosen.size} chosen", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                if (chosen.isNotEmpty()) OutlinedButton(onClick = onClear) { Text("Clear tags") }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.focusRequester(done)) { Text("Done") }
+            }
+            // ▼ from the box: the first tag (the best match, or the most used), not whichever is nearest.
+            Box(Modifier.onPreviewKeyEvent { e ->
+                if (e.key == Key.DirectionDown && shown.isNotEmpty()) {
+                    if (e.type == KeyEventType.KeyDown) runCatching { firstTag.requestFocus() }
+                    true
+                } else false
+            }) {
+                dev.nitrate.tv.ui.components.TvTextField(query, { query = it; page = 0 }, placeholder = "Type to find a tag", modifier = Modifier.width(380.dp))
+            }
+            Text(
+                when {
+                    typed && shown.isEmpty() -> "No tag matches “${query.trim()}”."
+                    typed -> "Matching “${query.trim()}”"
+                    tagCounts.isEmpty() -> "All ${all.size} tags, A–Z"
+                    else -> "Most used first · page ${page + 1} of $pages"
+                },
+                style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                shown.forEachIndexed { i, t ->
+                    val n = tagCounts[t]
+                    FilterChip(t in chosen, { onToggle(t) }, modifier = if (i == 0) Modifier.focusRequester(firstTag) else Modifier) {
+                        Text(if (n != null) "$t  ·  $n" else t)
+                    }
+                }
+            }
+            if (!typed && pages > 1) Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(enabled = page > 0, onClick = { page-- }) { Text("◀ Previous") }
+                Text("${page + 1} / $pages", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(enabled = page < pages - 1, onClick = { page++ }) { Text("Next ▶") }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { done.requestFocus() } }
+    // A new page: focus on its first tag (the buttons that turned it stay where they are otherwise).
+    var turned by remember { mutableStateOf(false) }
+    LaunchedEffect(page) { if (turned) runCatching { firstTag.requestFocus() } else turned = true }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

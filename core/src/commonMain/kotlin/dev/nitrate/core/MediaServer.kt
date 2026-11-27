@@ -1010,6 +1010,13 @@ interface MediaServer {
     /** The genres, years, ratings and tags a library actually has, for filter choices. */
     suspend fun libraryFilters(libraryId: String?, types: List<dev.nitrate.core.model.ItemKind> = emptyList()): dev.nitrate.core.model.LibraryFilters = dev.nitrate.core.model.LibraryFilters()
 
+    /**
+     * How many of a library's titles carry each tag, for offering the most used first
+     * ([dev.nitrate.core.pages.TagChoices]): counted over up to [sample] titles (one request, only
+     * the tags of each); empty when it can't say.
+     */
+    suspend fun tagCounts(libraryId: String?, types: List<dev.nitrate.core.model.ItemKind> = emptyList(), sample: Int = 1000): Map<String, Int> = emptyMap()
+
     /** Whether season lists include episodes the library doesn't have (your server account's setting). */
     suspend fun showsMissingEpisodes(): Boolean = false
     suspend fun setShowMissingEpisodes(show: Boolean): Unit = unsupported()
