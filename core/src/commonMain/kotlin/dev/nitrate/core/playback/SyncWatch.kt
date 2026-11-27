@@ -124,14 +124,20 @@ class SyncWatch {
         if (overSamples < DRIFT_SAMPLES || realMs - lastFixMs < FIX_EVERY_MS) return null
         lastFixMs = realMs
         fixes++
-        if (fixes >= DRIFTS_FOR_WARNING) raise(
-            SyncWarning(
-                SyncTrouble.DRIFT,
-                "Sound and picture drifted apart $fixes times (about ${kotlin.math.abs(offset)} ms each time)${context.takeIf { it.isNotBlank() }?.let { " with $it" } ?: ""}. " +
-                    "Each time it was lined up again; letting this device decode the sound instead usually stops it for good.",
-                convertHelps = false,
-            ),
-        )
+        if (fixes >= DRIFTS_FOR_WARNING) {
+            // Passed through (a receiver's timing read poorly): decoding it here stops it. Decoded here
+            // already: the device is falling behind with this sound, so having it converted helps.
+            val passedThrough = context.isNotBlank()
+            raise(
+                SyncWarning(
+                    SyncTrouble.DRIFT,
+                    "Sound and picture drifted apart $fixes times (about ${kotlin.math.abs(offset)} ms each time)${if (passedThrough) " with $context" else ""}. Each time it was lined up again; " +
+                        if (passedThrough) "letting this device decode the sound instead usually stops it for good."
+                        else "this device decodes this sound itself and is falling behind with it, so having the server convert just the sound usually stops it.",
+                    convertHelps = !passedThrough,
+                ),
+            )
+        }
         restartDrift()
         return offset
     }

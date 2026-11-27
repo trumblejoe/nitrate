@@ -1555,6 +1555,7 @@ class JellyfinClient(
         subtitleIndex: Int?,
         mediaSourceId: String?,
         deviceCaps: DeviceCapabilities?,
+        convertSound: Set<String>,
     ): PlaybackPlan {
         val settings = playbackSettings.current()
         val directPlay = !forceTranscode && settings.allowDirectPlay
@@ -1562,7 +1563,7 @@ class JellyfinClient(
         val info = post<PlaybackInfoRequestDto>(
             "Items", itemId, "PlaybackInfo",
             body = PlaybackInfoRequestDto(
-                deviceProfile = JellyfinDeviceProfile.create(deviceCaps ?: capabilities(), settings),
+                deviceProfile = JellyfinDeviceProfile.create(deviceCaps ?: capabilities(), settings, convertSound),
                 maxStreamingBitrate = settings.maxBitrate,
                 startTimeTicks = startMs.msToTicks(),
                 audioStreamIndex = audioIndex,

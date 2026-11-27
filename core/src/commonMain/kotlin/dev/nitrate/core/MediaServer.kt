@@ -355,6 +355,9 @@ interface MediaServer {
      * Asks the server how to play [itemId] on this device. [forceTranscode] after a local decoder
      * failure; [audioIndex]/[subtitleIndex] pick streams (null lets the server choose, subtitle -1 is off).
      * [deviceCaps] asks for another player than the device's usual one (iOS: mpv instead of Apple's).
+     * [convertSound]: sound formats (codec ids, "opus") this device should have converted, though it
+     * lists them: left out of the profile, so the server converts just the sound and passes the
+     * picture through untouched (direct stream) rather than converting both.
      */
     suspend fun resolvePlayback(
         itemId: String,
@@ -365,6 +368,7 @@ interface MediaServer {
         subtitleIndex: Int? = null,
         mediaSourceId: String? = null,
         deviceCaps: dev.nitrate.core.playback.DeviceCapabilities? = null,
+        convertSound: Set<String> = emptySet(),
     ): PlaybackPlan
     suspend fun reportStart(plan: PlaybackPlan, positionMs: Long)
     suspend fun reportProgress(plan: PlaybackPlan, positionMs: Long, isPaused: Boolean)

@@ -154,6 +154,24 @@ class SyncWatchTest {
         assertTrue(later.isNotEmpty())
     }
 
+    /** Drift with the sound decoded here: the advice is converting just the sound, not decoding it here (it already is). */
+    @Test fun driftWithSoundDecodedHereAdvisesConvertingTheSound() {
+        val w = SyncWatch()
+        w.settling(0)
+        var t = 5_000L
+        repeat(2) {
+            val asked = w.play(t, 100, 0.995)
+            assertTrue(asked.isNotEmpty())
+            t = asked.first().first + SyncWatch.FIX_EVERY_MS
+            w.settling(t)
+            t += SyncWatch.SETTLE_MS
+        }
+        val warning = w.warning!!
+        assertTrue("convert just the sound" in warning.text, warning.text)
+        assertTrue("decode the sound instead" !in warning.text, warning.text)
+        assertTrue(warning.convertHelps)
+    }
+
     @Test fun theSoundRunningDryIsNotDrift() {
         val w = SyncWatch()
         w.settling(0)

@@ -19,6 +19,38 @@ class JellyfinDeviceProfileTest {
         JellyfinDeviceProfile.create(caps(), settings).codecProfiles
             .first { it.codec == codec }.conditions.first { it.property == property }.value
 
+    /** A device that passes Dolby Digital (Plus) through to the TV or receiver. */
+    private fun passing(): DeviceCapabilities {
+        val c = caps(audio = mapOf("aac" to true, "ac3" to true, "eac3" to true, "opus" to true))
+        return c.copy(audio = c.audio.mapValues { (codec, a) -> if (codec == "ac3" || codec == "eac3") a.copy(passthrough = true) else a })
+    }
+
+    private fun conversionSound(c: DeviceCapabilities, s: PlaybackSettings) =
+        JellyfinDeviceProfile.create(c, s).transcodingProfiles.first { it.type == "Video" }.audioCodec.split(",")
+
+    @Test
+    fun `a sound to convert is left out so the server converts only the sound`() {
+        val c = passing()
+        fun audio(convert: Set<String>) = JellyfinDeviceProfile.create(c, PlaybackSettings(), convert).directPlayProfiles.first { it.type == "Video" }.audioCodec!!.split(",")
+        assertTrue("opus" in audio(emptySet()))
+        val left = audio(setOf("opus"))
+        assertFalse("opus" in left)
+        // Everything else (and the picture) stays as it was.
+        assertTrue(listOf("aac", "ac3", "eac3").all { it in left })
+        assertEquals(videoCodecs(PlaybackSettings(), c), JellyfinDeviceProfile.create(c, PlaybackSettings(), setOf("opus")).directPlayProfiles.first { it.type == "Video" }.videoCodec!!.split(","))
+    }
+
+    @Test
+    fun `converted sound is E-AC-3 when it passes through and nothing needs it decoded`() {
+        assertEquals(listOf("eac3", "ac3", "aac"), conversionSound(passing(), PlaybackSettings()))
+        // Night mode, dialogue boost or decoding it here need decoded sound: AAC first, as before.
+        assertEquals("aac", conversionSound(passing(), PlaybackSettings(dialogueBoost = true)).first())
+        assertEquals("aac", conversionSound(passing(), PlaybackSettings(nightMode = true)).first())
+        assertEquals("aac", conversionSound(passing(), PlaybackSettings(decodeHere = setOf("eac3"))).first())
+        // No passthrough: AAC first.
+        assertEquals("aac", conversionSound(caps(audio = mapOf("aac" to true, "ac3" to true, "eac3" to true)), PlaybackSettings()).first())
+    }
+
     @Test
     fun `reported codecs are direct played`() {
         assertEquals(setOf("h264", "hevc"), videoCodecs(PlaybackSettings()).toSet())

@@ -10,8 +10,9 @@ set -euo pipefail
 
 FFMPEG_BRANCH="release/6.0"
 # What Nitrate decodes in software when the device can't: Dolby Digital (Plus), DTS (core of
-# DTS-HD too), Dolby TrueHD (and MLP, its base), ALAC.
-DECODERS=(ac3 eac3 dca mlp truehd alac)
+# DTS-HD too), Dolby TrueHD (and MLP, its base), ALAC; and Opus with more than two channels, which
+# some devices' own decoders play with the channels in the wrong order (the centre in the left front).
+DECODERS=(ac3 eac3 dca mlp truehd alac opus)
 # Video the device may have no decoder for, decoded in software up to 1080p: H.264 (10-bit
 # "Hi10P" included), MPEG-2, MPEG-4 Part 2, VC-1.
 DECODERS+=(h264 mpeg2video mpeg4 vc1)

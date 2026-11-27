@@ -37,9 +37,12 @@ import androidx.media3.exoplayer.audio.AudioSink.SinkFormatSupport;
 import androidx.media3.exoplayer.audio.DecoderAudioRenderer;
 import androidx.media3.exoplayer.audio.DefaultAudioSink;
 
-/** Decodes and renders audio using FFmpeg. */
+/**
+ * Decodes and renders audio using FFmpeg. (Nitrate: not final, so {@code
+ * dev.nitrate.ffmpeg.MultichannelOpusRenderer} can take one format ahead of the device's decoders.)
+ */
 @UnstableApi
-public final class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioDecoder> {
+public class FfmpegAudioRenderer extends DecoderAudioRenderer<FfmpegAudioDecoder> {
 
   private static final String TAG = "FfmpegAudioRenderer";
 

@@ -1,7 +1,9 @@
 # FFmpeg decoders
 
 Software decoding for audio the device can't decode itself and the TV or receiver can't take over
-HDMI: DTS (and the DTS core of DTS-HD), Dolby TrueHD, Dolby Digital (Plus) and ALAC; and for video
+HDMI: DTS (and the DTS core of DTS-HD), Dolby TrueHD, Dolby Digital (Plus) and ALAC; Opus with more
+than two channels, ahead of the device's own decoder (`MultichannelOpusRenderer`: some devices' put
+the centre channel in the left front); and for video
 the device has no decoder for, up to 1080p: H.264 (including 10-bit "Hi10P", for devices whose
 hardware is 8-bit only), MPEG-2, MPEG-4 Part 2 and VC-1 (from MKV).
 

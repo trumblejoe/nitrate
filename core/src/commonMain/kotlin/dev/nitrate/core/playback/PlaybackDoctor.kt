@@ -77,6 +77,11 @@ sealed interface PlaybackFix {
     data class Resync(override val label: String, override val detail: String?) : PlaybackFix
     /** Has the server convert this title from the same spot (this playback only). */
     data class Convert(override val label: String, override val detail: String?) : PlaybackFix
+    /**
+     * Has the server convert only the sound ([codec]) from the same spot, the picture passed through
+     * untouched (this playback only): for sound this device struggles with, never a picture conversion.
+     */
+    data class ConvertSound(val codec: String, override val label: String, override val detail: String?) : PlaybackFix
 }
 
 /** One reason an item doesn't play as it is, in plain words, with what can be done. */

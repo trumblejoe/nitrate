@@ -808,7 +808,7 @@ class FakeServer : MediaServer {
         size = 3_200_000_000, defaultAudioIndex = 1, defaultSubtitleIndex = -1, defaultsKnown = true,
     )
 
-    override suspend fun resolvePlayback(itemId: String, isAudio: Boolean, startMs: Long, forceTranscode: Boolean, audioIndex: Int?, subtitleIndex: Int?, mediaSourceId: String?, deviceCaps: dev.nitrate.core.playback.DeviceCapabilities?): PlaybackPlan =
+    override suspend fun resolvePlayback(itemId: String, isAudio: Boolean, startMs: Long, forceTranscode: Boolean, audioIndex: Int?, subtitleIndex: Int?, mediaSourceId: String?, deviceCaps: dev.nitrate.core.playback.DeviceCapabilities?, convertSound: Set<String>): PlaybackPlan =
         error("not used in screenshots")
     override suspend fun reportStart(plan: PlaybackPlan, positionMs: Long) = Unit
     override suspend fun reportProgress(plan: PlaybackPlan, positionMs: Long, isPaused: Boolean) = Unit

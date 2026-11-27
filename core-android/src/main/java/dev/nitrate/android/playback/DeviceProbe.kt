@@ -127,9 +127,11 @@ object DeviceProbe {
         }.getOrNull()
         val audio = DeviceCapabilities.AUDIO_CODECS.map { (codec, mime) ->
             val encoding = PASSTHROUGH[codec]
-            // The device's own decoder, else Nitrate's FFmpeg one (DTS, TrueHD, Dolby, ALAC) when built in.
-            val decoder = decoders.firstOrNull { info -> info.supportedTypes.any { it.equals(mime, true) } }?.name
-                ?: SOFTWARE_AUDIO_DECODER.takeIf { ffmpegDecodes(mime) }
+            // The device's own decoder, else Nitrate's FFmpeg one (DTS, TrueHD, Dolby, ALAC) when built in;
+            // Opus with more than two channels goes to FFmpeg first when it has Opus (MultichannelOpusRenderer).
+            val own = decoders.firstOrNull { info -> info.supportedTypes.any { it.equals(mime, true) } }?.name
+            val decoder = if (codec == "opus" && own != null && ffmpegDecodes(mime)) "$own (stereo); $SOFTWARE_AUDIO_DECODER for 5.1 and 7.1"
+                else own ?: SOFTWARE_AUDIO_DECODER.takeIf { ffmpegDecodes(mime) }
             codec to AudioCodecCaps(codec, decoder, encoding != null && passthrough?.supportsEncoding(encoding) == true)
         }.toMap()
 
