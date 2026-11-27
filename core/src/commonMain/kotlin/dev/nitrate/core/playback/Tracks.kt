@@ -62,7 +62,11 @@ fun String.toReadableReason(): String =
  * and who decodes the picture and the sound, in plain words with the decoder's name in brackets
  * ([Decoders]; [soundPassedThrough]: the sound goes on untouched to the TV or receiver).
  */
-fun PlaybackPlan.infoRows(videoDecoder: String?, audioDecoder: String?, soundPassedThrough: Boolean = false): List<Pair<String, String>> {
+fun PlaybackPlan.infoRows(
+    videoDecoder: String?, audioDecoder: String?, soundPassedThrough: Boolean = false,
+    /** Already in plain words (mpv's, Apple's player): shown as they are in place of [videoDecoder]/[audioDecoder]. */
+    pictureWords: String? = null, soundWords: String? = null,
+): List<Pair<String, String>> {
     val video = source.streams.firstOrNull { it.kind == StreamKind.VIDEO }
     val audio = source.streams.firstOrNull { it.index == audioIndex }
     return buildList {
@@ -74,7 +78,7 @@ fun PlaybackPlan.infoRows(videoDecoder: String?, audioDecoder: String?, soundPas
             add("Video" to listOfNotNull(it.codec?.uppercase(), it.profile, "${it.width}×${it.height}", it.rangeType, it.bitDepth?.let { b -> "$b-bit" }).joinToString(" · "))
         }
         audio?.let { add("Audio" to listOfNotNull(it.codec?.uppercase(), it.channelLayout, it.language).joinToString(" · ")) }
-        videoDecoder?.let { add("Picture decoder" to Decoders.describe(it)) }
-        Decoders.describeSound(audioDecoder, soundPassedThrough)?.let { add("Sound decoder" to it) }
+        (pictureWords ?: videoDecoder?.let(Decoders::describe))?.let { add("Picture decoder" to it) }
+        (soundWords ?: Decoders.describeSound(audioDecoder, soundPassedThrough))?.let { add("Sound decoder" to it) }
     }
 }

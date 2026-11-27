@@ -134,6 +134,12 @@ final class NitrateMpvPlayer: NSObject, NitrateMpv {
 
     func isEnded() -> Bool { flag("eof-reached") }
 
+    func property(name: String) -> String? {
+        guard let h = handle, let raw = mpv_get_property_string(h, name) else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
+    }
+
     func close() {
         guard let h = handle else { return }
         handle = nil

@@ -45,6 +45,23 @@ object Decoders {
 
     const val PASSED_THROUGH = "Sent untouched to the TV or receiver"
 
+    /** Apple's own player: iOS picks the decoder (VideoToolbox, hardware or software) and names none. */
+    const val APPLE_PLAYER = "Apple's player (iOS chooses the decoder)"
+
+    /** The picture's decoder in mpv ([d]); [hardware] names the hardware ("This computer's graphics card", "This device's hardware"). */
+    fun mpvPicture(d: MpvDecoding, hardware: String): String? {
+        val codec = d.videoCodec ?: return null
+        val hw = d.hwdec?.takeIf { it.isNotBlank() && it != "no" }
+        return if (hw != null) "$hardware ($hw, $codec)" else "mpv's software decoder (FFmpeg, $codec)"
+    }
+
+    /** The sound's decoder in mpv: passed through ("spdif-…" out) to the TV or receiver, else mpv's FFmpeg. */
+    fun mpvSound(d: MpvDecoding): String? = when {
+        d.audioOut?.startsWith("spdif") == true -> "$PASSED_THROUGH (${d.audioOut})"
+        d.audioCodec != null -> "mpv's FFmpeg (${d.audioCodec})"
+        else -> null
+    }
+
     /**
      * Who decodes format [id] here, for Settings: "This device's hardware (OMX…)", "Nitrate's FFmpeg",
      * and for sound the TV or receiver too when it's passed through; null when nothing here does (or an HDR format).
@@ -71,4 +88,24 @@ object Decoders {
     /** A conversion for sound reasons alone: the server passes the picture through (Jellyfin copies it). */
     fun soundOnly(plan: PlaybackPlan): Boolean =
         plan.method == PlayMethod.TRANSCODE && plan.transcodeReasons.isNotEmpty() && plan.transcodeReasons.all { it.startsWith("Audio") }
+}
+
+/**
+ * What mpv says decodes the playback (desktop, and iOS when it plays in mpv): `hwdec-current` ("no"
+ * or empty: software), `video-format` ("hevc"), `audio-codec-name` ("eac3"), `audio-out-params/format`
+ * ("spdif-eac3" when passed through). All null until mpv knows.
+ */
+data class MpvDecoding(
+    val hwdec: String? = null,
+    val videoCodec: String? = null,
+    val audioCodec: String? = null,
+    val audioOut: String? = null,
+) {
+    companion object {
+        /** Read through [property] (mpv's property as a string, or null). */
+        fun read(property: (String) -> String?): MpvDecoding {
+            fun p(name: String) = property(name)?.takeIf { it.isNotBlank() }
+            return MpvDecoding(p("hwdec-current"), p("video-format"), p("audio-codec-name"), p("audio-out-params/format"))
+        }
+    }
 }

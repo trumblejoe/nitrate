@@ -199,6 +199,8 @@ class LibMpvPlayer(
     override fun setAudioDelay(ms: Int) { api.setProperty("audio-delay", formatSeconds(ms / 1000.0)) }
     override fun setSubtitleDelay(ms: Int) { api.setProperty("sub-delay", formatSeconds(ms / 1000.0)) }
 
+    override fun decoding() = dev.nitrate.core.playback.MpvDecoding.read { api.getString(it) }
+
     override fun describe(): List<Pair<String, String>> {
         fun s(name: String) = api.getString(name)?.takeIf { it.isNotBlank() }
         return listOfNotNull(

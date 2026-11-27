@@ -22,6 +22,8 @@ interface NitrateMpv {
     fun duration(): Double
     fun isPaused(): Boolean
     fun isEnded(): Boolean
+    /** One of mpv's properties as a string (mpv_get_property_string), or null. */
+    fun property(name: String): String?
 
     /** Ends the player (not "release", which Objective-C's NSObject already has). */
     fun close()
@@ -45,6 +47,7 @@ fun useMpv(make: () -> NitrateMpv) {
                 override fun duration() = m.duration()
                 override fun isPaused() = m.isPaused()
                 override fun isEnded() = m.isEnded()
+                override fun property(name: String) = m.property(name)
                 override fun release() = m.close()
             }
         }

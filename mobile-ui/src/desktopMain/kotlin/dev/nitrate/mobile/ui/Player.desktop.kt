@@ -583,7 +583,9 @@ private fun PlayerInfoDialog(session: DesktopPlayerSession, plan: dev.nitrate.co
             mpvRows = session.player.describe()
         }
     }
-    val rows = listOf("Player" to "mpv", "Source" to (if (local) "Downloaded copy" else "Streaming")) + plan.infoRows(null, null) + mpvRows
+    val decoding = remember(mpvRows) { session.player.decoding() }
+    val rows = listOf("Player" to "mpv", "Source" to (if (local) "Downloaded copy" else "Streaming")) +
+        plan.infoRows(null, null, pictureWords = dev.nitrate.core.playback.Decoders.mpvPicture(decoding, "This computer's graphics card"), soundWords = dev.nitrate.core.playback.Decoders.mpvSound(decoding)) + mpvRows
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Info") },

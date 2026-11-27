@@ -426,9 +426,15 @@ private fun IosPlayerMore(
             }
             Text("How it plays", style = MaterialTheme.typography.titleSmall)
             val engine by session.engine.collectAsState()
+            // Who decodes: mpv says (its properties); Apple's player names no decoder.
+            val decoding = remember(engine) { session.mpv?.takeIf { engine == IosEngine.MPV }?.let { m -> dev.nitrate.core.playback.MpvDecoding.read { m.property(it) } } }
             val rows = listOf("Player" to (if (engine == IosEngine.MPV) "mpv" else "Apple's player")) +
                 ("Source" to (if (local) "Downloaded copy" else "Streaming")).let(::listOf) +
-                plan.infoRows(null, null)
+                plan.infoRows(
+                    null, null,
+                    pictureWords = decoding?.let { dev.nitrate.core.playback.Decoders.mpvPicture(it, "This device's hardware") } ?: dev.nitrate.core.playback.Decoders.APPLE_PLAYER.takeIf { decoding == null },
+                    soundWords = decoding?.let { dev.nitrate.core.playback.Decoders.mpvSound(it) } ?: dev.nitrate.core.playback.Decoders.APPLE_PLAYER.takeIf { decoding == null },
+                )
             rows.forEach { (label, value) ->
                 Row(Modifier.padding(vertical = 2.dp)) {
                     Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(110.dp))

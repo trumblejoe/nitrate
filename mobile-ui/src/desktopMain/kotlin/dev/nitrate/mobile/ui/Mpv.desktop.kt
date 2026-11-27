@@ -65,6 +65,9 @@ interface MpvPlayer {
     /** What mpv says about the playback for the Info panel: label to value, in order. */
     fun describe(): List<Pair<String, String>>
 
+    /** Who decodes, from mpv's own properties (for Info's plain "Picture decoder"/"Sound decoder"). */
+    fun decoding(): dev.nitrate.core.playback.MpvDecoding = dev.nitrate.core.playback.MpvDecoding()
+
     fun release()
 }
 

@@ -25,6 +25,8 @@ interface MpvPlayer {
     fun duration(): Double
     fun isPaused(): Boolean
     fun isEnded(): Boolean
+    /** One of mpv's properties as a string (null when it has none yet), for Info's decoders. */
+    fun property(name: String): String? = null
     fun release()
 }
 

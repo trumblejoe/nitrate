@@ -37,6 +37,17 @@ class DecodersTest {
         assertEquals("server converts the picture", Decoders.serverConverts("av1"))
     }
 
+    @Test fun mpvSaysWhoDecodes() {
+        val gpu = MpvDecoding.read(mapOf("hwdec-current" to "d3d11va", "video-format" to "hevc", "audio-codec-name" to "eac3", "audio-out-params/format" to "floatp")::get)
+        assertEquals("This computer's graphics card (d3d11va, hevc)", Decoders.mpvPicture(gpu, "This computer's graphics card"))
+        assertEquals("mpv's FFmpeg (eac3)", Decoders.mpvSound(gpu))
+        val cpu = MpvDecoding(hwdec = "no", videoCodec = "av1", audioCodec = "truehd", audioOut = "spdif-truehd")
+        assertEquals("mpv's software decoder (FFmpeg, av1)", Decoders.mpvPicture(cpu, "This computer's graphics card"))
+        assertEquals("Sent untouched to the TV or receiver (spdif-truehd)", Decoders.mpvSound(cpu))
+        // Nothing known yet: no row rather than a guess.
+        assertNull(Decoders.mpvPicture(MpvDecoding(), "This device's hardware"))
+    }
+
     @Test fun whatTheServerDoes() {
         fun plan(method: PlayMethod, reasons: List<String> = emptyList()) =
             PlaybackPlan("i", "u", method, "s", MediaSource("m", "mkv", null, emptyList()), isHls = false, audioIndex = null, subtitleIndex = -1, externalSubtitles = emptyList(), transcodeReasons = reasons)
