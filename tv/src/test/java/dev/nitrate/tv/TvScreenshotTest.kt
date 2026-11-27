@@ -3738,15 +3738,16 @@ private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsFocusedOrH
         p = p.parent
     }
     error("Not focused: ${node.config}")
-
-    private val sampleWatchTiming = dev.nitrate.core.diagnostics.WatchTimingReport(
-        supported = true, running = false, endsAtMs = 0,
-        presses = listOf(1900.0, 2100.0, 2000.0).map { dev.nitrate.core.diagnostics.TimedPress(0, true, it) },
-        saves = List(3) { dev.nitrate.core.diagnostics.TimedSave(0, "Nitrate", "TogglePlayed", 1810.0, emptyList()) },
-        listeners = listOf(
-            dev.nitrate.core.diagnostics.ListenerSummary("Trakt (ServerEntryPoint)", 3, 1800.0, 2000.0),
-            dev.nitrate.core.diagnostics.ListenerSummary("Nitrate Companion (ChangeStamps)", 3, 0.4, 0.9),
-            dev.nitrate.core.diagnostics.ListenerSummary("Jellyfin (UserDataChangeNotifier)", 3, 0.2, 0.3),
-        ),
-    )
 }
+
+/** "Why is Watched slow?" as the server would have it: a slow plugin among Jellyfin's and the Companion's own listeners. */
+private val sampleWatchTiming = dev.nitrate.core.diagnostics.WatchTimingReport(
+    supported = true, running = false, endsAtMs = 0,
+    presses = listOf(1900.0, 2100.0, 2000.0).map { dev.nitrate.core.diagnostics.TimedPress(0, true, it) },
+    saves = List(3) { dev.nitrate.core.diagnostics.TimedSave(0, "Nitrate", "TogglePlayed", 1810.0, emptyList()) },
+    listeners = listOf(
+        dev.nitrate.core.diagnostics.ListenerSummary("Trakt (ServerEntryPoint)", 3, 1800.0, 2000.0),
+        dev.nitrate.core.diagnostics.ListenerSummary("Nitrate Companion (ChangeStamps)", 3, 0.4, 0.9),
+        dev.nitrate.core.diagnostics.ListenerSummary("Jellyfin (UserDataChangeNotifier)", 3, 0.2, 0.3),
+    ),
+)
