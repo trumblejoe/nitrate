@@ -24,6 +24,22 @@ public record VideoFormat(string? Codec, int? BitDepth, string? RangeType, int? 
 public record TitleFormats(Guid Id, IReadOnlyList<VideoFormat> Video, IReadOnlyList<string> Audio);
 
 /// <summary>
+/// The hardest file to decode in one video format, for the device check's software-decoding test: the
+/// app plays a stretch of it, so "fast enough" is measured on what the library really holds. Its name
+/// is left out (an episode's would be a spoiler); the app says what it is by its numbers.
+/// </summary>
+/// <param name="Codec">The video codec ("vc1").</param>
+/// <param name="ItemId">The film, episode or video.</param>
+/// <param name="Width">Picture width.</param>
+/// <param name="Height">Picture height.</param>
+/// <param name="FrameRate">Frames per second, when known.</param>
+/// <param name="BitRate">The video stream's bits per second, when known.</param>
+/// <param name="BitDepth">Bits per sample, when known.</param>
+/// <param name="Interlaced">Whether the picture is interlaced.</param>
+/// <param name="RunTimeMs">How long the file runs.</param>
+public record HeaviestFile(string Codec, Guid ItemId, int Width, int Height, double? FrameRate, int? BitRate, int? BitDepth, bool Interlaced, long RunTimeMs);
+
+/// <summary>
 /// What each title is made of (codecs, bit depth, HDR, sound), from the server's database only, for
 /// the apps' format filters: kept in memory per title once read, and forgotten for a title as soon
 /// as the library says it changed, so a filter never needs every title's full stream details sent
@@ -33,6 +49,7 @@ public class FormatIndex : IHostedService
 {
     private readonly ILibraryManager _library;
     private readonly ConcurrentDictionary<Guid, (IReadOnlyList<VideoFormat> Video, IReadOnlyList<string> Audio)> _items = new();
+    private readonly ConcurrentDictionary<Guid, IReadOnlyList<HeaviestFile>> _loads = new();
 
     /// <summary>Initializes a new instance of the <see cref="FormatIndex"/> class.</summary>
     public FormatIndex(ILibraryManager library) => _library = library;
@@ -59,7 +76,50 @@ public class FormatIndex : IHostedService
     }
 
     /// <summary>Forgets what was kept for an item (it was added, changed or removed).</summary>
-    public void Forget(Guid id) => _items.TryRemove(id, out _);
+    public void Forget(Guid id)
+    {
+        _items.TryRemove(id, out _);
+        _loads.TryRemove(id, out _);
+    }
+
+    /// <summary>
+    /// The hardest file to decode, per codec in [codecs], among the films, episodes and videos the
+    /// person can see: the most pixels a second first, then the highest bit rate. Kept per file once
+    /// read, like the formats.
+    /// </summary>
+    public IReadOnlyList<HeaviestFile> Heaviest(User user, IReadOnlyCollection<string> codecs)
+    {
+        var wanted = new HashSet<string>(codecs, StringComparer.OrdinalIgnoreCase);
+        var all = List(user, null, new[] { BaseItemKind.Movie, BaseItemKind.Episode, BaseItemKind.Video, BaseItemKind.MusicVideo })
+            .SelectMany(item => _loads.GetOrAdd(item.Id, _ => LoadsOf(item.Id, item.GetMediaStreams(), item.RunTimeTicks)))
+            .Where(f => wanted.Contains(f.Codec));
+        return Pick(all);
+    }
+
+    /// <summary>The hardest file of each codec in [files].</summary>
+    public static IReadOnlyList<HeaviestFile> Pick(IEnumerable<HeaviestFile> files) => files
+        .GroupBy(f => f.Codec, StringComparer.OrdinalIgnoreCase)
+        .Select(g => g.OrderByDescending(Load).ThenByDescending(f => f.BitRate ?? 0).First())
+        .OrderBy(f => f.Codec, StringComparer.Ordinal)
+        .ToList();
+
+    /// <summary>One file's video streams as decoding loads (only streams with a known size).</summary>
+    public static IReadOnlyList<HeaviestFile> LoadsOf(Guid itemId, IEnumerable<MediaStream> streams, long? runTimeTicks) => streams
+        .Where(s => s.Type == MediaStreamType.Video && !string.IsNullOrEmpty(s.Codec) && s.Width > 0 && s.Height > 0)
+        .Select(s => new HeaviestFile(
+            s.Codec!.ToLowerInvariant(),
+            itemId,
+            s.Width!.Value,
+            s.Height!.Value,
+            (double?)(s.RealFrameRate ?? s.AverageFrameRate),
+            s.BitRate,
+            s.BitDepth,
+            s.IsInterlaced,
+            (runTimeTicks ?? 0) / TimeSpan.TicksPerMillisecond))
+        .ToList();
+
+    /// <summary>Pixels a second, rounded to tens of thousands so bit rate decides between near-equals.</summary>
+    private static long Load(HeaviestFile f) => (long)(f.Width * (long)f.Height * (f.FrameRate is > 0 ? f.FrameRate.Value : 24.0) / 10_000);
 
     /// <summary>
     /// The formats of every film and show (and other videos) the person can see in [parentId] (a

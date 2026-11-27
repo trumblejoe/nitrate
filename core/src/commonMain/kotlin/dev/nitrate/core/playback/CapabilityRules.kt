@@ -8,7 +8,7 @@ data class EffectiveCapability(val id: String, val claimed: Boolean, val allowed
 
 /**
  * What this device may direct play: what it reports ([DeviceCapabilities]) with the user's
- * overrides, limits and learned failures ([PlaybackSettings]) applied. Every platform's
+ * choices (Automatic, This device, Server converts) and limits ([PlaybackSettings]) applied. Every platform's
  * server profile is built from these rules.
  */
 object CapabilityRules {

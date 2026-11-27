@@ -253,29 +253,10 @@ private fun LazyListScope.advancedPage(
         }
     }
     section("Troubleshooting")
-    item {
-        ToggleRow("Learn from failures", settings.useLearnedFailures, "A title that failed to play here as it is gets converted next time; a whole format only after 3 different titles fail. Forgotten after 60 days. Keep on") { v ->
-            update { it.copy(useLearnedFailures = v) }
-        }
-    }
-    if (settings.learnedFailures.isNotEmpty() || settings.failedTitles.isNotEmpty()) item(key = "forget") {
-        val formats = settings.learnedFailures.filterValues { it.blocksFormat }.keys
-        ListItem(
-            selected = false,
-            onClick = { scope.launch { store.clearFailures() } },
-            headlineContent = { Text("Forget learned failures") },
-            supportingContent = {
-                Text(listOfNotNull(
-                    "${settings.failedTitles.size} title(s) converted".takeIf { settings.failedTitles.isNotEmpty() },
-                    "whole formats converted: ${formats.joinToString()}".takeIf { formats.isNotEmpty() },
-                ).joinToString(" · ").ifEmpty { "Failures noted, nothing converted yet" } + ". Try them as they are again")
-            },
-        )
-    }
     item { ToggleRow("Allow direct play", settings.allowDirectPlay, "Files play as they are when the TV supports them. Turning this off makes the server convert everything") { v -> update { it.copy(allowDirectPlay = v) } } }
     item { ToggleRow("Allow direct stream", settings.allowDirectStream, "Repackaged without re-encoding when only the container is unsupported. Turning this off converts those too") { v -> update { it.copy(allowDirectStream = v) } } }
 
-        section("Video codecs", "Select to cycle Auto → Always → Never. Long-press to clear limits and failures.")
+        section("Formats: video", "Select to cycle Automatic → This device → Server converts. Automatic follows what this device reports and what the device check measured; This device plays the format here even beyond that; Server converts always has the server convert it here. Long-press to clear limits.")
         items(CapabilityRules.videoCodecs(capabilities, settings), key = { it.id }) { cap ->
             val c = capabilities.video[cap.id]
             val reported = c?.let {
@@ -286,9 +267,9 @@ private fun LazyListScope.advancedPage(
                 settings.codecMaxHeight[cap.id]?.let { "limited to ${it}p" },
                 "8-bit only".takeIf { cap.id in settings.eightBitOnly },
                 "10-bit allowed (passed the test)".takeIf { cap.id in settings.tenBitAllowed },
-                "software decoder: up to 1080p unless set to Always".takeIf { c != null && !c.hardware && settings.overrides[cap.id] != dev.nitrate.core.playback.Override.ALWAYS },
+                "software decoder: up to 1080p unless set to This device".takeIf { c != null && !c.hardware && settings.overrides[cap.id] != dev.nitrate.core.playback.Override.ALWAYS },
             )
-            CapabilityRow(cap, reported, limits, settings, update)
+            CapabilityRow(cap, reported, limits, settings, update, measured = dev.nitrate.core.playback.PlaybackTest.measured(settings.deviceCheck, cap.id))
         }
 
         section("HDR formats", "Formats that are off are tone-mapped by the server.")
@@ -296,7 +277,7 @@ private fun LazyListScope.advancedPage(
             CapabilityRow(cap, if (cap.claimed) "display supports it" else null, emptyList(), settings, update)
         }
 
-        section("Audio codecs")
+        section("Formats: sound")
         items(CapabilityRules.audioCodecs(capabilities, settings), key = { it.id }) { cap ->
             val a = capabilities.audio[cap.id]
             val reported = a?.let { dev.nitrate.core.playback.Decoders.decodedBy(capabilities, cap.id)?.let { d -> "decoded by $d" } }
@@ -464,13 +445,14 @@ private fun CapabilityRow(
     limits: List<String>,
     settings: PlaybackSettings,
     update: ((PlaybackSettings) -> PlaybackSettings) -> Unit,
+    /** What the device check measured for this format (software decoding), in words. */
+    measured: String? = null,
 ) {
     val override = settings.overrides[cap.id]
-    val failure = settings.learnedFailures[cap.id]
     ListItem(
         selected = false,
         onClick = {
-            // Auto -> Always -> Never -> Auto
+            // Automatic -> This device -> Server converts -> Automatic
             val next = when (override) {
                 null -> Override.ALWAYS
                 Override.ALWAYS -> Override.NEVER
@@ -481,8 +463,6 @@ private fun CapabilityRow(
         onLongClick = {
             update { s ->
                 s.copy(
-                    learnedFailures = s.learnedFailures - cap.id,
-                    failedTitles = s.failedTitles.filterValues { f -> f.capability != cap.id },
                     codecMaxHeight = s.codecMaxHeight - cap.id,
                     eightBitOnly = s.eightBitOnly - cap.id,
                     tenBitAllowed = s.tenBitAllowed - cap.id,
@@ -494,16 +474,12 @@ private fun CapabilityRow(
             Column {
                 Text("TV reports: " + (reported ?: "not supported"), style = MaterialTheme.typography.bodySmall)
                 if (limits.isNotEmpty()) Text(limits.joinToString(" · ").replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-                failure?.let {
-                    val titles = it.items.size.takeIf { n -> n > 0 } ?: it.count
-                    Text("Failed to play as it is with $titles title(s) (${it.lastError})" + if (it.blocksFormat) ": all converted" else ": only those converted",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                }
+                measured?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
             }
         },
         trailingContent = {
             Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
-                Text(override?.label ?: "Auto", color = MaterialTheme.colorScheme.primary)
+                Text(override?.label ?: "Automatic", color = MaterialTheme.colorScheme.primary)
                 Text(
                     if (cap.allowed) "direct play" else dev.nitrate.core.playback.Decoders.serverConverts(cap.id),
                     style = MaterialTheme.typography.labelSmall,

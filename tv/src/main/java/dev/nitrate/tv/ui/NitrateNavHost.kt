@@ -134,6 +134,23 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
     // Display choices belong to the signed-in user, known only after sign-in.
     val backEntry by nav.currentBackStackEntryAsState()
     val userId = remember(backEntry) { container.server.userId }
+    // How smoothly each screen draws (Send device report, "Screen drawing across the app"): every
+    // frame of the window, put down to the screen showing. The player keeps its own, by what's open.
+    val screenNow = remember { arrayOf("Home") }
+    screenNow[0] = screenName(backEntry?.destination?.route)
+    val drawingView = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(drawingView) {
+        val window = drawingView.context.findActivityOrNull()?.window
+        val listener = android.view.Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
+            val first = android.os.Build.VERSION.SDK_INT >= 26 && metrics.getMetric(android.view.FrameMetrics.FIRST_DRAW_FRAME) == 1L
+            if (!first && screenNow[0] != PLAYER_SCREEN) {
+                val hz = drawingView.display?.refreshRate?.takeIf { it > 1f } ?: 60f
+                container.screenDrawing.record(screenNow[0], metrics.getMetric(android.view.FrameMetrics.TOTAL_DURATION) / 1_000_000.0, 1000.0 / hz)
+            }
+        }
+        runCatching { window?.addOnFrameMetricsAvailableListener(listener, android.os.Handler(android.os.Looper.getMainLooper())) }
+        onDispose { runCatching { window?.removeOnFrameMetricsAvailableListener(listener) } }
+    }
     // The main menu: the same stops on every top-level page (Home, libraries, custom pages).
     // Going somewhere from it starts from Home, so Back always leads home.
     val libraries = dev.nitrate.tv.ui.home.rememberLibraries(container)
@@ -878,3 +895,10 @@ private tailrec fun android.content.Context.findActivityOrNull(): android.app.Ac
 
 /** The watch group a playlist page was entered from (its parts open in it), or null. */
 internal val LocalOpenGroup = androidx.compose.runtime.staticCompositionLocalOf<String?> { null }
+
+private const val PLAYER_SCREEN = "Player"
+
+/** A screen's name for the drawing report, from its route ("dev.nitrate.tv.ui.DetailsRoute/…" → "Details"). */
+internal fun screenName(route: String?): String =
+    route?.substringBefore('/')?.substringBefore('?')?.substringAfterLast('.')?.removeSuffix("Route")?.ifEmpty { null } ?: "Starting"
+

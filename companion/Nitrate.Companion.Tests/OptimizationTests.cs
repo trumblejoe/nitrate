@@ -64,6 +64,23 @@ public class OptimizationTests
     }
 
     [Fact]
+    public void TheHeaviestFileIsTheMostPixelsThenTheHighestBitRate()
+    {
+        HeaviestFile F(int n, string codec, int w, int h, double? fps, int? rate) =>
+            FormatIndex.LoadsOf(G(n), new[] { new MediaStream { Type = MediaStreamType.Video, Codec = codec, Width = w, Height = h, RealFrameRate = (float?)fps, BitRate = rate } }, 60_000_0000).Single();
+        var picked = FormatIndex.Pick(new[]
+        {
+            F(1, "VC1", 1920, 1080, 23.976, 18_000_000),
+            F(2, "vc1", 1920, 1080, 23.976, 24_000_000),
+            F(3, "vc1", 1280, 720, 29.97, 30_000_000),
+            F(4, "mpeg2video", 720, 480, 29.97, 8_000_000),
+        });
+        Assert.Equal(new[] { ("mpeg2video", G(4)), ("vc1", G(2)) }, picked.Select(f => (f.Codec, f.ItemId)));
+        Assert.Equal(60_000L, picked[1].RunTimeMs);
+        Assert.Empty(FormatIndex.LoadsOf(G(5), new[] { new MediaStream { Type = MediaStreamType.Video, Codec = "vc1" } }, null));
+    }
+
+    [Fact]
     public void HouseholdShowsShapesNeverValues()
     {
         var time = new FakeTimeProvider(DateTimeOffset.FromUnixTimeMilliseconds(1_000));

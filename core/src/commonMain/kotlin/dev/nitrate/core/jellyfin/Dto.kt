@@ -489,6 +489,20 @@ internal data class TitleFormatsDto(val id: String, val video: List<VideoFormatD
 @Serializable
 internal data class VideoFormatDto(val codec: String? = null, val bitDepth: Int? = null, val rangeType: String? = null, val dvProfile: Int? = null)
 
+/** The hardest file of one format (Companion `/Nitrate/Formats/Heaviest`). */
+@Serializable
+internal data class HeaviestFileDto(
+    val codec: String = "",
+    val itemId: String = "",
+    val width: Int = 0,
+    val height: Int = 0,
+    val frameRate: Double? = null,
+    val bitRate: Int? = null,
+    val bitDepth: Int? = null,
+    val interlaced: Boolean = false,
+    val runTimeMs: Long = 0,
+)
+
 /** One kind of request across the household (Companion, admins). */
 @Serializable
 internal data class HouseholdQueryDto(val shape: String, val count: Int, val people: Int, val totalMs: Long, val medianMs: Long, val slowMs: Long, val maxMs: Long)

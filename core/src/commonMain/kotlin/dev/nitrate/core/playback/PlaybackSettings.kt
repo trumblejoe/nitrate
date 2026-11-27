@@ -5,7 +5,11 @@ import kotlinx.serialization.Serializable
 
 /** Force a capability on or off, regardless of what the TV reports. Absent means Auto. */
 @Serializable
-enum class Override(val label: String) { ALWAYS("Always"), NEVER("Never") }
+/**
+ * The user's choice for one format on this device; none is Automatic (what the device reports, and
+ * what the device check measured). The names are stored: never rename them.
+ */
+enum class Override(val label: String) { ALWAYS("This device"), NEVER("Server converts") }
 
 @Serializable
 enum class MaxResolution(val label: String, val width: Int?, val height: Int?) {
@@ -16,31 +20,19 @@ enum class MaxResolution(val label: String, val width: Int?, val height: Int?) {
 }
 
 /**
- * Direct-play failures of one format (a codec or HDR type) seen on this device. It stops the whole
- * format only once [BLOCK_TITLES] different titles have failed with it: one odd file (a camera's
- * 4:2:2 HEVC, a damaged rip) shouldn't send every HEVC file to the server. Before then, only the
- * titles that failed are converted ([PlaybackSettings.failedTitles]).
+ * What older versions learned from direct-play failures. No longer used: a failure now converts
+ * that play only, and whether a format is always converted here is the user's choice ([Override]).
+ * Kept so saved settings still read; cleared on the next playback ([PlaybackSettingsRepository.clearFailures]).
  */
 @Serializable
 data class LearnedFailure(
     val count: Int,
     val lastError: String,
     val lastSeenMs: Long,
-    /** The titles that failed (ids); empty in records from before titles were kept. */
     val items: Set<String> = emptySet(),
-) {
-    /** Whether the format as a whole is converted (older records kept only a count). */
-    val blocksFormat: Boolean get() = (if (items.isEmpty()) count else items.size) >= BLOCK_TITLES
+)
 
-    companion object {
-        /** Different titles that must fail before a whole format is converted. */
-        const val BLOCK_TITLES = 3
-        /** Failures older than this are forgotten, so the format (or title) is tried as it is again. */
-        const val KEEP_MS = 60L * 24 * 60 * 60 * 1000
-    }
-}
-
-/** One title that failed to play here as it is: it's converted from then on (until forgotten or [LearnedFailure.KEEP_MS]). */
+/** One title that failed here, as older versions kept it (see [LearnedFailure]). */
 @Serializable
 data class TitleFailure(val capability: String, val error: String, val atMs: Long)
 
@@ -66,8 +58,9 @@ data class PlaybackSettings(
     val allowDirectPlay: Boolean = true,
     val allowDirectStream: Boolean = true,
     val overrides: Map<String, Override> = emptyMap(),
+    /** No longer used (see [LearnedFailure]); kept so saved settings read, and cleared. */
     val learnedFailures: Map<String, LearnedFailure> = emptyMap(),
-    /** Titles (by item id) that failed to play here as they are, converted from then on. */
+    /** No longer used (see [LearnedFailure]). */
     val failedTitles: Map<String, TitleFailure> = emptyMap(),
     /** What the device check found here (null until it's run). */
     val deviceCheck: DeviceCheck? = null,
@@ -77,7 +70,7 @@ data class PlaybackSettings(
     val eightBitOnly: Set<String> = emptySet(),
     /** Codecs proven to play 10-bit here (by the playback test) though the TV doesn't report it. */
     val tenBitAllowed: Set<String> = emptySet(),
-    /** Treat learned failures as Never (unless overridden to Always). */
+    /** No longer used (see [LearnedFailure]); kept so saved settings read. */
     val useLearnedFailures: Boolean = true,
     /** How subtitles look on this device. */
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
@@ -143,22 +136,11 @@ data class PlaybackSettings(
      */
     val decodeHere: Set<String> = emptySet(),
 ) {
-    /** Whether [id] may be direct played, given what the device claims. */
+    /** Whether [id] may be direct played, given what the device claims: the user's choice, else Automatic. */
     fun allows(id: String, claimed: Boolean): Boolean = when (overrides[id]) {
         Override.ALWAYS -> true
         Override.NEVER -> false
-        null -> claimed && !(useLearnedFailures && learnedFailures[id]?.blocksFormat == true)
-    }
-
-    /** Whether [itemId] is converted because it failed to play here as it is. */
-    fun convertsTitle(itemId: String): Boolean = useLearnedFailures && itemId in failedTitles
-
-    /** Without failures older than [LearnedFailure.KEEP_MS]. */
-    fun withoutOldFailures(nowMs: Long): PlaybackSettings {
-        val keep = { at: Long -> nowMs - at < LearnedFailure.KEEP_MS }
-        val formats = learnedFailures.filterValues { keep(it.lastSeenMs) }
-        val titles = failedTitles.filterValues { keep(it.atMs) }
-        return if (formats.size == learnedFailures.size && titles.size == failedTitles.size) this else copy(learnedFailures = formats, failedTitles = titles)
+        null -> claimed
     }
 
     companion object {
@@ -184,20 +166,10 @@ interface PlaybackSettingsRepository {
     val settings: Flow<PlaybackSettings>
     suspend fun current(): PlaybackSettings
     suspend fun update(transform: (PlaybackSettings) -> PlaybackSettings)
-    suspend fun clearFailures() = update { it.copy(learnedFailures = emptyMap(), failedTitles = emptyMap()) }
-
-    /** [itemId] failed to play here as it is because of [id] (a codec or HDR type): see [LearnedFailure]. */
-    suspend fun recordFailure(id: String, error: String, nowMs: Long, itemId: String? = null) = update { st ->
-        val s = st.withoutOldFailures(nowMs)
-        val previous = s.learnedFailures[id]
-        s.copy(
-            learnedFailures = s.learnedFailures + (id to LearnedFailure((previous?.count ?: 0) + 1, error, nowMs, previous?.items.orEmpty() + listOfNotNull(itemId))),
-            failedTitles = if (itemId == null) s.failedTitles else s.failedTitles + (itemId to TitleFailure(id, error, nowMs)),
-        )
-    }
-
-    /** Lets failures past [LearnedFailure.KEEP_MS] go, so those formats and titles are tried as they are again. */
-    suspend fun forgetOldFailures(nowMs: Long) {
-        if (current().let { it.withoutOldFailures(nowMs) != it }) update { it.withoutOldFailures(nowMs) }
+    /** Lets go of what older versions learned from failures ([LearnedFailure]); writes only when there's something. */
+    suspend fun clearFailures() {
+        if (current().let { it.learnedFailures.isNotEmpty() || it.failedTitles.isNotEmpty() }) {
+            update { it.copy(learnedFailures = emptyMap(), failedTitles = emptyMap()) }
+        }
     }
 }

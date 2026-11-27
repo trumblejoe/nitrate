@@ -124,10 +124,9 @@ data class PlaybackTrail(val title: String, val trails: List<Trail>) {
             val ranges = hdr.joinToString("; ") { f ->
                 val name = rangeName(f.id.removePrefix("range:"))
                 val how = when (settings.overrides[f.id]) {
-                    Override.ALWAYS -> "allowed (set to Always)"
-                    Override.NEVER -> "refused (set to Never)"
+                    Override.ALWAYS -> "allowed (set to This device)"
+                    Override.NEVER -> "refused (set to Server converts)"
                     null -> when {
-                        settings.useLearnedFailures && settings.learnedFailures[f.id]?.blocksFormat == true -> "refused (failed here before)"
                         f.claimed -> "allowed (the display reports it)"
                         else -> "refused (the display doesn't report it)"
                     }

@@ -1044,7 +1044,13 @@ class AppContainer(
      * Builds a playback report (this device, what Nitrate allows, and [session]'s item, server
      * decision and player events if given) as text.
      */
-    suspend fun playbackReport(player: PlayerReport? = null): String =
+    /**
+     * How smoothly the app's screens draw, by screen (the TV app feeds it from its window; the
+     * player keeps its own, by what's open). Fed and read on the main thread.
+     */
+    val screenDrawing = dev.nitrate.core.playback.FrameStats(prefix = "On")
+
+    suspend fun playbackReport(player: PlayerReport? = null, screens: List<String> = emptyList()): String =
         dev.nitrate.core.playback.PlaybackReport(
             app = clientName,
             version = version,
@@ -1058,14 +1064,18 @@ class AppContainer(
             events = player?.events.orEmpty(),
             error = player?.error,
             uiFrames = player?.uiFrames.orEmpty(),
+            screenFrames = screens,
         ).render()
 
     /**
      * Sends a playback report to the signed-in Jellyfin server as a client log, and returns the
      * file name it's saved as there (Dashboard → Logs).
      */
-    suspend fun sendPlaybackReport(player: PlayerReport? = null): Result<String> =
-        runCatching { server.sendClientLog(playbackReport(player)) }
+    suspend fun sendPlaybackReport(player: PlayerReport? = null): Result<String> {
+        // Taken here, on the caller's (main) thread, where the screens are measured.
+        val screens = screenDrawing.lines()
+        return runCatching { server.sendClientLog(playbackReport(player, screens)) }
+    }
 
     /**
      * The audio and subtitles [item] will start with (the user's pick for its show or itself, the

@@ -73,15 +73,34 @@ class PlaybackDoctorTest {
         assertEquals(80_000_000, fix.change.apply(PlaybackSettings()).maxBitrate)
     }
 
-    @Test fun codecTurnedOffByTheUserOrByAFailureCanBeTurnedBackOn() {
+    @Test fun aFormatTheUserHasConvertedCanBePlayedOriginalAgain() {
         val never = PlaybackDoctor.diagnose(plan(reasons = listOf("VideoCodecNotSupported")), caps(), PlaybackSettings(overrides = mapOf("hevc" to Override.NEVER)))
-        assertEquals(SettingsChange.ClearOverride("hevc"), (never.findings.single().fixes.first() as PlaybackFix.Change).change)
+        val fix = never.findings.single().fixes.first() as PlaybackFix.Change
+        assertEquals("Play original", fix.label)
+        assertEquals(SettingsChange.ClearOverride("hevc"), fix.change)
+    }
 
-        val failed = PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(3, "ERROR_CODE_DECODING_FAILED", 0, setOf("a", "b", "c"))))
-        val again = PlaybackDoctor.diagnose(plan(reasons = listOf("VideoCodecNotSupported")), caps(), failed)
-        val change = (again.findings.single().fixes.first() as PlaybackFix.Change).change
-        assertEquals(SettingsChange.ForgetFailure("hevc"), change)
-        assertTrue(change.apply(failed).learnedFailures.isEmpty())
+    @Test fun aPartConvertedThisTimeOffersPlayOriginalOrAlways() {
+        val d = PlaybackDoctor.diagnose(plan(reasons = listOf("VideoCodecNotSupported")), caps(), PlaybackSettings(), converted = setOf("hevc"))
+        val f = d.findings.single()
+        assertEquals("HEVC converted this time", f.title)
+        assertTrue(f.fixes[0] is PlaybackFix.PlayOriginal)
+        val always = (f.fixes[1] as PlaybackFix.Change).change
+        assertEquals(SettingsChange.ConvertHere("hevc"), always)
+        assertEquals(Override.NEVER, always.apply(PlaybackSettings()).overrides["hevc"])
+    }
+
+    @Test fun softwareDecodingOffersConvertThisTimeOrAlways() {
+        val vc1 = listOf(MediaStream(0, StreamKind.VIDEO, codec = "vc1", width = 1920, height = 1080))
+        val software = caps().let { c -> c.copy(video = c.video + ("vc1" to VideoCodecCaps("vc1", "video/wvc1", "nitrate.ffmpeg.vc1", false, 1920, 1080, false))) }
+        val p = plan(method = PlayMethod.DIRECT_PLAY, streams = vc1, audioIndex = -1)
+        assertTrue(PlaybackDoctor.softwarePicture(p, software))
+        val f = PlaybackDoctor.diagnose(p, software, PlaybackSettings()).findings.single()
+        assertEquals("VC-1 is decoded in software here", f.title)
+        assertEquals(PlaybackFix.ConvertPart::class, f.fixes[0]::class)
+        assertEquals(SettingsChange.ConvertHere("vc1"), (f.fixes[1] as PlaybackFix.Change).change)
+        // Once always converted, the finding isn't offered while it plays as it is.
+        assertTrue(PlaybackDoctor.diagnose(p, software, PlaybackSettings(overrides = mapOf("vc1" to Override.NEVER))).findings.isEmpty())
     }
 
     @Test fun missingDecoderSuggestsADirectVersionFirst() {
@@ -114,9 +133,9 @@ class PlaybackDoctorTest {
         assertTrue("hevc" !in after.eightBitOnly && "hevc" in after.tenBitAllowed)
     }
 
-    @Test fun forcedTranscodeOffersARetryAndRemuxIsReassuring() {
+    @Test fun forcedTranscodeOffersPlayOriginalAndRemuxIsReassuring() {
         val forced = PlaybackDoctor.diagnose(plan(), caps(), PlaybackSettings(), forcedTranscode = true)
-        assertTrue(forced.findings.single().fixes.single() is PlaybackFix.Retry)
+        assertTrue(forced.findings.single().fixes.single() is PlaybackFix.PlayOriginal)
 
         val remux = PlaybackDoctor.diagnose(plan(method = PlayMethod.DIRECT_STREAM, reasons = listOf("ContainerNotSupported")), caps(), PlaybackSettings())
         assertEquals(PlaybackQuality.REPACKAGED, remux.quality)

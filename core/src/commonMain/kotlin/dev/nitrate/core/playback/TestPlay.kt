@@ -86,12 +86,9 @@ object TestPlay {
             when {
                 sawHdr && f !in caps.hdr -> Unit
                 settings.overrides[id] == Override.NEVER ->
-                    add(TestAdvice("$name is set to Never on this device, so the server tone-maps it.", SettingsChange.ClearOverride(id), "Set $name back to Automatic"))
-                settings.overrides[id] == null && settings.learnedFailures[id]?.blocksFormat == true ->
-                    add(TestAdvice("$name was turned off here after failures.", SettingsChange.ForgetFailure(id), "Try $name again"))
+                    add(TestAdvice("$name is set to Server converts on this device, so the server tone-maps it.", SettingsChange.ClearOverride(id), "Set $name back to Automatic"))
             }
         }
-        if (settings.convertsTitle(result.itemId)) add(TestAdvice("This title failed here before, so it's always converted.", SettingsChange.ForgetTitle(result.itemId), "Try it as it is again"))
         if (sawHdr) {
             // The TV shows HDR though Android doesn't say so: let the server send it as it is.
             formats.filter { it !in caps.hdr && settings.overrides[PlaybackSettings.hdrId(it)] != Override.ALWAYS }.forEach { f ->

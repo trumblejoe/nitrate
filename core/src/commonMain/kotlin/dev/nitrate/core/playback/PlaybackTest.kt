@@ -21,6 +21,10 @@ data class TestClip(
     val layers: DolbyVisionLayers? = null,
     /** Served by the Companion (its test clip id) rather than bundled: too big to ship in the app. */
     val fromServer: String? = null,
+    /** A stretch of a file in the user's own library (its item id): the hardest of its format ([PlaybackTest.librarySample]). */
+    val fromLibrary: String? = null,
+    /** Where the stretch starts, for [fromLibrary]. */
+    val startMs: Long = 0,
 ) {
     val uri get() = "asset:///testclips/$asset"
 
@@ -44,6 +48,31 @@ data class TestClip(
             v != null && v.maxHeight >= height && (!tenBit || v.tenBit) && (hdr == null || hdr in caps.hdr) && dv
         }
     }
+}
+
+/**
+ * The hardest file to decode of one format in the user's library (the Companion's format index):
+ * the most pixels a second, then the highest bit rate. Its name is never shown (an episode's would
+ * be a spoiler); it's told by its numbers.
+ */
+data class HeaviestFile(
+    val codec: String,
+    val itemId: String,
+    val width: Int,
+    val height: Int,
+    val frameRate: Double? = null,
+    val bitRate: Int? = null,
+    val bitDepth: Int? = null,
+    val interlaced: Boolean = false,
+    val runTimeMs: Long = 0,
+) {
+    /** "1080p, 24 Mbps, 23.976 fps". */
+    val describe: String get() = listOfNotNull(
+        "${height}${if (interlaced) "i" else "p"}",
+        bitDepth?.takeIf { it > 8 }?.let { "$it-bit" },
+        bitRate?.let { "${(it + 500_000) / 1_000_000} Mbps" },
+        frameRate?.let { f -> "${(kotlin.math.round(f * 1000) / 1000).toString().removeSuffix(".0")} fps" },
+    ).joinToString(", ")
 }
 
 @kotlinx.serialization.Serializable
@@ -100,6 +129,47 @@ object PlaybackTest {
         TestClip("flac_stereo.flac", "FLAC stereo", ClipKind.AUDIO, "flac"),
     )
 
+    /** How long a stretch of a library file plays ([librarySample]). */
+    const val LIBRARY_SAMPLE_MS = 20_000L
+
+    /**
+     * More than this share of frames dropped and a library sample is too slow: a film should play
+     * without visible stutter, so this is far stricter than the bundled clips' "it decodes at all".
+     */
+    const val LIBRARY_MAX_DROPPED_SHARE = 0.02
+
+    /** What a library sample's result is kept under in [DeviceCheck.clips]. */
+    fun libraryKey(codec: String) = "library:$codec"
+
+    /** What the device check measured for [codec] on the library's hardest file, in words; null if it wasn't. */
+    fun measured(check: DeviceCheck?, codec: String): String? {
+        val r = check?.clips?.get(libraryKey(codec)) ?: return null
+        val frames = (r.shown + r.dropped).takeIf { it > 0 }?.let { " (${r.dropped} of $it frames dropped)" }.orEmpty()
+        return when (r.outcome) {
+            Outcome.PASSED, Outcome.FALLBACK -> "Device check: your hardest ${codecLabel(codec)} file played smoothly here$frames"
+            Outcome.SLOW -> "Device check: your hardest ${codecLabel(codec)} file was too much for this device$frames; Server converts suits it"
+            Outcome.FAILED -> "Device check: your hardest ${codecLabel(codec)} file didn't play here; Server converts suits it"
+        }
+    }
+
+    /** Video formats this device decodes only in software (no hardware decoder of its own). */
+    fun softwareOnly(caps: DeviceCapabilities): List<String> = caps.video.values.filter { !it.hardware }.map { it.codec }.distinct().sorted()
+
+    /**
+     * A stretch of [file], the hardest of its format in the library: [LIBRARY_SAMPLE_MS] from a third
+     * of the way in (past any quiet opening), timed by dropped frames like a real watch.
+     */
+    fun librarySample(file: HeaviestFile): TestClip = TestClip(
+        asset = libraryKey(file.codec),
+        label = "Your hardest ${codecLabel(file.codec)} file (${file.describe})",
+        kind = ClipKind.VIDEO,
+        codec = file.codec,
+        height = file.height,
+        tenBit = (file.bitDepth ?: 8) > 8,
+        fromLibrary = file.itemId,
+        startMs = if (file.runTimeMs > 3 * LIBRARY_SAMPLE_MS) (file.runTimeMs / 3 / 1000) * 1000 else 0,
+    )
+
     /** The heavy FEL clip's id on the Companion (disc-like bitrate and frame sizes, too big for the app). */
     const val HEAVY_FEL_CLIP = "dolby_vision_7_fel_heavy"
 
@@ -130,8 +200,17 @@ object PlaybackTest {
      */
     fun suggestions(all: List<ClipResult>, caps: DeviceCapabilities, current: PlaybackSettings): List<Suggestion> {
         // Profile 7 clips aren't for settings: their results choose how profile 7 plays by themselves (Profile7Choice).
-        val results = all.filter { it.clip.profile7 == null }
+        val results = all.filter { it.clip.profile7 == null && it.clip.fromLibrary == null }
         val out = mutableListOf<Suggestion>()
+
+        // The library's hardest file of a software-only format, too much for this device: the server converts that format here.
+        for (r in all.filter { it.clip.fromLibrary != null && !it.ok }) {
+            val codec = r.clip.codec
+            if (current.overrides[codec] == Override.NEVER) continue
+            out += Suggestion("Have the server convert ${codecLabel(codec)} here: ${r.clip.label.replaceFirstChar { it.lowercase() }}: ${r.detail.replaceFirstChar { it.lowercase() }}") {
+                it.copy(overrides = it.overrides + (codec to Override.NEVER))
+            }
+        }
 
         for ((codec, codecResults) in results.filter { it.clip.kind == ClipKind.VIDEO }.groupBy { it.clip.codec }) {
             val sdr = codecResults.filter { it.clip.hdr == null }
@@ -140,14 +219,14 @@ object PlaybackTest {
 
             if (!base.ok) {
                 if (current.overrides[codec] != Override.NEVER) {
-                    out += Suggestion("Never direct play $name: even ${base.clip.label} ${base.outcome.label.lowercase()}") {
+                    out += Suggestion("Have the server convert $name: even ${base.clip.label} ${base.outcome.label.lowercase()}") {
                         it.copy(overrides = it.overrides + (codec to Override.NEVER))
                     }
                 }
                 continue
             }
             if (codec !in caps.video && current.overrides[codec] != Override.ALWAYS) {
-                out += Suggestion("Always allow $name: it plays even though the TV doesn't report it") {
+                out += Suggestion("Play $name on this device: it plays even though the TV doesn't report it") {
                     it.copy(overrides = it.overrides + (codec to Override.ALWAYS))
                 }
             }
@@ -189,7 +268,7 @@ object PlaybackTest {
             val dvId = PlaybackSettings.hdrId("DOVI")
             val dvProblem = codecResults.firstOrNull { it.clip.hdr == "DOVI" && it.clip.claimed(caps) && !it.ok }
             if (dvProblem != null && current.overrides[dvId] != Override.NEVER) {
-                out += Suggestion("Never direct play Dolby Vision: ${dvProblem.clip.label} ${dvProblem.outcome.label.lowercase()}; the server will send the HDR10 layer or tone-map") {
+                out += Suggestion("Have the server convert Dolby Vision: ${dvProblem.clip.label} ${dvProblem.outcome.label.lowercase()}; the server will send the HDR10 layer or tone-map") {
                     it.copy(overrides = it.overrides + (dvId to Override.NEVER))
                 }
             }
@@ -199,7 +278,7 @@ object PlaybackTest {
                 val sdrTwin = sdr.any { it.ok && it.clip.tenBit == failed.clip.tenBit && it.clip.height >= failed.clip.height }
                 val id = PlaybackSettings.hdrId(failed.clip.hdr!!)
                 if (sdrTwin && current.overrides[id] != Override.NEVER) {
-                    out += Suggestion("Never direct play ${failed.clip.hdr}: ${failed.clip.label} ${failed.outcome.label.lowercase()}; the server will tone-map") {
+                    out += Suggestion("Have the server convert ${failed.clip.hdr}: ${failed.clip.label} ${failed.outcome.label.lowercase()}; the server will tone-map") {
                         it.copy(overrides = it.overrides + (id to Override.NEVER))
                     }
                 }
@@ -211,11 +290,11 @@ object PlaybackTest {
             val claimed = result.clip.claimed(caps)
             when {
                 !result.ok && claimed && current.overrides[codec] != Override.NEVER ->
-                    out += Suggestion("Never direct play ${result.clip.label}: the TV reports it but it fails") {
+                    out += Suggestion("Have the server convert ${result.clip.label}: the TV reports it but it fails") {
                         it.copy(overrides = it.overrides + (codec to Override.NEVER))
                     }
                 result.ok && !claimed && current.overrides[codec] != Override.ALWAYS ->
-                    out += Suggestion("Always allow ${result.clip.label}: it plays even though the TV doesn't report it") {
+                    out += Suggestion("Play ${result.clip.label} on this device: it plays even though the TV doesn't report it") {
                         it.copy(overrides = it.overrides + (codec to Override.ALWAYS))
                     }
             }

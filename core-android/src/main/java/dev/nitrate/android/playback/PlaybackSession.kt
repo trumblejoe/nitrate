@@ -636,30 +636,28 @@ class PlaybackSession(
                 val renderer = (e as? ExoPlaybackException)?.takeIf { it.type == ExoPlaybackException.TYPE_RENDERER }
                 val videoFailed = !MimeTypes.isAudio(renderer?.rendererFormat?.sampleMimeType)
                 val failedId = CapabilityRules.failureCapabilityId(failed, videoFailed)
-                failedId?.let { id ->
-                    scope.launch { settings.recordFailure(id, e.errorCodeName, System.currentTimeMillis(), itemId = failed.itemId) }
-                }
-                // The sound failed: the server converts just the sound and passes the picture
-                // through untouched (converting the picture too is costly, and some servers can't
-                // decode it at all: a 4K AV1 film on a GPU without AV1 never got a frame out).
-                if (!videoFailed && failedId != null && failedId in dev.nitrate.core.playback.DeviceCapabilities.AUDIO_CODECS) {
-                    scope.launch { runCatching { server.reportProblem(failed.itemId, failed = true, reason = e.errorCodeName) } }
+                scope.launch { runCatching { server.reportProblem(failed.itemId, failed = true, reason = e.errorCodeName) } }
+                // Only the part that failed is converted, for this play only (nothing is learned):
+                // the sound alone, with the picture passed through untouched (converting the picture
+                // too is costly, and some servers can't decode it at all), or the picture alone, with
+                // the original sound copied. Whether a format is always converted here is the user's
+                // choice: the fixer's "Always convert … here", or Settings' Formats.
+                val part = failedId?.takeIf { it in dev.nitrate.core.playback.DeviceCapabilities.AUDIO_CODECS || it in dev.nitrate.core.playback.DeviceCapabilities.VIDEO_CODECS }
+                if (part != null && part !in converted) {
+                    val sound = part in dev.nitrate.core.playback.DeviceCapabilities.AUDIO_CODECS
+                    val name = dev.nitrate.core.playback.codecLabel(part)
                     showNotice(
-                        "$deviceNoun couldn't decode this sound (${dev.nitrate.core.playback.codecLabel(failedId)}, ${e.errorCodeName}). The server converts just the sound now; " +
-                            "the picture still plays as it is. Change this in Settings → Picture & sound → Advanced.",
+                        "$deviceNoun couldn't decode this ${if (sound) "sound" else "picture"} ($name, ${e.errorCodeName}). The server converts " +
+                            (if (sound) "just the sound this time; the picture still plays as it is." else "just the picture this time; the sound still plays as it is.") +
+                            " To always convert $name here: Why converting? in the player, or Settings → Picture & sound → Advanced → Formats.",
                     )
-                    log("Sound ${failed.method} failed at ${at}ms: the server converts just the sound ($failedId)")
+                    log("${if (sound) "Sound" else "Picture"} ${failed.method} failed at ${at}ms: the server converts just that ($part), this play only")
                     server.reportStopped(failed, at)
                     _plan.value = null
-                    restart(at, forceTranscode = false, audioIndex = failed.audioIndex, subtitleIndex = failed.subtitleIndex, convertSound = convertedSound + failedId)
+                    restart(at, forceTranscode = false, audioIndex = failed.audioIndex, subtitleIndex = failed.subtitleIndex, convert = converted + part)
                     return
                 }
-                scope.launch { runCatching { server.reportProblem(failed.itemId, failed = true, reason = e.errorCodeName) } }
-                // Only this title from now on; a whole format only after several different titles fail.
-                showNotice(
-                    "$deviceNoun couldn't play this file as it is (${e.errorCodeName}). Switched to converting; " +
-                        "this title will be converted from now on, other files of its kind still play as they are. Change this in Settings → Picture & sound → Advanced.",
-                )
+                showNotice("$deviceNoun couldn't play this file as it is (${e.errorCodeName}). The server converts it this time; other files still play as they are.")
             }
             log("Direct ${failed.method} failed at ${at}ms: retrying as a transcode")
             server.reportStopped(failed, at)
@@ -1149,20 +1147,21 @@ class PlaybackSession(
     /** Starts (or restarts) playback, cancelling a start still waiting on the server. */
     private fun restart(
         startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false,
-        sourceId: String? = null, before: (suspend () -> Unit)? = null, convertSound: Set<String>? = null,
+        sourceId: String? = null, before: (suspend () -> Unit)? = null, convert: Set<String>? = null,
     ) {
         startJob?.cancel()
         startJob = scope.launch {
             before?.invoke()
-            start(startMs, forceTranscode, audioIndex, subtitleIndex, useMemory, sourceId, convertSound)
+            start(startMs, forceTranscode, audioIndex, subtitleIndex, useMemory, sourceId, convert)
         }
     }
 
     /**
-     * Sound formats the server converts for this item while the picture passes through (a sound
-     * decoder that failed here, or the fixer's "convert just the sound"); kept across track changes.
+     * Formats the server converts for this item while the rest passes through untouched: a sound
+     * (the picture goes as it is) or a picture (the sound goes as it is) whose decoder failed here,
+     * or the fixer's "convert just the sound" / "convert this time"; kept across track changes.
      */
-    @Volatile private var convertedSound: Set<String> = emptySet()
+    @Volatile private var converted: Set<String> = emptySet()
 
     /** The sound's codec, when [w] is sound trouble (running dry, drifting) with the sound decoded here and not yet converted. */
     private fun soundTroubleCodec(w: dev.nitrate.core.playback.SyncWarning, p: dev.nitrate.core.model.PlaybackPlan): String? {
@@ -1197,7 +1196,7 @@ class PlaybackSession(
                     // Sound decoded here that kept running dry or drifting: the server converts only the
                     // sound (the picture plays as it is), never the picture for a sound problem.
                     soundTroubleCodec(w, p)?.let { codec ->
-                        dev.nitrate.core.playback.PlaybackFix.ConvertSound(
+                        dev.nitrate.core.playback.PlaybackFix.ConvertPart(
                             codec, "Have the server convert just the sound",
                             "From this moment, for this playback: ${dev.nitrate.core.playback.codecLabel(codec)} becomes a format this device handles easily; the picture plays as it is",
                         )
@@ -1208,7 +1207,7 @@ class PlaybackSession(
             )
         }
         if (localProgress != null) return sync?.let { dev.nitrate.core.playback.PlaybackDiagnosis(dev.nitrate.core.playback.PlaybackQuality.ORIGINAL, "Plays from this device", listOf(it), p) }
-        val d = dev.nitrate.core.playback.PlaybackDoctor.diagnose(p, caps, settings.current(), forcedTranscode, quality = _quality.value)
+        val d = dev.nitrate.core.playback.PlaybackDoctor.diagnose(p, caps, settings.current(), forcedTranscode, quality = _quality.value, converted = converted)
         return if (sync == null) d else d.copy(findings = listOf(sync) + d.findings)
     }
 
@@ -1264,15 +1263,24 @@ class PlaybackSession(
      * Nitrate asked for, what the server did, what arrived, the decoder, Nitrate's processing and
      * what went out, each marked where it differs from the prediction (the Info's Path, test plays).
      */
+    /** The last prediction [trail] worked out, with what it was worked out from. */
+    @Volatile private var trailPrediction: Pair<Triple<PlaybackPlan, dev.nitrate.core.playback.PlaybackSettings, dev.nitrate.core.playback.DeviceCapabilities>, dev.nitrate.core.playback.PlaybackPrediction?>? = null
+
     suspend fun trail(
         caps: dev.nitrate.core.playback.DeviceCapabilities,
         extra: (dev.nitrate.core.playback.Smoothness) -> dev.nitrate.core.playback.Smoothness = { it },
     ): dev.nitrate.core.playback.PlaybackTrail? {
         val p = _plan.value ?: return null
         val s = settings.current()
-        val prediction = runCatching {
-            dev.nitrate.core.jellyfin.ProfileCheck.predict(caps, s, p.source, p.audioIndex, p.subtitleIndex.takeIf { it >= 0 }, p.itemId)
-        }.getOrNull()
+        // Working out the server's decision is heavy (a whole device profile, then Jellyfin's rules):
+        // off the main thread, and once per plan and settings rather than on every Info refresh
+        // (on a Fire TV Stick it took ~200 ms a time, and every frame drawn meanwhile was late).
+        val key = Triple(p, s, caps)
+        val prediction = trailPrediction?.takeIf { it.first == key }?.second ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching {
+                dev.nitrate.core.jellyfin.ProfileCheck.predict(caps, s, p.source, p.audioIndex, p.subtitleIndex.takeIf { it >= 0 }, p.itemId)
+            }.getOrNull()
+        }.also { trailPrediction = key to it }
         val name = _item.value?.let { i ->
             if (i.kind == dev.nitrate.core.model.ItemKind.EPISODE) listOfNotNull(i.seriesName, "S${i.seasonNumber ?: "?"} E${i.indexNumber ?: "?"}").joinToString(" · ")
             else i.name + (i.productionYear?.let { " ($it)" } ?: "")
@@ -1325,9 +1333,13 @@ class PlaybackSession(
                 syncWatch.reset(System.currentTimeMillis()); _syncWarning.value = null
                 restart(at, forceTranscode = true, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex)
             }
-            is dev.nitrate.core.playback.PlaybackFix.ConvertSound -> {
+            is dev.nitrate.core.playback.PlaybackFix.PlayOriginal -> {
+                forcedTranscode = false
+                restart(at, forceTranscode = false, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex, convert = emptySet())
+            }
+            is dev.nitrate.core.playback.PlaybackFix.ConvertPart -> {
                 syncWatch.reset(System.currentTimeMillis()); _syncWarning.value = null
-                restart(at, forceTranscode = false, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex, convertSound = convertedSound + fix.codec)
+                restart(at, forceTranscode = false, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex, convert = converted + fix.codec)
             }
             is dev.nitrate.core.playback.PlaybackFix.Change ->
                 restart(at, forceTranscode = false, audioIndex = p.audioIndex, subtitleIndex = p.subtitleIndex, before = { settings.update(fix.change::apply) })
@@ -1409,24 +1421,16 @@ class PlaybackSession(
 
     private suspend fun start(
         startMs: Long, forceTranscode: Boolean, audioIndex: Int? = null, subtitleIndex: Int? = null, useMemory: Boolean = false,
-        sourceId: String? = null, convertSound: Set<String>? = null,
+        sourceId: String? = null, convert: Set<String>? = null,
     ) {
         val current = _item.value ?: return
-        // A title that failed here as it is goes straight to the server (others of its kind don't);
-        // failures past their time are let go first, so those get tried as they are again. When it
-        // was the sound that failed, only the sound is converted (the picture passes through).
-        val now = System.currentTimeMillis()
-        runCatching { settings.forgetOldFailures(now) }
-        val failure = runCatching { settings.current().takeIf { it.convertsTitle(current.id) }?.failedTitles?.get(current.id) }.getOrNull()
-        val soundFailed = failure?.capability?.takeIf { it in dev.nitrate.core.playback.DeviceCapabilities.AUDIO_CODECS }
-        val titleFailed = failure != null && soundFailed == null
-        @Suppress("NAME_SHADOWING") val forceTranscode = forceTranscode || titleFailed
-        if (titleFailed) log("This title failed here as it is before: converting it")
+        // Nothing learned from earlier failures any more (a failure converts that play only, and the
+        // user chooses whether a format is always converted): what older versions kept is let go.
+        runCatching { settings.clearFailures() }
         // The same item (a track change, a fix) keeps what was converted; another item starts afresh.
-        val kept = if (_plan.value?.itemId == current.id) convertedSound else emptySet()
-        val sound = (convertSound ?: kept) + listOfNotNull(soundFailed)
-        if (soundFailed != null) log("This title's sound ($soundFailed) failed here before: the server converts just the sound")
-        convertedSound = sound
+        val kept = if (_plan.value?.itemId == current.id) converted else emptySet()
+        val sound = convert ?: kept
+        converted = sound
         forcedTranscode = forceTranscode
         // Where the device is and the quality for it, once per title (Auto's speed test is kept a while).
         if (qualityItem != current.id) {
@@ -1461,7 +1465,7 @@ class PlaybackSession(
         }
         val audioIndex = audio
         val subtitleIndex = subtitle
-        log("Ask the server how to play ${current.id} from ${startMs}ms (forceTranscode=$forceTranscode, audio=$audioIndex, subtitle=$subtitleIndex" + (if (sound.isNotEmpty()) ", sound converted: ${sound.joinToString()}" else "") + ")")
+        log("Ask the server how to play ${current.id} from ${startMs}ms (forceTranscode=$forceTranscode, audio=$audioIndex, subtitle=$subtitleIndex" + (if (sound.isNotEmpty()) ", converted: ${sound.joinToString()}" else "") + ")")
         runCatching {
             server.resolvePlayback(
                 itemId = current.id,
@@ -1470,7 +1474,7 @@ class PlaybackSession(
                 forceTranscode = forceTranscode,
                 audioIndex = audioIndex,
                 subtitleIndex = subtitleIndex,
-                convertSound = sound,
+                convert = sound,
                 maxBitrate = maxBitrate,
                 // The same version on a track change; otherwise the one chosen on the details page, if any.
                 mediaSourceId = sourceId ?: _plan.value?.takeIf { it.itemId == current.id }?.mediaSourceId ?: VersionChoices[current.id],

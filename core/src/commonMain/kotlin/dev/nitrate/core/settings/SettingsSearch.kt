@@ -88,15 +88,13 @@ object SettingsSearch {
         SettingEntry("Packing for a trip", SettingsPlace.TRIPS, "travel travelling holiday vacation offline downloads plan pack flight hotel"),
         // Picture & sound › Advanced
         SettingEntry("Advanced playback settings", SettingsPlace.SOUND_ADVANCED, "troubleshooting formats fixes"),
-        SettingEntry("Formats this device plays (Always / Never)", SettingsPlace.SOUND_ADVANCED, "codecs hevc av1 h264 hdr hdr10 dolby vision override capabilities"),
+        SettingEntry("Formats (Automatic / This device / Server converts)", SettingsPlace.SOUND_ADVANCED, "codecs hevc av1 h264 vc-1 vc1 mpeg-2 hdr hdr10 dolby vision override capabilities always convert software decoding"),
         SettingEntry("Tunneled playback", SettingsPlace.SOUND_ADVANCED, "tunneling tunnel", T),
         SettingEntry("Dolby Vision profile 7 as 8.1", SettingsPlace.SOUND_ADVANCED, "dv uhd blu-ray fel mel convert"),
         SettingEntry("3D films", SettingsPlace.SOUND_ADVANCED, "side by side top and bottom mvc"),
         SettingEntry("Maximum resolution", SettingsPlace.SOUND_ADVANCED, "4k 1080p limit height"),
         SettingEntry("Allow direct play", SettingsPlace.SOUND_ADVANCED, "transcode convert"),
         SettingEntry("Allow direct stream", SettingsPlace.SOUND_ADVANCED, "remux repackage"),
-        SettingEntry("Learn from failures", SettingsPlace.SOUND_ADVANCED, "learned failures convert after failing"),
-        SettingEntry("Forget learned failures", SettingsPlace.SOUND_ADVANCED, "reset failed titles"),
         SettingEntry("Lossless and object audio", SettingsPlace.SOUND_ADVANCED, "truehd dts-hd dts:x atmos passthrough bitstream", T),
         // Subtitles
         SettingEntry("Subtitles", SettingsPlace.SUBTITLES, "captions cc"),

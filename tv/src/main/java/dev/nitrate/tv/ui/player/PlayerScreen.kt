@@ -758,8 +758,18 @@ fun PlayerScreen(
                     PlayerAction("Info", ready) { panel = Panel.INFO }.takeIf { !easy },
                     PlayerAction("More", ready) { panel = Panel.MORE }.takeIf { !easy },
                     PlayerAction(if (showLyrics) "Hide lyrics" else "Lyrics") { showLyrics = !showLyrics }.takeIf { lyrics != null },
-                    PlayerAction(if (outOfStep != null) "Out of step? Fix it" else "Why converting?") { panel = Panel.FIX }
-                        .takeIf { !easy && capabilities != null && p != null && (outOfStep != null || p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY) },
+                    // Also while a format with no decoder of its own here plays as it is: Convert this time / Always convert.
+                    PlayerAction(
+                        when {
+                            outOfStep != null -> "Out of step? Fix it"
+                            p?.method == dev.nitrate.core.model.PlayMethod.DIRECT_PLAY -> "Stuttering? Convert"
+                            else -> "Why converting?"
+                        },
+                    ) { panel = Panel.FIX }
+                        .takeIf {
+                            !easy && capabilities != null && p != null && (outOfStep != null || p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY ||
+                                dev.nitrate.core.playback.PlaybackDoctor.softwarePicture(p, capabilities))
+                        },
                 ) + (if (easy) emptyList() else panels.map { PlayerAction(it.panelLabel) { togglePanel(it) } }) +
                     listOfNotNull(sendLog?.takeIf { !easy }?.let { send ->
                         PlayerAction("Send log") {

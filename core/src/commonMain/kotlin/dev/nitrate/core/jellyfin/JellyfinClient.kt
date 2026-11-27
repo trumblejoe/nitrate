@@ -1594,7 +1594,7 @@ class JellyfinClient(
         subtitleIndex: Int?,
         mediaSourceId: String?,
         deviceCaps: DeviceCapabilities?,
-        convertSound: Set<String>,
+        convert: Set<String>,
         maxBitrate: Int?,
     ): PlaybackPlan {
         val settings = playbackSettings.current().let { s -> maxBitrate?.let { s.copy(maxBitrate = it) } ?: s }
@@ -1603,7 +1603,7 @@ class JellyfinClient(
         val info = post<PlaybackInfoRequestDto>(
             "Items", itemId, "PlaybackInfo",
             body = PlaybackInfoRequestDto(
-                deviceProfile = JellyfinDeviceProfile.create(deviceCaps ?: capabilities(), settings, convertSound),
+                deviceProfile = JellyfinDeviceProfile.create(deviceCaps ?: capabilities(), settings, convert),
                 maxStreamingBitrate = settings.maxBitrate,
                 startTimeTicks = startMs.msToTicks(),
                 audioStreamIndex = audioIndex,
@@ -1958,6 +1958,15 @@ class JellyfinClient(
     override suspend fun imageOverview(ask: dev.nitrate.core.admin.ImageOverviewAsk) = companionApi.imageOverview(ask)
     override suspend fun forgetHouseholdDevice(userId: String, deviceId: String) = companionApi.forgetHouseholdDevice(userId, deviceId)
     override fun checkClipUrl(id: String): String = url("Nitrate", "TestClips", id)
+    override suspend fun heaviestFiles(codecs: Collection<String>): List<dev.nitrate.core.playback.HeaviestFile> {
+        if (codecs.isEmpty() || !companionHas("formats")) return emptyList()
+        return get("Nitrate", "Formats", "Heaviest", query = mapOf("codecs" to codecs.sorted().joinToString(","))).decode<List<HeaviestFileDto>>().map {
+            dev.nitrate.core.playback.HeaviestFile(
+                Codecs.normalize(it.codec) ?: it.codec, normalizeId(it.itemId), it.width, it.height, it.frameRate, it.bitRate, it.bitDepth, it.interlaced, it.runTimeMs,
+            )
+        }
+    }
+    override fun videoFileUrl(itemId: String): String = streamUrl(itemId, isAudio = false, mediaSourceId = null, playSessionId = null, tag = null)
     override suspend fun chatMessages(groupId: String, after: Long, waitMs: Int) = companionApi.messages(groupId, after, waitMs)
     override suspend fun sendChat(groupId: String, kind: dev.nitrate.core.companion.ChatKind, text: String, positionMs: Long?) =
         companionApi.send(groupId, kind, text, positionMs)

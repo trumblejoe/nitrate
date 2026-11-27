@@ -71,6 +71,28 @@ class PlaybackTestTest {
         assertTrue(!clip("HEVC 4K 10-bit").claimed(c))
         assertTrue(!clip("HEVC 1080p HLG").claimed(c))
     }
+
+    @Test
+    fun `the library's hardest file of a software-only format decides whether the server converts it`() {
+        val file = HeaviestFile("vc1", "item-1", 1920, 1080, 23.976, 24_000_000, runTimeMs = 6_000_000)
+        assertEquals("1080p, 24 Mbps, 23.976 fps", file.describe)
+        val sample = PlaybackTest.librarySample(file)
+        assertEquals("library:vc1", sample.key)
+        assertEquals(2_000_000L, sample.startMs)
+        val software = caps(video = listOf(VideoCodecCaps("h264", "video/avc", "c2.h264", true, 3840, 2160, true), VideoCodecCaps("vc1", "video/wvc1", "nitrate.ffmpeg.vc1", false, 1920, 1080, false)))
+        assertEquals(listOf("vc1"), PlaybackTest.softwareOnly(software))
+
+        val slow = ClipResult(sample, Outcome.SLOW, "nitrate.ffmpeg.vc1", "Dropped 90 of 480 frames", 390, 90)
+        val s = applyAll(listOf(slow), software)
+        assertEquals(Override.NEVER, s.overrides["vc1"])
+        // Smooth: Automatic stays (no suggestion), and nothing narrower is guessed from it.
+        val smooth = ClipResult(sample, Outcome.PASSED, "nitrate.ffmpeg.vc1", "Showed 480 frames", 480, 0)
+        assertTrue(PlaybackTest.suggestions(listOf(smooth), software, PlaybackSettings()).isEmpty())
+
+        val check = DeviceCheck(0, "Stick", clips = mapOf(sample.key to CheckedClip(Outcome.SLOW, shown = 390, dropped = 90)))
+        assertEquals("Device check: your hardest VC-1 file was too much for this device (90 of 480 frames dropped); Server converts suits it", PlaybackTest.measured(check, "vc1"))
+        assertEquals(null, PlaybackTest.measured(check, "mpeg2video"))
+    }
 }
 
 class DolbyVisionAdviceTest {

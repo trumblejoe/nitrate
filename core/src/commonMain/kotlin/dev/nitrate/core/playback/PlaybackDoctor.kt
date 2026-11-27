@@ -27,12 +27,12 @@ sealed interface SettingsChange {
         override fun apply(s: PlaybackSettings) = s.copy(eightBitOnly = s.eightBitOnly - codec, tenBitAllowed = s.tenBitAllowed + codec)
     }
 
-    /** Back to Auto for a capability the user had set to Never. */
+    /** Back to Automatic for a format the user had set to Server converts. */
     data class ClearOverride(val id: String) : SettingsChange {
         override fun apply(s: PlaybackSettings) = s.copy(overrides = s.overrides - id)
     }
 
-    /** "Always" for a capability the device doesn't claim (or decodes only in software). */
+    /** "This device" for a format the device doesn't claim (or decodes only in software). */
     data class ForceAllow(val id: String) : SettingsChange {
         override fun apply(s: PlaybackSettings) = s.copy(overrides = s.overrides + (id to Override.ALWAYS))
     }
@@ -42,13 +42,9 @@ sealed interface SettingsChange {
         override fun apply(s: PlaybackSettings) = s.copy(decodeHere = s.decodeHere + codec)
     }
 
-    data class ForgetFailure(val id: String) : SettingsChange {
-        override fun apply(s: PlaybackSettings) = s.copy(learnedFailures = s.learnedFailures - id, failedTitles = s.failedTitles.filterValues { it.capability != id })
-    }
-
-    /** Tries one title as it is again (it had failed here before). */
-    data class ForgetTitle(val itemId: String) : SettingsChange {
-        override fun apply(s: PlaybackSettings) = s.copy(failedTitles = s.failedTitles - itemId)
+    /** "Always convert [id] here": the server converts that format on this device from now on (Formats: Server converts). */
+    data class ConvertHere(val id: String) : SettingsChange {
+        override fun apply(s: PlaybackSettings) = s.copy(overrides = s.overrides + (id to Override.NEVER))
     }
 
     data object AllowDirectPlay : SettingsChange {
@@ -73,15 +69,18 @@ sealed interface PlaybackFix {
     data class Change(val change: SettingsChange, override val label: String, override val detail: String?) : PlaybackFix
     /** Asks the server again without forcing a transcode (after an earlier failure). */
     data class Retry(override val label: String, override val detail: String?) : PlaybackFix
+    /** Plays the original again from the same spot: nothing converted this time any more. */
+    data class PlayOriginal(override val label: String, override val detail: String?) : PlaybackFix
     /** Reloads from the same spot the same way, putting sound and picture back in step. */
     data class Resync(override val label: String, override val detail: String?) : PlaybackFix
     /** Has the server convert this title from the same spot (this playback only). */
     data class Convert(override val label: String, override val detail: String?) : PlaybackFix
     /**
-     * Has the server convert only the sound ([codec]) from the same spot, the picture passed through
-     * untouched (this playback only): for sound this device struggles with, never a picture conversion.
+     * Has the server convert only one part from the same spot (this playback only): the sound
+     * ([codec] a sound format), the picture passed through untouched, or the picture ([codec] a
+     * video format), the original sound copied untouched.
      */
-    data class ConvertSound(val codec: String, override val label: String, override val detail: String?) : PlaybackFix
+    data class ConvertPart(val codec: String, override val label: String, override val detail: String?) : PlaybackFix
 }
 
 /** One reason an item doesn't play as it is, in plain words, with what can be done. */
@@ -122,6 +121,11 @@ data class PlaybackDiagnosis(
  */
 object PlaybackDoctor {
 
+    /** Whether [plan] plays as it is on a software decoder here: the fixer then offers Convert this time / Always convert. */
+    fun softwarePicture(plan: PlaybackPlan, caps: DeviceCapabilities): Boolean =
+        plan.method == PlayMethod.DIRECT_PLAY &&
+            plan.source.streams.firstOrNull { it.kind == StreamKind.VIDEO }?.codec?.lowercase()?.let { caps.video[it] }?.hardware == false
+
     fun diagnose(
         plan: PlaybackPlan,
         caps: DeviceCapabilities,
@@ -130,6 +134,8 @@ object PlaybackDoctor {
         forcedTranscode: Boolean = false,
         /** The quality limit this playback has (away, mobile data, lowered); null: the home limit from [settings]. */
         quality: QualityDecision? = null,
+        /** Formats this play has the server convert alone (one that failed here, or "Convert this time"). */
+        converted: Set<String> = emptySet(),
     ): PlaybackDiagnosis {
         val reasons = plan.transcodeReasons.toSet()
         val streams = plan.source.streams
@@ -156,20 +162,52 @@ object PlaybackDoctor {
             )
         }
 
-        val titleFailure = settings.failedTitles[plan.itemId]?.takeIf { settings.useLearnedFailures }
-        if (titleFailure != null) findings += PlaybackFinding(
-            "This title failed here before",
-            "Playing this file as it is failed on this device (${titleFailure.error}), so Nitrate has it converted. Other files of the same kind still play as they are.",
-            listOf(PlaybackFix.Change(SettingsChange.ForgetTitle(plan.itemId), "Try it as it is again", "If it fails again, Nitrate goes back to converting it.")),
-        ) else if (forcedTranscode) findings += PlaybackFinding(
-            "Switched after a playback error",
-            "Playing the file directly failed earlier, so Nitrate asked the server to convert it.",
-            listOf(PlaybackFix.Retry("Try direct play again", "If it fails again, Nitrate goes back to converting.")),
+        if (forcedTranscode) findings += PlaybackFinding(
+            "Converted this time",
+            "Playing the file as it is failed, so the server converts it for this play. Nothing is remembered: the next play tries it as it is again.",
+            listOf(PlaybackFix.PlayOriginal("Play original", "Tries the file as it is again from this moment.")),
         )
+        // Parts this play has converted alone: the next play tries them here again unless the user says always.
+        for (id in converted.sorted()) {
+            val name = codecName(id)
+            val sound = id in DeviceCapabilities.AUDIO_CODECS
+            handled += if (sound) listOf("AudioCodecNotSupported") else listOf("VideoCodecNotSupported", "VideoProfileNotSupported", "VideoLevelNotSupported", "VideoCodecTagNotSupported")
+            findings += PlaybackFinding(
+                "$name converted this time",
+                "For this play the server converts the ${if (sound) "sound" else "picture"} ($name); the ${if (sound) "picture" else "sound"} goes as it is. " +
+                    "Nothing is remembered: the next play tries $name on this device again, unless you choose to always convert it here.",
+                listOfNotNull(
+                    PlaybackFix.PlayOriginal("Play original", "Tries $name on this device again from this moment."),
+                    alwaysConvert(id, name, settings),
+                ),
+            )
+        }
+        // Played as it is on a software decoder (no hardware one here): the three plain choices.
+        if (plan.method == PlayMethod.DIRECT_PLAY && video != null) {
+            val codec = video.codec?.lowercase()
+            val decoder = codec?.let { caps.video[it] }
+            if (codec != null && decoder != null && !decoder.hardware && codec !in converted && settings.overrides[codec] == null) {
+                val name = codecName(codec)
+                val measured = settings.deviceCheck?.clips?.get(PlaybackTest.libraryKey(codec))
+                val check = when {
+                    measured == null -> "The device check (Settings → Tools) can time it on your library's hardest $name file."
+                    measured.outcome == Outcome.PASSED -> "The device check played your library's hardest $name file smoothly here" + (if (measured.dropped > 0) " (${measured.dropped} of ${measured.shown + measured.dropped} frames dropped)." else ".")
+                    else -> "The device check found your library's hardest $name file too much for it here (${measured.dropped} of ${measured.shown + measured.dropped} frames dropped)."
+                }
+                findings += PlaybackFinding(
+                    "$name is decoded in software here",
+                    "This device has no $name decoder of its own, so Nitrate decodes it in software. $check If the picture stutters or breaks up, have the server convert it.",
+                    listOfNotNull(
+                        PlaybackFix.ConvertPart(codec, "Convert this time", "From this moment, for this play: the server converts the picture; the sound goes as it is."),
+                        alwaysConvert(codec, name, settings),
+                    ),
+                )
+            }
+        }
 
         if (video != null) {
             val codec = video.codec?.lowercase()
-            if (handles("VideoCodecNotSupported", "VideoProfileNotSupported", "VideoLevelNotSupported", "VideoCodecTagNotSupported")) {
+            if (codec !in converted && handles("VideoCodecNotSupported", "VideoProfileNotSupported", "VideoLevelNotSupported", "VideoCodecTagNotSupported")) {
                 findings += videoCodecFinding(video, codec, caps, settings, plan)
             }
             if (handles("VideoResolutionNotSupported")) findings += resolutionFinding(video, codec, caps, settings, plan)
@@ -192,7 +230,7 @@ object PlaybackDoctor {
             findings += bitrateFinding(plan, settings, quality)
         }
 
-        if (audio != null && handles(
+        if (audio != null && audio.codec?.lowercase() !in converted && handles(
                 "AudioCodecNotSupported", "AudioChannelsNotSupported", "AudioProfileNotSupported", "AudioSampleRateNotSupported",
                 "AudioBitDepthNotSupported", "SecondaryAudioNotSupported", "UnknownAudioStreamInfo",
             )
@@ -302,21 +340,20 @@ object PlaybackDoctor {
     /** The user's own settings that stop [id], with the fixes for each. */
     private fun settingsBlocks(id: String, name: String, settings: PlaybackSettings): Pair<String, List<PlaybackFix>>? = when {
         settings.overrides[id] == Override.NEVER ->
-            "$name is set to Never in this device's Picture & sound settings (Advanced)." to
-                listOf(PlaybackFix.Change(SettingsChange.ClearOverride(id), "Set $name back to Auto", null))
-        settings.useLearnedFailures && settings.learnedFailures[id]?.blocksFormat == true && settings.overrides[id] != Override.ALWAYS -> {
-            val f = settings.learnedFailures.getValue(id)
-            val titles = f.items.size.takeIf { it > 0 } ?: f.count
-            "$name failed to play on this device with $titles different titles (${f.lastError}), so Nitrate stopped asking for it." to
-                listOf(PlaybackFix.Change(SettingsChange.ForgetFailure(id), "Try $name again", "If it fails again, Nitrate goes back to converting it."))
-        }
+            "$name is set to Server converts on this device (Picture & sound → Advanced → Formats)." to
+                listOf(PlaybackFix.Change(SettingsChange.ClearOverride(id), "Play original", "Sets $name back to Automatic on this device."))
         else -> null
     }
+
+    /** "Always convert [name] here", unless it already is. */
+    private fun alwaysConvert(id: String, name: String, settings: PlaybackSettings): PlaybackFix? =
+        PlaybackFix.Change(SettingsChange.ConvertHere(id), "Always convert $name here", "Saved for this device (Picture & sound → Advanced → Formats: Server converts).")
+            .takeIf { settings.overrides[id] != Override.NEVER }
 
     private fun videoCodecFinding(video: MediaStream, codec: String?, caps: DeviceCapabilities, settings: PlaybackSettings, plan: PlaybackPlan): PlaybackFinding {
         val name = codecName(codec)
         codec?.let { settingsBlocks(it, name, settings) }?.let { (text, fixes) ->
-            return PlaybackFinding("$name is turned off here", text, fixes + versionFixes(plan))
+            return PlaybackFinding("$name is converted here", text, fixes + versionFixes(plan))
         }
         val decoder = codec?.let { caps.video[it] }
         val detail = listOfNotNull(video.profile, video.bitDepth?.let { "$it-bit" }).joinToString(", ")
@@ -386,7 +423,7 @@ object PlaybackDoctor {
         val name = rangeName(range)
         val id = CapabilityRules.failureCapabilityId(plan, videoFailed = true)
         id?.let { settingsBlocks(it, name, settings) }?.let { (text, fixes) ->
-            return PlaybackFinding("$name is turned off here", text, fixes + versionFixes(plan))
+            return PlaybackFinding("$name is converted here", text, fixes + versionFixes(plan))
         }
         val profile5 = range == "DOVI"
         val text = if (profile5) "This video is Dolby Vision with no HDR10 layer to fall back on, and this display doesn't do Dolby Vision, so the server converts its colours to SDR."

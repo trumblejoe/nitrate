@@ -97,10 +97,7 @@ data class PlaybackOverview(
             add("Refresh rate" to s.frameRateMatch.label)
             add("Sound" to s.soundMode.label)
             add("Direct play / direct stream" to "${if (s.allowDirectPlay) "on" else "off"} / ${if (s.allowDirectStream) "on" else "off"}")
-            if (s.overrides.isNotEmpty()) add("Format overrides" to s.overrides.entries.joinToString { "${capabilityLabel(it.key)} ${it.value.label}" })
-            val blocked = s.learnedFailures.filterValues { it.blocksFormat }.keys
-            if (blocked.isNotEmpty()) add("Formats converted after failures" to blocked.joinToString(transform = ::capabilityLabel))
-            if (s.failedTitles.isNotEmpty()) add("Titles converted after failing here" to "${s.failedTitles.size}")
+            if (s.overrides.isNotEmpty()) add("Format choices" to s.overrides.entries.joinToString { "${capabilityLabel(it.key)} ${it.value.label}" })
             add("Device check" to (s.deviceCheck?.let { "run (${it.clips.size} samples${it.refresh?.let { r -> if (r.switched) ", refresh switch tested" else "" } ?: ""})" } ?: "not run"))
         }
     }

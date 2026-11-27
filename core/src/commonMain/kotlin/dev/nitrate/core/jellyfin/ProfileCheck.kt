@@ -43,7 +43,6 @@ object ProfileCheck {
         val pictureLimits = video?.let { pictureFailures(profile, it, caps, settings) }.orEmpty()
         val bitrateOk = (source.bitrate ?: 0) <= profile.maxStreamingBitrate
         val burns = subtitle != null && burnsIn(profile, subtitle)
-        val titleFailed = itemId != null && settings.convertsTitle(itemId)
         val videoOk = videoListed && pictureLimits.isEmpty()
         val transcodeVideo = list(profile.transcodingProfiles.firstOrNull { it.type == "Video" }?.videoCodec)
         val convertsSoundTo = list(profile.transcodingProfiles.firstOrNull { it.type == "Video" }?.audioCodec).firstOrNull()
@@ -53,12 +52,11 @@ object ProfileCheck {
             addAll(pictureLimits)
             if (!bitrateOk) add("Its bitrate (${mbps(source.bitrate)}) is above this device's limit (${mbps(profile.maxStreamingBitrate)})")
             if (burns) add("The subtitles chosen are drawn into the picture by the server")
-            if (titleFailed) add("It failed to play here as it is before, so it's converted")
             if (!settings.allowDirectPlay) add("Direct play is turned off on this device")
         }
-        val copyable = videoOk && bitrateOk && !burns && !titleFailed && (videoCodec == null || videoCodec in transcodeVideo)
+        val copyable = videoOk && bitrateOk && !burns && (videoCodec == null || videoCodec in transcodeVideo)
         return when {
-            videoOk && audioOk && containerOk && bitrateOk && !burns && !titleFailed && settings.allowDirectPlay ->
+            videoOk && audioOk && containerOk && bitrateOk && !burns && settings.allowDirectPlay ->
                 DeliveryVerdict(PredictedDelivery.DIRECT, emptyList())
             copyable && settings.allowDirectStream && !audioOk ->
                 DeliveryVerdict(PredictedDelivery.SOUND_CONVERTED, reasons + "${codecLabel(audioCodec)} sound isn't something this device plays, so the server converts it to ${codecLabel(convertsSoundTo)}", convertsSoundTo)
@@ -141,11 +139,9 @@ object ProfileCheck {
         fun name(f: String) = when (f) { "DOVI" -> "Dolby Vision"; "HDR10Plus" -> "HDR10+"; else -> f }
         fun names(fs: List<String>) = fs.map(::name).let { if (it.size <= 1) it.joinToString() else it.dropLast(1).joinToString(", ") + " and " + it.last() }
         val never = formats.filter { settings.overrides[PlaybackSettings.hdrId(it)] == Override.NEVER }
-        val failed = formats.filter { it !in never && settings.overrides[PlaybackSettings.hdrId(it)] == null && settings.useLearnedFailures && settings.learnedFailures[PlaybackSettings.hdrId(it)]?.blocksFormat == true }
-        val unreported = formats.filter { it !in never && it !in failed && it !in caps.hdr && settings.overrides[PlaybackSettings.hdrId(it)] == null }
+        val unreported = formats.filter { it !in never && it !in caps.hdr && settings.overrides[PlaybackSettings.hdrId(it)] == null }
         val causes = buildList {
-            if (never.isNotEmpty()) add("${names(never)} ${if (never.size == 1) "is" else "are"} set to Never (Picture & sound → Advanced)")
-            if (failed.isNotEmpty()) add("${names(failed)} ${if (failed.size == 1) "was" else "were"} turned off after failing here (Advanced → learned failures)")
+            if (never.isNotEmpty()) add("${names(never)} ${if (never.size == 1) "is" else "are"} set to Server converts (Picture & sound → Advanced → Formats)")
             if (unreported.isNotEmpty()) add("the display doesn't report ${names(unreported)} (Android says it shows ${caps.hdr.sorted().joinToString { name(it) }.ifEmpty { "no HDR" }})")
         }
         return if (causes.isEmpty()) "${rangeName(range)} isn't shown as it is here, so the server tone-maps it to SDR"

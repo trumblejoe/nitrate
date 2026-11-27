@@ -130,6 +130,7 @@ public class CompanionController : ControllerBase
         features.Add("watchedqueue");
         // Change counters for the apps' kept rows (GET /Nitrate/Changes).
         features.Add("changes");
+        // What titles are made of (GET /Nitrate/Formats) and the hardest file per format for the device check (GET /Nitrate/Formats/Heaviest).
         features.Add("formats");
         // Library images overview for admins (POST /Nitrate/Images/Overview): sizes, files, missing and small images.
         features.Add("imagesurvey");

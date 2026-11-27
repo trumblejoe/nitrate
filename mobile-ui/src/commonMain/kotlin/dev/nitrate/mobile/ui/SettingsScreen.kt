@@ -174,7 +174,7 @@ fun SettingsScreen(actions: AppActions, onSignedOut: () -> Unit, modifier: Modif
 
         group("Tools")
         item { Link("Checking how things play", "A guide to these tools: which to use, how, and what to do about washed-out HDR, missing surround or stutter") { actions.nav.navigate(GuideRoute) } }
-        item { Link("Advanced playback settings", "The formats this phone plays (Always, Never), learned failures, direct play, resolution limit: what the tools' fixes change") { open(SettingsPage.ADVANCED) } }
+        item { Link("Advanced playback settings", "Formats: which this phone plays and which the server converts (Automatic, This device, Server converts), direct play, resolution limit: what the tools' fixes change") { open(SettingsPage.ADVANCED) } }
         item { Link("Library playback overview", "Every film and episode you can see, and how each plays on this phone: as it is, converted, and why") { actions.nav.navigate(PlaybackOverviewRoute) } }
         item { SpeedCheckRow(actions) }
         if (actions.container.canTimeWatched()) item { WatchTimingRow(actions) }

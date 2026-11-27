@@ -57,12 +57,12 @@ class PlaybackPredictionTest {
         // The display takes HDR10, but it's set to Never: say so rather than blame the display.
         val settings = PlaybackSettings(overrides = mapOf(PlaybackSettings.hdrId("HDR10") to Override.NEVER))
         val p = ProfileCheck.predict(tv.copy(hdr = setOf("HDR10")), settings, film())
-        assertEquals(listOf("HDR10 is tone-mapped to SDR by the server: HDR10 is set to Never (Picture & sound → Advanced)"), p.reasons)
+        assertEquals(listOf("HDR10 is tone-mapped to SDR by the server: HDR10 is set to Server converts (Picture & sound → Advanced → Formats)"), p.reasons)
         // Dolby Vision over HDR10 on a display with neither, HDR10 also set to Never: both causes.
         val dv = film(video = MediaStream(0, StreamKind.VIDEO, codec = "hevc", width = 3840, height = 2160, bitDepth = 10, rangeType = "DOVIWithHDR10"))
         val both = ProfileCheck.predict(tv.copy(hdr = emptySet()), settings, dv)
         assertEquals(
-            "Dolby Vision is tone-mapped to SDR by the server: HDR10 is set to Never (Picture & sound → Advanced); the display doesn't report Dolby Vision (Android says it shows no HDR)",
+            "Dolby Vision is tone-mapped to SDR by the server: HDR10 is set to Server converts (Picture & sound → Advanced → Formats); the display doesn't report Dolby Vision (Android says it shows no HDR)",
             both.reasons.single(),
         )
     }
@@ -93,11 +93,11 @@ class PlaybackPredictionTest {
         assertTrue("Night mode is on" in p.soundDetail!!, p.soundDetail)
     }
 
-    @Test fun aTitleThatFailedHereIsConverted() {
+    @Test fun aTitleThatFailedHereBeforeIsTriedAsItIs() {
+        // Nothing is learned from failures any more: a failure converts that play only.
         val settings = PlaybackSettings(failedTitles = mapOf("film-a" to TitleFailure("hevc", "DECODING_FAILED", 0)))
         val p = ProfileCheck.predict(tv, settings, film(), itemId = "film-a")
-        assertEquals(PredictedDelivery.CONVERTED, p.delivery)
-        assertTrue(p.reasons.any { "failed to play here" in it })
+        assertTrue(p.reasons.none { "failed to play here" in it })
     }
 
     @Test fun refreshRatePlans() {

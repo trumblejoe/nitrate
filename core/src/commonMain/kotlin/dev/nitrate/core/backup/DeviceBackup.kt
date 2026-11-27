@@ -62,7 +62,7 @@ object DeviceBackups {
     /** Display-preferences id for one device's backup. */
     fun prefsId(deviceId: String) = "nitrate-device-" + deviceId.filter { it.isLetterOrDigit() || it == '-' }.take(64)
 
-    /** Whether hardware results (codec tests, learned failures, codec overrides) carry over. */
+    /** Whether hardware results (codec tests, format choices) carry over. */
     fun sameModel(backup: BackupSummary, model: String) = backup.model.isNotBlank() && backup.model.equals(model, ignoreCase = true)
 
     /**
@@ -74,8 +74,8 @@ object DeviceBackups {
         val b = backup.playback
         val playback = if (sameModel) b else b.copy(
             overrides = current.playback.overrides,
-            learnedFailures = current.playback.learnedFailures,
-            failedTitles = current.playback.failedTitles,
+            learnedFailures = emptyMap(),
+            failedTitles = emptyMap(),
             deviceCheck = current.playback.deviceCheck,
             codecMaxHeight = current.playback.codecMaxHeight,
             eightBitOnly = current.playback.eightBitOnly,
@@ -117,7 +117,6 @@ object DeviceBackups {
         playback("Maximum resolution", a.maxResolution.label, n.maxResolution.label)
         playback("Direct play", onOff(a.allowDirectPlay), onOff(n.allowDirectPlay))
         playback("Direct stream", onOff(a.allowDirectStream), onOff(n.allowDirectStream))
-        playback("Avoid formats that failed before", onOff(a.useLearnedFailures), onOff(n.useLearnedFailures))
         playback("Sound", dev.nitrate.core.playback.SoundMode.of(a).label, dev.nitrate.core.playback.SoundMode.of(n).label)
         playback("Upmix stereo", onOff(a.upmixStereo), onOff(n.upmixStereo))
         (a.speakerLayouts.keys + n.speakerLayouts.keys).sorted().forEach { k ->
@@ -136,9 +135,8 @@ object DeviceBackups {
         playback("Writing pane split", a.writingSplit.label, n.writingSplit.label)
         subtitles(a.subtitleStyle, n.subtitleStyle).forEach { (s, f, t) -> add(Difference("Subtitles", s, f, t)) }
 
-        hardware("Codec overrides", a.overrides.entries.sortedBy { it.key }.joinToString(", ") { "${it.key} ${it.value.label}" }.ifEmpty { "None" },
+        hardware("Format choices", a.overrides.entries.sortedBy { it.key }.joinToString(", ") { "${it.key} ${it.value.label}" }.ifEmpty { "None" },
             n.overrides.entries.sortedBy { it.key }.joinToString(", ") { "${it.key} ${it.value.label}" }.ifEmpty { "None" })
-        hardware("Formats that failed", list(a.learnedFailures.keys), list(n.learnedFailures.keys))
         hardware("Height limits", a.codecMaxHeight.entries.sortedBy { it.key }.joinToString(", ") { "${it.key} ${it.value}p" }.ifEmpty { "None" },
             n.codecMaxHeight.entries.sortedBy { it.key }.joinToString(", ") { "${it.key} ${it.value}p" }.ifEmpty { "None" })
         hardware("8-bit only", list(a.eightBitOnly), list(n.eightBitOnly))

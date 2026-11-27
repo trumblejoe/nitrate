@@ -24,6 +24,8 @@ data class PlaybackReport(
     val error: String? = null,
     /** How smoothly the player's screen drew, by what was open ([FrameStats.lines]). */
     val uiFrames: List<String> = emptyList(),
+    /** How smoothly each of the app's screens drew since it started, by screen ([FrameStats.lines]). */
+    val screenFrames: List<String> = emptyList(),
 ) {
     fun render(): String = buildString {
         line("$app $version playback report, $createdAt")
@@ -90,9 +92,7 @@ data class PlaybackReport(
         line("Max bitrate ${settings.maxBitrate / 1_000_000} Mbps, max resolution ${settings.maxResolution.label}, direct play ${settings.allowDirectPlay}, direct stream ${settings.allowDirectStream}")
         line("Match frame rate: ${settings.frameRateMatch.label}. Tunneled playback ${if (settings.tunneling) "on" else "off"}, audio sync ${AudioSync.label(settings.audioDelayMs)}, sound ${SoundMode.of(settings).label}, 3D: ${settings.threeD.label}")
         line("Dolby Vision profile 7 plays ${CapabilityRules.profile7(caps, settings).label}")
-        if (settings.overrides.isNotEmpty()) line("Overrides: ${settings.overrides.entries.joinToString(", ") { "${it.key}=${it.value.label}" }}")
-        if (settings.learnedFailures.isNotEmpty()) line("Learned failures: ${settings.learnedFailures.entries.joinToString(", ") { "${it.key} (${it.value.count}x on ${it.value.items.size.takeIf { n -> n > 0 } ?: "?"} titles, ${it.value.lastError}${if (it.value.blocksFormat) ", whole format converted" else ""})" }}")
-        if (settings.failedTitles.isNotEmpty()) line("Titles converted after failing here: ${settings.failedTitles.size}")
+        if (settings.overrides.isNotEmpty()) line("Format choices: ${settings.overrides.entries.joinToString(", ") { "${it.key}=${it.value.label}" }}")
         if (settings.codecMaxHeight.isNotEmpty()) line("Height limits: ${settings.codecMaxHeight}")
         if (settings.eightBitOnly.isNotEmpty()) line("8-bit only: ${settings.eightBitOnly.joinToString(", ")}")
         if (settings.tenBitAllowed.isNotEmpty()) line("10-bit allowed by test: ${settings.tenBitAllowed.joinToString(", ")}")
@@ -107,6 +107,12 @@ data class PlaybackReport(
         if (uiFrames.isNotEmpty()) {
             section("Screen drawing")
             uiFrames.forEach { line(it) }
+            line()
+        }
+
+        if (screenFrames.isNotEmpty()) {
+            section("Screen drawing across the app")
+            screenFrames.forEach { line(it) }
             line()
         }
 

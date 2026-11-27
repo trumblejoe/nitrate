@@ -641,9 +641,15 @@ actual fun PlayerScreen(
                     }
                     // Sound and picture knocked out of step (SyncWatch): the fixes for that, even when it plays as it is.
                     val outOfStep by session.syncWarning.collectAsState()
-                    if (outOfStep != null || (p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY && !local)) {
+                    // Also while a format with no decoder of its own here plays as it is: Convert this time / Always convert.
+                    val software = !local && dev.nitrate.core.playback.PlaybackDoctor.softwarePicture(p, actions.container.capabilities)
+                    if (outOfStep != null || (p.method != dev.nitrate.core.model.PlayMethod.DIRECT_PLAY && !local) || software) {
                         androidx.compose.material3.OutlinedButton(onClick = { dialog = PlayerDialog.FIX }, modifier = Modifier.padding(top = 12.dp)) {
-                            Text(if (outOfStep != null) "Out of step? Fix it" else "Why converting? Fix it")
+                            Text(when {
+                                outOfStep != null -> "Out of step? Fix it"
+                                p.method == dev.nitrate.core.model.PlayMethod.DIRECT_PLAY -> "Stuttering? Convert"
+                                else -> "Why converting? Fix it"
+                            })
                         }
                     }
                 }

@@ -214,24 +214,10 @@ fun SettingsPageScreen(actions: AppActions, page: SettingsPage) {
                     }
                 }
                 heading("Troubleshooting")
-                item { Toggle("Learn from failures", "A title that failed to play here as it is gets converted next time; a whole format only after 3 different titles fail. Forgotten after 60 days. Keep on", playback.useLearnedFailures) { v -> updatePlayback { it.copy(useLearnedFailures = v) } } }
-                if (playback.learnedFailures.isNotEmpty() || playback.failedTitles.isNotEmpty()) item {
-                    val formats = playback.learnedFailures.filterValues { it.blocksFormat }.keys
-                    ListItem(
-                        modifier = Modifier.clickable { scope.launch { c.playbackSettings.clearFailures() } },
-                        headlineContent = { Text("Forget learned failures") },
-                        supportingContent = {
-                            Text(listOfNotNull(
-                                "${playback.failedTitles.size} title(s) converted".takeIf { playback.failedTitles.isNotEmpty() },
-                                "whole formats converted: ${formats.joinToString { capabilityLabel(it) }}".takeIf { formats.isNotEmpty() },
-                            ).joinToString(" · ").ifEmpty { "Failures noted, nothing converted yet" })
-                        },
-                    )
-                }
                 item { Toggle("Allow direct play", "Files play as they are when this phone supports them. Turning this off makes the server convert everything", playback.allowDirectPlay) { v -> updatePlayback { it.copy(allowDirectPlay = v) } } }
                 item { Toggle("Allow direct stream", "Repackaged without re-encoding when only the container is unsupported. Turning this off converts those too", playback.allowDirectStream) { v -> updatePlayback { it.copy(allowDirectStream = v) } } }
                 heading("Formats")
-                item { Text("Tap to cycle Auto → Always → Never.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
+                item { Text("Tap to cycle Automatic → This device → Server converts. Automatic follows what this device reports (and the device check, where run); Server converts always has the server convert that format here.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
                 items(CapabilityRules.videoCodecs(caps, playback) + CapabilityRules.hdrFormats(caps, playback) + CapabilityRules.audioCodecs(caps, playback), key = { it.id }) { cap ->
                     Capability(cap, playback, updatePlayback, dev.nitrate.core.playback.Decoders.decodedBy(caps, cap.id))
                 }
@@ -495,12 +481,12 @@ internal fun Capability(cap: EffectiveCapability, settings: PlaybackSettings, up
             Text(
                 (if (cap.claimed) "Device supports it" else "Device doesn't report it") +
                     (decodedBy?.let { " · decoded by $it" } ?: "") +
-                    (settings.learnedFailures[cap.id]?.let { " · failed here ${it.count}×" } ?: ""),
+                    (dev.nitrate.core.playback.PlaybackTest.measured(settings.deviceCheck, cap.id)?.let { " · $it" } ?: ""),
             )
         },
         trailingContent = {
             Text(
-                (override?.label ?: "Auto") + " · " + if (cap.allowed) "direct" else dev.nitrate.core.playback.Decoders.serverConverts(cap.id),
+                (override?.label ?: "Automatic") + " · " + if (cap.allowed) "direct" else dev.nitrate.core.playback.Decoders.serverConverts(cap.id),
                 color = if (cap.allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             )
         },

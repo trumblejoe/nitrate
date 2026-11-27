@@ -126,6 +126,8 @@ fun PlaybackTestScreen(
     // A device that reports a profile 7 decoder also plays each clip as Dolby Vision 7.
     val native = 7 in capabilities.dolbyVisionProfiles
     var profile7List by remember { mutableStateOf(PlaybackTest.profile7Clips(heavy = false, native = native)) }
+    // A stretch of the library's hardest file of each format decoded only in software here (with the Companion).
+    var libraryList by remember { mutableStateOf<List<TestClip>>(emptyList()) }
     // A profile 7 clip that showed frames, looping in the preview while the user says whether there's a picture
     // (frames can be decoded and still be black, as a FEL film was on a MediaTek box).
     var asking by remember { mutableStateOf<TestClip?>(null) }
@@ -160,12 +162,15 @@ fun PlaybackTestScreen(
             // The profile 7 clips after the rest; the heavy one only when the Companion has it.
             val heavy = runCatching { server?.checkClips().orEmpty().any { it.id == PlaybackTest.HEAVY_FEL_CLIP } }.getOrDefault(false)
             profile7List = PlaybackTest.profile7Clips(heavy, native)
-            for (clip in PlaybackTest.CLIPS + profile7List) {
+            libraryList = runCatching { server?.heaviestFiles(PlaybackTest.softwareOnly(capabilities)).orEmpty() }.getOrDefault(emptyList())
+                .filter { server?.videoFileUrl(it.itemId) != null }.map(PlaybackTest::librarySample)
+            for (clip in PlaybackTest.CLIPS + libraryList + profile7List) {
                 running = clip
                 decoder = null
                 audioEncoding = null
                 clip.profile7?.let(profile7Way::set)
-                val uri = clip.fromServer?.let { id -> server?.checkClipUrl(id) } ?: clip.uri
+                val uri = clip.fromServer?.let { id -> server?.checkClipUrl(id) }
+                    ?: clip.fromLibrary?.let { id -> server?.videoFileUrl(id) } ?: clip.uri
                 var result = player.runClip(clip, uri) { decoder }
                 if (clip.profile7 != null && result.outcome != Outcome.FAILED) {
                     val waiting = kotlinx.coroutines.CompletableDeferred<dev.nitrate.core.playback.Answer>()
@@ -283,6 +288,28 @@ fun PlaybackTestScreen(
                 }
             }
             items(PlaybackTest.CLIPS, key = { it.key }) { clip ->
+                ResultRow(clip, results.firstOrNull { it.clip == clip }, clip.claimed(capabilities), clip == running)
+            }
+            // Formats with no hardware decoder here: the library's hardest file of each, timed as a real watch.
+            val software = PlaybackTest.softwareOnly(capabilities)
+            if (software.isNotEmpty()) item(key = "library") {
+                Column(Modifier.padding(top = 16.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Software decoding", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "${software.joinToString { dev.nitrate.core.playback.codecLabel(it) }} ${if (software.size == 1) "has" else "have"} no decoder of their own here, so Nitrate decodes them in software. " +
+                            "20 seconds of your library's hardest file of each are played and timed: if frames are dropped, the server converts that format here " +
+                            "(Picture & sound → Formats). This needs the Nitrate Companion on your server.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    saved?.deviceCheck?.takeIf { libraryList.isEmpty() }?.let { check ->
+                        software.mapNotNull { c -> check.clips[PlaybackTest.libraryKey(c)]?.let { c to it } }.forEach { (c, r) ->
+                            Text("${dev.nitrate.core.playback.codecLabel(c)}: ${r.outcome.label}" + (if (r.shown + r.dropped > 0) ", ${r.dropped} of ${r.shown + r.dropped} frames dropped" else ""),
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+            items(libraryList, key = { it.key }) { clip ->
                 ResultRow(clip, results.firstOrNull { it.clip == clip }, clip.claimed(capabilities), clip == running)
             }
             // Profile 7: each kind both ways; what they find chooses how profile 7 plays here, by itself.
@@ -423,13 +450,22 @@ private fun ResultRow(clip: TestClip, result: ClipResult?, claimed: Boolean, act
 private suspend fun ExoPlayer.runClip(clip: TestClip, uri: String, decoderName: () -> String?): ClipResult {
     stop()
     clearMediaItems()
-    setMediaItem(MediaItem.fromUri(uri))
+    setMediaItem(
+        if (clip.fromLibrary == null) MediaItem.fromUri(uri) else MediaItem.Builder().setUri(uri)
+            // A stretch of a real film: from a third of the way in, for 20 seconds.
+            .setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(clip.startMs)
+                    .setEndPositionMs(clip.startMs + PlaybackTest.LIBRARY_SAMPLE_MS)
+                    .build(),
+            ).build(),
+    )
     prepare()
     play()
 
     // Ended normally -> success; player error -> failure carrying it; null -> timed out (the
     // Companion's clip is downloaded as it plays, so it's given longer).
-    val finished: Result<Unit>? = withTimeoutOrNull(if (clip.fromServer != null) SERVER_CLIP_TIMEOUT_MS else CLIP_TIMEOUT_MS) {
+    val finished: Result<Unit>? = withTimeoutOrNull(if (clip.fromServer != null || clip.fromLibrary != null) SERVER_CLIP_TIMEOUT_MS else CLIP_TIMEOUT_MS) {
         suspendCancellableCoroutine { cont ->
             val listener = object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
@@ -457,11 +493,13 @@ private suspend fun ExoPlayer.runClip(clip: TestClip, uri: String, decoderName: 
     val dvFallback = clip.dolbyVisionProfile != null && clip.profile7 != dev.nitrate.core.playback.Profile7Playback.BASE_LAYER &&
         !DeviceProbe.isDolbyVisionDecoder(decoderName())
     val rendered = counters?.renderedOutputBufferCount ?: 0
-    val dropped = (counters?.droppedBufferCount ?: 0) + (counters?.skippedOutputBufferCount ?: 0)
+    // A stretch of a film starts after a seek: the frames decoded only to reach its start are
+    // "skipped", not late, so there only frames dropped for being late count.
+    val dropped = (counters?.droppedBufferCount ?: 0) + if (clip.fromLibrary != null) 0 else (counters?.skippedOutputBufferCount ?: 0)
     val total = rendered + dropped
     return when {
         rendered < 5 -> ClipResult(clip, Outcome.FAILED, decoderName(), "No frames shown", rendered, dropped)
-        total > 0 && dropped.toDouble() / total > MAX_DROPPED_SHARE ->
+        total > 0 && dropped.toDouble() / total > (if (clip.fromLibrary != null) PlaybackTest.LIBRARY_MAX_DROPPED_SHARE else MAX_DROPPED_SHARE) ->
             ClipResult(clip, Outcome.SLOW, decoderName(), "Dropped $dropped of $total frames", rendered, dropped)
         dvFallback && clip.dolbyVisionProfile == 5 ->
             ClipResult(clip, Outcome.FAILED, decoderName(), "Decoded without Dolby Vision, so the colours are wrong", rendered, dropped)

@@ -6,7 +6,7 @@ package dev.nitrate.core.playback
  * refresh is late (a hitch); over [SLOW_MS] is a lag someone notices on a key press. Feed it from
  * one thread.
  */
-class FrameStats {
+class FrameStats(private val prefix: String = "With") {
     private class Tally {
         var frames = 0
         var late = 0
@@ -34,7 +34,7 @@ class FrameStats {
     /** "With More open: 412 frames, 37 late (over one refresh, 41.7 ms), 5 over 100 ms, typical 23 ms, worst 260 ms". */
     fun lines(): List<String> = tallies.map { (what, t) ->
         val typical = t.recent.sorted().let { if (it.isEmpty()) 0.0 else it[it.size / 2] }
-        "With $what: ${t.frames} frames, ${t.late} late (over one refresh, ${one(t.refreshMs)} ms), ${t.slow} over ${SLOW_MS.toInt()} ms, " +
+        "$prefix $what: ${t.frames} frames, ${t.late} late (over one refresh, ${one(t.refreshMs)} ms), ${t.slow} over ${SLOW_MS.toInt()} ms, " +
             "typical ${typical.toInt()} ms, worst ${t.worstMs.toInt()} ms"
     }
 

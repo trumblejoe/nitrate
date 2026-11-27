@@ -70,19 +70,27 @@ object JellyfinDeviceProfile {
      * work at all. Otherwise AAC first, decoded here so those features work. Jellyfin's conversions
      * are 5.1 at most either way.
      */
-    fun conversionSound(caps: DeviceCapabilities, settings: PlaybackSettings): List<String> {
+    fun conversionSound(caps: DeviceCapabilities, settings: PlaybackSettings, copies: Boolean = false): List<String> {
         val passes = caps.audio["eac3"]?.passthrough == true || caps.audio["ac3"]?.passthrough == true
         val needsDecoded = settings.nightMode || settings.dialogueBoost || "eac3" in settings.decodeHere || "ac3" in settings.decodeHere
-        return if (passes && !needsDecoded) listOf("eac3", "ac3", "aac") else listOf("aac", "ac3", "eac3")
+        val converted = if (passes && !needsDecoded) listOf("eac3", "ac3", "aac") else listOf("aac", "ac3", "eac3")
+        // Last, so never what sound is converted to: DTS (DTS-HD MA too) is copied untouched into the
+        // conversion's MPEG-TS segments when only the picture is converted, rather than made AC-3.
+        return if (copies) converted + COPIED_SOUND else converted
     }
 
+    /** Sound formats copied as they are into converted MPEG-TS (Media3 reads them there); never converted to. */
+    val COPIED_SOUND = listOf("dts")
+
     /**
-     * [convertSound]: sound formats left out though allowed (a sound decoder that failed here, or a
-     * fix asking for it), so the server converts only the sound and passes the picture through.
+     * [convert]: formats left out though allowed, for this play only (a decoder that failed here, or
+     * the fixer's "Convert this time"): a sound format, so the server converts only the sound and
+     * passes the picture through; or a picture format, so it converts only the picture and copies
+     * the original sound.
      */
-    fun create(caps: DeviceCapabilities, settings: PlaybackSettings, convertSound: Set<String> = emptySet()): DeviceProfileDto {
-        val video = CapabilityRules.videoCodecs(caps, settings).filter { it.allowed }.map { it.id }
-        val audio = CapabilityRules.audioCodecs(caps, settings).filter { it.allowed && it.id !in convertSound }.map { it.id } + listOf("pcm_s16le", "pcm_s24le")
+    fun create(caps: DeviceCapabilities, settings: PlaybackSettings, convert: Set<String> = emptySet()): DeviceProfileDto {
+        val video = CapabilityRules.videoCodecs(caps, settings).filter { it.allowed && it.id !in convert }.map { it.id }
+        val audio = CapabilityRules.audioCodecs(caps, settings).filter { it.allowed && it.id !in convert }.map { it.id } + listOf("pcm_s16le", "pcm_s24le")
         val ranges = CapabilityRules.allowedRangeTypes(caps, settings)
 
         val apple = caps.engine == dev.nitrate.core.playback.PlayerEngine.APPLE
@@ -103,9 +111,9 @@ object JellyfinDeviceProfile {
 
         // Prefer HEVC output when allowed: half the bitrate of H.264 for the same quality.
         val transcodeVideo = listOfNotNull("hevc".takeIf { it in video }, "h264").joinToString(",")
-        val transcodeAudio = conversionSound(caps, settings).filter { it in audio }.ifEmpty { listOf("aac") }.joinToString(",")
         // AVPlayer takes HEVC and HDR only in fragmented MP4 segments.
         val transcodeContainer = if (apple) "mp4" else "ts"
+        val transcodeAudio = conversionSound(caps, settings, copies = !apple).filter { it in audio }.ifEmpty { listOf("aac") }.joinToString(",")
         // Rules that hold only for some source files (a 10-bit or unusual profile decoded in software
         // here) are kept to direct play: Jellyfin tests a profile's applyConditions against the source
         // even when converting, and caps the whole conversion by the smallest size of any that matches

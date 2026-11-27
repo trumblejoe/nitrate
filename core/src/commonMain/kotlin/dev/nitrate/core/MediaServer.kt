@@ -365,7 +365,7 @@ interface MediaServer {
      * Asks the server how to play [itemId] on this device. [forceTranscode] after a local decoder
      * failure; [audioIndex]/[subtitleIndex] pick streams (null lets the server choose, subtitle -1 is off).
      * [deviceCaps] asks for another player than the device's usual one (iOS: mpv instead of Apple's).
-     * [convertSound]: sound formats (codec ids, "opus") this device should have converted, though it
+     * [convert]: sound formats (codec ids, "opus") this device should have converted, though it
      * lists them: left out of the profile, so the server converts just the sound and passes the
      * picture through untouched (direct stream) rather than converting both.
      */
@@ -378,7 +378,7 @@ interface MediaServer {
         subtitleIndex: Int? = null,
         mediaSourceId: String? = null,
         deviceCaps: dev.nitrate.core.playback.DeviceCapabilities? = null,
-        convertSound: Set<String> = emptySet(),
+        convert: Set<String> = emptySet(),
         /** The quality limit for this playback (away, mobile data, lowered); null: the home limit from the settings. */
         maxBitrate: Int? = null,
     ): PlaybackPlan
@@ -545,6 +545,15 @@ interface MediaServer {
 
     /** Where to stream a check clip (with [authorizationHeader]). */
     fun checkClipUrl(id: String): String? = null
+
+    /**
+     * The hardest file to decode in each of [codecs] that the user can see (Companion feature
+     * `formats`; empty without it), for the device check's software-decoding test.
+     */
+    suspend fun heaviestFiles(codecs: Collection<String>): List<dev.nitrate.core.playback.HeaviestFile> = emptyList()
+
+    /** A video file as it is (seekable, with [authorizationHeader]), for the device check to play a stretch of. */
+    fun videoFileUrl(itemId: String): String? = null
 
     /** What the server reports doing with this device's stream right now (null: not converting, or not known). */
     suspend fun serverConversion(): dev.nitrate.core.playback.ServerConversion? = null

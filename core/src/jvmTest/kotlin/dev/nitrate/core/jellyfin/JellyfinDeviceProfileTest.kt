@@ -63,17 +63,23 @@ class JellyfinDeviceProfileTest {
     }
 
     @Test
-    fun `learned failures are skipped unless forced on or disabled`() {
-        // One title failing converts only that title; the format goes only after three different titles.
-        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(1, "DECODING_FAILED", 0, setOf("a"))))))
-        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(4, "DECODING_FAILED", 0, setOf("a", "b"))))))
+    fun `failures older versions learned no longer turn a format off`() {
         val failure = LearnedFailure(3, "DECODING_FAILED", 0, setOf("a", "b", "c"))
-        assertFalse("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to failure))))
-        // Older records kept only a count.
-        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(1, "DECODING_FAILED", 0)))))
-        assertFalse("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to LearnedFailure(3, "DECODING_FAILED", 0)))))
-        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to failure), overrides = mapOf("hevc" to Override.ALWAYS))))
-        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to failure), useLearnedFailures = false)))
+        assertTrue("hevc" in videoCodecs(PlaybackSettings(learnedFailures = mapOf("hevc" to failure))))
+    }
+
+    @Test
+    fun `a picture converted this time is left out and the original DTS is copied`() {
+        val c = caps(audio = mapOf("aac" to true, "ac3" to true, "eac3" to true, "dts" to true))
+        val profile = JellyfinDeviceProfile.create(c, PlaybackSettings(), convert = setOf("hevc"))
+        assertTrue(profile.directPlayProfiles.none { "hevc" in (it.videoCodec ?: "").split(',') })
+        val video = profile.transcodingProfiles.first { it.type == "Video" }
+        // Copied when the source has it, never what sound is converted to.
+        assertEquals("dts", video.audioCodec.split(',').last())
+        assertTrue(video.audioCodec.split(',').first() != "dts")
+        // Apple's MP4 conversions don't take it.
+        val apple = JellyfinDeviceProfile.create(c.copy(engine = dev.nitrate.core.playback.PlayerEngine.APPLE), PlaybackSettings())
+        assertTrue("dts" !in apple.transcodingProfiles.first { it.type == "Video" }.audioCodec.split(','))
     }
 
     @Test
