@@ -47,8 +47,8 @@ data class WithChip(
     val label: String get() = when {
         inSession -> if (session.isEmpty()) "In a Group Watch Session · waiting for others" else "In a Group Watch Session with " + session.joinToString(", ")
         roomNames.isNotEmpty() -> "In the room with " + and(roomNames)
-        context.justMe -> Tracks.OWN_TITLE + " · Change"
-        else -> Tracks.with(and(context.groups.flatMap { g -> g.others.map { it.name } }.distinct())).replaceFirstChar { it.uppercase() } + " · Change"
+        context.justMe -> Viewing.INDIVIDUAL + " · Change"
+        else -> Viewing.GROUP + " · " + and(context.groups.flatMap { g -> g.others.map { it.name } }.distinct()) + " · Change"
     }
 
     /**
@@ -58,7 +58,7 @@ data class WithChip(
     val button: String get() = when {
         inSession -> if (session.isEmpty()) "Group Watch Session" else "Group Watch Session · " + and(session)
         roomNames.isNotEmpty() -> and(roomNames) + " · in the room"
-        else -> group?.let { nameOf(it) } ?: "Own track"
+        else -> group?.let { nameOf(it) } ?: Viewing.INDIVIDUAL
     }
 
     /** Initials for the button's avatars: the people of the group it counts for, or in the session (at most three). */
@@ -78,7 +78,7 @@ data class WithChip(
     val ambiguous: Boolean get() = !inSession && groups.size > 1 && context.reason in AUTO
 
     /** "Counting for you and Tommy" (or "Counting for just you"). */
-    val counting: String get() = "Counting on " + (group?.let { g -> Tracks.with(nameOf(g)) } ?: Tracks.OWN)
+    val counting: String get() = group?.let { Viewing.group(it) } ?: Viewing.INDIVIDUAL
 
     /** Who's here, for the panel: "You, Tommy and Suzy, in a Group Watch Session", "You and Tommy, in the room", "Watching on your own". */
     val who: String get() = when {
@@ -164,18 +164,28 @@ data class CountAsk(val itemIds: List<String>, val what: String, val counting: C
 }
 
 /**
- * The words for where a play counts. Everyone has their own track (Jellyfin's Watched and resume
- * points) and, in each watch group, a track with that group (the group's record and resume point
- * for them): what's played from the group counts on the latter, and only for the one who played it.
+ * The two ways something is watched: Individual (the user's own Watched marks and resume points)
+ * or Group (a watch group's record and resume point for the user, apart from Individual). A page
+ * is one or the other, said by its pill; the words are these.
  */
-object Tracks {
-    /** "your track with Tommy & Suzy". */
-    fun with(names: String) = "your track with $names"
-    const val OWN = "your own track"
-    const val OWN_TITLE = "Your own track"
+object Viewing {
+    const val INDIVIDUAL = "Individual"
+    const val GROUP = "Group"
 
-    /** The idea in two sentences, for setting up a group and answering an invite. */
-    const val EXPLAINED = "You'll each have a track with the group, apart from your own. What you play from the group counts on your track there; your own watching stays as it is."
+    /** "Will", "Tommy & Suzy": a group as its pill and choices name it. */
+    fun name(g: WatchGroup) = WithChip.nameOf(g)
+
+    /** "Group · Will", where a sentence names it. */
+    fun group(g: WatchGroup) = "$GROUP · ${name(g)}"
+
+    /** Said once, where it's decided: setting up a group, and the invite. */
+    const val EXPLAINED = "Group viewing is kept apart from Individual."
+
+    /** The groups [item]'s title is in (the pill's choices besides Individual), in the order they hold it. */
+    fun groupsOn(item: dev.nitrate.core.model.MediaItem, info: PartnersInfo?, standings: Map<String, KeepUp>): List<WatchGroup> {
+        val title = TogetherRow.titleOf(item, standings) ?: return emptyList()
+        return info?.on(title).orEmpty()
+    }
 }
 
 /** Where the item playing had got to, sampled as it plays (with where it counts as watched). */

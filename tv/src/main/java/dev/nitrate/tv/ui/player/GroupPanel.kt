@@ -118,17 +118,17 @@ fun GroupPanel(
         when (page) {
             GroupPage.MAIN -> MainPage(chip, problem, topLine, first, onChange = { returnTo = topLine; page = GroupPage.COUNT }, onStartSession, onLeaveSession, onEndSession)
             GroupPage.COUNT -> {
-                Text("Counts on", style = MaterialTheme.typography.headlineSmall)
-                Text("Which track what you play to the end counts on.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Viewing", style = MaterialTheme.typography.headlineSmall)
+                Text("Where what you play to the end counts: Group, or Individual.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val chosen = chip.group?.id
                 chip.groups.forEachIndexed { i, g ->
-                    Choice(dev.nitrate.core.partners.Tracks.with(WithChip.nameOf(g)).replaceFirstChar { it.uppercase() }, chosen == g.id, if (i == 0) Modifier.focusRequester(first) else Modifier) { onCountFor(WatchingWith.Group(g.id)); back() }
+                    Choice(dev.nitrate.core.partners.Viewing.group(g), chosen == g.id, if (i == 0) Modifier.focusRequester(first) else Modifier) { onCountFor(WatchingWith.Group(g.id)); back() }
                 }
-                Choice(dev.nitrate.core.partners.Tracks.OWN_TITLE, chosen == null, if (chip.groups.isEmpty()) Modifier.focusRequester(first) else Modifier) { onCountFor(WatchingWith.JustMe); back() }
+                Choice(dev.nitrate.core.partners.Viewing.INDIVIDUAL, chosen == null, if (chip.groups.isEmpty()) Modifier.focusRequester(first) else Modifier) { onCountFor(WatchingWith.JustMe); back() }
                 if (chip.group != null) {
                     Action(
                         "We're in the same room",
-                        if (chip.roomNames.isEmpty()) "Pick who's watching here with you: it counts on their tracks too" else "Here: " + WithChip.and(chip.roomNames) + " · change",
+                        if (chip.roomNames.isEmpty()) "Pick who's here: it counts in the group for them too" else "Here: " + WithChip.and(chip.roomNames) + " · change",
                         Modifier,
                     ) { page = GroupPage.ROOM }
                 }
@@ -136,7 +136,7 @@ fun GroupPanel(
             GroupPage.ROOM -> chip.group?.let { g ->
                 var here by remember { mutableStateOf(chip.room?.takeIf { it.groupId == g.id }?.present?.toSet() ?: g.others.map { it.id }.toSet()) }
                 Text("We're in the same room", style = MaterialTheme.typography.headlineSmall)
-                Text("Who's watching here with you? What you play to the end counts on their tracks too.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Who's watching here with you? It counts in the group for them too.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 g.others.forEachIndexed { i, p ->
                     Toggle(p.name, p.id in here, if (i == 0) Modifier.focusRequester(first) else Modifier) { here = if (p.id in here) here - p.id else here + p.id }
                 }

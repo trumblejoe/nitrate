@@ -41,15 +41,15 @@ class GroupMarksTest {
         assertNull(GroupMarks.groupFor("t", MediaItem("x", "Elsewhere", ItemKind.MOVIE), info, standings))
         assertTrue(GroupMarks.watched(tommy, eps[2]))
         assertFalse(GroupMarks.watched(tommy, eps[3]))
-        assertEquals("Not watched on your track with Tommy", GroupMarks.label(tommy, eps[3]))
-        assertEquals("Watched on your track with Tommy", GroupMarks.label(tommy, eps[2]))
+        assertEquals("Not watched · Group · Tommy", GroupMarks.label(tommy, eps[3]))
+        assertEquals("Watched · Group · Tommy", GroupMarks.label(tommy, eps[2]))
     }
 
     @Test fun markingWatchedAsksOnlyWhenItsNextInOtherGroupsToo() {
         // Episode 4 is next with Tommy and with Kim (Sam's group is past it): ask about Kim only.
         val others = GroupMarks.alsoNext(eps[3], tommy, watched = true, info, standings)
         assertEquals(listOf("k"), others.map { it.id })
-        assertEquals("Also mark it watched on your track with Kim, where it's next too?", GroupMarks.question(others))
+        assertEquals("Also mark it watched in Group · Kim, where it's next too?", GroupMarks.question(others))
         // Unwatched never asks; a part further on (not next anywhere else) doesn't either.
         assertTrue(GroupMarks.alsoNext(eps[3], tommy, watched = false, info, standings).isEmpty())
         assertTrue(GroupMarks.alsoNext(eps[5], tommy, watched = true, info, standings).isEmpty())

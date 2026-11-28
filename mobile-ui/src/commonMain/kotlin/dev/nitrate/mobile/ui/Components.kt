@@ -137,7 +137,12 @@ fun MediaCard(
                     )
                 }
             }
-            if (prefs.unwatchedCounts && !item.user.played) {
+            // A group's card (Watching together, or half-watched with a group): the people mark, the same as on its pages.
+            if (item.watchGroupId != null) androidx.compose.material3.Icon(
+                NitrateIcons.Group, "Group",
+                tint = Color.White,
+                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color(0xAA000000), RoundedCornerShape(50)).padding(3.dp).size(14.dp),
+            ) else if (prefs.unwatchedCounts && !item.user.played) {
                 item.user.unplayedCount?.takeIf { it > 0 && item.kind == ItemKind.SERIES }?.let {
                     Text(
                         "$it",

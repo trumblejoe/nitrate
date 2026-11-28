@@ -68,6 +68,8 @@ fun MediaCard(
     logoUrl: String? = null,
 ) {
     // On a page entered from a watch group, its parts' tick and progress are the group's (pressing still acts on the item).
+    // A group's card (Watching together) or a part on a Group page: the people mark, not the check.
+    val grouped = item.watchGroupId != null || dev.nitrate.tv.ui.partners.groupMarkFor(item) != null
     @Suppress("NAME_SHADOWING") val item = dev.nitrate.tv.ui.partners.asShownHere(item)
     var focused by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var logoFailed by androidx.compose.runtime.remember(logoUrl) { androidx.compose.runtime.mutableStateOf(false) }
@@ -165,7 +167,16 @@ fun MediaCard(
                         if (st.partners.isNotEmpty()) Text(st.partners, style = MaterialTheme.typography.labelMedium, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                if (item.user.played && prefs.watchedMarks) {
+                if (grouped) {
+                    // Group: the people mark, lit when watched in the group.
+                    androidx.tv.material3.Icon(
+                        dev.nitrate.tv.ui.partners.GroupIcon, null,
+                        tint = if (item.user.played) MaterialTheme.colorScheme.onPrimary else Color.White,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                            .background(if (item.user.played) MaterialTheme.colorScheme.primary else Color(0xAA000000), MaterialTheme.shapes.small)
+                            .padding(horizontal = 4.dp, vertical = 1.dp).size(18.dp),
+                    )
+                } else if (item.user.played && prefs.watchedMarks) {
                     Text(
                         "✓",
                         style = MaterialTheme.typography.labelLarge,

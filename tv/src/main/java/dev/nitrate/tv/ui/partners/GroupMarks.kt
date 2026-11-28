@@ -10,6 +10,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -60,13 +63,68 @@ class TvGroupMarks internal constructor(val container: AppContainer, val groupId
 /** The page's group marks (null: not entered from a group). */
 val LocalGroupMarks = staticCompositionLocalOf<TvGroupMarks?> { null }
 
-/** Gives [content] (a details or playlist page) the group it was entered from, and shows the marks' one question. */
+/** A page's viewing: Group ([groupId]) or Individual (null), and how its pill switches it. */
+class TvViewing(val container: AppContainer, val groupId: String?, val switch: ((String?) -> Unit)?)
+
+/** The page's viewing (null: a page with no pill, e.g. one shown alone in a test). */
+val LocalViewing = staticCompositionLocalOf<TvViewing?> { null }
+
+/**
+ * Gives [content] (a details or playlist page) its viewing: Group (the group it was entered from,
+ * or picked in its pill) or Individual ([groupId] null), and shows the marks' one question.
+ * [onSwitch] is the pill's: the page redraws in the other viewing.
+ */
 @Composable
-fun ProvideGroupMarks(container: AppContainer, groupId: String?, content: @Composable () -> Unit) {
+fun ProvideGroupMarks(container: AppContainer, groupId: String?, onSwitch: ((String?) -> Unit)? = null, content: @Composable () -> Unit) {
     val scope = rememberCoroutineScope()
     val marks = remember(groupId) { groupId?.let { TvGroupMarks(container, it, scope) } }
-    CompositionLocalProvider(LocalGroupMarks provides marks) { content() }
+    val viewing = remember(groupId, onSwitch) { TvViewing(container, groupId, onSwitch) }
+    CompositionLocalProvider(LocalGroupMarks provides marks, LocalViewing provides viewing) { content() }
     marks?.let { GroupMarkQuestion(it) }
+}
+
+/**
+ * The page's viewing pill, for a title in at least one of the user's groups: "Individual ▾" or the
+ * group's people mark and name ("Will ▾"). OK flips between Individual and the group when there's
+ * one; with several it lists Individual and each group. Shown only where the page can switch.
+ */
+@Composable
+fun ViewingPill(item: MediaItem, modifier: Modifier = Modifier) {
+    val viewing = LocalViewing.current ?: return
+    val switch = viewing.switch ?: return
+    val info by viewing.container.partners.collectAsState()
+    val standings by viewing.container.groupStandings.collectAsState()
+    val groups = dev.nitrate.core.partners.Viewing.groupsOn(item, info, standings)
+    if (groups.isEmpty()) return
+    val current = groups.firstOrNull { it.id == viewing.groupId }
+    var choosing by remember { mutableStateOf(false) }
+    androidx.tv.material3.OutlinedButton(
+        onClick = { if (groups.size == 1) switch(if (current == null) groups[0].id else null) else choosing = true },
+        modifier = modifier,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+    ) {
+        if (current != null) androidx.tv.material3.Icon(GroupIcon, null, Modifier.padding(end = 6.dp).size(18.dp))
+        else androidx.tv.material3.Icon(androidx.compose.material.icons.Icons.Filled.Check, null, Modifier.padding(end = 6.dp).size(18.dp))
+        Text((current?.let { dev.nitrate.core.partners.Viewing.name(it) } ?: dev.nitrate.core.partners.Viewing.INDIVIDUAL) + "  ▾")
+    }
+    if (choosing) dev.nitrate.tv.ui.lists.TvDialog({ choosing = false }, width = 520) {
+        val first = remember { FocusRequester() }
+        Text("Viewing", style = MaterialTheme.typography.headlineSmall)
+        fun pick(id: String?) { choosing = false; if (id != viewing.groupId) switch(id) }
+        androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { pick(null) }, modifier = Modifier.focusRequester(first)) {
+                androidx.tv.material3.Icon(androidx.compose.material.icons.Icons.Filled.Check, null, Modifier.padding(end = 8.dp).size(18.dp))
+                Text(dev.nitrate.core.partners.Viewing.INDIVIDUAL + if (current == null) "  ·  now" else "")
+            }
+            groups.forEach { g ->
+                OutlinedButton(onClick = { pick(g.id) }) {
+                    androidx.tv.material3.Icon(GroupIcon, null, Modifier.padding(end = 8.dp).size(18.dp))
+                    Text(dev.nitrate.core.partners.Viewing.name(g) + if (g.id == current?.id) "  ·  now" else "")
+                }
+            }
+        }
+        LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    }
 }
 
 /** The group whose own mark [item] shows here, or null (not entered from a group, or not one of its titles' parts). */
@@ -85,7 +143,7 @@ fun groupMarkFor(item: MediaItem): WatchGroup? {
 @Composable
 fun asShownHere(item: MediaItem): MediaItem = groupMarkFor(item)?.let { GroupMarks.asGroupSees(it, item) } ?: item
 
-/** "Also mark it watched on your track with Kim, where it's next too?": Just this group (focused; Back is the same) / All groups where it's next. */
+/** "Also mark it watched in Group · Kim, where it's next too?": Just this group (focused; Back is the same) / All groups where it's next. */
 @Composable
 private fun GroupMarkQuestion(marks: TvGroupMarks) {
     val (group, item, others) = marks.asking ?: return

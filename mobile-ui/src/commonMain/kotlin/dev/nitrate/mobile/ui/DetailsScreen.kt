@@ -82,7 +82,17 @@ import dev.nitrate.core.model.formatRuntime
 import dev.nitrate.mobile.platform.rememberArtworkColor
 
 @Composable
-fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey: String? = null) {
+fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey: String? = null, group: String? = null, playlist: String? = null) {
+    // Group (entered from a watch group, or picked in the page's pill) or Individual: the page's marks and plays follow it.
+    var viewing by androidx.compose.runtime.saveable.rememberSaveable(itemId) { mutableStateOf(group) }
+    val here = remember(actions, viewing, playlist) { actions.fromGroup(viewing).fromPlaylist(playlist) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalViewing provides Viewing(viewing) { viewing = it }) {
+        DetailsPage(here, itemId, seasonId, artKey)
+    }
+}
+
+@Composable
+private fun DetailsPage(actions: AppActions, itemId: String, seasonId: String?, artKey: String?) {
     // "More like this" off: the server isn't asked for similar titles at all.
     val similarOn = LocalDisplayPrefs.current.similar
     val vm = viewModel(key = "details-$itemId") { DetailsViewModel(actions.server, itemId, seasonId, actions.container.dataCache, wantsSimilar = { similarOn }) }
@@ -189,12 +199,12 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                             modifier = if (artistId != null) Modifier.pressable({ actions.nav.navigate(DetailsRoute(artistId)) }) else Modifier,
                         )
                     }
-                    // Entered from a watch group: only that group's line, saying what the page does for it.
-                    val enteredGroup = actions.groupOf(item)
+                    // Group or Individual: the page's pill (a title in one of the user's groups), and where the others are.
+                    ViewingPill(actions, item)
+                    val enteredGroup = LocalViewing.current?.groupId
                     partnerProgress.filter { enteredGroup == null || it.groupId == enteredGroup }.groupBy { it.groupId }.values.forEach { group ->
                         Text(
-                            "Watching with " + group.joinToString(", ") { "${it.userName} (${it.last ?: "not started"})" } +
-                                if (enteredGroup != null) ". Plays here count on your track with them, not your own." else "",
+                            "Watching with " + group.joinToString(", ") { "${it.userName} (${it.last ?: "not started"})" },
                             style = MaterialTheme.typography.labelLarge, color = accentColor(),
                         )
                     }
@@ -204,8 +214,8 @@ fun DetailsScreen(actions: AppActions, itemId: String, seasonId: String?, artKey
                     if (!music) (if (item.isPlayable) item else playTarget)?.let { TrackLine(actions, it, chat = actions.container.detailsChat(actions.groupOf(item))) }
                     // One short row: watched, favourite, the trailer, downloading, playing elsewhere; the rest under More.
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (!music) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
-                        // The group's own mark (entered from a group): separate from Watched, which is the user's alone.
+                        // Individual: the check (the user's own Watched); Group: the people mark (the group's), never both.
+                        if (!music && LocalViewing.current?.groupId == null) RoundAction(Icons.Default.Check, "Watched", onClick = vm::togglePlayed, active = item.user.played)
                         if (!music) GroupMarkAction(actions, item, marker)
                         RoundAction(if (item.user.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorite", onClick = vm::toggleFavorite, active = item.user.isFavorite)
                         val trailer = state.extras.firstOrNull { it.extraType == "Trailer" }
@@ -551,7 +561,9 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
                 }
                 Row(Modifier.align(Alignment.TopEnd).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (downloaded) Badge(NitrateIcons.DownloadDone, "Downloaded")
-                    if (shown.user.played && LocalDisplayPrefs.current.watchedMarks) Badge(Icons.Default.Check, if (shown !== episode) "Watched on your track with the group" else "Watched")
+                    // Group: the people mark (lit when watched in the group); Individual: the check.
+                    if (shown !== episode) Badge(NitrateIcons.Group, if (shown.user.played) "Watched in the group" else "Not watched in the group", lit = shown.user.played)
+                    else if (episode.user.played && LocalDisplayPrefs.current.watchedMarks) Badge(Icons.Default.Check, "Watched")
                 }
             }
             Column(Modifier.padding(start = 14.dp).weight(1f)) {
@@ -573,8 +585,8 @@ private fun EpisodeCard(actions: AppActions, episode: MediaItem, downloaded: Boo
 }
 
 @Composable
-private fun Badge(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
-    Icon(icon, label, tint = Color.White, modifier = Modifier.background(Color(0xAA000000), CircleShape).padding(3.dp).size(14.dp))
+private fun Badge(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, lit: Boolean = false) {
+    Icon(icon, label, tint = Color.White, modifier = Modifier.background(if (lit) accentColor() else Color(0xAA000000), CircleShape).padding(3.dp).size(14.dp))
 }
 
 
@@ -640,7 +652,7 @@ private fun DetailsMoreSheet(actions: AppActions, item: MediaItem, canManage: Bo
         if (video && (container.companionOffers("notes") || container.companionOffers("moments"))) entry("Group notes", "What your groups said along it, up to where you've got") { open = "moments" }
         if (video && container.companionOffers("chathistory")) entry("Earlier chat", "What was said watching it together") { open = "chat" }
         // In one of the user's watch groups: the same choices as a long press on its Watching together card.
-        if (together) entry("Watch group…", "Mark on your track, start a Group Watch Session, same room, invite, leave") { open = "together" }
+        if (together) entry("Watch group…", "Mark in the group, start a Group Watch Session, same room, invite, leave") { open = "together" }
         if (item.isPlayable || item.kind == ItemKind.SERIES || item.kind == ItemKind.MUSIC_ALBUM) entry("Add to a playlist or collection", null) { open = "add" }
         if (!music && (video || item.kind == ItemKind.SERIES || item.kind == ItemKind.SEASON || item.kind == ItemKind.BOX_SET)) entry("Pack for a trip", "Have it on your phone, tablet or laptop while you're away") { open = "trip" }
         studio?.let { entry("More from $it", null) { onDismiss(); actions.nav.navigate(PersonRoute("", it, studio = it)) } }

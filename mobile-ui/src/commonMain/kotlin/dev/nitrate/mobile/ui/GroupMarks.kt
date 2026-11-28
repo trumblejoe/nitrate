@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -56,7 +57,7 @@ fun rememberGroupMarker(actions: AppActions): GroupMarker {
     return remember(actions) { GroupMarker(actions, scope) }
 }
 
-/** "Also mark it watched on your track with Kim, where it's next too?": Just this group / All groups where it's next. */
+/** "Also mark it watched in Group · Kim, where it's next too?": Just this group / All groups where it's next. */
 @Composable
 fun GroupMarkQuestion(marker: GroupMarker) {
     val (group, item, others) = marker.asking ?: return
@@ -94,4 +95,48 @@ fun GroupMarkToggle(actions: AppActions, item: MediaItem, marker: GroupMarker, m
             .pressable({ marker.toggle(group, item) }).semantics { contentDescription = GroupMarks.label(group, item) }
             .padding(6.dp).size(18.dp),
     )
+}
+
+/** A page's viewing: Group ([groupId]) or Individual (null), and how its pill switches it. */
+class Viewing(val groupId: String?, val switch: (String?) -> Unit)
+
+/** The page's viewing (null: a page with no pill). */
+val LocalViewing = androidx.compose.runtime.staticCompositionLocalOf<Viewing?> { null }
+
+/**
+ * The page's viewing pill, for a title in at least one of the user's groups: "✓ Individual ▾" or
+ * the people mark and the group's name ("Will ▾"). A tap flips between Individual and the group when
+ * there's one; with several it lists Individual and each group.
+ */
+@Composable
+fun ViewingPill(actions: AppActions, item: MediaItem) {
+    val viewing = LocalViewing.current ?: return
+    val info by actions.container.partners.collectAsState()
+    val standings by actions.container.groupStandings.collectAsState()
+    val groups = dev.nitrate.core.partners.Viewing.groupsOn(item, info, standings)
+    if (groups.isEmpty()) return
+    val current = groups.firstOrNull { it.id == viewing.groupId }
+    var open by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box {
+        androidx.compose.material3.AssistChip(
+            onClick = { if (groups.size == 1) viewing.switch(if (current == null) groups[0].id else null) else open = true },
+            label = { Text((current?.let { dev.nitrate.core.partners.Viewing.name(it) } ?: dev.nitrate.core.partners.Viewing.INDIVIDUAL) + "  ▾") },
+            leadingIcon = { Icon(if (current != null) NitrateIcons.Group else androidx.compose.material.icons.Icons.Default.Check, null, Modifier.size(18.dp)) },
+            modifier = Modifier.semantics { contentDescription = "Viewing: " + (current?.let { dev.nitrate.core.partners.Viewing.group(it) } ?: dev.nitrate.core.partners.Viewing.INDIVIDUAL) },
+        )
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(dev.nitrate.core.partners.Viewing.INDIVIDUAL) },
+                leadingIcon = { Icon(androidx.compose.material.icons.Icons.Default.Check, null) },
+                onClick = { open = false; if (current != null) viewing.switch(null) },
+            )
+            groups.forEach { g ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(dev.nitrate.core.partners.Viewing.name(g)) },
+                    leadingIcon = { Icon(NitrateIcons.Group, null) },
+                    onClick = { open = false; if (g.id != current?.id) viewing.switch(g.id) },
+                )
+            }
+        }
+    }
 }

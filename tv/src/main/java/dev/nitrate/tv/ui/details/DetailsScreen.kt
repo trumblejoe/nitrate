@@ -180,9 +180,6 @@ fun DetailsScreen(
                             // Spoiler-safe: an episode not seen yet is "Episode 5", blurred, with no description.
                             items(safeEpisodes, key = { it.id }) { episode ->
                                 val thisOne = episode.id == item.id
-                                // Entered from a watch group: its own mark on each episode it has (toggled on the episode's page).
-                                val groupMark = dev.nitrate.tv.ui.partners.groupMarkFor(episode)?.takeIf { dev.nitrate.core.partners.GroupMarks.watched(it, episode) }
-                                    ?.let { "✓ with " + dev.nitrate.core.partners.GroupMarks.caption(it) }
                                 MediaCard(
                                     item = episode,
                                     imageUrl = repository.imageUrl(episode, ImageKind.PRIMARY, 300),
@@ -191,7 +188,6 @@ fun DetailsScreen(
                                     title = if (episode.spoiler) episode.name else "${episode.indexNumber ?: "–"}. ${episode.name.orEmpty()}",
                                     subtitle = listOfNotNull(
                                         if (thisOne) "This one" else dev.nitrate.core.model.AirDates.status(episode, System.currentTimeMillis()) ?: episode.runtimeMs?.let(::formatRuntime),
-                                        groupMark,
                                     ).joinToString(" · ").ifEmpty { null },
                                     onFocus = { focusedEpisode = episode },
                                     onClick = { if (thisOne) { if (episode.isPlayable) onPlay(episode, false) } else onOpen(episode) },

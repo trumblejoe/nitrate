@@ -195,6 +195,9 @@ internal fun Header(
             val context = androidx.compose.ui.platform.LocalContext.current
             var moreOpen by remember { mutableStateOf(false) }
             var hint by remember { mutableStateOf<String?>(null) }
+            // Group or Individual: the page's pill, for a title in one of the user's groups (one OK to switch).
+            dev.nitrate.tv.ui.partners.ViewingPill(item)
+            val marks = dev.nitrate.tv.ui.partners.LocalGroupMarks.current
             // One short row: play, start over, the trailer, then watched, favourite and everything else under More.
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(
@@ -207,13 +210,12 @@ internal fun Header(
                     if (trailer != null) onPlay(trailer, true)
                     else runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(item.remoteTrailers.first().url))) }
                 }) { Text("Trailer") }
-                RoundAction(
+                // Individual: the check (the user's own Watched); Group: the people mark (the group's), never both.
+                if (marks == null) RoundAction(
                     Icons.Filled.Check,
                     if (item.user.played) "Watched" else "Mark watched",
                     active = item.user.played, onHint = { hint = it }, onClick = vm::togglePlayed,
                 )
-                // Entered from a watch group: the group's own mark, apart from Watched (the user's alone).
-                val marks = dev.nitrate.tv.ui.partners.LocalGroupMarks.current
                 dev.nitrate.tv.ui.partners.groupMarkFor(item)?.let { g ->
                     RoundAction(
                         dev.nitrate.tv.ui.partners.GroupIcon, dev.nitrate.core.partners.GroupMarks.label(g, item),

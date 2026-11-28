@@ -457,7 +457,7 @@ fun MobileApp(container: AppContainer, openItem: kotlinx.coroutines.flow.Mutable
                     if (themeOn) actions.container.themeMusic.show(route.itemId) else actions.container.themeMusic.stop()
                     onDispose { actions.container.themeMusic.hide(route.itemId) }
                 }
-                DetailsScreen(actions.fromGroup(route.group).fromPlaylist(route.playlist), route.itemId, route.seasonId, route.artKey)
+                DetailsScreen(actions, route.itemId, route.seasonId, route.artKey, group = route.group, playlist = route.playlist)
             }
             screen<PlaylistRoute> { entry -> entry.toRoute<PlaylistRoute>().let { r -> PlaylistScreen(actions.fromGroup(r.group), r.playlistId) } }
             screen<ManageItemRoute> { entry -> entry.toRoute<ManageItemRoute>().let { ManageItemScreen(actions, it.itemId, it.images, if (it.run) actions.container.imageFixRun else emptyList()) } }

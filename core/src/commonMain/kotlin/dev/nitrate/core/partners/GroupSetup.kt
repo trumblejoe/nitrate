@@ -31,8 +31,8 @@ data class GroupSetup(
         TOGETHER("Together"),
     }
 
-    /** What the page says under its heading: the first explains tracks ([Tracks.EXPLAINED]). */
-    val note: String? get() = if (step == Step.WHAT) Tracks.EXPLAINED else null
+    /** What the page says under its heading: the first, that Group viewing is kept apart ([Viewing.EXPLAINED]). */
+    val note: String? get() = if (step == Step.WHAT) Viewing.EXPLAINED else null
 
     /** "Step 2 of 5 · Who with". */
     val heading: String get() = "Step ${step.ordinal + 1} of ${Step.entries.size} · ${step.title}"

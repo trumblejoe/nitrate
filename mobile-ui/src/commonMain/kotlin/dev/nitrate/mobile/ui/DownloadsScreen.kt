@@ -218,7 +218,17 @@ private fun DownloadRecord.title() = if (item.kind == ItemKind.EPISODE) "S${item
 @Composable
 private fun DoneRow(r: DownloadRecord, actions: AppActions, onRemove: () -> Unit) {
     val user = r.item.user
+    // A group's download: the group's state and its people mark; else the user's own.
+    val group = r.watchGroupId?.let { id -> actions.container.partners.collectAsState().value?.groups?.firstOrNull { it.id == id } }
     val status = when {
+        r.watchGroupId != null -> listOfNotNull(
+            group?.let { dev.nitrate.core.partners.Viewing.group(it) } ?: dev.nitrate.core.partners.Viewing.GROUP,
+            when {
+                r.groupPlayed -> "Watched"
+                r.groupPositionMs > 0 -> "Resume at ${formatClock(r.groupPositionMs)}"
+                else -> null
+            },
+        ).joinToString(" · ")
         user.played -> "Watched"
         user.positionMs > 0 -> "Resume at ${formatClock(user.positionMs)}"
         else -> null
@@ -229,7 +239,10 @@ private fun DoneRow(r: DownloadRecord, actions: AppActions, onRemove: () -> Unit
         leadingContent = { Thumb(r, actions) },
         headlineContent = { Text(r.title(), maxLines = 2, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
-            Text(listOfNotNull(r.quality.label, r.totalBytes?.let(DownloadSizing::formatBytes), status, "Not synced".takeIf { r.pendingSync }).joinToString(" · "))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (r.watchGroupId != null) Icon(NitrateIcons.Group, null, Modifier.padding(end = 4.dp).size(14.dp), tint = accentColor())
+                Text(listOfNotNull(r.quality.label, r.totalBytes?.let(DownloadSizing::formatBytes), status, "Not synced".takeIf { r.pendingSync }).joinToString(" · "))
+            }
         },
         trailingContent = {
             Row {

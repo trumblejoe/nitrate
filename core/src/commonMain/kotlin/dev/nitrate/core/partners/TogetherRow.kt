@@ -240,7 +240,7 @@ object TogetherRow {
         val groups = info?.on(series).orEmpty().filter { item.watchGroupId == null || it.id == item.watchGroupId }
         val ids = groups.map { it.id }.toSet()
         val several = groups.size > 1
-        fun whose(g: WatchGroup) = Tracks.with(g.label)
+        fun whose(g: WatchGroup) = Viewing.group(g)
         fun tag(g: WatchGroup) = if (several) " (with ${g.label})" else ""
         val isShow = keepUp?.noun != "title" && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.SERIES)
         val out = mutableListOf<TogetherChoice>()
@@ -263,15 +263,15 @@ object TogetherRow {
         // Where the user stands isn't known yet: the part itself can still be marked for the group.
         if (keepUp == null) groups.forEach { g ->
             val part = partOf(g) ?: return@forEach
-            out += TogetherChoice.Mark(g.id, listOf(part.id), watched = true, "Mark ${shortLabel(part)} watched on ${whose(g)}")
+            out += TogetherChoice.Mark(g.id, listOf(part.id), watched = true, "Mark ${shortLabel(part)} watched · ${whose(g)}")
         }
         if (keepUp != null) groups.forEach { g ->
             val part = partOf(g) ?: return@forEach
             val mine = keepUp.mineIn(g.id)
             val what = shortLabel(part)
-            if (part.id in mine) out += TogetherChoice.Mark(g.id, listOf(part.id), watched = false, "Mark $what unwatched on ${whose(g)}")
+            if (part.id in mine) out += TogetherChoice.Mark(g.id, listOf(part.id), watched = false, "Mark $what unwatched · ${whose(g)}")
             else {
-                out += TogetherChoice.Mark(g.id, listOf(part.id), watched = true, "Mark $what watched on ${whose(g)}")
+                out += TogetherChoice.Mark(g.id, listOf(part.id), watched = true, "Mark $what watched · ${whose(g)}")
                 val upTo = keepUp.order.indexOf(part.id).takeIf { it >= 0 }?.let { at -> keepUp.order.take(at + 1).filter { it !in mine } }.orEmpty()
                 if (upTo.size > 1) out += TogetherChoice.Mark(g.id, upTo, watched = true, "Mark everything up to here watched (${WatchPartners.count(upTo.size, keepUp.noun)})${tag(g)}")
             }

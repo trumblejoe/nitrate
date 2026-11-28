@@ -318,17 +318,18 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
             val canManage by androidx.compose.runtime.produceState(account?.isAdmin == true, route.itemId, account) {
                 value = container.canManageMetadata(route.itemId)
             }
-            // Entered from a watch group: the page has the group's own marks (GroupMarks).
-            dev.nitrate.tv.ui.partners.ProvideGroupMarks(container, route.group) {
+            // Group (entered from a watch group, or picked in the page's pill) or Individual: the page's marks and plays follow it.
+            var viewing by androidx.compose.runtime.saveable.rememberSaveable(route.itemId) { androidx.compose.runtime.mutableStateOf(route.group) }
+            dev.nitrate.tv.ui.partners.ProvideGroupMarks(container, viewing, onSwitch = { viewing = it }) {
             DetailsScreen(
                 repository = container.server,
                 itemId = route.itemId,
                 seasonId = route.seasonId,
                 // Opened from a watch group's card: its title's parts play (and open) from that card.
                 // Opened from a playlist: what plays from here is a sitting of that playlist.
-                onPlay = { item, fromStart -> gate.play(item.inPlaylist(route.playlist), fromStart, origin = container.detailsOrigin(route.group, item)) },
-                onPlayFrom = { item, at -> gate.play(item.inPlaylist(route.playlist), startMs = at, origin = container.detailsOrigin(route.group, item)) },
-                onOpen = { item -> nav.openItem(item.inPlaylist(route.playlist), (container.detailsOrigin(route.group, item) as? dev.nitrate.core.partners.PlayOrigin.GroupCard)?.groupId) },
+                onPlay = { item, fromStart -> gate.play(item.inPlaylist(route.playlist), fromStart, origin = container.detailsOrigin(viewing, item)) },
+                onPlayFrom = { item, at -> gate.play(item.inPlaylist(route.playlist), startMs = at, origin = container.detailsOrigin(viewing, item)) },
+                onOpen = { item -> nav.openItem(item.inPlaylist(route.playlist), (container.detailsOrigin(viewing, item) as? dev.nitrate.core.partners.PlayOrigin.GroupCard)?.groupId) },
                 onManage = if (canManage) { id -> nav.navigate(ManageItemRoute(id)) } else null,
                 canCollect = account?.canManageCollections == true,
                 onPlayQueue = { items -> listen(items) },
@@ -338,7 +339,7 @@ fun NitrateNavHost(container: AppContainer, requests: kotlinx.coroutines.flow.Mu
                 pickTrack = { item, setup, kind, index -> container.pickTrack(item, setup, kind, index) },
                 applyPlaybackFix = { item, fix -> container.applyPlaybackFix(item.id, fix) },
                 watchPartners = partnersOn,
-                chat = container.detailsChat(route.group),
+                chat = container.detailsChat(viewing),
             )
             }
         }
